@@ -10,39 +10,60 @@ const DEFAULT_MAX_ITERATIONS: u32 = 10;
 /// An executable plan within a phase.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plan {
+    /// Unique plan identifier.
     pub id: Ulid,
+    /// Short title for the plan.
     pub title: String,
+    /// Detailed description of what this plan accomplishes.
     pub description: String,
+    /// Execution wave: plans in the same wave can run in parallel.
     pub wave: u32,
+    /// Plan IDs that must complete before this plan can start.
     pub depends_on: Vec<Ulid>,
+    /// Current lifecycle state.
     pub state: PlanState,
+    /// Maximum allowed iterations before the plan is marked stuck.
     pub max_iterations: u32,
+    /// Number of iterations executed so far.
     pub iterations: u32,
+    /// Blockers discovered during execution.
     pub blockers: Vec<Blocker>,
+    /// Notable accomplishments recorded during execution.
     pub achievements: Vec<String>,
 }
 
 /// Plan lifecycle states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlanState {
+    /// Plan has not been evaluated for readiness yet.
     Pending,
+    /// All dependencies are satisfied and the plan can execute.
     Ready,
+    /// Plan is currently being executed.
     Executing,
+    /// Plan finished successfully.
     Complete,
+    /// Plan execution failed.
     Failed,
+    /// Plan was intentionally skipped (e.g., no longer relevant).
     Skipped,
+    /// Plan exceeded its iteration limit without completing.
     Stuck,
 }
 
 /// A blocker discovered during plan execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Blocker {
+    /// What is blocking progress.
     pub description: String,
+    /// The plan that is blocked.
     pub plan_id: Ulid,
+    /// When the blocker was identified.
     pub detected_at: jiff::Timestamp,
 }
 
 impl Plan {
+    /// Create a new plan in the `Pending` state with default iteration limits.
     #[must_use]
     pub fn new(title: String, description: String, wave: u32) -> Self {
         Self {

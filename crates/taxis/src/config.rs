@@ -10,14 +10,21 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct AletheiaConfig {
+    /// Agent definitions and shared defaults.
     pub agents: AgentsConfig,
+    /// HTTP gateway settings (port, bind address, auth, TLS, CORS).
     pub gateway: GatewayConfig,
+    /// Messaging transport configuration (Signal, etc.).
     pub channels: ChannelsConfig,
+    /// Routes mapping channel sources to nous agents.
     pub bindings: Vec<ChannelBinding>,
+    /// Embedding provider configuration for the recall pipeline.
     pub embedding: EmbeddingSettings,
+    /// Data lifecycle and retention policies.
     pub data: DataConfig,
     /// External domain pack paths (directories containing pack.yaml).
     pub packs: Vec<PathBuf>,
+    /// Periodic maintenance task configuration (trace rotation, drift detection, etc.).
     pub maintenance: MaintenanceSettings,
     /// Per-model pricing for LLM cost metrics. Keyed by model name.
     pub pricing: HashMap<String, ModelPricing>,
@@ -57,7 +64,9 @@ fn default_session_pattern() -> String {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct AgentsConfig {
+    /// Shared defaults applied to every agent unless overridden per-agent.
     pub defaults: AgentDefaults,
+    /// Individual agent definitions; merged with `defaults` at resolution time.
     pub list: Vec<NousDefinition>,
 }
 
@@ -66,16 +75,27 @@ pub struct AgentsConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct AgentDefaults {
+    /// Primary model and fallback chain.
     pub model: ModelSpec,
+    /// Maximum input context window size in tokens.
     pub context_tokens: u32,
+    /// Maximum tokens the model may generate per response.
     pub max_output_tokens: u32,
+    /// Token budget for bootstrap (system prompt + persona) content.
     pub bootstrap_max_tokens: u32,
+    /// IANA timezone for date/time formatting in prompts.
     pub user_timezone: String,
+    /// Per-turn timeout in seconds before the request is cancelled.
     pub timeout_seconds: u32,
+    /// Whether extended thinking is enabled by default.
     pub thinking_enabled: bool,
+    /// Maximum tokens allocated to extended thinking when enabled.
     pub thinking_budget: u32,
+    /// Safety limit on consecutive tool use iterations per turn.
     pub max_tool_iterations: u32,
+    /// Filesystem paths the agent is permitted to access.
     pub allowed_roots: Vec<String>,
+    /// Per-tool execution timeout overrides.
     pub tool_timeouts: ToolTimeouts,
 }
 
@@ -102,7 +122,9 @@ impl Default for AgentDefaults {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct ModelSpec {
+    /// Primary model identifier (e.g. `claude-sonnet-4-6`).
     pub primary: String,
+    /// Ordered fallback models tried when the primary is unavailable.
     pub fallbacks: Vec<String>,
 }
 
@@ -120,7 +142,9 @@ impl Default for ModelSpec {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct ToolTimeouts {
+    /// Default timeout for all tools in milliseconds.
     pub default_ms: u64,
+    /// Per-tool timeout overrides keyed by tool name.
     pub overrides: HashMap<String, u64>,
 }
 
@@ -137,18 +161,26 @@ impl Default for ToolTimeouts {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NousDefinition {
+    /// Unique agent identifier (matches the `nous/{id}/` directory name).
     pub id: String,
+    /// Human-readable display name.
     #[serde(default)]
     pub name: Option<String>,
+    /// Model override; when `None`, inherits from [`AgentDefaults::model`].
     #[serde(default)]
     pub model: Option<ModelSpec>,
+    /// Filesystem path to the agent's workspace directory.
     pub workspace: String,
+    /// Thinking override; when `None`, inherits from [`AgentDefaults::thinking_enabled`].
     #[serde(default)]
     pub thinking_enabled: Option<bool>,
+    /// Additional filesystem roots this agent may access (merged with defaults).
     #[serde(default)]
     pub allowed_roots: Vec<String>,
+    /// Knowledge domains this agent specializes in (e.g. `"code"`, `"research"`).
     #[serde(default)]
     pub domains: Vec<String>,
+    /// Whether this is the default agent for unrouted messages.
     #[serde(default)]
     pub default: bool,
 }
@@ -158,12 +190,19 @@ pub struct NousDefinition {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct GatewayConfig {
+    /// TCP port the gateway listens on.
     pub port: u16,
+    /// Bind mode: `"lan"` for LAN-accessible, `"localhost"` for loopback only.
     pub bind: String,
+    /// Authentication configuration.
     pub auth: GatewayAuthConfig,
+    /// TLS termination settings.
     pub tls: TlsConfig,
+    /// Cross-origin resource sharing policy.
     pub cors: CorsConfig,
+    /// Request body size limit.
     pub body_limit: BodyLimitConfig,
+    /// CSRF protection settings.
     pub csrf: CsrfConfig,
 }
 
@@ -186,6 +225,7 @@ impl Default for GatewayConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct GatewayAuthConfig {
+    /// Auth mode: `"token"` (bearer token), `"none"` (disabled).
     pub mode: String,
 }
 
@@ -202,8 +242,11 @@ impl Default for GatewayAuthConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct TlsConfig {
+    /// Whether TLS termination is active.
     pub enabled: bool,
+    /// Path to the PEM-encoded certificate file.
     pub cert_path: Option<String>,
+    /// Path to the PEM-encoded private key file.
     pub key_path: Option<String>,
 }
 
@@ -249,8 +292,11 @@ impl Default for BodyLimitConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct CsrfConfig {
+    /// Whether CSRF header checking is active.
     pub enabled: bool,
+    /// Required header name (e.g. `x-requested-with`).
     pub header_name: String,
+    /// Required header value (e.g. `aletheia`).
     pub header_value: String,
 }
 
@@ -292,6 +338,7 @@ impl Default for EmbeddingSettings {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct ChannelsConfig {
+    /// Signal messenger transport configuration.
     pub signal: SignalConfig,
 }
 
@@ -300,7 +347,9 @@ pub struct ChannelsConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct SignalConfig {
+    /// Whether the Signal channel is active.
     pub enabled: bool,
+    /// Named Signal accounts keyed by account label.
     pub accounts: HashMap<String, SignalAccountConfig>,
 }
 
@@ -322,17 +371,29 @@ impl Default for SignalConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct SignalAccountConfig {
+    /// Human-readable label for this account.
     pub name: Option<String>,
+    /// Whether this account is active.
     pub enabled: bool,
+    /// Phone number or account identifier registered with Signal.
     pub account: Option<String>,
+    /// Hostname for the signal-cli JSON-RPC HTTP interface.
     pub http_host: String,
+    /// Port for the signal-cli JSON-RPC HTTP interface.
     pub http_port: u16,
+    /// Filesystem path to the signal-cli binary (auto-detected if `None`).
     pub cli_path: Option<String>,
+    /// Whether to auto-start signal-cli when the daemon starts.
     pub auto_start: bool,
+    /// Direct message policy: `"open"` accepts all, `"allowlist"` restricts.
     pub dm_policy: String,
+    /// Group message policy: `"open"` or `"allowlist"`.
     pub group_policy: String,
+    /// Whether the bot must be @mentioned to respond in groups.
     pub require_mention: bool,
+    /// Whether to send read receipts for processed messages.
     pub send_read_receipts: bool,
+    /// Maximum characters per outbound text chunk before splitting.
     pub text_chunk_limit: u32,
 }
 
@@ -360,6 +421,7 @@ impl Default for SignalAccountConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct DataConfig {
+    /// Session and message retention policies.
     pub retention: RetentionConfig,
 }
 
@@ -393,9 +455,13 @@ impl Default for RetentionConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct MaintenanceSettings {
+    /// Trace log file rotation and compression.
     pub trace_rotation: TraceRotationSettings,
+    /// Filesystem drift detection against expected instance layout.
     pub drift_detection: DriftDetectionSettings,
+    /// Database size monitoring and alerting.
     pub db_monitoring: DbMonitoringSettings,
+    /// Automatic data retention enforcement.
     pub retention: RetentionSettings,
 }
 
@@ -404,10 +470,15 @@ pub struct MaintenanceSettings {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct TraceRotationSettings {
+    /// Whether automatic trace rotation runs.
     pub enabled: bool,
+    /// Delete trace files older than this many days.
     pub max_age_days: u32,
+    /// Maximum total trace directory size in MB before pruning.
     pub max_total_size_mb: u64,
+    /// Whether to gzip-compress rotated trace files.
     pub compress: bool,
+    /// Maximum number of compressed archive files to retain.
     pub max_archives: usize,
 }
 
@@ -428,8 +499,11 @@ impl Default for TraceRotationSettings {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct DriftDetectionSettings {
+    /// Whether drift detection runs during maintenance.
     pub enabled: bool,
+    /// Emit warnings for files missing from the expected layout.
     pub alert_on_missing: bool,
+    /// Glob patterns for paths to ignore during drift checks.
     pub ignore_patterns: Vec<String>,
 }
 
@@ -453,8 +527,11 @@ impl Default for DriftDetectionSettings {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct DbMonitoringSettings {
+    /// Whether database size monitoring runs.
     pub enabled: bool,
+    /// Emit a warning when any database exceeds this size in MB.
     pub warn_threshold_mb: u64,
+    /// Emit an alert when any database exceeds this size in MB.
     pub alert_threshold_mb: u64,
 }
 
@@ -474,6 +551,7 @@ impl Default for DbMonitoringSettings {
 #[serde(default)]
 #[derive(Default)]
 pub struct RetentionSettings {
+    /// Whether automatic retention enforcement (session cleanup) runs.
     pub enabled: bool,
 }
 
@@ -482,20 +560,35 @@ pub struct RetentionSettings {
 /// Produced by merging [`AgentDefaults`] with a matching [`NousDefinition`].
 #[derive(Debug, Clone)]
 pub struct ResolvedNousConfig {
+    /// Agent identifier.
     pub id: String,
+    /// Human-readable display name (from the agent definition, if set).
     pub name: Option<String>,
+    /// Resolved primary model identifier.
     pub model: String,
+    /// Ordered fallback models.
     pub fallbacks: Vec<String>,
+    /// Maximum input context window in tokens.
     pub context_tokens: u32,
+    /// Maximum output tokens per response.
     pub max_output_tokens: u32,
+    /// Token budget for bootstrap content.
     pub bootstrap_max_tokens: u32,
+    /// Whether extended thinking is enabled for this agent.
     pub thinking_enabled: bool,
+    /// Token budget for extended thinking.
     pub thinking_budget: u32,
+    /// Maximum consecutive tool use iterations per turn.
     pub max_tool_iterations: u32,
+    /// Resolved workspace directory path.
     pub workspace: String,
+    /// Merged set of permitted filesystem roots.
     pub allowed_roots: Vec<String>,
+    /// Knowledge domains this agent covers.
     pub domains: Vec<String>,
+    /// IANA timezone for prompt formatting.
     pub user_timezone: String,
+    /// Per-turn timeout in seconds.
     pub timeout_seconds: u32,
 }
 

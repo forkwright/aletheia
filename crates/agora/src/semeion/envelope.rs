@@ -8,16 +8,24 @@ use crate::types::InboundMessage;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignalEnvelope {
+    /// Sender's phone number (e.g., `"+1234567890"`).
     pub source_number: Option<String>,
+    /// Sender's UUID (alternative identifier when phone number is unavailable).
     pub source_uuid: Option<String>,
+    /// Sender's display name from their Signal profile.
     pub source_name: Option<String>,
+    /// Unix timestamp in milliseconds when the envelope was created.
     pub timestamp: Option<u64>,
+    /// Data message payload (the actual message content).
     #[serde(default)]
     pub data_message: Option<DataMessage>,
+    /// Sync message from a linked device (ignored for inbound processing).
     #[serde(default)]
     pub sync_message: Option<serde_json::Value>,
+    /// Delivery/read receipt (ignored for inbound processing).
     #[serde(default)]
     pub receipt_message: Option<serde_json::Value>,
+    /// Typing indicator (ignored for inbound processing).
     #[serde(default)]
     pub typing_message: Option<serde_json::Value>,
 }
@@ -26,10 +34,14 @@ pub struct SignalEnvelope {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DataMessage {
+    /// Unix timestamp in milliseconds for this specific message.
     pub timestamp: Option<u64>,
+    /// Text body of the message.
     pub message: Option<String>,
+    /// Group metadata if this message was sent to a group.
     #[serde(default)]
     pub group_info: Option<GroupInfo>,
+    /// File attachments included with the message.
     #[serde(default)]
     pub attachments: Option<Vec<Attachment>>,
 }
@@ -38,6 +50,7 @@ pub struct DataMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupInfo {
+    /// Base64-encoded group identifier.
     pub group_id: Option<String>,
 }
 
@@ -45,9 +58,13 @@ pub struct GroupInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Attachment {
+    /// Signal-assigned attachment identifier.
     pub id: Option<String>,
+    /// MIME type (e.g., `"image/jpeg"`, `"application/pdf"`).
     pub content_type: Option<String>,
+    /// Original filename if provided by the sender.
     pub filename: Option<String>,
+    /// File size in bytes.
     pub size: Option<u64>,
 }
 

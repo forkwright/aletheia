@@ -1,4 +1,7 @@
 //! Sensitive value redaction for log output.
+//!
+//! Strips API keys (Anthropic `sk-ant-*`, generic `sk-*`), bearer tokens,
+//! JWTs, and password-like key=value pairs from strings before they reach logs.
 
 use std::sync::LazyLock;
 

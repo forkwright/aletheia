@@ -11,12 +11,19 @@ use crate::prompt;
 /// Sections that can appear in a distillation summary.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub enum DistillSection {
+    /// One-sentence overview of the conversation topic.
     Summary,
+    /// What was being worked on and why, including agent identity.
     TaskContext,
+    /// Bullet list of concrete actions taken and their outcomes.
     CompletedWork,
+    /// Decisions made with rationale that must survive distillation.
     KeyDecisions,
+    /// Snapshot of where things stand: done, in-progress, half-finished.
     CurrentState,
+    /// Unfinished items, pending questions, and deferred work.
     OpenThreads,
+    /// Mistakes discovered and corrected to prevent repetition.
     Corrections,
     /// Custom section with a name and description.
     Custom {

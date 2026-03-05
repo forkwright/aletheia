@@ -24,6 +24,9 @@ pub(crate) struct BufferedMessage {
 }
 
 /// Per-account connection state and outbound buffer.
+///
+/// Tracks connection health and queues outbound messages during
+/// disconnection, draining them automatically when the connection restores.
 pub struct AccountState {
     /// Current connection state.
     pub state: ConnectionState,

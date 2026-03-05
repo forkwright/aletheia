@@ -8,35 +8,60 @@ use crate::error::{self, Result};
 /// Project lifecycle states.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProjectState {
+    /// Project has been created but work has not started.
     Created,
+    /// Gathering clarifying questions about the project goals.
     Questioning,
+    /// Researching the domain, codebase, or prior art.
     Researching,
+    /// Defining the project scope and boundaries.
     Scoping,
+    /// Breaking work into phases and plans.
     Planning,
+    /// Reviewing and discussing the plan before execution.
     Discussing,
+    /// Actively executing plans.
     Executing,
+    /// Verifying that execution outcomes meet acceptance criteria.
     Verifying,
+    /// All work completed and verified (terminal).
     Complete,
+    /// Project was abandoned (terminal).
     Abandoned,
+    /// Project is paused, remembering which state to resume to.
     Paused { previous: Box<ProjectState> },
 }
 
 /// Valid transitions between project states.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Transition {
+    /// Move from Created to Questioning.
     StartQuestioning,
+    /// Skip questioning and research, go directly to Scoping.
     SkipToResearch,
+    /// Move from Questioning to Researching.
     StartResearch,
+    /// Skip research, go directly to Scoping.
     SkipResearch,
+    /// Move from Researching to Scoping.
     StartScoping,
+    /// Move from Scoping to Planning.
     StartPlanning,
+    /// Move from Planning to Discussing.
     StartDiscussion,
+    /// Move from Planning or Discussing to Executing.
     StartExecution,
+    /// Move from Executing to Verifying.
     StartVerification,
+    /// Move from Verifying to Complete (terminal).
     Complete,
+    /// Abandon the project from any non-terminal state (terminal).
     Abandon,
+    /// Pause the project, preserving the current state for later resume.
     Pause,
+    /// Resume a paused project to its previous state.
     Resume,
+    /// Revert from Verifying to an earlier phase (Scoping, Planning, or Executing).
     Revert { to: ProjectState },
 }
 

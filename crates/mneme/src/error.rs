@@ -118,4 +118,5 @@ pub enum Error {
     },
 }
 
+/// Result alias using mneme's [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;

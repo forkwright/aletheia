@@ -15,10 +15,15 @@ pub struct ProjectWorkspace {
 
 /// Standard directories in a project workspace.
 pub struct WorkspaceLayout {
+    /// Root directory of the project workspace.
     pub root: PathBuf,
+    /// Path to the main `PROJECT.json` file.
     pub project_file: PathBuf,
+    /// Directory for phase-specific files.
     pub phases_dir: PathBuf,
+    /// Directory for blocker markdown files (under `.dianoia/`).
     pub blockers_dir: PathBuf,
+    /// Directory for execution artifacts and outputs.
     pub artifacts_dir: PathBuf,
 }
 

@@ -5,8 +5,13 @@
 //!
 //! Depends only on `aletheia-koina`.
 
+/// Three-tier file discovery and resolution through the oikos hierarchy.
 pub mod cascade;
+/// Configuration types for an Aletheia instance (agents, gateway, channels, embedding).
 pub mod config;
+/// Taxis-specific error types for configuration loading and path resolution.
 pub mod error;
+/// Figment-based configuration loader with YAML file and environment variable cascade.
 pub mod loader;
+/// Instance directory structure and path resolution for all Aletheia subsystems.
 pub mod oikos;

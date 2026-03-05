@@ -31,25 +31,31 @@ pub struct ServerConfig {
     pub security: SecurityConfig,
 }
 
+/// Errors from the pylon HTTP server lifecycle.
 #[derive(Debug, Snafu)]
 pub enum ServerError {
+    /// Failed to open or initialize the session store.
     #[snafu(display("failed to open session store: {source}"))]
     SessionStore {
         source: aletheia_mneme::error::Error,
     },
 
+    /// TCP listener failed to bind to the configured address.
     #[snafu(display("failed to bind to {addr}: {source}"))]
     Bind {
         addr: String,
         source: std::io::Error,
     },
 
+    /// Error while serving HTTP requests.
     #[snafu(display("server error: {source}"))]
     Serve { source: std::io::Error },
 
+    /// TLS certificate or key could not be loaded.
     #[snafu(display("TLS configuration error: {source}"))]
     TlsConfig { source: std::io::Error },
 
+    /// Binary was compiled without the `tls` feature flag.
     #[snafu(display("TLS support not compiled — rebuild with --features tls"))]
     TlsNotCompiled,
 }

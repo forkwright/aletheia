@@ -6,21 +6,37 @@
 //!
 //! Depends on all foundation crates: koina, taxis, mneme, hermeneus.
 
+/// Tokio actor driving a single nous instance's message loop.
 pub mod actor;
+/// System prompt assembly from workspace files and domain packs.
 pub mod bootstrap;
+/// Token and wall-clock time budget tracking for pipeline stages.
 pub mod budget;
+/// Per-agent and per-pipeline configuration types.
 pub mod config;
+/// Inter-agent messaging — fire-and-forget, request-response, and delivery audit.
 pub mod cross;
+/// Nous-specific error types.
 pub mod error;
+/// LLM execution stage — sends the assembled prompt to the provider.
 pub mod execute;
 pub(crate) mod extraction;
+/// Turn finalization — persists messages and emits post-turn events.
 pub mod finalize;
+/// Cloneable handle for sending commands to a [`actor::NousActor`].
 pub mod handle;
+/// Conversation history retrieval and token-budgeted formatting.
 pub mod history;
+/// Lifecycle manager for spawning and addressing nous actors.
 pub mod manager;
+/// Actor inbox message types.
 pub mod message;
 pub mod metrics;
+/// Turn pipeline orchestration — context through finalize.
 pub mod pipeline;
+/// Semantic recall stage — vector search over knowledge memories.
 pub mod recall;
+/// Session state tracking within a nous actor.
 pub mod session;
+/// User-facing error formatting for display in chat responses.
 pub mod user_error;

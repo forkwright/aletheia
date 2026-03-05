@@ -7,11 +7,17 @@
 //!
 //! Depends on: koina
 
+/// Errors from planning, state transitions, and workspace I/O.
 pub mod error;
+/// Phase types within a project: groupings of related plans with lifecycle state.
 pub mod phase;
+/// Executable plans within a phase: dependency tracking, iteration limits, and blocker management.
 pub mod plan;
+/// Project types and lifecycle management: creation, phase tracking, and state transitions.
 pub mod project;
+/// Project lifecycle state machine: valid transitions, pause/resume, and terminal states.
 pub mod state;
+/// On-disk workspace persistence: project serialization, blocker files, and directory layout.
 pub mod workspace;
 
 #[cfg(test)]

@@ -9,17 +9,24 @@ use crate::types::InboundMessage;
 /// A resolved routing decision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteDecision {
+    /// The nous agent that should handle this message.
     pub nous_id: String,
+    /// Session key derived from template expansion (e.g., `signal:+1234567890`).
     pub session_key: String,
+    /// How the routing decision was determined.
     pub matched_by: MatchReason,
 }
 
 /// How the routing decision was made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatchReason {
+    /// Matched by exact group ID binding on a specific channel.
     GroupBinding,
+    /// Matched by exact sender binding on a specific channel.
     SourceBinding,
+    /// Matched by channel-level wildcard (`source = "*"`).
     ChannelDefault,
+    /// Fell through to the global default nous.
     GlobalDefault,
 }
 
@@ -37,6 +44,7 @@ pub struct MessageRouter {
 }
 
 impl MessageRouter {
+    /// Build a router from channel bindings and an optional global default nous.
     pub fn new(bindings: Vec<ChannelBinding>, default_nous: Option<String>) -> Self {
         Self {
             bindings,

@@ -88,12 +88,19 @@ impl Default for PipelineConfig {
 /// A value of 0 means no limit for that stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageBudget {
+    /// Context assembly stage limit.
     pub context_secs: u32,
+    /// Semantic recall stage limit.
     pub recall_secs: u32,
+    /// History retrieval stage limit.
     pub history_secs: u32,
+    /// Guard evaluation stage limit.
     pub guard_secs: u32,
+    /// LLM execution stage limit (0 = unlimited, provider controls timeout).
     pub execute_secs: u32,
+    /// Finalization stage limit.
     pub finalize_secs: u32,
+    /// Hard cap on total pipeline wall-clock time.
     pub total_secs: u32,
 }
 

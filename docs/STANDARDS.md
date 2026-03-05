@@ -10,6 +10,8 @@ Code is the documentation. Names, types, and structure carry meaning. Comments e
 
 Fail fast, fail loud. Crash on invariant violations. No defensive fallbacks for impossible states. Sentinel values and silent degradation are bugs. Surface errors at the point of origin with full context.
 
+Anthropic-first. hermeneus models the Anthropic Messages API surface natively — not a lowest-common-denominator abstraction. If Anthropic supports a feature (caching, citations, tool_choice, token counting, batch), hermeneus exposes it. Other providers get adapter shims that map to what they support. We never discard Anthropic capabilities to be "provider-agnostic" for providers we don't use.
+
 Parse, don't validate. Invalid data cannot exist. Newtypes with validation constructors enforce invariants at construction time. Once a value is constructed, its validity is a type-level guarantee.
 
 Minimize surface area. `pub(crate)` by default (Rust), unexported by default (TS). Every public item is a commitment. Expose the smallest API that serves the need.

@@ -2,6 +2,7 @@
 
 use snafu::Snafu;
 
+/// Errors from channel registry and provider operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
@@ -40,4 +41,5 @@ pub enum Error {
     },
 }
 
+/// Convenience alias for `Result` with agora's [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;

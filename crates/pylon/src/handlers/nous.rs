@@ -113,38 +113,59 @@ pub async fn tools(
 
 // --- Response types ---
 
+/// Response listing all registered nous agents.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NousListResponse {
+    /// Agent summaries.
     pub nous: Vec<NousSummary>,
 }
 
+/// Brief overview of a registered nous agent.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NousSummary {
+    /// Agent identifier.
     pub id: String,
+    /// LLM model assigned to this agent.
     pub model: String,
+    /// Lifecycle status (e.g. `"active"`).
     pub status: String,
 }
 
+/// Detailed status of a single nous agent.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NousStatus {
+    /// Agent identifier.
     pub id: String,
+    /// LLM model assigned to this agent.
     pub model: String,
+    /// Maximum context window in tokens.
     pub context_window: u32,
+    /// Maximum output tokens per turn.
     pub max_output_tokens: u32,
+    /// Whether extended thinking is enabled.
     pub thinking_enabled: bool,
+    /// Token budget for extended thinking.
     pub thinking_budget: u32,
+    /// Maximum tool iterations per turn.
     pub max_tool_iterations: u32,
+    /// Actor lifecycle status.
     pub status: String,
 }
 
+/// Response listing tools available to a nous agent.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ToolsResponse {
+    /// Tool summaries.
     pub tools: Vec<ToolSummary>,
 }
 
+/// Brief description of a registered tool.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ToolSummary {
+    /// Tool name as sent to the LLM.
     pub name: String,
+    /// Human-readable description.
     pub description: String,
+    /// Tool category (e.g. `"Builtin"`, `"Pack"`).
     pub category: String,
 }

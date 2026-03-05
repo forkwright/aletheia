@@ -1,4 +1,8 @@
 //! SSE streaming parser for the Anthropic Messages API.
+//!
+//! Reads server-sent events from an HTTP response body, accumulates content
+//! blocks into a final [`CompletionResponse`], and emits [`StreamEvent`]s
+//! to a callback for real-time UI updates.
 
 use std::io::BufRead;
 
@@ -18,14 +22,27 @@ pub enum StreamEvent {
     /// Incremental tool input JSON.
     InputJsonDelta { partial_json: String },
     /// A content block has started.
-    ContentBlockStart { index: u32, block_type: String },
+    ContentBlockStart {
+        /// Zero-based position in the response content array.
+        index: u32,
+        /// Block type: `"text"`, `"tool_use"`, or `"thinking"`.
+        block_type: String,
+    },
     /// A content block has finished.
-    ContentBlockStop { index: u32 },
+    ContentBlockStop {
+        /// Zero-based position of the completed block.
+        index: u32,
+    },
     /// Message started with initial usage.
-    MessageStart { usage: Usage },
+    MessageStart {
+        /// Input token counts reported at message start.
+        usage: Usage,
+    },
     /// Message finished with final stop reason and usage.
     MessageStop {
+        /// Why the model stopped generating.
         stop_reason: StopReason,
+        /// Final cumulative token usage for the entire message.
         usage: Usage,
     },
 }

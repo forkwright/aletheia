@@ -137,12 +137,19 @@ impl Schedule {
 /// Status snapshot of a registered task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskStatus {
+    /// Unique task identifier.
     pub id: String,
+    /// Human-readable task name.
     pub name: String,
+    /// Whether the task is currently enabled (disabled after consecutive failures).
     pub enabled: bool,
+    /// When the task is next scheduled to run (ISO 8601).
     pub next_run: Option<String>,
+    /// When the task last ran (ISO 8601).
     pub last_run: Option<String>,
+    /// Total successful executions.
     pub run_count: u64,
+    /// Current streak of consecutive failures (resets on success).
     pub consecutive_failures: u32,
 }
 

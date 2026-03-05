@@ -1,4 +1,8 @@
 //! Hermeneus-specific errors.
+//!
+//! Each variant maps to a distinct failure mode in the LLM call path:
+//! initialization, network transport, HTTP status, rate limiting, response
+//! parsing, model support, and authentication.
 
 use snafu::Snafu;
 
@@ -65,4 +69,5 @@ pub enum Error {
     },
 }
 
+/// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;

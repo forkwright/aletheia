@@ -1,8 +1,12 @@
 //! Signal channel provider — wraps signal-cli JSON-RPC.
 
+/// JSON-RPC client for the signal-cli HTTP daemon.
 pub mod client;
+/// Connection state machine and outbound message buffering during disconnection.
 pub mod connection;
+/// Signal envelope deserialization and inbound message extraction.
 pub mod envelope;
+/// Signal-specific error types.
 pub mod error;
 
 use std::collections::HashMap;
@@ -27,7 +31,9 @@ const DEFAULT_BUFFER_CAPACITY: usize = 100;
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignalTarget {
+    /// Direct message to a phone number (e.g., `"+1234567890"`).
     Phone(String),
+    /// Group message identified by base64 group ID.
     Group(String),
 }
 

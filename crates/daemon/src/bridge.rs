@@ -12,6 +12,7 @@ use crate::runner::ExecutionResult;
 /// Implemented in the binary crate where both daemon and nous are available.
 /// Uses boxed futures for object safety (`Arc<dyn DaemonBridge>`).
 pub trait DaemonBridge: Send + Sync {
+    /// Send a prompt to a nous actor for processing within a given session.
     fn send_prompt(
         &self,
         nous_id: &str,

@@ -18,8 +18,11 @@ pub struct MemoryFlush {
 /// A single item to flush to persistent storage.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FlushItem {
+    /// The text content to persist.
     pub content: String,
+    /// When this item was identified (ISO 8601).
     pub timestamp: String,
+    /// How this item was discovered.
     pub source: FlushSource,
 }
 

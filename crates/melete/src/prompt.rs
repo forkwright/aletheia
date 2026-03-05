@@ -6,6 +6,7 @@ use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role};
 
 use crate::distill::DistillSection;
 
+/// Legacy hardcoded distillation system prompt with all seven standard sections.
 #[deprecated(note = "use build_system_prompt() with configured sections")]
 pub const DISTILLATION_SYSTEM_PROMPT: &str = "\
 You are a context distillation engine. Your task is to compress a conversation \

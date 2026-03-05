@@ -13,8 +13,11 @@ use crate::state::AppState;
 /// Authenticated user claims extracted from a JWT Bearer token.
 #[derive(Debug, Clone)]
 pub struct Claims {
+    /// Subject identifier (user or service principal).
     pub sub: String,
+    /// Authorization role governing API access.
     pub role: Role,
+    /// Optional nous scope — when set, restricts access to a single agent.
     pub nous_id: Option<String>,
 }
 

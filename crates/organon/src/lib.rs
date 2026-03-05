@@ -6,10 +6,14 @@
 //!
 //! Depends on `aletheia-koina` (types) and `aletheia-hermeneus` (LLM wire format).
 
+/// Built-in tool implementations that ship with the platform.
 pub mod builtins;
+/// Organon-specific error types and result alias.
 pub mod error;
 pub mod metrics;
+/// Central tool registry for runtime discovery and dispatch.
 pub mod registry;
+/// Tool definition, parameter schema, and executor trait.
 pub mod types;
 
 #[cfg(test)]

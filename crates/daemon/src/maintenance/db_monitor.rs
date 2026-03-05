@@ -11,9 +11,13 @@ use crate::error;
 /// Configuration for database size monitoring.
 #[derive(Debug, Clone)]
 pub struct DbMonitoringConfig {
+    /// Whether database monitoring is active.
     pub enabled: bool,
+    /// Directory containing database files to monitor.
     pub data_dir: PathBuf,
+    /// Size in MB above which a warning is reported.
     pub warn_threshold_mb: u64,
+    /// Size in MB above which an alert is raised.
     pub alert_threshold_mb: u64,
 }
 
@@ -31,25 +35,35 @@ impl Default for DbMonitoringConfig {
 /// Outcome of a database size check.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct DbSizeReport {
+    /// Individual database entries with size and status.
     pub databases: Vec<DbInfo>,
+    /// Sum of all database sizes in bytes.
     pub total_size_bytes: u64,
+    /// Human-readable alert messages for databases exceeding thresholds.
     pub alerts: Vec<String>,
 }
 
 /// Information about a single database.
 #[derive(Debug, Clone, Serialize)]
 pub struct DbInfo {
+    /// Database file or directory name (e.g., `"sessions.db"`, `"cozo/"`).
     pub name: String,
+    /// Absolute path to the database file or directory.
     pub path: PathBuf,
+    /// Total size in bytes.
     pub size_bytes: u64,
+    /// Health classification based on configured thresholds.
     pub status: DbStatus,
 }
 
 /// Health status of a database based on size thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DbStatus {
+    /// Size is within normal bounds.
     Ok,
+    /// Size exceeds the warning threshold but is below the alert threshold.
     Warning,
+    /// Size exceeds the alert threshold and needs attention.
     Alert,
 }
 
@@ -69,6 +83,7 @@ pub struct DbMonitor {
 }
 
 impl DbMonitor {
+    /// Create a monitor with the given threshold configuration.
     pub fn new(config: DbMonitoringConfig) -> Self {
         Self { config }
     }

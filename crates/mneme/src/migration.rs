@@ -9,9 +9,13 @@ use crate::schema::DDL;
 
 /// A single versioned migration.
 pub struct Migration {
+    /// Monotonically increasing version number.
     pub version: u32,
+    /// Human-readable summary of what this migration does.
     pub description: &'static str,
+    /// SQL to apply the migration.
     pub up: &'static str,
+    /// SQL to reverse the migration.
     pub down: &'static str,
 }
 
@@ -38,10 +42,12 @@ pub struct MigrationResult {
     pub was_fresh: bool,
 }
 
-/// Pending migration info for dry-run.
+/// Pending migration info for dry-run reporting.
 #[derive(Debug)]
 pub struct PendingMigration {
+    /// Version number that would be applied.
     pub version: u32,
+    /// Human-readable summary of the migration.
     pub description: &'static str,
 }
 

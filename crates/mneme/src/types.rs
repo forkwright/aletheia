@@ -2,16 +2,20 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Session status.
+/// Lifecycle status of a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
+    /// Session is live and accepting new messages.
     Active,
+    /// Session has been closed and is retained for history.
     Archived,
+    /// Session has been distilled into a summary and may be pruned.
     Distilled,
 }
 
 impl SessionStatus {
+    /// Return the wire-format string for this status.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -32,12 +36,16 @@ impl std::fmt::Display for SessionStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionType {
+    /// Long-lived conversational session (the default).
     Primary,
+    /// Background task session (e.g. prosoche attention loops).
     Background,
+    /// Short-lived session for one-shot tasks (`ask:`, `spawn:`, `dispatch:`).
     Ephemeral,
 }
 
 impl SessionType {
+    /// Return the wire-format string for this type.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -70,17 +78,22 @@ impl std::fmt::Display for SessionType {
     }
 }
 
-/// Message role.
+/// Role of a message author within a conversation turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
+    /// System-injected context (bootstrap, instructions).
     System,
+    /// Human operator input.
     User,
+    /// LLM-generated response.
     Assistant,
+    /// Output returned from a tool invocation.
     ToolResult,
 }
 
 impl Role {
+    /// Return the wire-format string for this role.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -98,64 +111,105 @@ impl std::fmt::Display for Role {
     }
 }
 
-/// A session record.
+/// A session record persisted in the store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
+    /// Unique session identifier (ULID).
     pub id: String,
+    /// Owning agent identifier.
     pub nous_id: String,
+    /// Logical key used to look up or resume this session.
     pub session_key: String,
+    /// Parent session for sub-task lineage tracking.
     pub parent_session_id: Option<String>,
+    /// Current lifecycle status.
     pub status: SessionStatus,
+    /// LLM model used for this session's turns.
     pub model: Option<String>,
+    /// Approximate total tokens consumed across all messages.
     pub token_count_estimate: i64,
+    /// Number of messages in this session.
     pub message_count: i64,
+    /// Token count from the most recent input.
     pub last_input_tokens: i64,
+    /// Hash of the bootstrap payload to detect config changes.
     pub bootstrap_hash: Option<String>,
+    /// Number of times this session has been distilled.
     pub distillation_count: i64,
+    /// Classification of the session's lifecycle behavior.
     pub session_type: SessionType,
+    /// ISO 8601 timestamp of the last distillation, if any.
     pub last_distilled_at: Option<String>,
+    /// Estimated context window token usage.
     pub computed_context_tokens: i64,
+    /// External thread identifier (e.g. Signal group thread).
     pub thread_id: Option<String>,
+    /// Transport layer that originated this session.
     pub transport: Option<String>,
+    /// ISO 8601 timestamp when the session was created.
     pub created_at: String,
+    /// ISO 8601 timestamp of the last update.
     pub updated_at: String,
 }
 
-/// A message record.
+/// A single message within a session's conversation history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
+    /// Database-assigned row identifier.
     pub id: i64,
+    /// Session this message belongs to.
     pub session_id: String,
+    /// Sequence number within the session (monotonically increasing).
     pub seq: i64,
+    /// Author role (system, user, assistant, or `tool_result`).
     pub role: Role,
+    /// Message body text.
     pub content: String,
+    /// Tool call identifier if this message is a tool result.
     pub tool_call_id: Option<String>,
+    /// Tool name if this message is a tool result.
     pub tool_name: Option<String>,
+    /// Estimated token count for this message.
     pub token_estimate: i64,
+    /// Whether this message was produced by distillation.
     pub is_distilled: bool,
+    /// ISO 8601 timestamp when the message was created.
     pub created_at: String,
 }
 
-/// Usage record for a single turn.
+/// Token usage counters for a single conversation turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageRecord {
+    /// Session this usage belongs to.
     pub session_id: String,
+    /// Turn sequence number within the session.
     pub turn_seq: i64,
+    /// Tokens consumed from the input (prompt).
     pub input_tokens: i64,
+    /// Tokens generated in the output (completion).
     pub output_tokens: i64,
+    /// Tokens read from prompt cache.
     pub cache_read_tokens: i64,
+    /// Tokens written to prompt cache.
     pub cache_write_tokens: i64,
+    /// Model used for this turn, if known.
     pub model: Option<String>,
 }
 
 /// Agent note — explicit agent-written context that survives distillation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentNote {
+    /// Database-assigned row identifier.
     pub id: i64,
+    /// Session this note is attached to.
     pub session_id: String,
+    /// Agent that wrote the note.
     pub nous_id: String,
+    /// Freeform category tag for filtering (e.g. "insight", "task").
     pub category: String,
+    /// Note body text.
     pub content: String,
+    /// ISO 8601 timestamp when the note was created.
     pub created_at: String,
 }
 

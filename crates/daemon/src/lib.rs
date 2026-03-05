@@ -4,11 +4,17 @@
 //! keeps things running in the background. Manages scheduled tasks, periodic
 //! attention checks (prosoche), and maintenance cycles for each nous.
 
+/// Bridge trait for daemon-to-nous communication without direct dependency coupling.
 pub mod bridge;
+/// Error types for task execution, scheduling, and maintenance operations.
 pub mod error;
+/// Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 pub mod maintenance;
+/// Prosoche (directed attention) periodic check-in for calendar, tasks, and system health.
 pub mod prosoche;
+/// Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.
 pub mod runner;
+/// Scheduling primitives: cron, interval, one-shot, and active time windows.
 pub mod schedule;
 
 #[cfg(test)]

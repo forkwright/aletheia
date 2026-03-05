@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Configuration for retention policy execution.
 #[derive(Debug, Clone, Default)]
 pub struct RetentionConfig {
+    /// Whether retention policy execution is active.
     pub enabled: bool,
 }
 
@@ -20,8 +21,11 @@ pub trait RetentionExecutor: Send + Sync {
 /// Outcome of a retention execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RetentionSummary {
+    /// Number of expired sessions removed.
     pub sessions_cleaned: u32,
+    /// Number of expired messages removed.
     pub messages_cleaned: u32,
+    /// Total bytes reclaimed from storage.
     pub bytes_freed: u64,
 }
 

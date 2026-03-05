@@ -1,4 +1,9 @@
 //! Provider health state machine.
+//!
+//! Tracks availability per provider through Up / Degraded / Down states.
+//! Transitions happen on success, transient errors (server 5xx, rate limits),
+//! and fatal errors (auth failure). Cooldown timers allow automatic recovery
+//! from transient failures; auth failures require manual intervention.
 
 use std::sync::Mutex;
 
@@ -14,12 +19,16 @@ pub enum ProviderHealth {
     Up,
     /// Provider has had recent errors but is still accepting requests.
     Degraded {
+        /// Number of errors since the last successful request.
         consecutive_errors: u32,
+        /// When the most recent error occurred.
         last_error_at: Timestamp,
     },
     /// Provider is unavailable.
     Down {
+        /// When the provider entered the Down state.
         since: Timestamp,
+        /// What caused the transition to Down.
         reason: DownReason,
     },
 }
@@ -31,7 +40,10 @@ pub enum DownReason {
     /// Too many consecutive failures.
     ConsecutiveFailures,
     /// Provider returned 429 with retry-after.
-    RateLimited { retry_after_ms: u64 },
+    RateLimited {
+        /// Milliseconds to wait before retrying, from the `retry-after` header.
+        retry_after_ms: u64,
+    },
     /// Authentication failed — no auto-recovery.
     AuthFailure,
     /// Request timed out repeatedly.
