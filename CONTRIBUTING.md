@@ -5,48 +5,24 @@
 ```bash
 git clone https://github.com/forkwright/aletheia.git
 cd aletheia
-```
-
-### Rust
-
-```bash
 cargo build && cargo test --workspace && cargo clippy --workspace
 ```
 
-Rust stable (2024 edition). Clippy bundled.
+Rust stable 1.85+ (edition 2024). Clippy bundled.
 
-### TypeScript
-
-```bash
-cd infrastructure/runtime && npm install
-git config core.hooksPath .githooks
-```
-
-Node.js >= 22.12. Optional: Docker/Podman (Qdrant, Neo4j, Langfuse), signal-cli, Chromium.
+For an architectural walkthrough, see [ARCHITECTURE-GUIDE.md](docs/ARCHITECTURE-GUIDE.md). For the reference module map, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Building
-
-### Rust
 
 ```bash
 cargo build                     # debug
 cargo build --release           # release (thin LTO, stripped)
-cargo clippy --workspace        # lint - zero warnings, pedantic
+cargo clippy --workspace        # lint — zero warnings, pedantic
 ```
 
 Workspace lints: pedantic clippy with select allows. `dbg!`, `todo!`, `unimplemented!` denied. `unsafe` denied workspace-wide.
 
-### TypeScript
-
-```bash
-cd infrastructure/runtime && npx tsdown
-```
-
-Output: `dist/entry.mjs` (~450KB ESM bundle). Dev without building: `npm run dev`.
-
 ## Testing
-
-### Rust
 
 ```bash
 cargo test --workspace                          # all
@@ -57,83 +33,61 @@ cargo test -p aletheia-integration-tests        # cross-crate
 
 Tests live alongside source in `#[cfg(test)] mod tests`. Integration tests in `crates/integration-tests/`.
 
-### TypeScript
+During development, use targeted tests + clippy. Full suite as a final gate before PR:
 
 ```bash
-npx vitest run                          # all
-npx vitest run src/path/file.test.ts    # specific
+# During development
+cargo test -p <crate-being-modified>
+cargo clippy --workspace --all-targets -- -D warnings
+
+# Final gate
+cargo test --workspace
 ```
-
-Tests live alongside source as `*.test.ts`. Integration tests use `.integration.test.ts`.
-
-### Local Validation
-
-```bash
-npm run typecheck && npm run lint:check
-```
-
-**Never run `npm test` locally.** It executes the full integration suite which requires running services. Use `npx vitest run src/path/file.test.ts` for targeted tests.
-
-### Pre-commit Hook
-
-`.githooks/pre-commit` runs typecheck + lint on staged files. No tests - that's CI's job. Install: `git config core.hooksPath .githooks`.
 
 ## Adding Tools
 
-Tools live in `src/organon/built-in/`. Each exports a `ToolHandler`:
+Tools live in `crates/organon/`. Each tool implements the `ToolExecutor` trait:
 
-```typescript
-export const myTool: ToolHandler = {
-  definition: {
-    name: "my_tool",
-    description: "What this tool does",
-    input_schema: { type: "object", properties: { param: { type: "string" } }, required: ["param"] },
-  },
-  async execute(input: Record<string, unknown>, context: ToolContext): Promise<string> {
-    return JSON.stringify({ result: input["param"] });
-  },
-};
+```rust
+pub trait ToolExecutor: Send + Sync {
+    fn definition(&self) -> &ToolDefinition;
+    fn execute(
+        &self,
+        input: serde_json::Value,
+        context: &ToolContext,
+    ) -> Result<String, ToolError>;
+}
 ```
 
-Register in `src/aletheia.ts`. Categories: `"essential"` (always available) or `"available"` (on-demand, expires after 5 unused turns).
+Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 
 ## CLI
 
 ```text
-aletheia start [--no-memory]     # start memory services + gateway
-aletheia stop [--all]            # stop gateway (--all includes containers)
-aletheia restart                 # restart gateway
-aletheia logs [-f]               # follow logs
-aletheia tui                     # terminal UI
-aletheia status                  # live metrics
-aletheia doctor                  # validate config + connectivity
-aletheia send -a <id> -m <text>  # send message
-aletheia sessions [-a agent]     # list sessions
-aletheia update [version]        # self-update
-aletheia cron list|trigger <id>  # manage cron
+aletheia                            # start server (default)
+aletheia health [--url URL]         # check if server is running
+aletheia status [--url URL]         # system status dashboard
+aletheia backup [--list] [--prune --keep N] [--export-json]
+aletheia maintenance status         # show maintenance task status
+aletheia maintenance run <task>     # run: trace-rotation, drift-detection, db-monitor, all
+aletheia tls generate [--output-dir PATH] [--days N] [--san NAMES...]
 ```
 
 ## API Endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/health` | Health check |
-| GET | `/api/status` | Agent list + version |
-| GET | `/api/metrics` | Full metrics |
-| GET | `/api/agents` | All agents |
-| GET | `/api/agents/:id` | Agent detail |
-| GET | `/api/sessions` | Session list |
-| GET | `/api/sessions/:id/history` | Message history |
-| POST | `/api/sessions/send` | Send message |
-| POST | `/api/sessions/stream` | Streaming message (SSE) |
-| POST | `/api/sessions/:id/archive` | Archive session |
-| POST | `/api/sessions/:id/distill` | Trigger distillation |
-| GET | `/api/events` | SSE event stream |
-| GET | `/api/costs/summary` | Token usage + cost |
-| GET | `/api/cron` | Cron jobs |
-| POST | `/api/cron/:id/trigger` | Trigger cron job |
-| GET | `/api/skills` | Skills directory |
-| GET | `/api/config` | Config summary |
+| GET | `/api/health` | Health check |
+| GET | `/api/docs/openapi.json` | OpenAPI spec |
+| GET | `/metrics` | Prometheus metrics |
+| POST | `/api/v1/sessions` | Create session |
+| GET | `/api/v1/sessions/{id}` | Get session |
+| DELETE | `/api/v1/sessions/{id}` | Close session |
+| POST | `/api/v1/sessions/{id}/messages` | Send message |
+| GET | `/api/v1/sessions/{id}/history` | Message history |
+| GET | `/api/v1/nous` | List agents |
+| GET | `/api/v1/nous/{id}` | Agent status |
+| GET | `/api/v1/nous/{id}/tools` | Agent tools |
 
 ## Git
 
@@ -141,18 +95,22 @@ aletheia cron list|trigger <id>  # manage cron
 
 | Type | Pattern | Example |
 |------|---------|---------|
-| Spec work | `spec<NN>/<description>` | `spec14/dev-workflow` |
-| Feature | `feat/<description>` | `feat/gcal-rebuild` |
-| Bug fix | `fix/<description>` | `fix/distillation-overflow` |
-| Chore/docs | `chore/<description>` | `chore/readme-update` |
+| Feature | `feat/<description>` | `feat/recall-pipeline` |
+| Bug fix | `fix/<description>` | `fix/session-timeout` |
+| Docs | `docs/<description>` | `docs/deployment-guide` |
+| Refactor | `refactor/<description>` | `refactor/config-cascade` |
+| Chore | `chore/<description>` | `chore/update-deps` |
+| Test | `test/<description>` | `test/mneme-roundtrip` |
 
-Branch from `main`. Rebase before pushing (`git pull --rebase origin main`). Never commit directly to `main` except docs-only or trivial config.
+Branch from `main`. Rebase before pushing (`git pull --rebase origin main`). Never commit directly to `main`.
 
 ### Commits
 
 Conventional commits: `<type>(<scope>): <description>`
 
-Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`. Present tense imperative, first line <=72 chars, body wraps at 80 chars.
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`. Present tense imperative, first line <=72 chars.
+
+Scope is the crate name: `feat(nous): add history stage`, `fix(mneme): graph score aggregation`.
 
 ### Squash Policy
 
@@ -163,35 +121,19 @@ Always squash merge. Every PR becomes a single commit on `main`.
 Full reference: [docs/STANDARDS.md](docs/STANDARDS.md). Highlights:
 
 - Self-documenting code. Comments only for *why*.
-- Typed errors - `AletheiaError` (TS), `snafu` (Rust). Never throw strings or bare `Error`.
-- No silent catch blocks.
+- Errors via `snafu` with context selectors. Never throw strings or bare `Error`.
+- `pub(crate)` by default. `pub` only for cross-crate API.
+- `#[expect(lint, reason = "...")]` over `#[allow]`.
+- `unsafe` denied workspace-wide.
 - Greek naming for modules and crates (see [ALETHEIA.md](ALETHEIA.md)).
 - Tests: behavior not implementation, descriptive names, same-directory files.
-
-### Rust
-
-- Edition 2024, `unsafe` denied, pedantic clippy
-- Errors via `snafu` with context selectors
-- `pub(crate)` by default
-- `expect("invariant description")` over bare `unwrap()`
-
-### TypeScript
-
-- Strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`
-- Bracket notation for index access: `record["key"]`
-- `.js` import extensions required
-
-### Universal
-
-- One-line file header max
-- No inline comments except genuinely non-obvious *why* explanations
-- No creation dates, author info, or AI generation indicators
+- Edition 2024: native async traits, let chains, `LazyLock` over `once_cell`.
 
 ## Reporting Issues
 
 - **Bugs:** [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
 - **Features:** [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
-- **Security:** [SECURITY.md](SECURITY.md) - do not open public issues
+- **Security:** [SECURITY.md](SECURITY.md) — do not open public issues
 
 ## License
 

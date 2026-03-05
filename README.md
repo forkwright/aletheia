@@ -4,7 +4,7 @@ Self-hosted multi-agent AI system with persistent memory, Signal messaging, and 
 
 Privacy-first. Runs on commodity hardware. No cloud dependencies beyond your LLM API key.
 
-[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Packs](docs/PACKS.md) · [Vendoring](docs/VENDORING.md) · [Releasing](docs/RELEASING.md)
+[Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Architecture Guide](docs/ARCHITECTURE-GUIDE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Network](docs/NETWORK.md) · [Packs](docs/PACKS.md) · [Vendoring](docs/VENDORING.md) · [Releasing](docs/RELEASING.md)
 
 ---
 
@@ -101,6 +101,12 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 | qdrant | 6333 | If using Mem0 |
 | neo4j | 7474/7687 | If using Mem0 |
 | langfuse | 3100 | Optional |
+
+## Privacy
+
+No telemetry. No phone-home. No analytics, crash reports, or beacon requests.
+
+The only outbound connections are to services you explicitly configure (LLM provider, Signal). Everything else stays on your machine. See [DATA.md](docs/DATA.md) for the data inventory, [NETWORK.md](docs/NETWORK.md) for every network call the binary makes.
 
 ## License
 
