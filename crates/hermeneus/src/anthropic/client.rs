@@ -1,10 +1,11 @@
 //! Anthropic Messages API provider.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use snafu::ResultExt;
 use tracing::{info, info_span};
 
@@ -13,6 +14,7 @@ use std::collections::HashMap;
 use crate::error::{self, Result};
 use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
 use crate::types::{CompletionRequest, CompletionResponse};
+use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_stream};
 use super::wire::WireRequest;
@@ -35,15 +37,50 @@ static SUPPORTED_MODELS: &[&str] = &[
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {
     client: Client,
-    api_key: SecretString,
+    credential_provider: Arc<dyn CredentialProvider>,
     base_url: String,
     api_version: String,
     max_retries: u32,
     pricing: HashMap<String, ModelPricing>,
 }
 
+/// Static credential provider for backward-compatible `from_config()`.
+struct StaticCredentialProvider {
+    key: SecretString,
+}
+
+impl CredentialProvider for StaticCredentialProvider {
+    fn get_credential(&self) -> Option<aletheia_koina::credential::Credential> {
+        use secrecy::ExposeSecret;
+        Some(aletheia_koina::credential::Credential {
+            secret: self.key.expose_secret().to_owned(),
+            source: CredentialSource::Environment,
+        })
+    }
+
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait requires &str return"
+    )]
+    fn name(&self) -> &str {
+        "static"
+    }
+}
+
+fn build_http_client() -> Result<Client> {
+    Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| {
+            error::ProviderInitSnafu {
+                message: format!("failed to build HTTP client: {e}"),
+            }
+            .build()
+        })
+}
+
 impl AnthropicProvider {
-    /// Create a provider from configuration.
+    /// Create a provider from configuration with a static API key.
     ///
     /// # Errors
     /// Returns `ProviderInit` if `api_key` is missing.
@@ -59,19 +96,32 @@ impl AnthropicProvider {
                 .build()
             })?;
 
-        let client = Client::builder()
-            .timeout(Duration::from_secs(120))
-            .build()
-            .map_err(|e| {
-                error::ProviderInitSnafu {
-                    message: format!("failed to build HTTP client: {e}"),
-                }
-                .build()
-            })?;
-
         Ok(Self {
-            client,
-            api_key: SecretString::from(api_key.clone()),
+            client: build_http_client()?,
+            credential_provider: Arc::new(StaticCredentialProvider {
+                key: SecretString::from(api_key.clone()),
+            }),
+            base_url: config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
+            api_version: DEFAULT_API_VERSION.to_owned(),
+            max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
+            pricing: config.pricing.clone(),
+        })
+    }
+
+    /// Create a provider with a dynamic credential provider.
+    ///
+    /// The credential is resolved per-request via `provider.get_credential()`,
+    /// enabling mid-session token rotation and background OAuth refresh.
+    pub fn with_credential_provider(
+        provider: Arc<dyn CredentialProvider>,
+        config: &ProviderConfig,
+    ) -> Result<Self> {
+        Ok(Self {
+            client: build_http_client()?,
+            credential_provider: provider,
             base_url: config
                 .base_url
                 .clone()
@@ -117,7 +167,6 @@ impl AnthropicProvider {
 
         let wire = WireRequest::from_request(request, Some(true));
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
-        let headers = self.build_headers();
 
         let mut last_error = None;
 
@@ -131,11 +180,13 @@ impl AnthropicProvider {
                 std::thread::sleep(backoff_delay(attempt, last_error.as_ref()));
             }
 
+            let headers = self.build_headers()?;
+
             // HTTP-level errors (connection, non-200 status)
             let response = match self
                 .client
                 .post(format!("{}/v1/messages", self.base_url))
-                .headers(headers.clone())
+                .headers(headers)
                 .body(body.clone())
                 .send()
             {
@@ -212,7 +263,12 @@ impl AnthropicProvider {
                         "anthropic",
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
-                        estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens),
+                        estimate_cost(
+                            &self.pricing,
+                            &request.model,
+                            resp.usage.input_tokens,
+                            resp.usage.output_tokens,
+                        ),
                         true,
                     );
                     return Ok(resp);
@@ -273,11 +329,18 @@ impl AnthropicProvider {
         }))
     }
 
-    fn build_headers(&self) -> HeaderMap {
+    fn build_headers(&self) -> Result<HeaderMap> {
+        let credential = self.credential_provider.get_credential().ok_or_else(|| {
+            error::AuthFailedSnafu {
+                message: "no credential available from provider".to_owned(),
+            }
+            .build()
+        })?;
+
         let mut headers = HeaderMap::new();
         headers.insert(
             "x-api-key",
-            HeaderValue::from_str(self.api_key.expose_secret())
+            HeaderValue::from_str(&credential.secret)
                 .unwrap_or_else(|_| HeaderValue::from_static("")),
         );
         headers.insert(
@@ -286,7 +349,7 @@ impl AnthropicProvider {
                 .unwrap_or_else(|_| HeaderValue::from_static(DEFAULT_API_VERSION)),
         );
         headers.insert("content-type", HeaderValue::from_static("application/json"));
-        headers
+        Ok(headers)
     }
 
     #[expect(
@@ -311,17 +374,18 @@ impl AnthropicProvider {
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
 
         let mut last_error = None;
-        let headers = self.build_headers();
 
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
                 std::thread::sleep(backoff_delay(attempt, last_error.as_ref()));
             }
 
+            let headers = self.build_headers()?;
+
             let response = match self
                 .client
                 .post(format!("{}/v1/messages", self.base_url))
-                .headers(headers.clone())
+                .headers(headers)
                 .body(body.clone())
                 .send()
             {
@@ -369,7 +433,12 @@ impl AnthropicProvider {
                         "anthropic",
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
-                        estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens),
+                        estimate_cost(
+                            &self.pricing,
+                            &request.model,
+                            resp.usage.input_tokens,
+                            resp.usage.output_tokens,
+                        ),
                         true,
                     );
                 }
@@ -487,6 +556,7 @@ pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> 
 impl std::fmt::Debug for AnthropicProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AnthropicProvider")
+            .field("credential_provider", &self.credential_provider.name())
             .field("base_url", &self.base_url)
             .field("api_version", &self.api_version)
             .field("max_retries", &self.max_retries)

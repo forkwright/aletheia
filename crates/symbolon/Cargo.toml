@@ -11,16 +11,21 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+aletheia-koina = { path = "../koina" }
 argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 rand = "0.8"
+reqwest = { workspace = true }
 rusqlite = { version = "0.38", features = ["bundled"] }
 secrecy = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 snafu = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 ulid = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }
+tempfile = { workspace = true }
