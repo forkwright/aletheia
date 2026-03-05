@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::DefaultBodyLimit;
-use axum::http::{HeaderName, HeaderValue, Method};
+use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::Router;
 use axum::routing::{get, post};
 use tower_http::compression::CompressionLayer;
@@ -13,25 +14,32 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
+use crate::error::ApiError;
 use crate::handlers::{health, nous, sessions};
-use crate::middleware::{CsrfState, require_csrf_header};
+use crate::openapi;
+use crate::middleware::{CsrfState, RequestId, enrich_error_response, inject_request_id, require_csrf_header};
 use crate::security::SecurityConfig;
 use crate::state::AppState;
 
 /// Build the Axum router with all routes and middleware.
 pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
-    let mut router = Router::new()
-        .route("/api/health", get(health::check))
-        .route("/api/sessions", post(sessions::create))
+    let v1 = Router::new()
+        .route("/sessions", post(sessions::create))
         .route(
-            "/api/sessions/{id}",
+            "/sessions/{id}",
             get(sessions::get_session).delete(sessions::close),
         )
-        .route("/api/sessions/{id}/messages", post(sessions::send_message))
-        .route("/api/sessions/{id}/history", get(sessions::history))
-        .route("/api/nous", get(nous::list))
-        .route("/api/nous/{id}", get(nous::get_status))
-        .route("/api/nous/{id}/tools", get(nous::tools));
+        .route("/sessions/{id}/messages", post(sessions::send_message))
+        .route("/sessions/{id}/history", get(sessions::history))
+        .route("/nous", get(nous::list))
+        .route("/nous/{id}", get(nous::get_status))
+        .route("/nous/{id}/tools", get(nous::tools));
+
+    let mut router = Router::new()
+        .nest("/api/v1", v1)
+        .route("/api/health", get(health::check))
+        .route("/api/docs/openapi.json", get(openapi::openapi_json))
+        .fallback(fallback_handler);
 
     // CSRF protection — inject state and apply middleware
     if security.csrf_enabled {
@@ -47,14 +55,20 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     // Body size limit
     router = router.layer(DefaultBodyLimit::max(security.body_limit_bytes));
 
+    // Error response enrichment (innermost — body not yet compressed)
+    router = router.layer(axum::middleware::from_fn(enrich_error_response));
+
     // Compression
     router = router.layer(CompressionLayer::new());
 
-    // Request tracing
+    // Request tracing — reads RequestId from extensions
     router = router.layer(
         TraceLayer::new_for_http()
             .make_span_with(|request: &axum::http::Request<_>| {
-                let request_id = ulid::Ulid::new().to_string();
+                let request_id = request
+                    .extensions()
+                    .get::<RequestId>()
+                    .map_or_else(|| ulid::Ulid::new().to_string(), |r| r.0.clone());
                 info_span!("http_request",
                     http.method = %request.method(),
                     http.path = %request.uri().path(),
@@ -81,6 +95,9 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             ),
     );
 
+    // Request ID injection (before trace layer so span includes the ID)
+    router = router.layer(axum::middleware::from_fn(inject_request_id));
+
     // CORS
     router = router.layer(build_cors_layer(security));
 
@@ -88,6 +105,33 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     router = apply_security_headers(router, security);
 
     router.with_state(state)
+}
+
+/// Fallback handler for unmatched routes.
+///
+/// Detects old unversioned `/api/sessions` and `/api/nous` paths and returns
+/// 410 Gone with a migration hint. All other unknown paths get 404.
+async fn fallback_handler(uri: axum::http::Uri) -> Response {
+    let path = uri.path();
+
+    if path.starts_with("/api/sessions") || path.starts_with("/api/nous") {
+        let suggestion = path.replacen("/api/", "/api/v1/", 1);
+        return (
+            StatusCode::GONE,
+            axum::Json(serde_json::json!({
+                "error": {
+                    "code": "api_version_required",
+                    "message": format!("This endpoint has moved. Use {suggestion} instead."),
+                }
+            })),
+        )
+            .into_response();
+    }
+
+    ApiError::NotFound {
+        path: path.to_owned(),
+    }
+    .into_response()
 }
 
 /// Build a CORS layer from security configuration.

@@ -5,10 +5,18 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::State;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::state::AppState;
 
 /// GET /api/health — liveness + readiness check.
+#[utoipa::path(
+    get,
+    path = "/api/health",
+    responses(
+        (status = 200, description = "Health status", body = HealthResponse),
+    ),
+)]
 pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let uptime = state.start_time.elapsed().as_secs();
 
@@ -57,17 +65,21 @@ pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     })
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
+    #[schema(value_type = String)]
     pub status: &'static str,
+    #[schema(value_type = String)]
     pub version: &'static str,
     pub uptime_seconds: u64,
     pub checks: Vec<HealthCheck>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HealthCheck {
+    #[schema(value_type = String)]
     pub name: &'static str,
+    #[schema(value_type = String)]
     pub status: &'static str,
     pub message: Option<String>,
 }

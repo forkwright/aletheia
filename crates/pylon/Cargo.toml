@@ -17,6 +17,7 @@ tls = ["dep:axum-server"]
 [dependencies]
 # HTTP framework
 axum = { workspace = true }
+utoipa = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 axum-server = { workspace = true, optional = true }
