@@ -6,6 +6,10 @@ use aletheia_koina::id::{NousId, SessionId, ToolName};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
+pub use aletheia_hermeneus::types::{
+    DocumentSource, ImageSource, ToolResultBlock, ToolResultContent,
+};
+
 /// Tool definition — the rich metadata that organon tracks internally.
 ///
 /// Converted to `hermeneus::types::ToolDefinition` (the lean LLM wire format)
@@ -160,10 +164,39 @@ impl std::fmt::Display for ToolCategory {
 /// What the tool executor returns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
-    /// Result content (text or JSON string).
-    pub content: String,
+    /// Result content — text or rich content blocks.
+    pub content: ToolResultContent,
     /// Whether this result represents an error.
     pub is_error: bool,
+}
+
+impl ToolResult {
+    /// Create a text-only success result.
+    #[must_use]
+    pub fn text(content: impl Into<String>) -> Self {
+        Self {
+            content: ToolResultContent::Text(content.into()),
+            is_error: false,
+        }
+    }
+
+    /// Create a text-only error result.
+    #[must_use]
+    pub fn error(content: impl Into<String>) -> Self {
+        Self {
+            content: ToolResultContent::Text(content.into()),
+            is_error: true,
+        }
+    }
+
+    /// Create a result with rich content blocks.
+    #[must_use]
+    pub fn blocks(blocks: Vec<ToolResultBlock>) -> Self {
+        Self {
+            content: ToolResultContent::Blocks(blocks),
+            is_error: false,
+        }
+    }
 }
 
 /// Input to a tool execution (from the LLM's `tool_use` block).
@@ -340,5 +373,28 @@ mod tests {
         let back: ToolInput = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back.name.as_str(), "read");
         assert_eq!(back.tool_use_id, "toolu_123");
+    }
+
+    #[test]
+    fn tool_result_text_constructor() {
+        let r = ToolResult::text("hello");
+        assert_eq!(r.content.text_summary(), "hello");
+        assert!(!r.is_error);
+    }
+
+    #[test]
+    fn tool_result_error_constructor() {
+        let r = ToolResult::error("bad input");
+        assert_eq!(r.content.text_summary(), "bad input");
+        assert!(r.is_error);
+    }
+
+    #[test]
+    fn tool_result_blocks_constructor() {
+        let r = ToolResult::blocks(vec![ToolResultBlock::Text {
+            text: "desc".to_owned(),
+        }]);
+        assert_eq!(r.content.text_summary(), "desc");
+        assert!(!r.is_error);
     }
 }

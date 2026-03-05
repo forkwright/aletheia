@@ -23,7 +23,7 @@ const MAX_OUTPUT_BYTES: usize = 50 * 1024;
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) -> Result<PathBuf> {
+pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) -> Result<PathBuf> {
     if raw.is_empty() {
         return Err(error::InvalidInputSnafu {
             name: tool_name.clone(),
@@ -56,7 +56,7 @@ fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) -> Result<P
     Ok(normalized)
 }
 
-fn normalize(path: &Path) -> PathBuf {
+pub(crate) fn normalize(path: &Path) -> PathBuf {
     let mut result = PathBuf::new();
     for component in path.components() {
         match component {
@@ -70,7 +70,7 @@ fn normalize(path: &Path) -> PathBuf {
     result
 }
 
-fn extract_str<'a>(
+pub(crate) fn extract_str<'a>(
     args: &'a serde_json::Value,
     field: &str,
     tool_name: &ToolName,
@@ -86,7 +86,7 @@ fn extract_str<'a>(
         })
 }
 
-fn extract_opt_u64(args: &serde_json::Value, field: &str) -> Option<u64> {
+pub(crate) fn extract_opt_u64(args: &serde_json::Value, field: &str) -> Option<u64> {
     args.get(field).and_then(serde_json::Value::as_u64)
 }
 
@@ -95,10 +95,7 @@ fn extract_opt_bool(args: &serde_json::Value, field: &str) -> Option<bool> {
 }
 
 fn err_result(msg: String) -> ToolResult {
-    ToolResult {
-        content: msg,
-        is_error: true,
-    }
+    ToolResult::error(msg)
 }
 
 // ---------------------------------------------------------------------------
@@ -136,10 +133,7 @@ impl ToolExecutor for ReadExecutor {
                 None => content,
             };
 
-            Ok(ToolResult {
-                content: output,
-                is_error: false,
-            })
+            Ok(ToolResult::text(output))
         })
     }
 }
@@ -178,10 +172,11 @@ impl ToolExecutor for WriteExecutor {
             };
 
             match write_result {
-                Ok(()) => Ok(ToolResult {
-                    content: format!("wrote {} bytes to {}", content.len(), path.display()),
-                    is_error: false,
-                }),
+                Ok(()) => Ok(ToolResult::text(format!(
+                    "wrote {} bytes to {}",
+                    content.len(),
+                    path.display()
+                ))),
                 Err(e) => Ok(err_result(format!("write failed: {e}"))),
             }
         })
@@ -231,15 +226,12 @@ impl ToolExecutor for EditExecutor {
                 return Ok(err_result(format!("write failed: {e}")));
             }
 
-            Ok(ToolResult {
-                content: format!(
-                    "edited {}: replaced {} chars with {} chars",
-                    path.display(),
-                    old_text.len(),
-                    new_text.len()
-                ),
-                is_error: false,
-            })
+            Ok(ToolResult::text(format!(
+                "edited {}: replaced {} chars with {} chars",
+                path.display(),
+                old_text.len(),
+                new_text.len()
+            )))
         })
     }
 }
@@ -306,10 +298,7 @@ impl ToolExecutor for ExecExecutor {
                 output.push_str("\n[output truncated]");
             }
 
-            Ok(ToolResult {
-                content: output,
-                is_error: false,
-            })
+            Ok(ToolResult::text(output))
         })
     }
 }
@@ -519,7 +508,7 @@ mod tests {
         let ctx = test_ctx(dir.path());
         let input = tool_input("read", serde_json::json!({ "path": "hello.txt" }));
         let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
-        assert_eq!(result.content, "hello world");
+        assert_eq!(result.content.text_summary(), "hello world");
         assert!(!result.is_error);
     }
 
@@ -534,7 +523,7 @@ mod tests {
             serde_json::json!({ "path": "lines.txt", "maxLines": 2 }),
         );
         let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
-        assert_eq!(result.content, "a\nb");
+        assert_eq!(result.content.text_summary(), "a\nb");
         assert!(!result.is_error);
     }
 
@@ -545,7 +534,7 @@ mod tests {
         let input = tool_input("read", serde_json::json!({ "path": "nope.txt" }));
         let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
-        assert!(result.content.contains("file not found"));
+        assert!(result.content.text_summary().contains("file not found"));
     }
 
     // -- WriteExecutor ------------------------------------------------------
@@ -560,7 +549,7 @@ mod tests {
         );
         let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error);
-        assert!(result.content.contains("wrote 4 bytes"));
+        assert!(result.content.text_summary().contains("wrote 4 bytes"));
         let on_disk = std::fs::read_to_string(dir.path().join("out.txt")).expect("read");
         assert_eq!(on_disk, "data");
     }
@@ -613,7 +602,7 @@ mod tests {
         );
         let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error);
-        assert!(result.content.contains("edited"));
+        assert!(result.content.text_summary().contains("edited"));
         let on_disk = std::fs::read_to_string(dir.path().join("code.rs")).expect("read");
         assert_eq!(on_disk, "fn new_name() {}");
     }
@@ -634,7 +623,7 @@ mod tests {
         );
         let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
-        assert!(result.content.contains("old_text not found"));
+        assert!(result.content.text_summary().contains("old_text not found"));
     }
 
     #[tokio::test]
@@ -653,7 +642,7 @@ mod tests {
         );
         let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
-        assert!(result.content.contains("2 times"));
+        assert!(result.content.text_summary().contains("2 times"));
     }
 
     // -- ExecExecutor -------------------------------------------------------
@@ -665,8 +654,8 @@ mod tests {
         let input = tool_input("exec", serde_json::json!({ "command": "echo hello" }));
         let result = ExecExecutor.execute(&input, &ctx).await.expect("execute");
         assert!(!result.is_error);
-        assert!(result.content.contains("hello"));
-        assert!(result.content.contains("exit=0"));
+        assert!(result.content.text_summary().contains("hello"));
+        assert!(result.content.text_summary().contains("exit=0"));
     }
 
     #[tokio::test]
@@ -679,7 +668,7 @@ mod tests {
         );
         let result = ExecExecutor.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
-        assert!(result.content.contains("timed out"));
+        assert!(result.content.text_summary().contains("timed out"));
     }
 
     // -- Path traversal -----------------------------------------------------

@@ -10,6 +10,7 @@ use aletheia_hermeneus::health::ProviderHealth;
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, StopReason, ThinkingConfig,
+    ToolResultContent,
 };
 use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
@@ -126,7 +127,7 @@ async fn dispatch_tools(
 
         let (content, is_error) = match result {
             Ok(r) => (r.content, r.is_error),
-            Err(e) => (format!("Tool error: {e}"), true),
+            Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
         };
 
         debug!(
@@ -138,7 +139,7 @@ async fn dispatch_tools(
             id: tool_id.clone(),
             name: tool_name.clone(),
             input: tool_input.clone(),
-            result: Some(content.clone()),
+            result: Some(content.text_summary()),
             is_error,
             duration_ms,
         });
@@ -376,10 +377,10 @@ mod tests {
         ) -> Pin<Box<dyn Future<Output = aletheia_organon::error::Result<ToolResult>> + Send + 'a>>
         {
             Box::pin(async {
-                Ok(ToolResult {
-                    content: format!("executed: {}", input.name.as_str()),
-                    is_error: false,
-                })
+                Ok(ToolResult::text(format!(
+                    "executed: {}",
+                    input.name.as_str()
+                )))
             })
         }
     }
@@ -393,12 +394,7 @@ mod tests {
             _ctx: &'a ToolContext,
         ) -> Pin<Box<dyn Future<Output = aletheia_organon::error::Result<ToolResult>> + Send + 'a>>
         {
-            Box::pin(async {
-                Ok(ToolResult {
-                    content: "tool failed".to_owned(),
-                    is_error: true,
-                })
-            })
+            Box::pin(async { Ok(ToolResult::error("tool failed")) })
         }
     }
 

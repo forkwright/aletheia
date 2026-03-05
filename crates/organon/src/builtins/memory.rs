@@ -22,10 +22,10 @@ impl ToolExecutor for Stub {
         _ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
-            Ok(ToolResult {
-                content: format!("stub: {} not implemented", input.name),
-                is_error: false,
-            })
+            Ok(ToolResult::text(format!(
+                "stub: {} not implemented",
+                input.name
+            )))
         })
     }
 }
@@ -213,9 +213,9 @@ mod tests {
         let result = reg.execute(&input, &test_ctx()).await.expect("execute");
         assert!(!result.is_error);
         assert!(
-            result.content.contains("stub"),
+            result.content.text_summary().contains("stub"),
             "expected stub response: {}",
-            result.content
+            result.content.text_summary()
         );
     }
 

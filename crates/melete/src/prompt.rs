@@ -110,7 +110,8 @@ pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String
                             } else {
                                 "Tool result"
                             };
-                            let truncated = truncate_tool_result(content);
+                            let summary = content.text_summary();
+                            let truncated = truncate_tool_result(&summary);
                             let _ = writeln!(block_text, "[{prefix}: {truncated}]");
                         }
                         ContentBlock::Thinking { thinking } => {
@@ -253,7 +254,7 @@ mod tests {
             role: Role::User,
             content: Content::Blocks(vec![ContentBlock::ToolResult {
                 tool_use_id: "t1".to_owned(),
-                content: "file contents here".to_owned(),
+                content: aletheia_hermeneus::types::ToolResultContent::text("file contents here"),
                 is_error: Some(false),
             }]),
         }];
