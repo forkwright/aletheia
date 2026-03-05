@@ -1,5 +1,6 @@
 mod chat;
 mod command_palette;
+mod filter_bar;
 mod input;
 mod overlay;
 mod sidebar;
@@ -142,14 +143,20 @@ fn render_chat_area(app: &App, frame: &mut Frame, area: Rect, theme: &crate::the
     let wrapped_lines = (text_len / content_width) + 1;
     let input_height = (wrapped_lines + 1).clamp(3, 8); // +1 for border, min 3, max 8
 
+    let filter_height: u16 = if app.filter.editing { 1 } else { 0 };
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(3),               // messages
-            Constraint::Length(input_height), // input (grows with text)
+            Constraint::Min(3),                  // messages
+            Constraint::Length(filter_height),    // filter bar (when editing)
+            Constraint::Length(input_height),     // input (grows with text)
         ])
         .split(area);
 
     chat::render(app, frame, layout[0], theme);
-    input::render(app, frame, layout[1], theme);
+    if app.filter.editing {
+        filter_bar::render(app, frame, layout[1], theme);
+    }
+    input::render(app, frame, layout[2], theme);
 }

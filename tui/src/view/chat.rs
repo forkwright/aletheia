@@ -6,6 +6,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{App, ToolCallInfo};
 use crate::markdown;
+use crate::state::FilterScope;
 use crate::theme::{self, ThemePalette};
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
@@ -15,10 +16,31 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     // Small top padding
     lines.push(Line::raw(""));
 
-    // Render each message
+    let filter_active = app.filter.active
+        && app.filter.scope == FilterScope::Chat
+        && !app.filter.text.is_empty();
+    let (pattern, inverted) = app.filter.pattern();
+    let pattern_lower = pattern.to_lowercase();
+
+    // Render each message (filtered when active, with selection indicator)
     for (idx, msg) in app.messages.iter().enumerate() {
+        if filter_active {
+            let contains = msg.text.to_lowercase().contains(&pattern_lower);
+            let show = if inverted { !contains } else { contains };
+            if !show {
+                continue;
+            }
+        }
         let selected = app.selected_message == Some(idx);
-        render_message(app, msg, &mut lines, inner_width, theme, selected);
+        let highlight = filter_active.then_some(pattern_lower.as_str());
+        render_message(app, msg, &mut lines, inner_width, theme, selected, highlight);
+    }
+
+    if filter_active && lines.len() <= 1 {
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled("no matches", theme.style_dim()),
+        ]));
     }
 
     // Streaming response (in progress)
@@ -67,6 +89,7 @@ fn render_message(
     inner_width: usize,
     theme: &ThemePalette,
     selected: bool,
+    highlight_pattern: Option<&str>,
 ) {
     let (role_label, role_style) = match msg.role.as_str() {
         "user" => ("you".to_string(), theme.style_user()),
@@ -133,14 +156,64 @@ fn render_message(
     } else {
         Style::default()
     };
+
+    let highlight_bg = Style::default().bg(theme.accent_dim);
+
     for line in rendered {
         let mut padded_spans = vec![Span::styled(content_prefix, prefix_style)];
-        padded_spans.extend(line.spans);
+
+        if let Some(pattern) = highlight_pattern {
+            for span in &line.spans {
+                highlight_span(span, pattern, highlight_bg, &mut padded_spans);
+            }
+        } else {
+            padded_spans.extend(line.spans);
+        }
+
         lines.push(Line::from(padded_spans));
     }
 
     // Breathing room between messages
     lines.push(Line::raw(""));
+}
+
+fn highlight_span(
+    span: &Span<'static>,
+    pattern: &str,
+    highlight_style: Style,
+    out: &mut Vec<Span<'static>>,
+) {
+    let content = &span.content;
+    let content_lower = content.to_lowercase();
+
+    if content_lower.len() != content.len() || pattern.is_empty() {
+        out.push(span.clone());
+        return;
+    }
+
+    let mut last_end = 0;
+    for (start, _) in content_lower.match_indices(pattern) {
+        let end = start + pattern.len();
+        if start > last_end {
+            out.push(Span::styled(
+                content[last_end..start].to_string(),
+                span.style,
+            ));
+        }
+        out.push(Span::styled(
+            content[start..end].to_string(),
+            span.style.patch(highlight_style),
+        ));
+        last_end = end;
+    }
+    if last_end < content.len() {
+        out.push(Span::styled(
+            content[last_end..].to_string(),
+            span.style,
+        ));
+    } else if last_end == 0 {
+        out.push(span.clone());
+    }
 }
 
 /// Render a compact tool call summary line:

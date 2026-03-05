@@ -383,6 +383,8 @@ pub fn current_contexts(app: &App) -> Vec<KeyContext> {
         Some(Overlay::Help) | None => {
             if app.command_palette.active {
                 contexts.push(KeyContext::CommandPalette);
+            } else if app.filter.active {
+                contexts.push(KeyContext::Filter);
             } else if app.selection != SelectionContext::None {
                 contexts.push(KeyContext::Selection);
             } else {
@@ -412,6 +414,8 @@ pub fn context_label(app: &App) -> &'static str {
         Some(Overlay::Help) | None => {
             if app.command_palette.active {
                 "Command Palette"
+            } else if app.filter.active {
+                "Filter"
             } else if app.selection != SelectionContext::None {
                 "Selection"
             } else {

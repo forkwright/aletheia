@@ -64,6 +64,16 @@ impl App {
             return self.map_palette_key(key);
         }
 
+        if self.filter.editing {
+            return self.map_filter_editing_key(key);
+        }
+
+        if self.filter.active
+            && let Some(msg) = self.map_filter_applied_key(key)
+        {
+            return Some(msg);
+        }
+
         // Selection mode — single-letter keys become actions
         if self.selected_message.is_some() {
             return self.map_selection_key(key);
@@ -131,6 +141,10 @@ impl App {
                 Some(Msg::CommandPaletteOpen)
             }
 
+            (KeyModifiers::NONE, KeyCode::Char('/')) if self.input.text.is_empty() => {
+                Some(Msg::FilterOpen)
+            }
+
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                 Some(Msg::CharInput(c))
             }
@@ -196,6 +210,41 @@ impl App {
                 Some(Msg::CharInput(c))
             }
 
+            _ => None,
+        }
+    }
+
+    fn map_filter_editing_key(&self, key: KeyEvent) -> Option<Msg> {
+        match (key.modifiers, key.code) {
+            (KeyModifiers::CONTROL, KeyCode::Char('c')) | (_, KeyCode::Esc) => {
+                Some(Msg::FilterClose)
+            }
+            (_, KeyCode::Enter) => Some(Msg::FilterConfirm),
+            (_, KeyCode::Backspace) => {
+                if self.filter.text.is_empty() {
+                    Some(Msg::FilterClose)
+                } else {
+                    Some(Msg::FilterBackspace)
+                }
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::FilterClear),
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                Some(Msg::FilterInput(c))
+            }
+            _ => None,
+        }
+    }
+
+    fn map_filter_applied_key(&self, key: KeyEvent) -> Option<Msg> {
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Esc) => Some(Msg::FilterClose),
+            (KeyModifiers::NONE, KeyCode::Char('/')) if self.input.text.is_empty() => {
+                Some(Msg::FilterOpen)
+            }
+            (KeyModifiers::NONE, KeyCode::Char('n')) if self.input.text.is_empty() => {
+                Some(Msg::FilterNextMatch)
+            }
+            (KeyModifiers::SHIFT, KeyCode::Char('N')) => Some(Msg::FilterPrevMatch),
             _ => None,
         }
     }
