@@ -2,6 +2,7 @@
 
 mod daemon_bridge;
 mod dispatch;
+mod status;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -99,6 +100,12 @@ enum Command {
         #[command(subcommand)]
         action: TlsAction,
     },
+    /// Show system status
+    Status {
+        /// Server URL to check
+        #[arg(long, default_value = "http://127.0.0.1:18789")]
+        url: String,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -144,6 +151,7 @@ async fn main() -> Result<()> {
             return run_maintenance(action.clone(), cli.instance_root.as_ref());
         }
         Some(Command::Tls { action }) => return handle_tls(action),
+        Some(Command::Status { url }) => return status::run(url, cli.instance_root.as_ref()).await,
         None => {}
     }
 
@@ -293,7 +301,7 @@ async fn serve(cli: Cli) -> Result<()> {
     let jwt_manager = JwtManager::new(JwtConfig::default());
 
     // Build shared registries — single instances used by both NousManager and AppState
-    let provider_registry = Arc::new(build_provider_registry());
+    let provider_registry = Arc::new(build_provider_registry(&config));
     let mut tool_registry = build_tool_registry()?;
 
     // Register domain pack tools alongside builtins
@@ -472,16 +480,35 @@ async fn serve(cli: Cli) -> Result<()> {
 }
 
 /// Build a provider registry with Anthropic if API key is available.
-fn build_provider_registry() -> ProviderRegistry {
+fn build_provider_registry(
+    config: &aletheia_taxis::config::AletheiaConfig,
+) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
+
+    // Map taxis pricing config to hermeneus ModelPricing
+    let pricing: std::collections::HashMap<String, aletheia_hermeneus::provider::ModelPricing> =
+        config
+            .pricing
+            .iter()
+            .map(|(model, p)| {
+                (
+                    model.clone(),
+                    aletheia_hermeneus::provider::ModelPricing {
+                        input_cost_per_mtok: p.input_cost_per_mtok,
+                        output_cost_per_mtok: p.output_cost_per_mtok,
+                    },
+                )
+            })
+            .collect();
 
     match std::env::var("ANTHROPIC_API_KEY") {
         Ok(api_key) if !api_key.is_empty() => {
-            let config = ProviderConfig {
+            let provider_config = ProviderConfig {
                 api_key: Some(api_key),
+                pricing,
                 ..ProviderConfig::default()
             };
-            match AnthropicProvider::from_config(&config) {
+            match AnthropicProvider::from_config(&provider_config) {
                 Ok(provider) => {
                     registry.register(Box::new(provider));
                     info!("anthropic provider registered");
@@ -799,5 +826,20 @@ mod tests {
                 action: MaintenanceAction::Run { .. }
             })
         ));
+    }
+
+    #[test]
+    fn status_subcommand_parses() {
+        let cli = Cli::parse_from(["aletheia", "status"]);
+        assert!(matches!(cli.command, Some(Command::Status { .. })));
+    }
+
+    #[test]
+    fn status_custom_url_parses() {
+        let cli = Cli::parse_from(["aletheia", "status", "--url", "http://example:9999"]);
+        match cli.command {
+            Some(Command::Status { url }) => assert_eq!(url, "http://example:9999"),
+            _ => panic!("expected Status command"),
+        }
     }
 }

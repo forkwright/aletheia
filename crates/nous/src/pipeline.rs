@@ -366,6 +366,7 @@ pub async fn run_pipeline(
             span.record("duration_ms", start.elapsed().as_millis() as u64);
         }
         span.record("status", "ok");
+        crate::metrics::record_stage(&config.id, "context", start.elapsed().as_secs_f64());
         stages_completed += 1;
     }
 
@@ -418,6 +419,7 @@ pub async fn run_pipeline(
         {
             span.record("duration_ms", start.elapsed().as_millis() as u64);
         }
+        crate::metrics::record_stage(&config.id, "recall", start.elapsed().as_secs_f64());
         stages_completed += 1;
     }
 
@@ -461,6 +463,7 @@ pub async fn run_pipeline(
             span.record("duration_ms", start.elapsed().as_millis() as u64);
         }
         span.record("status", "ok");
+        crate::metrics::record_stage(&config.id, "history", start.elapsed().as_secs_f64());
         stages_completed += 1;
     }
 
@@ -482,6 +485,7 @@ pub async fn run_pipeline(
         {
             span.record("duration_ms", start.elapsed().as_millis() as u64);
         }
+        crate::metrics::record_stage(&config.id, "guard", start.elapsed().as_secs_f64());
         match guard {
             GuardResult::Allow => {
                 span.record("status", "ok");
@@ -536,6 +540,7 @@ pub async fn run_pipeline(
         span.record("tokens_in", result.usage.input_tokens);
         span.record("tokens_out", result.usage.output_tokens);
         span.record("status", "ok");
+        crate::metrics::record_stage(&config.id, "execute", start.elapsed().as_secs_f64());
         stages_completed += 1;
     }
 
@@ -583,6 +588,7 @@ pub async fn run_pipeline(
         {
             span.record("duration_ms", start.elapsed().as_millis() as u64);
         }
+        crate::metrics::record_stage(&config.id, "finalize", start.elapsed().as_secs_f64());
         stages_completed += 1;
     }
 
@@ -598,6 +604,8 @@ pub async fn run_pipeline(
     }
     pipeline_span.record("pipeline.stages_completed", stages_completed);
     pipeline_span.record("pipeline.tool_calls", result.tool_calls.len() as u64);
+
+    crate::metrics::record_turn(&config.id);
 
     Ok(result)
 }

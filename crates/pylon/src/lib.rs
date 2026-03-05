@@ -5,6 +5,7 @@
 pub mod error;
 pub mod extract;
 pub mod handlers;
+pub mod metrics;
 pub mod middleware;
 pub mod openapi;
 pub mod router;

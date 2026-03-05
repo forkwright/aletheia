@@ -94,6 +94,11 @@ impl ToolRegistry {
             Ok(r) if !r.is_error => span.record("tool.status", "ok"),
             _ => span.record("tool.status", "error"),
         };
+        crate::metrics::record_invocation(
+            input.name.as_str(),
+            start.elapsed().as_secs_f64(),
+            matches!(&result, Ok(r) if !r.is_error),
+        );
         result
     }
 

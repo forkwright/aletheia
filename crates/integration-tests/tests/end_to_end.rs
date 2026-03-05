@@ -237,7 +237,7 @@ impl TestHarness {
     async fn create_session(&self, router: &axum::Router) -> serde_json::Value {
         let req = self.authed_request(
             "POST",
-            "/api/sessions",
+            "/api/v1/sessions",
             Some(serde_json::json!({
                 "nous_id": "test-nous",
                 "session_key": "e2e-test"
@@ -275,7 +275,7 @@ async fn http_create_session_send_message_get_history() {
 
     let req = harness.authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "hello" })),
     );
     let resp = router.clone().oneshot(req).await.expect("send message");
@@ -297,7 +297,7 @@ async fn http_create_session_send_message_get_history() {
 
     let resp = router
         .clone()
-        .oneshot(harness.authed_get(&format!("/api/sessions/{id}/history")))
+        .oneshot(harness.authed_get(&format!("/api/v1/sessions/{id}/history")))
         .await
         .expect("get history");
     assert_eq!(resp.status(), StatusCode::OK);
@@ -323,7 +323,7 @@ async fn session_persists_across_turns() {
 
     let req = harness.authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "first" })),
     );
     let resp = router.clone().oneshot(req).await.expect("first turn");
@@ -331,7 +331,7 @@ async fn session_persists_across_turns() {
 
     let req = harness.authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "second" })),
     );
     let resp = router.clone().oneshot(req).await.expect("second turn");
@@ -339,7 +339,7 @@ async fn session_persists_across_turns() {
 
     let resp = router
         .clone()
-        .oneshot(harness.authed_get(&format!("/api/sessions/{id}/history")))
+        .oneshot(harness.authed_get(&format!("/api/v1/sessions/{id}/history")))
         .await
         .expect("get history");
 
@@ -366,7 +366,7 @@ async fn nous_status_reflects_configuration() {
 
     let resp = router
         .clone()
-        .oneshot(harness.authed_get("/api/nous"))
+        .oneshot(harness.authed_get("/api/v1/nous"))
         .await
         .expect("list nous");
     assert_eq!(resp.status(), StatusCode::OK);
@@ -377,7 +377,7 @@ async fn nous_status_reflects_configuration() {
 
     let resp = router
         .clone()
-        .oneshot(harness.authed_get("/api/nous/test-nous"))
+        .oneshot(harness.authed_get("/api/v1/nous/test-nous"))
         .await
         .expect("get status");
     assert_eq!(resp.status(), StatusCode::OK);
@@ -388,7 +388,7 @@ async fn nous_status_reflects_configuration() {
 
     let resp = router
         .clone()
-        .oneshot(harness.authed_get("/api/nous/nonexistent"))
+        .oneshot(harness.authed_get("/api/v1/nous/nonexistent"))
         .await
         .expect("get nonexistent");
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -404,7 +404,7 @@ async fn bootstrap_assembles_from_oikos() {
 
     let req = harness.authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "trigger bootstrap" })),
     );
     let resp = router.clone().oneshot(req).await.expect("send message");
@@ -437,14 +437,14 @@ async fn unknown_session_returns_404() {
 
     let resp = router
         .clone()
-        .oneshot(harness.authed_get("/api/sessions/nonexistent"))
+        .oneshot(harness.authed_get("/api/v1/sessions/nonexistent"))
         .await
         .expect("get unknown session");
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
     let req = harness.authed_request(
         "POST",
-        "/api/sessions/nonexistent/messages",
+        "/api/v1/sessions/nonexistent/messages",
         Some(serde_json::json!({ "content": "hello" })),
     );
     let resp = router.clone().oneshot(req).await.expect("send to unknown");
@@ -481,7 +481,7 @@ async fn unauthenticated_request_rejected() {
 
     let req = Request::builder()
         .method("POST")
-        .uri("/api/sessions")
+        .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_vec(&serde_json::json!({
@@ -505,7 +505,7 @@ async fn close_session_archives_it() {
     let id = session["id"].as_str().expect("session id");
 
     let token = harness.auth_token();
-    let req = Request::delete(format!("/api/sessions/{id}"))
+    let req = Request::delete(format!("/api/v1/sessions/{id}"))
         .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .expect("request");
@@ -514,7 +514,7 @@ async fn close_session_archives_it() {
 
     let resp = router
         .clone()
-        .oneshot(harness.authed_get(&format!("/api/sessions/{id}")))
+        .oneshot(harness.authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .expect("get archived session");
     assert_eq!(resp.status(), StatusCode::OK);
@@ -532,7 +532,7 @@ async fn send_message_stores_both_roles_in_history() {
 
     let req = harness.authed_request(
         "POST",
-        &format!("/api/sessions/{id}/messages"),
+        &format!("/api/v1/sessions/{id}/messages"),
         Some(serde_json::json!({ "content": "test message" })),
     );
     let resp = router.clone().oneshot(req).await.expect("send message");
@@ -540,7 +540,7 @@ async fn send_message_stores_both_roles_in_history() {
 
     let resp = router
         .clone()
-        .oneshot(harness.authed_get(&format!("/api/sessions/{id}/history")))
+        .oneshot(harness.authed_get(&format!("/api/v1/sessions/{id}/history")))
         .await
         .expect("get history");
     let history = body_json(resp).await;

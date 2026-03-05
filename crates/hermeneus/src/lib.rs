@@ -9,5 +9,6 @@
 pub mod anthropic;
 pub mod error;
 pub mod health;
+pub mod metrics;
 pub mod provider;
 pub mod types;
