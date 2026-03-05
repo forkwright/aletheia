@@ -380,11 +380,23 @@ impl AnthropicProvider {
         })?;
 
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-api-key",
-            HeaderValue::from_str(&credential.secret)
-                .unwrap_or_else(|_| HeaderValue::from_static("")),
-        );
+        match credential.source {
+            CredentialSource::OAuth => {
+                headers.insert(
+                    reqwest::header::AUTHORIZATION,
+                    HeaderValue::from_str(&format!("Bearer {}", credential.secret))
+                        .unwrap_or_else(|_| HeaderValue::from_static("")),
+                );
+                headers.insert("anthropic-beta", HeaderValue::from_static("oauth-2025-04-20"));
+            }
+            _ => {
+                headers.insert(
+                    "x-api-key",
+                    HeaderValue::from_str(&credential.secret)
+                        .unwrap_or_else(|_| HeaderValue::from_static("")),
+                );
+            }
+        }
         headers.insert(
             "anthropic-version",
             HeaderValue::from_str(&self.api_version)
