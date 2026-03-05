@@ -3,6 +3,7 @@ mod command;
 mod input;
 mod navigation;
 mod overlay;
+pub(crate) mod selection;
 mod sse;
 mod streaming;
 
@@ -13,8 +14,22 @@ pub(crate) use api::extract_text_content;
 
 pub(crate) async fn update(app: &mut App, msg: Msg) {
     match msg {
+        // --- Message selection ---
+        Msg::SelectPrev => selection::handle_select_prev(app),
+        Msg::SelectNext => selection::handle_select_next(app),
+        Msg::DeselectMessage => selection::handle_deselect(app),
+        Msg::SelectFirst => selection::handle_select_first(app),
+        Msg::SelectLast => selection::handle_select_last(app),
+        Msg::MessageAction(action) => selection::handle_message_action(app, action),
+
         // --- Input ---
-        Msg::CharInput(c) => input::handle_char_input(app, c),
+        Msg::CharInput(c) => {
+            // If a message is selected and a non-action char arrives, deselect first
+            if app.selected_message.is_some() {
+                selection::handle_deselect(app);
+            }
+            input::handle_char_input(app, c);
+        }
         Msg::Backspace => input::handle_backspace(app),
         Msg::Delete => input::handle_delete(app),
         Msg::CursorLeft => input::handle_cursor_left(app),

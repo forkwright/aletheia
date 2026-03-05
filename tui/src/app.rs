@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use ratatui::Frame;
@@ -88,6 +88,10 @@ pub struct App {
     pub active_filter: Option<String>,
     pub context_usage_pct: Option<u8>,
     pub selection: SelectionContext,
+
+    // Message selection (None = auto-scroll mode, Some(index) = message selected)
+    pub selected_message: Option<usize>,
+    pub tool_expanded: HashSet<String>,
 }
 
 impl App {
@@ -134,6 +138,8 @@ impl App {
             active_filter: Option::None,
             context_usage_pct: Option::None,
             selection: SelectionContext::default(),
+            selected_message: None,
+            tool_expanded: HashSet::new(),
         };
 
         app.connect().await?;
