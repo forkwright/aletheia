@@ -1,3 +1,4 @@
+mod actions;
 mod api;
 mod app;
 mod clipboard;
@@ -6,6 +7,7 @@ mod config;
 mod events;
 mod highlight;
 mod keybindings;
+mod mapping;
 mod markdown;
 mod msg;
 mod state;
