@@ -64,6 +64,7 @@ trait_duplication_in_bounds = "warn"
 unused_self = "warn"
 
 [workspace.dependencies]
+base64 = "0.22"
 # Pin rayon — 1.11 breaks graph_builder EdgeList::edges() via type mismatch
 rayon = "=1.10.0"
 

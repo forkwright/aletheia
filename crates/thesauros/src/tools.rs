@@ -49,10 +49,7 @@ impl ToolExecutor for ShellToolExecutor {
             {
                 Ok(c) => c,
                 Err(e) => {
-                    return Ok(ToolResult {
-                        content: format!("spawn failed: {e}"),
-                        is_error: true,
-                    });
+                    return Ok(ToolResult::error(format!("spawn failed: {e}")));
                 }
             };
 
@@ -71,18 +68,15 @@ impl ToolExecutor for ShellToolExecutor {
                         if Instant::now() >= deadline {
                             let _ = child.kill();
                             let _ = child.wait();
-                            return Ok(ToolResult {
-                                content: format!("command timed out after {}ms", self.timeout_ms),
-                                is_error: true,
-                            });
+                            return Ok(ToolResult::error(format!(
+                                "command timed out after {}ms",
+                                self.timeout_ms
+                            )));
                         }
                         std::thread::sleep(Duration::from_millis(50));
                     }
                     Err(e) => {
-                        return Ok(ToolResult {
-                            content: format!("wait failed: {e}"),
-                            is_error: true,
-                        });
+                        return Ok(ToolResult::error(format!("wait failed: {e}")));
                     }
                 }
             };
@@ -110,10 +104,11 @@ impl ToolExecutor for ShellToolExecutor {
                 output.push_str("\n[output truncated]");
             }
 
-            Ok(ToolResult {
-                content: output,
-                is_error,
-            })
+            if is_error {
+                Ok(ToolResult::error(output))
+            } else {
+                Ok(ToolResult::text(output))
+            }
         })
     }
 }
@@ -521,7 +516,7 @@ mod tests {
 
         let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
         assert!(!result.is_error);
-        assert!(result.content.contains("hello"));
+        assert!(result.content.text_summary().contains("hello"));
     }
 
     #[test]

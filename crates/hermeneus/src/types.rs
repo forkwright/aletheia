@@ -98,15 +98,103 @@ pub enum ContentBlock {
     ToolResult {
         /// The [`ToolUse`](ContentBlock::ToolUse) `id` this result responds to.
         tool_use_id: String,
-        /// Tool output content (text).
-        content: String,
+        /// Tool output content (text or rich content blocks).
+        content: ToolResultContent,
         /// Whether the tool execution failed.
+        #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
 
     /// Extended thinking content.
     #[serde(rename = "thinking")]
     Thinking { thinking: String },
+}
+
+/// Tool result content — simple text or rich content blocks.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ToolResultContent {
+    /// Simple text result (most common case, backward compatible).
+    Text(String),
+    /// Rich content blocks (text + images + documents).
+    Blocks(Vec<ToolResultBlock>),
+}
+
+impl ToolResultContent {
+    /// Create a simple text result.
+    #[must_use]
+    pub fn text(s: impl Into<String>) -> Self {
+        Self::Text(s.into())
+    }
+
+    /// Create from rich content blocks.
+    #[must_use]
+    pub fn blocks(blocks: Vec<ToolResultBlock>) -> Self {
+        Self::Blocks(blocks)
+    }
+
+    /// Extract a text summary suitable for persistence and logging.
+    #[must_use]
+    pub fn text_summary(&self) -> String {
+        match self {
+            Self::Text(s) => s.clone(),
+            Self::Blocks(blocks) => blocks
+                .iter()
+                .map(|b| match b {
+                    ToolResultBlock::Text { text } => text.as_str(),
+                    ToolResultBlock::Image { .. } => "[image]",
+                    ToolResultBlock::Document { .. } => "[document]",
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }
+    }
+}
+
+impl From<String> for ToolResultContent {
+    fn from(s: String) -> Self {
+        Self::Text(s)
+    }
+}
+
+/// Content block inside a tool result (text, image, or document).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[non_exhaustive]
+pub enum ToolResultBlock {
+    /// Text content.
+    #[serde(rename = "text")]
+    Text { text: String },
+    /// Base64-encoded image.
+    #[serde(rename = "image")]
+    Image { source: ImageSource },
+    /// Base64-encoded document (PDF).
+    #[serde(rename = "document")]
+    Document { source: DocumentSource },
+}
+
+/// Image source for vision.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageSource {
+    /// Source type (always `"base64"`).
+    #[serde(rename = "type")]
+    pub source_type: String,
+    /// MIME type (`"image/png"`, `"image/jpeg"`, `"image/gif"`, `"image/webp"`).
+    pub media_type: String,
+    /// Base64-encoded image data.
+    pub data: String,
+}
+
+/// Document source (PDF).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentSource {
+    /// Source type (always `"base64"`).
+    #[serde(rename = "type")]
+    pub source_type: String,
+    /// MIME type (always `"application/pdf"`).
+    pub media_type: String,
+    /// Base64-encoded PDF data.
+    pub data: String,
 }
 
 /// A tool definition.
@@ -289,7 +377,7 @@ mod tests {
     fn tool_result_block_serde() {
         let block = ContentBlock::ToolResult {
             tool_use_id: "tool_123".to_owned(),
-            content: "file.txt\ndir/".to_owned(),
+            content: ToolResultContent::text("file.txt\ndir/"),
             is_error: Some(false),
         };
         let json = serde_json::to_string(&block).unwrap();
@@ -301,11 +389,108 @@ mod tests {
                 is_error,
             } => {
                 assert_eq!(tool_use_id, "tool_123");
-                assert_eq!(content, "file.txt\ndir/");
+                assert_eq!(content.text_summary(), "file.txt\ndir/");
                 assert_eq!(is_error, Some(false));
             }
             _ => panic!("expected ToolResult"),
         }
+    }
+
+    #[test]
+    fn tool_result_text_serializes_as_string() {
+        let block = ContentBlock::ToolResult {
+            tool_use_id: "t1".to_owned(),
+            content: ToolResultContent::text("hello"),
+            is_error: None,
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v["content"].is_string(), "Text should serialize as bare string");
+        assert_eq!(v["content"], "hello");
+    }
+
+    #[test]
+    fn tool_result_blocks_serializes_as_array() {
+        let block = ContentBlock::ToolResult {
+            tool_use_id: "t1".to_owned(),
+            content: ToolResultContent::blocks(vec![
+                ToolResultBlock::Text {
+                    text: "description".to_owned(),
+                },
+                ToolResultBlock::Image {
+                    source: ImageSource {
+                        source_type: "base64".to_owned(),
+                        media_type: "image/png".to_owned(),
+                        data: "iVBOR".to_owned(),
+                    },
+                },
+            ]),
+            is_error: None,
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v["content"].is_array(), "Blocks should serialize as array");
+        assert_eq!(v["content"].as_array().unwrap().len(), 2);
+        assert_eq!(v["content"][0]["type"], "text");
+        assert_eq!(v["content"][1]["type"], "image");
+    }
+
+    #[test]
+    fn tool_result_content_text_deserializes_from_string() {
+        let json = r#"{"type":"tool_result","tool_use_id":"t1","content":"hello"}"#;
+        let block: ContentBlock = serde_json::from_str(json).unwrap();
+        match block {
+            ContentBlock::ToolResult { content, .. } => {
+                assert_eq!(content.text_summary(), "hello");
+            }
+            _ => panic!("expected ToolResult"),
+        }
+    }
+
+    #[test]
+    fn tool_result_content_blocks_deserializes_from_array() {
+        let json = r#"{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"hi"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc"}}]}"#;
+        let block: ContentBlock = serde_json::from_str(json).unwrap();
+        match block {
+            ContentBlock::ToolResult { content, .. } => {
+                assert_eq!(content.text_summary(), "hi\n[image]");
+            }
+            _ => panic!("expected ToolResult"),
+        }
+    }
+
+    #[test]
+    fn image_source_serde_roundtrip() {
+        let source = ImageSource {
+            source_type: "base64".to_owned(),
+            media_type: "image/png".to_owned(),
+            data: "iVBOR".to_owned(),
+        };
+        let json = serde_json::to_string(&source).unwrap();
+        let back: ImageSource = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.source_type, "base64");
+        assert_eq!(back.media_type, "image/png");
+        assert_eq!(back.data, "iVBOR");
+    }
+
+    #[test]
+    fn document_source_serde_roundtrip() {
+        let source = DocumentSource {
+            source_type: "base64".to_owned(),
+            media_type: "application/pdf".to_owned(),
+            data: "JVBERi0".to_owned(),
+        };
+        let json = serde_json::to_string(&source).unwrap();
+        let back: DocumentSource = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.source_type, "base64");
+        assert_eq!(back.media_type, "application/pdf");
+        assert_eq!(back.data, "JVBERi0");
+    }
+
+    #[test]
+    fn tool_result_content_from_string() {
+        let content: ToolResultContent = "hello".to_owned().into();
+        assert_eq!(content.text_summary(), "hello");
     }
 
     #[test]

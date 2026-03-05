@@ -156,10 +156,7 @@ mod tests {
         ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
             Box::pin(async {
                 self.calls.lock().expect("lock").push(input.name.clone());
-                Ok(ToolResult {
-                    content: self.response.clone(),
-                    is_error: false,
-                })
+                Ok(ToolResult::text(self.response.clone()))
             })
         }
     }
@@ -241,7 +238,7 @@ mod tests {
             arguments: serde_json::json!({}),
         };
         let result = reg.execute(&input, &test_ctx()).await.expect("execute");
-        assert_eq!(result.content, "hello");
+        assert_eq!(result.content.text_summary(), "hello");
         assert!(!result.is_error);
         assert_eq!(calls.lock().expect("lock").len(), 1);
     }
@@ -342,10 +339,7 @@ mod tests {
                 let captured = Arc::clone(&self.captured_nous_id);
                 Box::pin(async move {
                     *captured.lock().expect("lock") = Some(nous_id);
-                    Ok(ToolResult {
-                        content: "ok".to_owned(),
-                        is_error: false,
-                    })
+                    Ok(ToolResult::text("ok"))
                 })
             }
         }

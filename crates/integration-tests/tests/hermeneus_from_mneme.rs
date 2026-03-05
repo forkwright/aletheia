@@ -19,7 +19,7 @@ fn convert_message(msg: &m::Message) -> h::Message {
             let tool_use_id = msg.tool_call_id.clone().unwrap_or_default();
             h::Content::Blocks(vec![h::ContentBlock::ToolResult {
                 tool_use_id,
-                content: msg.content.clone(),
+                content: h::ToolResultContent::text(&msg.content),
                 is_error: None,
             }])
         }
@@ -96,7 +96,7 @@ fn tool_result_converts_to_content_block() {
                     ..
                 } => {
                     assert_eq!(tool_use_id, "tool_abc");
-                    assert_eq!(content, r#"{"output": "ok"}"#);
+                    assert_eq!(content.text_summary(), r#"{"output": "ok"}"#);
                 }
                 other => panic!("expected ToolResult block, got {other:?}"),
             }
