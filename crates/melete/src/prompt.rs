@@ -95,7 +95,7 @@ pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String
                 let mut block_text = String::new();
                 for block in blocks {
                     match block {
-                        ContentBlock::Text { text } => {
+                        ContentBlock::Text { text, .. } => {
                             block_text.push_str(text);
                             block_text.push('\n');
                         }
@@ -114,7 +114,7 @@ pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String
                             let truncated = truncate_tool_result(&summary);
                             let _ = writeln!(block_text, "[{prefix}: {truncated}]");
                         }
-                        ContentBlock::Thinking { thinking } => {
+                        ContentBlock::Thinking { thinking, .. } => {
                             let _ = writeln!(block_text, "[Thinking: {thinking}]");
                         }
                         _ => {}
@@ -233,6 +233,7 @@ mod tests {
             content: Content::Blocks(vec![
                 ContentBlock::Text {
                     text: "Let me check.".to_owned(),
+                    citations: None,
                 },
                 ContentBlock::ToolUse {
                     id: "t1".to_owned(),

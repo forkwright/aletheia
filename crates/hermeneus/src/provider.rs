@@ -1,14 +1,13 @@
-//! LLM provider trait.
+//! LLM provider trait — Anthropic-native with adapter support.
 //!
-//! Defines the interface that all providers (Anthropic, `OpenAI`, Ollama)
-//! must implement. Designed for the current sync-first approach with
-//! async streaming planned for M2.
+//! Defines the interface all providers must implement. Types are modeled
+//! on the Anthropic Messages API; other providers adapt to this surface.
 
 use std::collections::HashMap;
 
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
-use crate::types::{CompletionRequest, CompletionResponse};
+use crate::types::{CompletionRequest, CompletionResponse, TokenCount};
 
 /// Trait for LLM providers.
 ///
@@ -42,6 +41,22 @@ pub trait LlmProvider: Send + Sync {
     /// support local tokenization should override this.
     fn estimate_tokens(&self, _text: &str) -> Option<u64> {
         None
+    }
+
+    /// Count tokens for a request via the provider's API.
+    /// Returns None if the provider doesn't support server-side counting.
+    fn count_tokens(&self, _request: &CompletionRequest) -> Result<Option<TokenCount>> {
+        Ok(None)
+    }
+
+    /// Whether this provider supports prompt caching.
+    fn supports_caching(&self) -> bool {
+        false
+    }
+
+    /// Whether this provider supports citation tracking.
+    fn supports_citations(&self) -> bool {
+        false
     }
 }
 
@@ -190,6 +205,7 @@ mod tests {
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
                     text: "mock response".to_owned(),
+                    citations: None,
                 }],
                 usage: Usage {
                     input_tokens: 100,
@@ -203,7 +219,10 @@ mod tests {
             &self.models
         }
 
-        #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
         fn name(&self) -> &str {
             "mock"
         }
@@ -224,6 +243,7 @@ mod tests {
             temperature: None,
             thinking: None,
             stop_sequences: vec![],
+            ..Default::default()
         };
 
         let response = provider.complete(&request).unwrap();
@@ -277,10 +297,7 @@ mod tests {
         let mut registry = ProviderRegistry::new();
         registry.register(Box::new(MockProvider::new()));
 
-        assert_eq!(
-            registry.provider_health("mock"),
-            Some(ProviderHealth::Up)
-        );
+        assert_eq!(registry.provider_health("mock"), Some(ProviderHealth::Up));
     }
 
     #[test]
@@ -294,14 +311,13 @@ mod tests {
         let mut registry = ProviderRegistry::new();
         registry.register(Box::new(MockProvider::new()));
 
-        let err: crate::error::Error = crate::error::ApiRequestSnafu {
-            message: "timeout",
-        }
-        .build();
+        let err: crate::error::Error = crate::error::ApiRequestSnafu { message: "timeout" }.build();
         registry.record_error("mock", &err);
 
         match registry.provider_health("mock") {
-            Some(ProviderHealth::Degraded { consecutive_errors, .. }) => {
+            Some(ProviderHealth::Degraded {
+                consecutive_errors, ..
+            }) => {
                 assert_eq!(consecutive_errors, 1);
             }
             other => panic!("expected Degraded, got {other:?}"),
@@ -313,17 +329,11 @@ mod tests {
         let mut registry = ProviderRegistry::new();
         registry.register(Box::new(MockProvider::new()));
 
-        let err: crate::error::Error = crate::error::ApiRequestSnafu {
-            message: "timeout",
-        }
-        .build();
+        let err: crate::error::Error = crate::error::ApiRequestSnafu { message: "timeout" }.build();
         registry.record_error("mock", &err);
         registry.record_success("mock");
 
-        assert_eq!(
-            registry.provider_health("mock"),
-            Some(ProviderHealth::Up)
-        );
+        assert_eq!(registry.provider_health("mock"), Some(ProviderHealth::Up));
     }
 
     #[test]
@@ -332,10 +342,7 @@ mod tests {
         registry.register(Box::new(MockProvider::new()));
         // Should not panic
         registry.record_success("nonexistent");
-        let err: crate::error::Error = crate::error::ApiRequestSnafu {
-            message: "timeout",
-        }
-        .build();
+        let err: crate::error::Error = crate::error::ApiRequestSnafu { message: "timeout" }.build();
         registry.record_error("nonexistent", &err);
     }
 }

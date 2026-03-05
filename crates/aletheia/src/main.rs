@@ -241,7 +241,16 @@ async fn main() -> Result<()> {
             archived,
             max_messages,
             compact,
-        }) => return export_agent_cmd(&cli, nous_id, output.as_ref(), *archived, *max_messages, *compact),
+        }) => {
+            return export_agent_cmd(
+                &cli,
+                nous_id,
+                output.as_ref(),
+                *archived,
+                *max_messages,
+                *compact,
+            );
+        }
         Some(Command::Import {
             file,
             target_id,
@@ -249,7 +258,17 @@ async fn main() -> Result<()> {
             skip_workspace,
             force,
             dry_run,
-        }) => return import_agent_cmd(&cli, file, target_id.as_deref(), *skip_sessions, *skip_workspace, *force, *dry_run),
+        }) => {
+            return import_agent_cmd(
+                &cli,
+                file,
+                target_id.as_deref(),
+                *skip_sessions,
+                *skip_workspace,
+                *force,
+                *dry_run,
+            );
+        }
         None => {}
     }
 
@@ -1118,7 +1137,11 @@ fn import_agent_cmd(
 
     if dry_run {
         println!("Dry run — no changes will be made\n");
-        println!("Agent: {} ({})", nous_id, agent_file.nous.name.as_deref().unwrap_or("unnamed"));
+        println!(
+            "Agent: {} ({})",
+            nous_id,
+            agent_file.nous.name.as_deref().unwrap_or("unnamed")
+        );
         println!("Generator: {}", agent_file.generator);
         println!("Exported at: {}", agent_file.exported_at);
         println!(
@@ -1163,14 +1186,9 @@ fn import_agent_cmd(
         force,
     };
     let id_gen = || ulid::Ulid::new().to_string();
-    let result = aletheia_mneme::import::import_agent(
-        &agent_file,
-        &store,
-        &workspace_path,
-        &id_gen,
-        &opts,
-    )
-    .context("import failed")?;
+    let result =
+        aletheia_mneme::import::import_agent(&agent_file, &store, &workspace_path, &id_gen, &opts)
+            .context("import failed")?;
 
     println!("Imported agent: {}", result.nous_id);
     println!("Files restored: {}", result.files_restored);
@@ -1282,7 +1300,10 @@ mod tests {
                 assert_eq!(timeout, 60);
             }
             _ => panic!("expected Eval command"),
+        }
+    }
 
+    #[test]
     fn export_subcommand_parses() {
         let cli = Cli::parse_from(["aletheia", "export", "syn", "--archived", "--compact"]);
         match cli.command {

@@ -36,6 +36,7 @@ impl ExtractionProvider for HermeneusExtractionProvider {
             temperature: None,
             thinking: None,
             stop_sequences: Vec::new(),
+            ..Default::default()
         };
 
         let provider = self.providers.find_provider(&self.model).ok_or_else(|| {
@@ -56,7 +57,7 @@ impl ExtractionProvider for HermeneusExtractionProvider {
             .content
             .iter()
             .find_map(|block| match block {
-                ContentBlock::Text { text } => Some(text.clone()),
+                ContentBlock::Text { text, .. } => Some(text.clone()),
                 _ => None,
             })
             .context(LlmCallSnafu {

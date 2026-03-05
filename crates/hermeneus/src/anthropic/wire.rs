@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::types::{
-    CompletionRequest, CompletionResponse, Content, ContentBlock, Role, StopReason, ThinkingConfig,
-    Usage,
+    CacheControl, CompletionRequest, CompletionResponse, Content, ContentBlock, Role, StopReason,
+    ThinkingConfig, ToolChoice, Usage,
 };
 
 // ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ pub(crate) struct WireRequest<'a> {
     pub max_tokens: u32,
     pub messages: Vec<WireMessage<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub system: Option<String>,
+    pub system: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<WireTool<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -28,6 +28,12 @@ pub(crate) struct WireRequest<'a> {
     pub thinking: Option<WireThinkingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<&'a ToolChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<&'a crate::types::RequestMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub citations: Option<&'a crate::types::CitationConfig>,
 }
 
 #[derive(Debug, Serialize)]
@@ -41,6 +47,8 @@ pub(crate) struct WireTool<'a> {
     pub name: &'a str,
     pub description: &'a str,
     pub input_schema: &'a serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,7 +89,11 @@ pub(crate) struct WireUsage {
 #[serde(tag = "type")]
 pub(crate) enum WireContentBlock {
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        text: String,
+        #[serde(default)]
+        citations: Option<Vec<crate::types::Citation>>,
+    },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -89,14 +101,7 @@ pub(crate) enum WireContentBlock {
         input: serde_json::Value,
     },
     #[serde(rename = "thinking")]
-    Thinking {
-        thinking: String,
-        #[expect(
-            dead_code,
-            reason = "captured from API but not exposed in public types until M2"
-        )]
-        signature: String,
-    },
+    Thinking { thinking: String, signature: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +127,7 @@ pub(crate) struct WireErrorDetail {
 impl<'a> WireRequest<'a> {
     pub(crate) fn from_request(req: &'a CompletionRequest, stream: Option<bool>) -> Self {
         // Extract system prompt from messages (Anthropic wants it as a top-level field).
-        let system = req.system.clone().or_else(|| {
+        let system_text = req.system.clone().or_else(|| {
             let system_texts: Vec<&str> = req
                 .messages
                 .iter()
@@ -140,6 +145,19 @@ impl<'a> WireRequest<'a> {
             }
         });
 
+        // When caching, serialize system as array with cache_control on last block.
+        let system = system_text.map(|text| {
+            if req.cache_system {
+                serde_json::json!([{
+                    "type": "text",
+                    "text": text,
+                    "cache_control": {"type": "ephemeral"}
+                }])
+            } else {
+                serde_json::Value::String(text)
+            }
+        });
+
         let messages: Vec<WireMessage<'a>> = req
             .messages
             .iter()
@@ -150,13 +168,23 @@ impl<'a> WireRequest<'a> {
             })
             .collect();
 
+        let tool_count = req.tools.len();
         let tools: Vec<WireTool<'a>> = req
             .tools
             .iter()
-            .map(|t| WireTool {
-                name: &t.name,
-                description: &t.description,
-                input_schema: &t.input_schema,
+            .enumerate()
+            .map(|(i, t)| {
+                let cache_control = if req.cache_tools && i == tool_count - 1 {
+                    Some(CacheControl::ephemeral())
+                } else {
+                    None
+                };
+                WireTool {
+                    name: &t.name,
+                    description: &t.description,
+                    input_schema: &t.input_schema,
+                    cache_control,
+                }
             })
             .collect();
 
@@ -180,6 +208,9 @@ impl<'a> WireRequest<'a> {
             stop_sequences,
             thinking,
             stream,
+            tool_choice: req.tool_choice.as_ref(),
+            metadata: req.metadata.as_ref(),
+            citations: req.citations.as_ref(),
         }
     }
 }
@@ -216,12 +247,15 @@ impl WireResponse {
 impl WireContentBlock {
     fn into_content_block(self) -> ContentBlock {
         match self {
-            Self::Text { text } => ContentBlock::Text { text },
+            Self::Text { text, citations } => ContentBlock::Text { text, citations },
             Self::ToolUse { id, name, input } => ContentBlock::ToolUse { id, name, input },
             Self::Thinking {
                 thinking,
-                signature: _,
-            } => ContentBlock::Thinking { thinking },
+                signature,
+            } => ContentBlock::Thinking {
+                thinking,
+                signature: Some(signature),
+            },
         }
     }
 }
@@ -309,6 +343,8 @@ pub(crate) enum WireDelta {
     InputJsonDelta { partial_json: String },
     #[serde(rename = "thinking_delta")]
     ThinkingDelta { thinking: String },
+    #[serde(rename = "signature_delta")]
+    SignatureDelta { signature: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -386,7 +422,7 @@ mod tests {
         let block: WireContentBlock = serde_json::from_str(json).unwrap();
         let converted = block.into_content_block();
         match converted {
-            ContentBlock::Thinking { thinking } => {
+            ContentBlock::Thinking { thinking, .. } => {
                 assert_eq!(thinking, "let me think");
             }
             _ => panic!("expected Thinking"),
@@ -417,9 +453,13 @@ mod tests {
             temperature: None,
             thinking: None,
             stop_sequences: vec![],
+            ..Default::default()
         };
         let wire = WireRequest::from_request(&req, None);
-        assert_eq!(wire.system.as_deref(), Some("You are helpful."));
+        assert_eq!(
+            wire.system,
+            Some(serde_json::Value::String("You are helpful.".to_owned()))
+        );
         assert_eq!(wire.messages.len(), 1);
         assert_eq!(wire.messages[0].role, "user");
     }
@@ -444,9 +484,13 @@ mod tests {
             temperature: None,
             thinking: None,
             stop_sequences: vec![],
+            ..Default::default()
         };
         let wire = WireRequest::from_request(&req, None);
-        assert_eq!(wire.system.as_deref(), Some("Be concise."));
+        assert_eq!(
+            wire.system,
+            Some(serde_json::Value::String("Be concise.".to_owned()))
+        );
         // System messages must not appear in the messages array
         assert_eq!(wire.messages.len(), 1);
     }
@@ -468,6 +512,7 @@ mod tests {
                 budget_tokens: 8192,
             }),
             stop_sequences: vec![],
+            ..Default::default()
         };
         let wire = WireRequest::from_request(&req, None);
         let json = serde_json::to_value(&wire).unwrap();
@@ -500,6 +545,7 @@ mod tests {
             temperature: None,
             thinking: None,
             stop_sequences: vec![],
+            ..Default::default()
         };
         let wire = WireRequest::from_request(&req, None);
         let json = serde_json::to_value(&wire).unwrap();
@@ -549,5 +595,214 @@ mod tests {
             StopReason::StopSequence
         );
         assert!(parse_stop_reason("unknown").is_err());
+    }
+
+    #[test]
+    fn wire_request_cache_system_serializes_as_array() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            system: Some("You are helpful.".to_owned()),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_owned()),
+            }],
+            max_tokens: 1024,
+            cache_system: true,
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        let system = json["system"].as_array().unwrap();
+        assert_eq!(system.len(), 1);
+        assert_eq!(system[0]["type"], "text");
+        assert_eq!(system[0]["text"], "You are helpful.");
+        assert_eq!(system[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn wire_request_cache_tools_on_last_tool() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("run".to_owned()),
+            }],
+            max_tokens: 1024,
+            tools: vec![
+                ToolDefinition {
+                    name: "a".to_owned(),
+                    description: "first".to_owned(),
+                    input_schema: serde_json::json!({}),
+                },
+                ToolDefinition {
+                    name: "b".to_owned(),
+                    description: "second".to_owned(),
+                    input_schema: serde_json::json!({}),
+                },
+            ],
+            cache_tools: true,
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn wire_request_tool_choice_auto() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            tool_choice: Some(crate::types::ToolChoice::Auto),
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        assert_eq!(json["tool_choice"]["type"], "auto");
+    }
+
+    #[test]
+    fn wire_request_tool_choice_specific_tool() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            tool_choice: Some(crate::types::ToolChoice::Tool {
+                name: "exec".to_owned(),
+            }),
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        assert_eq!(json["tool_choice"]["type"], "tool");
+        assert_eq!(json["tool_choice"]["name"], "exec");
+    }
+
+    #[test]
+    fn wire_request_tool_choice_none_omitted() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        assert!(json.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn wire_request_metadata_serialized() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            metadata: Some(crate::types::RequestMetadata {
+                user_id: Some("nous:syn:main".to_owned()),
+            }),
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        assert_eq!(json["metadata"]["user_id"], "nous:syn:main");
+    }
+
+    #[test]
+    fn wire_request_citations_serialized() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            citations: Some(crate::types::CitationConfig { enabled: true }),
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        assert_eq!(json["citations"]["enabled"], true);
+    }
+
+    #[test]
+    fn wire_response_text_with_citations() {
+        let json = r#"{
+            "id": "msg_cit",
+            "type": "message",
+            "role": "assistant",
+            "content": [{
+                "type": "text",
+                "text": "According to the doc...",
+                "citations": [{
+                    "type": "char_location",
+                    "document_index": 0,
+                    "start_char_index": 0,
+                    "end_char_index": 150,
+                    "cited_text": "source text"
+                }]
+            }],
+            "model": "claude-opus-4-20250514",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 5}
+        }"#;
+        let resp: WireResponse = serde_json::from_str(json).unwrap();
+        let converted = resp.into_response().unwrap();
+        match &converted.content[0] {
+            ContentBlock::Text { citations, .. } => {
+                let cits = citations.as_ref().unwrap();
+                assert_eq!(cits.len(), 1);
+            }
+            _ => panic!("expected Text block"),
+        }
+    }
+
+    #[test]
+    fn wire_thinking_signature_passes_through() {
+        let json = r#"{"type":"thinking","thinking":"let me think","signature":"sig_abc"}"#;
+        let block: WireContentBlock = serde_json::from_str(json).unwrap();
+        let converted = block.into_content_block();
+        match converted {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
+                assert_eq!(thinking, "let me think");
+                assert_eq!(signature.as_deref(), Some("sig_abc"));
+            }
+            _ => panic!("expected Thinking"),
+        }
+    }
+
+    #[test]
+    fn wire_request_no_cache_system_is_string() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            system: Some("test".to_owned()),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        assert!(json["system"].is_string());
+        assert_eq!(json["system"], "test");
     }
 }

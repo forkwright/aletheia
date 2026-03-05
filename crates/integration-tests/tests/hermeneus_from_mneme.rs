@@ -58,6 +58,7 @@ fn build_completion_request_from_mneme_history() {
         temperature: None,
         thinking: None,
         stop_sequences: vec![],
+        ..Default::default()
     };
 
     assert_eq!(request.messages.len(), 2);

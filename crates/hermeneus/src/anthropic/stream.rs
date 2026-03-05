@@ -67,7 +67,10 @@ enum BlockBuilder {
         name: String,
         input_json: String,
     },
-    Thinking(String),
+    Thinking {
+        text: String,
+        signature: String,
+    },
 }
 
 impl StreamAccumulator {
@@ -86,6 +89,7 @@ impl StreamAccumulator {
 
     /// Process an SSE event, emitting `StreamEvent`s via the callback.
     /// Returns `Err` if the stream contains an error event.
+    #[expect(clippy::too_many_lines, reason = "SSE event dispatch is inherently branchy")]
     pub(crate) fn process_event(
         &mut self,
         event: WireStreamEvent,
@@ -122,9 +126,10 @@ impl StreamAccumulator {
                         name,
                         input_json: String::new(),
                     },
-                    WireContentBlockStart::Thinking { thinking } => {
-                        BlockBuilder::Thinking(thinking)
-                    }
+                    WireContentBlockStart::Thinking { thinking } => BlockBuilder::Thinking {
+                        text: thinking,
+                        signature: String::new(),
+                    },
                 };
                 // Ensure the blocks vec is large enough.
                 let idx = index as usize;
@@ -153,10 +158,22 @@ impl StreamAccumulator {
                             on_event(StreamEvent::InputJsonDelta { partial_json });
                         }
                         WireDelta::ThinkingDelta { thinking } => {
-                            if let BlockBuilder::Thinking(ref mut buf) = self.blocks[idx] {
+                            if let BlockBuilder::Thinking {
+                                text: ref mut buf, ..
+                            } = self.blocks[idx]
+                            {
                                 buf.push_str(&thinking);
                             }
                             on_event(StreamEvent::ThinkingDelta { thinking });
+                        }
+                        WireDelta::SignatureDelta { signature } => {
+                            if let BlockBuilder::Thinking {
+                                signature: ref mut buf,
+                                ..
+                            } = self.blocks[idx]
+                            {
+                                buf.push_str(&signature);
+                            }
                         }
                     }
                 }
@@ -194,7 +211,10 @@ impl StreamAccumulator {
             .blocks
             .into_iter()
             .map(|b| match b {
-                BlockBuilder::Text(text) => ContentBlock::Text { text },
+                BlockBuilder::Text(text) => ContentBlock::Text {
+                    text,
+                    citations: None,
+                },
                 BlockBuilder::ToolUse {
                     id,
                     name,
@@ -203,7 +223,14 @@ impl StreamAccumulator {
                     let input = serde_json::from_str(&input_json).unwrap_or_default();
                     ContentBlock::ToolUse { id, name, input }
                 }
-                BlockBuilder::Thinking(thinking) => ContentBlock::Thinking { thinking },
+                BlockBuilder::Thinking { text, signature } => ContentBlock::Thinking {
+                    thinking: text,
+                    signature: if signature.is_empty() {
+                        None
+                    } else {
+                        Some(signature)
+                    },
+                },
             })
             .collect();
 
@@ -338,7 +365,7 @@ data: {\"type\":\"message_stop\"}\n\
         assert_eq!(response.stop_reason, StopReason::EndTurn);
         assert_eq!(response.content.len(), 1);
         match &response.content[0] {
-            ContentBlock::Text { text } => assert_eq!(text, "Hello world"),
+            ContentBlock::Text { text, .. } => assert_eq!(text, "Hello world"),
             _ => panic!("expected Text block"),
         }
     }
@@ -416,13 +443,13 @@ data: {\"type\":\"message_stop\"}\n\
 
         assert_eq!(response.content.len(), 2);
         match &response.content[0] {
-            ContentBlock::Thinking { thinking } => {
+            ContentBlock::Thinking { thinking, .. } => {
                 assert_eq!(thinking, "Let me think about this.");
             }
             _ => panic!("expected Thinking block"),
         }
         match &response.content[1] {
-            ContentBlock::Text { text } => assert_eq!(text, "The answer is 42."),
+            ContentBlock::Text { text, .. } => assert_eq!(text, "The answer is 42."),
             _ => panic!("expected Text block"),
         }
     }

@@ -110,11 +110,9 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 }
 
 async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerError> {
-    let listener = TcpListener::bind(bind_addr)
-        .await
-        .context(BindSnafu {
-            addr: bind_addr.to_owned(),
-        })?;
+    let listener = TcpListener::bind(bind_addr).await.context(BindSnafu {
+        addr: bind_addr.to_owned(),
+    })?;
 
     info!(addr = %bind_addr, tls = false, "pylon listening");
 

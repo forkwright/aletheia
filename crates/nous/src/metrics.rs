@@ -3,13 +3,16 @@
 use std::sync::LazyLock;
 
 use prometheus::{
-    HistogramOpts, HistogramVec, IntCounterVec, Opts,
-    register_histogram_vec, register_int_counter_vec,
+    HistogramOpts, HistogramVec, IntCounterVec, Opts, register_histogram_vec,
+    register_int_counter_vec,
 };
 
 static PIPELINE_TURNS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
     register_int_counter_vec!(
-        Opts::new("aletheia_pipeline_turns_total", "Total pipeline turns processed"),
+        Opts::new(
+            "aletheia_pipeline_turns_total",
+            "Total pipeline turns processed"
+        ),
         &["nous_id"]
     )
     .expect("metric registration")
@@ -21,7 +24,9 @@ static PIPELINE_STAGE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|
             "aletheia_pipeline_stage_duration_seconds",
             "Pipeline stage duration in seconds"
         )
-        .buckets(vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 30.0, 60.0]),
+        .buckets(vec![
+            0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 30.0, 60.0
+        ]),
         &["nous_id", "stage"]
     )
     .expect("metric registration")

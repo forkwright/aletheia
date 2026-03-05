@@ -26,10 +26,7 @@ pub enum DistillSection {
     /// Mistakes discovered and corrected to prevent repetition.
     Corrections,
     /// Custom section with a name and description.
-    Custom {
-        name: String,
-        description: String,
-    },
+    Custom { name: String, description: String },
 }
 
 impl DistillSection {
@@ -217,6 +214,7 @@ impl DistillEngine {
             temperature: Some(0.0),
             thinking: None,
             stop_sequences: vec![],
+            ..Default::default()
         }
     }
 
@@ -281,7 +279,7 @@ fn extract_summary_text(content: &[aletheia_hermeneus::types::ContentBlock]) -> 
     content
         .iter()
         .filter_map(|block| match block {
-            aletheia_hermeneus::types::ContentBlock::Text { text } => Some(text.as_str()),
+            aletheia_hermeneus::types::ContentBlock::Text { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -311,6 +309,7 @@ mod tests {
                     stop_reason: StopReason::EndTurn,
                     content: vec![ContentBlock::Text {
                         text: summary.to_owned(),
+                        citations: None,
                     }],
                     usage: Usage {
                         input_tokens: 5000,
@@ -343,9 +342,11 @@ mod tests {
                     content: vec![
                         ContentBlock::Text {
                             text: String::new(),
+                            citations: None,
                         },
                         ContentBlock::Text {
                             text: "   ".to_owned(),
+                            citations: None,
                         },
                     ],
                     usage: Usage::default(),
@@ -708,9 +709,11 @@ Bug is fixed, test passes.
         let blocks = vec![
             ContentBlock::Text {
                 text: "Part 1".to_owned(),
+                citations: None,
             },
             ContentBlock::Text {
                 text: "Part 2".to_owned(),
+                citations: None,
             },
         ];
         let text = extract_summary_text(&blocks);
@@ -722,9 +725,11 @@ Bug is fixed, test passes.
         let blocks = vec![
             ContentBlock::Text {
                 text: "Summary text".to_owned(),
+                citations: None,
             },
             ContentBlock::Thinking {
                 thinking: "internal thought".to_owned(),
+                signature: None,
             },
         ];
         let text = extract_summary_text(&blocks);
@@ -735,6 +740,7 @@ Bug is fixed, test passes.
     fn extract_summary_trims_whitespace() {
         let blocks = vec![ContentBlock::Text {
             text: "  summary  ".to_owned(),
+            citations: None,
         }];
         let text = extract_summary_text(&blocks);
         assert_eq!(text, "summary");

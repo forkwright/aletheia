@@ -162,7 +162,10 @@ async fn dispatch_tools(
 /// 3. Processes `tool_use` blocks by dispatching to the `ToolRegistry`
 /// 4. Feeds tool results back and re-calls the LLM
 /// 5. Repeats until `EndTurn`, `MaxTokens`, or iteration limit
-#[expect(clippy::too_many_lines, reason = "health check additions keep the loop cohesive")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "health check additions keep the loop cohesive"
+)]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub async fn execute(
     ctx: &PipelineContext,
@@ -226,6 +229,7 @@ pub async fn execute(
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
+            ..Default::default()
         };
 
         let response = match provider.complete(&request) {
@@ -250,11 +254,11 @@ pub async fn execute(
 
         for block in &response.content {
             match block {
-                ContentBlock::Text { text } => text_parts.push(text.clone()),
+                ContentBlock::Text { text, .. } => text_parts.push(text.clone()),
                 ContentBlock::ToolUse { id, name, input } => {
                     tool_uses.push((id.clone(), name.clone(), input.clone()));
                 }
-                ContentBlock::Thinking { thinking } => {
+                ContentBlock::Thinking { thinking, .. } => {
                     debug!(len = thinking.len(), "thinking block received");
                 }
                 _ => {}
@@ -361,7 +365,10 @@ mod tests {
             &["test-model"]
         }
 
-        #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
         fn name(&self) -> &str {
             "mock"
         }
@@ -439,6 +446,7 @@ mod tests {
             stop_reason: StopReason::EndTurn,
             content: vec![ContentBlock::Text {
                 text: text.to_owned(),
+                citations: None,
             }],
             usage: Usage {
                 input_tokens: 100,
