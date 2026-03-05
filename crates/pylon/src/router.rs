@@ -14,8 +14,10 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
+use tower_http::services::{ServeDir, ServeFile};
+
 use crate::error::ApiError;
-use crate::handlers::{config, health, metrics, nous, sessions};
+use crate::handlers::{config, health, metrics, nous, sessions, webchat};
 use crate::middleware::{
     CsrfState, RequestId, enrich_error_response, inject_request_id, record_http_metrics,
     require_csrf_header,
@@ -47,10 +49,40 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 
     let mut router = Router::new()
         .nest("/api/v1", v1)
+        // Webchat compatibility endpoints (unversioned)
+        .route("/api/sessions/stream", post(webchat::stream))
+        .route("/api/agents", get(webchat::agents_list))
+        .route("/api/agents/{id}/identity", get(webchat::agent_identity))
+        .route("/api/branding", get(webchat::branding))
+        .route("/api/auth/mode", get(webchat::auth_mode))
+        .route("/api/sessions", get(webchat::sessions_list))
+        .route("/api/events", get(webchat::events_sse))
+        // Infrastructure
         .route("/api/health", get(health::check))
         .route("/api/docs/openapi.json", get(openapi::openapi_json))
-        .route("/metrics", get(metrics::expose))
-        .fallback(fallback_handler);
+        .route("/metrics", get(metrics::expose));
+
+    // Static file serving for the web UI
+    let ui_dist = state
+        .oikos
+        .root()
+        .parent()
+        .map(|repo_root| repo_root.join("ui/dist"));
+
+    if let Some(ref dist_path) = ui_dist {
+        if dist_path.is_dir() {
+            let index = dist_path.join("index.html");
+            router = router.nest_service(
+                "/ui",
+                ServeDir::new(dist_path).fallback(ServeFile::new(index)),
+            );
+            tracing::info!(path = %dist_path.display(), "mounted web UI static files");
+        } else {
+            tracing::debug!(path = %dist_path.display(), "ui/dist not found, skipping static serving");
+        }
+    }
+
+    router = router.fallback(fallback_handler);
 
     // CSRF protection — inject state and apply middleware
     if security.csrf_enabled {
@@ -118,12 +150,13 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 
 /// Fallback handler for unmatched routes.
 ///
-/// Detects old unversioned `/api/sessions` and `/api/nous` paths and returns
-/// 410 Gone with a migration hint. All other unknown paths get 404.
+/// Returns 410 Gone with migration hints for old unversioned `/api/nous`
+/// paths. Other unknown paths get 404.
 async fn fallback_handler(uri: axum::http::Uri) -> Response {
     let path = uri.path();
 
-    if path.starts_with("/api/sessions") || path.starts_with("/api/nous") {
+    // `/api/nous/*` has no webchat equivalent; hint at v1
+    if path.starts_with("/api/nous") {
         let suggestion = path.replacen("/api/", "/api/v1/", 1);
         return (
             StatusCode::GONE,
