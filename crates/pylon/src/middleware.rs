@@ -9,7 +9,9 @@ use axum::response::{IntoResponse, Response};
 /// CSRF protection state stored as a router extension.
 #[derive(Debug, Clone)]
 pub struct CsrfState {
+    /// HTTP header name to check (e.g. `"x-requested-with"`).
     pub header_name: String,
+    /// Expected header value (e.g. `"aletheia"`).
     pub header_value: String,
 }
 

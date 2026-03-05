@@ -30,4 +30,5 @@ pub enum Error {
     },
 }
 
+/// Convenience alias for `Result` with melete's [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;

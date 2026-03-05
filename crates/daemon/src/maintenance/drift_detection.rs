@@ -10,10 +10,15 @@ use crate::error;
 /// Configuration for instance drift detection.
 #[derive(Debug, Clone)]
 pub struct DriftDetectionConfig {
+    /// Whether drift detection is active.
     pub enabled: bool,
+    /// Path to the live instance directory.
     pub instance_root: PathBuf,
+    /// Path to the example/template directory to compare against.
     pub example_root: PathBuf,
+    /// Whether to raise alerts for files present in the template but missing from the instance.
     pub alert_on_missing: bool,
+    /// Glob-like patterns to exclude from comparison (e.g., `"data/"`, `"*.db"`).
     pub ignore_patterns: Vec<String>,
 }
 
@@ -37,9 +42,13 @@ impl Default for DriftDetectionConfig {
 /// Outcome of a drift detection check.
 #[derive(Debug, Clone, Default)]
 pub struct DriftReport {
+    /// Files present in the template but absent from the instance.
     pub missing_files: Vec<PathBuf>,
+    /// Files present in the instance but absent from the template.
     pub extra_files: Vec<PathBuf>,
+    /// Files with permission discrepancies (path, description).
     pub permission_issues: Vec<(PathBuf, String)>,
+    /// When the check was performed.
     pub checked_at: Option<jiff::Timestamp>,
 }
 
@@ -49,6 +58,7 @@ pub struct DriftDetector {
 }
 
 impl DriftDetector {
+    /// Create a detector with the given instance and template paths.
     pub fn new(config: DriftDetectionConfig) -> Self {
         Self { config }
     }

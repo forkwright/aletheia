@@ -105,12 +105,12 @@ pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
     })
 }
 
-/// Revoke an API key by its ID.
+/// Revoke an API key by its ID, preventing further use.
 pub fn revoke(store: &AuthStore, key_id: &str) -> Result<()> {
     store.revoke_api_key(key_id)
 }
 
-/// List all API keys (metadata only, never the secret).
+/// List all API key records (metadata only, never the secret).
 pub fn list(store: &AuthStore) -> Result<Vec<ApiKeyRecord>> {
     store.list_api_keys()
 }

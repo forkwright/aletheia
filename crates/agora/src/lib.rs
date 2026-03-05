@@ -4,11 +4,17 @@
 //! between Aletheia and the outside world. Provides the channel abstraction
 //! and registry, with Signal (semeion) as the first provider.
 
+/// Error types for channel operations and provider failures.
 pub mod error;
+/// Unified channel listener that merges inbound messages from all providers into a single stream.
 pub mod listener;
+/// Channel registry: the single source of truth for available channel providers.
 pub mod registry;
+/// Message routing: resolves inbound messages to the appropriate nous agent.
 pub mod router;
+/// Signal channel provider backed by the signal-cli JSON-RPC daemon.
 pub mod semeion;
+/// Core types for the channel abstraction layer (capabilities, send/receive, provider trait).
 pub mod types;
 
 #[cfg(test)]

@@ -13,12 +13,19 @@ use serde::{Deserialize, Serialize};
     reason = "capability flags are inherently boolean"
 )]
 pub struct ChannelCapabilities {
+    /// Whether the channel supports threaded replies.
     pub threads: bool,
+    /// Whether message reactions (emoji, etc.) are supported.
     pub reactions: bool,
+    /// Whether typing indicators can be sent.
     pub typing: bool,
+    /// Whether file/media attachments are supported.
     pub media: bool,
+    /// Whether real-time streaming delivery is supported.
     pub streaming: bool,
+    /// Whether markdown or other rich text formatting is supported.
     pub rich_formatting: bool,
+    /// Maximum text length in a single message (channel-imposed limit).
     pub max_text_length: usize,
 }
 
@@ -43,7 +50,9 @@ pub struct SendParams {
 /// Result of a send operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendResult {
+    /// Whether the message was successfully delivered to the channel.
     pub sent: bool,
+    /// Error description if the send failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -51,11 +60,15 @@ pub struct SendResult {
 /// Health probe result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeResult {
+    /// Whether the channel is reachable.
     pub ok: bool,
+    /// Round-trip latency in milliseconds, if measured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<u64>,
+    /// Error description if the probe failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Provider-specific health details (e.g., per-account status).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<HashMap<String, serde_json::Value>>,
 }

@@ -375,33 +375,51 @@ async fn find_session(
 
 // --- Request/Response types ---
 
+/// Body for `POST /api/sessions`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
+    /// Target nous agent to bind the session to.
     pub nous_id: String,
+    /// Client-chosen key for session deduplication.
     pub session_key: String,
 }
 
+/// Body for `POST /api/sessions/{id}/messages`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SendMessageRequest {
+    /// User message text.
     pub content: String,
 }
 
+/// Query parameters for `GET /api/sessions/{id}/history`.
 #[derive(Debug, Deserialize)]
 pub struct HistoryParams {
+    /// Maximum number of messages to return.
     pub limit: Option<u32>,
+    /// Return messages with `seq` strictly less than this value.
     pub before: Option<i64>,
 }
 
+/// Session metadata returned by create and get endpoints.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SessionResponse {
+    /// Session identifier.
     pub id: String,
+    /// Nous agent owning this session.
     pub nous_id: String,
+    /// Client-chosen deduplication key.
     pub session_key: String,
+    /// Lifecycle status (e.g. `"active"`, `"archived"`).
     pub status: String,
+    /// LLM model used for this session, if set.
     pub model: Option<String>,
+    /// Total messages stored in this session.
     pub message_count: i64,
+    /// Estimated total tokens across all messages.
     pub token_count_estimate: i64,
+    /// ISO 8601 creation timestamp.
     pub created_at: String,
+    /// ISO 8601 last-updated timestamp.
     pub updated_at: String,
 }
 
@@ -421,18 +439,28 @@ impl SessionResponse {
     }
 }
 
+/// Response for `GET /api/sessions/{id}/history`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HistoryResponse {
+    /// Conversation messages in chronological order.
     pub messages: Vec<HistoryMessage>,
 }
 
+/// A single message in the conversation history.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HistoryMessage {
+    /// Database row ID.
     pub id: i64,
+    /// Sequence number within the session.
     pub seq: i64,
+    /// Message role (`"user"`, `"assistant"`, `"tool"`).
     pub role: String,
+    /// Message text content.
     pub content: String,
+    /// Tool call ID if this is a tool result message.
     pub tool_call_id: Option<String>,
+    /// Tool name if this is a tool result message.
     pub tool_name: Option<String>,
+    /// ISO 8601 creation timestamp.
     pub created_at: String,
 }

@@ -3,6 +3,7 @@
 //! Reads workspace files through the taxis cascade, estimates tokens,
 //! and packs sections in priority order within the token budget.
 
+/// Tool summary generation for inclusion in the bootstrap system prompt.
 pub mod tools;
 
 use tracing::{debug, info, warn};

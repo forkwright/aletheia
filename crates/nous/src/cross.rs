@@ -19,29 +19,45 @@ const DEFAULT_MAX_LOG_ENTRIES: usize = 1000;
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum DeliveryState {
+    /// Message created but not yet sent.
     Pending,
+    /// Message placed in the target actor's inbox.
     Delivered,
+    /// Target acknowledged receipt (reserved for future use).
     Acknowledged,
+    /// A reply was received for this message.
     Replied,
+    /// Delivery failed with the given reason.
     Failed { reason: String },
+    /// Reply was not received within the timeout window.
     TimedOut,
 }
 
 /// A message from one nous to another.
 #[derive(Debug, Clone)]
 pub struct CrossNousMessage {
+    /// Unique message identifier.
     pub id: Ulid,
+    /// Sender nous ID.
     pub from: String,
+    /// Target nous ID.
     pub to: String,
+    /// Session key on the target nous to inject the message into.
     pub target_session: String,
+    /// Message text payload.
     pub content: String,
+    /// Whether the sender expects a [`CrossNousReply`].
     pub expects_reply: bool,
+    /// How long to wait for a reply before timing out.
     pub reply_timeout: Option<Duration>,
+    /// When the message was created.
     pub created_at: jiff::Timestamp,
+    /// Current delivery lifecycle state.
     pub delivery: DeliveryState,
 }
 
 impl CrossNousMessage {
+    /// Create a fire-and-forget message targeting the default session.
     #[must_use]
     pub fn new(from: impl Into<String>, to: impl Into<String>, content: impl Into<String>) -> Self {
         Self {
@@ -57,12 +73,14 @@ impl CrossNousMessage {
         }
     }
 
+    /// Override the target session key (default is `"main"`).
     #[must_use]
     pub fn with_target_session(mut self, session: impl Into<String>) -> Self {
         self.target_session = session.into();
         self
     }
 
+    /// Mark this message as expecting a reply within the given timeout.
     #[must_use]
     pub fn with_reply(mut self, timeout: Duration) -> Self {
         self.expects_reply = true;
@@ -74,9 +92,13 @@ impl CrossNousMessage {
 /// Reply to a cross-nous message.
 #[derive(Debug, Clone)]
 pub struct CrossNousReply {
+    /// ID of the original [`CrossNousMessage`] this replies to.
     pub in_reply_to: Ulid,
+    /// Responding nous ID.
     pub from: String,
+    /// Reply text payload.
     pub content: String,
+    /// When the reply was created.
     pub created_at: jiff::Timestamp,
 }
 
@@ -112,6 +134,7 @@ impl Default for CrossNousRouter {
 }
 
 impl CrossNousRouter {
+    /// Create a router with the given delivery log capacity.
     #[must_use]
     pub fn new(max_log_entries: usize) -> Self {
         Self {
@@ -121,6 +144,7 @@ impl CrossNousRouter {
         }
     }
 
+    /// Register a nous actor's inbox so it can receive cross-nous messages.
     #[instrument(skip(self, sender))]
     pub async fn register(
         &self,
@@ -131,6 +155,7 @@ impl CrossNousRouter {
         self.routes.write().await.insert(id, sender);
     }
 
+    /// Remove a nous actor's route, preventing further message delivery.
     #[instrument(skip(self))]
     pub async fn unregister(&self, nous_id: &str) {
         self.routes.write().await.remove(nous_id);
@@ -287,10 +312,15 @@ impl CrossNousRouter {
 /// A single delivery audit record.
 #[derive(Debug, Clone)]
 pub struct DeliveryEntry {
+    /// ID of the delivered message.
     pub message_id: Ulid,
+    /// Sender nous ID.
     pub from: String,
+    /// Target nous ID.
     pub to: String,
+    /// Delivery outcome at the time of recording.
     pub state: DeliveryState,
+    /// When this delivery event was recorded.
     pub timestamp: jiff::Timestamp,
 }
 
@@ -301,6 +331,7 @@ pub struct DeliveryLog {
 }
 
 impl DeliveryLog {
+    /// Create a delivery log with the given maximum capacity.
     #[must_use]
     pub fn new(max_entries: usize) -> Self {
         Self {
@@ -309,6 +340,7 @@ impl DeliveryLog {
         }
     }
 
+    /// Append an entry, evicting the oldest if at capacity.
     pub fn record(&mut self, entry: DeliveryEntry) {
         if self.entries.len() >= self.max_entries {
             self.entries.pop_front();
@@ -316,11 +348,13 @@ impl DeliveryLog {
         self.entries.push_back(entry);
     }
 
+    /// Most recent entries, newest first, up to `limit`.
     #[must_use]
     pub fn recent(&self, limit: usize) -> Vec<&DeliveryEntry> {
         self.entries.iter().rev().take(limit).collect()
     }
 
+    /// Recent entries involving the given nous (as sender or receiver), newest first.
     #[must_use]
     pub fn for_nous(&self, nous_id: &str, limit: usize) -> Vec<&DeliveryEntry> {
         self.entries

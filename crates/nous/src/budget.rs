@@ -142,20 +142,27 @@ pub struct TimeBudget {
 /// Timing record for a completed pipeline stage.
 #[derive(Debug, Clone)]
 pub struct StageTimingRecord {
+    /// Stage name (e.g. "context", "execute").
     pub name: String,
+    /// Wall-clock time the stage consumed.
     pub elapsed: Duration,
+    /// Whether the stage completed normally, timed out, or was skipped.
     pub status: StageTimingStatus,
 }
 
 /// How a pipeline stage completed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StageTimingStatus {
+    /// Stage ran to completion within its time budget.
     Completed,
+    /// Stage exceeded its time limit and was cut short.
     TimedOut,
+    /// Stage was not executed (e.g. total budget exhausted).
     Skipped,
 }
 
 impl TimeBudget {
+    /// Create a new time budget from per-stage limits.
     #[must_use]
     pub fn new(stage_budgets: StageBudget) -> Self {
         Self {
@@ -166,6 +173,7 @@ impl TimeBudget {
         }
     }
 
+    /// Returns `true` if the total pipeline time budget has been exceeded.
     #[must_use]
     pub fn total_exceeded(&self) -> bool {
         if self.stage_budgets.total_secs == 0 {
@@ -174,6 +182,7 @@ impl TimeBudget {
         self.pipeline_start.elapsed() >= Duration::from_secs(u64::from(self.stage_budgets.total_secs))
     }
 
+    /// Wall-clock time remaining before the total pipeline budget expires.
     #[must_use]
     pub fn total_remaining(&self) -> Duration {
         if self.stage_budgets.total_secs == 0 {
@@ -183,6 +192,9 @@ impl TimeBudget {
         total.saturating_sub(self.pipeline_start.elapsed())
     }
 
+    /// Maximum duration for the named stage, capped by total remaining time.
+    ///
+    /// Returns `None` if both the stage-specific and total budgets are unlimited.
     #[must_use]
     pub fn stage_limit(&self, stage_name: &str) -> Option<Duration> {
         let stage_secs = match stage_name {
@@ -205,10 +217,12 @@ impl TimeBudget {
         Some(stage_limit.min(self.total_remaining()))
     }
 
+    /// Mark the start of a pipeline stage for timing.
     pub fn begin_stage(&mut self, name: &str) {
         self.current_stage = Some((name.to_owned(), Instant::now()));
     }
 
+    /// Record the current stage as finished with the given status.
     pub fn end_stage(&mut self, status: StageTimingStatus) {
         if let Some((name, start)) = self.current_stage.take() {
             self.stage_elapsed.push(StageTimingRecord {
@@ -219,11 +233,13 @@ impl TimeBudget {
         }
     }
 
+    /// Completed stage timing records, in execution order.
     #[must_use]
     pub fn summary(&self) -> &[StageTimingRecord] {
         &self.stage_elapsed
     }
 
+    /// Total wall-clock time since the pipeline started.
     #[must_use]
     pub fn total_elapsed(&self) -> Duration {
         self.pipeline_start.elapsed()

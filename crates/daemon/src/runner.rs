@@ -36,11 +36,14 @@ struct RegisteredTask {
 /// Outcome of executing a single task action.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
+    /// Whether the task completed without error.
     pub success: bool,
+    /// Task output or diagnostic message.
     pub output: Option<String>,
 }
 
 impl TaskRunner {
+    /// Create a runner for the given nous, listening for shutdown on the watch channel.
     pub fn new(nous_id: impl Into<String>, shutdown: watch::Receiver<bool>) -> Self {
         Self {
             nous_id: nous_id.into(),

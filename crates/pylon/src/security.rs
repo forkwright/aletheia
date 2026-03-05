@@ -7,14 +7,23 @@ use aletheia_taxis::config::GatewayConfig;
 /// Middleware security settings derived from gateway configuration.
 #[derive(Debug, Clone)]
 pub struct SecurityConfig {
+    /// Origins allowed by the CORS layer.
     pub allowed_origins: Vec<String>,
+    /// CORS preflight cache duration.
     pub cors_max_age_secs: u64,
+    /// Maximum request body size.
     pub body_limit_bytes: usize,
+    /// Whether the CSRF header check is active.
     pub csrf_enabled: bool,
+    /// HTTP header name for CSRF validation.
     pub csrf_header_name: String,
+    /// Expected CSRF header value.
     pub csrf_header_value: String,
+    /// Whether TLS termination is handled by pylon.
     pub tls_enabled: bool,
+    /// Path to PEM certificate file.
     pub tls_cert_path: Option<PathBuf>,
+    /// Path to PEM private key file.
     pub tls_key_path: Option<PathBuf>,
 }
 

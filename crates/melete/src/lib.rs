@@ -7,10 +7,15 @@
 //!
 //! Depends on `aletheia-koina` (types) and `aletheia-hermeneus` (LLM provider).
 
+/// Context distillation engine: token budgeting, LLM-driven summarization, and verbatim tail preservation.
 pub mod distill;
+/// Errors that can occur during distillation operations.
 pub mod error;
+/// Memory flush types for persisting critical context before distillation boundaries.
 pub mod flush;
+/// System prompt construction and message formatting for the distillation LLM.
 pub mod prompt;
+/// Re-exported hermeneus types used by distillation consumers.
 pub mod types;
 
 #[cfg(test)]

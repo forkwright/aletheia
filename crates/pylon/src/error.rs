@@ -22,21 +22,27 @@ pub struct ErrorBody {
     pub details: Option<serde_json::Value>,
 }
 
+/// HTTP API errors, each mapped to an appropriate status code via [`IntoResponse`].
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum ApiError {
+    /// Requested session does not exist (404).
     #[snafu(display("session not found: {id}"))]
     SessionNotFound { id: String },
 
+    /// Requested nous agent does not exist (404).
     #[snafu(display("nous not found: {id}"))]
     NousNotFound { id: String },
 
+    /// Client sent an invalid request (400).
     #[snafu(display("bad request: {message}"))]
     BadRequest { message: String },
 
+    /// Unrecoverable server-side failure (500).
     #[snafu(display("internal error: {message}"))]
     Internal { message: String },
 
+    /// Missing or invalid authentication credentials (401).
     #[snafu(display("unauthorized"))]
     Unauthorized,
 

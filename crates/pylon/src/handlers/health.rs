@@ -65,21 +65,30 @@ pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     })
 }
 
+/// Top-level health response combining all subsystem checks.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
+    /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.
     #[schema(value_type = String)]
     pub status: &'static str,
+    /// Crate version from `Cargo.toml`.
     #[schema(value_type = String)]
     pub version: &'static str,
+    /// Seconds since server start.
     pub uptime_seconds: u64,
+    /// Individual subsystem check results.
     pub checks: Vec<HealthCheck>,
 }
 
+/// Result of a single subsystem health check.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HealthCheck {
+    /// Subsystem name (e.g. `"session_store"`, `"providers"`).
     #[schema(value_type = String)]
     pub name: &'static str,
+    /// Check outcome: `"pass"`, `"warn"`, or `"fail"`.
     #[schema(value_type = String)]
     pub status: &'static str,
+    /// Diagnostic message when status is not `"pass"`.
     pub message: Option<String>,
 }

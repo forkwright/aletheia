@@ -10,27 +10,41 @@ use crate::state::{ProjectState, Transition};
 /// A planning project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
+    /// Unique project identifier.
     pub id: Ulid,
+    /// Human-readable project name.
     pub name: String,
+    /// What this project aims to accomplish.
     pub description: String,
+    /// Optional scope constraint (e.g., "crate X only").
     pub scope: Option<String>,
+    /// Current lifecycle state.
     pub state: ProjectState,
+    /// Operating mode controlling planning depth.
     pub mode: ProjectMode,
+    /// Ordered phases within this project.
     pub phases: Vec<Phase>,
+    /// When the project was created.
     pub created_at: jiff::Timestamp,
+    /// When the project was last modified.
     pub updated_at: jiff::Timestamp,
+    /// Nous or user that owns this project.
     pub owner: String,
 }
 
 /// Operating modes for planning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProjectMode {
+    /// Full multi-phase project with research, scoping, planning, and verification.
     Full,
+    /// Time-boxed quick task with an appetite limit in minutes.
     Quick { appetite_minutes: u32 },
+    /// Autonomous background processing without user interaction.
     Background,
 }
 
 impl Project {
+    /// Create a new project in the `Created` state.
     #[must_use]
     pub fn new(name: String, description: String, mode: ProjectMode, owner: String) -> Self {
         let now = jiff::Timestamp::now();
@@ -56,6 +70,7 @@ impl Project {
         Ok(())
     }
 
+    /// Append a phase to the project and update the modification timestamp.
     pub fn add_phase(&mut self, phase: Phase) {
         self.phases.push(phase);
         self.updated_at = jiff::Timestamp::now();

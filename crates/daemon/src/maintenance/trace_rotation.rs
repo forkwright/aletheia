@@ -12,12 +12,19 @@ use crate::error;
 /// Configuration for trace file rotation.
 #[derive(Debug, Clone)]
 pub struct TraceRotationConfig {
+    /// Whether trace rotation is active.
     pub enabled: bool,
+    /// Directory containing active trace files.
     pub trace_dir: PathBuf,
+    /// Directory where rotated files are moved.
     pub archive_dir: PathBuf,
+    /// Maximum age in days before a trace file is rotated.
     pub max_age_days: u32,
+    /// Maximum total size of active trace files in MB before forcing rotation.
     pub max_total_size_mb: u64,
+    /// Whether to gzip-compress rotated files.
     pub compress: bool,
+    /// Maximum number of archived files to retain before pruning the oldest.
     pub max_archives: usize,
 }
 
@@ -38,8 +45,11 @@ impl Default for TraceRotationConfig {
 /// Outcome of a trace rotation run.
 #[derive(Debug, Clone, Default)]
 pub struct RotationReport {
+    /// Number of trace files moved to the archive directory.
     pub files_rotated: u32,
+    /// Number of old archive files deleted beyond the retention limit.
     pub files_pruned: u32,
+    /// Total bytes freed from the active trace directory.
     pub bytes_freed: u64,
 }
 
@@ -49,6 +59,7 @@ pub struct TraceRotator {
 }
 
 impl TraceRotator {
+    /// Create a rotator with the given configuration.
     pub fn new(config: TraceRotationConfig) -> Self {
         Self { config }
     }

@@ -36,8 +36,11 @@ impl Default for RetentionPolicy {
 /// Outcome of a retention pass.
 #[derive(Debug, Default)]
 pub struct RetentionResult {
+    /// Number of sessions removed during this pass.
     pub sessions_deleted: u32,
+    /// Number of orphan messages removed during this pass.
     pub messages_deleted: u32,
+    /// Estimated bytes freed (based on `SQLite` freelist page delta).
     pub bytes_freed: u64,
 }
 

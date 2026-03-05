@@ -12,37 +12,51 @@ pub struct ProsocheCheck {
 /// Result of a prosoche check.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProsocheResult {
+    /// Items requiring the nous's attention.
     pub items: Vec<AttentionItem>,
+    /// ISO 8601 timestamp when the check was performed.
     pub checked_at: String,
 }
 
 /// A single item requiring attention.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttentionItem {
+    /// What kind of attention is needed.
     pub category: AttentionCategory,
+    /// Human-readable description of the item.
     pub summary: String,
+    /// How urgently this needs attention.
     pub urgency: Urgency,
 }
 
 /// Categories of attention items.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AttentionCategory {
+    /// Calendar event or deadline.
     Calendar,
+    /// Pending task or overdue item.
     Task,
+    /// System health issue (disk, memory, service status).
     SystemHealth,
+    /// Application-defined attention category.
     Custom(String),
 }
 
 /// Urgency level for attention items.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Urgency {
+    /// Informational, no action needed soon.
     Low,
+    /// Should be addressed within the current session.
     Medium,
+    /// Needs attention soon (within hours).
     High,
+    /// Requires immediate action.
     Critical,
 }
 
 impl AttentionItem {
+    /// Short label for this item's category (used in prompt formatting).
     pub fn category_label(&self) -> &str {
         match &self.category {
             AttentionCategory::Calendar => "calendar",
@@ -54,6 +68,7 @@ impl AttentionItem {
 }
 
 impl ProsocheCheck {
+    /// Create a prosoche check for the given nous.
     pub fn new(nous_id: impl Into<String>) -> Self {
         Self {
             nous_id: nous_id.into(),

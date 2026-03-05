@@ -3,12 +3,19 @@
 //! Symbolon (σύμβολον — "token, credential") handles JWT sessions,
 //! API key validation, Argon2id password hashing, and RBAC permission checks.
 
+/// API key generation, validation, and revocation.
 pub mod api_key;
+/// Unified auth facade composing JWT, API keys, passwords, and RBAC.
 pub mod auth;
+/// Symbolon-specific error types and result alias.
 pub mod error;
+/// JWT token issuance, validation, and refresh.
 pub mod jwt;
+/// Argon2id password hashing and verification.
 pub mod password;
+/// `SQLite`-backed credential and token storage.
 pub mod store;
+/// Shared auth types: claims, roles, actions, token kinds.
 pub mod types;
 
 #[cfg(test)]

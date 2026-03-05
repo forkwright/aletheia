@@ -4,9 +4,13 @@
 //! Imports nothing from other Aletheia crates. Contains only types, error definitions,
 //! and tracing initialization.
 
+/// Error types shared across all Aletheia crates (file I/O, JSON, identifiers).
 pub mod error;
+/// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
+/// Sensitive value redaction for safe log output (API keys, tokens, passwords).
 pub mod redact;
+/// Tracing subscriber initialization for human-readable and JSON log output.
 pub mod tracing_init;
 
 // --- Static assertions: key types are Send + Sync ---

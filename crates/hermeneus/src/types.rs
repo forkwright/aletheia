@@ -1,7 +1,7 @@
-//! Provider-agnostic types for LLM interaction.
+//! Anthropic-native types for LLM interaction, with provider adapter support.
 //!
-//! These types abstract across Anthropic, `OpenAI`, and other providers.
-//! The provider implementation translates to/from wire format.
+//! These types model the Anthropic Messages API surface natively. Other providers
+//! get adapter shims that map to what they support.
 
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +27,7 @@ pub enum Role {
 }
 
 impl Role {
+    /// The lowercase wire-format string for this role.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -84,16 +85,22 @@ pub enum ContentBlock {
     /// Tool use request from assistant.
     #[serde(rename = "tool_use")]
     ToolUse {
+        /// Provider-assigned tool use identifier (used to correlate with [`ToolResult`](ContentBlock::ToolResult)).
         id: String,
+        /// Tool name matching a registered [`ToolDefinition::name`].
         name: String,
+        /// Parsed JSON input arguments for the tool.
         input: serde_json::Value,
     },
 
     /// Tool result from user.
     #[serde(rename = "tool_result")]
     ToolResult {
+        /// The [`ToolUse`](ContentBlock::ToolUse) `id` this result responds to.
         tool_use_id: String,
+        /// Tool output content (text).
         content: String,
+        /// Whether the tool execution failed.
         is_error: Option<bool>,
     },
 
@@ -174,6 +181,7 @@ pub enum StopReason {
 }
 
 impl StopReason {
+    /// The `snake_case` wire-format string for this stop reason.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

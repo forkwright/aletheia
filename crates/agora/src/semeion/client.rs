@@ -241,14 +241,19 @@ impl std::fmt::Debug for SignalClient {
 /// Parameters for the signal-cli `send` RPC method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendParams {
+    /// Message text to send.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Phone number recipient (for direct messages).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recipient: Option<String>,
+    /// Group ID recipient (for group messages, mutually exclusive with `recipient`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
+    /// Signal account phone number to send from.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
+    /// File paths to attach to the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<String>>,
 }

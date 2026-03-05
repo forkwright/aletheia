@@ -1,4 +1,7 @@
 //! Taxis-specific errors.
+//!
+//! Covers instance root discovery, configuration file reading, and
+//! YAML/JSON/Figment parsing failures during the configuration cascade.
 
 use snafu::Snafu;
 use std::path::PathBuf;
@@ -60,4 +63,5 @@ pub enum Error {
     },
 }
 
+/// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
