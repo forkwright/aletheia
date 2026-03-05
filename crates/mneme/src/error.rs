@@ -62,6 +62,24 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Agent file version is not supported.
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("unsupported agent file version: {version}"))]
+    UnsupportedVersion {
+        version: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Workspace file path contains unsafe traversal.
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("unsafe path in agent file: {path}"))]
+    UnsafePath {
+        path: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Engine initialization failed.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("engine initialization failed: {message}"))]
