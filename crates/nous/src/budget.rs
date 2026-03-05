@@ -128,8 +128,8 @@ impl TokenBudget {
 
 // --- Time budget (complementary to token budget) ---
 
-use std::time::{Duration, Instant};
 use crate::config::StageBudget;
+use std::time::{Duration, Instant};
 
 /// Tracks wall-clock time per pipeline stage and enforces limits.
 pub struct TimeBudget {
@@ -179,7 +179,8 @@ impl TimeBudget {
         if self.stage_budgets.total_secs == 0 {
             return false;
         }
-        self.pipeline_start.elapsed() >= Duration::from_secs(u64::from(self.stage_budgets.total_secs))
+        self.pipeline_start.elapsed()
+            >= Duration::from_secs(u64::from(self.stage_budgets.total_secs))
     }
 
     /// Wall-clock time remaining before the total pipeline budget expires.
@@ -362,7 +363,10 @@ mod tests {
 
     #[test]
     fn time_budget_unlimited_when_zero() {
-        let tb = TimeBudget::new(StageBudget { total_secs: 0, ..StageBudget::default() });
+        let tb = TimeBudget::new(StageBudget {
+            total_secs: 0,
+            ..StageBudget::default()
+        });
         assert!(!tb.total_exceeded());
         assert!(tb.total_remaining() > Duration::from_secs(1_000_000));
     }
@@ -370,7 +374,9 @@ mod tests {
     #[test]
     fn stage_limit_none_when_both_zero() {
         let tb = TimeBudget::new(StageBudget {
-            execute_secs: 0, total_secs: 0, ..StageBudget::default()
+            execute_secs: 0,
+            total_secs: 0,
+            ..StageBudget::default()
         });
         // execute has 0 stage limit and total is 0
         assert!(tb.stage_limit("execute").is_none());
@@ -379,7 +385,9 @@ mod tests {
     #[test]
     fn stage_limit_capped_by_total() {
         let tb = TimeBudget::new(StageBudget {
-            recall_secs: 999, total_secs: 10, ..StageBudget::default()
+            recall_secs: 999,
+            total_secs: 10,
+            ..StageBudget::default()
         });
         let limit = tb.stage_limit("recall").unwrap();
         assert!(limit <= Duration::from_secs(10));

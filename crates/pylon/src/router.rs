@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::Router;
 use axum::routing::{get, post};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -16,8 +16,11 @@ use tracing::info_span;
 
 use crate::error::ApiError;
 use crate::handlers::{health, metrics, nous, sessions};
+use crate::middleware::{
+    CsrfState, RequestId, enrich_error_response, inject_request_id, record_http_metrics,
+    require_csrf_header,
+};
 use crate::openapi;
-use crate::middleware::{CsrfState, RequestId, enrich_error_response, inject_request_id, record_http_metrics, require_csrf_header};
 use crate::security::SecurityConfig;
 use crate::state::AppState;
 
@@ -83,14 +86,9 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
                 )
             })
             .on_response(
-                |response: &axum::http::Response<_>,
-                 latency: Duration,
-                 span: &tracing::Span| {
+                |response: &axum::http::Response<_>, latency: Duration, span: &tracing::Span| {
                     span.record("http.status_code", response.status().as_u16());
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        reason = "HTTP latency fits in u64"
-                    )]
+                    #[expect(clippy::cast_possible_truncation, reason = "HTTP latency fits in u64")]
                     let duration_ms = latency.as_millis() as u64;
                     tracing::debug!(
                         duration_ms,
@@ -142,8 +140,8 @@ async fn fallback_handler(uri: axum::http::Uri) -> Response {
 
 /// Build a CORS layer from security configuration.
 fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
-    let is_permissive = security.allowed_origins.is_empty()
-        || security.allowed_origins.iter().any(|o| o == "*");
+    let is_permissive =
+        security.allowed_origins.is_empty() || security.allowed_origins.iter().any(|o| o == "*");
 
     if is_permissive {
         return CorsLayer::permissive();
@@ -166,7 +164,10 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
 }
 
 /// Apply standard security response headers.
-fn apply_security_headers(router: Router<Arc<AppState>>, security: &SecurityConfig) -> Router<Arc<AppState>> {
+fn apply_security_headers(
+    router: Router<Arc<AppState>>,
+    security: &SecurityConfig,
+) -> Router<Arc<AppState>> {
     let mut r = router
         .layer(SetResponseHeaderLayer::overriding(
             HeaderName::from_static("x-frame-options"),

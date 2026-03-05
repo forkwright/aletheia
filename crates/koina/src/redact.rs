@@ -27,7 +27,9 @@ static RE_SECRETS: LazyLock<Regex> = LazyLock::new(|| {
 /// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.
 #[must_use]
 pub fn redact_sensitive(value: &str) -> String {
-    let mut result = RE_ANTHROPIC_KEY.replace_all(value, "sk-ant-***").into_owned();
+    let mut result = RE_ANTHROPIC_KEY
+        .replace_all(value, "sk-ant-***")
+        .into_owned();
     result = RE_SK_KEY.replace_all(&result, "sk-***").into_owned();
     result = RE_BEARER.replace_all(&result, "Bearer ***").into_owned();
     result = RE_JWT.replace_all(&result, "[JWT REDACTED]").into_owned();

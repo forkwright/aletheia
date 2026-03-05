@@ -33,6 +33,7 @@ impl MockProvider {
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
                     text: "Hello from eval harness!".to_owned(),
+                    citations: None,
                 }],
                 usage: Usage {
                     input_tokens: 10,
@@ -216,7 +217,10 @@ async fn eval_session_scenarios_pass() {
     let report = runner.run().await;
 
     assert_eq!(report.failed, 0, "session scenarios should all pass");
-    assert!(report.passed > 0, "at least one session scenario should run");
+    assert!(
+        report.passed > 0,
+        "at least one session scenario should run"
+    );
 }
 
 #[tokio::test]
@@ -258,7 +262,13 @@ async fn eval_full_run_with_json_output() {
     let runner = ScenarioRunner::new(config);
     let report = runner.run().await;
 
-    assert_eq!(report.failed, 0, "all scenarios should pass against test harness");
+    assert_eq!(
+        report.failed, 0,
+        "all scenarios should pass against test harness"
+    );
     assert!(report.passed >= 10, "expect at least 10 passing scenarios");
-    assert_eq!(report.skipped, 0, "no scenarios should skip with full auth + nous");
+    assert_eq!(
+        report.skipped, 0,
+        "no scenarios should skip with full auth + nous"
+    );
 }

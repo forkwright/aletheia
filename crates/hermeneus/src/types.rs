@@ -63,8 +63,8 @@ impl Content {
             Self::Blocks(blocks) => blocks
                 .iter()
                 .filter_map(|b| match b {
-                    ContentBlock::Text { text } => Some(text.as_str()),
-                    ContentBlock::Thinking { thinking } => Some(thinking.as_str()),
+                    ContentBlock::Text { text, .. } => Some(text.as_str()),
+                    ContentBlock::Thinking { thinking, .. } => Some(thinking.as_str()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -80,7 +80,11 @@ impl Content {
 pub enum ContentBlock {
     /// Text content.
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        citations: Option<Vec<Citation>>,
+    },
 
     /// Tool use request from assistant.
     #[serde(rename = "tool_use")]
@@ -107,7 +111,11 @@ pub enum ContentBlock {
 
     /// Extended thinking content.
     #[serde(rename = "thinking")]
-    Thinking { thinking: String },
+    Thinking {
+        thinking: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
+    },
 }
 
 /// Tool result content — simple text or rich content blocks.
@@ -208,6 +216,80 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Value,
 }
 
+/// Cache control directive for prompt caching.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheControl {
+    #[serde(rename = "type")]
+    pub control_type: String,
+}
+
+impl CacheControl {
+    #[must_use]
+    pub fn ephemeral() -> Self {
+        Self {
+            control_type: "ephemeral".to_owned(),
+        }
+    }
+}
+
+/// Control tool use behavior.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ToolChoice {
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "any")]
+    Any,
+    #[serde(rename = "tool")]
+    Tool { name: String },
+}
+
+/// Optional request metadata for tracking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+}
+
+/// Citation configuration for requests.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CitationConfig {
+    pub enabled: bool,
+}
+
+/// A source citation in a response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[non_exhaustive]
+pub enum Citation {
+    #[serde(rename = "char_location")]
+    CharLocation {
+        document_index: u32,
+        start_char_index: u32,
+        end_char_index: u32,
+        cited_text: String,
+    },
+    #[serde(rename = "page_location")]
+    PageLocation {
+        document_index: u32,
+        start_page: u32,
+        end_page: u32,
+        cited_text: String,
+    },
+    #[serde(rename = "web_search_result_location")]
+    WebSearchResultLocation {
+        url: String,
+        title: Option<String>,
+        cited_text: String,
+    },
+}
+
+/// Token count result from the `count_tokens` endpoint.
+#[derive(Debug, Clone)]
+pub struct TokenCount {
+    pub input_tokens: u64,
+}
+
 /// Request to the LLM provider.
 #[derive(Debug, Clone)]
 pub struct CompletionRequest {
@@ -227,6 +309,36 @@ pub struct CompletionRequest {
     pub thinking: Option<ThinkingConfig>,
     /// Stop sequences.
     pub stop_sequences: Vec<String>,
+    /// When true, system prompt gets `cache_control: ephemeral`.
+    pub cache_system: bool,
+    /// When true, last tool definition gets `cache_control: ephemeral`.
+    pub cache_tools: bool,
+    /// Control tool use behavior (auto/any/specific tool).
+    pub tool_choice: Option<ToolChoice>,
+    /// Request metadata for tracking.
+    pub metadata: Option<RequestMetadata>,
+    /// Enable citation tracking in responses.
+    pub citations: Option<CitationConfig>,
+}
+
+impl Default for CompletionRequest {
+    fn default() -> Self {
+        Self {
+            model: String::new(),
+            system: None,
+            messages: Vec::new(),
+            max_tokens: 4096,
+            tools: Vec::new(),
+            temperature: None,
+            thinking: None,
+            stop_sequences: Vec::new(),
+            cache_system: false,
+            cache_tools: false,
+            tool_choice: None,
+            metadata: None,
+            citations: None,
+        }
+    }
 }
 
 /// Configuration for extended thinking.
@@ -343,9 +455,11 @@ mod tests {
         let blocks = Content::Blocks(vec![
             ContentBlock::Thinking {
                 thinking: "let me think".to_owned(),
+                signature: None,
             },
             ContentBlock::Text {
                 text: "the answer is 42".to_owned(),
+                citations: None,
             },
         ]);
         assert!(blocks.text().contains("let me think"));
@@ -405,7 +519,10 @@ mod tests {
         };
         let json = serde_json::to_string(&block).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(v["content"].is_string(), "Text should serialize as bare string");
+        assert!(
+            v["content"].is_string(),
+            "Text should serialize as bare string"
+        );
         assert_eq!(v["content"], "hello");
     }
 
@@ -505,6 +622,114 @@ mod tests {
     }
 
     #[test]
+    fn citation_char_location_serde() {
+        let citation = Citation::CharLocation {
+            document_index: 0,
+            start_char_index: 10,
+            end_char_index: 50,
+            cited_text: "some text".to_owned(),
+        };
+        let json = serde_json::to_string(&citation).unwrap();
+        let back: Citation = serde_json::from_str(&json).unwrap();
+        match back {
+            Citation::CharLocation {
+                document_index,
+                start_char_index,
+                ..
+            } => {
+                assert_eq!(document_index, 0);
+                assert_eq!(start_char_index, 10);
+            }
+            _ => panic!("expected CharLocation"),
+        }
+    }
+
+    #[test]
+    fn thinking_signature_roundtrip() {
+        let block = ContentBlock::Thinking {
+            thinking: "deep thoughts".to_owned(),
+            signature: Some("sig_xyz".to_owned()),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        match back {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
+                assert_eq!(thinking, "deep thoughts");
+                assert_eq!(signature.as_deref(), Some("sig_xyz"));
+            }
+            _ => panic!("expected Thinking"),
+        }
+    }
+
+    #[test]
+    fn thinking_no_signature_roundtrip() {
+        let block = ContentBlock::Thinking {
+            thinking: "brief".to_owned(),
+            signature: None,
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        match back {
+            ContentBlock::Thinking { signature, .. } => {
+                assert!(signature.is_none());
+            }
+            _ => panic!("expected Thinking"),
+        }
+    }
+
+    #[test]
+    fn completion_request_default() {
+        let req = CompletionRequest::default();
+        assert!(req.model.is_empty());
+        assert!(req.system.is_none());
+        assert!(req.messages.is_empty());
+        assert_eq!(req.max_tokens, 4096);
+        assert!(!req.cache_system);
+        assert!(!req.cache_tools);
+        assert!(req.tool_choice.is_none());
+        assert!(req.metadata.is_none());
+        assert!(req.citations.is_none());
+    }
+
+    #[test]
+    fn tool_choice_serde() {
+        let auto = ToolChoice::Auto;
+        let json = serde_json::to_string(&auto).unwrap();
+        assert!(json.contains("\"type\":\"auto\""));
+
+        let tool = ToolChoice::Tool {
+            name: "exec".to_owned(),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        assert!(json.contains("\"type\":\"tool\""));
+        assert!(json.contains("\"name\":\"exec\""));
+    }
+
+    #[test]
+    fn text_block_with_citations_serde() {
+        let block = ContentBlock::Text {
+            text: "cited text".to_owned(),
+            citations: Some(vec![Citation::CharLocation {
+                document_index: 0,
+                start_char_index: 0,
+                end_char_index: 10,
+                cited_text: "source".to_owned(),
+            }]),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        match back {
+            ContentBlock::Text { citations, .. } => {
+                assert_eq!(citations.unwrap().len(), 1);
+            }
+            _ => panic!("expected Text"),
+        }
+    }
+
+    #[test]
     fn completion_response_serde() {
         let response = CompletionResponse {
             id: "msg_123".to_owned(),
@@ -512,6 +737,7 @@ mod tests {
             stop_reason: StopReason::EndTurn,
             content: vec![ContentBlock::Text {
                 text: "Hello!".to_owned(),
+                citations: None,
             }],
             usage: Usage {
                 input_tokens: 100,

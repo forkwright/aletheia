@@ -4,9 +4,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use aletheia_nous::manager::NousManager;
 use aletheia_oikonomos::bridge::DaemonBridge;
 use aletheia_oikonomos::runner::ExecutionResult;
-use aletheia_nous::manager::NousManager;
 
 pub(crate) struct NousDaemonBridge {
     nous_manager: Arc<NousManager>,

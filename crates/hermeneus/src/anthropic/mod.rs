@@ -4,6 +4,7 @@
 //! and error classification. Re-exports `AnthropicProvider` and `StreamEvent`
 //! as the public surface.
 
+pub mod batch;
 mod client;
 pub(crate) mod error;
 pub(crate) mod stream;

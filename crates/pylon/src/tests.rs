@@ -36,6 +36,7 @@ impl MockProvider {
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
                     text: "Hello from mock!".to_owned(),
+                    citations: None,
                 }],
                 usage: Usage {
                     input_tokens: 10,
@@ -531,7 +532,9 @@ async fn history_with_limit() {
 
     let resp = router
         .clone()
-        .oneshot(authed_get(&format!("/api/v1/sessions/{id}/history?limit=3")))
+        .oneshot(authed_get(&format!(
+            "/api/v1/sessions/{id}/history?limit=3"
+        )))
         .await
         .unwrap();
 
@@ -671,7 +674,10 @@ async fn error_response_has_consistent_structure() {
     assert!(body["error"].is_object());
     assert!(body["error"]["code"].is_string());
     assert!(body["error"]["message"].is_string());
-    assert!(body["error"]["request_id"].is_string(), "error response must include request_id");
+    assert!(
+        body["error"]["request_id"].is_string(),
+        "error response must include request_id"
+    );
 }
 
 #[tokio::test]
@@ -958,7 +964,12 @@ async fn old_api_sessions_path_returns_gone() {
     assert_eq!(resp.status(), StatusCode::GONE);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "api_version_required");
-    assert!(body["error"]["message"].as_str().unwrap().contains("/api/v1/sessions"));
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("/api/v1/sessions")
+    );
 }
 
 #[tokio::test]
@@ -972,21 +983,35 @@ async fn old_api_nous_path_returns_gone() {
     assert_eq!(resp.status(), StatusCode::GONE);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "api_version_required");
-    assert!(body["error"]["message"].as_str().unwrap().contains("/api/v1/nous"));
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("/api/v1/nous")
+    );
 }
 
 #[tokio::test]
 async fn fallback_404_returns_json_error() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(Request::get("/totally/unknown/path").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/totally/unknown/path")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .expect("response");
 
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "not_found");
-    assert!(body["error"]["message"].as_str().unwrap().contains("/totally/unknown/path"));
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("/totally/unknown/path")
+    );
     assert!(body["error"]["request_id"].is_string());
 }
 
@@ -1017,18 +1042,12 @@ async fn security_headers_present_on_response() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(
-        resp.headers().get("x-frame-options").unwrap(),
-        "DENY"
-    );
+    assert_eq!(resp.headers().get("x-frame-options").unwrap(), "DENY");
     assert_eq!(
         resp.headers().get("x-content-type-options").unwrap(),
         "nosniff"
     );
-    assert_eq!(
-        resp.headers().get("x-xss-protection").unwrap(),
-        "0"
-    );
+    assert_eq!(resp.headers().get("x-xss-protection").unwrap(), "0");
     assert_eq!(
         resp.headers().get("referrer-policy").unwrap(),
         "strict-origin-when-cross-origin"
@@ -1044,7 +1063,10 @@ async fn security_headers_present_on_response() {
 #[tokio::test]
 async fn hsts_header_present_when_tls_enabled() {
     let (state, _dir) = test_state().await;
-    let security = SecurityConfig { tls_enabled: true, ..SecurityConfig::default() };
+    let security = SecurityConfig {
+        tls_enabled: true,
+        ..SecurityConfig::default()
+    };
     let router = build_router(state, &security);
 
     let resp = router
@@ -1063,7 +1085,10 @@ async fn hsts_header_present_when_tls_enabled() {
 #[tokio::test]
 async fn oversized_body_returns_413() {
     let (state, _dir) = test_state().await;
-    let security = SecurityConfig { body_limit_bytes: 100, ..SecurityConfig::default() };
+    let security = SecurityConfig {
+        body_limit_bytes: 100,
+        ..SecurityConfig::default()
+    };
     let router = build_router(state, &security);
 
     let big_body = "x".repeat(200);
@@ -1085,7 +1110,10 @@ async fn oversized_body_returns_413() {
 #[tokio::test]
 async fn csrf_rejects_post_without_header() {
     let (state, _dir) = test_state().await;
-    let security = SecurityConfig { csrf_enabled: true, ..SecurityConfig::default() };
+    let security = SecurityConfig {
+        csrf_enabled: true,
+        ..SecurityConfig::default()
+    };
     let router = build_router(state, &security);
 
     let req = authed_request(
@@ -1104,7 +1132,10 @@ async fn csrf_rejects_post_without_header() {
 #[tokio::test]
 async fn csrf_allows_post_with_correct_header() {
     let (state, _dir) = test_state().await;
-    let security = SecurityConfig { csrf_enabled: true, ..SecurityConfig::default() };
+    let security = SecurityConfig {
+        csrf_enabled: true,
+        ..SecurityConfig::default()
+    };
     let router = build_router(state, &security);
 
     let token = default_token();
@@ -1130,13 +1161,13 @@ async fn csrf_allows_post_with_correct_header() {
 #[tokio::test]
 async fn csrf_allows_get_without_header() {
     let (state, _dir) = test_state().await;
-    let security = SecurityConfig { csrf_enabled: true, ..SecurityConfig::default() };
+    let security = SecurityConfig {
+        csrf_enabled: true,
+        ..SecurityConfig::default()
+    };
     let router = build_router(state, &security);
 
-    let resp = router
-        .oneshot(authed_get("/api/v1/nous"))
-        .await
-        .unwrap();
+    let resp = router.oneshot(authed_get("/api/v1/nous")).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
 }
@@ -1147,21 +1178,32 @@ async fn csrf_allows_get_without_header() {
 async fn openapi_spec_returns_valid_json() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(Request::get("/api/docs/openapi.json").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     let version = body["openapi"].as_str().unwrap();
-    assert!(version.starts_with("3."), "expected OpenAPI 3.x, got {version}");
+    assert!(
+        version.starts_with("3."),
+        "expected OpenAPI 3.x, got {version}"
+    );
 }
 
 #[tokio::test]
 async fn openapi_spec_has_all_paths() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(Request::get("/api/docs/openapi.json").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -1181,7 +1223,11 @@ async fn openapi_spec_has_all_paths() {
 async fn openapi_docs_no_auth_required() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(Request::get("/api/docs/openapi.json").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -1192,7 +1238,11 @@ async fn openapi_docs_no_auth_required() {
 async fn openapi_spec_has_schemas() {
     let (app, _dir) = app().await;
     let resp = app
-        .oneshot(Request::get("/api/docs/openapi.json").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -1316,7 +1366,10 @@ async fn cors_permissive_when_no_origins_configured() {
 #[tokio::test]
 async fn cors_rejects_unlisted_origin() {
     let (state, _dir) = test_state().await;
-    let security = SecurityConfig { allowed_origins: vec!["http://localhost:3000".to_owned()], ..SecurityConfig::default() };
+    let security = SecurityConfig {
+        allowed_origins: vec!["http://localhost:3000".to_owned()],
+        ..SecurityConfig::default()
+    };
     let router = build_router(state, &security);
 
     let req = Request::builder()
@@ -1330,8 +1383,5 @@ async fn cors_rejects_unlisted_origin() {
     let resp = router.oneshot(req).await.unwrap();
     // Should not have the evil origin in access-control-allow-origin
     let allow_origin = resp.headers().get("access-control-allow-origin");
-    assert!(
-        allow_origin.is_none()
-            || allow_origin.unwrap() != "http://evil.example.com"
-    );
+    assert!(allow_origin.is_none() || allow_origin.unwrap() != "http://evil.example.com");
 }

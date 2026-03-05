@@ -103,18 +103,16 @@ impl From<aletheia_hermeneus::error::Error> for ApiError {
     fn from(err: aletheia_hermeneus::error::Error) -> Self {
         use aletheia_hermeneus::error::Error;
         match err {
-            Error::RateLimited { retry_after_ms, .. } => {
-                Self::RateLimited { retry_after_ms }
-            }
+            Error::RateLimited { retry_after_ms, .. } => Self::RateLimited { retry_after_ms },
             Error::AuthFailed { message, .. } => Self::ServiceUnavailable {
                 message: format!("provider auth failed: {message}"),
             },
-            Error::ApiError { status: 429, .. } => Self::RateLimited {
-                retry_after_ms: 0,
-            },
-            Error::ApiError { status: 503, message, .. } => {
-                Self::ServiceUnavailable { message }
-            }
+            Error::ApiError { status: 429, .. } => Self::RateLimited { retry_after_ms: 0 },
+            Error::ApiError {
+                status: 503,
+                message,
+                ..
+            } => Self::ServiceUnavailable { message },
             _ => Self::Internal {
                 message: err.to_string(),
             },

@@ -20,7 +20,8 @@ use aletheia_mneme::types::SessionStatus;
 use aletheia_nous::pipeline::TurnResult;
 
 use crate::error::{
-    ApiError, BadRequestSnafu, ErrorResponse, InternalSnafu, NousNotFoundSnafu, SessionNotFoundSnafu,
+    ApiError, BadRequestSnafu, ErrorResponse, InternalSnafu, NousNotFoundSnafu,
+    SessionNotFoundSnafu,
 };
 use crate::extract::Claims;
 use crate::state::AppState;

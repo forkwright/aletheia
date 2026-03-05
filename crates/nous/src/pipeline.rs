@@ -884,7 +884,10 @@ mod tests {
             fn supported_models(&self) -> &[&str] {
                 &["test-model"]
             }
-            #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
+            #[expect(
+                clippy::unnecessary_literal_bound,
+                reason = "trait requires &str return"
+            )]
             fn name(&self) -> &str {
                 "mock"
             }
@@ -913,6 +916,7 @@ mod tests {
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
                     text: "Hello from pipeline!".to_owned(),
+                    citations: None,
                 }],
                 usage: Usage {
                     input_tokens: 100,

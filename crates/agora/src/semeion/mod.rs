@@ -164,10 +164,7 @@ impl SignalProvider {
             .map(|(k, v)| (k.as_str(), v))
     }
 
-    fn build_send_params(
-        account: &str,
-        params: &ChannelSendParams,
-    ) -> client::SendParams {
+    fn build_send_params(account: &str, params: &ChannelSendParams) -> client::SendParams {
         let target = parse_target(&params.to);
         match target {
             SignalTarget::Phone(ref phone) => client::SendParams {
@@ -305,8 +302,7 @@ impl ChannelProvider for SignalProvider {
                     );
                 }
 
-                account_results
-                    .insert(account_id.clone(), serde_json::Value::Object(detail));
+                account_results.insert(account_id.clone(), serde_json::Value::Object(detail));
             }
 
             ProbeResult {

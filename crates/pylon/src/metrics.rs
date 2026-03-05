@@ -3,8 +3,8 @@
 use std::sync::LazyLock;
 
 use prometheus::{
-    Gauge, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, Opts,
-    register_gauge, register_histogram_vec, register_int_counter_vec, register_int_gauge,
+    Gauge, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, Opts, register_gauge,
+    register_histogram_vec, register_int_counter_vec, register_int_gauge,
 };
 
 static HTTP_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
@@ -21,7 +21,9 @@ static HTTP_REQUEST_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| 
             "aletheia_http_request_duration_seconds",
             "HTTP request duration in seconds"
         )
-        .buckets(vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]),
+        .buckets(vec![
+            0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
+        ]),
         &["method", "path"]
     )
     .expect("metric registration")

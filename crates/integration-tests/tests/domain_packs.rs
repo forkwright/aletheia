@@ -32,6 +32,7 @@ impl CapturingMockProvider {
                 stop_reason: StopReason::EndTurn,
                 content: vec![ContentBlock::Text {
                     text: "Hello from mock!".to_owned(),
+                    citations: None,
                 }],
                 usage: Usage {
                     input_tokens: 10,
