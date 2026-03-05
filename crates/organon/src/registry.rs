@@ -167,6 +167,7 @@ mod tests {
             session_id: SessionId::new(),
             workspace: std::path::PathBuf::from("/tmp/test"),
             allowed_roots: vec![std::path::PathBuf::from("/tmp")],
+            services: None,
         }
     }
 

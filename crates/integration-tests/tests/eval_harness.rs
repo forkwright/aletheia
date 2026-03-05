@@ -92,6 +92,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         Some(Arc::clone(&session_store)),
         Arc::new(vec![]),
         None,
+        None,
     );
 
     let nous_config = NousConfig {

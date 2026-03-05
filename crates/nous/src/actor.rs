@@ -14,7 +14,7 @@ use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_koina::id::{NousId, SessionId};
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_organon::registry::ToolRegistry;
-use aletheia_organon::types::ToolContext;
+use aletheia_organon::types::{ToolContext, ToolServices};
 use aletheia_taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;
@@ -46,6 +46,7 @@ pub struct NousActor {
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
+    tool_services: Option<Arc<ToolServices>>,
     extra_bootstrap: Vec<BootstrapSection>,
 }
 
@@ -68,6 +69,7 @@ impl NousActor {
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
         session_store: Option<Arc<Mutex<SessionStore>>>,
+        tool_services: Option<Arc<ToolServices>>,
         extra_bootstrap: Vec<BootstrapSection>,
     ) -> Self {
         Self {
@@ -85,6 +87,7 @@ impl NousActor {
             embedding_provider,
             vector_search,
             session_store,
+            tool_services,
             extra_bootstrap,
         }
     }
@@ -215,6 +218,7 @@ impl NousActor {
             session_id: SessionId::new(),
             workspace: self.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.oikos.root().to_path_buf()],
+            services: self.tool_services.clone(),
         };
 
         crate::pipeline::run_pipeline(
@@ -356,6 +360,7 @@ pub fn spawn(
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
+    tool_services: Option<Arc<aletheia_organon::types::ToolServices>>,
     extra_bootstrap: Vec<BootstrapSection>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
 ) -> (NousHandle, tokio::task::JoinHandle<()>) {
@@ -375,6 +380,7 @@ pub fn spawn(
         embedding_provider,
         vector_search,
         session_store,
+        tool_services,
         extra_bootstrap,
     );
 
@@ -472,6 +478,7 @@ mod tests {
             providers,
             tools,
             oikos,
+            None,
             None,
             None,
             None,

@@ -132,6 +132,7 @@ context:
         None,
         Arc::new(packs),
         None,
+        None,
     );
 
     let config = NousConfig {
@@ -262,6 +263,7 @@ overlays:
         None,
         Arc::new(packs.clone()),
         None,
+        None,
     );
 
     let chiron_config = NousConfig {
@@ -292,6 +294,7 @@ overlays:
         None,
         None,
         Arc::new(packs),
+        None,
         None,
     );
 

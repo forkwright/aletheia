@@ -191,6 +191,7 @@ mod tests {
             session_id: SessionId::new(),
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
+            services: None,
         }
     }
 

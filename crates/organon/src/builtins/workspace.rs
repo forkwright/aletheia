@@ -487,6 +487,7 @@ mod tests {
             session_id: SessionId::new(),
             workspace: dir.to_path_buf(),
             allowed_roots: vec![dir.to_path_buf()],
+            services: None,
         }
     }
 

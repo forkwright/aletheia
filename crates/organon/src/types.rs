@@ -1,6 +1,9 @@
 //! Core types for tool definitions, input/output, and execution context.
 
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use aletheia_koina::id::{NousId, SessionId, ToolName};
 use indexmap::IndexMap;
@@ -244,6 +247,54 @@ impl ToolStats {
     }
 }
 
+/// Cross-nous message routing for tool executors.
+pub trait CrossNousService: Send + Sync {
+    /// Fire-and-forget send to another agent.
+    fn send(
+        &self,
+        from: &str,
+        to: &str,
+        session_key: &str,
+        content: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+
+    /// Send and wait for a reply from another agent.
+    fn ask(
+        &self,
+        from: &str,
+        to: &str,
+        session_key: &str,
+        content: &str,
+        timeout_secs: u64,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+}
+
+/// Outbound message delivery (Signal, etc.) for tool executors.
+pub trait MessageService: Send + Sync {
+    /// Send a text message to a recipient.
+    fn send_message(
+        &self,
+        to: &str,
+        text: &str,
+        from_nous: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+}
+
+/// Service locator for tool executors needing access to runtime services.
+pub struct ToolServices {
+    pub cross_nous: Option<Arc<dyn CrossNousService>>,
+    pub messenger: Option<Arc<dyn MessageService>>,
+}
+
+impl std::fmt::Debug for ToolServices {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolServices")
+            .field("cross_nous", &self.cross_nous.is_some())
+            .field("messenger", &self.messenger.is_some())
+            .finish()
+    }
+}
+
 /// Execution context passed to every tool invocation.
 #[derive(Debug, Clone)]
 pub struct ToolContext {
@@ -255,6 +306,8 @@ pub struct ToolContext {
     pub workspace: PathBuf,
     /// Allowed filesystem roots for sandboxing.
     pub allowed_roots: Vec<PathBuf>,
+    /// Optional runtime services for tools that need cross-cutting capabilities.
+    pub services: Option<Arc<ToolServices>>,
 }
 
 #[cfg(test)]
