@@ -151,6 +151,24 @@ enum Command {
         #[arg(long)]
         compact: bool,
     },
+    /// Launch the terminal dashboard
+    Tui {
+        /// Gateway URL
+        #[arg(short, long, env = "ALETHEIA_URL")]
+        url: Option<String>,
+        /// Bearer token for authentication
+        #[arg(short, long, env = "ALETHEIA_TOKEN")]
+        token: Option<String>,
+        /// Agent to focus on startup
+        #[arg(short, long)]
+        agent: Option<String>,
+        /// Session to open
+        #[arg(short, long)]
+        session: Option<String>,
+        /// Clear saved credentials
+        #[arg(long)]
+        logout: bool,
+    },
     /// Import an agent from a portable .agent.json file
     Import {
         /// Path to .agent.json file
@@ -227,6 +245,27 @@ async fn main() -> Result<()> {
         Some(Command::Status { url }) => return status::run(url, cli.instance_root.as_ref()).await,
         Some(Command::Credential { action }) => {
             return handle_credential(action.clone(), cli.instance_root.as_ref()).await;
+        }
+        #[cfg(feature = "tui")]
+        Some(Command::Tui {
+            url,
+            token,
+            agent,
+            session,
+            logout,
+        }) => {
+            return aletheia_tui::run_tui(
+                url.clone(),
+                token.clone(),
+                agent.clone(),
+                session.clone(),
+                *logout,
+            )
+            .await;
+        }
+        #[cfg(not(feature = "tui"))]
+        Some(Command::Tui { .. }) => {
+            anyhow::bail!("TUI not available — rebuild with `--features tui`");
         }
         Some(Command::Eval {
             url,

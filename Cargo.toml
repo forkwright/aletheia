@@ -17,8 +17,6 @@ members = [
     "crates/symbolon",
     "crates/taxis",
     "crates/thesauros",
-]
-exclude = [
     "tui",
 ]
 
