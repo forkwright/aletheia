@@ -1,5 +1,6 @@
 mod api;
 mod command;
+mod filter;
 mod input;
 mod navigation;
 mod overlay;
@@ -43,6 +44,16 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::Submit => input::handle_submit(app),
         Msg::CopyLastResponse => input::handle_copy_last_response(app),
         Msg::ComposeInEditor => input::handle_compose_in_editor(app),
+
+        // --- Filter ---
+        Msg::FilterOpen => filter::handle_open(app),
+        Msg::FilterClose => filter::handle_close(app),
+        Msg::FilterInput(c) => filter::handle_input(app, c),
+        Msg::FilterBackspace => filter::handle_backspace(app),
+        Msg::FilterClear => filter::handle_clear(app),
+        Msg::FilterConfirm => filter::handle_confirm(app),
+        Msg::FilterNextMatch => filter::handle_next_match(app),
+        Msg::FilterPrevMatch => filter::handle_prev_match(app),
 
         // --- Command palette ---
         Msg::CommandPaletteOpen => command::handle_open(app),

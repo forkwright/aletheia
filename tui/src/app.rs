@@ -15,7 +15,7 @@ use crate::view;
 
 #[expect(unused_imports, reason = "re-exported for downstream modules that import from crate::app")]
 pub use crate::state::{
-    AgentState, AgentStatus, ChatMessage, CommandPaletteState, InputState, Overlay,
+    AgentState, AgentStatus, ChatMessage, CommandPaletteState, FilterState, InputState, Overlay,
     PlanApprovalOverlay, PlanStepApproval, SelectionContext, TabCompletion,
     ToolApprovalOverlay, ToolCallInfo,
 };
@@ -85,13 +85,15 @@ pub struct App {
 
     // Status bar enhanced fields
     pub session_cost_cents: u32,
-    pub active_filter: Option<String>,
     pub context_usage_pct: Option<u8>,
     pub selection: SelectionContext,
 
     // Message selection (None = auto-scroll mode, Some(index) = message selected)
     pub selected_message: Option<usize>,
     pub tool_expanded: HashSet<String>,
+
+    // Live filter (`/` mode)
+    pub filter: FilterState,
 }
 
 impl App {
@@ -135,11 +137,11 @@ impl App {
             terminal_height: 40,
             command_palette: CommandPaletteState::default(),
             session_cost_cents: 0,
-            active_filter: Option::None,
             context_usage_pct: Option::None,
             selection: SelectionContext::default(),
             selected_message: None,
             tool_expanded: HashSet::new(),
+            filter: FilterState::default(),
         };
 
         app.connect().await?;

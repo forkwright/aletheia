@@ -42,6 +42,16 @@ pub enum Msg {
     SelectLast,                          // G or End in selection mode
     MessageAction(MessageActionKind),    // Action on selected message
 
+    // --- Filter (`/` mode) ---
+    FilterOpen,
+    FilterClose,
+    FilterInput(char),
+    FilterBackspace,
+    FilterClear,     // Ctrl+U — clear text, stay in edit mode
+    FilterConfirm,   // Enter — lock filter, exit edit mode
+    FilterNextMatch, // n — jump to next match
+    FilterPrevMatch, // N — jump to previous match
+
     // --- Navigation ---
     ScrollUp,
     ScrollDown,

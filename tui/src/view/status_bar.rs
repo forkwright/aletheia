@@ -42,9 +42,13 @@ fn render_info_bar(app: &App, width: u16, theme: &ThemePalette) -> Line<'static>
     left_spans.push(Span::styled(" │ ", theme.style_dim()));
     left_spans.push(connection_indicator_span(app, theme));
 
-    if let Some(ref filter) = app.active_filter {
+    if app.filter.active && !app.filter.editing && !app.filter.text.is_empty() {
         left_spans.push(Span::styled(" │ ", theme.style_dim()));
-        left_spans.push(Span::styled(format!("/{filter}"), theme.style_accent()));
+        left_spans.push(Span::styled(
+            format!("/{}", app.filter.text),
+            theme.style_accent(),
+        ));
+        left_spans.push(Span::styled(" (Esc to clear)", theme.style_dim()));
     }
 
     right_spans.extend(cost_spans(app, theme));
