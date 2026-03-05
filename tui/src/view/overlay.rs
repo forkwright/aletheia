@@ -90,7 +90,7 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 
     lines.push(Line::raw(""));
 
-    let label = keybindings::context_label(&app.overlay);
+    let label = keybindings::context_label(app);
     let title = format!("Help — {label}");
     let block = overlay_block(&title, theme);
     let paragraph = Paragraph::new(lines)

@@ -1,5 +1,5 @@
 /// Context-aware keybinding registry — single source of truth for help overlay and status bar hints.
-use crate::app::{App, Overlay};
+use crate::app::{App, Overlay, SelectionContext};
 
 pub struct Keybinding {
     pub keys: &'static str,
@@ -12,6 +12,10 @@ pub struct Keybinding {
 pub enum KeyContext {
     Global,
     Chat,
+    Selection,
+    Filter,
+    CommandPalette,
+    SessionList,
     Input,
     Overlay,
     ToolApproval,
@@ -23,6 +27,10 @@ impl KeyContext {
         match self {
             Self::Global => "Global",
             Self::Chat => "Chat",
+            Self::Selection => "Selection",
+            Self::Filter => "Filter",
+            Self::CommandPalette => "Command Palette",
+            Self::SessionList => "Session List",
             Self::Input => "Input",
             Self::Overlay => "Overlay",
             Self::ToolApproval => "Tool Approval",
@@ -32,7 +40,12 @@ impl KeyContext {
 
     fn display_order(self) -> u8 {
         match self {
-            Self::ToolApproval | Self::PlanApproval => 0,
+            Self::ToolApproval
+            | Self::PlanApproval
+            | Self::Selection
+            | Self::Filter
+            | Self::CommandPalette
+            | Self::SessionList => 0,
             Self::Chat => 1,
             Self::Input => 2,
             Self::Overlay => 3,
@@ -43,56 +56,25 @@ impl KeyContext {
 
 pub fn all_keybindings() -> &'static [Keybinding] {
     &[
-        // --- Global ---
+        // --- Chat (empty-input triggers) ---
         Keybinding {
             keys: "?",
-            description: "Help for current view",
-            contexts: &[KeyContext::Global],
-            show_in_status_bar: false,
+            description: "Help",
+            contexts: &[KeyContext::Chat],
+            show_in_status_bar: true,
         },
         Keybinding {
             keys: ":",
             description: "Command palette",
-            contexts: &[KeyContext::Global],
+            contexts: &[KeyContext::Chat],
             show_in_status_bar: true,
         },
         Keybinding {
-            keys: "Ctrl+A",
-            description: "Switch agent",
-            contexts: &[KeyContext::Global],
+            keys: "/",
+            description: "Filter",
+            contexts: &[KeyContext::Chat],
             show_in_status_bar: true,
         },
-        Keybinding {
-            keys: "Ctrl+F",
-            description: "Toggle sidebar",
-            contexts: &[KeyContext::Global],
-            show_in_status_bar: false,
-        },
-        Keybinding {
-            keys: "Ctrl+T",
-            description: "Toggle thinking",
-            contexts: &[KeyContext::Global],
-            show_in_status_bar: false,
-        },
-        Keybinding {
-            keys: "Ctrl+I",
-            description: "System status",
-            contexts: &[KeyContext::Global],
-            show_in_status_bar: true,
-        },
-        Keybinding {
-            keys: "Ctrl+N",
-            description: "New session",
-            contexts: &[KeyContext::Global],
-            show_in_status_bar: true,
-        },
-        Keybinding {
-            keys: "Ctrl+C/Q",
-            description: "Quit",
-            contexts: &[KeyContext::Global],
-            show_in_status_bar: true,
-        },
-        // --- Chat ---
         Keybinding {
             keys: "Ctrl+Y",
             description: "Copy last response",
@@ -128,6 +110,118 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             description: "Scroll / click agent",
             contexts: &[KeyContext::Chat],
             show_in_status_bar: false,
+        },
+        // --- Selection ---
+        Keybinding {
+            keys: "j / \u{2193}",
+            description: "Next message",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "k / \u{2191}",
+            description: "Previous message",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "c",
+            description: "Copy message",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "y",
+            description: "Yank code block",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "e",
+            description: "Edit and resend",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "d",
+            description: "Delete message",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "o",
+            description: "Open links",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "i",
+            description: "Inspect tool call",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Esc",
+            description: "Deselect",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: true,
+        },
+        // --- Filter ---
+        Keybinding {
+            keys: "Enter",
+            description: "Lock filter",
+            contexts: &[KeyContext::Filter],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Esc",
+            description: "Clear filter",
+            contexts: &[KeyContext::Filter],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "n / N",
+            description: "Next / prev match",
+            contexts: &[KeyContext::Filter],
+            show_in_status_bar: true,
+        },
+        // --- Command Palette ---
+        Keybinding {
+            keys: "Enter",
+            description: "Execute command",
+            contexts: &[KeyContext::CommandPalette],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Tab",
+            description: "Autocomplete",
+            contexts: &[KeyContext::CommandPalette],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Esc",
+            description: "Close palette",
+            contexts: &[KeyContext::CommandPalette],
+            show_in_status_bar: false,
+        },
+        // --- Session List ---
+        Keybinding {
+            keys: "Enter",
+            description: "Open session",
+            contexts: &[KeyContext::SessionList],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "d",
+            description: "Delete session",
+            contexts: &[KeyContext::SessionList],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "n",
+            description: "New session",
+            contexts: &[KeyContext::SessionList],
+            show_in_status_bar: true,
         },
         // --- Input ---
         Keybinding {
@@ -185,6 +279,49 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Overlay],
             show_in_status_bar: false,
         },
+        // --- Global ---
+        Keybinding {
+            keys: "F1",
+            description: "Help",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+A",
+            description: "Switch agent",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+F",
+            description: "Toggle sidebar",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+T",
+            description: "Toggle thinking",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+I",
+            description: "System status",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+N",
+            description: "New session",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+C/Q",
+            description: "Quit",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
         // --- Tool Approval ---
         Keybinding {
             keys: "A",
@@ -220,10 +357,21 @@ pub fn all_keybindings() -> &'static [Keybinding] {
     ]
 }
 
+/// Determine active contexts. Help overlay is transparent — it shows the underlying context.
 pub fn current_contexts(app: &App) -> Vec<KeyContext> {
     let mut contexts = vec![KeyContext::Global];
 
     match &app.overlay {
+        Some(Overlay::Help) | None => {
+            if app.command_palette.active {
+                contexts.push(KeyContext::CommandPalette);
+            } else if app.selection != SelectionContext::None {
+                contexts.push(KeyContext::Selection);
+            } else {
+                contexts.push(KeyContext::Chat);
+                contexts.push(KeyContext::Input);
+            }
+        }
         Some(Overlay::ToolApproval(_)) => {
             contexts.push(KeyContext::ToolApproval);
             contexts.push(KeyContext::Overlay);
@@ -235,19 +383,23 @@ pub fn current_contexts(app: &App) -> Vec<KeyContext> {
         Some(_) => {
             contexts.push(KeyContext::Overlay);
         }
-        None => {
-            contexts.push(KeyContext::Chat);
-            contexts.push(KeyContext::Input);
-        }
     }
 
     contexts
 }
 
-pub fn context_label(overlay: &Option<Overlay>) -> &'static str {
-    match overlay {
-        None => "Chat",
-        Some(Overlay::Help) => "Help",
+/// Label for the help overlay title — reflects the source context, not the overlay itself.
+pub fn context_label(app: &App) -> &'static str {
+    match &app.overlay {
+        Some(Overlay::Help) | None => {
+            if app.command_palette.active {
+                "Command Palette"
+            } else if app.selection != SelectionContext::None {
+                "Selection"
+            } else {
+                "Chat"
+            }
+        }
         Some(Overlay::AgentPicker { .. }) => "Agent Picker",
         Some(Overlay::ToolApproval(_)) => "Tool Approval",
         Some(Overlay::PlanApproval(_)) => "Plan Approval",
@@ -292,13 +444,27 @@ pub fn grouped_keybindings(
     groups
 }
 
+/// Status bar hints: mode-specific bindings first, truncated to fit.
 pub fn status_bar_hints(app: &App) -> Vec<(&'static str, &'static str)> {
     let contexts = current_contexts(app);
 
-    all_keybindings()
+    let mut bindings: Vec<&Keybinding> = all_keybindings()
         .iter()
         .filter(|kb| kb.show_in_status_bar)
         .filter(|kb| kb.contexts.iter().any(|c| contexts.contains(c)))
+        .collect();
+
+    bindings.sort_by_key(|kb| {
+        kb.contexts
+            .iter()
+            .map(|c| c.display_order())
+            .min()
+            .unwrap_or(255)
+    });
+
+    bindings
+        .iter()
         .map(|kb| (kb.keys, kb.description))
+        .take(8)
         .collect()
 }
