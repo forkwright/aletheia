@@ -6,6 +6,8 @@
 //!
 //! Depends on all foundation crates: koina, taxis, mneme, hermeneus.
 
+/// Trait adapters bridging organon tool traits to mneme SessionStore.
+pub mod adapters;
 /// Tokio actor driving a single nous instance's message loop.
 pub mod actor;
 /// System prompt assembly from workspace files and domain packs.

@@ -196,6 +196,17 @@ pub struct UsageRecord {
     pub model: Option<String>,
 }
 
+/// Blackboard entry — shared agent state with TTL.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlackboardRow {
+    pub key: String,
+    pub value: String,
+    pub author_nous_id: String,
+    pub ttl_seconds: i64,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+}
+
 /// Agent note — explicit agent-written context that survives distillation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentNote {

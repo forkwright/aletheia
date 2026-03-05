@@ -441,6 +441,9 @@ mod tests {
         let messenger = Arc::new(MockMessenger::default());
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: None,
+            note_store: None,
+            blackboard_store: None,
+            http_client: reqwest::Client::new(),
             messenger: Some(messenger),
         });
         let mut reg = ToolRegistry::new();
@@ -461,6 +464,9 @@ mod tests {
         let messenger_ref = Arc::clone(&messenger);
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: None,
+            note_store: None,
+            blackboard_store: None,
+            http_client: reqwest::Client::new(),
             messenger: Some(messenger),
         });
         let mut reg = ToolRegistry::new();
@@ -488,6 +494,9 @@ mod tests {
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
+                    note_store: None,
+            blackboard_store: None,
+            http_client: reqwest::Client::new(),
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -515,6 +524,9 @@ mod tests {
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
+                    note_store: None,
+            blackboard_store: None,
+            http_client: reqwest::Client::new(),
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -537,6 +549,9 @@ mod tests {
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
+                    note_store: None,
+            blackboard_store: None,
+            http_client: reqwest::Client::new(),
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -557,6 +572,9 @@ mod tests {
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
+                    note_store: None,
+            blackboard_store: None,
+            http_client: reqwest::Client::new(),
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");

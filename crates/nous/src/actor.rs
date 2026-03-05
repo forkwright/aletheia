@@ -213,6 +213,7 @@ impl NousActor {
             .build()
         })?;
 
+
         let tool_ctx = ToolContext {
             nous_id,
             session_id: SessionId::new(),
