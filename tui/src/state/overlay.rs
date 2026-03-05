@@ -1,8 +1,11 @@
+use super::settings::SettingsOverlay;
+
 #[derive(Debug)]
 pub enum Overlay {
     Help,
     AgentPicker { cursor: usize },
     SystemStatus,
+    Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
 }

@@ -8,6 +8,7 @@ use aletheia_mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_symbolon::jwt::JwtManager;
+use aletheia_taxis::config::AletheiaConfig;
 use aletheia_taxis::oikos::Oikos;
 
 /// Shared state for all Axum handlers, held behind `Arc` in the router.
@@ -26,4 +27,6 @@ pub struct AppState {
     pub jwt_manager: Arc<JwtManager>,
     /// Server start instant for uptime calculation.
     pub start_time: Instant,
+    /// Runtime configuration, updatable via config API.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
 }

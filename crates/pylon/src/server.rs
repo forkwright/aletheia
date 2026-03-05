@@ -14,6 +14,7 @@ use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
+use aletheia_taxis::config::AletheiaConfig;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::router::build_router;
@@ -86,6 +87,12 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .spawn(nous_config, PipelineConfig::default())
         .await;
 
+    let aletheia_config = aletheia_taxis::loader::load_config(&oikos)
+        .unwrap_or_else(|e| {
+            tracing::warn!("failed to load config, using defaults: {e}");
+            AletheiaConfig::default()
+        });
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -94,6 +101,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         oikos,
         jwt_manager,
         start_time: Instant::now(),
+        config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
     });
 
     let app = build_router(state.clone(), &config.security);

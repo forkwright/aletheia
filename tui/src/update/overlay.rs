@@ -2,15 +2,30 @@ use crate::app::App;
 use crate::msg::OverlayKind;
 use crate::state::Overlay;
 
-pub(crate) fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
-    app.overlay = Some(match kind {
-        OverlayKind::Help => Overlay::Help,
-        OverlayKind::AgentPicker => Overlay::AgentPicker { cursor: 0 },
-        OverlayKind::SystemStatus => Overlay::SystemStatus,
-    });
+pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
+    match kind {
+        OverlayKind::Settings => {
+            super::settings::handle_open(app).await;
+        }
+        other => {
+            app.overlay = Some(match other {
+                OverlayKind::Help => Overlay::Help,
+                OverlayKind::AgentPicker => Overlay::AgentPicker { cursor: 0 },
+                OverlayKind::SystemStatus => Overlay::SystemStatus,
+                OverlayKind::Settings => unreachable!(),
+            });
+        }
+    }
 }
 
 pub(crate) fn handle_close_overlay(app: &mut App) {
+    // Settings edit mode: Esc cancels the edit, not the overlay
+    if let Some(Overlay::Settings(ref s)) = app.overlay {
+        if s.editing.is_some() {
+            super::settings::handle_edit_escape(app);
+            return;
+        }
+    }
     if let Some(Overlay::ToolApproval(ref approval)) = app.overlay {
         let turn_id = approval.turn_id.clone();
         let tool_id = approval.tool_id.clone();
@@ -41,6 +56,9 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
         Some(Overlay::PlanApproval(plan)) => {
             plan.cursor = plan.cursor.saturating_sub(1);
         }
+        Some(Overlay::Settings(_)) => {
+            super::settings::handle_up(app);
+        }
         _ => {}
     }
 }
@@ -54,6 +72,9 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
         Some(Overlay::PlanApproval(plan)) => {
             let max = plan.steps.len().saturating_sub(1);
             plan.cursor = (plan.cursor + 1).min(max);
+        }
+        Some(Overlay::Settings(_)) => {
+            super::settings::handle_down(app);
         }
         _ => {}
     }
@@ -90,6 +111,9 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
                 }
             });
             app.overlay = None;
+        }
+        Some(Overlay::Settings(_)) => {
+            super::settings::handle_enter(app);
         }
         _ => {
             app.overlay = None;

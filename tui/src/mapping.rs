@@ -273,6 +273,10 @@ impl App {
     }
 
     fn map_overlay_key(&self, key: KeyEvent) -> Option<Msg> {
+        if matches!(&self.overlay, Some(Overlay::Settings(_))) {
+            return self.map_settings_overlay_key(key);
+        }
+
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc) => Some(Msg::CloseOverlay),
             (_, KeyCode::Up) => Some(Msg::OverlayUp),
@@ -306,6 +310,35 @@ impl App {
 
     fn is_plan_approval_overlay(&self) -> bool {
         matches!(&self.overlay, Some(Overlay::PlanApproval(_)))
+    }
+
+    fn map_settings_overlay_key(&self, key: KeyEvent) -> Option<Msg> {
+        let editing = matches!(
+            &self.overlay,
+            Some(Overlay::Settings(s)) if s.editing.is_some()
+        );
+
+        if editing {
+            match (key.modifiers, key.code) {
+                (_, KeyCode::Esc) => Some(Msg::CloseOverlay),
+                (_, KeyCode::Enter) => Some(Msg::OverlaySelect),
+                (_, KeyCode::Backspace) => Some(Msg::OverlayFilterBackspace),
+                (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                    Some(Msg::OverlayFilter(c))
+                }
+                _ => None,
+            }
+        } else {
+            match (key.modifiers, key.code) {
+                (_, KeyCode::Esc) => Some(Msg::CloseOverlay),
+                (_, KeyCode::Up) => Some(Msg::OverlayUp),
+                (_, KeyCode::Down) => Some(Msg::OverlayDown),
+                (_, KeyCode::Enter) => Some(Msg::OverlaySelect),
+                (_, KeyCode::Char('s' | 'S')) => Some(Msg::OverlayFilter('s')),
+                (_, KeyCode::Char('r' | 'R')) => Some(Msg::OverlayFilter('r')),
+                _ => None,
+            }
+        }
     }
 
     fn map_sse(&self, event: SseEvent) -> Msg {

@@ -3,6 +3,7 @@ mod command_palette;
 mod filter_bar;
 mod input;
 mod overlay;
+pub(crate) mod settings;
 mod sidebar;
 mod status_bar;
 mod title_bar;

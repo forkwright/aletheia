@@ -109,6 +109,13 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Query,
         shortcut: None,
     },
+    Command {
+        name: "settings",
+        aliases: &[],
+        description: "Open settings",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;
