@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::App;
-use crate::command::{CommandCategory, COMMANDS};
+use crate::command::CommandCategory;
 use crate::theme::ThemePalette;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
@@ -28,8 +28,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     ]));
 
     // Suggestion lines (max 8)
-    for (i, scored) in palette.suggestions.iter().enumerate().take(8) {
-        let cmd = &COMMANDS[scored.index];
+    for (i, suggestion) in palette.suggestions.iter().enumerate() {
         let selected = i == palette.selected;
         let marker = if selected { "▸" } else { " " };
 
@@ -41,7 +40,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
             theme.style_fg()
         };
 
-        let category_color = match cmd.category {
+        let category_color = match suggestion.category {
             CommandCategory::Navigation => theme.accent,
             CommandCategory::Action => theme.warning,
             CommandCategory::Query => theme.success,
@@ -58,12 +57,16 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
                 },
             ),
             Span::styled("●", Style::default().fg(category_color)),
-            Span::styled(format!(" {:<12}", cmd.name), name_style),
-            Span::styled(cmd.description, theme.style_muted()),
+            Span::styled(format!(" {:<12}", suggestion.label), name_style),
+            Span::styled(&suggestion.description, theme.style_muted()),
         ];
 
-        if !cmd.aliases.is_empty() {
-            let alias_str = cmd
+        if let Some(shortcut) = suggestion.shortcut {
+            spans.push(Span::styled(format!("  [{shortcut}]"), theme.style_dim()));
+        }
+
+        if !suggestion.aliases.is_empty() {
+            let alias_str = suggestion
                 .aliases
                 .iter()
                 .map(|a| format!(":{a}"))

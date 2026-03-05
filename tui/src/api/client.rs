@@ -255,6 +255,38 @@ impl ApiClient {
         Ok((today_cost * 100.0) as u32)
     }
 
+    // --- Distillation ---
+
+    pub async fn compact(&self, session_id: &str) -> Result<()> {
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/sessions/{session_id}/distill"),
+        )
+        .send()
+        .await
+        .context("failed to trigger distillation")?
+        .error_for_status_ref()
+        .context("distillation request failed")?;
+        Ok(())
+    }
+
+    // --- Memory recall ---
+
+    pub async fn recall(&self, nous_id: &str, query: &str) -> Result<String> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/nous/{nous_id}/recall"),
+            )
+            .query(&[("q", query)])
+            .send()
+            .await
+            .context("failed to recall memory")?;
+        resp.error_for_status_ref()
+            .context("recall request failed")?;
+        Ok(resp.text().await?)
+    }
+
     // --- Message queue (mid-turn) ---
 
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {

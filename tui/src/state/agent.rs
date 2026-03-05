@@ -17,6 +17,7 @@ pub struct AgentState {
     pub active_tool: Option<String>,
     pub tool_started_at: Option<std::time::Instant>,
     pub sessions: Vec<Session>,
+    pub model: Option<String>,
     pub compaction_stage: Option<String>,
     /// Indicates this agent completed a turn while not focused.
     /// Cleared when the user switches to this agent.

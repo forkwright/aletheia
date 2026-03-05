@@ -3,7 +3,7 @@
 pub struct CommandPaletteState {
     pub input: String,
     pub cursor: usize,
-    pub suggestions: Vec<crate::command::ScoredCommand>,
+    pub suggestions: Vec<crate::command::Suggestion>,
     pub selected: usize,
     pub active: bool,
 }

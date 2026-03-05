@@ -185,6 +185,7 @@ impl App {
                 active_tool: None,
                 tool_started_at: None,
                 sessions: Vec::new(),
+                model: a.model,
                 compaction_stage: None,
                 has_notification: false,
             })

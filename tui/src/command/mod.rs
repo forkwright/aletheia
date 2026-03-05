@@ -2,6 +2,8 @@
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 
+use crate::state::AgentState;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandCategory {
     Navigation,
@@ -15,12 +17,18 @@ pub struct Command {
     pub aliases: &'static [&'static str],
     pub description: &'static str,
     pub category: CommandCategory,
+    pub shortcut: Option<&'static str>,
 }
 
 #[derive(Debug)]
-pub struct ScoredCommand {
-    pub index: usize,
+pub struct Suggestion {
+    pub label: String,
+    pub description: String,
+    pub category: CommandCategory,
+    pub aliases: &'static [&'static str],
+    pub shortcut: Option<&'static str>,
     pub score: i64,
+    pub execute_as: String,
 }
 
 pub static COMMANDS: &[Command] = &[
@@ -29,115 +37,193 @@ pub static COMMANDS: &[Command] = &[
         aliases: &["s"],
         description: "List sessions for current agent",
         category: CommandCategory::Navigation,
+        shortcut: None,
     },
     Command {
         name: "agents",
         aliases: &["a"],
         description: "Switch agent",
         category: CommandCategory::Navigation,
+        shortcut: Some("Ctrl+A"),
     },
     Command {
         name: "agent",
         aliases: &[],
         description: "Switch to named agent",
         category: CommandCategory::Agent,
+        shortcut: None,
     },
     Command {
         name: "cost",
         aliases: &["$"],
         description: "Show daily cost breakdown",
         category: CommandCategory::Query,
+        shortcut: Some("Ctrl+I"),
     },
     Command {
         name: "health",
         aliases: &["h"],
         description: "System health status",
         category: CommandCategory::Query,
+        shortcut: Some("Ctrl+I"),
     },
     Command {
         name: "compact",
         aliases: &[],
         description: "Trigger distillation",
         category: CommandCategory::Action,
+        shortcut: None,
     },
     Command {
         name: "clear",
         aliases: &[],
         description: "Clear conversation / new session",
         category: CommandCategory::Action,
+        shortcut: Some("Ctrl+N"),
     },
     Command {
         name: "help",
         aliases: &["?"],
         description: "Show help",
         category: CommandCategory::Navigation,
+        shortcut: Some("F1"),
     },
     Command {
         name: "quit",
         aliases: &["q"],
         description: "Quit application",
         category: CommandCategory::Action,
+        shortcut: Some("Ctrl+C"),
     },
     Command {
         name: "recall",
         aliases: &["r"],
         description: "Search memory graph",
         category: CommandCategory::Query,
+        shortcut: None,
     },
     Command {
         name: "model",
         aliases: &[],
         description: "Show current model info",
         category: CommandCategory::Query,
+        shortcut: None,
     },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;
+const MAX_SUGGESTIONS_INITIAL: usize = 16;
 
-/// Filter and rank commands by fuzzy matching against the input.
-///
-/// When input contains a space, only the first word is matched against commands.
-/// Returns up to 8 results sorted by score descending.
-pub fn filter_commands(input: &str) -> Vec<ScoredCommand> {
+/// Build suggestions from static commands + dynamic agent entries.
+pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> {
     let query = match input.split_once(' ') {
         Some((cmd, _)) => cmd,
         None => input,
     };
 
-    if query.is_empty() {
-        return COMMANDS
-            .iter()
-            .enumerate()
-            .map(|(i, _)| ScoredCommand { index: i, score: 0 })
-            .collect();
-    }
-
     let matcher = SkimMatcherV2::default();
-    let mut scored: Vec<ScoredCommand> = COMMANDS
-        .iter()
-        .enumerate()
-        .filter_map(|(i, cmd)| {
-            let mut best: Option<i64> = None;
+    let mut suggestions: Vec<Suggestion> = Vec::new();
 
-            if let Some(s) = matcher.fuzzy_match(cmd.name, query) {
+    if query.is_empty() {
+        // Show all static commands + agent entries
+        for cmd in COMMANDS {
+            suggestions.push(Suggestion {
+                label: cmd.name.to_string(),
+                description: cmd.description.to_string(),
+                category: cmd.category,
+                aliases: cmd.aliases,
+                shortcut: cmd.shortcut,
+                score: 0,
+                execute_as: cmd.name.to_string(),
+            });
+        }
+        for agent in agents {
+            suggestions.push(agent_suggestion(agent, 0));
+        }
+    } else {
+        // Fuzzy match static commands
+        for cmd in COMMANDS {
+            if let Some(score) = best_match(&matcher, cmd, query) {
+                suggestions.push(Suggestion {
+                    label: cmd.name.to_string(),
+                    description: cmd.description.to_string(),
+                    category: cmd.category,
+                    aliases: cmd.aliases,
+                    shortcut: cmd.shortcut,
+                    score,
+                    execute_as: cmd.name.to_string(),
+                });
+            }
+        }
+
+        // Inject dynamic agent suggestions
+        for agent in agents {
+            let mut best: Option<i64> = None;
+            if let Some(s) = matcher.fuzzy_match(&agent.name, query) {
                 best = Some(s);
             }
-            for alias in cmd.aliases {
-                if let Some(s) = matcher.fuzzy_match(alias, query) {
-                    best = best.map_or(Some(s), |prev| Some(prev.max(s)));
-                }
-            }
-            if let Some(s) = matcher.fuzzy_match(cmd.description, query) {
+            if let Some(s) = matcher.fuzzy_match(&agent.id, query) {
                 best = best.map_or(Some(s), |prev| Some(prev.max(s)));
             }
+            // Also match "agent <name>" as a compound
+            let compound = format!("agent {}", agent.name);
+            if let Some(s) = matcher.fuzzy_match(&compound, query) {
+                best = best.map_or(Some(s), |prev| Some(prev.max(s)));
+            }
+            if let Some(score) = best {
+                suggestions.push(agent_suggestion(agent, score));
+            }
+        }
+    }
 
-            best.map(|score| ScoredCommand { index: i, score })
-        })
-        .collect();
+    suggestions.sort_by(|a, b| b.score.cmp(&a.score));
+    // Show more on empty input (initial palette open), but still cap for display
+    let limit = if query.is_empty() {
+        MAX_SUGGESTIONS_INITIAL
+    } else {
+        MAX_SUGGESTIONS
+    };
+    suggestions.truncate(limit);
+    suggestions
+}
 
-    scored.sort_by(|a, b| b.score.cmp(&a.score));
-    scored.truncate(MAX_SUGGESTIONS);
-    scored
+fn agent_suggestion(agent: &AgentState, score: i64) -> Suggestion {
+    let desc = match &agent.emoji {
+        Some(emoji) => format!("{emoji} Switch to {}", agent.name),
+        None => format!("Switch to {}", agent.name),
+    };
+    Suggestion {
+        label: format!("agent {}", agent.id),
+        description: desc,
+        category: CommandCategory::Agent,
+        aliases: &[],
+        shortcut: None,
+        score,
+        execute_as: format!("agent {}", agent.id),
+    }
+}
+
+fn best_match(matcher: &SkimMatcherV2, cmd: &Command, query: &str) -> Option<i64> {
+    let mut best: Option<i64> = None;
+
+    if let Some(s) = matcher.fuzzy_match(cmd.name, query) {
+        best = Some(s);
+    }
+    for alias in cmd.aliases {
+        if let Some(s) = matcher.fuzzy_match(alias, query) {
+            best = best.map_or(Some(s), |prev| Some(prev.max(s)));
+        }
+    }
+    if let Some(s) = matcher.fuzzy_match(cmd.description, query) {
+        best = best.map_or(Some(s), |prev| Some(prev.max(s)));
+    }
+
+    best
+}
+
+#[cfg(test)]
+fn filter_commands(input: &str) -> Vec<Suggestion> {
+    build_suggestions(input, &[])
 }
 
 #[cfg(test)]
@@ -147,28 +233,28 @@ mod tests {
     #[test]
     fn empty_input_returns_all_commands() {
         let results = filter_commands("");
-        assert_eq!(results.len(), COMMANDS.len());
+        assert!(results.len() >= COMMANDS.len());
     }
 
     #[test]
     fn exact_name_match_ranks_first() {
         let results = filter_commands("quit");
         assert!(!results.is_empty());
-        assert_eq!(COMMANDS[results[0].index].name, "quit");
+        assert_eq!(results[0].label, "quit");
     }
 
     #[test]
     fn alias_match_works() {
         let results = filter_commands("q");
         assert!(!results.is_empty());
-        assert!(results.iter().any(|r| COMMANDS[r.index].name == "quit"));
+        assert!(results.iter().any(|r| r.label == "quit"));
     }
 
     #[test]
     fn fuzzy_match_partial() {
         let results = filter_commands("sess");
         assert!(!results.is_empty());
-        assert_eq!(COMMANDS[results[0].index].name, "sessions");
+        assert_eq!(results[0].label, "sessions");
     }
 
     #[test]
@@ -181,6 +267,31 @@ mod tests {
     fn command_with_args_matches_command_only() {
         let results = filter_commands("agent syn");
         assert!(!results.is_empty());
-        assert!(results.iter().any(|r| COMMANDS[r.index].name == "agent"));
+        assert!(results.iter().any(|r| r.label == "agent"));
+    }
+
+    #[test]
+    fn dynamic_agents_appear_in_suggestions() {
+        let agents = vec![AgentState {
+            id: "syn".into(),
+            name: "Syn".into(),
+            emoji: Some("🧠".into()),
+            status: crate::state::AgentStatus::Idle,
+            active_tool: None,
+            tool_started_at: None,
+            sessions: Vec::new(),
+            model: Some("claude-opus-4-6".into()),
+            compaction_stage: None,
+            has_notification: false,
+        }];
+        let results = build_suggestions("syn", &agents);
+        assert!(results.iter().any(|r| r.execute_as == "agent syn"));
+    }
+
+    #[test]
+    fn shortcut_present_on_help() {
+        let results = filter_commands("help");
+        let help = results.iter().find(|r| r.label == "help").unwrap();
+        assert_eq!(help.shortcut, Some("F1"));
     }
 }
