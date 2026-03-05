@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "exportedAt": "2026-03-05T12:00:00.000Z",
+  "generator": "aletheia-export/1.0",
+  "nous": {
+    "id": "syn",
+    "name": "Syn",
+    "model": "claude-sonnet-4-6",
+    "config": {
+      "domains": ["general", "code"],
+      "thinkingEnabled": true
+    }
+  },
+  "workspace": {
+    "files": {
+      "memory/2026-03-05.md": "# Session Notes\n\nWorked on portability.\n",
+      "config.yaml": "key: value\n"
+    },
+    "binaryFiles": ["avatar.png", "data/embeddings.bin"]
+  },
+  "sessions": [
+    {
+      "id": "01JQXYZ123456789ABCDEFGH",
+      "sessionKey": "main",
+      "status": "active",
+      "sessionType": "primary",
+      "messageCount": 3,
+      "tokenCountEstimate": 250,
+      "distillationCount": 1,
+      "createdAt": "2026-03-05T10:00:00.000Z",
+      "updatedAt": "2026-03-05T11:30:00.000Z",
+      "workingState": {
+        "currentTask": "implementing portability",
+        "completedSteps": ["schema", "export"],
+        "nextSteps": ["import", "cli"],
+        "recentDecisions": ["use snafu for errors"],
+        "openFiles": ["crates/mneme/src/export.rs"],
+        "updatedAt": "2026-03-05T11:00:00.000Z"
+      },
+      "distillationPriming": {
+        "facts": ["Agent portability uses AgentFile format"],
+        "decisions": ["camelCase JSON for TS compat"],
+        "openItems": ["memory import requires sidecar"],
+        "summary": "Building export/import for agent portability",
+        "distillationNumber": 1,
+        "distilledAt": "2026-03-05T11:00:00.000Z"
+      },
+      "notes": [
+        {
+          "category": "task",
+          "content": "Working on M0b portability phase",
+          "createdAt": "2026-03-05T10:15:00.000Z"
+        },
+        {
+          "category": "decision",
+          "content": "Use camelCase for TS wire compat",
+          "createdAt": "2026-03-05T10:30:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": "Let's work on the portability module",
+          "seq": 1,
+          "tokenEstimate": 50,
+          "isDistilled": true,
+          "createdAt": "2026-03-05T10:00:00.000Z"
+        },
+        {
+          "role": "assistant",
+          "content": "I'll start with the AgentFile schema types.",
+          "seq": 2,
+          "tokenEstimate": 100,
+          "isDistilled": true,
+          "createdAt": "2026-03-05T10:00:01.000Z"
+        },
+        {
+          "role": "user",
+          "content": "Now add the export function",
+          "seq": 3,
+          "tokenEstimate": 100,
+          "isDistilled": false,
+          "createdAt": "2026-03-05T11:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "memory": {
+    "vectors": [
+      {
+        "id": "vec-001",
+        "text": "Agent portability requires camelCase JSON format",
+        "metadata": {"source": "session", "importance": 0.8}
+      }
+    ],
+    "graph": {
+      "nodes": [
+        {"name": "AgentFile", "labels": ["Concept"], "properties": {"pagerank": 0.5}},
+        {"name": "Portability", "labels": ["Feature"], "properties": {}}
+      ],
+      "edges": [
+        {"source": "AgentFile", "target": "Portability", "relType": "ENABLES"}
+      ]
+    }
+  }
+}

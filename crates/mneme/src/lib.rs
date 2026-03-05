@@ -44,6 +44,15 @@ pub mod migration;
 pub mod query;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
+/// Agent export — build an `AgentFile` from session store and workspace.
+#[cfg(feature = "sqlite")]
+pub mod export;
+/// Agent import — restore an agent from a portable `AgentFile`.
+#[cfg(feature = "sqlite")]
+pub mod import;
+/// Agent portability schema — `AgentFile` format for cross-runtime export/import.
+#[cfg(feature = "sqlite")]
+pub mod portability;
 /// Session retention policies and automated cleanup of old data.
 #[cfg(feature = "sqlite")]
 pub mod retention;
