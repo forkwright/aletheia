@@ -284,6 +284,9 @@ pub trait MessageService: Send + Sync {
 pub struct ToolServices {
     pub cross_nous: Option<Arc<dyn CrossNousService>>,
     pub messenger: Option<Arc<dyn MessageService>>,
+    pub note_store: Option<Arc<dyn NoteStore>>,
+    pub blackboard_store: Option<Arc<dyn BlackboardStore>>,
+    pub http_client: reqwest::Client,
 }
 
 impl std::fmt::Debug for ToolServices {
@@ -291,7 +294,9 @@ impl std::fmt::Debug for ToolServices {
         f.debug_struct("ToolServices")
             .field("cross_nous", &self.cross_nous.is_some())
             .field("messenger", &self.messenger.is_some())
-            .finish()
+            .field("note_store", &self.note_store.is_some())
+            .field("blackboard_store", &self.blackboard_store.is_some())
+            .finish_non_exhaustive()
     }
 }
 
@@ -306,8 +311,73 @@ pub struct ToolContext {
     pub workspace: PathBuf,
     /// Allowed filesystem roots for sandboxing.
     pub allowed_roots: Vec<PathBuf>,
-    /// Optional runtime services for tools that need cross-cutting capabilities.
+/// Optional runtime services for tools that need cross-cutting capabilities.
     pub services: Option<Arc<ToolServices>>,
+}
+
+/// Persistent session notes storage.
+pub trait NoteStore: Send + Sync {
+    fn add_note(
+        &self,
+        session_id: &str,
+        nous_id: &str,
+        category: &str,
+        content: &str,
+    ) -> std::result::Result<i64, Box<dyn std::error::Error + Send + Sync>>;
+
+    fn get_notes(
+        &self,
+        session_id: &str,
+    ) -> std::result::Result<Vec<NoteEntry>, Box<dyn std::error::Error + Send + Sync>>;
+
+    fn delete_note(
+        &self,
+        note_id: i64,
+    ) -> std::result::Result<bool, Box<dyn std::error::Error + Send + Sync>>;
+}
+
+/// Shared blackboard state with TTL.
+pub trait BlackboardStore: Send + Sync {
+    fn write(
+        &self,
+        key: &str,
+        value: &str,
+        author: &str,
+        ttl_seconds: i64,
+    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    fn read(
+        &self,
+        key: &str,
+    ) -> std::result::Result<Option<BlackboardEntry>, Box<dyn std::error::Error + Send + Sync>>;
+
+    fn list(
+        &self,
+    ) -> std::result::Result<Vec<BlackboardEntry>, Box<dyn std::error::Error + Send + Sync>>;
+
+    fn delete(
+        &self,
+        key: &str,
+        author: &str,
+    ) -> std::result::Result<bool, Box<dyn std::error::Error + Send + Sync>>;
+}
+
+#[derive(Debug, Clone)]
+pub struct NoteEntry {
+    pub id: i64,
+    pub category: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BlackboardEntry {
+    pub key: String,
+    pub value: String,
+    pub author_nous_id: String,
+    pub ttl_seconds: i64,
+    pub created_at: String,
+    pub expires_at: Option<String>,
 }
 
 #[cfg(test)]

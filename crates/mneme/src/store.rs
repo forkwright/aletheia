@@ -10,7 +10,9 @@ use tracing::{debug, info, instrument};
 
 use crate::error::{self, Result};
 use crate::migration;
-use crate::types::{AgentNote, Message, Role, Session, SessionStatus, SessionType, UsageRecord};
+use crate::types::{
+    AgentNote, BlackboardRow, Message, Role, Session, SessionStatus, SessionType, UsageRecord,
+};
 
 /// The session store — wraps a `SQLite` connection.
 pub struct SessionStore {
@@ -448,6 +450,101 @@ impl SessionStore {
         let rows = self
             .conn
             .execute("DELETE FROM agent_notes WHERE id = ?1", [note_id])
+            .context(error::DatabaseSnafu)?;
+        Ok(rows > 0)
+    }
+
+    // --- Blackboard ---
+
+    /// Write or update a blackboard entry. Upserts on key.
+    pub fn blackboard_write(
+        &self,
+        key: &str,
+        value: &str,
+        author: &str,
+        ttl_secs: i64,
+    ) -> Result<()> {
+        let id = ulid::Ulid::new().to_string();
+        self.conn
+            .execute(
+                "INSERT INTO blackboard (id, key, value, author_nous_id, ttl_seconds, expires_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', '+' || ?5 || ' seconds'))
+                 ON CONFLICT(key) DO UPDATE SET
+                   value = excluded.value,
+                   author_nous_id = excluded.author_nous_id,
+                   ttl_seconds = excluded.ttl_seconds,
+                   expires_at = excluded.expires_at",
+                rusqlite::params![id, key, value, author, ttl_secs],
+            )
+            .context(error::DatabaseSnafu)?;
+        Ok(())
+    }
+
+    /// Read a blackboard entry by key, filtering expired entries.
+    pub fn blackboard_read(&self, key: &str) -> Result<Option<BlackboardRow>> {
+        let result = self
+            .conn
+            .query_row(
+                "SELECT key, value, author_nous_id, ttl_seconds, created_at, expires_at
+                 FROM blackboard
+                 WHERE key = ?1 AND (expires_at IS NULL OR expires_at > datetime('now'))",
+                [key],
+                |row| {
+                    Ok(BlackboardRow {
+                        key: row.get(0)?,
+                        value: row.get(1)?,
+                        author_nous_id: row.get(2)?,
+                        ttl_seconds: row.get(3)?,
+                        created_at: row.get(4)?,
+                        expires_at: row.get(5)?,
+                    })
+                },
+            )
+            .optional()
+            .context(error::DatabaseSnafu)?;
+        Ok(result)
+    }
+
+    /// List all non-expired blackboard entries.
+    pub fn blackboard_list(&self) -> Result<Vec<BlackboardRow>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT key, value, author_nous_id, ttl_seconds, created_at, expires_at
+                 FROM blackboard
+                 WHERE expires_at IS NULL OR expires_at > datetime('now')
+                 ORDER BY key ASC",
+            )
+            .context(error::DatabaseSnafu)?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(BlackboardRow {
+                    key: row.get(0)?,
+                    value: row.get(1)?,
+                    author_nous_id: row.get(2)?,
+                    ttl_seconds: row.get(3)?,
+                    created_at: row.get(4)?,
+                    expires_at: row.get(5)?,
+                })
+            })
+            .context(error::DatabaseSnafu)?;
+
+        let mut entries = Vec::new();
+        for row in rows {
+            entries.push(row.context(error::DatabaseSnafu)?);
+        }
+        Ok(entries)
+    }
+
+    /// Delete a blackboard entry. Only the original author can delete.
+    pub fn blackboard_delete(&self, key: &str, author: &str) -> Result<bool> {
+        let rows = self
+            .conn
+            .execute(
+                "DELETE FROM blackboard WHERE key = ?1 AND author_nous_id = ?2",
+                rusqlite::params![key, author],
+            )
             .context(error::DatabaseSnafu)?;
         Ok(rows > 0)
     }
@@ -920,5 +1017,90 @@ mod tests {
             .unwrap();
         let history = store.get_history_with_budget("ses-1", 1).unwrap();
         assert_eq!(history.len(), 1);
+    }
+
+    // --- Blackboard ---
+
+    #[test]
+    fn blackboard_crud() {
+        let store = test_store();
+        store
+            .blackboard_write("goal", "finish M0b", "syn", 3600)
+            .unwrap();
+
+        let entry = store.blackboard_read("goal").unwrap().unwrap();
+        assert_eq!(entry.key, "goal");
+        assert_eq!(entry.value, "finish M0b");
+        assert_eq!(entry.author_nous_id, "syn");
+
+        let list = store.blackboard_list().unwrap();
+        assert_eq!(list.len(), 1);
+
+        let deleted = store.blackboard_delete("goal", "syn").unwrap();
+        assert!(deleted);
+
+        let gone = store.blackboard_read("goal").unwrap();
+        assert!(gone.is_none());
+    }
+
+    #[test]
+    fn blackboard_upsert() {
+        let store = test_store();
+        store
+            .blackboard_write("status", "starting", "syn", 3600)
+            .unwrap();
+        store
+            .blackboard_write("status", "running", "syn", 3600)
+            .unwrap();
+
+        let entry = store.blackboard_read("status").unwrap().unwrap();
+        assert_eq!(entry.value, "running");
+
+        let list = store.blackboard_list().unwrap();
+        assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn blackboard_delete_only_author() {
+        let store = test_store();
+        store
+            .blackboard_write("secret", "value", "syn", 3600)
+            .unwrap();
+
+        let deleted = store.blackboard_delete("secret", "other-agent").unwrap();
+        assert!(!deleted);
+
+        let still_there = store.blackboard_read("secret").unwrap();
+        assert!(still_there.is_some());
+    }
+
+    #[test]
+    fn blackboard_read_missing_returns_none() {
+        let store = test_store();
+        let result = store.blackboard_read("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn blackboard_expiry_filtered() {
+        let store = test_store();
+        store
+            .blackboard_write("temp", "data", "syn", 3600)
+            .unwrap();
+
+        // Manually set expires_at to the past
+        store
+            .conn
+            .execute(
+                "UPDATE blackboard SET expires_at = datetime('now', '-1 second') WHERE key = 'temp'",
+                [],
+            )
+            .unwrap();
+
+        let result = store.blackboard_read("temp").unwrap();
+        assert!(result.is_none());
+
+        let list = store.blackboard_list().unwrap();
+        assert!(list.is_empty());
     }
 }

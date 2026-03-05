@@ -492,7 +492,7 @@ async fn serve(cli: Cli) -> Result<()> {
     // Build signal provider early so it can be shared with tool services
     let signal_provider = build_signal_provider(&config.channels.signal);
 
-    // Build tool services for communication executors
+    // Build tool services for communication + memory executors
     let tool_services = {
         let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
             Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
@@ -500,9 +500,16 @@ async fn serve(cli: Cli) -> Result<()> {
             signal_provider
                 .as_ref()
                 .map(|p| Arc::new(tool_adapters::SignalAdapter(Arc::clone(p) as Arc<dyn ChannelProvider>)) as Arc<dyn aletheia_organon::types::MessageService>);
+        let note_store: Option<Arc<dyn aletheia_organon::types::NoteStore>> =
+            Some(Arc::new(aletheia_nous::adapters::SessionNoteAdapter(Arc::clone(&session_store))));
+        let blackboard_store: Option<Arc<dyn aletheia_organon::types::BlackboardStore>> =
+            Some(Arc::new(aletheia_nous::adapters::SessionBlackboardAdapter(Arc::clone(&session_store))));
         Arc::new(ToolServices {
             cross_nous: Some(cross_nous),
             messenger,
+            note_store,
+            blackboard_store,
+            http_client: reqwest::Client::new(),
         })
     };
 

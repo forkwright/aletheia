@@ -20,16 +20,34 @@ pub struct Migration {
 }
 
 /// All registered migrations, in version order.
-pub static MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    description: "base schema — sessions, messages, usage, distillations, agent_notes",
-    up: DDL,
-    down: "DROP TABLE IF EXISTS agent_notes;
+pub static MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        description: "base schema — sessions, messages, usage, distillations, agent_notes",
+        up: DDL,
+        down: "DROP TABLE IF EXISTS agent_notes;
 DROP TABLE IF EXISTS distillations;
 DROP TABLE IF EXISTS usage;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS sessions;",
-}];
+    },
+    Migration {
+        version: 2,
+        description: "blackboard — shared agent state with TTL",
+        up: "CREATE TABLE IF NOT EXISTS blackboard (
+    id TEXT PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    value TEXT NOT NULL,
+    author_nous_id TEXT NOT NULL,
+    ttl_seconds INTEGER DEFAULT 3600,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    expires_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);
+CREATE INDEX IF NOT EXISTS idx_blackboard_expires ON blackboard(expires_at);",
+        down: "DROP TABLE IF EXISTS blackboard;",
+    },
+];
 
 /// Outcome of a migration run.
 #[derive(Debug)]
@@ -197,8 +215,8 @@ mod tests {
         let result = run_migrations(&conn).unwrap();
 
         assert!(result.was_fresh);
-        assert_eq!(result.applied, vec![1]);
-        assert_eq!(result.current_version, 1);
+        assert_eq!(result.applied, vec![1, 2]);
+        assert_eq!(result.current_version, 2);
     }
 
     #[test]
@@ -209,7 +227,7 @@ mod tests {
         let result = run_migrations(&conn).unwrap();
         assert!(!result.was_fresh);
         assert!(result.applied.is_empty());
-        assert_eq!(result.current_version, 1);
+        assert_eq!(result.current_version, 2);
     }
 
     #[test]
@@ -235,7 +253,7 @@ mod tests {
         bootstrap_version_table(&conn).unwrap();
 
         let pending = check_migrations(&conn).unwrap();
-        assert_eq!(pending.len(), 1);
+        assert_eq!(pending.len(), 2);
         assert_eq!(pending[0].version, 1);
 
         // Verify nothing was applied
@@ -276,6 +294,7 @@ mod tests {
             "usage",
             "distillations",
             "agent_notes",
+            "blackboard",
         ] {
             let exists: bool = conn
                 .query_row(
@@ -304,11 +323,11 @@ mod tests {
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
             .unwrap();
 
-        // Running migrations should detect existing v1 and do nothing
+        // Running migrations should detect existing v1 and apply v2
         let result = run_migrations(&conn).unwrap();
         assert!(!result.was_fresh);
-        assert!(result.applied.is_empty());
-        assert_eq!(result.current_version, 1);
+        assert_eq!(result.applied, vec![2]);
+        assert_eq!(result.current_version, 2);
 
         // description column should have been added
         assert!(has_description_column(&conn));

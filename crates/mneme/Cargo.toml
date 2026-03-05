@@ -44,6 +44,7 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
+ulid = { workspace = true }
 
 # Engine (vendored CozoDB) dependencies — activated by mneme-engine feature
 rayon = { workspace = true, optional = true }
