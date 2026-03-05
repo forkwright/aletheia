@@ -5,7 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, SelectionContext};
+use crate::app::App;
+use crate::keybindings;
 use crate::theme::ThemePalette;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
@@ -17,19 +18,18 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 }
 
 fn render_keybindings(app: &App, width: u16, theme: &ThemePalette) -> Line<'static> {
-    let hints = match app.selection {
-        SelectionContext::None => ": command │ / filter │ ? help",
-        SelectionContext::UserMessage { .. } => "e edit │ d delete │ c copy",
-        SelectionContext::AgentResponse { .. } => "c copy │ y yank │ o open",
-        SelectionContext::ToolCall { .. } => "a approve │ r reject │ i inspect",
-        SelectionContext::SessionListItem { .. } => "Enter open │ d delete │ n new",
-    };
+    let hints = keybindings::status_bar_hints(app);
+    let hint_str: String = hints
+        .iter()
+        .map(|(key, desc)| format!("{key} {desc}"))
+        .collect::<Vec<_>>()
+        .join(" \u{2502} ");
 
-    let hints_width = hints.width();
+    let hints_width = hint_str.width();
     let pad = (width as usize).saturating_sub(hints_width + 1);
     Line::from(vec![
         Span::raw(" ".repeat(pad)),
-        Span::styled(hints.to_string(), theme.style_dim()),
+        Span::styled(hint_str, theme.style_dim()),
     ])
 }
 

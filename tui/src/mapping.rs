@@ -136,6 +136,11 @@ impl App {
             (_, KeyCode::Backspace) => Some(Msg::CommandPaletteBackspace),
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::CommandPaletteDeleteWord),
             (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::CommandPaletteClose),
+
+            (KeyModifiers::NONE, KeyCode::Char('?')) if self.command_palette.input.is_empty() => {
+                Some(Msg::OpenOverlay(OverlayKind::Help))
+            }
+
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                 Some(Msg::CommandPaletteInput(c))
             }
