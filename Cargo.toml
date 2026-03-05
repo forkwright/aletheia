@@ -5,6 +5,7 @@ members = [
     "crates/dianoia",
     "crates/agora",
     "crates/daemon",
+    "crates/eval",
     "crates/hermeneus",
     "crates/integration-tests",
     "crates/koina",

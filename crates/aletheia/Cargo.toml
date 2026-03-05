@@ -30,6 +30,7 @@ aletheia-nous = { path = "../nous" }
 aletheia-symbolon = { path = "../symbolon" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-agora = { path = "../agora" }
+aletheia-dokimion = { path = "../eval" }
 aletheia-thesauros = { path = "../thesauros" }
 
 tokio = { workspace = true }
@@ -40,7 +41,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 rcgen = { workspace = true }
 time = "0.3"

@@ -1,0 +1,306 @@
+//! HTTP client for interacting with a running Aletheia instance.
+
+use serde::Deserialize;
+use snafu::ResultExt;
+
+use crate::error::{self, Result};
+use crate::sse::{self, ParsedSseEvent};
+
+/// HTTP client for a running Aletheia instance.
+pub struct EvalClient {
+    http: reqwest::Client,
+    base_url: String,
+    token: Option<String>,
+}
+
+impl EvalClient {
+    /// Create a new eval client targeting the given base URL.
+    pub fn new(base_url: impl Into<String>, token: Option<String>) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            base_url: base_url.into().trim_end_matches('/').to_owned(),
+            token,
+        }
+    }
+
+    /// Whether an auth token is configured.
+    pub fn has_token(&self) -> bool {
+        self.token.is_some()
+    }
+
+    /// Base URL this client targets.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    // --- Health (no auth) ---
+
+    /// Check instance health.
+    pub async fn health(&self) -> Result<HealthResponse> {
+        let url = format!("{}/api/health", self.base_url);
+        let resp = self.http.get(&url).send().await.context(error::HttpSnafu)?;
+        self.expect_ok(&url, resp).await
+    }
+
+    // --- Nous ---
+
+    /// List all configured nous agents.
+    pub async fn list_nous(&self) -> Result<Vec<NousInfo>> {
+        let url = format!("{}/api/v1/nous", self.base_url);
+        let resp = self.authed_get(&url).await?;
+        self.expect_ok(&url, resp).await
+    }
+
+    /// Get status for a specific nous agent.
+    pub async fn get_nous(&self, id: &str) -> Result<NousStatus> {
+        let url = format!("{}/api/v1/nous/{id}", self.base_url);
+        let resp = self.authed_get(&url).await?;
+        self.expect_ok(&url, resp).await
+    }
+
+    // --- Sessions ---
+
+    /// Create a new session bound to a nous agent.
+    pub async fn create_session(
+        &self,
+        nous_id: &str,
+        session_key: &str,
+    ) -> Result<SessionResponse> {
+        let url = format!("{}/api/v1/sessions", self.base_url);
+        let body = serde_json::json!({
+            "nous_id": nous_id,
+            "session_key": session_key,
+        });
+        let resp = self.authed_post(&url, &body).await?;
+        self.expect_status(&url, resp, &[201, 200]).await
+    }
+
+    /// Get session details by ID.
+    pub async fn get_session(&self, id: &str) -> Result<SessionResponse> {
+        let url = format!("{}/api/v1/sessions/{id}", self.base_url);
+        let resp = self.authed_get(&url).await?;
+        self.expect_ok(&url, resp).await
+    }
+
+    /// Close (archive) a session.
+    pub async fn close_session(&self, id: &str) -> Result<()> {
+        let url = format!("{}/api/v1/sessions/{id}", self.base_url);
+        let resp = self.authed_delete(&url).await?;
+        let status = resp.status().as_u16();
+        if status != 204 && status != 200 {
+            let body = resp.text().await.unwrap_or_default();
+            return error::UnexpectedStatusSnafu {
+                endpoint: url,
+                status,
+                body,
+            }
+            .fail();
+        }
+        Ok(())
+    }
+
+    // --- Messages ---
+
+    /// Send a message and collect the full SSE response.
+    pub async fn send_message(
+        &self,
+        session_id: &str,
+        content: &str,
+    ) -> Result<Vec<ParsedSseEvent>> {
+        let url = format!("{}/api/v1/sessions/{session_id}/messages", self.base_url);
+        let body = serde_json::json!({ "content": content });
+        let resp = self.authed_post(&url, &body).await?;
+        let status = resp.status().as_u16();
+        if status != 200 {
+            let body_text = resp.text().await.unwrap_or_default();
+            return error::UnexpectedStatusSnafu {
+                endpoint: url,
+                status,
+                body: body_text,
+            }
+            .fail();
+        }
+        sse::parse_sse_stream(resp).await
+    }
+
+    /// Get conversation history for a session.
+    pub async fn get_history(&self, session_id: &str) -> Result<HistoryResponse> {
+        let url = format!("{}/api/v1/sessions/{session_id}/history", self.base_url);
+        let resp = self.authed_get(&url).await?;
+        self.expect_ok(&url, resp).await
+    }
+
+    // --- Raw requests (for auth-testing scenarios) ---
+
+    /// Send a GET request without any auth header.
+    pub async fn raw_get(&self, path: &str) -> Result<reqwest::Response> {
+        let url = format!("{}{path}", self.base_url);
+        self.http.get(&url).send().await.context(error::HttpSnafu)
+    }
+
+    /// Send a POST request without any auth header.
+    pub async fn raw_post(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<reqwest::Response> {
+        let url = format!("{}{path}", self.base_url);
+        self.http
+            .post(&url)
+            .header("content-type", "application/json")
+            .header("x-requested-with", "aletheia")
+            .json(body)
+            .send()
+            .await
+            .context(error::HttpSnafu)
+    }
+
+    /// Send a GET request with an arbitrary Bearer token.
+    pub async fn raw_get_with_token(&self, path: &str, token: &str) -> Result<reqwest::Response> {
+        let url = format!("{}{path}", self.base_url);
+        self.http
+            .get(&url)
+            .header("authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .context(error::HttpSnafu)
+    }
+
+    // --- Internal helpers ---
+
+    async fn authed_get(&self, url: &str) -> Result<reqwest::Response> {
+        let mut req = self.http.get(url);
+        if let Some(ref token) = self.token {
+            req = req.header("authorization", format!("Bearer {token}"));
+        }
+        req.send().await.context(error::HttpSnafu)
+    }
+
+    async fn authed_post(&self, url: &str, body: &serde_json::Value) -> Result<reqwest::Response> {
+        let mut req = self
+            .http
+            .post(url)
+            .header("content-type", "application/json")
+            .header("x-requested-with", "aletheia");
+        if let Some(ref token) = self.token {
+            req = req.header("authorization", format!("Bearer {token}"));
+        }
+        req.json(body).send().await.context(error::HttpSnafu)
+    }
+
+    async fn authed_delete(&self, url: &str) -> Result<reqwest::Response> {
+        let mut req = self.http.delete(url).header("x-requested-with", "aletheia");
+        if let Some(ref token) = self.token {
+            req = req.header("authorization", format!("Bearer {token}"));
+        }
+        req.send().await.context(error::HttpSnafu)
+    }
+
+    async fn expect_ok<T: serde::de::DeserializeOwned>(
+        &self,
+        url: &str,
+        response: reqwest::Response,
+    ) -> Result<T> {
+        self.expect_status(url, response, &[200]).await
+    }
+
+    async fn expect_status<T: serde::de::DeserializeOwned>(
+        &self,
+        url: &str,
+        response: reqwest::Response,
+        accepted: &[u16],
+    ) -> Result<T> {
+        let status = response.status().as_u16();
+        if !accepted.contains(&status) {
+            let body = response.text().await.unwrap_or_default();
+            return error::UnexpectedStatusSnafu {
+                endpoint: url.to_owned(),
+                status,
+                body,
+            }
+            .fail();
+        }
+        response.json().await.context(error::HttpSnafu)
+    }
+}
+
+// --- Response types (local mirrors, no pylon dependency) ---
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub version: String,
+    pub uptime_seconds: u64,
+    pub checks: Vec<HealthCheck>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HealthCheck {
+    pub name: String,
+    pub status: String,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NousInfo {
+    pub id: String,
+    pub lifecycle: String,
+    pub session_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NousStatus {
+    pub id: String,
+    pub model: String,
+    pub context_window: u32,
+    pub max_output_tokens: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SessionResponse {
+    pub id: String,
+    pub nous_id: String,
+    pub session_key: String,
+    pub status: String,
+    pub model: Option<String>,
+    pub message_count: i64,
+    pub token_count_estimate: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HistoryResponse {
+    pub messages: Vec<HistoryMessage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HistoryMessage {
+    pub id: i64,
+    pub seq: i64,
+    pub role: String,
+    pub content: String,
+    pub tool_call_id: Option<String>,
+    pub tool_name: Option<String>,
+    pub created_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn url_construction_trims_trailing_slash() {
+        let client = EvalClient::new("http://localhost:18789/", None);
+        assert_eq!(client.base_url(), "http://localhost:18789");
+    }
+
+    #[test]
+    fn has_token_reports_correctly() {
+        let without = EvalClient::new("http://localhost", None);
+        assert!(!without.has_token());
+
+        let with = EvalClient::new("http://localhost", Some("tok".to_owned()));
+        assert!(with.has_token());
+    }
+}

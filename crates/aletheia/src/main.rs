@@ -116,6 +116,24 @@ enum Command {
         #[command(subcommand)]
         action: CredentialAction,
     },
+    /// Run behavioral evaluation scenarios against a live instance
+    Eval {
+        /// Server URL to evaluate
+        #[arg(long, default_value = "http://127.0.0.1:18789")]
+        url: String,
+        /// Bearer token for authenticated endpoints
+        #[arg(long, env = "ALETHEIA_EVAL_TOKEN")]
+        token: Option<String>,
+        /// Filter scenarios by ID substring
+        #[arg(long)]
+        scenario: Option<String>,
+        /// Output results as JSON
+        #[arg(long)]
+        json: bool,
+        /// Per-scenario timeout in seconds
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -173,6 +191,13 @@ async fn main() -> Result<()> {
         Some(Command::Credential { action }) => {
             return handle_credential(action.clone(), cli.instance_root.as_ref()).await;
         }
+        Some(Command::Eval {
+            url,
+            token,
+            scenario,
+            json,
+            timeout,
+        }) => return eval(url, token.clone(), scenario.clone(), *json, *timeout).await,
         None => {}
     }
 
@@ -906,6 +931,36 @@ fn backup(cli: &Cli, list: bool, prune: bool, keep: usize, export_json: bool) ->
     Ok(())
 }
 
+async fn eval(
+    url: &str,
+    token: Option<String>,
+    filter: Option<String>,
+    json_output: bool,
+    timeout: u64,
+) -> Result<()> {
+    let config = aletheia_dokimion::runner::RunConfig {
+        base_url: url.to_owned(),
+        token,
+        filter,
+        fail_fast: false,
+        timeout_secs: timeout,
+        json_output,
+    };
+    let runner = aletheia_dokimion::runner::ScenarioRunner::new(config);
+    let report = runner.run().await;
+
+    if json_output {
+        aletheia_dokimion::report::print_report_json(&report);
+    } else {
+        aletheia_dokimion::report::print_report(&report, url);
+    }
+
+    if report.failed > 0 {
+        anyhow::bail!("{} scenario(s) failed", report.failed);
+    }
+    Ok(())
+}
+
 async fn health(url: &str) -> Result<()> {
     let endpoint = format!("{url}/api/health");
     let resp = reqwest::get(&endpoint)
@@ -985,6 +1040,45 @@ mod tests {
         match cli.command {
             Some(Command::Status { url }) => assert_eq!(url, "http://example:9999"),
             _ => panic!("expected Status command"),
+        }
+    }
+
+    #[test]
+    fn eval_subcommand_parses() {
+        let cli = Cli::parse_from(["aletheia", "eval"]);
+        assert!(matches!(cli.command, Some(Command::Eval { .. })));
+    }
+
+    #[test]
+    fn eval_with_options_parses() {
+        let cli = Cli::parse_from([
+            "aletheia",
+            "eval",
+            "--url",
+            "http://example:9999",
+            "--token",
+            "my-jwt-token",
+            "--scenario",
+            "health",
+            "--json",
+            "--timeout",
+            "60",
+        ]);
+        match cli.command {
+            Some(Command::Eval {
+                url,
+                token,
+                scenario,
+                json,
+                timeout,
+            }) => {
+                assert_eq!(url, "http://example:9999");
+                assert_eq!(token.as_deref(), Some("my-jwt-token"));
+                assert_eq!(scenario.as_deref(), Some("health"));
+                assert!(json);
+                assert_eq!(timeout, 60);
+            }
+            _ => panic!("expected Eval command"),
         }
     }
 }
