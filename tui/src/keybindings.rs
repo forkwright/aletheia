@@ -111,6 +111,12 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Chat],
             show_in_status_bar: false,
         },
+        Keybinding {
+            keys: "\u{2191}/\u{2193}",
+            description: "Select message",
+            contexts: &[KeyContext::Chat],
+            show_in_status_bar: true,
+        },
         // --- Selection ---
         Keybinding {
             keys: "j / \u{2193}",
@@ -159,6 +165,18 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             description: "Inspect tool call",
             contexts: &[KeyContext::Selection],
             show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "G / End",
+            description: "Jump to newest",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Home",
+            description: "Jump to oldest",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: false,
         },
         Keybinding {
             keys: "Esc",
