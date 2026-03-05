@@ -60,9 +60,9 @@ struct Cli {
     #[arg(long, default_value = "127.0.0.1")]
     bind: String,
 
-    /// Port
-    #[arg(short, long, default_value_t = 18789)]
-    port: u16,
+    /// Port (overrides config gateway.port when set)
+    #[arg(short, long)]
+    port: Option<u16>,
 
     /// Emit JSON-structured logs
     #[arg(long)]
@@ -578,7 +578,8 @@ async fn serve(cli: Cli) -> Result<()> {
     let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
     let app = build_router(state.clone(), &security);
 
-    let bind_addr = format!("{}:{}", cli.bind, cli.port);
+    let port = cli.port.unwrap_or(config.gateway.port);
+    let bind_addr = format!("{}:{}", cli.bind, port);
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .with_context(|| format!("failed to bind to {bind_addr}"))?;
@@ -1217,7 +1218,7 @@ mod tests {
     #[test]
     fn cli_defaults() {
         let cli = Cli::parse_from(["aletheia"]);
-        assert_eq!(cli.port, 18789);
+        assert!(cli.port.is_none());
         assert_eq!(cli.bind, "127.0.0.1");
         assert_eq!(cli.log_level, "info");
         assert!(!cli.json_logs);
