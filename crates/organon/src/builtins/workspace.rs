@@ -90,7 +90,7 @@ pub(crate) fn extract_opt_u64(args: &serde_json::Value, field: &str) -> Option<u
     args.get(field).and_then(serde_json::Value::as_u64)
 }
 
-fn extract_opt_bool(args: &serde_json::Value, field: &str) -> Option<bool> {
+pub(crate) fn extract_opt_bool(args: &serde_json::Value, field: &str) -> Option<bool> {
     args.get(field).and_then(serde_json::Value::as_bool)
 }
 

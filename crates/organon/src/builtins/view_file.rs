@@ -76,98 +76,104 @@ impl ToolExecutor for ViewFileExecutor {
                 )));
             }
 
-            let kind = match detect_media_kind(&path) {
-                Some(k) => k,
-                None => {
-                    let ext = path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("unknown");
-                    return Ok(ToolResult::error(format!(
-                        "unsupported file type: {ext}. Supported: png, jpg, gif, webp, pdf, and text files"
-                    )));
-                }
+            let Some(kind) = detect_media_kind(&path) else {
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("unknown");
+                return Ok(ToolResult::error(format!(
+                    "unsupported file type: {ext}. Supported: png, jpg, gif, webp, pdf, and text files"
+                )));
             };
 
-            match kind {
-                MediaKind::Image(media_type) => {
-                    if metadata.len() > MAX_IMAGE_BYTES {
-                        return Ok(ToolResult::error(format!(
-                            "image too large: {} bytes (max {} MB)",
-                            metadata.len(),
-                            MAX_IMAGE_BYTES / (1024 * 1024)
-                        )));
-                    }
-                    let bytes = match std::fs::read(&path) {
-                        Ok(b) => b,
-                        Err(e) => return Ok(ToolResult::error(format!("read failed: {e}"))),
-                    };
-                    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    Ok(ToolResult::blocks(vec![
-                        ToolResultBlock::Image {
-                            source: ImageSource {
-                                source_type: "base64".to_owned(),
-                                media_type: media_type.to_owned(),
-                                data: encoded,
-                            },
-                        },
-                        ToolResultBlock::Text {
-                            text: format!("{} ({} bytes)", path.display(), bytes.len()),
-                        },
-                    ]))
-                }
-                MediaKind::Pdf => {
-                    if metadata.len() > MAX_PDF_BYTES {
-                        return Ok(ToolResult::error(format!(
-                            "PDF too large: {} bytes (max {} MB)",
-                            metadata.len(),
-                            MAX_PDF_BYTES / (1024 * 1024)
-                        )));
-                    }
-                    let bytes = match std::fs::read(&path) {
-                        Ok(b) => b,
-                        Err(e) => return Ok(ToolResult::error(format!("read failed: {e}"))),
-                    };
-                    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    Ok(ToolResult::blocks(vec![
-                        ToolResultBlock::Document {
-                            source: DocumentSource {
-                                source_type: "base64".to_owned(),
-                                media_type: "application/pdf".to_owned(),
-                                data: encoded,
-                            },
-                        },
-                        ToolResultBlock::Text {
-                            text: format!("{} ({} bytes)", path.display(), bytes.len()),
-                        },
-                    ]))
-                }
-                MediaKind::Text => {
-                    let content = match std::fs::read_to_string(&path) {
-                        Ok(c) => c,
-                        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
-                            return Ok(ToolResult::error(format!(
-                                "file is not valid UTF-8 text: {}",
-                                path.display()
-                            )));
-                        }
-                        Err(e) => return Ok(ToolResult::error(format!("read failed: {e}"))),
-                    };
-                    let output = match max_lines {
-                        Some(n) => {
-                            let n = usize::try_from(n).unwrap_or(usize::MAX);
-                            content.lines().take(n).collect::<Vec<_>>().join("\n")
-                        }
-                        None => content,
-                    };
-                    Ok(ToolResult::text(output))
-                }
-            }
+            Ok(execute_by_kind(&kind, &path, &metadata, max_lines))
         })
     }
 }
 
-/// Register the view_file tool.
+fn execute_by_kind(
+    kind: &MediaKind,
+    path: &std::path::Path,
+    metadata: &std::fs::Metadata,
+    max_lines: Option<u64>,
+) -> ToolResult {
+    match kind {
+        MediaKind::Image(media_type) => {
+            if metadata.len() > MAX_IMAGE_BYTES {
+                return ToolResult::error(format!(
+                    "image too large: {} bytes (max {} MB)",
+                    metadata.len(),
+                    MAX_IMAGE_BYTES / (1024 * 1024)
+                ));
+            }
+            let bytes = match std::fs::read(path) {
+                Ok(b) => b,
+                Err(e) => return ToolResult::error(format!("read failed: {e}")),
+            };
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            ToolResult::blocks(vec![
+                ToolResultBlock::Image {
+                    source: ImageSource {
+                        source_type: "base64".to_owned(),
+                        media_type: (*media_type).to_owned(),
+                        data: encoded,
+                    },
+                },
+                ToolResultBlock::Text {
+                    text: format!("{} ({} bytes)", path.display(), bytes.len()),
+                },
+            ])
+        }
+        MediaKind::Pdf => {
+            if metadata.len() > MAX_PDF_BYTES {
+                return ToolResult::error(format!(
+                    "PDF too large: {} bytes (max {} MB)",
+                    metadata.len(),
+                    MAX_PDF_BYTES / (1024 * 1024)
+                ));
+            }
+            let bytes = match std::fs::read(path) {
+                Ok(b) => b,
+                Err(e) => return ToolResult::error(format!("read failed: {e}")),
+            };
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            ToolResult::blocks(vec![
+                ToolResultBlock::Document {
+                    source: DocumentSource {
+                        source_type: "base64".to_owned(),
+                        media_type: "application/pdf".to_owned(),
+                        data: encoded,
+                    },
+                },
+                ToolResultBlock::Text {
+                    text: format!("{} ({} bytes)", path.display(), bytes.len()),
+                },
+            ])
+        }
+        MediaKind::Text => {
+            let content = match std::fs::read_to_string(path) {
+                Ok(c) => c,
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                    return ToolResult::error(format!(
+                        "file is not valid UTF-8 text: {}",
+                        path.display()
+                    ));
+                }
+                Err(e) => return ToolResult::error(format!("read failed: {e}")),
+            };
+            let output = match max_lines {
+                Some(n) => {
+                    let n = usize::try_from(n).unwrap_or(usize::MAX);
+                    content.lines().take(n).collect::<Vec<_>>().join("\n")
+                }
+                None => content,
+            };
+            ToolResult::text(output)
+        }
+    }
+}
+
+/// Register the `view_file` tool.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(view_file_def(), Box::new(ViewFileExecutor))?;
     Ok(())
@@ -209,8 +215,6 @@ fn view_file_def() -> crate::types::ToolDef {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
     use super::*;
@@ -283,10 +287,10 @@ mod tests {
                         assert_eq!(source.source_type, "base64");
                         assert!(!source.data.is_empty());
                     }
-                    _ => panic!("expected Image block"),
+                    other => panic!("expected Image block, got {other:?}"),
                 }
             }
-            _ => panic!("expected Blocks"),
+            other @ ToolResultContent::Text(_) => panic!("expected Blocks, got {other:?}"),
         }
     }
 
