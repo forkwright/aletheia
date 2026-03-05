@@ -19,6 +19,18 @@ pub struct AletheiaConfig {
     /// External domain pack paths (directories containing pack.yaml).
     pub packs: Vec<PathBuf>,
     pub maintenance: MaintenanceSettings,
+    /// Per-model pricing for LLM cost metrics. Keyed by model name.
+    pub pricing: HashMap<String, ModelPricing>,
+}
+
+/// Per-model pricing rates for cost estimation in metrics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPricing {
+    /// Cost per million input tokens (USD).
+    pub input_cost_per_mtok: f64,
+    /// Cost per million output tokens (USD).
+    pub output_cost_per_mtok: f64,
 }
 
 /// Maps a channel source to a nous agent.
@@ -586,6 +598,7 @@ mod tests {
         assert!(config.maintenance.db_monitoring.enabled);
         assert_eq!(config.maintenance.db_monitoring.warn_threshold_mb, 100);
         assert!(!config.maintenance.retention.enabled);
+        assert!(config.pricing.is_empty());
     }
 
     #[test]
@@ -758,5 +771,35 @@ mod tests {
     fn bindings_in_config_default_empty() {
         let config = AletheiaConfig::default();
         assert!(config.bindings.is_empty());
+    }
+
+    #[test]
+    fn pricing_defaults_empty() {
+        let config = AletheiaConfig::default();
+        assert!(config.pricing.is_empty());
+    }
+
+    #[test]
+    fn pricing_from_json() {
+        let json = r#"{
+            "pricing": {
+                "claude-opus-4-6": {
+                    "inputCostPerMtok": 15.0,
+                    "outputCostPerMtok": 75.0
+                },
+                "claude-sonnet-4-6": {
+                    "inputCostPerMtok": 3.0,
+                    "outputCostPerMtok": 15.0
+                }
+            }
+        }"#;
+        let config: AletheiaConfig = serde_json::from_str(json).expect("parse pricing");
+        assert_eq!(config.pricing.len(), 2);
+        let opus = &config.pricing["claude-opus-4-6"];
+        assert!((opus.input_cost_per_mtok - 15.0).abs() < f64::EPSILON);
+        assert!((opus.output_cost_per_mtok - 75.0).abs() < f64::EPSILON);
+        let sonnet = &config.pricing["claude-sonnet-4-6"];
+        assert!((sonnet.input_cost_per_mtok - 3.0).abs() < f64::EPSILON);
+        assert!((sonnet.output_cost_per_mtok - 15.0).abs() < f64::EPSILON);
     }
 }

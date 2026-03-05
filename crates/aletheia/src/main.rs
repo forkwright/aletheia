@@ -301,7 +301,7 @@ async fn serve(cli: Cli) -> Result<()> {
     let jwt_manager = JwtManager::new(JwtConfig::default());
 
     // Build shared registries — single instances used by both NousManager and AppState
-    let provider_registry = Arc::new(build_provider_registry());
+    let provider_registry = Arc::new(build_provider_registry(&config));
     let mut tool_registry = build_tool_registry()?;
 
     // Register domain pack tools alongside builtins
@@ -480,16 +480,35 @@ async fn serve(cli: Cli) -> Result<()> {
 }
 
 /// Build a provider registry with Anthropic if API key is available.
-fn build_provider_registry() -> ProviderRegistry {
+fn build_provider_registry(
+    config: &aletheia_taxis::config::AletheiaConfig,
+) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
+
+    // Map taxis pricing config to hermeneus ModelPricing
+    let pricing: std::collections::HashMap<String, aletheia_hermeneus::provider::ModelPricing> =
+        config
+            .pricing
+            .iter()
+            .map(|(model, p)| {
+                (
+                    model.clone(),
+                    aletheia_hermeneus::provider::ModelPricing {
+                        input_cost_per_mtok: p.input_cost_per_mtok,
+                        output_cost_per_mtok: p.output_cost_per_mtok,
+                    },
+                )
+            })
+            .collect();
 
     match std::env::var("ANTHROPIC_API_KEY") {
         Ok(api_key) if !api_key.is_empty() => {
-            let config = ProviderConfig {
+            let provider_config = ProviderConfig {
                 api_key: Some(api_key),
+                pricing,
                 ..ProviderConfig::default()
             };
-            match AnthropicProvider::from_config(&config) {
+            match AnthropicProvider::from_config(&provider_config) {
                 Ok(provider) => {
                     registry.register(Box::new(provider));
                     info!("anthropic provider registered");

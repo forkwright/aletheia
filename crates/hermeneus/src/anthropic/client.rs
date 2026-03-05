@@ -8,8 +8,10 @@ use secrecy::{ExposeSecret, SecretString};
 use snafu::ResultExt;
 use tracing::{info, info_span};
 
+use std::collections::HashMap;
+
 use crate::error::{self, Result};
-use crate::provider::{LlmProvider, ProviderConfig};
+use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_stream};
@@ -37,6 +39,7 @@ pub struct AnthropicProvider {
     base_url: String,
     api_version: String,
     max_retries: u32,
+    pricing: HashMap<String, ModelPricing>,
 }
 
 impl AnthropicProvider {
@@ -75,6 +78,7 @@ impl AnthropicProvider {
                 .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
             api_version: DEFAULT_API_VERSION.to_owned(),
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
+            pricing: config.pricing.clone(),
         })
     }
 
@@ -201,14 +205,14 @@ impl AnthropicProvider {
                         model = %request.model,
                         tokens_in = resp.usage.input_tokens,
                         tokens_out = resp.usage.output_tokens,
-                        cost = %format!("~${:.4}", estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
+                        cost = %format!("~${:.4}", estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
                         "LLM call complete"
                     );
                     crate::metrics::record_completion(
                         "anthropic",
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
-                        estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens),
+                        estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens),
                         true,
                     );
                     return Ok(resp);
@@ -358,14 +362,14 @@ impl AnthropicProvider {
                         model = %request.model,
                         tokens_in = resp.usage.input_tokens,
                         tokens_out = resp.usage.output_tokens,
-                        cost = %format!("~${:.4}", estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
+                        cost = %format!("~${:.4}", estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens)),
                         "LLM call complete"
                     );
                     crate::metrics::record_completion(
                         "anthropic",
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
-                        estimate_cost(&request.model, resp.usage.input_tokens, resp.usage.output_tokens),
+                        estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens),
                         true,
                     );
                 }
@@ -437,12 +441,20 @@ impl LlmProvider for AnthropicProvider {
     }
 }
 
+/// Estimate cost using config-based pricing, falling back to hardcoded defaults.
 #[expect(
     clippy::cast_precision_loss,
     reason = "token counts are small enough for f64 precision"
 )]
-fn estimate_cost(model: &str, input_tokens: u64, output_tokens: u64) -> f64 {
-    let (in_rate, out_rate) = if model.contains("opus") {
+fn estimate_cost(
+    pricing: &HashMap<String, ModelPricing>,
+    model: &str,
+    input_tokens: u64,
+    output_tokens: u64,
+) -> f64 {
+    let (in_rate, out_rate) = if let Some(p) = pricing.get(model) {
+        (p.input_cost_per_mtok, p.output_cost_per_mtok)
+    } else if model.contains("opus") {
         (15.0, 75.0)
     } else if model.contains("haiku") {
         (0.80, 4.0)
@@ -517,6 +529,7 @@ mod tests {
             base_url: Some(base_url.to_owned()),
             default_model: None,
             max_retries: Some(0),
+            pricing: HashMap::new(),
         }
     }
 
@@ -733,27 +746,61 @@ mod tests {
 
     #[test]
     fn estimate_cost_opus() {
-        let cost = estimate_cost("claude-opus-4-20250514", 1000, 100);
+        let pricing = HashMap::new();
+        let cost = estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100);
         assert!((cost - 0.0225).abs() < 0.0001);
     }
 
     #[test]
     fn estimate_cost_sonnet() {
-        let cost = estimate_cost("claude-sonnet-4-20250514", 1000, 100);
+        let pricing = HashMap::new();
+        let cost = estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100);
         assert!((cost - 0.0045).abs() < 0.0001);
     }
 
     #[test]
     fn estimate_cost_haiku() {
-        let cost = estimate_cost("claude-haiku-4-5-20251001", 1000, 100);
+        let pricing = HashMap::new();
+        let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1000, 100);
         assert!((cost - 0.0012).abs() < 0.0001);
     }
 
     #[test]
     fn estimate_cost_unknown_defaults_to_sonnet() {
-        let cost_unknown = estimate_cost("some-unknown-model", 1000, 100);
-        let cost_sonnet = estimate_cost("claude-sonnet-4-20250514", 1000, 100);
+        let pricing = HashMap::new();
+        let cost_unknown = estimate_cost(&pricing, "some-unknown-model", 1000, 100);
+        let cost_sonnet = estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100);
         assert!((cost_unknown - cost_sonnet).abs() < 0.0001);
+    }
+
+    #[test]
+    fn estimate_cost_uses_config_pricing() {
+        let mut pricing = HashMap::new();
+        pricing.insert(
+            "custom-model".to_owned(),
+            ModelPricing {
+                input_cost_per_mtok: 10.0,
+                output_cost_per_mtok: 50.0,
+            },
+        );
+        let cost = estimate_cost(&pricing, "custom-model", 1000, 100);
+        // (1000 * 10.0 + 100 * 50.0) / 1_000_000 = 15000 / 1_000_000 = 0.015
+        assert!((cost - 0.015).abs() < 0.0001);
+    }
+
+    #[test]
+    fn estimate_cost_config_overrides_default() {
+        let mut pricing = HashMap::new();
+        pricing.insert(
+            "claude-opus-4-20250514".to_owned(),
+            ModelPricing {
+                input_cost_per_mtok: 20.0,
+                output_cost_per_mtok: 100.0,
+            },
+        );
+        let cost = estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100);
+        // (1000 * 20.0 + 100 * 100.0) / 1_000_000 = 30000 / 1_000_000 = 0.03
+        assert!((cost - 0.03).abs() < 0.0001);
     }
 
     // --- backoff_delay unit tests ---

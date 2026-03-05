@@ -1204,6 +1204,94 @@ async fn openapi_spec_has_schemas() {
     assert!(schemas.contains_key("NousStatus"));
 }
 
+// --- Metrics Tests ---
+
+#[tokio::test]
+async fn metrics_returns_200_with_prometheus_content_type() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(
+        content_type.contains("text/plain"),
+        "expected text/plain content type, got: {content_type}"
+    );
+}
+
+#[tokio::test]
+async fn metrics_no_auth_required() {
+    let (app, _dir) = app().await;
+    // No authorization header — should still succeed
+    let resp = app
+        .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn metrics_contains_aletheia_prefixed_families() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = body_string(resp).await;
+    assert!(
+        body.contains("aletheia_http_requests_total"),
+        "should contain HTTP request counter"
+    );
+    assert!(
+        body.contains("aletheia_uptime_seconds"),
+        "should contain uptime gauge"
+    );
+    assert!(
+        body.contains("# HELP"),
+        "should contain Prometheus HELP comments"
+    );
+    assert!(
+        body.contains("# TYPE"),
+        "should contain Prometheus TYPE comments"
+    );
+}
+
+#[tokio::test]
+async fn metrics_counters_increment_after_request() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+
+    // Make a health request first to increment the counter
+    let _ = router
+        .clone()
+        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    // Then check /metrics for the counter
+    let resp = router
+        .clone()
+        .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = body_string(resp).await;
+    assert!(
+        body.contains("/api/health"),
+        "should contain the health endpoint path in metrics"
+    );
+}
+
 // --- CORS Tests ---
 
 #[tokio::test]

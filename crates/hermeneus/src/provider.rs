@@ -4,6 +4,8 @@
 //! must implement. Designed for the current sync-first approach with
 //! async streaming planned for M2.
 
+use std::collections::HashMap;
+
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
 use crate::types::{CompletionRequest, CompletionResponse};
@@ -43,6 +45,16 @@ pub trait LlmProvider: Send + Sync {
     }
 }
 
+/// Per-model pricing rates for cost estimation.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPricing {
+    /// Cost per million input tokens (USD).
+    pub input_cost_per_mtok: f64,
+    /// Cost per million output tokens (USD).
+    pub output_cost_per_mtok: f64,
+}
+
 /// Configuration for provider initialization.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProviderConfig {
@@ -56,6 +68,9 @@ pub struct ProviderConfig {
     pub default_model: Option<String>,
     /// Maximum retries on transient failures.
     pub max_retries: Option<u32>,
+    /// Per-model pricing for cost metrics. Keyed by model name.
+    #[serde(default)]
+    pub pricing: HashMap<String, ModelPricing>,
 }
 
 impl Default for ProviderConfig {
@@ -66,6 +81,7 @@ impl Default for ProviderConfig {
             base_url: None,
             default_model: Some("claude-opus-4-20250514".to_owned()),
             max_retries: Some(3),
+            pricing: HashMap::new(),
         }
     }
 }
@@ -247,6 +263,7 @@ mod tests {
             config.default_model.as_deref(),
             Some("claude-opus-4-20250514")
         );
+        assert!(config.pricing.is_empty());
     }
 
     #[test]
