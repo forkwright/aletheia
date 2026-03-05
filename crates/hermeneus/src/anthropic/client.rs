@@ -11,10 +11,10 @@ use tracing::{info, info_span};
 
 use std::collections::HashMap;
 
-use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 use crate::error::{self, Result};
 use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
 use crate::types::{CompletionRequest, CompletionResponse};
+use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_stream};
 use super::wire::WireRequest;
@@ -58,7 +58,10 @@ impl CredentialProvider for StaticCredentialProvider {
         })
     }
 
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait requires &str return"
+    )]
     fn name(&self) -> &str {
         "static"
     }
@@ -260,7 +263,12 @@ impl AnthropicProvider {
                         "anthropic",
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
-                        estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens),
+                        estimate_cost(
+                            &self.pricing,
+                            &request.model,
+                            resp.usage.input_tokens,
+                            resp.usage.output_tokens,
+                        ),
                         true,
                     );
                     return Ok(resp);
@@ -425,7 +433,12 @@ impl AnthropicProvider {
                         "anthropic",
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
-                        estimate_cost(&self.pricing, &request.model, resp.usage.input_tokens, resp.usage.output_tokens),
+                        estimate_cost(
+                            &self.pricing,
+                            &request.model,
+                            resp.usage.input_tokens,
+                            resp.usage.output_tokens,
+                        ),
                         true,
                     );
                 }

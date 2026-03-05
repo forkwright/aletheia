@@ -19,27 +19,27 @@ use aletheia_agora::router::MessageRouter;
 use aletheia_agora::semeion::SignalProvider;
 use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::types::ChannelProvider;
-use aletheia_oikonomos::maintenance::{
-    DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector, MaintenanceConfig,
-    TraceRotationConfig, TraceRotator,
-};
-use aletheia_oikonomos::runner::TaskRunner;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_koina::credential::CredentialProvider;
-use aletheia_symbolon::credential::{
-    CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
-    RefreshingCredentialProvider,
-};
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::cross::CrossNousRouter;
 use aletheia_nous::manager::NousManager;
+use aletheia_oikonomos::maintenance::{
+    DbMonitor, DbMonitoringConfig, DriftDetectionConfig, DriftDetector, MaintenanceConfig,
+    TraceRotationConfig, TraceRotator,
+};
+use aletheia_oikonomos::runner::TaskRunner;
 use aletheia_organon::builtins;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
+use aletheia_symbolon::credential::{
+    CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
+    RefreshingCredentialProvider,
+};
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::config::resolve_nous;
 use aletheia_taxis::loader::load_config;
@@ -573,7 +573,10 @@ fn build_provider_registry(
     registry
 }
 
-async fn handle_credential(action: CredentialAction, instance_root: Option<&PathBuf>) -> Result<()> {
+async fn handle_credential(
+    action: CredentialAction,
+    instance_root: Option<&PathBuf>,
+) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
@@ -585,11 +588,19 @@ async fn handle_credential(action: CredentialAction, instance_root: Option<&Path
             match CredentialFile::load(&cred_path) {
                 Some(cred) => {
                     let token_preview = if cred.token.len() > 10 {
-                        format!("{}...{}", &cred.token[..10], &cred.token[cred.token.len()-3..])
+                        format!(
+                            "{}...{}",
+                            &cred.token[..10],
+                            &cred.token[cred.token.len() - 3..]
+                        )
                     } else {
                         "***".to_owned()
                     };
-                    let cred_type = if cred.has_refresh_token() { "OAuth (auto-refresh)" } else { "static API key" };
+                    let cred_type = if cred.has_refresh_token() {
+                        "OAuth (auto-refresh)"
+                    } else {
+                        "static API key"
+                    };
                     println!("Source:        file ({})", cred_path.display());
                     println!("Type:          {cred_type}");
                     println!("Token:         {token_preview}");
@@ -604,14 +615,21 @@ async fn handle_credential(action: CredentialAction, instance_root: Option<&Path
                     } else {
                         println!("Expires:       no expiry set");
                     }
-                    println!("Refresh token: {}", if cred.has_refresh_token() { "present" } else { "absent" });
+                    println!(
+                        "Refresh token: {}",
+                        if cred.has_refresh_token() {
+                            "present"
+                        } else {
+                            "absent"
+                        }
+                    );
                 }
                 None => {
                     // Check env var fallback
                     match std::env::var("ANTHROPIC_API_KEY") {
                         Ok(key) if !key.is_empty() => {
                             let preview = if key.len() > 10 {
-                                format!("{}...{}", &key[..10], &key[key.len()-3..])
+                                format!("{}...{}", &key[..10], &key[key.len() - 3..])
                             } else {
                                 "***".to_owned()
                             };
@@ -633,7 +651,11 @@ async fn handle_credential(action: CredentialAction, instance_root: Option<&Path
             match aletheia_symbolon::credential::force_refresh(&cred_path).await {
                 Ok(updated) => {
                     if let Some(remaining) = updated.seconds_remaining() {
-                        println!("Token refreshed — expires in {}h {}m", remaining / 3600, (remaining % 3600) / 60);
+                        println!(
+                            "Token refreshed — expires in {}h {}m",
+                            remaining / 3600,
+                            (remaining % 3600) / 60
+                        );
                     } else {
                         println!("Token refreshed");
                     }

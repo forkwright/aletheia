@@ -63,8 +63,7 @@ impl CredentialFile {
         }
         let tmp = path.with_extension("json.tmp");
         let mut file = std::fs::File::create(&tmp)?;
-        serde_json::to_writer_pretty(&mut file, self)
-            .map_err(std::io::Error::other)?;
+        serde_json::to_writer_pretty(&mut file, self).map_err(std::io::Error::other)?;
         file.flush()?;
         file.sync_all()?;
         std::fs::rename(&tmp, path)?;
@@ -81,17 +80,21 @@ impl CredentialFile {
     /// Whether this credential has a refresh token (OAuth flow).
     #[must_use]
     pub fn has_refresh_token(&self) -> bool {
-        self.refresh_token
-            .as_ref()
-            .is_some_and(|t| !t.is_empty())
+        self.refresh_token.as_ref().is_some_and(|t| !t.is_empty())
     }
 
     /// Seconds remaining until token expires. Returns `None` if no expiry set.
     #[must_use]
-    #[expect(clippy::cast_possible_wrap, reason = "ms timestamps fit in i64 until year 292M")]
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "ms timestamps fit in i64 until year 292M"
+    )]
     pub fn seconds_remaining(&self) -> Option<i64> {
         let expires_at_ms = self.expires_at?;
-        #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64 until year 584M")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "ms timestamps fit in u64 until year 584M"
+        )]
         let now_ms = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
@@ -256,7 +259,10 @@ impl CredentialProvider for FileCredentialProvider {
         })
     }
 
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait requires &str return"
+    )]
     fn name(&self) -> &str {
         "file"
     }
@@ -336,7 +342,10 @@ impl CredentialProvider for RefreshingCredentialProvider {
         self.file_provider.get_credential()
     }
 
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait requires &str return"
+    )]
     fn name(&self) -> &str {
         "oauth"
     }
@@ -384,8 +393,7 @@ async fn refresh_loop(
                 .unwrap_or_default()
                 .as_millis() as u64;
             #[expect(clippy::cast_possible_wrap, reason = "ms timestamps fit in i64")]
-            let remaining_secs =
-                (s.expires_at_ms as i64 - now_ms as i64) / 1000;
+            let remaining_secs = (s.expires_at_ms as i64 - now_ms as i64) / 1000;
             #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
             let needs = remaining_secs < REFRESH_THRESHOLD_SECS as i64;
             (s.refresh_token.clone(), needs)
@@ -430,10 +438,7 @@ async fn refresh_loop(
                     warn!(error = %e, "failed to write refreshed credential file");
                 }
 
-                info!(
-                    expires_in_secs = resp.expires_in,
-                    "OAuth token refreshed"
-                );
+                info!(expires_in_secs = resp.expires_in, "OAuth token refreshed");
             }
             None => {
                 warn!("OAuth token refresh failed — will retry next cycle");
@@ -550,7 +555,10 @@ impl CredentialProvider for CredentialChain {
         None
     }
 
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait requires &str return"
+    )]
     fn name(&self) -> &str {
         "chain"
     }
@@ -684,7 +692,9 @@ mod tests {
         // Invalidate cache timestamp to force mtime check
         if let Ok(mut guard) = provider.cached.write() {
             if let Some(ref mut c) = *guard {
-                c.checked_at = Instant::now().checked_sub(Duration::from_secs(60)).unwrap_or(Instant::now());
+                c.checked_at = Instant::now()
+                    .checked_sub(Duration::from_secs(60))
+                    .unwrap_or(Instant::now());
                 // Also change mtime to force reload
                 c.mtime = SystemTime::UNIX_EPOCH;
             }
