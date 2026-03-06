@@ -1,5 +1,7 @@
 //! Health endpoint scenarios.
 
+use tracing::Instrument;
+
 use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
 
@@ -29,7 +31,7 @@ impl Scenario for HealthReturnsOk {
                 health.status == "healthy" || health.status == "degraded",
                 format!("expected healthy or degraded, got {}", health.status),
             )
-        })
+        }.instrument(tracing::info_span!("scenario", id = "health-returns-ok")))
     }
 }
 
@@ -48,7 +50,7 @@ impl Scenario for HealthContainsVersion {
         Box::pin(async move {
             let health = client.health().await?;
             assert_eval(!health.version.is_empty(), "version field is empty")
-        })
+        }.instrument(tracing::info_span!("scenario", id = "health-contains-version")))
     }
 }
 
@@ -67,6 +69,6 @@ impl Scenario for HealthReportsChecks {
         Box::pin(async move {
             let health = client.health().await?;
             assert_eval(!health.checks.is_empty(), "checks array is empty")
-        })
+        }.instrument(tracing::info_span!("scenario", id = "health-reports-checks")))
     }
 }

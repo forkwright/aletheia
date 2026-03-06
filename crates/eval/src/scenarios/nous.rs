@@ -1,5 +1,7 @@
 //! Nous list/status scenarios.
 
+use tracing::Instrument;
+
 use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval};
 
@@ -28,7 +30,7 @@ impl Scenario for NousListReturnsArray {
                 assert_eval(!nous.id.is_empty(), "nous id should not be empty")?;
             }
             Ok(())
-        })
+        }.instrument(tracing::info_span!("scenario", id = "nous-list-returns-array")))
     }
 }
 
@@ -55,6 +57,6 @@ impl Scenario for NousUnknownReturns404 {
                 }
                 .fail(),
             }
-        })
+        }.instrument(tracing::info_span!("scenario", id = "nous-unknown-returns-404")))
     }
 }

@@ -16,7 +16,7 @@ logger.add(sys.stderr, format="{time:HH:mm:ss} | {level:<7} | {message}", level=
 GATEWAY_URL = os.environ.get("ALETHEIA_GATEWAY", "http://127.0.0.1:18789")
 SIDECAR_URL = os.environ.get("ALETHEIA_MEMORY_URL", "http://127.0.0.1:8230")
 AUTH_TOKEN = os.environ.get("ALETHEIA_TOKEN", "")
-RESULTS_DIR = Path(os.environ.get("ALETHEIA_HOME", str(Path.home() / ".aletheia"))) / "shared" / "evaluation"
+RESULTS_DIR = Path(os.environ.get("ALETHEIA_ROOT") or os.environ.get("ALETHEIA_HOME", str(Path.home() / ".aletheia"))) / "shared" / "evaluation"
 
 
 # --- 4.1: Memory Injection Testing ---
@@ -101,7 +101,7 @@ def run_injection_tests(dry_run: bool = False) -> list[dict]:
                         },
                     )
                 except Exception:
-                    pass
+                    logger.debug("retract cleanup failed", exc_info=True)
             else:
                 injected = True
                 response = "[DRY RUN]"

@@ -12,9 +12,9 @@ from loguru import logger
 logger.remove()
 logger.add(sys.stderr, format="{time:HH:mm:ss} | {level:<7} | {message}", level="INFO")
 
-ALETHEIA_HOME = Path(os.environ.get("ALETHEIA_HOME", str(Path.home() / ".aletheia")))
-NOUS_DIR = ALETHEIA_HOME / "nous"
-SHARED_DIR = ALETHEIA_HOME / "shared"
+ALETHEIA_ROOT = Path(os.environ.get("ALETHEIA_ROOT") or os.environ.get("ALETHEIA_HOME", str(Path.home() / ".aletheia")))
+NOUS_DIR = ALETHEIA_ROOT / "nous"
+SHARED_DIR = ALETHEIA_ROOT / "shared"
 COMPETENCE_FILE = SHARED_DIR / "competence" / "model.json"
 CALIBRATION_FILE = SHARED_DIR / "calibration" / "points.json"
 CONSOLIDATION_LOG = SHARED_DIR / "memory" / "consolidation-log.jsonl"
@@ -77,6 +77,7 @@ def load_adversarial_summary() -> dict | None:
         data = json.loads(EVAL_RESULTS.read_text())
         return data.get("summary")
     except Exception:
+        logger.debug("Failed to load adversarial results", exc_info=True)
         return None
 
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # aletheia-eval — Objective metrics for the Aletheia evaluation framework
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -14,6 +16,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(os.environ.get("ALETHEIA_ROOT", str(Path.home() / ".aletheia")))
 SHARED = ROOT / "shared"
@@ -26,12 +29,12 @@ SIDECAR_URL = os.environ.get("ALETHEIA_MEMORY_URL", "http://127.0.0.1:8230")
 
 NEO4J_URI = "neo4j://localhost:7687"
 NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "aletheia-memory"
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "")
 
 AGENTS = ["syn", "eiron", "demiurge", "syl", "arbor", "akron"]
 
 
-def load_triggers(path=None):
+def load_triggers(path: str | None = None) -> dict[str, Any]:
     p = Path(path) if path else TRIGGERS_FILE
     if not p.exists():
         return {}
@@ -39,7 +42,7 @@ def load_triggers(path=None):
         return json.load(f)
 
 
-def load_facts():
+def load_facts() -> list[dict[str, Any]]:
     if not FACTS_FILE.exists():
         return []
     facts = []
@@ -55,7 +58,7 @@ def load_facts():
     return facts
 
 
-def sidecar_search(query, limit=10):
+def sidecar_search(query: str, limit: int = 10) -> list[dict[str, Any]]:
     data = json.dumps({"query": query, "user_id": "default", "limit": limit}).encode()
     req = urllib.request.Request(
         f"{SIDECAR_URL}/search",
@@ -73,7 +76,7 @@ def sidecar_search(query, limit=10):
         return []
 
 
-def fuzzy_match(query_text, memory_text, threshold=0.5):
+def fuzzy_match(query_text: str, memory_text: str, threshold: float = 0.5) -> bool:
     q = query_text.lower().strip()
     m = memory_text.lower().strip()
     if q in m or m in q:
@@ -83,7 +86,7 @@ def fuzzy_match(query_text, memory_text, threshold=0.5):
 
 # ── recall@k ─────────────────────────────────────────────────────────────────
 
-def cmd_recall(args):
+def cmd_recall(args: argparse.Namespace) -> dict[str, Any]:
     facts = load_facts()
     triggers = load_triggers(args.triggers)
     if not facts:
@@ -117,7 +120,7 @@ def cmd_recall(args):
 
 # ── facts health ─────────────────────────────────────────────────────────────
 
-def cmd_facts(args):
+def cmd_facts(args: argparse.Namespace) -> dict[str, Any]:
     facts = load_facts()
     triggers = load_triggers(args.triggers)
     if not facts:
@@ -183,16 +186,23 @@ def cmd_facts(args):
 
 # ── graph health ─────────────────────────────────────────────────────────────
 
-def cmd_graph(args):
+def cmd_graph(args: argparse.Namespace) -> dict[str, Any]:
     triggers = load_triggers(args.triggers)
     try:
         from neo4j import GraphDatabase
     except ImportError:
         return {"error": "neo4j driver not installed"}
 
-    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    if not NEO4J_PASSWORD:
+        return {"error": "NEO4J_PASSWORD not set", "skipped": True}
 
-    def query(cypher):
+    try:
+        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver.verify_connectivity()
+    except Exception as e:
+        return {"error": f"Neo4j unavailable: {e}", "skipped": True}
+
+    def query(cypher: str) -> list[dict[str, Any]]:
         with driver.session() as s:
             return [dict(r) for r in s.run(cypher)]
 
@@ -235,6 +245,7 @@ def cmd_graph(args):
             "alerts": alerts,
         }
     except Exception as e:
+        print(f"  graph check error: {e}", file=sys.stderr)
         return {"error": str(e)}
     finally:
         driver.close()
@@ -242,7 +253,7 @@ def cmd_graph(args):
 
 # ── uptime ───────────────────────────────────────────────────────────────────
 
-def cmd_uptime(args):
+def cmd_uptime(args: argparse.Namespace) -> dict[str, Any]:
     result = {}
 
     # Current service status
@@ -250,7 +261,8 @@ def cmd_uptime(args):
         try:
             with open(SERVICES_JSON) as f:
                 result["services"] = json.load(f)
-        except Exception:
+        except Exception as e:
+            print(f"  warning: failed to parse {SERVICES_JSON}: {e}", file=sys.stderr)
             result["services"] = "failed to parse"
     else:
         result["services"] = "services.json not found"
@@ -275,7 +287,7 @@ def cmd_uptime(args):
 
 # ── self-grades ──────────────────────────────────────────────────────────────
 
-def cmd_self_grades(args):
+def cmd_self_grades(args: argparse.Namespace) -> dict[str, Any]:
     grades = {}
     pattern = re.compile(
         r"- (task_completion|pushback_opportunities|pushback_taken|"
@@ -308,7 +320,7 @@ def cmd_self_grades(args):
 
 # ── full ─────────────────────────────────────────────────────────────────────
 
-def cmd_full(args):
+def cmd_full(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "recall": cmd_recall(args),
@@ -321,10 +333,10 @@ def cmd_full(args):
 
 # ── output formatting ────────────────────────────────────────────────────────
 
-def format_markdown(data, title="Evaluation Report"):
+def format_markdown(data: dict[str, Any], title: str = "Evaluation Report") -> str:
     lines = [f"# {title}", f"*{datetime.now().strftime('%Y-%m-%d %H:%M')}*", ""]
 
-    def section(key, label):
+    def section(key: str, label: str) -> None:
         if key not in data:
             return
         lines.append(f"## {label}")
@@ -354,7 +366,7 @@ def format_markdown(data, title="Evaluation Report"):
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Aletheia objective evaluation metrics")
     parser.add_argument("--json", action="store_true", help="JSON output")
     parser.add_argument("--output", "-o", help="Write to file")
