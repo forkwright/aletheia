@@ -22,7 +22,7 @@ use crate::engine::data::program::{
     StratifiedMagicProgram, StratifiedNormalFormProgram,
 };
 use crate::engine::data::relation::{ColType, NullableColType};
-use crate::engine::data::symb::{Symbol, PROG_ENTRY};
+use crate::engine::data::symb::{PROG_ENTRY, Symbol};
 use crate::engine::parse::SourceSpan;
 
 use crate::engine::runtime::transact::SessionTx;
@@ -124,11 +124,7 @@ fn magic_rewrite_ruleset(
                 .zip(adornment.iter())
                 .filter_map(
                     |(arg, is_bound)| {
-                        if *is_bound {
-                            Some(arg.clone())
-                        } else {
-                            None
-                        }
+                        if *is_bound { Some(arg.clone()) } else { None }
                     },
                 )
                 .collect_vec();
@@ -234,11 +230,7 @@ fn magic_rewrite_ruleset(
                             .zip(r_app.name.magic_adornment())
                             .filter_map(
                                 |(kw, is_bound)| {
-                                    if *is_bound {
-                                        Some(kw.clone())
-                                    } else {
-                                        None
-                                    }
+                                    if *is_bound { Some(kw.clone()) } else { None }
                                 },
                             )
                             .collect_vec();

@@ -2,19 +2,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use snafu::Snafu;
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail};
+use snafu::Snafu;
 use tracing::info;
 
-use rocksdb::{OptimisticTransactionDB, Options, WriteBatchWithTransaction, DB};
+use rocksdb::{DB, OptimisticTransactionDB, Options, WriteBatchWithTransaction};
 
-use crate::engine::data::tuple::{check_key_for_validity, Tuple};
+use crate::engine::DbCore as Db;
+use crate::engine::data::tuple::{Tuple, check_key_for_validity};
 use crate::engine::data::value::ValidityTs;
 use crate::engine::runtime::db::{BadDbInit, DbManifest};
 use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
 use crate::engine::storage::{Storage, StoreTx};
-use crate::engine::DbCore as Db;
 
 const KEY_PREFIX_LEN: usize = 9;
 const CURRENT_STORAGE_VERSION: u64 = 3;
@@ -37,10 +37,14 @@ pub fn new_cozo_newrocksdb(path: impl AsRef<Path>) -> Result<Db<NewRocksDbStorag
     let is_new = if manifest_path.exists() {
         let manifest_bytes = fs::read(&manifest_path)
             .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
-            .map_err(|e| crate::engine::error::AdhocError(format!("failed to read manifest: {e}")))?;
+            .map_err(|e| {
+                crate::engine::error::AdhocError(format!("failed to read manifest: {e}"))
+            })?;
         let existing: DbManifest = rmp_serde::from_slice(&manifest_bytes)
             .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
-            .map_err(|e| crate::engine::error::AdhocError(format!("failed to parse manifest: {e}")))?;
+            .map_err(|e| {
+                crate::engine::error::AdhocError(format!("failed to parse manifest: {e}"))
+            })?;
 
         if existing.storage_version != CURRENT_STORAGE_VERSION {
             return Err(bail!(
@@ -55,15 +59,21 @@ pub fn new_cozo_newrocksdb(path: impl AsRef<Path>) -> Result<Db<NewRocksDbStorag
         };
         let manifest_bytes = rmp_serde::to_vec_named(&manifest)
             .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
-            .map_err(|e| crate::engine::error::AdhocError(format!("failed to serialize manifest: {e}")))?;
+            .map_err(|e| {
+                crate::engine::error::AdhocError(format!("failed to serialize manifest: {e}"))
+            })?;
         fs::write(&manifest_path, &manifest_bytes)
             .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
-            .map_err(|e| crate::engine::error::AdhocError(format!("failed to write manifest: {e}")))?;
+            .map_err(|e| {
+                crate::engine::error::AdhocError(format!("failed to write manifest: {e}"))
+            })?;
         true
     };
 
     let store_path = path_buf.join("data");
-    let store_path_str = store_path.to_str().ok_or(crate::engine::error::AdhocError("bad path name".to_string()))?;
+    let store_path_str = store_path.to_str().ok_or(crate::engine::error::AdhocError(
+        "bad path name".to_string(),
+    ))?;
 
     let mut options = Options::default();
     options.create_if_missing(is_new);
@@ -139,10 +149,9 @@ unsafe impl<'a> Sync for NewRocksDbTx<'a> {}
 
 impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
     fn get(&self, key: &[u8], _for_update: bool) -> Result<Option<Vec<u8>>> {
-        let db_tx = self
-            .db_tx
-            .as_ref()
-            .ok_or_else(|| crate::engine::error::AdhocError("Transaction already committed".to_string()))?;
+        let db_tx = self.db_tx.as_ref().ok_or_else(|| {
+            crate::engine::error::AdhocError("Transaction already committed".to_string())
+        })?;
 
         db_tx
             .get(key)
@@ -151,10 +160,9 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
     }
 
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
-        let db_tx = self
-            .db_tx
-            .as_mut()
-            .ok_or_else(|| crate::engine::error::AdhocError("Transaction already committed".to_string()))?;
+        let db_tx = self.db_tx.as_mut().ok_or_else(|| {
+            crate::engine::error::AdhocError("Transaction already committed".to_string())
+        })?;
 
         db_tx
             .put(key, val)
@@ -173,7 +181,9 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
                 .put(key, val)
                 .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
                 .wrap_err_with(|| "Parallel put failed"),
-            None => Err(crate::engine::error::AdhocError("Transaction already committed".to_string())),
+            None => Err(crate::engine::error::AdhocError(
+                "Transaction already committed".to_string(),
+            )),
         }
     }
 
@@ -184,10 +194,11 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
                 .delete(key)
                 .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
                 .wrap_err_with(|| "Delete operation failed"),
-            None => Err(crate::engine::error::AdhocError("Transaction already committed".to_string())),
+            None => Err(crate::engine::error::AdhocError(
+                "Transaction already committed".to_string(),
+            )),
         }
     }
-
 
     fn del_range_from_persisted(&mut self, lower: &[u8], upper: &[u8]) -> Result<()> {
         match self.db_tx {
@@ -199,27 +210,38 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
                 for item in iter {
                     let (k, _) = item
                         .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
-                        .map_err(|e| crate::engine::error::AdhocError(format!("{}: {e}", "Error iterating during range delete")))?;
+                        .map_err(|e| {
+                            crate::engine::error::AdhocError(format!(
+                                "{}: {e}",
+                                "Error iterating during range delete"
+                            ))
+                        })?;
                     if k >= upper.into() {
                         break;
                     }
                     db_tx
                         .delete(&k)
                         .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
-                        .map_err(|e| crate::engine::error::AdhocError(format!("{}: {e}", "Error deleting during range delete")))?;
+                        .map_err(|e| {
+                            crate::engine::error::AdhocError(format!(
+                                "{}: {e}",
+                                "Error deleting during range delete"
+                            ))
+                        })?;
                 }
                 Ok(())
             }
-            None => Err(crate::engine::error::AdhocError("Transaction already committed".to_string())),
+            None => Err(crate::engine::error::AdhocError(
+                "Transaction already committed".to_string(),
+            )),
         }
     }
 
     #[inline]
     fn exists(&self, key: &[u8], _for_update: bool) -> Result<bool> {
-        let db_tx = self
-            .db_tx
-            .as_ref()
-            .ok_or(crate::engine::error::AdhocError("Transaction already committed".to_string()))?;
+        let db_tx = self.db_tx.as_ref().ok_or(crate::engine::error::AdhocError(
+            "Transaction already committed".to_string(),
+        ))?;
         db_tx
             .get(key)
             .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
@@ -251,9 +273,7 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
                 )),
                 upper_bound: upper.to_vec(),
             }),
-            None => Box::new(std::iter::once(Err(bail!(
-                "Transaction already committed"
-            )))),
+            None => Box::new(std::iter::once(Err(bail!("Transaction already committed")))),
         }
     }
 
@@ -273,9 +293,7 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
                 valid_at,
                 next_bound: lower.to_vec(),
             }),
-            None => Box::new(std::iter::once(Err(bail!(
-                "Transaction already committed"
-            )))),
+            None => Box::new(std::iter::once(Err(bail!("Transaction already committed")))),
         }
     }
 
@@ -298,9 +316,7 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
                     upper_bound: upper.to_vec(),
                 })
             }
-            None => Box::new(std::iter::once(Err(bail!(
-                "Transaction already committed"
-            )))),
+            None => Box::new(std::iter::once(Err(bail!("Transaction already committed")))),
         }
     }
 
@@ -308,10 +324,9 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
     where
         's: 'a,
     {
-        let db_tx = self
-            .db_tx
-            .as_ref()
-            .ok_or(crate::engine::error::AdhocError("Transaction already committed".to_string()))?;
+        let db_tx = self.db_tx.as_ref().ok_or(crate::engine::error::AdhocError(
+            "Transaction already committed".to_string(),
+        ))?;
         let iter = db_tx.iterator(rocksdb::IteratorMode::From(
             lower,
             rocksdb::Direction::Forward,
@@ -335,9 +350,7 @@ impl<'s> StoreTx<'s> for NewRocksDbTx<'s> {
                     .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
                     .wrap_err_with(|| "Error during total scan")
             })),
-            None => Box::new(std::iter::once(Err(bail!(
-                "Transaction already committed"
-            )))),
+            None => Box::new(std::iter::once(Err(bail!("Transaction already committed")))),
         }
     }
 }
@@ -359,7 +372,12 @@ impl<'a> Iterator for NewRocksDbIterator<'a> {
                     }
                     return Some(Ok(decode_tuple_from_kv(&k, &v, None)));
                 }
-                Err(e) => return Some(Err(crate::engine::error::AdhocError(format!("Iterator error: {}", e)))),
+                Err(e) => {
+                    return Some(Err(crate::engine::error::AdhocError(format!(
+                        "Iterator error: {}",
+                        e
+                    ))));
+                }
             }
         }
         None
@@ -397,7 +415,12 @@ impl<'a> Iterator for NewRocksDbSkipIterator<'a> {
                         return Some(Ok(tup));
                     }
                 }
-                Some(Err(e)) => return Some(Err(crate::engine::error::AdhocError(format!("Iterator Error: {}", e)))),
+                Some(Err(e)) => {
+                    return Some(Err(crate::engine::error::AdhocError(format!(
+                        "Iterator Error: {}",
+                        e
+                    ))));
+                }
             }
         }
     }
@@ -419,7 +442,10 @@ impl<'a> Iterator for NewRocksDbIteratorRaw<'a> {
                 }
                 Some(Ok((k.to_vec(), v.to_vec())))
             }
-            Some(Err(e)) => Some(Err(crate::engine::error::AdhocError(format!("Iterator error: {}", e)))),
+            Some(Err(e)) => Some(Err(crate::engine::error::AdhocError(format!(
+                "Iterator error: {}",
+                e
+            )))),
             None => None,
         }
     }
@@ -434,7 +460,8 @@ mod tests {
     use tempfile::TempDir;
 
     fn setup_test_db() -> Result<(TempDir, Db<NewRocksDbStorage>)> {
-        let temp_dir = TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+        let temp_dir =
+            TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
         let db = new_cozo_newrocksdb(temp_dir.path())?;
 
         // Create test tables with proper ScriptMutability parameter

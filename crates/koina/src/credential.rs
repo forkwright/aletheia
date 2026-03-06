@@ -37,8 +37,8 @@ pub struct Credential {
 ///
 /// Implementations must be `Send + Sync` for use across threads and in async
 /// contexts. The `get_credential()` method is intentionally synchronous — the
-/// [`RefreshingCredentialProvider`] stores the current token in memory and
-/// refreshes asynchronously in a background task.
+/// refreshing providers store the current token in memory and refresh
+/// asynchronously in a background task.
 pub trait CredentialProvider: Send + Sync {
     /// Resolve the current credential value.
     ///

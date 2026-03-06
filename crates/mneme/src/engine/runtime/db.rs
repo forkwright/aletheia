@@ -20,28 +20,28 @@ use std::thread;
 #[allow(unused_imports)]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[allow(unused_imports)]
-use snafu::Snafu;
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
-use crossbeam::channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam::channel::{Receiver, Sender, bounded, unbounded};
 use crossbeam::sync::ShardedLock;
 use either::{Left, Right};
 use itertools::Itertools;
 #[allow(unused_imports)]
 use serde_json::json;
 use smartstring::{LazyCompact, SmartString};
+#[allow(unused_imports)]
+use snafu::Snafu;
 
 use crate::engine::data::functions::current_validity;
 use crate::engine::data::json::JsonValue;
 use crate::engine::data::program::{InputProgram, QueryAssertion, RelationOp, ReturnMutation};
 use crate::engine::data::relation::ColumnDef;
 use crate::engine::data::tuple::{Tuple, TupleT};
-use crate::engine::data::value::{DataValue, ValidityTs, LARGEST_UTF_CHAR};
+use crate::engine::data::value::{DataValue, LARGEST_UTF_CHAR, ValidityTs};
 use crate::engine::fixed_rule::DEFAULT_FIXED_RULES;
 use crate::engine::fts::TokenizerCache;
 use crate::engine::parse::sys::SysOp;
-use crate::engine::parse::{parse_expressions, parse_script, CozoScript};
+use crate::engine::parse::{CozoScript, parse_expressions, parse_script};
 use crate::engine::query::compile::{CompiledProgram, CompiledRule, CompiledRuleSet};
 use crate::engine::query::ra::{
     FilteredRA, FtsSearchRA, HnswSearchRA, InnerJoin, LshSearchRA, NegJoin, RelAlgebra, ReorderRA,
@@ -52,12 +52,12 @@ use crate::engine::runtime::callback::{
     CallbackCollector, CallbackDeclaration, CallbackOp, EventCallbackRegistry,
 };
 use crate::engine::runtime::relation::{
-    extend_tuple_from_v, AccessLevel, RelationHandle, RelationId,
+    AccessLevel, RelationHandle, RelationId, extend_tuple_from_v,
 };
 use crate::engine::runtime::transact::SessionTx;
-use crate::engine::storage::temp::TempStorage;
 use crate::engine::storage::Storage;
-use crate::engine::{decode_tuple_from_kv, FixedRule, Symbol};
+use crate::engine::storage::temp::TempStorage;
+use crate::engine::{FixedRule, Symbol, decode_tuple_from_kv};
 
 pub(crate) struct RunningQueryHandle {
     pub(crate) started_at: f64,
@@ -114,10 +114,6 @@ impl<S> Debug for Db<S> {
         write!(f, "Db")
     }
 }
-
-
-
-
 
 #[derive(serde_derive::Serialize, serde_derive::Deserialize, Debug, Clone, Default)]
 /// Rows in a relation, together with headers for the fields.
@@ -189,33 +185,37 @@ impl NamedRows {
     }
     /// Make named rows from JSON
     pub fn from_json(value: &JsonValue) -> Result<Self> {
-        let headers = value
-            .get("headers")
-            .ok_or_else(|| crate::engine::error::AdhocError("NamedRows requires 'headers' field".to_string()))?;
-        let headers = headers
-            .as_array()
-            .ok_or_else(|| crate::engine::error::AdhocError("'headers' field must be an array".to_string()))?;
+        let headers = value.get("headers").ok_or_else(|| {
+            crate::engine::error::AdhocError("NamedRows requires 'headers' field".to_string())
+        })?;
+        let headers = headers.as_array().ok_or_else(|| {
+            crate::engine::error::AdhocError("'headers' field must be an array".to_string())
+        })?;
         let headers = headers
             .iter()
             .map(|h| -> Result<String> {
-                let h = h
-                    .as_str()
-                    .ok_or_else(|| crate::engine::error::AdhocError("'headers' field must be an array of strings".to_string()))?;
+                let h = h.as_str().ok_or_else(|| {
+                    crate::engine::error::AdhocError(
+                        "'headers' field must be an array of strings".to_string(),
+                    )
+                })?;
                 Ok(h.to_string())
             })
             .try_collect()?;
-        let rows = value
-            .get("rows")
-            .ok_or_else(|| crate::engine::error::AdhocError("NamedRows requires 'rows' field".to_string()))?;
-        let rows = rows
-            .as_array()
-            .ok_or_else(|| crate::engine::error::AdhocError("'rows' field must be an array".to_string()))?;
+        let rows = value.get("rows").ok_or_else(|| {
+            crate::engine::error::AdhocError("NamedRows requires 'rows' field".to_string())
+        })?;
+        let rows = rows.as_array().ok_or_else(|| {
+            crate::engine::error::AdhocError("'rows' field must be an array".to_string())
+        })?;
         let rows = rows
             .iter()
             .map(|row| -> Result<Vec<DataValue>> {
-                let row = row
-                    .as_array()
-                    .ok_or_else(|| crate::engine::error::AdhocError("'rows' field must be an array of arrays".to_string()))?;
+                let row = row.as_array().ok_or_else(|| {
+                    crate::engine::error::AdhocError(
+                        "'rows' field must be an array of arrays".to_string(),
+                    )
+                })?;
                 Ok(row.iter().map(DataValue::from).collect_vec())
             })
             .try_collect()?;
@@ -336,8 +336,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     break;
                 }
                 TransactionPayload::Query((script, params)) => {
-                    let p =
-                        match parse_script(&script, &params, &self.fixed_rules.read().unwrap(), ts) // INVARIANT: lock is not poisoned
+                    let p = match parse_script(&script, &params, &self.fixed_rules.read().unwrap(), ts) // INVARIANT: lock is not poisoned
                         {
                             Ok(p) => p,
                             Err(err) => {
@@ -491,8 +490,6 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Note that triggers and callbacks are _not_ run for the relations, if any exists.
     /// If you need to activate triggers or callbacks, use queries with parameters.
     pub fn import_relations(&'s self, data: BTreeMap<String, NamedRows>) -> Result<()> {
-        
-
         let rel_names = data.keys().map(SmartString::from).collect_vec();
         let locks = self.obtain_relation_locks(rel_names.iter());
         let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
@@ -535,9 +532,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                 .keys
                 .iter()
                 .map(|col| -> Result<(usize, &ColumnDef)> {
-                    let idx = header2idx.get(&col.name as &str).ok_or_else(|| crate::engine::error::AdhocError(format!("required header {} not found for relation {}",
-                            col.name,
-                            relation)))?;
+                    let idx = header2idx.get(&col.name as &str).ok_or_else(|| {
+                        crate::engine::error::AdhocError(format!(
+                            "required header {} not found for relation {}",
+                            col.name, relation
+                        ))
+                    })?;
                     Ok((*idx, col))
                 })
                 .try_collect()?;
@@ -550,9 +550,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .non_keys
                     .iter()
                     .map(|col| -> Result<(usize, &ColumnDef)> {
-                        let idx = header2idx.get(&col.name as &str).ok_or_else(|| crate::engine::error::AdhocError(format!("required header {} not found for relation {}",
-                                col.name,
-                                relation)))?;
+                        let idx = header2idx.get(&col.name as &str).ok_or_else(|| {
+                            crate::engine::error::AdhocError(format!(
+                                "required header {} not found for relation {}",
+                                col.name, relation
+                            ))
+                        })?;
                         Ok((*idx, col))
                     })
                     .try_collect()?
@@ -562,9 +565,9 @@ impl<'s, S: Storage<'s>> Db<S> {
                 let keys: Vec<_> = key_indices
                     .iter()
                     .map(|(i, col)| -> Result<DataValue> {
-                        let v = row
-                            .get(*i)
-                            .ok_or_else(|| crate::engine::error::AdhocError(format!("row too short: {:?}", row)))?;
+                        let v = row.get(*i).ok_or_else(|| {
+                            crate::engine::error::AdhocError(format!("row too short: {:?}", row))
+                        })?;
                         col.typing.coerce(v.clone(), cur_vld)
                     })
                     .try_collect()?;
@@ -590,9 +593,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let vals: Vec<_> = val_indices
                         .iter()
                         .map(|(i, col)| -> Result<DataValue> {
-                            let v = row
-                                .get(*i)
-                                .ok_or_else(|| crate::engine::error::AdhocError(format!("row too short: {:?}", row)))?;
+                            let v = row.get(*i).ok_or_else(|| {
+                                crate::engine::error::AdhocError(format!(
+                                    "row too short: {:?}",
+                                    row
+                                ))
+                            })?;
                             col.typing.coerce(v.clone(), cur_vld)
                         })
                         .try_collect()?;
@@ -693,9 +699,9 @@ impl<'s, S: Storage<'s>> Db<S> {
                 let dst_handle = dst_tx.get_relation(relation, false)?;
 
                 if !dst_handle.indices.is_empty() {
-                    
-
-                    bail!("Cannot import data into relation from backup as the relation has indices")
+                    bail!(
+                        "Cannot import data into relation from backup as the relation has indices"
+                    )
                 }
 
                 if dst_handle.access_level < AccessLevel::Protected {
@@ -728,7 +734,8 @@ impl<'s, S: Storage<'s>> Db<S> {
     where
         R: FixedRule + 'static,
     {
-        match self.fixed_rules.write().unwrap().entry(name) { // INVARIANT: lock is not poisoned
+        match self.fixed_rules.write().unwrap().entry(name) {
+            // INVARIANT: lock is not poisoned
             Entry::Vacant(ent) => {
                 ent.insert(Arc::new(Box::new(rule_impl)));
                 Ok(())
@@ -1089,31 +1096,37 @@ impl<'s, S: Storage<'s>> Db<S> {
                                         "hnsw_index",
                                         json!(format!(":{}", hnsw_search.query.name)),
                                         json!(hnsw_search.query.name),
-                                        json!(hnsw_search
-                                            .filter
-                                            .iter()
-                                            .map(|f| f.to_string())
-                                            .collect_vec()),
+                                        json!(
+                                            hnsw_search
+                                                .filter
+                                                .iter()
+                                                .map(|f| f.to_string())
+                                                .collect_vec()
+                                        ),
                                     ),
                                     RelAlgebra::FtsSearch(FtsSearchRA { fts_search, .. }) => (
                                         "fts_index",
                                         json!(format!(":{}", fts_search.query.name)),
                                         json!(fts_search.query.name),
-                                        json!(fts_search
-                                            .filter
-                                            .iter()
-                                            .map(|f| f.to_string())
-                                            .collect_vec()),
+                                        json!(
+                                            fts_search
+                                                .filter
+                                                .iter()
+                                                .map(|f| f.to_string())
+                                                .collect_vec()
+                                        ),
                                     ),
                                     RelAlgebra::LshSearch(LshSearchRA { lsh_search, .. }) => (
                                         "lsh_index",
                                         json!(format!(":{}", lsh_search.query.name)),
                                         json!(lsh_search.query.name),
-                                        json!(lsh_search
-                                            .filter
-                                            .iter()
-                                            .map(|f| f.to_string())
-                                            .collect_vec()),
+                                        json!(
+                                            lsh_search
+                                                .filter
+                                                .iter()
+                                                .map(|f| f.to_string())
+                                                .collect_vec()
+                                        ),
                                     ),
                                 };
                                 ret_for_relation.push(json!({
@@ -1434,8 +1447,6 @@ impl<'s, S: Storage<'s>> Db<S> {
         // Some checks in case the query specifies mutation
         if let Some((meta, op, _)) = &input_program.out_opts.store_relation {
             if *op == RelationOp::Create {
-                
-
                 ensure!(
                     !tx.relation_exists(&meta.name)?,
                     "Stored relation conflicts with an existing one"
@@ -1443,10 +1454,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             } else if *op != RelationOp::Replace {
                 let existing = tx.get_relation(&meta.name, false)?;
 
-                ensure!(
-                    tx.relation_exists(&meta.name)?,
-                    "Stored relation not found"
-                );
+                ensure!(tx.relation_exists(&meta.name)?, "Stored relation not found");
 
                 existing.ensure_compatible(
                     meta,
@@ -1516,7 +1524,6 @@ impl<'s, S: Storage<'s>> Db<S> {
                 }
                 QueryAssertion::AssertSome(_span) => {
                     if result_store.all_iter().next().is_none() {
-                        
                         bail!("The query is asserted to return some results, but returned none")
                     }
                 }
@@ -1555,7 +1562,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                             ""
                         },
                     )
-                    .map_err(|e| crate::engine::error::AdhocError(format!("{e}: when executing against relation '{}'", meta.name)))?;
+                    .map_err(|e| {
+                        crate::engine::error::AdhocError(format!(
+                            "{e}: when executing against relation '{}'",
+                            meta.name
+                        ))
+                    })?;
                 clean_ups.extend(to_clear);
                 let returned_rows =
                     tx.get_returning_rows(callback_collector, &meta.name, returning)?;
@@ -1611,7 +1623,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                             ""
                         },
                     )
-                    .map_err(|e| crate::engine::error::AdhocError(format!("{e}: when executing against relation '{}'", meta.name)))?;
+                    .map_err(|e| {
+                        crate::engine::error::AdhocError(format!(
+                            "{e}: when executing against relation '{}'",
+                            meta.name
+                        ))
+                    })?;
                 clean_ups.extend(to_clear);
                 let returned_rows =
                     tx.get_returning_rows(callback_collector, &meta.name, returning)?;

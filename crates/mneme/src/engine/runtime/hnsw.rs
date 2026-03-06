@@ -6,24 +6,24 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use crate::engine::data::expr::{eval_bytecode_pred, Bytecode};
-use crate::{bail};
+use crate::bail;
+use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::engine::data::program::HnswSearch;
 use crate::engine::data::relation::VecElementType;
-use crate::engine::data::tuple::{Tuple, ENCODED_KEY_MIN_LEN};
+use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple};
 use crate::engine::data::value::Vector;
+use crate::engine::error::DbResult as Result;
 use crate::engine::parse::sys::HnswDistance;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, SourceSpan};
-use crate::engine::error::DbResult as Result;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rand::Rng;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smartstring::{LazyCompact, SmartString};
-use std::cmp::{max, Reverse};
+use std::cmp::{Reverse, max};
 
 #[derive(Debug, Clone, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub(crate) struct HnswIndexManifest {
@@ -69,31 +69,31 @@ impl VectorCache {
         match self.distance {
             HnswDistance::L2 => match (v1, v2) {
                 (Vector::F32(a), Vector::F32(b)) => {
-                    Zip::from(a).and(b)
-                        .fold(0.0f32, |acc, &x, &y| {
-                            let d = x - y;
-                            acc + d * d
-                        }) as f64
+                    Zip::from(a).and(b).fold(0.0f32, |acc, &x, &y| {
+                        let d = x - y;
+                        acc + d * d
+                    }) as f64
                 }
                 (Vector::F64(a), Vector::F64(b)) => {
-                    Zip::from(a).and(b)
-                        .fold(0.0f64, |acc, &x, &y| {
-                            let d = x - y;
-                            acc + d * d
-                        })
+                    Zip::from(a).and(b).fold(0.0f64, |acc, &x, &y| {
+                        let d = x - y;
+                        acc + d * d
+                    })
                 }
                 _ => panic!("Cannot compute L2 distance between {:?} and {:?}", v1, v2),
             },
             HnswDistance::Cosine => match (v1, v2) {
                 (Vector::F32(a), Vector::F32(b)) => {
-                    let (a_norm, b_norm, dot) = Zip::from(a).and(b)
+                    let (a_norm, b_norm, dot) = Zip::from(a)
+                        .and(b)
                         .fold((0.0f32, 0.0f32, 0.0f32), |(an, bn, d), &x, &y| {
                             (an + x * x, bn + y * y, d + x * y)
                         });
                     1.0 - dot as f64 / (a_norm as f64 * b_norm as f64).sqrt()
                 }
                 (Vector::F64(a), Vector::F64(b)) => {
-                    let (a_norm, b_norm, dot) = Zip::from(a).and(b)
+                    let (a_norm, b_norm, dot) = Zip::from(a)
+                        .and(b)
                         .fold((0.0f64, 0.0f64, 0.0f64), |(an, bn, d), &x, &y| {
                             (an + x * x, bn + y * y, d + x * y)
                         });
@@ -120,16 +120,27 @@ impl VectorCache {
     // INVARIANT: callers must call ensure_key() before v_dist/k_dist/get_key.
     // The cache is guaranteed to contain the key after ensure_key succeeds.
     fn v_dist(&self, v: &Vector, key: &CompoundKey) -> f64 {
-        let v2 = self.cache.get(key).expect("INVARIANT: ensure_key must be called before v_dist");
+        let v2 = self
+            .cache
+            .get(key)
+            .expect("INVARIANT: ensure_key must be called before v_dist");
         self.dist(v, v2)
     }
     fn k_dist(&self, k1: &CompoundKey, k2: &CompoundKey) -> f64 {
-        let v1 = self.cache.get(k1).expect("INVARIANT: ensure_key must be called before k_dist");
-        let v2 = self.cache.get(k2).expect("INVARIANT: ensure_key must be called before k_dist");
+        let v1 = self
+            .cache
+            .get(k1)
+            .expect("INVARIANT: ensure_key must be called before k_dist");
+        let v2 = self
+            .cache
+            .get(k2)
+            .expect("INVARIANT: ensure_key must be called before k_dist");
         self.dist(v1, v2)
     }
     fn get_key(&self, key: &CompoundKey) -> &Vector {
-        self.cache.get(key).expect("INVARIANT: ensure_key must be called before get_key")
+        self.cache
+            .get(key)
+            .expect("INVARIANT: ensure_key must be called before get_key")
     }
     fn ensure_key(
         &mut self,
@@ -340,9 +351,14 @@ impl<'a> SessionTx<'a> {
                     }
                     let target_self_key_bytes =
                         idx_table.encode_key_for_store(&target_self_key, Default::default())?;
-                    let target_self_val_bytes = match self.store_tx.get(&target_self_key_bytes, false)? {
+                    let target_self_val_bytes = match self
+                        .store_tx
+                        .get(&target_self_key_bytes, false)?
+                    {
                         Some(bytes) => bytes,
-                        None => bail!("Indexed vector not found, this signifies a bug in the index implementation"),
+                        None => bail!(
+                            "Indexed vector not found, this signifies a bug in the index implementation"
+                        ),
                     };
                     let mut target_self_val: Vec<DataValue> =
                         rmp_serde::from_slice(&target_self_val_bytes[ENCODED_KEY_MIN_LEN..])
@@ -457,11 +473,14 @@ impl<'a> SessionTx<'a> {
                 let old_existing_val = match self.store_tx.get(&old_key_bytes, false)? {
                     Some(bytes) => bytes,
                     None => {
-                        bail!("Indexed vector not found, this signifies a bug in the index implementation")
+                        bail!(
+                            "Indexed vector not found, this signifies a bug in the index implementation"
+                        )
                     }
                 };
                 let old_existing_val: Vec<DataValue> =
-                    rmp_serde::from_slice(&old_existing_val[ENCODED_KEY_MIN_LEN..]).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                    rmp_serde::from_slice(&old_existing_val[ENCODED_KEY_MIN_LEN..])
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 if old_existing_val[2].get_bool().unwrap() {
                     self.store_tx.del(&old_key_bytes)?;
                 } else {
@@ -828,7 +847,8 @@ impl<'a> SessionTx<'a> {
                     )?
                     .unwrap();
                 let mut neighbour_val: Vec<DataValue> =
-                    rmp_serde::from_slice(&neighbour_val_bytes[ENCODED_KEY_MIN_LEN..]).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                    rmp_serde::from_slice(&neighbour_val_bytes[ENCODED_KEY_MIN_LEN..])
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                 neighbour_val[0] = DataValue::from(neighbour_val[0].get_float().unwrap() - 1.); // INVARIANT: float stored by HNSW insert path
                 self.store_tx.put(
                     &idx_table.encode_key_for_store(&neighbour_self_key, Default::default())?,
@@ -916,8 +936,8 @@ impl<'a> SessionTx<'a> {
                 Some(x) => x as usize,
                 None => {
                     // this occurs if the index is empty
-                    return Ok(vec![])
-                },
+                    return Ok(vec![]);
+                }
             };
             let ep_t_key = ep[1..config.base_handle.metadata.keys.len() + 1].to_vec();
             let ep_subidx = ep[config.base_handle.metadata.keys.len() + 2]
@@ -967,10 +987,10 @@ impl<'a> SessionTx<'a> {
                     }
                 }
 
-                let mut cand_tuple = config
-                    .base_handle
-                    .get(self, &cand_key.0)?
-                    .ok_or_else(|| crate::engine::error::AdhocError("corrupted index".to_string()))?;
+                let mut cand_tuple =
+                    config.base_handle.get(self, &cand_key.0)?.ok_or_else(|| {
+                        crate::engine::error::AdhocError("corrupted index".to_string())
+                    })?;
 
                 // make sure the order is the same as in all_bindings()!!!
                 if config.bind_field.is_some() {

@@ -40,7 +40,10 @@ impl ToolExecutor for MemorySearchExecutor {
             };
 
             let query = extract_str(&input.arguments, "query", &input.name)?;
-            #[expect(clippy::cast_possible_truncation, reason = "limit from user input is small")]
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "limit from user input is small"
+            )]
             let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(10) as usize;
 
             let Some(knowledge) = services.knowledge.as_ref() else {
@@ -119,10 +122,7 @@ impl ToolExecutor for MemoryRetractExecutor {
             };
 
             let fact_id = extract_str(&input.arguments, "fact_id", &input.name)?;
-            let reason = input
-                .arguments
-                .get("reason")
-                .and_then(|v| v.as_str());
+            let reason = input.arguments.get("reason").and_then(|v| v.as_str());
 
             match knowledge.retract_fact(fact_id, reason).await {
                 Ok(()) => Ok(ToolResult::text(format!("Fact {fact_id} retracted."))),
@@ -157,23 +157,25 @@ impl ToolExecutor for MemoryAuditExecutor {
                 .and_then(|v| v.as_str())
                 .unwrap_or(ctx.nous_id.as_str());
             let since = input.arguments.get("since").and_then(|v| v.as_str());
-            #[expect(clippy::cast_possible_truncation, reason = "audit limit from user input is small")]
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "audit limit from user input is small"
+            )]
             let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(20) as usize;
 
-            match knowledge
-                .audit_facts(Some(nous_id), since, limit)
-                .await
-            {
-                Ok(facts) if facts.is_empty() => {
-                    Ok(ToolResult::text("No facts found."))
-                }
+            match knowledge.audit_facts(Some(nous_id), since, limit).await {
+                Ok(facts) if facts.is_empty() => Ok(ToolResult::text("No facts found.")),
                 Ok(facts) => {
                     let lines: Vec<String> = facts
                         .iter()
                         .map(|f| {
                             format!(
                                 "- [{}] ({:.0}% {}) {} ({})",
-                                f.id, f.confidence * 100.0, f.tier, f.content, f.recorded_at
+                                f.id,
+                                f.confidence * 100.0,
+                                f.tier,
+                                f.content,
+                                f.recorded_at
                             )
                         })
                         .collect();
@@ -798,7 +800,10 @@ mod tests {
         let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
         assert!(
-            result.content.text_summary().contains("knowledge store not configured"),
+            result
+                .content
+                .text_summary()
+                .contains("knowledge store not configured"),
             "expected knowledge store error: {}",
             result.content.text_summary()
         );
@@ -1036,7 +1041,12 @@ mod tests {
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
-        assert!(result.content.text_summary().contains("knowledge store not configured"));
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("knowledge store not configured")
+        );
     }
 
     #[tokio::test]
@@ -1054,7 +1064,12 @@ mod tests {
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
-        assert!(result.content.text_summary().contains("knowledge store not configured"));
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("knowledge store not configured")
+        );
     }
 
     #[tokio::test]
@@ -1072,7 +1087,12 @@ mod tests {
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
-        assert!(result.content.text_summary().contains("knowledge store not configured"));
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("knowledge store not configured")
+        );
     }
 
     #[tokio::test]

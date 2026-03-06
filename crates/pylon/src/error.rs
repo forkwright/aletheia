@@ -111,9 +111,7 @@ impl IntoResponse for ApiError {
             Self::Internal { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", None),
             Self::Unauthorized { .. } => (StatusCode::UNAUTHORIZED, "unauthorized", None),
             Self::NotFound { .. } => (StatusCode::NOT_FOUND, "not_found", None),
-            Self::RateLimited {
-                retry_after_ms, ..
-            } => (
+            Self::RateLimited { retry_after_ms, .. } => (
                 StatusCode::TOO_MANY_REQUESTS,
                 "rate_limited",
                 Some(serde_json::json!({ "retry_after_ms": retry_after_ms })),

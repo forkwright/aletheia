@@ -13,9 +13,11 @@ use crate::{bail, ensure};
 use itertools::Itertools;
 use smartstring::SmartString;
 
-use crate::engine::data::relation::{VecElementType, ColType, ColumnDef, NullableColType, StoredRelationMetadata};
+use crate::engine::data::relation::{
+    ColType, ColumnDef, NullableColType, StoredRelationMetadata, VecElementType,
+};
 use crate::engine::data::symb::Symbol;
-use crate::engine::parse::expr::{build_expr};
+use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::{ExtractSpan, Pair, Rule};
 
 pub(crate) fn parse_schema(
@@ -28,7 +30,6 @@ pub(crate) fn parse_schema(
     let mut dep_bindings = vec![];
     let mut seen_names = BTreeSet::new();
 
-    
     for p in src.next().unwrap().into_inner() {
         let _span = p.extract_span();
         let (col, ident) = parse_col(p)?;
@@ -119,10 +120,13 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
                     let expr = build_expr(len_p, &Default::default())?;
                     let dv = expr.eval_to_const()?;
 
-                    
-
-                    let n = dv.get_int().ok_or(crate::engine::error::AdhocError("Bad specification of list length in type".to_string()))?;
-                    ensure!(n >= 0, "Bad specification of list length in type: negative length");
+                    let n = dv.get_int().ok_or(crate::engine::error::AdhocError(
+                        "Bad specification of list length in type".to_string(),
+                    ))?;
+                    ensure!(
+                        n >= 0,
+                        "Bad specification of list length in type: negative length"
+                    );
                     Some(n as usize)
                 }
             };
@@ -136,14 +140,15 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
             let eltype = match inner.next().unwrap().as_str() {
                 "F32" | "Float" => VecElementType::F32,
                 "F64" | "Double" => VecElementType::F64,
-                _ => unreachable!()
+                _ => unreachable!(),
             };
             let len = inner.next().unwrap();
-            let len = len.as_str().replace('_', "").parse::<usize>().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
-            ColType::Vec {
-                eltype,
-                len,
-            }
+            let len = len
+                .as_str()
+                .replace('_', "")
+                .parse::<usize>()
+                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+            ColType::Vec { eltype, len }
         }
         Rule::tuple_type => {
             ColType::Tuple(pair.into_inner().map(parse_nullable_type).try_collect()?)

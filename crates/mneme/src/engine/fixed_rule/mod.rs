@@ -9,19 +9,20 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use snafu::Snafu;
 use crate::engine::error::DbResult as Result;
 use crate::ensure;
-use crossbeam::channel::{bounded, Receiver, Sender};
+use crossbeam::channel::{Receiver, Sender, bounded};
 #[allow(unused_imports)]
 use either::{Left, Right};
 #[cfg(feature = "graph-algo")]
 use graph::prelude::{CsrLayout, DirectedCsrGraph, GraphBuilder};
 use itertools::Itertools;
-use std::sync::LazyLock;
 #[allow(unused_imports)]
 use smartstring::{LazyCompact, SmartString};
+use snafu::Snafu;
+use std::sync::LazyLock;
 
+use crate::engine::NamedRows;
 use crate::engine::data::expr::Expr;
 use crate::engine::data::program::{
     FixedRuleOptionNotFoundError, MagicFixedRuleApply, MagicFixedRuleRuleArg, MagicSymbol,
@@ -37,7 +38,6 @@ use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;
 use crate::engine::runtime::temp_store::{EpochStore, RegularTempStore};
 use crate::engine::runtime::transact::SessionTx;
-use crate::engine::NamedRows;
 
 #[cfg(feature = "graph-algo")]
 pub(crate) mod algos;
@@ -65,8 +65,6 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     }
     /// Ensure the input relation contains tuples of the given minimal length.
     pub fn ensure_min_len(self, len: usize) -> Result<Self> {
-        
-
         let arity = self.arg_manifest.arity(self.tx, self.stores)?;
         ensure!(
             arity >= len,
@@ -83,7 +81,10 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         Ok(match &self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = self.stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
+                    crate::engine::error::AdhocError(format!(
+                        "The requested rule '{}' cannot be found",
+                        name.symbol()
+                    ))
                 })?;
                 Box::new(store.all_iter().map(|t| Ok(t.into_tuple())))
             }
@@ -102,7 +103,10 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         Ok(match self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = self.stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
+                    crate::engine::error::AdhocError(format!(
+                        "The requested rule '{}' cannot be found",
+                        name.symbol()
+                    ))
                 })?;
                 let t = vec![prefix.clone()];
                 Box::new(store.prefix_iter(&t).map(|t| Ok(t.into_tuple())))
@@ -145,14 +149,18 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
+                        error = Some(crate::engine::error::AdhocError(
+                            "The relation cannot be interpreted as an edge".to_string(),
+                        ));
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
+                        error = Some(crate::engine::error::AdhocError(
+                            "The relation cannot be interpreted as an edge".to_string(),
+                        ));
                         return None;
                     }
                     Some(f) => f,
@@ -218,14 +226,18 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
+                        error = Some(crate::engine::error::AdhocError(
+                            "The relation cannot be interpreted as an edge".to_string(),
+                        ));
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
+                        error = Some(crate::engine::error::AdhocError(
+                            "The relation cannot be interpreted as an edge".to_string(),
+                        ));
                         return None;
                     }
                     Some(f) => f,
@@ -255,7 +267,8 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                                 error = Some(
                                     BadEdgeWeightError {
                                         val: d,
-                                        span: self.arg_manifest
+                                        span: self
+                                            .arg_manifest
                                             .bindings()
                                             .get(2)
                                             .map(|s| s.span)
@@ -270,7 +283,8 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                                 error = Some(
                                     BadEdgeWeightError {
                                         val: d,
-                                        span: self.arg_manifest
+                                        span: self
+                                            .arg_manifest
                                             .bindings()
                                             .get(2)
                                             .map(|s| s.span)
@@ -286,7 +300,8 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                             error = Some(
                                 BadEdgeWeightError {
                                     val: d,
-                                    span: self.arg_manifest
+                                    span: self
+                                        .arg_manifest
                                         .bindings()
                                         .get(2)
                                         .map(|s| s.span)
@@ -615,7 +630,9 @@ impl SimpleFixedRule {
                     db2app_sender
                         .send((inputs, options, app2db_sender))
                         .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
-                    app2db_receiver.recv().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                    app2db_receiver
+                        .recv()
+                        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
                 }),
             },
             db2app_receiver,
@@ -669,19 +686,17 @@ impl FixedRule for SimpleFixedRule {
             .try_collect()?;
         let results: NamedRows = (self.rule)(inputs, options)?;
         for row in results.rows {
-            
-
             ensure!(
                 row.len() == self.return_arity,
-                "arity mismatch: expect {}, got {}", self.return_arity, row.len()
+                "arity mismatch: expect {}, got {}",
+                self.return_arity,
+                row.len()
             );
             out.put(row);
         }
         Ok(())
     }
 }
-
-
 
 #[derive(Clone, Debug)]
 pub(crate) struct FixedRuleHandle {
@@ -824,18 +839,14 @@ impl FixedRuleHandle {
     }
 }
 
-
-
 #[derive(Debug, Snafu)]
-#[snafu(display("The value {val:?} at the third position in the relation cannot be interpreted as edge weights"))]
+#[snafu(display(
+    "The value {val:?} at the third position in the relation cannot be interpreted as edge weights"
+))]
 struct BadEdgeWeightError {
     val: DataValue,
     span: SourceSpan,
 }
-
-
-
-
 
 #[derive(Debug, Snafu)]
 #[snafu(display("Required node with key {missing:?} not found"))]
@@ -843,10 +854,6 @@ pub(crate) struct NodeNotFoundError {
     pub(crate) missing: DataValue,
     pub(crate) span: SourceSpan,
 }
-
-
-
-
 
 impl MagicFixedRuleRuleArg {
     pub(crate) fn arity(
@@ -857,7 +864,10 @@ impl MagicFixedRuleRuleArg {
         Ok(match self {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
+                    crate::engine::error::AdhocError(format!(
+                        "The requested rule '{}' cannot be found",
+                        name.symbol()
+                    ))
                 })?;
                 store.arity
             }

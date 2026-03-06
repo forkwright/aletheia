@@ -6,13 +6,13 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use serde_json::json;
+use base64::engine::general_purpose::STANDARD;
 pub(crate) use serde_json::Value as JsonValue;
+use serde_json::json;
 
-use crate::engine::data::value::{DataValue, Num, Vector};
 use crate::engine::data::value::JsonData;
+use crate::engine::data::value::{DataValue, Num, Vector};
 
 impl From<JsonValue> for DataValue {
     fn from(v: JsonValue) -> Self {

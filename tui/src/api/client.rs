@@ -20,7 +20,10 @@ impl std::fmt::Debug for ApiClient {
     }
 }
 
-#[expect(dead_code, reason = "API surface for auth, sessions, and admin operations")]
+#[expect(
+    dead_code,
+    reason = "API surface for auth, sessions, and admin operations"
+)]
 impl ApiClient {
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
         let client = Client::builder()
@@ -345,9 +348,7 @@ impl ApiClient {
     }
 
     fn check_auth(resp: &Response) -> Result<()> {
-        if resp.status() == StatusCode::UNAUTHORIZED
-            || resp.status() == StatusCode::FORBIDDEN
-        {
+        if resp.status() == StatusCode::UNAUTHORIZED || resp.status() == StatusCode::FORBIDDEN {
             return Err(AuthError.into());
         }
         Ok(())

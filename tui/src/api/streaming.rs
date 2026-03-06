@@ -33,47 +33,50 @@ pub fn stream_message(
     }
 
     let span = tracing::info_span!("stream_message");
-    tokio::spawn(async move {
-        let mut es = match EventSource::new(builder) {
-            Ok(es) => es,
-            Err(e) => {
-                let _ = tx
-                    .send(StreamEvent::Error(format!("failed to connect: {e}")))
-                    .await;
-                return;
-            }
-        };
-
-        while let Some(event) = es.next().await {
-            match event {
-                Ok(EsEvent::Open) => {}
-                Ok(EsEvent::Message(msg)) => {
-                    if let Some(parsed) = parse_stream_event(&msg.event, &msg.data) {
-                        let is_terminal = matches!(
-                            &parsed,
-                            StreamEvent::TurnComplete { .. }
-                                | StreamEvent::TurnAbort { .. }
-                                | StreamEvent::Error(_)
-                        );
-                        if tx.send(parsed).await.is_err() {
-                            break;
-                        }
-                        if is_terminal {
-                            es.close();
-                            break;
-                        }
-                    }
-                }
+    tokio::spawn(
+        async move {
+            let mut es = match EventSource::new(builder) {
+                Ok(es) => es,
                 Err(e) => {
                     let _ = tx
-                        .send(StreamEvent::Error(format!("stream error: {e}")))
+                        .send(StreamEvent::Error(format!("failed to connect: {e}")))
                         .await;
-                    es.close();
-                    break;
+                    return;
+                }
+            };
+
+            while let Some(event) = es.next().await {
+                match event {
+                    Ok(EsEvent::Open) => {}
+                    Ok(EsEvent::Message(msg)) => {
+                        if let Some(parsed) = parse_stream_event(&msg.event, &msg.data) {
+                            let is_terminal = matches!(
+                                &parsed,
+                                StreamEvent::TurnComplete { .. }
+                                    | StreamEvent::TurnAbort { .. }
+                                    | StreamEvent::Error(_)
+                            );
+                            if tx.send(parsed).await.is_err() {
+                                break;
+                            }
+                            if is_terminal {
+                                es.close();
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx
+                            .send(StreamEvent::Error(format!("stream error: {e}")))
+                            .await;
+                        es.close();
+                        break;
+                    }
                 }
             }
         }
-    }.instrument(span));
+        .instrument(span),
+    );
 
     rx
 }

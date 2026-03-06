@@ -329,8 +329,20 @@ async fn main() -> Result<()> {
                 *dry_run,
             );
         }
-        Some(Command::MigrateMemory { qdrant_url, collection, review_file, dry_run }) => {
-            return run_migrate_memory(&cli, qdrant_url, collection, review_file.as_ref(), *dry_run).await;
+        Some(Command::MigrateMemory {
+            qdrant_url,
+            collection,
+            review_file,
+            dry_run,
+        }) => {
+            return run_migrate_memory(
+                &cli,
+                qdrant_url,
+                collection,
+                review_file.as_ref(),
+                *dry_run,
+            )
+            .await;
         }
         None => {}
     }
@@ -338,7 +350,10 @@ async fn main() -> Result<()> {
     serve(cli).await
 }
 
-#[expect(clippy::unused_async, reason = "async required when migrate-qdrant feature is enabled")]
+#[expect(
+    clippy::unused_async,
+    reason = "async required when migrate-qdrant feature is enabled"
+)]
 async fn run_migrate_memory(
     cli: &Cli,
     qdrant_url: &str,
@@ -564,7 +579,14 @@ async fn serve(cli: Cli) -> Result<()> {
         let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> = Some(Arc::new(
             planning_adapter::FilesystemPlanningService::new(planning_root),
         ));
-        (cross_nous, messenger, note_store, blackboard_store, spawn, planning)
+        (
+            cross_nous,
+            messenger,
+            note_store,
+            blackboard_store,
+            spawn,
+            planning,
+        )
     };
 
     // Knowledge store for vector search and extraction persistence

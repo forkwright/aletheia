@@ -19,60 +19,63 @@ impl SseConnection {
         let token_owned = token.map(|t| t.to_string());
 
         let span = tracing::info_span!("sse_connection");
-        let handle = tokio::spawn(async move {
-            let mut backoff_secs: u64 = 1;
+        let handle = tokio::spawn(
+            async move {
+                let mut backoff_secs: u64 = 1;
 
-            loop {
-                let mut req = reqwest::Client::new()
-                    .get(&url)
-                    .header("Accept", "text/event-stream");
-                if let Some(ref t) = token_owned {
-                    req = req.bearer_auth(t);
-                }
-                let mut es = match EventSource::new(req) {
-                    Ok(es) => es,
-                    Err(e) => {
-                        tracing::error!("failed to create SSE EventSource: {e}");
-                        let _ = tx.send(SseEvent::Disconnected).await;
-                        tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
-                        backoff_secs = (backoff_secs * 2).min(30);
-                        continue;
+                loop {
+                    let mut req = reqwest::Client::new()
+                        .get(&url)
+                        .header("Accept", "text/event-stream");
+                    if let Some(ref t) = token_owned {
+                        req = req.bearer_auth(t);
                     }
-                };
-
-                let _ = tx.send(SseEvent::Connected).await;
-                let mut connected = false;
-
-                while let Some(event) = es.next().await {
-                    match event {
-                        Ok(EsEvent::Open) => {
-                            tracing::info!("SSE connected");
-                            connected = true;
-                            backoff_secs = 1;
+                    let mut es = match EventSource::new(req) {
+                        Ok(es) => es,
+                        Err(e) => {
+                            tracing::error!("failed to create SSE EventSource: {e}");
+                            let _ = tx.send(SseEvent::Disconnected).await;
+                            tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
+                            backoff_secs = (backoff_secs * 2).min(30);
+                            continue;
                         }
-                        Ok(EsEvent::Message(msg)) => {
-                            if let Some(parsed) = parse_sse_event(&msg.event, &msg.data) {
-                                if tx.send(parsed).await.is_err() {
-                                    return; // Receiver dropped, shut down
+                    };
+
+                    let _ = tx.send(SseEvent::Connected).await;
+                    let mut connected = false;
+
+                    while let Some(event) = es.next().await {
+                        match event {
+                            Ok(EsEvent::Open) => {
+                                tracing::info!("SSE connected");
+                                connected = true;
+                                backoff_secs = 1;
+                            }
+                            Ok(EsEvent::Message(msg)) => {
+                                if let Some(parsed) = parse_sse_event(&msg.event, &msg.data) {
+                                    if tx.send(parsed).await.is_err() {
+                                        return; // Receiver dropped, shut down
+                                    }
                                 }
                             }
-                        }
-                        Err(e) => {
-                            tracing::warn!("SSE error: {e}");
-                            es.close();
-                            break;
+                            Err(e) => {
+                                tracing::warn!("SSE error: {e}");
+                                es.close();
+                                break;
+                            }
                         }
                     }
-                }
 
-                let _ = tx.send(SseEvent::Disconnected).await;
-                if !connected {
-                    backoff_secs = (backoff_secs * 2).min(30);
+                    let _ = tx.send(SseEvent::Disconnected).await;
+                    if !connected {
+                        backoff_secs = (backoff_secs * 2).min(30);
+                    }
+                    tracing::info!("SSE reconnecting in {backoff_secs}s");
+                    tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
                 }
-                tracing::info!("SSE reconnecting in {backoff_secs}s");
-                tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
             }
-        }.instrument(span));
+            .instrument(span),
+        );
 
         SseConnection {
             rx,

@@ -14,7 +14,10 @@ pub enum ColorDepth {
 /// Semantic color palette for the entire TUI.
 /// Every color usage flows through this — no ad-hoc `Color::Cyan` calls.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "palette fields are the complete semantic color set")]
+#[expect(
+    dead_code,
+    reason = "palette fields are the complete semantic color set"
+)]
 pub struct ThemePalette {
     // --- Surface colors ---
     pub bg: Color,

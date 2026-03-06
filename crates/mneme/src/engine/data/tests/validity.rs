@@ -7,8 +7,8 @@
  *
  */
 
-use crate::engine::data::value::DataValue;
 use crate::engine::DbInstance;
+use crate::engine::data::value::DataValue;
 use serde_json::json;
 use std::env;
 
@@ -23,23 +23,25 @@ fn test_validity() {
 
     db.run_default(":create vld {a, v: Validity => d}").unwrap();
 
-    assert!(db
-        .run_default(
+    assert!(
+        db.run_default(
             r#"
     ?[a, v, d] <- [[1, [9223372036854775807, true], null]]
     :put vld {a, v => d}
     "#,
         )
-        .is_err());
+        .is_err()
+    );
 
-    assert!(db
-        .run_default(
+    assert!(
+        db.run_default(
             r#"
     ?[a, v, d] <- [[1, [-9223372036854775808, true], null]]
     :put vld {a, v => d}
     "#,
         )
-        .is_err());
+        .is_err()
+    );
 
     db.run_default(
         r#"

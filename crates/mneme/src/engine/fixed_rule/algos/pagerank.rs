@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 #[cfg(not(feature = "graph-algo"))]
 use crate::engine::error::DbResult as Result;
 use approx::AbsDiffEq;
-use graph::prelude::{page_rank, PageRankConfig};
+use graph::prelude::{PageRankConfig, page_rank};
 use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;

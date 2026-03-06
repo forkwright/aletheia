@@ -9,7 +9,7 @@
 
 use uuid::Uuid;
 
-use crate::engine::data::memcmp::{decode_bytes, MemCmpEncoder};
+use crate::engine::data::memcmp::{MemCmpEncoder, decode_bytes};
 use crate::engine::data::value::{DataValue, Num, UuidWrapper};
 
 #[test]
