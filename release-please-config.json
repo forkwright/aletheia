@@ -20,11 +20,6 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
-          "type": "json",
-          "path": "infrastructure/runtime/package.json",
-          "jsonpath": "$.version"
-        },
-        {
           "type": "toml",
           "path": "Cargo.toml",
           "jsonpath": "$.workspace.package.version"
