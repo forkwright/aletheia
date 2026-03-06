@@ -188,8 +188,7 @@ pub fn render(
                 TagEnd::Link => {
                     style_stack.pop();
                     if let Some(url) = link_url.take() {
-                        current_spans
-                            .push(Span::styled(format!(" ({url})"), theme.style_dim()));
+                        current_spans.push(Span::styled(format!(" ({url})"), theme.style_dim()));
                     }
                 }
                 TagEnd::Image => {
@@ -387,14 +386,22 @@ mod tests {
     #[test]
     fn code_block() {
         let lines = test_render("```rust\nlet x = 1;\n```");
-        let all_text: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
+        let all_text: String = lines
+            .iter()
+            .map(|l| line_text(l))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(all_text.contains("let x = 1"));
     }
 
     #[test]
     fn list_items() {
         let lines = test_render("- one\n- two");
-        let all_text: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
+        let all_text: String = lines
+            .iter()
+            .map(|l| line_text(l))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(all_text.contains("one"));
         assert!(all_text.contains("two"));
     }
@@ -410,7 +417,11 @@ mod tests {
     #[test]
     fn link_renders_with_url() {
         let lines = test_render("[click](https://example.com)");
-        let all_text: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join(" ");
+        let all_text: String = lines
+            .iter()
+            .map(|l| line_text(l))
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(all_text.contains("click"));
         assert!(all_text.contains("example.com"));
     }

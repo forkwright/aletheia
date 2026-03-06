@@ -7,7 +7,7 @@ use super::{Token, TokenFilter, TokenStream};
 use crate::engine::fts::tokenizer::BoxTokenStream;
 
 /// Available stemmer languages.
-#[derive(Debug, serde_derive::Serialize, serde_derive::Deserialize, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq, Copy, Clone)]
 #[allow(missing_docs)]
 pub(crate) enum Language {
     Arabic,

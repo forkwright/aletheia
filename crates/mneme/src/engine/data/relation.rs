@@ -1,32 +1,23 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
-
-use std::cmp::Reverse;
-use std::fmt::{Display, Formatter};
-use std::mem;
-use std::time::{SystemTime, UNIX_EPOCH};
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use chrono::DateTime;
 use itertools::Itertools;
-use miette::Diagnostic;
+use jiff::Timestamp;
 use serde_json::json;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
+use std::cmp::Reverse;
+use std::fmt::{Display, Formatter};
+use std::mem;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::value::Num;
 use crate::engine::data::value::{DataValue, JsonData, UuidWrapper, Validity, ValidityTs, Vector};
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_derive::Deserialize, serde_derive::Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct NullableColType {
     pub coltype: ColType,
     pub nullable: bool,
@@ -82,7 +73,7 @@ impl Display for NullableColType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_derive::Deserialize, serde_derive::Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ColType {
     Any,
     Bool,
@@ -104,22 +95,20 @@ pub enum ColType {
     Json,
 }
 
-#[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Hash, serde_derive::Deserialize, serde_derive::Serialize,
-)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, serde::Deserialize, serde::Serialize)]
 pub enum VecElementType {
     F32,
     F64,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_derive::Deserialize, serde_derive::Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub(crate) struct ColumnDef {
     pub(crate) name: SmartString<LazyCompact>,
     pub(crate) typing: NullableColType,
     pub(crate) default_gen: Option<Expr>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_derive::Deserialize, serde_derive::Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub(crate) struct StoredRelationMetadata {
     pub(crate) keys: Vec<ColumnDef>,
     pub(crate) non_keys: Vec<ColumnDef>,
@@ -133,10 +122,16 @@ impl StoredRelationMetadata {
             }
         }
         if col.default_gen.is_none() {
-            #[derive(Debug, Error, Diagnostic)]
-            #[error("required column {0} not provided by input")]
-            #[diagnostic(code(eval::required_col_not_provided))]
+            #[derive(Debug)]
             struct ColumnNotProvided(String);
+
+            impl std::fmt::Display for ColumnNotProvided {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "required column {} not provided by input", self.0)
+                }
+            }
+
+            impl std::error::Error for ColumnNotProvided {}
 
             bail!(ColumnNotProvided(col.name.to_string()))
         }
@@ -145,10 +140,21 @@ impl StoredRelationMetadata {
     pub(crate) fn compatible_with_col(&self, col: &ColumnDef) -> Result<()> {
         for target in self.keys.iter().chain(self.non_keys.iter()) {
             if target.name == col.name {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("requested column {0} has typing {1}, but the requested typing is {2}")]
-                #[diagnostic(code(eval::col_type_mismatch))]
+                #[derive(Debug)]
                 struct IncompatibleTyping(String, NullableColType, NullableColType);
+
+                impl std::fmt::Display for IncompatibleTyping {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(
+                            f,
+                            "requested column {} has typing {}, but the requested typing is {}",
+                            self.0, self.1, self.2
+                        )
+                    }
+                }
+
+                impl std::error::Error for IncompatibleTyping {}
+
                 if (!col.typing.nullable || col.typing.coltype != ColType::Any)
                     && target.typing != col.typing
                 {
@@ -163,10 +169,16 @@ impl StoredRelationMetadata {
             }
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("required column {0} not found")]
-        #[diagnostic(code(eval::required_col_not_found))]
+        #[derive(Debug)]
         struct ColumnNotFound(String);
+
+        impl std::fmt::Display for ColumnNotFound {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "required column {} not found", self.0)
+            }
+        }
+
+        impl std::error::Error for ColumnNotFound {}
 
         bail!(ColumnNotFound(col.name.to_string()))
     }
@@ -178,24 +190,50 @@ impl NullableColType {
             return if self.nullable {
                 Ok(data)
             } else {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("encountered null value for non-null type {0}")]
-                #[diagnostic(code(eval::coercion_null))]
+                #[derive(Debug)]
                 struct InvalidNullValue(NullableColType);
+
+                impl std::fmt::Display for InvalidNullValue {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "encountered null value for non-null type {}", self.0)
+                    }
+                }
+
+                impl std::error::Error for InvalidNullValue {}
 
                 Err(InvalidNullValue(self.clone()).into())
             };
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("data coercion failed: expected type {0}, got value {1:?}")]
-        #[diagnostic(code(eval::coercion_failed))]
+        #[derive(Debug)]
         struct DataCoercionFailed(NullableColType, DataValue);
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("bad list length: expected datatype {0}, got length {1}")]
-        #[diagnostic(code(eval::coercion_bad_list_len))]
+        impl std::fmt::Display for DataCoercionFailed {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "data coercion failed: expected type {}, got value {:?}",
+                    self.0, self.1
+                )
+            }
+        }
+
+        impl std::error::Error for DataCoercionFailed {}
+
+        #[derive(Debug)]
         struct BadListLength(NullableColType, usize);
+
+        impl std::fmt::Display for BadListLength {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "bad list length: expected datatype {}, got length {}",
+                    self.0, self.1
+                )
+            }
+        }
+
+        impl std::error::Error for BadListLength {}
 
         let make_err = || DataCoercionFailed(self.clone(), data.clone());
 
@@ -203,10 +241,16 @@ impl NullableColType {
             ColType::Any => match data {
                 DataValue::Set(s) => DataValue::List(s.into_iter().collect_vec()),
                 DataValue::Bot => {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("data coercion failed: internal type Bot not allowed")]
-                    #[diagnostic(code(eval::coercion_from_bot))]
+                    #[derive(Debug)]
                     struct DataCoercionFromBot;
+
+                    impl std::fmt::Display for DataCoercionFromBot {
+                        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            write!(f, "data coercion failed: internal type Bot not allowed")
+                        }
+                    }
+
+                    impl std::error::Error for DataCoercionFromBot {}
 
                     bail!(DataCoercionFromBot)
                 }
@@ -225,10 +269,21 @@ impl NullableColType {
             ColType::Bytes => match data {
                 d @ DataValue::Bytes(_) => d,
                 DataValue::Str(s) => {
-                    #[derive(Debug, Error, Diagnostic)]
-                    #[error("cannot decode string as base64-encoded bytes: {0}")]
-                    #[diagnostic(code(eval::coercion_bad_base_64))]
+                    #[derive(Debug)]
                     struct BadBase64EncodedString(String);
+
+                    impl std::fmt::Display for BadBase64EncodedString {
+                        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            write!(
+                                f,
+                                "cannot decode string as base64-encoded bytes: {}",
+                                self.0
+                            )
+                        }
+                    }
+
+                    impl std::error::Error for BadBase64EncodedString {}
+
                     let b = STANDARD
                         .decode(s)
                         .map_err(|e| BadBase64EncodedString(e.to_string()))?;
@@ -333,10 +388,16 @@ impl NullableColType {
                 }
             }
             ColType::Validity => {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("{0} cannot be coerced into validity")]
-                #[diagnostic(code(eval::invalid_validity))]
+                #[derive(Debug)]
                 struct InvalidValidity(DataValue);
+
+                impl std::fmt::Display for InvalidValidity {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "{} cannot be coerced into validity", self.0)
+                    }
+                }
+
+                impl std::error::Error for InvalidValidity {}
 
                 match data {
                     vld @ DataValue::Validity(_) => vld,
@@ -354,11 +415,10 @@ impl NullableColType {
                                 None => (true, s),
                                 Some(remaining) => (false, remaining),
                             };
-                            let dt = DateTime::parse_from_rfc3339(ts_str)
+                            let ts: Timestamp = ts_str
+                                .parse()
                                 .map_err(|_| InvalidValidity(DataValue::Str(s.into())))?;
-                            let st: SystemTime = dt.into();
-                            let microseconds =
-                                st.duration_since(UNIX_EPOCH).unwrap().as_micros() as i64;
+                            let microseconds = ts.as_microsecond();
 
                             if microseconds == i64::MAX || microseconds == i64::MIN {
                                 bail!(InvalidValidity(DataValue::Str(s.into())))

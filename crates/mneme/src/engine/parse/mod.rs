@@ -1,13 +1,7 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
-//! AST for Cozo scripts, for generating Cozo scripts programmatically.
-//!
-//! NOTE! This is unstable, the AST structure and method signatures may change in any release. Use at your own risk.
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
+
+//! AST for the datalog query language.
 
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,15 +34,15 @@ pub(crate) mod schema;
 pub(crate) mod sys;
 
 #[derive(pest_derive::Parser)]
-#[grammar = "engine/cozoscript.pest"]
-pub(crate) struct CozoScriptParser;
+#[grammar = "engine/datalog.pest"]
+pub(crate) struct DatalogParser;
 
 pub(crate) type Pair<'a> = pest::iterators::Pair<'a, Rule>;
 pub(crate) type Pairs<'a> = pest::iterators::Pairs<'a, Rule>;
 
-/// This represents a full Cozo script, as you'd pass to `run_script`.
+/// A parsed datalog script, as returned by `parse_script`.
 #[derive(Debug)]
-pub enum CozoScript {
+pub enum DatalogScript {
     #[allow(missing_docs)]
     Single(InputProgram),
     #[allow(missing_docs)]
@@ -116,8 +110,7 @@ pub enum ImperativeStmt {
 
 pub(crate) type ImperativeCondition = Either<SmartString<LazyCompact>, ImperativeStmtClause>;
 
-/// This is a [chained query](https://docs.cozodb.org/en/latest/stored.html#chaining-queries),
-/// a series of `{}` queries possibly with imperative directives like `%if` and `%loop`.
+/// A series of `{}` queries possibly with imperative directives like `%if` and `%loop`.
 pub type ImperativeProgram = Vec<ImperativeStmt>;
 
 impl ImperativeStmt {
@@ -208,14 +201,14 @@ impl ImperativeStmt {
     }
 }
 
-impl CozoScript {
+impl DatalogScript {
     pub(crate) fn get_single_program(self) -> Result<InputProgram> {
         #[derive(Debug, Snafu)]
         #[snafu(display("expect script to contain only a single program"))]
         struct ExpectSingleProgram;
         match self {
-            CozoScript::Single(s) => Ok(s),
-            CozoScript::Imperative(_) | CozoScript::Sys(_) => {
+            DatalogScript::Single(s) => Ok(s),
+            DatalogScript::Imperative(_) | DatalogScript::Sys(_) => {
                 bail!(ExpectSingleProgram)
             }
         }
@@ -223,9 +216,7 @@ impl CozoScript {
 }
 
 /// Span of the element in the source script, with starting and ending positions.
-#[derive(
-    Eq, PartialEq, Debug, serde_derive::Serialize, serde_derive::Deserialize, Copy, Clone, Default,
-)]
+#[derive(Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, Copy, Clone, Default)]
 pub struct SourceSpan(pub usize, pub usize);
 
 impl Display for SourceSpan {
@@ -246,12 +237,6 @@ impl SourceSpan {
     }
 }
 
-impl From<SourceSpan> for miette::SourceSpan {
-    fn from(s: SourceSpan) -> Self {
-        miette::SourceSpan::new(s.0.into(), s.1.into())
-    }
-}
-
 #[derive(Debug, Snafu)]
 #[snafu(display("The query parser has encountered unexpected input / end of input at {span}"))]
 pub(crate) struct ParseError {
@@ -259,7 +244,7 @@ pub(crate) struct ParseError {
 }
 
 pub(crate) fn parse_type(src: &str) -> Result<NullableColType> {
-    let parsed = CozoScriptParser::parse(Rule::col_type_with_term, src)
+    let parsed = DatalogParser::parse(Rule::col_type_with_term, src)
         .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
         .next()
         .unwrap();
@@ -270,7 +255,7 @@ pub(crate) fn parse_expressions(
     src: &str,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<Expr> {
-    let parsed = CozoScriptParser::parse(Rule::expression_script, src)
+    let parsed = DatalogParser::parse(Rule::expression_script, src)
         .map_err(|err| {
             let span = match err.location {
                 InputLocation::Pos(p) => SourceSpan(p, 0),
@@ -284,9 +269,7 @@ pub(crate) fn parse_expressions(
     build_expr(parsed.into_inner().next().unwrap(), param_pool)
 }
 
-/// This parses a text script into the AST used by Cozo.
-///
-/// Note! This is an unstable interface, the signature may change between releases. Depend on it at your own risk.
+/// Parse a text script into the datalog AST.
 ///
 /// * `src` - the script to parse
 ///
@@ -300,8 +283,8 @@ pub fn parse_script(
     param_pool: &BTreeMap<String, DataValue>,
     fixed_rules: &BTreeMap<String, Arc<Box<dyn FixedRule>>>,
     cur_vld: ValidityTs,
-) -> Result<CozoScript> {
-    let parsed = CozoScriptParser::parse(Rule::script, src)
+) -> Result<DatalogScript> {
+    let parsed = DatalogParser::parse(Rule::script, src)
         .map_err(|err| {
             let span = match err.location {
                 InputLocation::Pos(p) => SourceSpan(p, 0),
@@ -314,14 +297,14 @@ pub fn parse_script(
     Ok(match parsed.as_rule() {
         Rule::query_script => {
             let q = parse_query(parsed.into_inner(), param_pool, fixed_rules, cur_vld)?;
-            CozoScript::Single(q)
+            DatalogScript::Single(q)
         }
         Rule::imperative_script => {
             let p = parse_imperative_block(parsed, param_pool, fixed_rules, cur_vld)?;
-            CozoScript::Imperative(p)
+            DatalogScript::Imperative(p)
         }
 
-        Rule::sys_script => CozoScript::Sys(parse_sys(
+        Rule::sys_script => DatalogScript::Sys(parse_sys(
             parsed.into_inner(),
             param_pool,
             fixed_rules,

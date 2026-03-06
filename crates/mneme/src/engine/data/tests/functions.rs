@@ -1,15 +1,9 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
-use approx::AbsDiffEq;
-use num_traits::FloatConst;
 use regex::Regex;
 use serde_json::json;
+use std::f64::consts::{E, PI};
 
 use crate::engine::DbInstance;
 use crate::engine::data::functions::*;
@@ -442,13 +436,13 @@ fn test_round() {
 #[test]
 fn test_exp() {
     let n = op_exp(&[DataValue::from(1)]).unwrap().get_float().unwrap();
-    assert!(n.abs_diff_eq(&f64::E(), 1E-5));
+    assert!(((n) - (E)).abs() < 1E-5);
 
     let n = op_exp(&[DataValue::from(50.1)])
         .unwrap()
         .get_float()
         .unwrap();
-    assert!(n.abs_diff_eq(&(50.1_f64.exp()), 1E-5));
+    assert!(((n) - (50.1_f64.exp())).abs() < 1E-5);
 }
 
 #[test]
@@ -462,10 +456,7 @@ fn test_exp2() {
 
 #[test]
 fn test_ln() {
-    assert_eq!(
-        op_ln(&[DataValue::from(f64::E())]).unwrap(),
-        DataValue::from(1.0)
-    );
+    assert_eq!(op_ln(&[DataValue::from(E)]).unwrap(), DataValue::from(1.0));
 }
 
 #[test]
@@ -486,59 +477,39 @@ fn test_log10() {
 
 #[test]
 fn test_trig() {
-    assert!(
-        op_sin(&[DataValue::from(f64::PI() / 2.)])
-            .unwrap()
-            .get_float()
-            .unwrap()
-            .abs_diff_eq(&1.0, 1e-5)
-    );
-    assert!(
-        op_cos(&[DataValue::from(f64::PI() / 2.)])
-            .unwrap()
-            .get_float()
-            .unwrap()
-            .abs_diff_eq(&0.0, 1e-5)
-    );
-    assert!(
-        op_tan(&[DataValue::from(f64::PI() / 4.)])
-            .unwrap()
-            .get_float()
-            .unwrap()
-            .abs_diff_eq(&1.0, 1e-5)
-    );
+    let v = op_sin(&[DataValue::from(PI / 2.)])
+        .unwrap()
+        .get_float()
+        .unwrap();
+    assert!((v - 1.0).abs() < 1e-5);
+    let v = op_cos(&[DataValue::from(PI / 2.)])
+        .unwrap()
+        .get_float()
+        .unwrap();
+    assert!((v - 0.0).abs() < 1e-5);
+    let v = op_tan(&[DataValue::from(PI / 4.)])
+        .unwrap()
+        .get_float()
+        .unwrap();
+    assert!((v - 1.0).abs() < 1e-5);
 }
 
 #[test]
 fn test_inv_trig() {
-    assert!(
-        op_asin(&[DataValue::from(1.0)])
-            .unwrap()
-            .get_float()
-            .unwrap()
-            .abs_diff_eq(&(f64::PI() / 2.), 1e-5)
-    );
-    assert!(
-        op_acos(&[DataValue::from(0)])
-            .unwrap()
-            .get_float()
-            .unwrap()
-            .abs_diff_eq(&(f64::PI() / 2.), 1e-5)
-    );
-    assert!(
-        op_atan(&[DataValue::from(1)])
-            .unwrap()
-            .get_float()
-            .unwrap()
-            .abs_diff_eq(&(f64::PI() / 4.), 1e-5)
-    );
-    assert!(
-        op_atan2(&[DataValue::from(-1), DataValue::from(-1)])
-            .unwrap()
-            .get_float()
-            .unwrap()
-            .abs_diff_eq(&(-3. * f64::PI() / 4.), 1e-5)
-    );
+    let v = op_asin(&[DataValue::from(1.0)])
+        .unwrap()
+        .get_float()
+        .unwrap();
+    assert!((v - PI / 2.).abs() < 1e-5);
+    let v = op_acos(&[DataValue::from(0)]).unwrap().get_float().unwrap();
+    assert!((v - PI / 2.).abs() < 1e-5);
+    let v = op_atan(&[DataValue::from(1)]).unwrap().get_float().unwrap();
+    assert!((v - PI / 4.).abs() < 1e-5);
+    let v = op_atan2(&[DataValue::from(-1), DataValue::from(-1)])
+        .unwrap()
+        .get_float()
+        .unwrap();
+    assert!((v - (-3. * PI / 4.)).abs() < 1e-5);
 }
 
 #[test]
@@ -1019,7 +990,7 @@ fn test_haversine() {
     .unwrap()
     .get_float()
     .unwrap();
-    assert!(d.abs_diff_eq(&f64::PI(), 1e-5));
+    assert!(((d) - (PI)).abs() < 1e-5);
 
     let d = op_haversine_deg_input(&[
         DataValue::from(90),
@@ -1030,28 +1001,28 @@ fn test_haversine() {
     .unwrap()
     .get_float()
     .unwrap();
-    assert!(d.abs_diff_eq(&(f64::PI() / 2.), 1e-5));
+    assert!(((d) - (PI / 2.)).abs() < 1e-5);
 
     let d = op_haversine(&[
         DataValue::from(0),
         DataValue::from(0),
         DataValue::from(0),
-        DataValue::from(f64::PI()),
+        DataValue::from(PI),
     ])
     .unwrap()
     .get_float()
     .unwrap();
-    assert!(d.abs_diff_eq(&f64::PI(), 1e-5));
+    assert!(((d) - (PI)).abs() < 1e-5);
 }
 
 #[test]
 fn test_deg_rad() {
     assert_eq!(
         op_deg_to_rad(&[DataValue::from(180)]).unwrap(),
-        DataValue::from(f64::PI())
+        DataValue::from(PI)
     );
     assert_eq!(
-        op_rad_to_deg(&[DataValue::from(f64::PI())]).unwrap(),
+        op_rad_to_deg(&[DataValue::from(PI)]).unwrap(),
         DataValue::from(180.0)
     );
 }
