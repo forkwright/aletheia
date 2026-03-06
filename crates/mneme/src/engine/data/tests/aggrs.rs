@@ -1,12 +1,6 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
-use approx::AbsDiffEq;
 use itertools::Itertools;
 
 use crate::engine::data::aggr::parse_aggr;
@@ -268,7 +262,7 @@ fn test_std_dev() {
     std_dev_aggr.set(&DataValue::from(1)).unwrap();
     std_dev_aggr.set(&DataValue::from(2)).unwrap();
     let v = std_dev_aggr.get().unwrap().get_float().unwrap();
-    assert!(v.abs_diff_eq(&(0.5_f64).sqrt(), 1e-10));
+    assert!((v - (0.5_f64).sqrt()).abs() < 1e-10);
 }
 
 #[test]

@@ -32,7 +32,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Internal error type replacing `miette::Box<dyn std::error::Error + Send + Sync>`.
 ///
-/// All CozoDB internal modules use this for `?`-based error propagation.
+/// All engine-internal modules use this for `?`-based error propagation.
 /// At the public `Db` facade boundary, this is converted to `Error::Engine`.
 pub(crate) type BoxErr = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub(crate) type DbResult<T> = std::result::Result<T, BoxErr>;
@@ -49,7 +49,7 @@ impl std::fmt::Display for AdhocError {
 
 impl std::error::Error for AdhocError {}
 
-/// Compatibility `bail!` macro replacing miette's `bail!` in internal CozoDB code.
+/// Compatibility `bail!` macro for engine-internal error propagation.
 ///
 /// Supports both string-format form (`bail!("msg")`, `bail!("fmt {}", val)`)
 /// and struct form (`bail!(SomeErrorStruct { ... })`).
@@ -73,7 +73,7 @@ macro_rules! bail {
 
 /// Compatibility `miette!` macro: creates a `BoxErr` from a format string or struct expression.
 ///
-/// Replaces `miette::miette!("msg")` in vendored CozoDB data module code.
+/// Creates a `BoxErr` from a format string or struct expression.
 #[macro_export]
 macro_rules! miette {
     ($fmt:literal, $($arg:tt)+) => {
@@ -89,7 +89,7 @@ macro_rules! miette {
     };
 }
 
-/// Compatibility `ensure!` macro replacing miette's `ensure!` in internal CozoDB code.
+/// Compatibility `ensure!` macro for engine-internal error propagation.
 #[macro_export]
 macro_rules! ensure {
     // Format string with args (optional trailing comma)

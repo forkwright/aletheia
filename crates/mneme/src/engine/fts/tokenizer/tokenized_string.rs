@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use crate::engine::fts::tokenizer::{Token, TokenStream};
 
 /// Struct representing pre-tokenized text
-#[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 pub(crate) struct PreTokenizedString {
     /// Original text
     pub(crate) text: String,

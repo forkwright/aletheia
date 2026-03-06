@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
 use itertools::Itertools;
@@ -18,7 +13,7 @@ pub(crate) mod mem;
 pub(crate) mod newrocks;
 pub(crate) mod temp;
 
-/// Swappable storage trait for Cozo's storage engine
+/// Swappable storage trait for the mneme engine.
 pub trait Storage<'s>: Send + Sync + Clone {
     /// The associated transaction type used by this engine
     type Tx: StoreTx<'s>;

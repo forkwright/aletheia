@@ -1,6 +1,6 @@
-/*
-These stop word lists are from the stopwords-iso project (https://github.com/stopwords-iso/stopwords-iso/) which carries the MIT license.
-*/
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Stop word lists from stopwords-iso project (MIT license).
+// https://github.com/stopwords-iso/stopwords-iso/
 pub(crate) const EN: &[&str] = &[
     r#"'ll"#,
     r#"'tis"#,

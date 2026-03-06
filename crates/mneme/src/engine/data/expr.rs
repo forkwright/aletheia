@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet};
@@ -14,11 +9,9 @@ use std::mem;
 use crate::engine::error::DbResult as Result;
 use crate::{bail, miette};
 use itertools::Itertools;
-use miette::Diagnostic;
 use serde::de::{Error, Visitor};
 use serde::{Deserializer, Serializer};
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::engine::data::functions::*;
 use crate::engine::data::relation::NullableColType;
@@ -27,7 +20,7 @@ use crate::engine::data::value::{DataValue, LARGEST_UTF_CHAR};
 use crate::engine::parse::SourceSpan;
 use crate::engine::parse::expr::expr2bytecode;
 
-#[derive(Clone, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Debug)]
 pub enum Bytecode {
     /// push 1
     Binding {
@@ -61,16 +54,31 @@ pub enum Bytecode {
     },
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("The variable '{0}' is unbound")]
-#[diagnostic(code(eval::unbound))]
-struct UnboundVariableError(String, #[label] SourceSpan);
+#[derive(Debug)]
+struct UnboundVariableError(String, SourceSpan);
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("The tuple bound by variable '{0}' is too short: index is {1}, length is {2}")]
-#[diagnostic(help("This is definitely a bug. Please report it."))]
-#[diagnostic(code(eval::tuple_too_short))]
-struct TupleTooShortError(String, usize, usize, #[label] SourceSpan);
+impl std::fmt::Display for UnboundVariableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "The variable '{}' is unbound", self.0)
+    }
+}
+
+impl std::error::Error for UnboundVariableError {}
+
+#[derive(Debug)]
+struct TupleTooShortError(String, usize, usize, SourceSpan);
+
+impl std::fmt::Display for TupleTooShortError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "The tuple bound by variable '{}' is too short: index is {}, length is {}",
+            self.0, self.1, self.2
+        )
+    }
+}
+
+impl std::error::Error for TupleTooShortError {}
 
 pub fn eval_bytecode_pred(
     bytecodes: &[Bytecode],
@@ -157,7 +165,7 @@ pub fn eval_bytecode(
 }
 
 /// Expression can be evaluated to yield a DataValue
-#[derive(Clone, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Expr {
     /// Binding to variables
     Binding {
@@ -246,26 +254,53 @@ impl Display for Expr {
     }
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("No implementation found for op `{1}`")]
-#[diagnostic(code(eval::no_implementation))]
-pub(crate) struct NoImplementationError(#[label] pub(crate) SourceSpan, pub(crate) String);
+#[derive(Debug)]
+pub(crate) struct NoImplementationError(pub(crate) SourceSpan, pub(crate) String);
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Found value {1:?} where a boolean value is expected")]
-#[diagnostic(code(eval::predicate_not_bool))]
-pub(crate) struct PredicateTypeError(#[label] pub(crate) SourceSpan, pub(crate) DataValue);
+impl std::fmt::Display for NoImplementationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "No implementation found for op `{}`", self.1)
+    }
+}
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Cannot build entity ID from {0:?}")]
-#[diagnostic(code(parser::bad_eid))]
-#[diagnostic(help("Entity ID should be an integer satisfying certain constraints"))]
-struct BadEntityId(DataValue, #[label] SourceSpan);
+impl std::error::Error for NoImplementationError {}
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Evaluation of expression failed")]
-#[diagnostic(code(eval::throw))]
-struct EvalRaisedError(#[label] SourceSpan, #[help] String);
+#[derive(Debug)]
+pub(crate) struct PredicateTypeError(pub(crate) SourceSpan, pub(crate) DataValue);
+
+impl std::fmt::Display for PredicateTypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Found value {:?} where a boolean value is expected",
+            self.1
+        )
+    }
+}
+
+impl std::error::Error for PredicateTypeError {}
+
+#[derive(Debug)]
+struct BadEntityId(DataValue, SourceSpan);
+
+impl std::fmt::Display for BadEntityId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Cannot build entity ID from {:?}", self.0)
+    }
+}
+
+impl std::error::Error for BadEntityId {}
+
+#[derive(Debug)]
+struct EvalRaisedError(SourceSpan, String);
+
+impl std::fmt::Display for EvalRaisedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Evaluation of expression failed")
+    }
+}
+
+impl std::error::Error for EvalRaisedError {}
 
 impl Expr {
     pub(crate) fn compile(&self) -> Result<Vec<Bytecode>> {
@@ -334,10 +369,16 @@ impl Expr {
     ) -> Result<()> {
         match self {
             Expr::Binding { var, tuple_pos, .. } => {
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Cannot find binding {0}")]
-                #[diagnostic(code(eval::bad_binding))]
-                struct BadBindingError(String, #[label] SourceSpan);
+                #[derive(Debug)]
+                struct BadBindingError(String, SourceSpan);
+
+                impl std::fmt::Display for BadBindingError {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "Cannot find binding {}", self.0)
+                    }
+                }
+
+                impl std::error::Error for BadBindingError {}
 
                 let found_idx = *binding_map
                     .get(var)
@@ -400,10 +441,16 @@ impl Expr {
     }
     /// Evaluate the expression to a constant value if possible
     pub fn eval_to_const(mut self) -> Result<DataValue> {
-        #[derive(Error, Diagnostic, Debug)]
-        #[error("Expression contains unevaluated constant")]
-        #[diagnostic(code(eval::not_constant))]
+        #[derive(Debug)]
         struct NotConstError;
+
+        impl std::fmt::Display for NotConstError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Expression contains unevaluated constant")
+            }
+        }
+
+        impl std::error::Error for NotConstError {}
 
         self.partial_eval()?;
         match self {
@@ -582,11 +629,20 @@ impl Expr {
                         if let Some(val) = args[1].get_const() {
                             if target == symb {
                                 let s = val.get_str().ok_or_else(|| {
-                                    #[derive(Debug, Error, Diagnostic)]
-                                    #[error("Cannot prefix scan with {0:?}")]
-                                    #[diagnostic(code(eval::bad_string_range_scan))]
-                                    #[diagnostic(help("A string argument is required"))]
-                                    struct StrRangeScanError(DataValue, #[label] SourceSpan);
+                                    #[derive(Debug)]
+                                    struct StrRangeScanError(DataValue, SourceSpan);
+
+                                    impl std::fmt::Display for StrRangeScanError {
+                                        fn fmt(
+                                            &self,
+                                            f: &mut std::fmt::Formatter<'_>,
+                                        ) -> std::fmt::Result
+                                        {
+                                            write!(f, "Cannot prefix scan with {:?}", self.0)
+                                        }
+                                    }
+
+                                    impl std::error::Error for StrRangeScanError {}
 
                                     StrRangeScanError(val.clone(), symb.span)
                                 })?;

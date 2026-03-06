@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -28,7 +23,7 @@ use crate::engine::fixed_rule::FixedRuleHandle;
 use crate::engine::fixed_rule::utilities::constant::Constant;
 use crate::engine::fts::tokenizer::TextAnalyzer;
 use crate::engine::parse::expr::build_expr;
-use crate::engine::parse::{CozoScriptParser, Rule, parse_script};
+use crate::engine::parse::{DatalogParser, Rule, parse_script};
 use crate::engine::runtime::callback::{CallbackCollector, CallbackOp};
 use crate::engine::runtime::minhash_lsh::HashPermutations;
 use crate::engine::runtime::relation::{
@@ -444,7 +439,7 @@ impl<'a> SessionTx<'a> {
                 .tokenizers
                 .get(name, &manifest.tokenizer, &manifest.filters)?;
 
-            let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
+            let parsed = DatalogParser::parse(Rule::expr, &manifest.extractor)
                 .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
                 .next()
                 .unwrap();
@@ -459,7 +454,7 @@ impl<'a> SessionTx<'a> {
                 .tokenizers
                 .get(name, &manifest.tokenizer, &manifest.filters)?;
 
-            let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
+            let parsed = DatalogParser::parse(Rule::expr, &manifest.extractor)
                 .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
                 .next()
                 .unwrap();
@@ -478,7 +473,7 @@ impl<'a> SessionTx<'a> {
         let mut hnsw_filters = BTreeMap::new();
         for (name, (_, manifest)) in relation_store.hnsw_indices.iter() {
             if let Some(f_code) = &manifest.index_filter {
-                let parsed = CozoScriptParser::parse(Rule::expr, f_code)
+                let parsed = DatalogParser::parse(Rule::expr, f_code)
                     .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
                     .next()
                     .unwrap();

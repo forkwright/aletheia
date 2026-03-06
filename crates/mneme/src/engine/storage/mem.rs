@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
@@ -29,7 +24,7 @@ use crate::engine::utils::swap_option_result;
 /// Create a database backed by memory.
 /// This is the fastest storage, but non-persistent.
 /// Supports concurrent readers but only a single writer.
-pub fn new_cozo_mem() -> Result<crate::engine::DbCore<MemStorage>> {
+pub fn new_mem_db() -> Result<crate::engine::DbCore<MemStorage>> {
     let ret = crate::engine::DbCore::new(MemStorage::default())?;
 
     ret.initialize()?;

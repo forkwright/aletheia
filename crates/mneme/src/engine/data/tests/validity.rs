@@ -1,11 +1,5 @@
-/*
- *  Copyright 2022, The Cozo Project Authors.
- *
- *  This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- *  If a copy of the MPL was not distributed with this file,
- *  You can obtain one at https://mozilla.org/MPL/2.0/.
- *
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
@@ -17,7 +11,7 @@ fn test_validity() {
     let path = "_test_validity";
     let _ = std::fs::remove_file(path);
     let _ = std::fs::remove_dir_all(path);
-    let db_kind = env::var("COZO_TEST_DB_ENGINE").unwrap_or("mem".to_string());
+    let db_kind = env::var("MNEME_TEST_DB_ENGINE").unwrap_or("mem".to_string());
     println!("Using {} engine", db_kind);
     let db = DbInstance::default();
 

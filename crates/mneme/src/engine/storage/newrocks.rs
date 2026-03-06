@@ -23,7 +23,7 @@ const CURRENT_STORAGE_VERSION: u64 = 3;
 /// This is currently the fastest persistent storage and it can
 /// sustain huge concurrency.
 /// Supports concurrent readers and writers.
-pub fn new_cozo_newrocksdb(path: impl AsRef<Path>) -> Result<Db<NewRocksDbStorage>> {
+pub fn new_rocksdb_db(path: impl AsRef<Path>) -> Result<Db<NewRocksDbStorage>> {
     fs::create_dir_all(&path).map_err(|err| {
         BadDbInit(format!(
             "cannot create directory {}: {}",
@@ -462,7 +462,7 @@ mod tests {
     fn setup_test_db() -> Result<(TempDir, Db<NewRocksDbStorage>)> {
         let temp_dir =
             TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
-        let db = new_cozo_newrocksdb(temp_dir.path())?;
+        let db = new_rocksdb_db(temp_dir.path())?;
 
         // Create test tables with proper ScriptMutability parameter
         db.run_script(

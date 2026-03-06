@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,7 +11,6 @@ use crate::{bail, ensure, miette};
 use miette::Diagnostic;
 use smallvec::SmallVec;
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::engine::data::aggr::Aggregation;
 use crate::engine::data::expr::Expr;
@@ -288,27 +282,44 @@ pub(crate) struct MagicFixedRuleApply {
     pub(crate) fixed_impl: Arc<Box<dyn FixedRule>>,
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Cannot find a required named option '{name}' for '{rule_name}'")]
-#[diagnostic(code(fixed_rule::arg_not_found))]
+#[derive(Debug)]
 pub(crate) struct FixedRuleOptionNotFoundError {
     pub(crate) name: String,
-    #[label]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
 }
 
-#[derive(Error, Diagnostic, Debug)]
-#[error("Wrong value for option '{name}' of '{rule_name}'")]
-#[diagnostic(code(fixed_rule::arg_wrong))]
+impl std::fmt::Display for FixedRuleOptionNotFoundError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Cannot find a required named option '{}' for '{}'",
+            self.name, self.rule_name
+        )
+    }
+}
+
+impl std::error::Error for FixedRuleOptionNotFoundError {}
+
+#[derive(Debug)]
 pub(crate) struct WrongFixedRuleOptionError {
     pub(crate) name: String,
-    #[label]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
-    #[help]
     pub(crate) help: String,
 }
+
+impl std::fmt::Display for WrongFixedRuleOptionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Wrong value for option '{}' of '{}'",
+            self.name, self.rule_name
+        )
+    }
+}
+
+impl std::error::Error for WrongFixedRuleOptionError {}
 
 impl MagicFixedRuleApply {
     #[allow(dead_code)]
@@ -319,11 +330,16 @@ impl MagicFixedRuleApply {
         tx: &SessionTx<'_>,
         stores: &BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<&MagicFixedRuleRuleArg> {
-        #[derive(Error, Diagnostic, Debug)]
-        #[error("Input relation to fixed rule has insufficient arity")]
-        #[diagnostic(help("Arity should be at least {0} but is {1}"))]
-        #[diagnostic(code(fixed_rule::input_relation_bad_arity))]
-        struct InputRelationArityError(usize, usize, #[label] SourceSpan);
+        #[derive(Debug)]
+        struct InputRelationArityError(usize, usize, SourceSpan);
+
+        impl std::fmt::Display for InputRelationArityError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Input relation to fixed rule has insufficient arity")
+            }
+        }
+
+        impl std::error::Error for InputRelationArityError {}
 
         let rel = self.relation(idx)?;
         let arity = rel.arity(tx, stores)?;
@@ -337,15 +353,24 @@ impl MagicFixedRuleApply {
         self.rule_args.len()
     }
     pub(crate) fn relation(&self, idx: usize) -> Result<&MagicFixedRuleRuleArg> {
-        #[derive(Error, Diagnostic, Debug)]
-        #[error("Cannot find a required positional argument at index {idx} for '{rule_name}'")]
-        #[diagnostic(code(fixed_rule::not_enough_args))]
+        #[derive(Debug)]
         pub(crate) struct FixedRuleNotEnoughRelationError {
             idx: usize,
-            #[label]
             span: SourceSpan,
             rule_name: String,
         }
+
+        impl std::fmt::Display for FixedRuleNotEnoughRelationError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "Cannot find a required positional argument at index {} for '{}'",
+                    self.idx, self.rule_name
+                )
+            }
+        }
+
+        impl std::error::Error for FixedRuleNotEnoughRelationError {}
 
         Ok(self
             .rule_args
@@ -357,7 +382,6 @@ impl MagicFixedRuleApply {
             })?)
     }
 }
-
 impl Debug for MagicFixedRuleApply {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FixedRuleApply")
@@ -367,7 +391,6 @@ impl Debug for MagicFixedRuleApply {
             .finish()
     }
 }
-
 #[derive(Clone)]
 pub(crate) enum FixedRuleArg {
     InMem {
@@ -388,13 +411,11 @@ pub(crate) enum FixedRuleArg {
         span: SourceSpan,
     },
 }
-
 impl Debug for FixedRuleArg {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self}")
     }
 }
-
 impl Display for FixedRuleArg {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -418,7 +439,6 @@ impl Display for FixedRuleArg {
         Ok(())
     }
 }
-
 #[derive(Debug)]
 pub(crate) enum MagicFixedRuleRuleArg {
     InMem {
@@ -433,7 +453,6 @@ pub(crate) enum MagicFixedRuleRuleArg {
         span: SourceSpan,
     },
 }
-
 impl MagicFixedRuleRuleArg {
     #[allow(dead_code)]
     pub(crate) fn bindings(&self) -> &[Symbol] {
@@ -461,14 +480,12 @@ impl MagicFixedRuleRuleArg {
             .collect()
     }
 }
-
 #[derive(Debug, Clone)]
 pub(crate) struct InputProgram {
     pub(crate) prog: BTreeMap<Symbol, InputInlineRulesOrFixed>,
     pub(crate) out_opts: QueryOutOptions,
     pub(crate) disable_magic_rewrite: bool,
 }
-
 impl Display for InputProgram {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for (name, rules) in &self.prog {
@@ -479,7 +496,6 @@ impl Display for InputProgram {
                     } in rules
                     {
                         write!(f, "{name}[")?;
-
                         for (i, (h, a)) in head.iter().zip(aggr).enumerate() {
                             if i > 0 {
                                 write!(f, ", ")?;
@@ -543,18 +559,27 @@ impl Display for InputProgram {
         Ok(())
     }
 }
+#[derive(Debug)]
+struct EntryHeadNotExplicitlyDefinedError(SourceSpan);
 
-#[derive(Debug, Diagnostic, Error)]
-#[error("Entry head not found")]
-#[diagnostic(code(parser::no_entry_head))]
-#[diagnostic(help("You need to explicitly name your entry arguments"))]
-struct EntryHeadNotExplicitlyDefinedError(#[label] SourceSpan);
+impl std::fmt::Display for EntryHeadNotExplicitlyDefinedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Entry head is not explicitly defined at {:?}", self.0)
+    }
+}
 
-#[derive(Debug, Diagnostic, Error)]
-#[error("Program has no entry")]
-#[diagnostic(code(parser::no_entry))]
-#[diagnostic(help("You need to have one rule named '?'"))]
+impl std::error::Error for EntryHeadNotExplicitlyDefinedError {}
+
+#[derive(Debug)]
 pub(crate) struct NoEntryError;
+
+impl std::fmt::Display for NoEntryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Program has no entry")
+    }
+}
+
+impl std::error::Error for NoEntryError {}
 
 impl InputProgram {
     pub(crate) fn needs_write_lock(&self) -> Option<SmartString<LazyCompact>> {
@@ -1081,20 +1106,42 @@ impl SearchInput {
             });
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Field `{0}` is required for LSH search")]
-        #[diagnostic(code(parser::hnsw_query_required))]
-        struct LshRequiredMissing(String, #[label] SourceSpan);
+        #[derive(Debug)]
+        struct LshRequiredMissing(String, SourceSpan);
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Expected a list of keys for LSH search")]
-        #[diagnostic(code(parser::expected_list_for_lsh_keys))]
-        struct ExpectedListForLshKeys(#[label] SourceSpan);
+        impl std::fmt::Display for LshRequiredMissing {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Field `{}` is required for LSH search", self.0)
+            }
+        }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Wrong arity for LSH keys, expected {1}, got {2}")]
-        #[diagnostic(code(parser::wrong_arity_for_lsh_keys))]
-        struct WrongArityForKeys(#[label] SourceSpan, usize, usize);
+        impl std::error::Error for LshRequiredMissing {}
+
+        #[derive(Debug)]
+        struct ExpectedListForLshKeys(SourceSpan);
+
+        impl std::fmt::Display for ExpectedListForLshKeys {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Expected a list of keys for LSH search")
+            }
+        }
+
+        impl std::error::Error for ExpectedListForLshKeys {}
+
+        #[derive(Debug)]
+        struct WrongArityForKeys(SourceSpan, usize, usize);
+
+        impl std::fmt::Display for WrongArityForKeys {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "Wrong arity for LSH keys, expected {}, got {}",
+                    self.1, self.2
+                )
+            }
+        }
+
+        impl std::error::Error for WrongArityForKeys {}
 
         let query = match self
             .parameters
@@ -1122,10 +1169,16 @@ impl SearchInput {
                 let k = k_expr.eval_to_const()?;
                 let k = k.get_int().ok_or(ExpectedPosIntForFtsK(self.span))?;
 
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Expected positive integer for `k`")]
-                #[diagnostic(code(parser::expected_int_for_hnsw_k))]
-                struct ExpectedPosIntForFtsK(#[label] SourceSpan);
+                #[derive(Debug)]
+                struct ExpectedPosIntForFtsK(SourceSpan);
+
+                impl std::fmt::Display for ExpectedPosIntForFtsK {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "Expected positive integer for `k`")
+                    }
+                }
+
+                impl std::error::Error for ExpectedPosIntForFtsK {}
 
                 ensure!(k > 0, ExpectedPosIntForFtsK(self.span));
                 Some(k as usize)
@@ -1134,10 +1187,16 @@ impl SearchInput {
 
         let filter = self.parameters.remove("filter");
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Extra parameters for LSH search: {0:?}")]
-        #[diagnostic(code(parser::extra_parameters_for_lsh_search))]
-        struct ExtraParametersForLshSearch(Vec<String>, #[label] SourceSpan);
+        #[derive(Debug)]
+        struct ExtraParametersForLshSearch(Vec<String>, SourceSpan);
+
+        impl std::fmt::Display for ExtraParametersForLshSearch {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Extra parameters for LSH search: {:?}", self.0)
+            }
+        }
+
+        impl std::error::Error for ExtraParametersForLshSearch {}
 
         if !self.parameters.is_empty() {
             bail!(ExtraParametersForLshSearch(
@@ -1225,10 +1284,16 @@ impl SearchInput {
             });
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Field `{0}` is required for HNSW search")]
-        #[diagnostic(code(parser::hnsw_query_required))]
-        struct HnswRequiredMissing(String, #[label] SourceSpan);
+        #[derive(Debug)]
+        struct HnswRequiredMissing(String, SourceSpan);
+
+        impl std::fmt::Display for HnswRequiredMissing {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Field `{}` is required for HNSW search", self.0)
+            }
+        }
+
+        impl std::error::Error for HnswRequiredMissing {}
 
         let query = match self
             .parameters
@@ -1257,10 +1322,16 @@ impl SearchInput {
         let k = k_expr.eval_to_const()?;
         let k = k.get_int().ok_or(ExpectedPosIntForFtsK(self.span))?;
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Expected positive integer for `k`")]
-        #[diagnostic(code(parser::expected_int_for_hnsw_k))]
-        struct ExpectedPosIntForFtsK(#[label] SourceSpan);
+        #[derive(Debug)]
+        struct ExpectedPosIntForFtsK(SourceSpan);
+
+        impl std::fmt::Display for ExpectedPosIntForFtsK {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Expected positive integer for `k`")
+            }
+        }
+
+        impl std::error::Error for ExpectedPosIntForFtsK {}
 
         ensure!(k > 0, ExpectedPosIntForFtsK(self.span));
 
@@ -1389,10 +1460,16 @@ impl SearchInput {
             });
         }
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Field `{0}` is required for HNSW search")]
-        #[diagnostic(code(parser::hnsw_query_required))]
-        struct HnswRequiredMissing(String, #[label] SourceSpan);
+        #[derive(Debug)]
+        struct HnswRequiredMissing(String, SourceSpan);
+
+        impl std::fmt::Display for HnswRequiredMissing {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Field `{}` is required for HNSW search", self.0)
+            }
+        }
+
+        impl std::error::Error for HnswRequiredMissing {}
 
         let query = match self
             .parameters
@@ -1421,10 +1498,16 @@ impl SearchInput {
         let k = k_expr.eval_to_const()?;
         let k = k.get_int().ok_or(ExpectedPosIntForHnswK(self.span))?;
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Expected positive integer for `k`")]
-        #[diagnostic(code(parser::expected_int_for_hnsw_k))]
-        struct ExpectedPosIntForHnswK(#[label] SourceSpan);
+        #[derive(Debug)]
+        struct ExpectedPosIntForHnswK(SourceSpan);
+
+        impl std::fmt::Display for ExpectedPosIntForHnswK {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Expected positive integer for `k`")
+            }
+        }
+
+        impl std::error::Error for ExpectedPosIntForHnswK {}
 
         ensure!(k > 0, ExpectedPosIntForHnswK(self.span));
 
@@ -1435,10 +1518,16 @@ impl SearchInput {
         let ef = ef_expr.eval_to_const()?;
         let ef = ef.get_int().ok_or(ExpectedPosIntForHnswEf(self.span))?;
 
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Expected positive integer for `ef`")]
-        #[diagnostic(code(parser::expected_int_for_hnsw_ef))]
-        struct ExpectedPosIntForHnswEf(#[label] SourceSpan);
+        #[derive(Debug)]
+        struct ExpectedPosIntForHnswEf(SourceSpan);
+
+        impl std::fmt::Display for ExpectedPosIntForHnswEf {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "Expected positive integer for `ef`")
+            }
+        }
+
+        impl std::error::Error for ExpectedPosIntForHnswEf {}
 
         ensure!(ef > 0, ExpectedPosIntForHnswEf(self.span));
 
@@ -1448,10 +1537,16 @@ impl SearchInput {
                 let r = expr.eval_to_const()?;
                 let r = r.get_float().ok_or(ExpectedFloatForHnswRadius(self.span))?;
 
-                #[derive(Debug, Error, Diagnostic)]
-                #[error("Expected positive float for `radius`")]
-                #[diagnostic(code(parser::expected_float_for_hnsw_radius))]
-                struct ExpectedFloatForHnswRadius(#[label] SourceSpan);
+                #[derive(Debug)]
+                struct ExpectedFloatForHnswRadius(SourceSpan);
+
+                impl std::fmt::Display for ExpectedFloatForHnswRadius {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "Expected positive float for `radius`")
+                    }
+                }
+
+                impl std::error::Error for ExpectedFloatForHnswRadius {}
 
                 ensure!(r > 0.0, ExpectedFloatForHnswRadius(self.span));
                 Some(r)
@@ -1579,15 +1674,24 @@ impl SearchInput {
         {
             return self.normalize_lsh(base_handle, idx_handle, manifest, r#gen);
         }
-        #[derive(Debug, Error, Diagnostic)]
-        #[error("Index {name} not found on relation {relation}")]
-        #[diagnostic(code(eval::hnsw_index_not_found))]
+        #[derive(Debug)]
         struct IndexNotFound {
             relation: String,
             name: String,
-            #[label]
             span: SourceSpan,
         }
+
+        impl std::fmt::Display for IndexNotFound {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "Index {} not found on relation {} at {:?}",
+                    self.name, self.relation, self.span
+                )
+            }
+        }
+
+        impl std::error::Error for IndexNotFound {}
         bail!(IndexNotFound {
             relation: self.relation.to_string(),
             name: self.index.to_string(),

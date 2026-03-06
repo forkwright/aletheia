@@ -1,8 +1,6 @@
-/*
- * Code under this module is adapted from the Tantivy project
- * https://github.com/quickwit-oss/tantivy/tree/0.19.2/src/tokenizer
- * All code here are licensed under the MIT license, as in the original project.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Tokenizer code adapted from the Tantivy project (MIT license).
+// https://github.com/quickwit-oss/tantivy/tree/0.19.2/src/tokenizer
 
 //! Tokenizer are in charge of chopping text into a stream of tokens
 //! ready for indexing.

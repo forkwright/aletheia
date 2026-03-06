@@ -1,10 +1,5 @@
-/*
- * Copyright 2023, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
 
 // Some ideas are from https://github.com/schelterlabs/rust-minhash
 
@@ -18,7 +13,6 @@ use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, Expr, SourceSpan, Symbol};
 use itertools::Itertools;
-use quadrature::integrate;
 use rand::{RngCore, thread_rng};
 use rustc_hash::FxHashSet;
 use smartstring::{LazyCompact, SmartString};
@@ -224,7 +218,7 @@ impl LshSearch {
 pub(crate) struct HashValues(pub(crate) Vec<u32>);
 pub(crate) struct HashPermutations(pub(crate) Vec<u32>);
 
-#[derive(Debug, Clone, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MinHashLshIndexManifest {
     pub(crate) base_relation: SmartString<LazyCompact>,
     pub(crate) index_name: SmartString<LazyCompact>,
@@ -255,7 +249,17 @@ pub(crate) struct LshParams {
 #[derive(Clone)]
 pub(crate) struct Weights(pub(crate) f64, pub(crate) f64);
 
-const _ALLOWED_INTEGRATE_ERR: f64 = 0.001;
+/// Simpson's rule numerical integration over [a, b] with n subdivisions.
+fn integrate_simpson(f: impl Fn(f64) -> f64, a: f64, b: f64, n: usize) -> f64 {
+    let n = if n % 2 == 0 { n } else { n + 1 };
+    let h = (b - a) / n as f64;
+    let mut sum = f(a) + f(b);
+    for i in 1..n {
+        let x = a + i as f64 * h;
+        sum += if i % 2 == 0 { 2.0 } else { 4.0 } * f(x);
+    }
+    sum * h / 3.0
+}
 
 // code is mostly from https://github.com/schelterlabs/rust-minhash/blob/81ea3fec24fd888a330a71b6932623643346b591/src/minhash_lsh.rs
 impl LshParams {
@@ -279,14 +283,14 @@ impl LshParams {
     }
 
     fn false_positive_probability(threshold: f64, b: usize, r: usize) -> f64 {
-        let _probability = |s| -> f64 { 1. - f64::powf(1. - f64::powi(s, r as i32), b as f64) };
-        integrate(_probability, 0.0, threshold, _ALLOWED_INTEGRATE_ERR).integral
+        let probability = |s| -> f64 { 1. - f64::powf(1. - f64::powi(s, r as i32), b as f64) };
+        integrate_simpson(probability, 0.0, threshold, 100)
     }
 
     fn false_negative_probability(threshold: f64, b: usize, r: usize) -> f64 {
-        let _probability =
+        let probability =
             |s| -> f64 { 1. - (1. - f64::powf(1. - f64::powi(s, r as i32), b as f64)) };
-        integrate(_probability, threshold, 1.0, _ALLOWED_INTEGRATE_ERR).integral
+        integrate_simpson(probability, threshold, 1.0, 100)
     }
 }
 

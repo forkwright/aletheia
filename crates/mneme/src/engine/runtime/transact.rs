@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};
@@ -116,7 +111,7 @@ impl<'a> SessionTx<'a> {
                 match version_found {
                     None => {
                         bail!(
-                            "Storage is used but un-versioned, probably created by an ancient version of Cozo."
+                            "Storage is used but un-versioned, probably created by an incompatible version."
                         )
                     }
                     Some(v) => {

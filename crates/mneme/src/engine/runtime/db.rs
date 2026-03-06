@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
@@ -41,7 +36,7 @@ use crate::engine::data::value::{DataValue, LARGEST_UTF_CHAR, ValidityTs};
 use crate::engine::fixed_rule::DEFAULT_FIXED_RULES;
 use crate::engine::fts::TokenizerCache;
 use crate::engine::parse::sys::SysOp;
-use crate::engine::parse::{CozoScript, parse_expressions, parse_script};
+use crate::engine::parse::{DatalogScript, parse_expressions, parse_script};
 use crate::engine::query::compile::{CompiledProgram, CompiledRule, CompiledRuleSet};
 use crate::engine::query::ra::{
     FilteredRA, FtsSearchRA, HnswSearchRA, InnerJoin, LshSearchRA, NegJoin, RelAlgebra, ReorderRA,
@@ -78,7 +73,7 @@ impl Drop for RunningQueryCleanup {
     }
 }
 
-#[derive(serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DbManifest {
     pub storage_version: u64,
 }
@@ -92,7 +87,7 @@ pub enum ScriptMutability {
     Immutable,
 }
 
-/// The database object of Cozo.
+/// The mneme engine database object.
 #[derive(Clone)]
 pub struct Db<S> {
     pub(crate) db: S,
@@ -115,7 +110,7 @@ impl<S> Debug for Db<S> {
     }
 }
 
-#[derive(serde_derive::Serialize, serde_derive::Deserialize, Debug, Clone, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 /// Rows in a relation, together with headers for the fields.
 pub struct NamedRows {
     /// The headers
@@ -392,7 +387,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         return self.fixed_rules.read().unwrap().clone(); // INVARIANT: lock is not poisoned
     }
 
-    /// Run the CozoScript passed in. The `params` argument is a map of parameters.
+    /// Run the DatalogScript passed in. The `params` argument is a map of parameters.
     pub fn run_script(
         &'s self,
         payload: &str,
@@ -411,7 +406,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         )
     }
 
-    /// Run the CozoScript passed in. The `params` argument is a map of parameters.
+    /// Run the DatalogScript passed in. The `params` argument is a map of parameters.
     pub fn run_script_read_only(
         &'s self,
         payload: &str,
@@ -420,18 +415,18 @@ impl<'s, S: Storage<'s>> Db<S> {
         self.run_script(payload, params, ScriptMutability::Immutable)
     }
 
-    /// Run the AST CozoScript passed in.
+    /// Run the AST DatalogScript passed in.
     pub fn run_script_ast(
         &'s self,
-        payload: CozoScript,
+        payload: DatalogScript,
         cur_vld: ValidityTs,
         mutability: ScriptMutability,
     ) -> Result<NamedRows> {
         let read_only = mutability == ScriptMutability::Immutable;
         match payload {
-            CozoScript::Single(p) => self.execute_single(cur_vld, p, read_only),
-            CozoScript::Imperative(ps) => self.execute_imperative(cur_vld, &ps, read_only),
-            CozoScript::Sys(op) => self.run_sys_op(op, read_only),
+            DatalogScript::Single(p) => self.execute_single(cur_vld, p, read_only),
+            DatalogScript::Imperative(ps) => self.execute_imperative(cur_vld, &ps, read_only),
+            DatalogScript::Sys(op) => self.run_sys_op(op, read_only),
         }
     }
 
@@ -620,114 +615,27 @@ impl<'s, S: Storage<'s>> Db<S> {
         tx.commit_tx()?;
         Ok(())
     }
-    /// Backup the running database into an Sqlite file
-    #[allow(unused_variables)]
-    pub fn backup_db(&'s self, out_file: impl AsRef<Path>) -> Result<()> {
-        #[cfg(feature = "storage-sqlite")]
-        {
-            let sqlite_db = crate::engine::new_cozo_sqlite(out_file)?;
-            if sqlite_db.relation_store_id.load(Ordering::SeqCst) != 0 {
-                bail!("Cannot create backup: data exists in the target database.");
-            }
-            let mut tx = self.transact()?;
-            let iter = tx.store_tx.range_scan(&[], &[0xFF]);
-            sqlite_db.db.batch_put(iter)?;
-            tx.commit_tx()?;
-            Ok(())
-        }
-        #[cfg(not(feature = "storage-sqlite"))]
-        bail!("backup requires the 'storage-sqlite' feature to be enabled")
+    /// Backup the running database into an Sqlite file.
+    ///
+    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
+        bail!("backup requires the removed 'storage-sqlite' feature")
     }
-    /// Restore from an Sqlite backup
-    #[allow(unused_variables)]
-    pub fn restore_backup(&'s self, in_file: impl AsRef<Path>) -> Result<()> {
-        #[cfg(feature = "storage-sqlite")]
-        {
-            let sqlite_db = crate::engine::new_cozo_sqlite(in_file)?;
-            let mut s_tx = sqlite_db.transact()?;
-            {
-                let mut tx = self.transact()?;
-                let store_id = tx.relation_store_id.load(Ordering::SeqCst);
-                if store_id != 0 {
-                    bail!(
-                        "Cannot restore backup: data exists in the current database. \
-                You can only restore into a new database (store id: {}).",
-                        store_id
-                    );
-                }
-                tx.commit_tx()?;
-            }
-            let iter = s_tx.store_tx.total_scan();
-            self.db.batch_put(iter)?;
-            s_tx.commit_tx()?;
-            Ok(())
-        }
-        #[cfg(not(feature = "storage-sqlite"))]
-        bail!("backup requires the 'storage-sqlite' feature to be enabled")
+    /// Restore from an Sqlite backup.
+    ///
+    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
+        bail!("restore requires the removed 'storage-sqlite' feature")
     }
     /// Import data from relations in a backup file.
-    /// The target stored relations must already exist in the database, and it must not
-    /// have any associated indices. If you want to import into relations with indices,
-    /// use [Db::import_relations].
     ///
-    /// Note that triggers and callbacks are _not_ run for the relations, if any exists.
-    /// If you need to activate triggers or callbacks, use queries with parameters.
-    #[allow(unused_variables)]
+    /// Not currently supported — requires the removed `storage-sqlite` feature.
     pub fn import_from_backup(
         &'s self,
-        in_file: impl AsRef<Path>,
-        relations: &[String],
+        _in_file: impl AsRef<Path>,
+        _relations: &[String],
     ) -> Result<()> {
-        #[cfg(not(feature = "storage-sqlite"))]
-        bail!("backup requires the 'storage-sqlite' feature to be enabled");
-
-        #[cfg(feature = "storage-sqlite")]
-        {
-            let rel_names = relations.iter().map(SmartString::from).collect_vec();
-            let locks = self.obtain_relation_locks(rel_names.iter());
-            let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
-
-            let source_db = crate::engine::new_cozo_sqlite(in_file)?;
-            let mut src_tx = source_db.transact()?;
-            let mut dst_tx = self.transact_write()?;
-
-            for relation in relations {
-                if relation.contains(':') {
-                    bail!("Cannot import data into relation as it is an index")
-                }
-                let src_handle = src_tx.get_relation(relation, false)?;
-                let dst_handle = dst_tx.get_relation(relation, false)?;
-
-                if !dst_handle.indices.is_empty() {
-                    bail!(
-                        "Cannot import data into relation from backup as the relation has indices"
-                    )
-                }
-
-                if dst_handle.access_level < AccessLevel::Protected {
-                    bail!("Insufficient access level for this operation");
-                }
-
-                let src_lower = Tuple::default().encode_as_key(src_handle.id);
-                let src_upper = Tuple::default().encode_as_key(src_handle.id.next());
-
-                let data_it = src_tx.store_tx.range_scan(&src_lower, &src_upper).map(
-                    |src_pair| -> Result<(Vec<u8>, Vec<u8>)> {
-                        let (mut src_k, mut src_v) = src_pair?;
-                        dst_handle.amend_key_prefix(&mut src_k);
-                        dst_handle.amend_key_prefix(&mut src_v);
-                        Ok((src_k, src_v))
-                    },
-                );
-                for result in data_it {
-                    let (key, val) = result?;
-                    dst_tx.store_tx.put(&key, &val)?;
-                }
-            }
-
-            src_tx.commit_tx()?;
-            dst_tx.commit_tx()
-        }
+        bail!("import_from_backup requires the removed 'storage-sqlite' feature")
     }
     /// Register a custom fixed rule implementation.
     pub fn register_fixed_rule<R>(&self, name: String, rule_impl: R) -> Result<()>

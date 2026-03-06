@@ -67,7 +67,7 @@ pub enum Db {
 impl Db {
     /// Open an in-memory database.
     pub fn open_mem() -> crate::engine::Result<Self> {
-        crate::engine::storage::mem::new_cozo_mem()
+        crate::engine::storage::mem::new_mem_db()
             .map(Db::Mem)
             .map_err(convert_err)
     }
@@ -75,7 +75,7 @@ impl Db {
     /// Open a RocksDB-backed database at the given path.
     #[cfg(feature = "storage-new-rocksdb")]
     pub fn open_rocksdb(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
-        crate::engine::storage::newrocks::new_cozo_newrocksdb(path)
+        crate::engine::storage::newrocks::new_rocksdb_db(path)
             .map(Db::RocksDb)
             .map_err(convert_err)
     }
@@ -214,7 +214,7 @@ pub use crate::engine::runtime::db::Poison;
 #[cfg(test)]
 impl DbInstance {
     pub(crate) fn default() -> Self {
-        crate::engine::storage::mem::new_cozo_mem().unwrap()
+        crate::engine::storage::mem::new_mem_db().unwrap()
     }
 
     pub(crate) fn run_default(&self, script: &str) -> crate::engine::error::DbResult<NamedRows> {

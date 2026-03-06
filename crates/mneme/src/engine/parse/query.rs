@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::cmp::Reverse;
 use std::collections::btree_map::Entry;
@@ -36,7 +31,7 @@ use crate::engine::fixed_rule::FixedRuleHandle;
 use crate::engine::fixed_rule::utilities::constant::Constant;
 use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::schema::parse_schema;
-use crate::engine::parse::{CozoScriptParser, ExtractSpan, Pair, Pairs, Rule, SourceSpan};
+use crate::engine::parse::{DatalogParser, ExtractSpan, Pair, Pairs, Rule, SourceSpan};
 use crate::engine::runtime::relation::InputRelationHandle;
 
 #[derive(Debug)]
@@ -174,8 +169,7 @@ pub(crate) fn parse_query(
                     "Fixed rule head arity mismatch"
                 );
                 if head.is_empty() && name.is_prog_entry() {
-                    if let Ok(mut datalist) =
-                        CozoScriptParser::parse(Rule::param_list, data_part_str)
+                    if let Ok(mut datalist) = DatalogParser::parse(Rule::param_list, data_part_str)
                     {
                         for s in datalist.next().unwrap().into_inner() {
                             if s.as_rule() == Rule::param {

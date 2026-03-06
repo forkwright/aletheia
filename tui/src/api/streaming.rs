@@ -118,20 +118,39 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             let tool_name = str_field(&json, "toolName", event_type)?.to_string();
             let tool_id = ToolId::from(str_field(&json, "toolId", event_type)?.to_string());
             let is_error = json.get("isError").and_then(|v| v.as_bool()).or_else(|| {
-                tracing::warn!(event_type, field = "isError", "missing required field in stream event");
+                tracing::warn!(
+                    event_type,
+                    field = "isError",
+                    "missing required field in stream event"
+                );
                 None
             })?;
-            let duration_ms = json.get("durationMs").and_then(|v| v.as_u64()).or_else(|| {
-                tracing::warn!(event_type, field = "durationMs", "missing required field in stream event");
-                None
-            })?;
-            Some(StreamEvent::ToolResult { tool_name, tool_id, is_error, duration_ms })
+            let duration_ms = json
+                .get("durationMs")
+                .and_then(|v| v.as_u64())
+                .or_else(|| {
+                    tracing::warn!(
+                        event_type,
+                        field = "durationMs",
+                        "missing required field in stream event"
+                    );
+                    None
+                })?;
+            Some(StreamEvent::ToolResult {
+                tool_name,
+                tool_id,
+                is_error,
+                duration_ms,
+            })
         }
         "tool_approval_required" => Some(StreamEvent::ToolApprovalRequired {
             turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
             tool_name: str_field(&json, "toolName", event_type)?.to_string(),
             tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
-            input: json.get("input").cloned().unwrap_or(serde_json::Value::Null),
+            input: json
+                .get("input")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
             risk: str_field(&json, "risk", event_type)?.to_string(),
             reason: str_field(&json, "reason", event_type)?.to_string(),
         }),
@@ -140,17 +159,22 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             decision: str_field(&json, "decision", event_type)?.to_string(),
         }),
         "plan_proposed" => {
-            let plan = json.get("plan").and_then(|v| {
-                serde_json::from_value(v.clone()).ok()
-            }).or_else(|| {
-                tracing::warn!(event_type, "missing or invalid plan in stream event");
-                None
-            })?;
+            let plan = json
+                .get("plan")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .or_else(|| {
+                    tracing::warn!(event_type, "missing or invalid plan in stream event");
+                    None
+                })?;
             Some(StreamEvent::PlanProposed { plan })
         }
         "plan_step_start" => {
             let step_id = json.get("stepId").and_then(|v| v.as_u64()).or_else(|| {
-                tracing::warn!(event_type, field = "stepId", "missing required field in stream event");
+                tracing::warn!(
+                    event_type,
+                    field = "stepId",
+                    "missing required field in stream event"
+                );
                 None
             })? as u32;
             Some(StreamEvent::PlanStepStart {
@@ -160,7 +184,11 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         }
         "plan_step_complete" => {
             let step_id = json.get("stepId").and_then(|v| v.as_u64()).or_else(|| {
-                tracing::warn!(event_type, field = "stepId", "missing required field in stream event");
+                tracing::warn!(
+                    event_type,
+                    field = "stepId",
+                    "missing required field in stream event"
+                );
                 None
             })? as u32;
             Some(StreamEvent::PlanStepComplete {
@@ -174,12 +202,13 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
         "turn_complete" => {
-            let outcome = json.get("outcome").and_then(|v| {
-                serde_json::from_value(v.clone()).ok()
-            }).or_else(|| {
-                tracing::warn!(event_type, "missing or invalid outcome in stream event");
-                None
-            })?;
+            let outcome = json
+                .get("outcome")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .or_else(|| {
+                    tracing::warn!(event_type, "missing or invalid outcome in stream event");
+                    None
+                })?;
             Some(StreamEvent::TurnComplete { outcome })
         }
         "turn_abort" => Some(StreamEvent::TurnAbort {
@@ -228,7 +257,13 @@ mod tests {
         let data = r#"{"toolName":"exec","toolId":"t1","isError":false,"durationMs":150}"#;
         let result = parse_stream_event("tool_result", data);
         assert!(result.is_some());
-        if let Some(StreamEvent::ToolResult { tool_name, is_error, duration_ms, .. }) = result {
+        if let Some(StreamEvent::ToolResult {
+            tool_name,
+            is_error,
+            duration_ms,
+            ..
+        }) = result
+        {
             assert_eq!(tool_name, "exec");
             assert!(!is_error);
             assert_eq!(duration_ms, 150);

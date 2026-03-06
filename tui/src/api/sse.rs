@@ -108,12 +108,13 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
 
     match event_type {
         "init" => {
-            let active_turns = json.get("activeTurns").and_then(|v| {
-                serde_json::from_value(v.clone()).ok()
-            }).or_else(|| {
-                tracing::warn!("SSE init: missing or invalid activeTurns");
-                None
-            })?;
+            let active_turns = json
+                .get("activeTurns")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .or_else(|| {
+                    tracing::warn!("SSE init: missing or invalid activeTurns");
+                    None
+                })?;
             Some(SseEvent::Init { active_turns })
         }
         "turn:before" => Some(SseEvent::TurnBefore {
@@ -177,7 +178,12 @@ mod tests {
         let data = r#"{"nousId":"syn","sessionId":"sess-1","turnId":"turn-1"}"#;
         let result = parse_sse_event("turn:before", data);
         assert!(result.is_some());
-        if let Some(SseEvent::TurnBefore { nous_id, session_id, turn_id }) = result {
+        if let Some(SseEvent::TurnBefore {
+            nous_id,
+            session_id,
+            turn_id,
+        }) = result
+        {
             assert_eq!(&*nous_id, "syn");
             assert_eq!(&*session_id, "sess-1");
             assert_eq!(&*turn_id, "turn-1");
