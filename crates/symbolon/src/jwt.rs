@@ -151,7 +151,10 @@ fn now_unix() -> i64 {
     i64::try_from(
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
+            .unwrap_or_else(|_| {
+                tracing::warn!("system clock before UNIX epoch, using epoch as fallback");
+                std::time::Duration::default()
+            })
             .as_secs(),
     )
     .unwrap_or(i64::MAX)
