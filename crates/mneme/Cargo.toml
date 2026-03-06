@@ -82,7 +82,7 @@ rust-stemmers = { version = "1.2", optional = true }
 swapvec = { version = "0.3", optional = true }
 quadrature = { version = "0.1", optional = true }
 bytemuck = { version = "1.25", optional = true }
-rocksdb = { version = "0.22.0", optional = true }
+rocksdb = { version = "0.24.0", optional = true }
 thiserror = { version = "1", optional = true }
 
 [dev-dependencies]
