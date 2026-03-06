@@ -68,7 +68,7 @@ base64 = "0.22"
 rayon = "=1.10.0"
 
 # Error handling
-snafu = "0.8"
+snafu = "0.9"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
