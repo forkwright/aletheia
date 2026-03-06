@@ -102,6 +102,12 @@ impl NousActor {
     }
 
     /// Run the actor loop until shutdown or all handles are dropped.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. The `select!` branches use `inbox.recv()` and
+    /// `cross_rx.recv()`, both of which are cancel-safe. Dropping the
+    /// future exits the loop without leaving inconsistent state.
     #[instrument(skip(self), fields(nous.id = %self.id))]
     pub async fn run(mut self) {
         if let Err(e) = validate_workspace(&self.oikos, &self.id) {
@@ -162,6 +168,11 @@ impl NousActor {
         info!(lifecycle = %self.lifecycle, "actor stopped");
     }
 
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. No state is modified before the `.await` point — only
+    /// local variables are prepared from the envelope. If cancelled, the
+    /// actor remains in a consistent state.
     async fn handle_cross_message(&mut self, envelope: CrossNousEnvelope) {
         let from = &envelope.message.from;
         let session_key = format!("cross:{from}");
@@ -179,6 +190,13 @@ impl NousActor {
         }
     }
 
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe in isolation. Sets `lifecycle = Active` and
+    /// `active_session` before awaiting `execute_turn`. If the future
+    /// were dropped mid-await, those fields would not be reset. In
+    /// practice this is only called from the sequential actor loop, so
+    /// cancellation only occurs at shutdown when the actor is consumed.
     async fn handle_turn(
         &mut self,
         session_key: String,
@@ -207,6 +225,11 @@ impl NousActor {
         let _ = reply.send(result);
     }
 
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe in isolation — same profile as `handle_turn`.
+    /// Sets `lifecycle` and `active_session` before the `.await` point.
+    /// Only called from the sequential actor loop.
     async fn handle_streaming_turn(
         &mut self,
         session_key: String,
@@ -237,6 +260,11 @@ impl NousActor {
         let _ = reply.send(result);
     }
 
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Session creation via `entry().or_insert_with()` is
+    /// idempotent. If cancelled during `run_pipeline`, the session exists
+    /// but the turn is incomplete — no persistent state is corrupted.
     async fn execute_turn(
         &mut self,
         session_key: &str,
@@ -294,6 +322,9 @@ impl NousActor {
         .await
     }
 
+    /// # Cancel safety
+    ///
+    /// Cancel-safe — same profile as `execute_turn`.
     async fn execute_streaming_turn(
         &mut self,
         session_key: &str,

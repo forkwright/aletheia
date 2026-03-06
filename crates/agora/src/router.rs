@@ -7,6 +7,9 @@ use aletheia_taxis::config::ChannelBinding;
 use crate::types::InboundMessage;
 
 /// A resolved routing decision.
+///
+/// Owns all fields — cloned from binding/config data during resolution since
+/// decisions outlive the router borrow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteDecision {
     /// The nous agent that should handle this message.

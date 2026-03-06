@@ -19,6 +19,9 @@ pub mod prompt;
 pub mod types;
 
 #[cfg(test)]
+mod roundtrip_tests;
+
+#[cfg(test)]
 mod assertions {
     use static_assertions::assert_impl_all;
 

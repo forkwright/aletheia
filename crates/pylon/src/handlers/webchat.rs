@@ -152,7 +152,9 @@ pub async fn stream(
     let sid = session_id;
     let aid = agent_id;
 
-    // Bridge nous stream events to webchat events in real-time
+    // Bridge nous stream events to webchat events in real-time.
+    // Each SSE endpoint serves a single client — no multi-subscriber broadcast.
+    // Serialization happens once at the stream boundary (ReceiverStream::map).
     let bridge_tx = webchat_tx.clone();
     tokio::spawn(async move {
         while let Some(event) = nous_rx.recv().await {

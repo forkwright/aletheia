@@ -57,6 +57,7 @@ pub struct CascadeEntry {
 /// * `nous_id` — Agent ID for tier-1 resolution
 /// * `subdir` — Subdirectory name (e.g. "tools", "hooks", "templates")
 /// * `ext` — Optional extension filter (e.g. "md", "yaml"). Without the dot.
+#[must_use]
 pub fn discover(
     oikos: &Oikos,
     nous_id: &str,
@@ -128,6 +129,7 @@ pub fn discover(
 /// Resolve a single named file through the cascade.
 ///
 /// Returns the most-specific path, or `None` if not found in any tier.
+#[must_use]
 pub fn resolve(
     oikos: &Oikos,
     nous_id: &str,
@@ -162,6 +164,7 @@ pub fn resolve(
 ///
 /// Returns matches ordered most-specific first. Useful for config deep-merge
 /// where all tiers contribute.
+#[must_use]
 pub fn resolve_all(
     oikos: &Oikos,
     nous_id: &str,

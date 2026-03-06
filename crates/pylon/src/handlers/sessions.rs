@@ -325,6 +325,10 @@ pub async fn send_message(
     ))
 }
 
+/// Emit turn result as individual SSE events to a single client channel.
+///
+/// Each SSE endpoint serves exactly one client — there is no multi-subscriber
+/// broadcast. Serialization happens once at the stream boundary (`ReceiverStream::map`).
 async fn emit_turn_result_events(tx: &mpsc::Sender<SseEvent>, result: &TurnResult) {
     if !result.content.is_empty() {
         let _ = tx
