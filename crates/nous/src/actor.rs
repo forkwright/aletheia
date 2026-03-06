@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tracing::{Instrument, debug, info, instrument, warn};
 
 use crate::cross::CrossNousEnvelope;
+use crate::stream::TurnStreamEvent;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_koina::id::{NousId, SessionId};
@@ -109,6 +110,14 @@ impl NousActor {
                         } => {
                             self.handle_turn(session_key, content, reply).await;
                         }
+                        NousMessage::StreamingTurn {
+                            session_key,
+                            content,
+                            stream_tx,
+                            reply,
+                        } => {
+                            self.handle_streaming_turn(session_key, content, stream_tx, reply).await;
+                        }
                         NousMessage::Status { reply } => {
                             self.handle_status(reply);
                         }
@@ -185,6 +194,34 @@ impl NousActor {
         let _ = reply.send(result);
     }
 
+    async fn handle_streaming_turn(
+        &mut self,
+        session_key: String,
+        content: String,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
+    ) {
+        if self.lifecycle == NousLifecycle::Dormant {
+            debug!("auto-waking from dormant for streaming turn");
+            self.lifecycle = NousLifecycle::Idle;
+        }
+
+        self.lifecycle = NousLifecycle::Active;
+        self.active_session = Some(session_key.clone());
+
+        let result = self.execute_streaming_turn(&session_key, &content, &stream_tx).await;
+
+        if let Ok(ref turn_result) = result {
+            self.maybe_spawn_extraction(&content, &turn_result.content);
+            self.maybe_spawn_distillation(&session_key);
+        }
+
+        self.active_session = None;
+        self.lifecycle = NousLifecycle::Idle;
+
+        let _ = reply.send(result);
+    }
+
     async fn execute_turn(
         &mut self,
         session_key: &str,
@@ -235,6 +272,62 @@ impl NousActor {
             self.vector_search.as_deref(),
             self.session_store.as_deref(),
             self.extra_bootstrap.clone(),
+            None,
+        )
+        .await
+    }
+
+    async fn execute_streaming_turn(
+        &mut self,
+        session_key: &str,
+        content: &str,
+        stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    ) -> crate::error::Result<TurnResult> {
+        let session = self
+            .sessions
+            .entry(session_key.to_owned())
+            .or_insert_with(|| {
+                let id = SessionId::new().to_string();
+                debug!(session_key, session_id = %id, "creating new session");
+                SessionState::new(id, session_key.to_owned(), &self.config)
+            });
+
+        session.next_turn();
+
+        let input = crate::pipeline::PipelineInput {
+            content: content.to_owned(),
+            session: session.clone(),
+            config: self.pipeline_config.clone(),
+        };
+
+        let nous_id = NousId::new(&self.id).map_err(|e| {
+            crate::error::ConfigSnafu {
+                message: format!("invalid nous id: {e}"),
+            }
+            .build()
+        })?;
+
+        let tool_ctx = ToolContext {
+            nous_id,
+            session_id: SessionId::new(),
+            workspace: self.oikos.nous_dir(&self.id),
+            allowed_roots: vec![self.oikos.root().to_path_buf()],
+            services: self.tool_services.clone(),
+        };
+
+        crate::pipeline::run_pipeline(
+            input,
+            &self.oikos,
+            &self.config,
+            &self.pipeline_config,
+            &self.providers,
+            &self.tools,
+            &tool_ctx,
+            self.embedding_provider.as_deref(),
+            self.vector_search.as_deref(),
+            self.session_store.as_deref(),
+            self.extra_bootstrap.clone(),
+            Some(stream_tx),
         )
         .await
     }
@@ -539,6 +632,10 @@ mod tests {
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
         fn name(&self) -> &str {
             "mock"
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 

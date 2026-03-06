@@ -3,8 +3,10 @@
 //! Defines the interface all providers must implement. Types are modeled
 //! on the Anthropic Messages API; other providers adapt to this surface.
 
+use std::any::Any;
 use std::collections::HashMap;
 
+use crate::anthropic::AnthropicProvider;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
 use crate::types::{CompletionRequest, CompletionResponse, TokenCount};
@@ -58,6 +60,9 @@ pub trait LlmProvider: Send + Sync {
     fn supports_citations(&self) -> bool {
         false
     }
+
+    /// Downcast to concrete type for provider-specific features (e.g., streaming).
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// Per-model pricing rates for cost estimation.
@@ -171,6 +176,15 @@ impl ProviderRegistry {
         }
     }
 
+    /// Find a streaming-capable provider for the given model.
+    ///
+    /// Returns `Some` if the provider supports streaming (currently only Anthropic).
+    #[must_use]
+    pub fn find_streaming_provider(&self, model: &str) -> Option<&AnthropicProvider> {
+        self.find_provider(model)
+            .and_then(|p| p.as_any().downcast_ref::<AnthropicProvider>())
+    }
+
     /// Record a failed request for the named provider.
     pub fn record_error(&self, name: &str, error: &error::Error) {
         if let Some(entry) = self.providers.iter().find(|e| e.provider.name() == name) {
@@ -225,6 +239,10 @@ mod tests {
         )]
         fn name(&self) -> &str {
             "mock"
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
         }
     }
 
@@ -334,6 +352,13 @@ mod tests {
         registry.record_success("mock");
 
         assert_eq!(registry.provider_health("mock"), Some(ProviderHealth::Up));
+    }
+
+    #[test]
+    fn find_streaming_provider_returns_none_for_mock() {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(MockProvider::new()));
+        assert!(registry.find_streaming_provider("mock-model-v1").is_none());
     }
 
     #[test]

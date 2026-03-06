@@ -23,6 +23,7 @@ use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 use aletheia_taxis::oikos::Oikos;
+use tokio::sync::mpsc;
 
 use crate::bootstrap::{BootstrapAssembler, BootstrapSection};
 use crate::budget::TokenBudget;
@@ -30,6 +31,7 @@ use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::{self, HistoryConfig, HistoryResult};
 use crate::session::SessionState;
+use crate::stream::TurnStreamEvent;
 
 /// Input to the pipeline — an inbound message.
 #[derive(Debug, Clone)]
@@ -333,6 +335,7 @@ pub async fn run_pipeline(
     vector_search: Option<&dyn crate::recall::VectorSearch>,
     session_store: Option<&Mutex<SessionStore>>,
     extra_bootstrap: Vec<BootstrapSection>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
 ) -> error::Result<TurnResult> {
     let pipeline_start = Instant::now();
     let pipeline_span = info_span!("pipeline",
@@ -528,8 +531,13 @@ pub async fn run_pipeline(
         );
         let _guard = span.enter();
         let start = Instant::now();
-        result = crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx)
-            .await?;
+        result = if let Some(tx) = stream_tx {
+            crate::execute::execute_streaming(&ctx, &input.session, config, providers, tools, tool_ctx, tx)
+                .await?
+        } else {
+            crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx)
+                .await?
+        };
         #[expect(
             clippy::cast_possible_truncation,
             reason = "stage duration fits in u64"
@@ -857,6 +865,7 @@ mod tests {
     // --- run_pipeline ---
 
     #[tokio::test]
+    #[expect(clippy::too_many_lines, reason = "pipeline integration test requires full setup")]
     async fn run_pipeline_simple() {
         use std::fs;
         use std::path::PathBuf;
@@ -890,6 +899,10 @@ mod tests {
             )]
             fn name(&self) -> &str {
                 "mock"
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
             }
         }
 
@@ -958,6 +971,7 @@ mod tests {
             None,
             None,
             Vec::new(),
+            None,
         )
         .await
         .expect("pipeline should succeed");

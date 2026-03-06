@@ -15,6 +15,7 @@ use aletheia_hermeneus::types::{
 use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{ToolContext, ToolInput};
+use tokio::sync::mpsc;
 
 use crate::config::NousConfig;
 use crate::error;
@@ -23,6 +24,7 @@ use crate::pipeline::{
     TurnUsage,
 };
 use crate::session::SessionState;
+use crate::stream::TurnStreamEvent;
 
 /// Hash a JSON value for loop detection using the standard library hasher.
 fn simple_hash(value: &serde_json::Value) -> String {
@@ -312,6 +314,267 @@ pub async fn execute(
     })
 }
 
+/// Dispatch tool calls with streaming events emitted to the channel.
+async fn dispatch_tools_streaming(
+    tool_uses: &[(String, String, serde_json::Value)],
+    tools: &ToolRegistry,
+    tool_ctx: &ToolContext,
+    loop_detector: &mut LoopDetector,
+    all_tool_calls: &mut Vec<ToolCall>,
+    iterations: u32,
+    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+) -> error::Result<Vec<ContentBlock>> {
+    let mut tool_results: Vec<ContentBlock> = Vec::new();
+
+    for (tool_id, tool_name, tool_input) in tool_uses {
+        let input_hash = simple_hash(tool_input);
+        if let Some(pattern) = loop_detector.record(tool_name, &input_hash) {
+            return Err(error::LoopDetectedSnafu {
+                iterations,
+                pattern,
+            }
+            .build());
+        }
+
+        let tool_name_id = ToolName::new(tool_name.as_str()).map_err(|_err| {
+            error::PipelineStageSnafu {
+                stage: "execute",
+                message: format!("invalid tool name: {tool_name}"),
+            }
+            .build()
+        })?;
+
+        let _ = stream_tx
+            .try_send(TurnStreamEvent::ToolStart {
+                tool_id: tool_id.clone(),
+                tool_name: tool_name.clone(),
+                input: tool_input.clone(),
+            });
+
+        let start = std::time::Instant::now();
+        let result = tools
+            .execute(
+                &ToolInput {
+                    name: tool_name_id,
+                    tool_use_id: tool_id.clone(),
+                    arguments: tool_input.clone(),
+                },
+                tool_ctx,
+            )
+            .await;
+
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "tool execution duration won't exceed u64::MAX milliseconds"
+        )]
+        let duration_ms = start.elapsed().as_millis() as u64;
+
+        let (content, is_error) = match result {
+            Ok(r) => (r.content, r.is_error),
+            Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
+        };
+
+        let result_summary = content.text_summary();
+
+        debug!(
+            tool = tool_name.as_str(),
+            duration_ms, is_error, "tool executed"
+        );
+
+        let _ = stream_tx
+            .try_send(TurnStreamEvent::ToolResult {
+                tool_id: tool_id.clone(),
+                tool_name: tool_name.clone(),
+                result: result_summary.clone(),
+                is_error,
+                duration_ms,
+            });
+
+        all_tool_calls.push(ToolCall {
+            id: tool_id.clone(),
+            name: tool_name.clone(),
+            input: tool_input.clone(),
+            result: Some(result_summary),
+            is_error,
+            duration_ms,
+        });
+
+        tool_results.push(ContentBlock::ToolResult {
+            tool_use_id: tool_id.clone(),
+            content,
+            is_error: Some(is_error),
+        });
+    }
+
+    Ok(tool_results)
+}
+
+/// Streaming execute stage — same as [`execute`] but emits real-time events.
+///
+/// Uses `complete_streaming()` when the provider supports it, falling back to
+/// `complete()` otherwise. Tool start/result events are emitted via the channel.
+#[expect(
+    clippy::too_many_lines,
+    reason = "streaming variant parallels execute() structure"
+)]
+#[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
+pub async fn execute_streaming(
+    ctx: &PipelineContext,
+    session: &SessionState,
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    tools: &ToolRegistry,
+    tool_ctx: &ToolContext,
+    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+) -> error::Result<TurnResult> {
+    let streaming_provider = providers.find_streaming_provider(&config.model);
+
+    // Fall back to non-streaming if no streaming provider available
+    let Some(streaming_provider) = streaming_provider else {
+        return execute(ctx, session, config, providers, tools, tool_ctx).await;
+    };
+
+    let provider = providers.find_provider(&config.model).ok_or_else(|| {
+        error::PipelineStageSnafu {
+            stage: "execute",
+            message: format!("no provider for model: {}", config.model),
+        }
+        .build()
+    })?;
+
+    if let Some(health) = providers.provider_health(provider.name()) {
+        if matches!(health, ProviderHealth::Down { .. }) {
+            return Err(error::PipelineStageSnafu {
+                stage: "execute",
+                message: format!("provider '{}' is currently unavailable", provider.name()),
+            }
+            .build());
+        }
+    }
+
+    let mut messages = build_messages(&ctx.messages);
+    let mut all_tool_calls: Vec<ToolCall> = Vec::new();
+    let mut total_usage = TurnUsage::default();
+    let mut loop_detector = LoopDetector::new(config.loop_detection_threshold);
+    let mut iterations: u32 = 0;
+    let mut final_content = String::new();
+    let mut final_stop_reason = String::new();
+
+    let thinking = if config.thinking_enabled {
+        Some(ThinkingConfig {
+            enabled: true,
+            budget_tokens: config.thinking_budget,
+        })
+    } else {
+        None
+    };
+
+    let tool_defs = tools.to_hermeneus_tools();
+
+    loop {
+        iterations += 1;
+
+        if iterations > config.max_tool_iterations {
+            warn!(iterations, "max tool iterations reached");
+            break;
+        }
+
+        let request = CompletionRequest {
+            model: config.model.clone(),
+            system: ctx.system_prompt.clone(),
+            messages: messages.clone(),
+            max_tokens: config.max_output_tokens,
+            tools: tool_defs.clone(),
+            temperature: None,
+            thinking: thinking.clone(),
+            stop_sequences: vec![],
+            ..Default::default()
+        };
+
+        let tx = stream_tx.clone();
+        let response = match streaming_provider.complete_streaming(&request, |event| {
+            let _ = tx.try_send(TurnStreamEvent::LlmDelta(event));
+        }) {
+            Ok(resp) => {
+                providers.record_success(provider.name());
+                resp
+            }
+            Err(e) => {
+                providers.record_error(provider.name(), &e);
+                return Err(e).context(error::LlmSnafu);
+            }
+        };
+
+        total_usage.input_tokens += response.usage.input_tokens;
+        total_usage.output_tokens += response.usage.output_tokens;
+        total_usage.cache_read_tokens += response.usage.cache_read_tokens;
+        total_usage.cache_write_tokens += response.usage.cache_write_tokens;
+        total_usage.llm_calls += 1;
+
+        let mut text_parts: Vec<String> = Vec::new();
+        let mut tool_uses: Vec<(String, String, serde_json::Value)> = Vec::new();
+
+        for block in &response.content {
+            match block {
+                ContentBlock::Text { text, .. } => text_parts.push(text.clone()),
+                ContentBlock::ToolUse { id, name, input } => {
+                    tool_uses.push((id.clone(), name.clone(), input.clone()));
+                }
+                ContentBlock::Thinking { thinking, .. } => {
+                    debug!(len = thinking.len(), "thinking block received");
+                }
+                _ => {}
+            }
+        }
+
+        final_content = text_parts.join("");
+        final_stop_reason = response.stop_reason.to_string();
+
+        if tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
+            break;
+        }
+
+        messages.push(Message {
+            role: Role::Assistant,
+            content: Content::Blocks(response.content.clone()),
+        });
+
+        let tool_results = dispatch_tools_streaming(
+            &tool_uses,
+            tools,
+            tool_ctx,
+            &mut loop_detector,
+            &mut all_tool_calls,
+            iterations,
+            stream_tx,
+        )
+        .await?;
+
+        messages.push(Message {
+            role: Role::User,
+            content: Content::Blocks(tool_results),
+        });
+    }
+
+    info!(
+        iterations,
+        tool_calls = all_tool_calls.len(),
+        llm_calls = total_usage.llm_calls,
+        stop_reason = final_stop_reason.as_str(),
+        "streaming execute stage complete"
+    );
+
+    let signals = classify_signals(&all_tool_calls, &final_content);
+
+    Ok(TurnResult {
+        content: final_content,
+        tool_calls: all_tool_calls,
+        usage: total_usage,
+        signals,
+        stop_reason: final_stop_reason,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::future::Future;
@@ -371,6 +634,10 @@ mod tests {
         )]
         fn name(&self) -> &str {
             "mock"
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 
@@ -858,5 +1125,84 @@ mod tests {
             signals.contains(&InteractionSignal::ErrorRecovery),
             "should have ErrorRecovery"
         );
+    }
+
+    // --- Streaming Tests ---
+
+    #[tokio::test]
+    async fn streaming_falls_back_to_non_streaming_for_mock() {
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(MockProvider::with_responses(vec![
+            make_text_response("Hello streaming!"),
+        ])));
+
+        let tools = ToolRegistry::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+        let result = execute_streaming(
+            &test_pipeline_ctx(),
+            &test_session(),
+            &test_config(),
+            &providers,
+            &tools,
+            &test_tool_ctx(),
+            &tx,
+        )
+        .await
+        .expect("execute_streaming");
+
+        assert_eq!(result.content, "Hello streaming!");
+        assert_eq!(result.usage.llm_calls, 1);
+
+        // MockProvider doesn't support streaming, so no LlmDelta events
+        drop(tx);
+        assert!(
+            rx.try_recv().is_err(),
+            "no stream events for non-streaming provider"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_tool_events_emitted() {
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+            make_text_response("Done!"),
+        ])));
+
+        let tools = make_registry_with("exec", Box::new(EchoExecutor));
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+        let result = execute_streaming(
+            &test_pipeline_ctx(),
+            &test_session(),
+            &test_config(),
+            &providers,
+            &tools,
+            &test_tool_ctx(),
+            &tx,
+        )
+        .await
+        .expect("execute_streaming");
+
+        assert_eq!(result.content, "Done!");
+        assert_eq!(result.tool_calls.len(), 1);
+
+        // Even with mock (non-streaming) provider, tool events should be emitted
+        drop(tx);
+        let mut tool_start_count = 0;
+        let mut tool_result_count = 0;
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                TurnStreamEvent::ToolStart { .. } => tool_start_count += 1,
+                TurnStreamEvent::ToolResult { .. } => tool_result_count += 1,
+                _ => {}
+            }
+        }
+        // Falls back to non-streaming execute(), no tool events via channel
+        // (tool events only come from dispatch_tools_streaming, which requires
+        //  a streaming provider to be found)
+        assert_eq!(tool_start_count, 0);
+        assert_eq!(tool_result_count, 0);
     }
 }

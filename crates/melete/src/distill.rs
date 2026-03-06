@@ -386,6 +386,10 @@ mod tests {
         fn name(&self) -> &str {
             "mock-distill"
         }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
     }
 
     // --- Helpers ---

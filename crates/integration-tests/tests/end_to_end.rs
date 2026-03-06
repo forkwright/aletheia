@@ -64,6 +64,10 @@ impl LlmProvider for MockProvider {
     fn name(&self) -> &str {
         "mock"
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 struct CapturingMockProvider {
@@ -109,6 +113,10 @@ impl LlmProvider for CapturingMockProvider {
     #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
     fn name(&self) -> &str {
         "mock-capturing"
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

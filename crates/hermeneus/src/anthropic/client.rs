@@ -574,6 +574,10 @@ impl LlmProvider for AnthropicProvider {
     fn supports_citations(&self) -> bool {
         true
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 /// Estimate cost using config-based pricing, falling back to hardcoded defaults.
