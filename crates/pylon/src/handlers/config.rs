@@ -75,6 +75,7 @@ pub async fn get_section(
     if !VALID_SECTIONS.contains(&section.as_str()) {
         return Err(ApiError::NotFound {
             path: format!("/api/v1/config/{section}"),
+            location: snafu::Location::default(),
         });
     }
 
@@ -85,6 +86,7 @@ pub async fn get_section(
         Some(val) => Ok(Json(val.clone())),
         None => Err(ApiError::NotFound {
             path: format!("/api/v1/config/{section}"),
+            location: snafu::Location::default(),
         }),
     }
 }
@@ -112,18 +114,23 @@ pub async fn update_section(
     if !VALID_SECTIONS.contains(&section.as_str()) {
         return Err(ApiError::NotFound {
             path: format!("/api/v1/config/{section}"),
+            location: snafu::Location::default(),
         });
     }
 
     // Validate
     if let Err(errors) = aletheia_taxis::validate::validate_section(&section, &body) {
-        return Err(ApiError::ValidationFailed { errors });
+        return Err(ApiError::ValidationFailed {
+            errors: errors.0,
+            location: snafu::Location::default(),
+        });
     }
 
     // Deep-merge into current config (body patches only changed fields)
     let mut config = state.config.write().await;
     let mut config_value = serde_json::to_value(&*config).map_err(|e| ApiError::Internal {
         message: format!("failed to serialize config: {e}"),
+        location: snafu::Location::default(),
     })?;
 
     if let Value::Object(root) = &mut config_value {
@@ -137,12 +144,14 @@ pub async fn update_section(
     let new_config: aletheia_taxis::config::AletheiaConfig =
         serde_json::from_value(config_value).map_err(|e| ApiError::ValidationFailed {
             errors: vec![format!("invalid config structure: {e}")],
+            location: snafu::Location::default(),
         })?;
 
     // Persist to disk
     aletheia_taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| {
         ApiError::Internal {
             message: format!("failed to write config: {e}"),
+            location: snafu::Location::default(),
         }
     })?;
 

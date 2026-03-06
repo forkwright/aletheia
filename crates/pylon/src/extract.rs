@@ -49,16 +49,22 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             .headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
-            .ok_or(ApiError::Unauthorized)?;
+            .ok_or(ApiError::Unauthorized {
+                location: snafu::Location::default(),
+            })?;
 
         let token = header
             .strip_prefix("Bearer ")
-            .ok_or(ApiError::Unauthorized)?;
+            .ok_or(ApiError::Unauthorized {
+                location: snafu::Location::default(),
+            })?;
 
         let claims = state
             .jwt_manager
             .validate(token)
-            .map_err(|_err| ApiError::Unauthorized)?;
+            .map_err(|_err| ApiError::Unauthorized {
+                location: snafu::Location::default(),
+            })?;
 
         Ok(Self {
             sub: claims.sub,

@@ -27,3 +27,10 @@ pub mod stream;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod assertions {
+    use static_assertions::assert_impl_all;
+
+    assert_impl_all!(super::state::AppState: Send, Sync);
+}
