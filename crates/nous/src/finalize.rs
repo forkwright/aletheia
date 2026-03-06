@@ -7,7 +7,7 @@
 //! 4. Records token usage
 
 use snafu::ResultExt;
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::{Role, UsageRecord};
@@ -75,7 +75,10 @@ pub fn finalize(
 
         // Tool call/result pairs
         for tc in &result.tool_calls {
-            let input_json = serde_json::to_string(&tc.input).unwrap_or_default();
+            let input_json = serde_json::to_string(&tc.input).unwrap_or_else(|e| {
+                warn!(error = %e, tool = %tc.name, "failed to serialize tool call input");
+                String::new()
+            });
             store
                 .append_message(
                     &session.id,

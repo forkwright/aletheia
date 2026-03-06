@@ -6,6 +6,8 @@
 
 use std::io::BufRead;
 
+use tracing::warn;
+
 use crate::error::{self, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
@@ -248,7 +250,10 @@ impl StreamAccumulator {
                     name,
                     input_json,
                 } => {
-                    let input = serde_json::from_str(&input_json).unwrap_or_default();
+                    let input = serde_json::from_str(&input_json).unwrap_or_else(|e| {
+                        warn!(error = %e, tool = %name, "failed to parse tool input JSON");
+                        serde_json::Value::Object(serde_json::Map::default())
+                    });
                     ContentBlock::ToolUse { id, name, input }
                 }
                 BlockBuilder::Thinking { text, signature } => ContentBlock::Thinking {
@@ -264,7 +269,10 @@ impl StreamAccumulator {
                     name,
                     input_json,
                 } => {
-                    let input = serde_json::from_str(&input_json).unwrap_or_default();
+                    let input = serde_json::from_str(&input_json).unwrap_or_else(|e| {
+                        warn!(error = %e, tool = %name, "failed to parse server tool input JSON");
+                        serde_json::Value::Object(serde_json::Map::default())
+                    });
                     ContentBlock::ServerToolUse { id, name, input }
                 }
                 BlockBuilder::WebSearchToolResult {

@@ -204,7 +204,10 @@ impl FileCredentialProvider {
 
     fn reload(&self) -> Option<String> {
         let cred = CredentialFile::load(&self.path)?;
-        let mtime = self.current_mtime().unwrap_or(SystemTime::UNIX_EPOCH);
+        let mtime = self.current_mtime().unwrap_or_else(|| {
+            tracing::debug!(path = %self.path.display(), "could not read file mtime, using epoch");
+            SystemTime::UNIX_EPOCH
+        });
 
         let token = cred.token.clone();
         if let Ok(mut guard) = self.cached.write() {

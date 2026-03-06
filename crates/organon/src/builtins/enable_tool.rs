@@ -54,7 +54,11 @@ impl ToolExecutor for EnableToolExecutor {
 
             // Check if already active
             {
-                let active = ctx.active_tools.read().expect("active_tools lock");
+                let Ok(active) = ctx.active_tools.read() else {
+                    return Ok(ToolResult::error(
+                        "internal error: active_tools lock poisoned",
+                    ));
+                };
                 if active.contains(&tool_name) {
                     return Ok(ToolResult::text(format!("'{name}' is already active.")));
                 }
@@ -62,7 +66,11 @@ impl ToolExecutor for EnableToolExecutor {
 
             // Activate
             {
-                let mut active = ctx.active_tools.write().expect("active_tools lock");
+                let Ok(mut active) = ctx.active_tools.write() else {
+                    return Ok(ToolResult::error(
+                        "internal error: active_tools lock poisoned",
+                    ));
+                };
                 active.insert(tool_name);
             }
 

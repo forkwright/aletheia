@@ -102,7 +102,7 @@ impl ProviderHealthTracker {
     pub fn health(&self) -> ProviderHealth {
         self.inner
             .lock()
-            .expect("health lock poisoned")
+            .expect("health lock poisoned") // INVARIANT: short critical section, poisoned = prior panic
             .health
             .clone()
     }
@@ -113,7 +113,7 @@ impl ProviderHealthTracker {
     /// unless the cooldown has elapsed (auto-transitions to Degraded).
     /// `Down(AuthFailure)` never auto-recovers.
     pub fn check_available(&self) -> Result<(), ProviderHealth> {
-        let mut inner = self.inner.lock().expect("health lock poisoned");
+        let mut inner = self.inner.lock().expect("health lock poisoned"); // INVARIANT: short critical section, poisoned = prior panic
         match &inner.health {
             ProviderHealth::Up | ProviderHealth::Degraded { .. } => Ok(()),
             ProviderHealth::Down { since, reason } => {
@@ -146,7 +146,7 @@ impl ProviderHealthTracker {
 
     /// Record a successful request.
     pub fn record_success(&self) {
-        let mut inner = self.inner.lock().expect("health lock poisoned");
+        let mut inner = self.inner.lock().expect("health lock poisoned"); // INVARIANT: short critical section, poisoned = prior panic
         inner.total_requests += 1;
         match inner.health {
             ProviderHealth::Degraded { .. } => {
@@ -162,7 +162,7 @@ impl ProviderHealthTracker {
 
     /// Record a failed request and update health state.
     pub fn record_error(&self, error: &Error) {
-        let mut inner = self.inner.lock().expect("health lock poisoned");
+        let mut inner = self.inner.lock().expect("health lock poisoned"); // INVARIANT: short critical section, poisoned = prior panic
         inner.total_requests += 1;
         inner.total_errors += 1;
 

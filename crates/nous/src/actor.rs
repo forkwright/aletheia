@@ -411,7 +411,10 @@ impl NousActor {
 
         // Quick trigger check under the lock
         let should_distill = {
-            let store = store_arc.lock().expect("session store lock");
+            let Ok(store) = store_arc.lock() else {
+                warn!("session store lock poisoned, skipping distillation check");
+                return;
+            };
             let Ok(Some(session)) = store.find_session_by_id(&session_id) else {
                 return;
             };
@@ -551,7 +554,10 @@ async fn run_background_distillation(
 
     // Load history under the lock, then release before async work
     let (history, session) = {
-        let s = store.lock().expect("session store lock");
+        let Ok(s) = store.lock() else {
+            warn!("session store lock poisoned, skipping distillation");
+            return;
+        };
         let Ok(Some(session)) = s.find_session_by_id(&session_id) else {
             return;
         };
@@ -591,7 +597,10 @@ async fn run_background_distillation(
     };
 
     // Apply results under the lock
-    let s = store.lock().expect("session store lock");
+    let Ok(s) = store.lock() else {
+        warn!("session store lock poisoned, skipping distillation apply");
+        return;
+    };
     if let Err(e) = crate::distillation::apply_distillation(&s, &session_id, &result, &history) {
         warn!(error = %e, "failed to apply distillation");
         return;

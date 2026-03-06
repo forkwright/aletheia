@@ -16,7 +16,7 @@ use tracing::{instrument, warn};
 use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use aletheia_nous::stream::TurnStreamEvent;
 
-use crate::error::{ApiError, BadRequestSnafu, NousNotFoundSnafu};
+use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::OptionalClaims;
 use crate::state::AppState;
 use crate::stream::{TurnOutcome, WebchatEvent};
@@ -50,8 +50,15 @@ async fn resolve_session(
     let model_owned = model.map(ToOwned::to_owned);
 
     let session = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None)
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None)
+            .map_err(ApiError::from)
     })
     .await??;
 
@@ -69,11 +76,17 @@ async fn store_message(
     let sid = session_id.to_owned();
     let content = content.to_owned();
     tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.append_message(&sid, role, &content, None, None, token_estimate)
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .append_message(&sid, role, &content, None, None, token_estimate)
+            .map_err(ApiError::from)
     })
     .await?
-    .map_err(ApiError::from)
 }
 
 #[expect(
@@ -224,7 +237,10 @@ pub async fn stream(
     });
 
     let stream = ReceiverStream::new(webchat_rx).map(|event| {
-        let data = serde_json::to_string(&event).unwrap_or_default();
+        let data = serde_json::to_string(&event).unwrap_or_else(|e| {
+            warn!(error = %e, "failed to serialize SSE event");
+            String::new()
+        });
         Ok(Event::default().event(event.event_type()).data(data))
     });
 
@@ -396,8 +412,15 @@ pub async fn sessions_list(
 
     let state_clone = Arc::clone(&state);
     let sessions = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.list_sessions(nous_id.as_deref())
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .list_sessions(nous_id.as_deref())
+            .map_err(ApiError::from)
     })
     .await??;
 
