@@ -1,9 +1,10 @@
 //! Core types for tool definitions, input/output, and execution context.
 
+use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use aletheia_koina::id::{NousId, SessionId, ToolName};
 use indexmap::IndexMap;
@@ -146,6 +147,8 @@ pub enum ToolCategory {
     System,
     /// Agent coordination and spawning.
     Agent,
+    /// Web research and information retrieval.
+    Research,
     /// External domain pack tools.
     Domain,
 }
@@ -159,6 +162,7 @@ impl std::fmt::Display for ToolCategory {
             Self::Planning => f.write_str("planning"),
             Self::System => f.write_str("system"),
             Self::Agent => f.write_str("agent"),
+            Self::Research => f.write_str("research"),
             Self::Domain => f.write_str("domain"),
         }
     }
@@ -287,6 +291,8 @@ pub struct ToolServices {
     pub note_store: Option<Arc<dyn NoteStore>>,
     pub blackboard_store: Option<Arc<dyn BlackboardStore>>,
     pub http_client: reqwest::Client,
+    /// Catalog of lazy tools available for activation via `enable_tool`.
+    pub lazy_tool_catalog: Vec<(ToolName, String)>,
 }
 
 impl std::fmt::Debug for ToolServices {
@@ -296,6 +302,7 @@ impl std::fmt::Debug for ToolServices {
             .field("messenger", &self.messenger.is_some())
             .field("note_store", &self.note_store.is_some())
             .field("blackboard_store", &self.blackboard_store.is_some())
+            .field("lazy_tool_catalog_len", &self.lazy_tool_catalog.len())
             .finish_non_exhaustive()
     }
 }
@@ -311,8 +318,10 @@ pub struct ToolContext {
     pub workspace: PathBuf,
     /// Allowed filesystem roots for sandboxing.
     pub allowed_roots: Vec<PathBuf>,
-/// Optional runtime services for tools that need cross-cutting capabilities.
+    /// Optional runtime services for tools that need cross-cutting capabilities.
     pub services: Option<Arc<ToolServices>>,
+    /// Per-session set of dynamically activated tools (via `enable_tool`).
+    pub active_tools: Arc<RwLock<HashSet<ToolName>>>,
 }
 
 /// Persistent session notes storage.
@@ -455,6 +464,7 @@ mod tests {
     fn tool_category_display() {
         assert_eq!(ToolCategory::Workspace.to_string(), "workspace");
         assert_eq!(ToolCategory::Communication.to_string(), "communication");
+        assert_eq!(ToolCategory::Research.to_string(), "research");
     }
 
     #[test]

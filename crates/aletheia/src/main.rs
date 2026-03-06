@@ -510,6 +510,7 @@ async fn serve(cli: Cli) -> Result<()> {
             note_store,
             blackboard_store,
             http_client: reqwest::Client::new(),
+            lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
         })
     };
 

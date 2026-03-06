@@ -209,12 +209,15 @@ fn view_file_def() -> crate::types::ToolDef {
             required: vec!["path".to_owned()],
         },
         category: ToolCategory::Workspace,
-        auto_activate: false,
+        auto_activate: true,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+    use std::sync::{Arc, RwLock};
+
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
     use super::*;
@@ -227,6 +230,7 @@ mod tests {
             workspace: dir.to_path_buf(),
             allowed_roots: vec![dir.to_path_buf()],
             services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 

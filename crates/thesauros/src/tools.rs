@@ -513,6 +513,9 @@ mod tests {
             workspace: dir.path().to_path_buf(),
             allowed_roots: vec![],
             services: None,
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
         };
 
         let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
@@ -542,6 +545,9 @@ mod tests {
             workspace: dir.path().to_path_buf(),
             allowed_roots: vec![],
             services: None,
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
         };
 
         let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
