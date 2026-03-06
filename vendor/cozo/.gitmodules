@@ -1,3 +1,0 @@
-[submodule "cozorocks/rocksdb"]
-	path = cozorocks/rocksdb
-	url = https://github.com/facebook/rocksdb.git

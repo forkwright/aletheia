@@ -16,7 +16,7 @@ Not a chatbot framework. A distributed cognition system.
 
 ## Architecture
 
-Aletheia is being rewritten in Rust. The target is a single static binary replacing the current Node.js gateway, Python memory sidecar, and shell scripts. The TypeScript runtime still runs production while the Rust crates reach feature parity.
+Rust workspace with 16 crates. Single binary deployment.
 
 ```text
          Web UI (Svelte 5)          Signal Messenger
@@ -52,13 +52,9 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and tr
 | High | `pylon` (HTTP gateway) |
 | Top | `aletheia` (binary entrypoint) |
 
-### TypeScript Runtime (current production)
-
-Modules following the same Greek naming: `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `melete`, `symbolon`, `dianoia`, `agora`, `semeion`, `pylon`, `prostheke`, `daemon`, `portability`.
-
 **Models:** Anthropic (OAuth or API key). Complexity-based routing.
-**Memory:** Mem0 (Qdrant + Neo4j + Haiku extraction) for cross-agent long-term memory. SQLite for sessions.
-**Observability:** Optional self-hosted Langfuse.
+**Memory:** Mem0 (Qdrant + embeddings) for cross-agent long-term memory. CozoDB embedded for sessions and graph.
+**Observability:** Structured tracing with tokio-tracing.
 
 ---
 
@@ -66,8 +62,9 @@ Modules following the same Greek naming: `koina`, `taxis`, `mneme`, `hermeneus`,
 
 ```bash
 git clone https://github.com/forkwright/aletheia.git && cd aletheia
-./setup.sh        # builds, installs CLI, opens browser
-aletheia start    # from next time on
+cargo build --release
+cp target/release/aletheia ~/.local/bin/
+aletheia start
 ```
 
 [Full setup guide](docs/QUICKSTART.md) · [Production deployment](docs/DEPLOYMENT.md)
@@ -99,8 +96,6 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 | signal-cli | 8080 | For Signal |
 | aletheia-memory | 8230 | Recommended |
 | qdrant | 6333 | If using Mem0 |
-| neo4j | 7474/7687 | If using Mem0 |
-| langfuse | 3100 | Optional |
 
 ## Privacy
 

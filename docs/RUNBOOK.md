@@ -5,13 +5,11 @@ For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 ## Service Architecture
 
 ```text
-aletheia gateway              (port 18789)  -- Node.js runtime, web UI, API
+aletheia gateway              (port 18789)  -- Rust binary, web UI, API
 +-- signal-cli daemon         (port 8080)   -- Signal messaging
-+-- prosoche daemon           (background)  -- attention/wake system
 +-- aletheia-memory sidecar   (port 8230)   -- mem0 FastAPI (Python)
 |   +-- qdrant                (port 6333)   -- vector store (container)
-|   +-- neo4j                 (port 7474/7687) -- graph store (container)
-+-- cron jobs                 (in-process)  -- heartbeats, scheduled tasks
++-- daemon (oikonomos)        (in-process)  -- heartbeats, scheduled tasks, prosoche
 ```
 
 ## Quick Health Check
@@ -70,14 +68,7 @@ sleep 3
 curl -s http://localhost:18789/api/setup/status | python3 -m json.tool
 ```
 
-### 6. Start prosoche (if needed)
 
-```bash
-ps aux | grep prosoche | grep -v grep
-# If not running:
-cd <repo>/infrastructure/prosoche
-.venv/bin/python3 -m prosoche.daemon &
-```
 
 ---
 
@@ -85,16 +76,13 @@ cd <repo>/infrastructure/prosoche
 
 ```bash
 # Gateway
-pkill -f "aletheia gateway" || pkill -f "entry.mjs"
-
-# Prosoche
-pkill -f "prosoche.daemon"
+systemctl --user stop aletheia
 
 # Memory sidecar (optional -- usually leave running)
 pkill -f "aletheia_memory"
 
 # Containers (optional -- usually leave running)
-podman stop qdrant neo4j
+podman stop qdrant
 ```
 
 ---
@@ -104,11 +92,8 @@ podman stop qdrant neo4j
 ```bash
 cd <repo>
 git pull origin main
-cd infrastructure/runtime && npx tsdown && cd ../..
-cd ui && npm run build && cd ..
-pkill -f "aletheia gateway"
-sleep 2
-aletheia gateway start
+cargo build --release
+systemctl --user restart aletheia
 ```
 
 ---
@@ -148,8 +133,7 @@ signal-cli -a +15550100001 receive --timeout 5
 
 ```bash
 cat <repo>/nous/<agent-id>/PROSOCHE.md
-journalctl --user -u prosoche --since "1 hour ago" 2>/dev/null || \
-  tail -50 /tmp/prosoche.log
+journalctl --user -u aletheia --since "1 hour ago" | grep prosoche
 ```
 
 ### Agent not responding
@@ -176,10 +160,8 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 | Service | Log |
 |---------|-----|
 | Gateway | stdout / `journalctl --user -u aletheia` |
-| Prosoche | `/tmp/prosoche.log` or `journalctl --user -u prosoche` |
 | Memory sidecar | stdout / `journalctl --user -u aletheia-memory` |
 | Qdrant | `podman logs qdrant` |
-| Neo4j | `podman logs neo4j` |
 | Signal-cli | Gateway stdout (subprocess) |
 
 ## Key Paths
@@ -189,9 +171,7 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 | `instance/config/aletheia.yaml` | Main config |
 | `instance/data/sessions.db` | SQLite session store |
 | `instance/nous/<id>/` | Agent workspaces |
-| `infrastructure/runtime/` | TypeScript runtime |
 | `infrastructure/memory/sidecar/` | Python memory sidecar |
-| `infrastructure/prosoche/` | Prosoche daemon |
 | `ui/` | Svelte web UI |
 
 ## Pre-Restart Checklist
