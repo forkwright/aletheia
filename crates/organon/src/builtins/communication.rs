@@ -449,6 +449,7 @@ mod tests {
             note_store: None,
             blackboard_store: None,
             spawn: None,
+            planning: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
             messenger: Some(messenger),
@@ -474,6 +475,7 @@ mod tests {
             note_store: None,
             blackboard_store: None,
             spawn: None,
+            planning: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
             messenger: Some(messenger),
@@ -503,9 +505,10 @@ mod tests {
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
-                    note_store: None,
+            note_store: None,
             blackboard_store: None,
             spawn: None,
+            planning: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
         });
@@ -535,9 +538,10 @@ mod tests {
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
-                    note_store: None,
+            note_store: None,
             blackboard_store: None,
             spawn: None,
+            planning: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
         });
@@ -562,9 +566,10 @@ mod tests {
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
-                    note_store: None,
+            note_store: None,
             blackboard_store: None,
             spawn: None,
+            planning: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
         });
@@ -587,9 +592,10 @@ mod tests {
         let ctx = test_ctx_with_services(ToolServices {
             cross_nous: Some(cross),
             messenger: None,
-                    note_store: None,
+            note_store: None,
             blackboard_store: None,
             spawn: None,
+            planning: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
         });

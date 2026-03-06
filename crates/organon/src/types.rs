@@ -284,6 +284,70 @@ pub trait MessageService: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
 }
 
+/// Planning project management for tool executors.
+pub trait PlanningService: Send + Sync {
+    /// Create a new project. Returns JSON representation of the created project.
+    fn create_project(
+        &self,
+        name: &str,
+        description: &str,
+        scope: Option<&str>,
+        mode: &str,
+        appetite_minutes: Option<u32>,
+        owner: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+
+    /// Load a project by ID. Returns JSON representation.
+    fn load_project(
+        &self,
+        project_id: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+
+    /// Apply a named state transition to a project. Returns updated project JSON.
+    ///
+    /// Valid transition names:
+    /// - `start_questioning`, `start_research`, `skip_research`, `skip_to_research`
+    /// - `start_scoping`, `start_planning`, `start_discussion`, `start_execution`
+    /// - `start_verification`, `complete`, `abandon`, `pause`, `resume`
+    /// - `revert_to_scoping`, `revert_to_planning`, `revert_to_executing`
+    fn transition_project(
+        &self,
+        project_id: &str,
+        transition: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+
+    /// Add a phase to a project. Returns updated project JSON.
+    fn add_phase(
+        &self,
+        project_id: &str,
+        name: &str,
+        goal: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+
+    /// Mark a plan as complete within a phase. Returns updated project JSON.
+    fn complete_plan(
+        &self,
+        project_id: &str,
+        phase_id: &str,
+        plan_id: &str,
+        achievement: Option<&str>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+
+    /// Mark a plan as failed within a phase. Returns updated project JSON.
+    fn fail_plan(
+        &self,
+        project_id: &str,
+        phase_id: &str,
+        plan_id: &str,
+        reason: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+
+    /// List all projects. Returns JSON array of project summaries.
+    fn list_projects(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+}
+
 /// Service locator for tool executors needing access to runtime services.
 pub struct ToolServices {
     pub cross_nous: Option<Arc<dyn CrossNousService>>,
@@ -291,6 +355,7 @@ pub struct ToolServices {
     pub note_store: Option<Arc<dyn NoteStore>>,
     pub blackboard_store: Option<Arc<dyn BlackboardStore>>,
     pub spawn: Option<Arc<dyn SpawnService>>,
+    pub planning: Option<Arc<dyn PlanningService>>,
     pub http_client: reqwest::Client,
     /// Catalog of lazy tools available for activation via `enable_tool`.
     pub lazy_tool_catalog: Vec<(ToolName, String)>,
@@ -304,6 +369,7 @@ impl std::fmt::Debug for ToolServices {
             .field("note_store", &self.note_store.is_some())
             .field("blackboard_store", &self.blackboard_store.is_some())
             .field("spawn", &self.spawn.is_some())
+            .field("planning", &self.planning.is_some())
             .field("lazy_tool_catalog_len", &self.lazy_tool_catalog.len())
             .finish_non_exhaustive()
     }
