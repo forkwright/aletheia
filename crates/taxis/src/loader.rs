@@ -63,7 +63,6 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::result_large_err)] // figment::Error is 208 bytes — external type, not ours to shrink
 mod tests {
     use super::*;
 

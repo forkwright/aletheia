@@ -31,7 +31,6 @@ serde_json = { workspace = true }
 pulldown-cmark = "0.13"
 
 # Text utilities
-textwrap = "0.16"
 unicode-width = "0.2"
 
 # CLI
