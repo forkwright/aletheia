@@ -64,7 +64,7 @@ If migrating from the TypeScript runtime to the Rust binary:
 | Config location | `~/.aletheia/` | `instance/config/` |
 | Services | Gateway + memory sidecar + containers | Single binary |
 | Memory backend | Qdrant + Neo4j (external) | CozoDB (embedded) |
-| Embeddings | Mem0 / external API | fastembed-rs (local) |
+| Embeddings | CozoDB (embedded) | fastembed-rs (local) |
 | CLI | `aletheia start/stop/restart` | `aletheia` (is the server) |
 | API paths | `/api/sessions`, `/health` | `/api/v1/sessions`, `/api/health` |
 

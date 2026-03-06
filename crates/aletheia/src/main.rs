@@ -2,6 +2,10 @@
 
 mod daemon_bridge;
 mod dispatch;
+#[cfg(feature = "recall")]
+mod knowledge_adapter;
+#[cfg(feature = "migrate-qdrant")]
+mod migrate_memory;
 mod planning_adapter;
 mod status;
 
@@ -171,6 +175,21 @@ enum Command {
         #[arg(long)]
         logout: bool,
     },
+    /// Migrate memories from Qdrant (Mem0) into embedded `KnowledgeStore`
+    MigrateMemory {
+        /// Qdrant server URL
+        #[arg(long, default_value = "http://localhost:6333", env = "QDRANT_URL")]
+        qdrant_url: String,
+        /// Qdrant collection name
+        #[arg(long, default_value = "aletheia_memories")]
+        collection: String,
+        /// Write flagged facts to a review file
+        #[arg(long)]
+        review_file: Option<PathBuf>,
+        /// Report only, don't insert
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Import an agent from a portable .agent.json file
     Import {
         /// Path to .agent.json file
@@ -310,10 +329,35 @@ async fn main() -> Result<()> {
                 *dry_run,
             );
         }
+        Some(Command::MigrateMemory { qdrant_url, collection, review_file, dry_run }) => {
+            return run_migrate_memory(&cli, qdrant_url, collection, review_file.as_ref(), *dry_run).await;
+        }
         None => {}
     }
 
     serve(cli).await
+}
+
+#[expect(clippy::unused_async, reason = "async required when migrate-qdrant feature is enabled")]
+async fn run_migrate_memory(
+    cli: &Cli,
+    qdrant_url: &str,
+    collection: &str,
+    review_file: Option<&PathBuf>,
+    dry_run: bool,
+) -> Result<()> {
+    #[cfg(feature = "migrate-qdrant")]
+    {
+        return migrate_memory::run(cli, qdrant_url, collection, review_file, dry_run).await;
+    }
+    #[cfg(not(feature = "migrate-qdrant"))]
+    {
+        let _ = (cli, qdrant_url, collection, review_file, dry_run);
+        anyhow::bail!(
+            "migrate-memory requires the `migrate-qdrant` feature.\n\
+             Rebuild with: cargo build --features migrate-qdrant"
+        );
+    }
 }
 
 fn run_maintenance(action: MaintenanceAction, instance_root: Option<&PathBuf>) -> Result<()> {
@@ -494,7 +538,7 @@ async fn serve(cli: Cli) -> Result<()> {
     let signal_provider = build_signal_provider(&config.channels.signal);
 
     // Build tool services for communication + memory executors
-    let tool_services = {
+    let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = {
         let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
             Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
         let messenger: Option<Arc<dyn aletheia_organon::types::MessageService>> =
@@ -520,16 +564,7 @@ async fn serve(cli: Cli) -> Result<()> {
         let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> = Some(Arc::new(
             planning_adapter::FilesystemPlanningService::new(planning_root),
         ));
-        Arc::new(ToolServices {
-            cross_nous: Some(cross_nous),
-            messenger,
-            note_store,
-            blackboard_store,
-            spawn,
-            planning,
-            http_client: reqwest::Client::new(),
-            lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
-        })
+        (cross_nous, messenger, note_store, blackboard_store, spawn, planning)
     };
 
     // Knowledge store for vector search and extraction persistence
@@ -555,6 +590,30 @@ async fn serve(cli: Cli) -> Result<()> {
         });
     #[cfg(not(feature = "recall"))]
     let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = None;
+
+    // Knowledge search adapter for tool layer
+    #[cfg(feature = "recall")]
+    let knowledge_search: Option<Arc<dyn aletheia_organon::types::KnowledgeSearchService>> =
+        knowledge_store.as_ref().map(|ks| {
+            Arc::new(knowledge_adapter::KnowledgeSearchAdapter::new(
+                Arc::clone(ks),
+                Arc::clone(&embedding_provider),
+            )) as Arc<dyn aletheia_organon::types::KnowledgeSearchService>
+        });
+    #[cfg(not(feature = "recall"))]
+    let knowledge_search: Option<Arc<dyn aletheia_organon::types::KnowledgeSearchService>> = None;
+
+    let tool_services = Arc::new(ToolServices {
+        cross_nous: Some(cross_nous),
+        messenger,
+        note_store,
+        blackboard_store,
+        spawn,
+        planning,
+        knowledge: knowledge_search,
+        http_client: reqwest::Client::new(),
+        lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
+    });
 
     // Spawn nous actors
     let mut nous_manager = NousManager::new(
@@ -659,12 +718,12 @@ async fn serve(cli: Cli) -> Result<()> {
             enabled: true,
             active_window: Some((8, 23)),
         });
-        let span = tracing::info_span!("daemon", nous.id = %agent_def.id);
+        let daemon_span = tracing::info_span!("daemon", nous.id = %agent_def.id);
         tokio::spawn(
             async move {
                 runner.run().await;
             }
-            .instrument(span),
+            .instrument(daemon_span),
         );
     }
     if !config.agents.list.is_empty() {

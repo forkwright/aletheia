@@ -857,6 +857,7 @@ mod tests {
                 blackboard_store: None,
                 spawn: None,
                 planning: Some(planning),
+                knowledge: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: vec![],
             })),

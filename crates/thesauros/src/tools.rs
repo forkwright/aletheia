@@ -1,11 +1,10 @@
 //! Pack tool registration and shell execution.
 
 use std::future::Future;
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
@@ -39,6 +38,7 @@ impl ToolExecutor for ShellToolExecutor {
     {
         Box::pin(async {
             let json_input = serde_json::to_string(&input.arguments).unwrap_or_default();
+            let timeout = Duration::from_millis(self.timeout_ms);
 
             let mut child = match Command::new(&self.command_path)
                 .current_dir(&self.pack_root)
@@ -53,48 +53,38 @@ impl ToolExecutor for ShellToolExecutor {
                 }
             };
 
-            // Write JSON input to stdin, then close it
             if let Some(mut stdin) = child.stdin.take() {
                 use std::io::Write;
                 let _ = stdin.write_all(json_input.as_bytes());
-                // stdin dropped here, closing the pipe
             }
 
-            let deadline = Instant::now() + Duration::from_millis(self.timeout_ms);
-            let status = loop {
-                match child.try_wait() {
-                    Ok(Some(s)) => break s,
-                    Ok(None) => {
-                        if Instant::now() >= deadline {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                            return Ok(ToolResult::error(format!(
-                                "command timed out after {}ms",
-                                self.timeout_ms
-                            )));
-                        }
-                        std::thread::sleep(Duration::from_millis(50));
-                    }
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!("wait failed: {e}")));
-                    }
+            // Wait in a background thread to avoid blocking the async runtime,
+            // then enforce timeout from this side via channel.
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let result = child.wait_with_output();
+                let _ = tx.send(result);
+            });
+
+            let output_result = match rx.recv_timeout(timeout) {
+                Ok(Ok(o)) => o,
+                Ok(Err(e)) => return Ok(ToolResult::error(format!("wait failed: {e}"))),
+                Err(_) => {
+                    return Ok(ToolResult::error(format!(
+                        "command timed out after {}ms",
+                        self.timeout_ms
+                    )));
                 }
             };
 
-            let mut stdout = String::new();
-            if let Some(ref mut pipe) = child.stdout {
-                let _ = pipe.read_to_string(&mut stdout);
-            }
-            let mut stderr = String::new();
-            if let Some(ref mut pipe) = child.stderr {
-                let _ = pipe.read_to_string(&mut stderr);
-            }
-
-            let code = status.code().unwrap_or(-1);
+            let code = output_result.status.code().unwrap_or(-1);
             let is_error = code != 0;
 
+            let stdout = String::from_utf8_lossy(&output_result.stdout);
+            let stderr = String::from_utf8_lossy(&output_result.stderr);
+
             let mut output = if stderr.is_empty() {
-                stdout
+                stdout.into_owned()
             } else {
                 format!("{stdout}\n[stderr] {stderr}")
             };
@@ -519,7 +509,7 @@ mod tests {
         };
 
         let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
-        assert!(!result.is_error);
+        assert!(!result.is_error, "unexpected error: {}", result.content.text_summary());
         assert!(result.content.text_summary().contains("hello"));
     }
 

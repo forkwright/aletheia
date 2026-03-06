@@ -83,7 +83,7 @@ browser_automation:
 # -- Memory and knowledge management --
 
 memory:
-  mem0_search: "mem0_search tool (agents use via plugin)"
+  memory_search: "memory_search tool (queries embedded KnowledgeStore)"
   knowledge_graph:
     db: neo4j
     commands:
@@ -92,10 +92,9 @@ memory:
       add: "aletheia-graph add SUBJECT PREDICATE OBJECT"
       connections: "aletheia-graph connections ENTITY"
       recent: "aletheia-graph recent [--hours 24] [--nous AGENT]"
-  mem0:
-    description: "Long-term extracted memories (cross-agent, cross-session)"
-    sidecar: "http://localhost:8230"
-    tool: "mem0_search (available to agents via plugin)"
+  knowledge_store:
+    description: "Long-term extracted memories (embedded CozoDB, cross-agent, cross-session)"
+    tool: "memory_search (always available)"
   facts:
     store: "shared/memory/facts.jsonl"
     commands:

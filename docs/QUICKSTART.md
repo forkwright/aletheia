@@ -36,14 +36,14 @@ Run `aletheia help` for the full command reference.
 ```text
 Memory services:
   qdrant      OK running
-  mem0        -  not running (optional)
+  mem0        -  deprecated (replaced by embedded KnowledgeStore)
 ```
 
 **macOS (native, no Docker):** `brew install qdrant` - `aletheia start` detects native services.
 
 **Linux / Docker / Podman:** Ensure Docker or Podman is running. `aletheia start` handles the rest.
 
-Skip with `aletheia start --no-memory`. See [DEPLOYMENT.md](DEPLOYMENT.md) for Mem0 sidecar setup.
+Skip with `aletheia start --no-memory`. Memory is now embedded via KnowledgeStore (no external sidecar needed).
 
 ## Optional: Signal Integration
 

@@ -1,4 +1,4 @@
-//! Memory tool executors: `mem0_search`, `note`, `blackboard`.
+//! Memory tool executors: `memory_search`, `note`, `blackboard`.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -23,11 +23,11 @@ fn require_services(
         .ok_or_else(|| ToolResult::error("memory services not configured"))
 }
 
-// --- Mem0 Search ---
+// --- Memory Search ---
 
-struct Mem0SearchExecutor;
+struct MemorySearchExecutor;
 
-impl ToolExecutor for Mem0SearchExecutor {
+impl ToolExecutor for MemorySearchExecutor {
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -40,65 +40,149 @@ impl ToolExecutor for Mem0SearchExecutor {
             };
 
             let query = extract_str(&input.arguments, "query", &input.name)?;
-            let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(10);
+            #[expect(clippy::cast_possible_truncation, reason = "limit from user input is small")]
+            let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(10) as usize;
 
-            let base_url =
-                std::env::var("MEM0_URL").unwrap_or_else(|_| "http://localhost:8230".to_owned());
+            let Some(knowledge) = services.knowledge.as_ref() else {
+                return Ok(ToolResult::error("knowledge store not configured"));
+            };
 
-            let response = services
-                .http_client
-                .post(format!("{base_url}/v1/memories/search/"))
-                .json(&serde_json::json!({
-                    "query": query,
-                    "agent_id": ctx.nous_id.as_str(),
-                    "limit": limit
-                }))
-                .send()
-                .await;
-
-            match response {
-                Ok(resp) if resp.status().is_success() => {
-                    let body: serde_json::Value = resp
-                        .json()
-                        .await
-                        .unwrap_or(serde_json::json!({"results": []}));
-                    let results = body
-                        .get("results")
-                        .and_then(|r| r.as_array())
-                        .cloned()
-                        .unwrap_or_default();
-                    if results.is_empty() {
-                        Ok(ToolResult::text("No memories found."))
-                    } else {
-                        Ok(ToolResult::text(format_mem0_results(&results)))
-                    }
-                }
-                Ok(resp) => Ok(ToolResult::error(format!(
-                    "Mem0 search failed: HTTP {}",
-                    resp.status()
-                ))),
-                Err(e) => Ok(ToolResult::error(format!("Mem0 sidecar unreachable: {e}"))),
+            match knowledge.search(query, ctx.nous_id.as_str(), limit).await {
+                Ok(results) if results.is_empty() => Ok(ToolResult::text("No memories found.")),
+                Ok(results) => Ok(ToolResult::text(format_results(&results))),
+                Err(e) => Ok(ToolResult::error(format!("Memory search failed: {e}"))),
             }
         })
     }
 }
 
-fn format_mem0_results(results: &[serde_json::Value]) -> String {
+fn format_results(results: &[crate::types::MemoryResult]) -> String {
     results
         .iter()
-        .map(|r| {
-            let memory = r
-                .get("memory")
-                .and_then(|m| m.as_str())
-                .unwrap_or("(no content)");
-            let score = r
-                .get("score")
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0);
-            format!("- {memory} (score: {score:.2})")
-        })
+        .map(|r| format!("- {} (score: {:.2})", r.content, r.score))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+// --- Memory Correct ---
+
+struct MemoryCorrectExecutor;
+
+impl ToolExecutor for MemoryCorrectExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async {
+            let services = match require_services(ctx) {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+            let Some(knowledge) = services.knowledge.as_ref() else {
+                return Ok(ToolResult::error("knowledge store not configured"));
+            };
+
+            let fact_id = extract_str(&input.arguments, "fact_id", &input.name)?;
+            let new_content = extract_str(&input.arguments, "new_content", &input.name)?;
+
+            match knowledge
+                .correct_fact(fact_id, new_content, ctx.nous_id.as_str())
+                .await
+            {
+                Ok(new_id) => Ok(ToolResult::text(format!(
+                    "Fact {fact_id} corrected. New fact: {new_id}"
+                ))),
+                Err(e) => Ok(ToolResult::error(format!("Failed to correct fact: {e}"))),
+            }
+        })
+    }
+}
+
+// --- Memory Retract ---
+
+struct MemoryRetractExecutor;
+
+impl ToolExecutor for MemoryRetractExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async {
+            let services = match require_services(ctx) {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+            let Some(knowledge) = services.knowledge.as_ref() else {
+                return Ok(ToolResult::error("knowledge store not configured"));
+            };
+
+            let fact_id = extract_str(&input.arguments, "fact_id", &input.name)?;
+            let reason = input
+                .arguments
+                .get("reason")
+                .and_then(|v| v.as_str());
+
+            match knowledge.retract_fact(fact_id, reason).await {
+                Ok(()) => Ok(ToolResult::text(format!("Fact {fact_id} retracted."))),
+                Err(e) => Ok(ToolResult::error(format!("Failed to retract fact: {e}"))),
+            }
+        })
+    }
+}
+
+// --- Memory Audit ---
+
+struct MemoryAuditExecutor;
+
+impl ToolExecutor for MemoryAuditExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async {
+            let services = match require_services(ctx) {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+            let Some(knowledge) = services.knowledge.as_ref() else {
+                return Ok(ToolResult::error("knowledge store not configured"));
+            };
+
+            let nous_id = input
+                .arguments
+                .get("nous_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(ctx.nous_id.as_str());
+            let since = input.arguments.get("since").and_then(|v| v.as_str());
+            #[expect(clippy::cast_possible_truncation, reason = "audit limit from user input is small")]
+            let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(20) as usize;
+
+            match knowledge
+                .audit_facts(Some(nous_id), since, limit)
+                .await
+            {
+                Ok(facts) if facts.is_empty() => {
+                    Ok(ToolResult::text("No facts found."))
+                }
+                Ok(facts) => {
+                    let lines: Vec<String> = facts
+                        .iter()
+                        .map(|f| {
+                            format!(
+                                "- [{}] ({:.0}% {}) {} ({})",
+                                f.id, f.confidence * 100.0, f.tier, f.content, f.recorded_at
+                            )
+                        })
+                        .collect();
+                    Ok(ToolResult::text(lines.join("\n")))
+                }
+                Err(e) => Ok(ToolResult::error(format!("Failed to audit facts: {e}"))),
+            }
+        })
+    }
 }
 
 // --- Note ---
@@ -271,7 +355,10 @@ impl ToolExecutor for BlackboardExecutor {
 
 /// Register memory tool executors.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(mem0_search_def(), Box::new(Mem0SearchExecutor))?;
+    registry.register(memory_search_def(), Box::new(MemorySearchExecutor))?;
+    registry.register(memory_correct_def(), Box::new(MemoryCorrectExecutor))?;
+    registry.register(memory_retract_def(), Box::new(MemoryRetractExecutor))?;
+    registry.register(memory_audit_def(), Box::new(MemoryAuditExecutor))?;
     registry.register(note_def(), Box::new(NoteExecutor))?;
     registry.register(blackboard_def(), Box::new(BlackboardExecutor))?;
     Ok(())
@@ -279,9 +366,9 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 // --- Tool Definitions (unchanged schemas) ---
 
-fn mem0_search_def() -> ToolDef {
+fn memory_search_def() -> ToolDef {
     ToolDef {
-        name: ToolName::new("mem0_search").expect("valid tool name"),
+        name: ToolName::new("memory_search").expect("valid tool name"),
         description: "Search long-term memory for facts, preferences, and relationships".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -309,6 +396,114 @@ fn mem0_search_def() -> ToolDef {
         },
         category: ToolCategory::Memory,
         auto_activate: true,
+    }
+}
+
+fn memory_correct_def() -> ToolDef {
+    ToolDef {
+        name: ToolName::new("memory_correct").expect("valid tool name"),
+        description: "Correct a stored fact by superseding it with updated content".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "fact_id".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "ID of the fact to correct".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "new_content".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Corrected fact content".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec!["fact_id".to_owned(), "new_content".to_owned()],
+        },
+        category: ToolCategory::Memory,
+        auto_activate: false,
+    }
+}
+
+fn memory_retract_def() -> ToolDef {
+    ToolDef {
+        name: ToolName::new("memory_retract").expect("valid tool name"),
+        description: "Retract a stored fact (mark as no longer valid without deleting)".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "fact_id".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "ID of the fact to retract".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "reason".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Optional reason for retraction".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec!["fact_id".to_owned()],
+        },
+        category: ToolCategory::Memory,
+        auto_activate: false,
+    }
+}
+
+fn memory_audit_def() -> ToolDef {
+    ToolDef {
+        name: ToolName::new("memory_audit").expect("valid tool name"),
+        description: "List recent fact extractions with confidence scores for review".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "nous_id".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Filter by agent ID (defaults to current agent)".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "since".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Filter facts recorded after this ISO datetime".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "limit".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::Number,
+                        description: "Max results (default 20)".to_owned(),
+                        enum_values: None,
+                        default: Some(serde_json::json!(20)),
+                    },
+                ),
+            ]),
+            required: vec![],
+        },
+        category: ToolCategory::Memory,
+        auto_activate: false,
     }
 }
 
@@ -563,6 +758,7 @@ mod tests {
                 blackboard_store: Some(bb_store),
                 spawn: None,
                 planning: None,
+                knowledge: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: vec![],
             })),
@@ -574,20 +770,20 @@ mod tests {
     async fn register_memory_tools() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        assert_eq!(reg.definitions().len(), 3);
+        assert_eq!(reg.definitions().len(), 6);
     }
 
     #[tokio::test]
-    async fn mem0_search_def_requires_query() {
+    async fn memory_search_def_requires_query() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        let name = ToolName::new("mem0_search").expect("valid");
+        let name = ToolName::new("memory_search").expect("valid");
         let def = reg.get_def(&name).expect("found");
         assert!(def.input_schema.required.contains(&"query".to_owned()));
     }
 
     #[tokio::test]
-    async fn mem0_search_handles_sidecar_down() {
+    async fn memory_search_no_knowledge_returns_error() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let note_store = Arc::new(MockNoteStore::new());
@@ -595,25 +791,25 @@ mod tests {
         let ctx = ctx_with_services(note_store, bb_store);
 
         let input = ToolInput {
-            name: ToolName::new("mem0_search").expect("valid"),
+            name: ToolName::new("memory_search").expect("valid"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"query": "test"}),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error);
         assert!(
-            result.content.text_summary().contains("unreachable"),
-            "expected unreachable error: {}",
+            result.content.text_summary().contains("knowledge store not configured"),
+            "expected knowledge store error: {}",
             result.content.text_summary()
         );
     }
 
     #[tokio::test]
-    async fn mem0_search_no_services_returns_error() {
+    async fn memory_search_no_services_returns_error() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let input = ToolInput {
-            name: ToolName::new("mem0_search").expect("valid"),
+            name: ToolName::new("memory_search").expect("valid"),
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"query": "test"}),
         };
@@ -821,5 +1017,88 @@ mod tests {
         };
         let r2 = reg.execute(&del2, &ctx).await.expect("execute");
         assert!(r2.content.text_summary().contains("deleted"));
+    }
+
+    // --- Memory management tool tests ---
+
+    #[tokio::test]
+    async fn memory_correct_no_knowledge_returns_error() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let note_store = Arc::new(MockNoteStore::new());
+        let bb_store = Arc::new(MockBlackboardStore::new());
+        let ctx = ctx_with_services(note_store, bb_store);
+
+        let input = ToolInput {
+            name: ToolName::new("memory_correct").expect("valid"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({"fact_id": "f-1", "new_content": "corrected"}),
+        };
+        let result = reg.execute(&input, &ctx).await.expect("execute");
+        assert!(result.is_error);
+        assert!(result.content.text_summary().contains("knowledge store not configured"));
+    }
+
+    #[tokio::test]
+    async fn memory_retract_no_knowledge_returns_error() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let note_store = Arc::new(MockNoteStore::new());
+        let bb_store = Arc::new(MockBlackboardStore::new());
+        let ctx = ctx_with_services(note_store, bb_store);
+
+        let input = ToolInput {
+            name: ToolName::new("memory_retract").expect("valid"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({"fact_id": "f-1"}),
+        };
+        let result = reg.execute(&input, &ctx).await.expect("execute");
+        assert!(result.is_error);
+        assert!(result.content.text_summary().contains("knowledge store not configured"));
+    }
+
+    #[tokio::test]
+    async fn memory_audit_no_knowledge_returns_error() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let note_store = Arc::new(MockNoteStore::new());
+        let bb_store = Arc::new(MockBlackboardStore::new());
+        let ctx = ctx_with_services(note_store, bb_store);
+
+        let input = ToolInput {
+            name: ToolName::new("memory_audit").expect("valid"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({}),
+        };
+        let result = reg.execute(&input, &ctx).await.expect("execute");
+        assert!(result.is_error);
+        assert!(result.content.text_summary().contains("knowledge store not configured"));
+    }
+
+    #[tokio::test]
+    async fn memory_correct_not_auto_activated() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("memory_correct").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert!(!def.auto_activate);
+    }
+
+    #[tokio::test]
+    async fn memory_retract_not_auto_activated() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("memory_retract").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert!(!def.auto_activate);
+    }
+
+    #[tokio::test]
+    async fn memory_audit_not_auto_activated() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("memory_audit").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert!(!def.auto_activate);
     }
 }
