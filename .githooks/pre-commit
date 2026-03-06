@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Pre-commit: typecheck + lint — full test suite runs in CI
 # Conditional: checks run only when relevant sub-project files are staged
-set -e
+set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 
 # Detect staged sub-projects
 STAGED=$(git diff --cached --name-only)
 
-runtime_changed() { echo "$STAGED" | grep -q "^infrastructure/runtime/"; }
-ui_changed() { echo "$STAGED" | grep -q "^ui/"; }
-sidecar_changed() { echo "$STAGED" | grep -q "^infrastructure/memory/sidecar/"; }
+runtime_changed() { echo "$STAGED" | grep -q "^infrastructure/runtime/" || return 1; }
+ui_changed() { echo "$STAGED" | grep -q "^ui/" || return 1; }
+sidecar_changed() { echo "$STAGED" | grep -q "^infrastructure/memory/sidecar/" || return 1; }
 
 # Runtime: typecheck + lint + invariant tests
 if runtime_changed; then

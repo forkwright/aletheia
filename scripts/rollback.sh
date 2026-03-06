@@ -20,7 +20,7 @@ die() { echo "[rollback] ERROR: $*" >&2; exit 1; }
 if [[ $# -gt 0 ]]; then
   TARGET="$BACKUP_DIR/$1"
 else
-  TARGET=$(ls -dt "$BACKUP_DIR"/*/ 2>/dev/null | head -1)
+  TARGET=$(find "$BACKUP_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%p\n' 2>/dev/null | sort -rn | head -1 | cut -f2-)
 fi
 
 [[ -z "${TARGET:-}" || ! -d "$TARGET" ]] && die "No backup found at ${TARGET:-$BACKUP_DIR/}"
