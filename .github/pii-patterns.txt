@@ -1,14 +1,14 @@
 # PII detection patterns - one extended regex per line
 alice\.johnson
 forkwright
-[Kk]ickertz
+[A-Za-z]{3,}ertz\b
 acme-corp
 Springfield
 Baby #[0-9]
 Widget
-due October 2026
+due [A-Z][a-z]+ 20[0-9]{2}
 192\.168\.0\.
-\+1512[0-9]{7}
+\+1[0-9]{10}
 acme-workshop
 Acme Workshop LLC
-Kendall.s birthday
+[A-Z][a-z]+.s birthday
