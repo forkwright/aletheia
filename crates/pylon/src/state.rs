@@ -30,4 +30,3 @@ pub struct AppState {
     /// Runtime configuration, updatable via config API.
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
 }
-

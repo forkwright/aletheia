@@ -10,14 +10,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter, Write};
 use std::iter;
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail};
 use either::{Left, Right};
 use itertools::Itertools;
-use tracing::debug;
 use smartstring::SmartString;
+use tracing::debug;
 
-use crate::engine::data::expr::{compute_bounds, eval_bytecode, eval_bytecode_pred, Bytecode, Expr};
+use crate::engine::data::expr::{
+    Bytecode, Expr, compute_bounds, eval_bytecode, eval_bytecode_pred,
+};
 use crate::engine::data::program::{FtsSearch, HnswSearch, MagicSymbol};
 use crate::engine::data::relation::{ColType, NullableColType};
 use crate::engine::data::symb::Symbol;
@@ -73,8 +75,6 @@ pub(crate) struct UnificationRA {
     pub(crate) to_eliminate: BTreeSet<Symbol>,
     pub(crate) span: SourceSpan,
 }
-
-
 
 fn eliminate_from_tuple(mut ret: Tuple, eliminate_indices: &BTreeSet<usize>) -> Tuple {
     if !eliminate_indices.is_empty() {
@@ -135,8 +135,6 @@ impl UnificationRA {
                 .map_ok(move |tuple| -> Result<Vec<Tuple>> {
                     let result_list = eval_bytecode(&self.expr_bytecode, &tuple, &mut stack)?;
                     let result_list = result_list.get_slice().ok_or_else(|| {
-                        
-
                         crate::engine::error::AdhocError("Invalid spread unification".to_string())
                     })?;
                     let mut coll = vec![];
@@ -339,8 +337,6 @@ impl Debug for RelAlgebra {
         }
     }
 }
-
-
 
 impl RelAlgebra {
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
@@ -710,7 +706,7 @@ impl ReorderRA {
                 .iter(tx, delta_rule, stores)?
                 .map_ok(move |tuple| {
                     let old = tuple;
-                    
+
                     reorder_indices
                         .iter()
                         .map(|i| old[*i].clone())
@@ -1162,8 +1158,10 @@ impl StoredWithValidityRA {
                     .collect_vec();
 
                 if !skip_range_check && !self.filters.is_empty() {
-                    let other_bindings = &self.bindings[right_join_indices.len()..self.storage.metadata.keys.len()];
-                    let (l_bound, u_bound) = compute_bounds(&self.filters, other_bindings).unwrap_or_default();
+                    let other_bindings =
+                        &self.bindings[right_join_indices.len()..self.storage.metadata.keys.len()];
+                    let (l_bound, u_bound) =
+                        compute_bounds(&self.filters, other_bindings).unwrap_or_default();
                     if !l_bound.iter().all(|v| *v == DataValue::Null)
                         || !u_bound.iter().all(|v| *v == DataValue::Bot)
                     {
@@ -1322,8 +1320,10 @@ impl StoredRA {
                 let mut stack = vec![];
 
                 if !skip_range_check && !self.filters.is_empty() {
-                    let other_bindings = &self.bindings[right_join_indices.len()..self.storage.metadata.keys.len()];
-                    let (l_bound, u_bound) = compute_bounds(&self.filters, other_bindings).unwrap_or_default();
+                    let other_bindings =
+                        &self.bindings[right_join_indices.len()..self.storage.metadata.keys.len()];
+                    let (l_bound, u_bound) =
+                        compute_bounds(&self.filters, other_bindings).unwrap_or_default();
                     if !l_bound.iter().all(|v| *v == DataValue::Null)
                         || !u_bound.iter().all(|v| *v == DataValue::Bot)
                     {
@@ -1670,7 +1670,8 @@ impl TempStoreRA {
 
                 if !skip_range_check && !self.filters.is_empty() {
                     let other_bindings = &self.bindings[right_join_indices.len()..];
-                    let (l_bound, u_bound) = compute_bounds(&self.filters, other_bindings).unwrap_or_default();
+                    let (l_bound, u_bound) =
+                        compute_bounds(&self.filters, other_bindings).unwrap_or_default();
                     if !l_bound.iter().all(|v| *v == DataValue::Null)
                         || !u_bound.iter().all(|v| *v == DataValue::Bot)
                     {
@@ -2350,8 +2351,8 @@ impl<'a> Iterator for CachedMaterializedIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::data::value::DataValue;
     use crate::engine::DbInstance;
+    use crate::engine::data::value::DataValue;
 
     #[test]
     fn test_mat_join() {

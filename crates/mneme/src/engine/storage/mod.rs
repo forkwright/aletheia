@@ -14,9 +14,9 @@ use crate::engine::data::value::ValidityTs;
 use crate::engine::runtime::relation::decode_tuple_from_kv;
 
 pub(crate) mod mem;
-pub(crate) mod temp;
 #[cfg(feature = "storage-new-rocksdb")]
 pub(crate) mod newrocks;
+pub(crate) mod temp;
 
 /// Swappable storage trait for Cozo's storage engine
 pub trait Storage<'s>: Send + Sync + Clone {

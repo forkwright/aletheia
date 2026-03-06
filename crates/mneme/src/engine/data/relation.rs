@@ -11,20 +11,20 @@ use std::fmt::{Display, Formatter};
 use std::mem;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use base64::engine::general_purpose::STANDARD;
+use crate::engine::error::DbResult as Result;
+use crate::{bail, ensure};
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use chrono::DateTime;
 use itertools::Itertools;
 use miette::Diagnostic;
-use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
 use serde_json::json;
 use smartstring::{LazyCompact, SmartString};
 use thiserror::Error;
 
 use crate::engine::data::expr::Expr;
-use crate::engine::data::value::{DataValue, JsonData, UuidWrapper, Validity, ValidityTs, Vector};
 use crate::engine::data::value::Num;
+use crate::engine::data::value::{DataValue, JsonData, UuidWrapper, Validity, ValidityTs, Vector};
 
 #[derive(Debug, Clone, Eq, PartialEq, serde_derive::Deserialize, serde_derive::Serialize)]
 pub struct NullableColType {

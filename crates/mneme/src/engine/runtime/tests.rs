@@ -11,10 +11,11 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use itertools::Itertools;
-use tracing::debug;
 use serde_json::json;
 use smartstring::{LazyCompact, SmartString};
+use tracing::debug;
 
+use crate::engine::DbInstance;
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
@@ -25,7 +26,6 @@ use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::callback::CallbackOp;
 use crate::engine::runtime::db::{Poison, ScriptMutability};
 use crate::engine::runtime::temp_store::RegularTempStore;
-use crate::engine::DbInstance;
 
 #[test]
 fn test_limit_offset() {
@@ -165,15 +165,18 @@ fn default_columns() {
 fn rm_does_not_need_all_keys() {
     let db = DbInstance::default();
     db.run_default(":create status {uid => mood}").unwrap();
-    assert!(db
-        .run_default("?[uid, mood] <- [[1, 2]] :put status {uid => mood}",)
-        .is_ok());
-    assert!(db
-        .run_default("?[uid, mood] <- [[2]] :put status {uid}",)
-        .is_err());
-    assert!(db
-        .run_default("?[uid, mood] <- [[3, 2]] :rm status {uid => mood}",)
-        .is_ok());
+    assert!(
+        db.run_default("?[uid, mood] <- [[1, 2]] :put status {uid => mood}",)
+            .is_ok()
+    );
+    assert!(
+        db.run_default("?[uid, mood] <- [[2]] :put status {uid}",)
+            .is_err()
+    );
+    assert!(
+        db.run_default("?[uid, mood] <- [[3, 2]] :rm status {uid => mood}",)
+            .is_ok()
+    );
     assert!(db.run_default("?[uid] <- [[1]] :rm status {uid}").is_ok());
 }
 
@@ -463,9 +466,10 @@ fn test_index() {
     db.run_default(r"?[fr, to, data] <- [[1,2,3],[4,5,6]] :put friends {fr, to, data}")
         .unwrap();
 
-    assert!(db
-        .run_default("::index create friends:rev {to, no}")
-        .is_err());
+    assert!(
+        db.run_default("::index create friends:rev {to, no}")
+            .is_err()
+    );
     db.run_default("::index create friends:rev {to, data}")
         .unwrap();
 
@@ -1090,7 +1094,6 @@ fn tokenizers() {
     while let Some(token) = token_stream.next() {
         println!("Token {:?}", token.text);
     }
-
 }
 
 #[test]
@@ -1153,12 +1156,14 @@ fn ensure_not() {
 fn insertion() {
     let db = DbInstance::default();
     db.run_default(r":create a {x => y}").unwrap();
-    assert!(db
-        .run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y}",)
-        .is_ok());
-    assert!(db
-        .run_default(r"?[x, y] <- [[1, 3]] :insert a {x => y}",)
-        .is_err());
+    assert!(
+        db.run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y}",)
+            .is_ok()
+    );
+    assert!(
+        db.run_default(r"?[x, y] <- [[1, 3]] :insert a {x => y}",)
+            .is_err()
+    );
 }
 
 #[test]
@@ -1166,9 +1171,10 @@ fn deletion() {
     let db = DbInstance::default();
     db.run_default(r":create a {x => y}").unwrap();
     assert!(db.run_default(r"?[x] <- [[1]] :delete a {x}").is_err());
-    assert!(db
-        .run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y}",)
-        .is_ok());
+    assert!(
+        db.run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y}",)
+            .is_ok()
+    );
     db.run_default(r"?[x] <- [[1]] :delete a {x}").unwrap();
 }
 
@@ -1297,15 +1303,16 @@ fn as_store_in_imperative_script() {
     for row in res.into_json()["rows"].as_array().unwrap() {
         println!("{}", row);
     }
-    assert!(db
-        .run_default(
+    assert!(
+        db.run_default(
             r#"
     {
         ?[x, x] := x = 1
     } as _last
     "#
         )
-        .is_err());
+        .is_err()
+    );
 
     let res = db
         .run_default(

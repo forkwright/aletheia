@@ -19,7 +19,7 @@
     clippy::type_complexity,
     clippy::too_many_arguments,
     clippy::non_canonical_partial_ord_impl,
-    clippy::neg_cmp_op_on_partial_ord,
+    clippy::neg_cmp_op_on_partial_ord
 )]
 pub mod engine;
 
@@ -30,8 +30,14 @@ pub mod backup;
 pub mod embedding;
 /// Mneme-specific error types and result alias.
 pub mod error;
+/// Agent export — build an `AgentFile` from session store and workspace.
+#[cfg(feature = "sqlite")]
+pub mod export;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub mod extract;
+/// Agent import — restore an agent from a portable `AgentFile`.
+#[cfg(feature = "sqlite")]
+pub mod import;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
 pub mod knowledge;
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
@@ -39,20 +45,14 @@ pub mod knowledge_store;
 /// Versioned `SQLite` schema migration runner.
 #[cfg(feature = "sqlite")]
 pub mod migration;
+/// Agent portability schema — `AgentFile` format for cross-runtime export/import.
+#[cfg(feature = "sqlite")]
+pub mod portability;
 /// Typed Datalog query builder for compile-time schema validation.
 #[cfg(feature = "mneme-engine")]
 pub mod query;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
-/// Agent export — build an `AgentFile` from session store and workspace.
-#[cfg(feature = "sqlite")]
-pub mod export;
-/// Agent import — restore an agent from a portable `AgentFile`.
-#[cfg(feature = "sqlite")]
-pub mod import;
-/// Agent portability schema — `AgentFile` format for cross-runtime export/import.
-#[cfg(feature = "sqlite")]
-pub mod portability;
 /// Session retention policies and automated cleanup of old data.
 #[cfg(feature = "sqlite")]
 pub mod retention;

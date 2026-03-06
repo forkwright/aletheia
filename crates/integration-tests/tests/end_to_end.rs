@@ -168,7 +168,6 @@ impl TestHarness {
             None,
             None,
             Some(Arc::clone(&session_store)),
-            None,
             Arc::new(vec![]),
             None,
             None,

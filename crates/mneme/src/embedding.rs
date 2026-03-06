@@ -104,7 +104,10 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         self.dim
     }
 
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str return")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait requires &str return"
+    )]
     fn model_name(&self) -> &str {
         "mock-embedding"
     }

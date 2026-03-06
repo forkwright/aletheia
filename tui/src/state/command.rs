@@ -10,7 +10,10 @@ pub struct CommandPaletteState {
 
 /// Selection context for context-aware status bar hints.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[expect(dead_code, reason = "variants reserved for context-aware keybind hints")]
+#[expect(
+    dead_code,
+    reason = "variants reserved for context-aware keybind hints"
+)]
 pub enum SelectionContext {
     #[default]
     None,

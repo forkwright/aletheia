@@ -11,9 +11,9 @@ use num_traits::FloatConst;
 use regex::Regex;
 use serde_json::json;
 
+use crate::engine::DbInstance;
 use crate::engine::data::functions::*;
 use crate::engine::data::value::{DataValue, RegexWrapper};
-use crate::engine::DbInstance;
 
 #[test]
 fn test_add() {
@@ -374,11 +374,13 @@ fn test_signum() {
         op_signum(&[DataValue::from(f64::NEG_INFINITY)]).unwrap(),
         DataValue::from(-1)
     );
-    assert!(op_signum(&[DataValue::from(f64::NAN)])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .is_nan());
+    assert!(
+        op_signum(&[DataValue::from(f64::NAN)])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .is_nan()
+    );
 }
 
 #[test]
@@ -484,45 +486,59 @@ fn test_log10() {
 
 #[test]
 fn test_trig() {
-    assert!(op_sin(&[DataValue::from(f64::PI() / 2.)])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .abs_diff_eq(&1.0, 1e-5));
-    assert!(op_cos(&[DataValue::from(f64::PI() / 2.)])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .abs_diff_eq(&0.0, 1e-5));
-    assert!(op_tan(&[DataValue::from(f64::PI() / 4.)])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .abs_diff_eq(&1.0, 1e-5));
+    assert!(
+        op_sin(&[DataValue::from(f64::PI() / 2.)])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .abs_diff_eq(&1.0, 1e-5)
+    );
+    assert!(
+        op_cos(&[DataValue::from(f64::PI() / 2.)])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .abs_diff_eq(&0.0, 1e-5)
+    );
+    assert!(
+        op_tan(&[DataValue::from(f64::PI() / 4.)])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .abs_diff_eq(&1.0, 1e-5)
+    );
 }
 
 #[test]
 fn test_inv_trig() {
-    assert!(op_asin(&[DataValue::from(1.0)])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .abs_diff_eq(&(f64::PI() / 2.), 1e-5));
-    assert!(op_acos(&[DataValue::from(0)])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .abs_diff_eq(&(f64::PI() / 2.), 1e-5));
-    assert!(op_atan(&[DataValue::from(1)])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .abs_diff_eq(&(f64::PI() / 4.), 1e-5));
-    assert!(op_atan2(&[DataValue::from(-1), DataValue::from(-1)])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .abs_diff_eq(&(-3. * f64::PI() / 4.), 1e-5));
+    assert!(
+        op_asin(&[DataValue::from(1.0)])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .abs_diff_eq(&(f64::PI() / 2.), 1e-5)
+    );
+    assert!(
+        op_acos(&[DataValue::from(0)])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .abs_diff_eq(&(f64::PI() / 2.), 1e-5)
+    );
+    assert!(
+        op_atan(&[DataValue::from(1)])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .abs_diff_eq(&(f64::PI() / 4.), 1e-5)
+    );
+    assert!(
+        op_atan2(&[DataValue::from(-1), DataValue::from(-1)])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .abs_diff_eq(&(-3. * f64::PI() / 4.), 1e-5)
+    );
 }
 
 #[test]
@@ -1172,27 +1188,31 @@ fn test_get() {
 
 #[test]
 fn test_slice() {
-    assert!(op_slice(&[
-        DataValue::List(vec![
+    assert!(
+        op_slice(&[
+            DataValue::List(vec![
+                DataValue::from(1),
+                DataValue::from(2),
+                DataValue::from(3),
+            ]),
             DataValue::from(1),
-            DataValue::from(2),
-            DataValue::from(3),
-        ]),
-        DataValue::from(1),
-        DataValue::from(4)
-    ])
-    .is_err());
+            DataValue::from(4)
+        ])
+        .is_err()
+    );
 
-    assert!(op_slice(&[
-        DataValue::List(vec![
+    assert!(
+        op_slice(&[
+            DataValue::List(vec![
+                DataValue::from(1),
+                DataValue::from(2),
+                DataValue::from(3),
+            ]),
             DataValue::from(1),
-            DataValue::from(2),
-            DataValue::from(3),
-        ]),
-        DataValue::from(1),
-        DataValue::from(3)
-    ])
-    .is_ok());
+            DataValue::from(3)
+        ])
+        .is_ok()
+    );
 
     assert_eq!(
         op_slice(&[
@@ -1297,21 +1317,27 @@ fn test_to_float() {
         op_to_float(&[DataValue::from(1.0)]).unwrap(),
         DataValue::from(1.0)
     );
-    assert!(op_to_float(&[DataValue::Str("NAN".into())])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .is_nan());
-    assert!(op_to_float(&[DataValue::Str("INF".into())])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .is_infinite());
-    assert!(op_to_float(&[DataValue::Str("NEG_INF".into())])
-        .unwrap()
-        .get_float()
-        .unwrap()
-        .is_infinite());
+    assert!(
+        op_to_float(&[DataValue::Str("NAN".into())])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .is_nan()
+    );
+    assert!(
+        op_to_float(&[DataValue::Str("INF".into())])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .is_infinite()
+    );
+    assert!(
+        op_to_float(&[DataValue::Str("NEG_INF".into())])
+            .unwrap()
+            .get_float()
+            .unwrap()
+            .is_infinite()
+    );
     assert_eq!(
         op_to_float(&[DataValue::Str("3".into())])
             .unwrap()

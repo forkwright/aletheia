@@ -9,8 +9,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail};
 use either::{Either, Left, Right};
 use itertools::Itertools;
 use smartstring::{LazyCompact, SmartString};
@@ -20,7 +20,9 @@ use crate::engine::data::relation::{ColType, ColumnDef, NullableColType, StoredR
 use crate::engine::data::symb::Symbol;
 use crate::engine::parse::{ImperativeCondition, ImperativeProgram, ImperativeStmt, SourceSpan};
 use crate::engine::runtime::callback::CallbackCollector;
-use crate::engine::runtime::db::{seconds_since_the_epoch, RunningQueryCleanup, RunningQueryHandle};
+use crate::engine::runtime::db::{
+    RunningQueryCleanup, RunningQueryHandle, seconds_since_the_epoch,
+};
 use crate::engine::runtime::relation::InputRelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, DbCore as Db, NamedRows, Poison, Storage, ValidityTs};
@@ -212,7 +214,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                             Left(_) => {}
                             Right(ctrl) => match ctrl {
                                 ControlCode::Termination(ret) => {
-                                    return Ok(Right(ControlCode::Termination(ret)))
+                                    return Ok(Right(ControlCode::Termination(ret)));
                                 }
                                 ControlCode::Break(break_label, span) => {
                                     if break_label.is_none() || break_label == *label {
@@ -314,8 +316,6 @@ impl<'s, S: Storage<'s>> Db<S> {
                         ret = res;
                     }
                     ControlCode::Break(_, _span) | ControlCode::Continue(_, _span) => {
-                        
-
                         bail!("control flow has nowhere to go")
                     }
                 },

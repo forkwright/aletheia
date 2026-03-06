@@ -6,18 +6,19 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use crate::engine::error::DbResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::engine::parse::expr::parse_string;
 use crate::engine::parse::{CozoScriptParser, Pair, Rule};
-use crate::engine::error::DbResult as Result;
 use itertools::Itertools;
-use std::sync::LazyLock;
-use pest::pratt_parser::{Op, PrattParser};
 use pest::Parser;
+use pest::pratt_parser::{Op, PrattParser};
 use smartstring::SmartString;
+use std::sync::LazyLock;
 
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
-    let mut pairs = CozoScriptParser::parse(Rule::fts_doc, q).map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+    let mut pairs = CozoScriptParser::parse(Rule::fts_doc, q)
+        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
     let pairs = pairs.next().unwrap().into_inner();
     let pairs: Vec<_> = pairs
         .filter(|r| r.as_rule() != Rule::EOI)

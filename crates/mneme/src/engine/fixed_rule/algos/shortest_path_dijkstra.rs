@@ -16,7 +16,7 @@ use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rayon::prelude::*;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;

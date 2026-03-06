@@ -24,13 +24,19 @@ impl Scenario for NousListReturnsArray {
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
-        Box::pin(async move {
-            let list = client.list_nous().await?;
-            for nous in &list {
-                assert_eval(!nous.id.is_empty(), "nous id should not be empty")?;
+        Box::pin(
+            async move {
+                let list = client.list_nous().await?;
+                for nous in &list {
+                    assert_eval(!nous.id.is_empty(), "nous id should not be empty")?;
+                }
+                Ok(())
             }
-            Ok(())
-        }.instrument(tracing::info_span!("scenario", id = "nous-list-returns-array")))
+            .instrument(tracing::info_span!(
+                "scenario",
+                id = "nous-list-returns-array"
+            )),
+        )
     }
 }
 
@@ -46,17 +52,23 @@ impl Scenario for NousUnknownReturns404 {
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
-        Box::pin(async move {
-            match client.get_nous("nonexistent-eval-test-id").await {
-                Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
-                    assert_eq_eval(&status, &404, "expected 404 for unknown nous")
+        Box::pin(
+            async move {
+                match client.get_nous("nonexistent-eval-test-id").await {
+                    Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
+                        assert_eq_eval(&status, &404, "expected 404 for unknown nous")
+                    }
+                    Err(e) => Err(e),
+                    Ok(_) => crate::error::AssertionSnafu {
+                        message: "expected 404 but got success",
+                    }
+                    .fail(),
                 }
-                Err(e) => Err(e),
-                Ok(_) => crate::error::AssertionSnafu {
-                    message: "expected 404 but got success",
-                }
-                .fail(),
             }
-        }.instrument(tracing::info_span!("scenario", id = "nous-unknown-returns-404")))
+            .instrument(tracing::info_span!(
+                "scenario",
+                id = "nous-unknown-returns-404"
+            )),
+        )
     }
 }

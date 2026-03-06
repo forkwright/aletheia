@@ -6,25 +6,25 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use crate::engine::data::expr::{eval_bytecode, eval_bytecode_pred, Bytecode};
-use crate::{bail};
+use crate::bail;
+use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
 use crate::engine::data::program::{FtsScoreKind, FtsSearch};
-use crate::engine::data::tuple::{decode_tuple_from_key, Tuple, ENCODED_KEY_MIN_LEN};
+use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple, decode_tuple_from_key};
 use crate::engine::data::value::LARGEST_UTF_CHAR;
+use crate::engine::error::DbResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::engine::fts::tokenizer::TextAnalyzer;
 use crate::engine::parse::fts::parse_fts_query;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, SourceSpan};
-use crate::engine::error::DbResult as Result;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smartstring::{LazyCompact, SmartString};
 use std::cmp::Reverse;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 #[derive(Default)]
 pub(crate) struct FtsCache {
@@ -46,11 +46,7 @@ impl FtsCache {
         })
     }
 
-    fn get_avg_dl_for_relation(
-        &mut self,
-        idx: &RelationHandle,
-        tx: &SessionTx<'_>,
-    ) -> Result<f64> {
+    fn get_avg_dl_for_relation(&mut self, idx: &RelationHandle, tx: &SessionTx<'_>) -> Result<f64> {
         Ok(match self.avg_dl_cache.entry(idx.name.clone()) {
             Entry::Occupied(o) => *o.get(),
             Entry::Vacant(v) => {
@@ -59,12 +55,10 @@ impl FtsCache {
                 let mut doc_lengths: FxHashMap<Vec<DataValue>, u32> = FxHashMap::default();
                 for item in tx.store_tx.range_scan(&start, &end) {
                     let (kvec, vvec) = item?;
-                    let key_tuple =
-                        decode_tuple_from_key(&kvec, idx.metadata.keys.len());
+                    let key_tuple = decode_tuple_from_key(&kvec, idx.metadata.keys.len());
                     let doc_key = key_tuple[1..].to_vec();
-                    let vals: Vec<DataValue> =
-                        rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
-                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                    let vals: Vec<DataValue> = rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
                     let total_length = vals[3].get_int().unwrap_or(0) as u32;
                     doc_lengths
                         .entry(doc_key)
@@ -386,8 +380,6 @@ impl<'a> SessionTx<'a> {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
             _val => {
-                
-
                 bail!("FTS index extractor must return a string, got {}")
             }
         };
@@ -437,8 +429,6 @@ impl<'a> SessionTx<'a> {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
             _val => {
-                
-
                 bail!("FTS index extractor must return a string, got {}")
             }
         };

@@ -14,13 +14,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-use snafu::Snafu;
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail};
 use either::{Either, Left};
-use pest::error::InputLocation;
 use pest::Parser;
+use pest::error::InputLocation;
 use smartstring::{LazyCompact, SmartString};
+use snafu::Snafu;
 
 use crate::engine::data::program::InputProgram;
 use crate::engine::data::relation::NullableColType;
@@ -29,7 +29,7 @@ use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::imperative::parse_imperative_block;
 use crate::engine::parse::query::parse_query;
 use crate::engine::parse::schema::parse_nullable_type;
-use crate::engine::parse::sys::{parse_sys, SysOp};
+use crate::engine::parse::sys::{SysOp, parse_sys};
 use crate::engine::{Expr, FixedRule};
 
 pub(crate) mod expr;
@@ -251,7 +251,6 @@ impl From<SourceSpan> for miette::SourceSpan {
         miette::SourceSpan::new(s.0.into(), s.1.into())
     }
 }
-
 
 #[derive(Debug, Snafu)]
 #[snafu(display("The query parser has encountered unexpected input / end of input at {span}"))]

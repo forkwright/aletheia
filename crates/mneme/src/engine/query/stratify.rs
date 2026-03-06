@@ -10,17 +10,17 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::DbResult as Result;
-use crate::{ensure};
+use crate::ensure;
 use itertools::Itertools;
 
 use crate::engine::data::program::{
     FixedRuleArg, MagicSymbol, NormalFormAtom, NormalFormProgram, NormalFormRulesOrFixed,
     StratifiedNormalFormProgram,
 };
-use crate::engine::data::symb::{Symbol, PROG_ENTRY};
+use crate::engine::data::symb::{PROG_ENTRY, Symbol};
 use crate::engine::parse::SourceSpan;
 use crate::engine::query::graph::{
-    generalized_kahn, reachable_components, strongly_connected_components, Graph, StratifiedGraph,
+    Graph, StratifiedGraph, generalized_kahn, reachable_components, strongly_connected_components,
 };
 
 impl NormalFormAtom {
@@ -57,11 +57,7 @@ fn convert_normal_form_program_to_graph(
                             Some((v, _)) => v.is_meet,
                         })
                     });
-                if is_meet {
-                    Some(k)
-                } else {
-                    None
-                }
+                if is_meet { Some(k) } else { None }
             }
             NormalFormRulesOrFixed::Fixed { fixed: _ } => None,
         })
@@ -161,12 +157,7 @@ fn verify_no_cycle(g: &StratifiedGraph<&'_ Symbol>, sccs: &[BTreeSet<&Symbol>]) 
         for scc in sccs {
             if scc.contains(k) {
                 for (v, negated) in vs {
-                    
-
-                    ensure!(
-                        !negated || !scc.contains(v),
-                        "Query is unstratifiable"
-                    );
+                    ensure!(!negated || !scc.contains(v), "Query is unstratifiable");
                 }
             }
         }
