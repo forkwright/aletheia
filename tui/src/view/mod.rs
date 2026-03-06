@@ -32,15 +32,15 @@ pub fn render(app: &App, frame: &mut Frame) {
         .direction(Direction::Vertical)
         .constraints(if has_toast {
             vec![
-                Constraint::Length(1),            // title bar
-                Constraint::Min(5),               // body
+                Constraint::Length(1),             // title bar
+                Constraint::Min(5),                // body
                 Constraint::Length(bottom_height), // status bar or command palette
-                Constraint::Length(1),            // error toast
+                Constraint::Length(1),             // error toast
             ]
         } else {
             vec![
-                Constraint::Length(1),            // title bar
-                Constraint::Min(5),               // body
+                Constraint::Length(1),             // title bar
+                Constraint::Min(5),                // body
                 Constraint::Length(bottom_height), // status bar or command palette
             ]
         })
@@ -56,9 +56,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     }
 
     // Error toast at bottom
-    if has_toast
-        && let Some(ref toast) = app.error_toast
-    {
+    if has_toast && let Some(ref toast) = app.error_toast {
         let toast_line = ratatui::text::Line::from(vec![
             ratatui::text::Span::styled(" ✗ ", theme.style_error_bold()),
             ratatui::text::Span::styled(&toast.message, theme.style_error()),
@@ -149,9 +147,9 @@ fn render_chat_area(app: &App, frame: &mut Frame, area: Rect, theme: &crate::the
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(3),                  // messages
-            Constraint::Length(filter_height),    // filter bar (when editing)
-            Constraint::Length(input_height),     // input (grows with text)
+            Constraint::Min(3),                // messages
+            Constraint::Length(filter_height), // filter bar (when editing)
+            Constraint::Length(input_height),  // input (grows with text)
         ])
         .split(area);
 

@@ -23,7 +23,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let right_text = if app.filter.text.is_empty() {
         String::new()
     } else {
-        format!("{}/{} matches", app.filter.match_count, app.filter.total_count)
+        format!(
+            "{}/{} matches",
+            app.filter.match_count, app.filter.total_count
+        )
     };
 
     let left_width: usize = left_spans.iter().map(|s| s.content.width()).sum();

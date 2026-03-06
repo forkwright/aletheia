@@ -343,9 +343,7 @@ pub trait PlanningService: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
 
     /// List all projects. Returns JSON array of project summaries.
-    fn list_projects(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    fn list_projects(&self) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
 }
 
 /// Service locator for tool executors needing access to runtime services.

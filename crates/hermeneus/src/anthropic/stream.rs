@@ -98,7 +98,10 @@ impl StreamAccumulator {
 
     /// Process an SSE event, emitting `StreamEvent`s via the callback.
     /// Returns `Err` if the stream contains an error event.
-    #[expect(clippy::too_many_lines, reason = "SSE event dispatch is inherently branchy")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "SSE event dispatch is inherently branchy"
+    )]
     pub(crate) fn process_event(
         &mut self,
         event: WireStreamEvent,
@@ -123,9 +126,7 @@ impl StreamAccumulator {
                     WireContentBlockStart::ToolUse { .. } => "tool_use",
                     WireContentBlockStart::Thinking { .. } => "thinking",
                     WireContentBlockStart::ServerToolUse { .. } => "server_tool_use",
-                    WireContentBlockStart::WebSearchToolResult { .. } => {
-                        "web_search_tool_result"
-                    }
+                    WireContentBlockStart::WebSearchToolResult { .. } => "web_search_tool_result",
                 };
                 on_event(StreamEvent::ContentBlockStart {
                     index,

@@ -16,9 +16,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     // Small top padding
     lines.push(Line::raw(""));
 
-    let filter_active = app.filter.active
-        && app.filter.scope == FilterScope::Chat
-        && !app.filter.text.is_empty();
+    let filter_active =
+        app.filter.active && app.filter.scope == FilterScope::Chat && !app.filter.text.is_empty();
     let (pattern, inverted) = app.filter.pattern();
     let pattern_lower = pattern.to_lowercase();
 
@@ -33,7 +32,15 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         }
         let selected = app.selected_message == Some(idx);
         let highlight = filter_active.then_some(pattern_lower.as_str());
-        render_message(app, msg, &mut lines, inner_width, theme, selected, highlight);
+        render_message(
+            app,
+            msg,
+            &mut lines,
+            inner_width,
+            theme,
+            selected,
+            highlight,
+        );
     }
 
     if filter_active && lines.len() <= 1 {
@@ -207,10 +214,7 @@ fn highlight_span(
         last_end = end;
     }
     if last_end < content.len() {
-        out.push(Span::styled(
-            content[last_end..].to_string(),
-            span.style,
-        ));
+        out.push(Span::styled(content[last_end..].to_string(), span.style));
     } else if last_end == 0 {
         out.push(span.clone());
     }

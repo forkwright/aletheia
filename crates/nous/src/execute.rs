@@ -362,12 +362,11 @@ async fn dispatch_tools_streaming(
             .build()
         })?;
 
-        let _ = stream_tx
-            .try_send(TurnStreamEvent::ToolStart {
-                tool_id: tool_id.clone(),
-                tool_name: tool_name.clone(),
-                input: tool_input.clone(),
-            });
+        let _ = stream_tx.try_send(TurnStreamEvent::ToolStart {
+            tool_id: tool_id.clone(),
+            tool_name: tool_name.clone(),
+            input: tool_input.clone(),
+        });
 
         let start = std::time::Instant::now();
         let result = tools
@@ -399,14 +398,13 @@ async fn dispatch_tools_streaming(
             duration_ms, is_error, "tool executed"
         );
 
-        let _ = stream_tx
-            .try_send(TurnStreamEvent::ToolResult {
-                tool_id: tool_id.clone(),
-                tool_name: tool_name.clone(),
-                result: result_summary.clone(),
-                is_error,
-                duration_ms,
-            });
+        let _ = stream_tx.try_send(TurnStreamEvent::ToolResult {
+            tool_id: tool_id.clone(),
+            tool_name: tool_name.clone(),
+            result: result_summary.clone(),
+            is_error,
+            duration_ms,
+        });
 
         all_tool_calls.push(ToolCall {
             id: tool_id.clone(),

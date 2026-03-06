@@ -69,7 +69,8 @@ impl ToolExecutor for GrepExecutor {
         Box::pin(async {
             let pattern = extract_str(&input.arguments, "pattern", &input.name)?;
             let max_results = extract_opt_u64(&input.arguments, "maxResults").unwrap_or(50);
-            let case_sensitive = extract_opt_bool(&input.arguments, "caseSensitive").unwrap_or(true);
+            let case_sensitive =
+                extract_opt_bool(&input.arguments, "caseSensitive").unwrap_or(true);
             let glob_filter = extract_opt_str(&input.arguments, "glob");
 
             let path = match extract_opt_str(&input.arguments, "path") {
@@ -527,8 +528,11 @@ mod tests {
     #[tokio::test]
     async fn grep_finds_pattern() {
         let dir = tempfile::tempdir().expect("tmpdir");
-        std::fs::write(dir.path().join("hello.rs"), "fn main() {\n    println!(\"hello\");\n}")
-            .expect("write");
+        std::fs::write(
+            dir.path().join("hello.rs"),
+            "fn main() {\n    println!(\"hello\");\n}",
+        )
+        .expect("write");
 
         let ctx = test_ctx(dir.path());
         let input = tool_input("grep", serde_json::json!({ "pattern": "println" }));
@@ -693,7 +697,10 @@ mod tests {
         let text = result.content.text_summary();
         let alpha_pos = text.find("alpha/").expect("alpha/ present");
         let zebra_pos = text.find("zebra.txt").expect("zebra.txt present");
-        assert!(alpha_pos < zebra_pos, "directories should sort before files");
+        assert!(
+            alpha_pos < zebra_pos,
+            "directories should sort before files"
+        );
     }
 
     // -- Path validation ----------------------------------------------------
@@ -702,7 +709,10 @@ mod tests {
     async fn path_validation_rejects_outside_roots() {
         let dir = tempfile::tempdir().expect("tmpdir");
         let ctx = test_ctx(dir.path());
-        let input = tool_input("grep", serde_json::json!({ "pattern": "x", "path": "/etc" }));
+        let input = tool_input(
+            "grep",
+            serde_json::json!({ "pattern": "x", "path": "/etc" }),
+        );
         let err = GrepExecutor
             .execute(&input, &ctx)
             .await

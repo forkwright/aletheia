@@ -85,8 +85,9 @@ fn validate_maintenance(value: &Value, errors: &mut Vec<String>) {
         let alert = db.get("alertThresholdMb").and_then(Value::as_u64);
         if let (Some(w), Some(a)) = (warn, alert) {
             if w > a {
-                errors
-                    .push("dbMonitoring.warnThresholdMb must not exceed alertThresholdMb".to_owned());
+                errors.push(
+                    "dbMonitoring.warnThresholdMb must not exceed alertThresholdMb".to_owned(),
+                );
             }
         }
     }

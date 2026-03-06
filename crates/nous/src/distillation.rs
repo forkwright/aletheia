@@ -73,20 +73,14 @@ pub fn should_trigger_distillation(
             let age = jiff::Timestamp::now().duration_since(last_ts);
             let days = age.as_secs() / 86_400;
             if days >= 7 && session.message_count >= 20 {
-                return Some(format!(
-                    "stale ({days}d) + {} msgs",
-                    session.message_count
-                ));
+                return Some(format!("stale ({days}d) + {} msgs", session.message_count));
             }
         }
     }
 
     // Signal 4: Never distilled + enough messages (30+)
     if session.distillation_count == 0 && session.message_count >= 30 {
-        return Some(format!(
-            "never distilled + {} msgs",
-            session.message_count
-        ));
+        return Some(format!("never distilled + {} msgs", session.message_count));
     }
 
     // Signal 5: Legacy threshold (configurable ratio of context window)

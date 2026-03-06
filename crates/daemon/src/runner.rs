@@ -344,9 +344,7 @@ impl TaskRunner {
             BuiltinTask::Prosoche => {
                 if let Some(bridge) = &self.bridge {
                     let prompt = "Run your prosoche heartbeat check per PROSOCHE.md.";
-                    let _ = bridge
-                        .send_prompt(nous_id, "daemon:prosoche", prompt)
-                        .await;
+                    let _ = bridge.send_prompt(nous_id, "daemon:prosoche", prompt).await;
                     Ok(ExecutionResult {
                         success: true,
                         output: Some("dispatched".to_owned()),

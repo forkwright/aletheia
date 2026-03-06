@@ -387,7 +387,10 @@ impl AnthropicProvider {
                     HeaderValue::from_str(&format!("Bearer {}", credential.secret))
                         .unwrap_or_else(|_| HeaderValue::from_static("")),
                 );
-                headers.insert("anthropic-beta", HeaderValue::from_static("oauth-2025-04-20"));
+                headers.insert(
+                    "anthropic-beta",
+                    HeaderValue::from_static("oauth-2025-04-20"),
+                );
             }
             _ => {
                 headers.insert(
@@ -968,5 +971,4 @@ mod tests {
             "delay should be capped near BACKOFF_MAX_MS"
         );
     }
-
 }

@@ -114,10 +114,9 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             nous_id,
             session_id,
         } => sse::handle_sse_turn_after(app, nous_id, session_id).await,
-        Msg::SseToolCalled {
-            nous_id,
-            tool_name,
-        } => sse::handle_sse_tool_called(app, nous_id, tool_name),
+        Msg::SseToolCalled { nous_id, tool_name } => {
+            sse::handle_sse_tool_called(app, nous_id, tool_name)
+        }
         Msg::SseToolFailed { nous_id, .. } => sse::handle_sse_tool_failed(app, nous_id),
         Msg::SseStatusUpdate { nous_id, status } => {
             sse::handle_sse_status_update(app, nous_id, status)

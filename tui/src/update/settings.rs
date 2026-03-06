@@ -66,7 +66,10 @@ pub fn handle_enter(app: &mut App) {
                     _ => String::new(),
                 };
                 let cursor = buf.len();
-                s.editing = Some(EditState { buffer: buf, cursor });
+                s.editing = Some(EditState {
+                    buffer: buf,
+                    cursor,
+                });
             }
             FieldType::ReadOnly => {}
         }

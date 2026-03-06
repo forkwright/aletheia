@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use aletheia_mneme::store::SessionStore;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
+use aletheia_mneme::store::SessionStore;
 use aletheia_thesauros::loader::LoadedPack;
 
 use tokio::sync::watch;

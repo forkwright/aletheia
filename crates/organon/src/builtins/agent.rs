@@ -41,8 +41,8 @@ impl ToolExecutor for SessionsSpawnExecutor {
                 .get("model")
                 .and_then(|v| v.as_str())
                 .map(String::from);
-            let timeout = extract_opt_u64(&input.arguments, "timeoutSeconds")
-                .unwrap_or(DEFAULT_TIMEOUT_SECS);
+            let timeout =
+                extract_opt_u64(&input.arguments, "timeoutSeconds").unwrap_or(DEFAULT_TIMEOUT_SECS);
 
             let request = SpawnRequest {
                 role: role.to_owned(),
@@ -52,10 +52,7 @@ impl ToolExecutor for SessionsSpawnExecutor {
                 timeout_secs: timeout,
             };
 
-            match spawn_svc
-                .spawn_and_run(request, ctx.nous_id.as_str())
-                .await
-            {
+            match spawn_svc.spawn_and_run(request, ctx.nous_id.as_str()).await {
                 Ok(result) => {
                     let json = serde_json::json!({
                         "content": result.content,
@@ -106,8 +103,8 @@ impl ToolExecutor for SessionsDispatchExecutor {
                 )));
             }
 
-            let default_timeout = extract_opt_u64(&input.arguments, "timeoutSeconds")
-                .unwrap_or(DEFAULT_TIMEOUT_SECS);
+            let default_timeout =
+                extract_opt_u64(&input.arguments, "timeoutSeconds").unwrap_or(DEFAULT_TIMEOUT_SECS);
             let nous_id = ctx.nous_id.as_str().to_owned();
 
             let mut join_set = tokio::task::JoinSet::new();
@@ -175,10 +172,7 @@ impl ToolExecutor for SessionsDispatchExecutor {
 /// Register agent coordination tools.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(sessions_spawn_def(), Box::new(SessionsSpawnExecutor))?;
-    registry.register(
-        sessions_dispatch_def(),
-        Box::new(SessionsDispatchExecutor),
-    )?;
+    registry.register(sessions_dispatch_def(), Box::new(SessionsDispatchExecutor))?;
     Ok(())
 }
 
@@ -261,9 +255,8 @@ fn sessions_dispatch_def() -> ToolDef {
                     "tasks".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Array,
-                        description:
-                            "Array of task objects: {role, task, model?, timeoutSeconds?}"
-                                .to_owned(),
+                        description: "Array of task objects: {role, task, model?, timeoutSeconds?}"
+                            .to_owned(),
                         enum_values: None,
                         default: None,
                     },
@@ -296,7 +289,9 @@ mod tests {
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
     use crate::registry::ToolRegistry;
-    use crate::types::{SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput, ToolServices};
+    use crate::types::{
+        SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput, ToolServices,
+    };
 
     fn test_ctx() -> ToolContext {
         ToolContext {

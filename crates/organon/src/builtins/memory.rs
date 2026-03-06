@@ -15,7 +15,9 @@ use crate::types::{
 
 use super::workspace::{extract_opt_u64, extract_str};
 
-fn require_services(ctx: &ToolContext) -> std::result::Result<&crate::types::ToolServices, ToolResult> {
+fn require_services(
+    ctx: &ToolContext,
+) -> std::result::Result<&crate::types::ToolServices, ToolResult> {
     ctx.services
         .as_deref()
         .ok_or_else(|| ToolResult::error("memory services not configured"))
@@ -56,8 +58,10 @@ impl ToolExecutor for Mem0SearchExecutor {
 
             match response {
                 Ok(resp) if resp.status().is_success() => {
-                    let body: serde_json::Value =
-                        resp.json().await.unwrap_or(serde_json::json!({"results": []}));
+                    let body: serde_json::Value = resp
+                        .json()
+                        .await
+                        .unwrap_or(serde_json::json!({"results": []}));
                     let results = body
                         .get("results")
                         .and_then(|r| r.as_array())
@@ -73,9 +77,7 @@ impl ToolExecutor for Mem0SearchExecutor {
                     "Mem0 search failed: HTTP {}",
                     resp.status()
                 ))),
-                Err(e) => Ok(ToolResult::error(format!(
-                    "Mem0 sidecar unreachable: {e}"
-                ))),
+                Err(e) => Ok(ToolResult::error(format!("Mem0 sidecar unreachable: {e}"))),
             }
         })
     }
@@ -147,21 +149,17 @@ impl ToolExecutor for NoteExecutor {
                         Err(e) => Ok(ToolResult::error(format!("Failed to save note: {e}"))),
                     }
                 }
-                "list" => {
-                    match note_store.get_notes(&ctx.session_id.to_string()) {
-                        Ok(notes) if notes.is_empty() => {
-                            Ok(ToolResult::text("No session notes."))
-                        }
-                        Ok(notes) => {
-                            let lines: Vec<String> = notes
-                                .iter()
-                                .map(|n| format!("#{} [{}] {}", n.id, n.category, n.content))
-                                .collect();
-                            Ok(ToolResult::text(lines.join("\n")))
-                        }
-                        Err(e) => Ok(ToolResult::error(format!("Failed to list notes: {e}"))),
+                "list" => match note_store.get_notes(&ctx.session_id.to_string()) {
+                    Ok(notes) if notes.is_empty() => Ok(ToolResult::text("No session notes.")),
+                    Ok(notes) => {
+                        let lines: Vec<String> = notes
+                            .iter()
+                            .map(|n| format!("#{} [{}] {}", n.id, n.category, n.content))
+                            .collect();
+                        Ok(ToolResult::text(lines.join("\n")))
                     }
-                }
+                    Err(e) => Ok(ToolResult::error(format!("Failed to list notes: {e}"))),
+                },
                 "delete" => {
                     let id = input
                         .arguments
@@ -234,12 +232,8 @@ impl ToolExecutor for BlackboardExecutor {
                             entry.author_nous_id,
                             entry.expires_at.as_deref().unwrap_or("never")
                         ))),
-                        Ok(None) => Ok(ToolResult::text(format!(
-                            "No entry for key: {key}"
-                        ))),
-                        Err(e) => Ok(ToolResult::error(format!(
-                            "Failed to read blackboard: {e}"
-                        ))),
+                        Ok(None) => Ok(ToolResult::text(format!("No entry for key: {key}"))),
+                        Err(e) => Ok(ToolResult::error(format!("Failed to read blackboard: {e}"))),
                     }
                 }
                 "list" => match bb_store.list() {
@@ -249,25 +243,16 @@ impl ToolExecutor for BlackboardExecutor {
                     Ok(entries) => {
                         let lines: Vec<String> = entries
                             .iter()
-                            .map(|e| {
-                                format!(
-                                    "[{}] = {} (by {})",
-                                    e.key, e.value, e.author_nous_id
-                                )
-                            })
+                            .map(|e| format!("[{}] = {} (by {})", e.key, e.value, e.author_nous_id))
                             .collect();
                         Ok(ToolResult::text(lines.join("\n")))
                     }
-                    Err(e) => Ok(ToolResult::error(format!(
-                        "Failed to list blackboard: {e}"
-                    ))),
+                    Err(e) => Ok(ToolResult::error(format!("Failed to list blackboard: {e}"))),
                 },
                 "delete" => {
                     let key = extract_str(&input.arguments, "key", &input.name)?;
                     match bb_store.delete(key, ctx.nous_id.as_str()) {
-                        Ok(true) => Ok(ToolResult::text(format!(
-                            "Blackboard [{key}] deleted."
-                        ))),
+                        Ok(true) => Ok(ToolResult::text(format!("Blackboard [{key}] deleted."))),
                         Ok(false) => Ok(ToolResult::text(format!(
                             "No entry for key: {key} (or not your entry)"
                         ))),
@@ -737,7 +722,10 @@ mod tests {
         super::register(&mut reg).expect("register");
         let note_store = Arc::new(MockNoteStore::new());
         let bb_store = Arc::new(MockBlackboardStore::new());
-        let ctx = ctx_with_services(note_store, Arc::clone(&bb_store) as Arc<dyn BlackboardStore>);
+        let ctx = ctx_with_services(
+            note_store,
+            Arc::clone(&bb_store) as Arc<dyn BlackboardStore>,
+        );
 
         let write = ToolInput {
             name: ToolName::new("blackboard").expect("valid"),
@@ -764,7 +752,10 @@ mod tests {
         super::register(&mut reg).expect("register");
         let note_store = Arc::new(MockNoteStore::new());
         let bb_store = Arc::new(MockBlackboardStore::new());
-        let ctx = ctx_with_services(note_store, Arc::clone(&bb_store) as Arc<dyn BlackboardStore>);
+        let ctx = ctx_with_services(
+            note_store,
+            Arc::clone(&bb_store) as Arc<dyn BlackboardStore>,
+        );
 
         for (k, v) in [("a", "1"), ("b", "2")] {
             let write = ToolInput {
@@ -793,7 +784,10 @@ mod tests {
         super::register(&mut reg).expect("register");
         let note_store = Arc::new(MockNoteStore::new());
         let bb_store = Arc::new(MockBlackboardStore::new());
-        let ctx = ctx_with_services(note_store, Arc::clone(&bb_store) as Arc<dyn BlackboardStore>);
+        let ctx = ctx_with_services(
+            note_store,
+            Arc::clone(&bb_store) as Arc<dyn BlackboardStore>,
+        );
 
         let write = ToolInput {
             name: ToolName::new("blackboard").expect("valid"),

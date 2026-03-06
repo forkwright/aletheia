@@ -155,7 +155,12 @@ mod tests {
             .expect("execute");
 
         assert!(!result.is_error);
-        assert!(result.content.text_summary().contains("Activated 'web_search'"));
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("Activated 'web_search'")
+        );
 
         let active = ctx.active_tools.read().expect("lock");
         assert!(active.contains(&ToolName::new("web_search").expect("valid")));

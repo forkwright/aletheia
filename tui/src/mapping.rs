@@ -145,9 +145,7 @@ impl App {
                 Some(Msg::FilterOpen)
             }
 
-            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
-                Some(Msg::CharInput(c))
-            }
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
 
             _ => None,
         }
@@ -177,9 +175,7 @@ impl App {
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Some(Msg::SelectPrev),
             (_, KeyCode::Esc) => Some(Msg::DeselectMessage),
             (_, KeyCode::Home) => Some(Msg::SelectFirst),
-            (_, KeyCode::End) | (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
-                Some(Msg::SelectLast)
-            }
+            (_, KeyCode::End) | (KeyModifiers::SHIFT, KeyCode::Char('G')) => Some(Msg::SelectLast),
 
             // Actions
             (KeyModifiers::NONE, KeyCode::Char('c')) => {
@@ -206,9 +202,7 @@ impl App {
             (_, KeyCode::F(1)) => Some(Msg::OpenOverlay(OverlayKind::Help)),
 
             // Any other character deselects and inserts into input
-            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
-                Some(Msg::CharInput(c))
-            }
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
 
             _ => None,
         }
@@ -290,9 +284,7 @@ impl App {
                 Some(Msg::CloseOverlay)
             }
 
-            (_, KeyCode::Char(' ')) if self.is_plan_approval_overlay() => {
-                Some(Msg::OverlaySelect)
-            }
+            (_, KeyCode::Char(' ')) if self.is_plan_approval_overlay() => Some(Msg::OverlaySelect),
             (_, KeyCode::Char('a' | 'A')) if self.is_plan_approval_overlay() => {
                 Some(Msg::OverlaySelect)
             }
@@ -374,9 +366,7 @@ impl App {
                 tool_name,
                 error,
             },
-            SseEvent::StatusUpdate { nous_id, status } => {
-                Msg::SseStatusUpdate { nous_id, status }
-            }
+            SseEvent::StatusUpdate { nous_id, status } => Msg::SseStatusUpdate { nous_id, status },
             SseEvent::SessionCreated {
                 nous_id,
                 session_id,

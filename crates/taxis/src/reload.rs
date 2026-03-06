@@ -53,7 +53,9 @@ mod tests {
     #[test]
     fn maintenance_hot_reloadable() {
         assert!(!requires_restart("maintenance.traceRotation.maxAgeDays"));
-        assert!(!requires_restart("maintenance.dbMonitoring.warnThresholdMb"));
+        assert!(!requires_restart(
+            "maintenance.dbMonitoring.warnThresholdMb"
+        ));
     }
 
     #[test]

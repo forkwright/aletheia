@@ -85,10 +85,8 @@ impl PlanningService for FilesystemPlanningService {
                 let ws_path = root.join(&project_id);
                 let ws = ProjectWorkspace::open(&ws_path).map_err(|e| e.to_string())?;
                 let mut project = ws.load_project().map_err(|e| e.to_string())?;
-                let transition =
-                    parse_transition(&transition_str).ok_or_else(|| {
-                        format!("unknown transition: {transition_str}")
-                    })?;
+                let transition = parse_transition(&transition_str)
+                    .ok_or_else(|| format!("unknown transition: {transition_str}"))?;
                 project.advance(transition).map_err(|e| e.to_string())?;
                 ws.save_project(&project).map_err(|e| e.to_string())?;
                 serde_json::to_string_pretty(&project).map_err(|e| e.to_string())
@@ -187,9 +185,7 @@ impl PlanningService for FilesystemPlanningService {
         })
     }
 
-    fn list_projects(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    fn list_projects(&self) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
         let root = self.projects_root.clone();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || list_projects_sync(&root))
@@ -246,8 +242,12 @@ fn find_plan_mut<'a>(
     phase_id: &str,
     plan_id: &str,
 ) -> Result<&'a mut aletheia_dianoia::plan::Plan, String> {
-    let phase_ulid: ulid::Ulid = phase_id.parse().map_err(|e| format!("invalid phase_id: {e}"))?;
-    let plan_ulid: ulid::Ulid = plan_id.parse().map_err(|e| format!("invalid plan_id: {e}"))?;
+    let phase_ulid: ulid::Ulid = phase_id
+        .parse()
+        .map_err(|e| format!("invalid phase_id: {e}"))?;
+    let plan_ulid: ulid::Ulid = plan_id
+        .parse()
+        .map_err(|e| format!("invalid plan_id: {e}"))?;
 
     let phase = project
         .phases
@@ -316,10 +316,7 @@ mod tests {
         let project: serde_json::Value = serde_json::from_str(&json).unwrap();
         let project_id = project["id"].as_str().unwrap();
 
-        let loaded_json = service
-            .load_project(project_id)
-            .await
-            .expect("load");
+        let loaded_json = service.load_project(project_id).await.expect("load");
 
         let loaded: serde_json::Value = serde_json::from_str(&loaded_json).unwrap();
         assert_eq!(loaded["name"], "test-project");
@@ -358,9 +355,7 @@ mod tests {
         let project: serde_json::Value = serde_json::from_str(&json).unwrap();
         let id = project["id"].as_str().unwrap();
 
-        let result = service
-            .transition_project(id, "start_verification")
-            .await;
+        let result = service.transition_project(id, "start_verification").await;
         assert!(result.is_err());
     }
 
