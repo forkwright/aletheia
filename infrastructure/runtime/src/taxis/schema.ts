@@ -517,6 +517,7 @@ const SandboxConfig = z
     memoryLimit: z.string().default("512m"),
     cpuLimit: z.number().default(1),
     denyPatterns: z.array(z.string()).default([]),
+    removeDenyPatterns: z.array(z.string()).default([]),
     auditDenied: z.boolean().default(true),
   })
   .default({});
