@@ -40,7 +40,7 @@ impl<'a> SessionTx<'a> {
                         return match dir {
                             SortDir::Asc => o,
                             SortDir::Dsc => o.reverse(),
-                        }
+                        };
                     }
                 }
             }

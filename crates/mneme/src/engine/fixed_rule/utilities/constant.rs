@@ -55,7 +55,6 @@ impl FixedRule for Constant {
         Ok(if data.is_empty() {
             match rule_head.len() {
                 0 => {
-                    
                     bail!("Constant rule does not have data")
                 }
                 i => i,
@@ -94,19 +93,18 @@ impl FixedRule for Constant {
             match row {
                 DataValue::List(tuple) => {
                     if let Some(l) = &last_len {
-                        
-
                         ensure!(
                             *l == tuple.len(),
-                            crate::engine::error::AdhocError("Constant head must have the same arity as the data given".to_string())
+                            crate::engine::error::AdhocError(
+                                "Constant head must have the same arity as the data given"
+                                    .to_string()
+                            )
                         );
                     };
                     last_len = Some(tuple.len());
                     tuples.push(DataValue::List(tuple));
                 }
                 _row => {
-                    
-
                     bail!("Bad row for constant rule: {0:?}")
                 }
             }

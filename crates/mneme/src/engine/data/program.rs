@@ -11,9 +11,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
-use miette::Diagnostic;
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure, miette};
+use miette::Diagnostic;
 use smallvec::SmallVec;
 use smartstring::{LazyCompact, SmartString};
 use thiserror::Error;
@@ -21,7 +21,7 @@ use thiserror::Error;
 use crate::engine::data::aggr::Aggregation;
 use crate::engine::data::expr::Expr;
 use crate::engine::data::relation::StoredRelationMetadata;
-use crate::engine::data::symb::{Symbol, PROG_ENTRY};
+use crate::engine::data::symb::{PROG_ENTRY, Symbol};
 use crate::engine::data::value::{DataValue, ValidityTs};
 use crate::engine::fixed_rule::{FixedRule, FixedRuleHandle};
 use crate::engine::fts::FtsIndexManifest;
@@ -84,16 +84,16 @@ impl Display for QueryOutOptions {
             writeln!(f, "{symb};")?;
         }
         if let Some((
-                        InputRelationHandle {
-                            name,
-                            metadata: StoredRelationMetadata { keys, non_keys },
-                            key_bindings,
-                            dep_bindings,
-                            ..
-                        },
-                        op,
-                        return_mutation,
-                    )) = &self.store_relation
+            InputRelationHandle {
+                name,
+                metadata: StoredRelationMetadata { keys, non_keys },
+                key_bindings,
+                dep_bindings,
+                ..
+            },
+            op,
+            return_mutation,
+        )) = &self.store_relation
         {
             if *return_mutation == ReturnMutation::Returning {
                 writeln!(f, ":returning")?;
@@ -506,13 +506,13 @@ impl Display for InputProgram {
                 }
                 InputInlineRulesOrFixed::Fixed {
                     fixed:
-                    FixedRuleApply {
-                        fixed_handle: handle,
-                        rule_args,
-                        options,
-                        head,
-                        ..
-                    },
+                        FixedRuleApply {
+                            fixed_handle: handle,
+                            rule_args,
+                            options,
+                            head,
+                            ..
+                        },
                 } => {
                     write!(f, "{name}")?;
                     f.debug_list().entries(head).finish()?;
@@ -647,7 +647,7 @@ impl InputProgram {
                             inner: rule.body,
                             span: rule.span,
                         }
-                            .disjunctive_normal_form(tx)?;
+                        .disjunctive_normal_form(tx)?;
                         let mut new_head = Vec::with_capacity(rule.head.len());
                         let mut seen: BTreeMap<&Symbol, Vec<Symbol>> = BTreeMap::default();
                         for symb in rule.head.iter() {
@@ -812,22 +812,14 @@ impl Debug for MagicSymbol {
             MagicSymbol::Magic { inner, adornment } => {
                 write!(f, "{}|M", inner.name)?;
                 for b in adornment {
-                    if *b {
-                        write!(f, "b")?
-                    } else {
-                        write!(f, "f")?
-                    }
+                    if *b { write!(f, "b")? } else { write!(f, "f")? }
                 }
                 Ok(())
             }
             MagicSymbol::Input { inner, adornment } => {
                 write!(f, "{}|I", inner.name)?;
                 for b in adornment {
-                    if *b {
-                        write!(f, "b")?
-                    } else {
-                        write!(f, "f")?
-                    }
+                    if *b { write!(f, "b")? } else { write!(f, "f")? }
                 }
                 Ok(())
             }
@@ -839,11 +831,7 @@ impl Debug for MagicSymbol {
             } => {
                 write!(f, "{}|S.{}.{}", inner.name, rule_idx, sup_idx)?;
                 for b in adornment {
-                    if *b {
-                        write!(f, "b")?
-                    } else {
-                        write!(f, "f")?
-                    }
+                    if *b { write!(f, "b")? } else { write!(f, "f")? }
                 }
                 Ok(())
             }
@@ -1010,7 +998,7 @@ pub(crate) struct FtsSearch {
 }
 
 impl HnswSearch {
-    pub(crate) fn all_bindings(&self) -> impl Iterator<Item=&Symbol> {
+    pub(crate) fn all_bindings(&self) -> impl Iterator<Item = &Symbol> {
         self.bindings
             .iter()
             .chain(self.bind_field.iter())
@@ -1021,7 +1009,7 @@ impl HnswSearch {
 }
 
 impl FtsSearch {
-    pub(crate) fn all_bindings(&self) -> impl Iterator<Item=&Symbol> {
+    pub(crate) fn all_bindings(&self) -> impl Iterator<Item = &Symbol> {
         self.bindings.iter().chain(self.bind_score.iter())
     }
 }
@@ -1674,12 +1662,12 @@ impl Display for InputAtom {
             }
             InputAtom::Unification {
                 inner:
-                Unification {
-                    binding,
-                    expr,
-                    one_many_unif,
-                    ..
-                },
+                    Unification {
+                        binding,
+                        expr,
+                        one_many_unif,
+                        ..
+                    },
             } => {
                 write!(f, "{binding}")?;
                 if *one_many_unif {

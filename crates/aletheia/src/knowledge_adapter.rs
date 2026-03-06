@@ -50,7 +50,9 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .map_err(|e| format!("hybrid search failed: {e}"))?;
 
             // Resolve fact content from IDs via a point-in-time query
-            let now = jiff::Zoned::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
+            let now = jiff::Zoned::now()
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+                .to_string();
             let facts = self
                 .store
                 .query_facts_async(nous_id, now, i64::try_from(limit).unwrap_or(i64::MAX))
@@ -86,7 +88,9 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let new_content = new_content.to_owned();
         let nous_id = nous_id.to_owned();
         Box::pin(async move {
-            let now = jiff::Zoned::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
+            let now = jiff::Zoned::now()
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+                .to_string();
             let new_id = format!("fact-{}", ulid::Ulid::new());
 
             // Mark old fact as superseded
@@ -142,7 +146,9 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
         let fact_id = fact_id.to_owned();
         Box::pin(async move {
-            let now = jiff::Zoned::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
+            let now = jiff::Zoned::now()
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+                .to_string();
 
             let script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at] :=
@@ -175,11 +181,17 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let nous_id = nous_id.map(str::to_owned);
         let since = since.map(str::to_owned);
         Box::pin(async move {
-            let now = jiff::Zoned::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
+            let now = jiff::Zoned::now()
+                .strftime("%Y-%m-%dT%H:%M:%SZ")
+                .to_string();
             let agent = nous_id.as_deref().unwrap_or("");
             let facts = self
                 .store
-                .query_facts_async(agent.to_owned(), now, i64::try_from(limit).unwrap_or(i64::MAX))
+                .query_facts_async(
+                    agent.to_owned(),
+                    now,
+                    i64::try_from(limit).unwrap_or(i64::MAX),
+                )
                 .await
                 .map_err(|e| format!("failed to query facts: {e}"))?;
 

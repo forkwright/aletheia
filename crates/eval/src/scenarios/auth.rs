@@ -43,12 +43,18 @@ impl Scenario for AuthRejectsBadToken {
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
-        Box::pin(async move {
-            let resp = client
-                .raw_get_with_token("/api/v1/nous", "invalid-garbage-token")
-                .await?;
-            let status = resp.status().as_u16();
-            assert_eq_eval(&status, &401, "expected 401 for invalid token")
-        }.instrument(tracing::info_span!("scenario", id = "auth-rejects-bad-token")))
+        Box::pin(
+            async move {
+                let resp = client
+                    .raw_get_with_token("/api/v1/nous", "invalid-garbage-token")
+                    .await?;
+                let status = resp.status().as_u16();
+                assert_eq_eval(&status, &401, "expected 401 for invalid token")
+            }
+            .instrument(tracing::info_span!(
+                "scenario",
+                id = "auth-rejects-bad-token"
+            )),
+        )
     }
 }

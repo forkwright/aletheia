@@ -6,7 +6,6 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use snafu::Snafu;
 use crate::engine::error::DbResult as Result;
 use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
 use std::cmp::Reverse;
@@ -42,15 +41,15 @@ impl FixedRule for MinimumSpanningTreePrim {
             Err(_) => 0,
             Ok(rel) => {
                 let tuple = rel.iter()?.next().ok_or_else(|| {
-                    
-
-                    crate::engine::error::AdhocError("The provided starting nodes relation is empty".to_string()))
+                    crate::engine::error::AdhocError(
+                        "The provided starting nodes relation is empty".to_string(),
+                    )
                 })??;
                 let dv = &tuple[0];
                 *inv_indices.get(dv).ok_or_else(|| {
-                    
-
-                    crate::engine::error::AdhocError("The requested starting node {0:?} is not found".to_string()), rel.span())
+                    crate::engine::error::AdhocError(format!(
+                        "The requested starting node {dv:?} is not found"
+                    ))
                 })?
             }
         };

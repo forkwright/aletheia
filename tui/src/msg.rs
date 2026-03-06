@@ -3,7 +3,10 @@ use crate::api::types::*;
 /// Every possible state transition in the application.
 /// No I/O happens here — only data describing what happened.
 #[derive(Debug)]
-#[expect(dead_code, reason = "enum variants and fields are reserved for event handling")]
+#[expect(
+    dead_code,
+    reason = "enum variants and fields are reserved for event handling"
+)]
 pub enum Msg {
     // --- Terminal input ---
     CharInput(char),

@@ -429,7 +429,10 @@ impl SessionStore {
 
         tx.commit().context(error::DatabaseSnafu)?;
 
-        info!(session_id, msg_count, total_tokens, "inserted distillation summary");
+        info!(
+            session_id,
+            msg_count, total_tokens, "inserted distillation summary"
+        );
         Ok(())
     }
 
@@ -464,7 +467,10 @@ impl SessionStore {
 
         tx.commit().context(error::DatabaseSnafu)?;
 
-        info!(session_id, messages_before, messages_after, tokens_before, tokens_after, "recorded distillation");
+        info!(
+            session_id,
+            messages_before, messages_after, tokens_before, tokens_after, "recorded distillation"
+        );
         Ok(())
     }
 
@@ -1179,9 +1185,7 @@ mod tests {
     #[test]
     fn blackboard_expiry_filtered() {
         let store = test_store();
-        store
-            .blackboard_write("temp", "data", "syn", 3600)
-            .unwrap();
+        store.blackboard_write("temp", "data", "syn", 3600).unwrap();
 
         // Manually set expires_at to the past
         store

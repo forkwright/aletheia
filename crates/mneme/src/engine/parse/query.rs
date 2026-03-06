@@ -20,39 +20,27 @@ use itertools::Itertools;
 use pest::Parser;
 use smartstring::{LazyCompact, SmartString};
 
-use crate::engine::data::aggr::{parse_aggr, Aggregation};
+use crate::engine::FixedRule;
+use crate::engine::data::aggr::{Aggregation, parse_aggr};
 use crate::engine::data::expr::Expr;
-use crate::engine::data::functions::{str2vld, MAX_VALIDITY_TS};
+use crate::engine::data::functions::{MAX_VALIDITY_TS, str2vld};
 use crate::engine::data::program::{
     FixedRuleApply, FixedRuleArg, InputAtom, InputInlineRule, InputInlineRulesOrFixed,
     InputNamedFieldRelationApplyAtom, InputProgram, InputRelationApplyAtom, InputRuleApplyAtom,
     QueryAssertion, QueryOutOptions, RelationOp, ReturnMutation, SearchInput, SortDir, Unification,
 };
 use crate::engine::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
-use crate::engine::data::symb::{Symbol, PROG_ENTRY};
+use crate::engine::data::symb::{PROG_ENTRY, Symbol};
 use crate::engine::data::value::{DataValue, ValidityTs};
-use crate::engine::fixed_rule::utilities::constant::Constant;
 use crate::engine::fixed_rule::FixedRuleHandle;
+use crate::engine::fixed_rule::utilities::constant::Constant;
 use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::schema::parse_schema;
 use crate::engine::parse::{CozoScriptParser, ExtractSpan, Pair, Pairs, Rule, SourceSpan};
 use crate::engine::runtime::relation::InputRelationHandle;
-use crate::engine::FixedRule;
-
-
-
-
-
-
-
-
 
 #[derive(Debug)]
 struct MultipleRuleDefinitionError(String, Vec<SourceSpan>);
-
-
-
-
 
 impl Error for MultipleRuleDefinitionError {}
 
@@ -65,7 +53,6 @@ impl Display for MultipleRuleDefinitionError {
         )
     }
 }
-
 
 fn merge_spans(symbs: &[Symbol]) -> SourceSpan {
     let mut fst = symbs.first().unwrap().span;
@@ -101,17 +88,21 @@ pub(crate) fn parse_query(
                         let key = e.key().to_string();
                         match e.get_mut() {
                             InputInlineRulesOrFixed::Rules { rules: rs } => {
-                                
                                 let prev = rs.first().unwrap();
-                                ensure!(prev.aggr == rule.aggr,
-                                    "Rule {} has multiple definitions with conflicting heads", key
+                                ensure!(
+                                    prev.aggr == rule.aggr,
+                                    "Rule {} has multiple definitions with conflicting heads",
+                                    key
                                 );
 
                                 rs.push(rule);
                             }
                             InputInlineRulesOrFixed::Fixed { fixed } => {
                                 let _fixed_span = fixed.span;
-                                bail!("The rule '{}' cannot have multiple definitions since it contains non-Horn clauses", e.key().name)
+                                bail!(
+                                    "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
+                                    e.key().name
+                                )
                             }
                         }
                     }
@@ -153,13 +144,17 @@ pub(crate) fn parse_query(
                         }
                     };
                     found_span.push(span);
-                    bail!("The rule '{}' cannot have multiple definitions since it contains non-Horn clauses", name.name);
+                    bail!(
+                        "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
+                        name.name
+                    );
                 }
 
-                
-
                 for (a, _v) in aggr.iter().zip(head.iter()) {
-                    ensure!(a.is_none(), "Constant rules cannot have aggregation application");
+                    ensure!(
+                        a.is_none(),
+                        "Constant rules cannot have aggregation application"
+                    );
                 }
                 let data_part = src.next().unwrap();
                 let data_part_str = data_part.as_str();
@@ -212,9 +207,15 @@ pub(crate) fn parse_query(
                 let _span = pair.extract_span();
                 let timeout = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|_err| crate::engine::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| {
+                        crate::engine::error::AdhocError(
+                            "Query option {} is not constant".to_string(),
+                        )
+                    })?
                     .get_float()
-                    .ok_or(crate::engine::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
+                    .ok_or(crate::engine::error::AdhocError(
+                        "Query option {} requires a non-negative integer".to_string(),
+                    ))?;
                 if timeout > 0. {
                     out_opts.timeout = Some(timeout);
                 } else {
@@ -231,10 +232,21 @@ pub(crate) fn parse_query(
                     let _span = pair.extract_span();
                     let sleep = build_expr(pair, param_pool)?
                         .eval_to_const()
-                        .map_err(|_err| crate::engine::error::AdhocError("Query option {} is not constant".to_string()))?
+                        .map_err(|_err| {
+                            crate::engine::error::AdhocError(
+                                "Query option {} is not constant".to_string(),
+                            )
+                        })?
                         .get_float()
-                        .ok_or(crate::engine::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
-                    ensure!(sleep > 0., crate::engine::error::AdhocError("Query option {} requires a positive integer".to_string()));
+                        .ok_or(crate::engine::error::AdhocError(
+                            "Query option {} requires a non-negative integer".to_string(),
+                        ))?;
+                    ensure!(
+                        sleep > 0.,
+                        crate::engine::error::AdhocError(
+                            "Query option {} requires a positive integer".to_string()
+                        )
+                    );
                     out_opts.sleep = Some(sleep);
                 }
             }
@@ -243,9 +255,15 @@ pub(crate) fn parse_query(
                 let _span = pair.extract_span();
                 let limit = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|_err| crate::engine::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| {
+                        crate::engine::error::AdhocError(
+                            "Query option {} is not constant".to_string(),
+                        )
+                    })?
                     .get_non_neg_int()
-                    .ok_or(crate::engine::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
+                    .ok_or(crate::engine::error::AdhocError(
+                        "Query option {} requires a non-negative integer".to_string(),
+                    ))?;
                 out_opts.limit = Some(limit as usize);
             }
             Rule::offset_option => {
@@ -253,9 +271,15 @@ pub(crate) fn parse_query(
                 let _span = pair.extract_span();
                 let offset = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|_err| crate::engine::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| {
+                        crate::engine::error::AdhocError(
+                            "Query option {} is not constant".to_string(),
+                        )
+                    })?
                     .get_non_neg_int()
-                    .ok_or(crate::engine::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
+                    .ok_or(crate::engine::error::AdhocError(
+                        "Query option {} requires a non-negative integer".to_string(),
+                    ))?;
                 out_opts.offset = Some(offset as usize);
             }
             Rule::sort_option => {
@@ -341,9 +365,13 @@ pub(crate) fn parse_query(
                 let _span = pair.extract_span();
                 let val = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|_err| crate::engine::error::AdhocError("Query option is not constant".to_string()))?
+                    .map_err(|_err| {
+                        crate::engine::error::AdhocError("Query option is not constant".to_string())
+                    })?
                     .get_bool()
-                    .ok_or(crate::engine::error::AdhocError("Query option requires a boolean".to_string()))?;
+                    .ok_or(crate::engine::error::AdhocError(
+                        "Query option requires a boolean".to_string(),
+                    ))?;
                 disable_magic_rewrite = val;
             }
             Rule::EOI => break,
@@ -420,19 +448,12 @@ pub(crate) fn parse_query(
     }
 
     if !prog.out_opts.sorters.is_empty() {
-        
-
         let head_args = prog.get_entry_out_head()?;
 
         for (sorter, _) in &prog.out_opts.sorters {
-            ensure!(
-                head_args.contains(sorter),
-                "Sort key not found"
-            );
+            ensure!(head_args.contains(sorter), "Sort key not found");
         }
     }
-
-    
 
     let empty_mutation_head = match &prog.out_opts.store_relation {
         None => false,
@@ -486,9 +507,12 @@ fn parse_rule(
     let _head_span = head.extract_span();
     let (name, head, aggr) = parse_rule_head(head, param_pool)?;
 
-    
-
-    ensure!(!head.is_empty(), crate::engine::error::AdhocError("Horn-clause rule cannot have empty rule head".to_string()));
+    ensure!(
+        !head.is_empty(),
+        crate::engine::error::AdhocError(
+            "Horn-clause rule cannot have empty rule head".to_string()
+        )
+    );
     let body = src.next().unwrap();
     let mut body_clauses = vec![];
     let mut ignored_counter = 0;
@@ -655,8 +679,6 @@ fn parse_atom(
             let name_p = src.next().unwrap();
             let name_segs = name_p.as_str().split(':').collect_vec();
 
-            
-
             ensure!(
                 name_segs.len() == 2,
                 "Search head must be of the form `relation_name:index_name`"
@@ -751,8 +773,6 @@ fn parse_rule_head(
     Ok((Symbol::new(name.as_str(), name.extract_span()), args, aggrs))
 }
 
-
-
 fn parse_rule_head_arg(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
@@ -772,7 +792,11 @@ fn parse_rule_head_arg(
                 Symbol::new(var.as_str(), var.extract_span()),
                 Some((
                     parse_aggr(aggr_name)
-                        .ok_or_else(|| crate::engine::error::AdhocError(format!("Aggregation '{aggr_name}' not found")))?
+                        .ok_or_else(|| {
+                            crate::engine::error::AdhocError(format!(
+                                "Aggregation '{aggr_name}' not found"
+                            ))
+                        })?
                         .clone(),
                     args,
                 )),
@@ -781,8 +805,6 @@ fn parse_rule_head_arg(
         _ => unreachable!(),
     })
 }
-
-
 
 fn parse_fixed_rule(
     src: Pair<'_>,
@@ -793,12 +815,13 @@ fn parse_fixed_rule(
     let mut src = src.into_inner();
     let (out_symbol, head, aggr) = parse_rule_head(src.next().unwrap(), param_pool)?;
 
-    
-
-    
-
     for (a, _v) in aggr.iter().zip(head.iter()) {
-        ensure!(a.is_none(), crate::engine::error::AdhocError("fixed rule cannot be combined with aggregation".to_string()))
+        ensure!(
+            a.is_none(),
+            crate::engine::error::AdhocError(
+                "fixed rule cannot be combined with aggregation".to_string()
+            )
+        )
     }
 
     let mut seen_bindings = BTreeSet::new();
@@ -945,9 +968,9 @@ fn parse_fixed_rule(
 
     let fixed = FixedRuleHandle::new(fixed_name, name_pair.extract_span());
 
-    let fixed_impl = fixed_rules
-        .get(&fixed.name as &str)
-        .ok_or_else(|| crate::engine::error::AdhocError(format!("Fixed rule '{}' not found", fixed.name)))?;
+    let fixed_impl = fixed_rules.get(&fixed.name as &str).ok_or_else(|| {
+        crate::engine::error::AdhocError(format!("Fixed rule '{}' not found", fixed.name))
+    })?;
     fixed_impl.init_options(&mut options, args_list_span)?;
     let arity = fixed_impl.arity(&options, &head, name_pair.extract_span())?;
 
@@ -969,10 +992,6 @@ fn parse_fixed_rule(
         },
     ))
 }
-
-
-
-
 
 fn make_empty_const_rule(prog: &mut InputProgram, bindings: &[Symbol]) {
     let entry_symbol = Symbol::new(PROG_ENTRY, Default::default());
@@ -1006,13 +1025,17 @@ fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityTs> {
     let _vld_span = expr.span();
     match expr.eval_to_const()? {
         DataValue::Num(n) => {
-            let microseconds = n.get_int().ok_or(crate::engine::error::AdhocError("bad specification of validity".to_string()))?;
+            let microseconds = n.get_int().ok_or(crate::engine::error::AdhocError(
+                "bad specification of validity".to_string(),
+            ))?;
             Ok(ValidityTs(Reverse(microseconds)))
         }
         DataValue::Str(s) => match &s as &str {
             "NOW" => Ok(cur_vld),
             "END" => Ok(MAX_VALIDITY_TS),
-            s => Ok(str2vld(s).map_err(|_| crate::engine::error::AdhocError("bad specification of validity".to_string()))?),
+            s => Ok(str2vld(s).map_err(|_| {
+                crate::engine::error::AdhocError("bad specification of validity".to_string())
+            })?),
         },
         _ => {
             bail!("bad specification of validity")

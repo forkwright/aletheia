@@ -438,9 +438,12 @@ pub async fn run_pipeline(
         let start = Instant::now();
         let history_config = HistoryConfig::default();
         if let Some(store_mutex) = session_store {
-            let store = store_mutex
-                .lock()
-                .map_err(|_poison| crate::error::MutexPoisonedSnafu { what: "session store" }.build())?;
+            let store = store_mutex.lock().map_err(|_poison| {
+                crate::error::MutexPoisonedSnafu {
+                    what: "session store",
+                }
+                .build()
+            })?;
             let (messages, hist_result) = history::load_history(
                 &store,
                 &input.session.id,
@@ -573,9 +576,12 @@ pub async fn run_pipeline(
         let _guard = span.enter();
         let start = Instant::now();
         if let Some(store_mutex) = session_store {
-            let store = store_mutex
-                .lock()
-                .map_err(|_poison| crate::error::MutexPoisonedSnafu { what: "session store" }.build())?;
+            let store = store_mutex.lock().map_err(|_poison| {
+                crate::error::MutexPoisonedSnafu {
+                    what: "session store",
+                }
+                .build()
+            })?;
             let finalize_config = crate::finalize::FinalizeConfig::default();
             match crate::finalize::finalize(
                 &store,

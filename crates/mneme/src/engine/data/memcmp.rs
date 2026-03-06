@@ -114,7 +114,7 @@ pub(crate) trait MemCmpEncoder: Write {
                 self.write_u8(INIT_TAG).unwrap()
             }
             DataValue::Validity(vld) => {
-                let ts = vld.timestamp.0 .0;
+                let ts = vld.timestamp.0.0;
                 let ts_u64 = order_encode_i64(ts);
                 let ts_flipped = !ts_u64;
                 self.write_u8(VLD_TAG).unwrap();

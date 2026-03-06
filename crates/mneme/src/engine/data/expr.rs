@@ -11,10 +11,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::mem;
 
-use itertools::Itertools;
-use miette::Diagnostic;
 use crate::engine::error::DbResult as Result;
 use crate::{bail, miette};
+use itertools::Itertools;
+use miette::Diagnostic;
 use serde::de::{Error, Visitor};
 use serde::{Deserializer, Serializer};
 use smartstring::{LazyCompact, SmartString};
@@ -24,8 +24,8 @@ use crate::engine::data::functions::*;
 use crate::engine::data::relation::NullableColType;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::{DataValue, LARGEST_UTF_CHAR};
-use crate::engine::parse::expr::expr2bytecode;
 use crate::engine::parse::SourceSpan;
+use crate::engine::parse::expr::expr2bytecode;
 
 #[derive(Clone, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize, Debug)]
 pub enum Bytecode {

@@ -36,24 +36,30 @@ impl Scenario for SessionCreateAndGet {
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
-        Box::pin(async move {
-            let nous_list = client.list_nous().await?;
-            let nous_id = &nous_list[0].id;
-            let key = unique_key("create");
-            let session = client.create_session(nous_id, &key).await?;
-            assert_eval(!session.id.is_empty(), "session id should not be empty")?;
-            assert_eq_eval(&session.nous_id, nous_id, "nous_id should match")?;
-            assert_eq_eval(&session.session_key, &key, "session_key should match")?;
-            assert_eq_eval(
-                &session.status,
-                &"active".to_owned(),
-                "status should be active",
-            )?;
-            let fetched = client.get_session(&session.id).await?;
-            assert_eq_eval(&fetched.id, &session.id, "fetched session id should match")?;
-            let _ = client.close_session(&session.id).await;
-            Ok(())
-        }.instrument(tracing::info_span!("scenario", id = "session-create-and-get")))
+        Box::pin(
+            async move {
+                let nous_list = client.list_nous().await?;
+                let nous_id = &nous_list[0].id;
+                let key = unique_key("create");
+                let session = client.create_session(nous_id, &key).await?;
+                assert_eval(!session.id.is_empty(), "session id should not be empty")?;
+                assert_eq_eval(&session.nous_id, nous_id, "nous_id should match")?;
+                assert_eq_eval(&session.session_key, &key, "session_key should match")?;
+                assert_eq_eval(
+                    &session.status,
+                    &"active".to_owned(),
+                    "status should be active",
+                )?;
+                let fetched = client.get_session(&session.id).await?;
+                assert_eq_eval(&fetched.id, &session.id, "fetched session id should match")?;
+                let _ = client.close_session(&session.id).await;
+                Ok(())
+            }
+            .instrument(tracing::info_span!(
+                "scenario",
+                id = "session-create-and-get"
+            )),
+        )
     }
 }
 
@@ -69,19 +75,25 @@ impl Scenario for SessionCloseArchives {
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
-        Box::pin(async move {
-            let nous_list = client.list_nous().await?;
-            let nous_id = &nous_list[0].id;
-            let key = unique_key("close");
-            let session = client.create_session(nous_id, &key).await?;
-            client.close_session(&session.id).await?;
-            let fetched = client.get_session(&session.id).await?;
-            assert_eq_eval(
-                &fetched.status,
-                &"archived".to_owned(),
-                "closed session should be archived",
-            )
-        }.instrument(tracing::info_span!("scenario", id = "session-close-archives")))
+        Box::pin(
+            async move {
+                let nous_list = client.list_nous().await?;
+                let nous_id = &nous_list[0].id;
+                let key = unique_key("close");
+                let session = client.create_session(nous_id, &key).await?;
+                client.close_session(&session.id).await?;
+                let fetched = client.get_session(&session.id).await?;
+                assert_eq_eval(
+                    &fetched.status,
+                    &"archived".to_owned(),
+                    "closed session should be archived",
+                )
+            }
+            .instrument(tracing::info_span!(
+                "scenario",
+                id = "session-close-archives"
+            )),
+        )
     }
 }
 
@@ -97,17 +109,20 @@ impl Scenario for SessionUnknown404 {
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
-        Box::pin(async move {
-            match client.get_session("nonexistent-eval-session-id").await {
-                Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
-                    assert_eq_eval(&status, &404, "expected 404 for unknown session")
+        Box::pin(
+            async move {
+                match client.get_session("nonexistent-eval-session-id").await {
+                    Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
+                        assert_eq_eval(&status, &404, "expected 404 for unknown session")
+                    }
+                    Err(e) => Err(e),
+                    Ok(_) => crate::error::AssertionSnafu {
+                        message: "expected 404 but got success",
+                    }
+                    .fail(),
                 }
-                Err(e) => Err(e),
-                Ok(_) => crate::error::AssertionSnafu {
-                    message: "expected 404 but got success",
-                }
-                .fail(),
             }
-        }.instrument(tracing::info_span!("scenario", id = "session-unknown-404")))
+            .instrument(tracing::info_span!("scenario", id = "session-unknown-404")),
+        )
     }
 }

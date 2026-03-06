@@ -10,12 +10,12 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
-use crate::{ensure};
+use crate::ensure;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use smartstring::{LazyCompact, SmartString};
 
-use crate::engine::data::expr::{eval_bytecode, Expr};
+use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::DataValue;

@@ -13,8 +13,8 @@ use graph::prelude::{
     CsrLayout, DirectedCsrGraph, DirectedNeighborsWithValues, Graph, GraphBuilder,
 };
 use itertools::Itertools;
-use tracing::debug;
 use smartstring::{LazyCompact, SmartString};
+use tracing::debug;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;

@@ -509,7 +509,11 @@ mod tests {
         };
 
         let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
-        assert!(!result.is_error, "unexpected error: {}", result.content.text_summary());
+        assert!(
+            !result.is_error,
+            "unexpected error: {}",
+            result.content.text_summary()
+        );
         assert!(result.content.text_summary().contains("hello"));
     }
 

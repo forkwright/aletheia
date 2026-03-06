@@ -8,10 +8,10 @@
 
 use std::collections::BTreeSet;
 
-use snafu::Snafu;
-use crate::{bail, ensure};
 use crate::engine::error::DbResult as Result;
+use crate::{bail, ensure};
 use itertools::Itertools;
+use snafu::Snafu;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::program::{
@@ -157,7 +157,11 @@ impl InputAtom {
         for k in args.keys() {
             ensure!(
                 fields.contains(k),
-                NamedFieldNotFound { relation: name.to_string(), field: k.to_string(), span }
+                NamedFieldNotFound {
+                    relation: name.to_string(),
+                    field: k.to_string(),
+                    span
+                }
             );
         }
         let mut new_args = vec![];
@@ -202,9 +206,9 @@ impl InputAtom {
                 let mut args = args
                     .into_iter()
                     .map(|a| a.do_disjunctive_normal_form(r#gen, tx));
-                let mut result = args
-                    .next()
-                    .ok_or_else(|| crate::engine::error::AdhocError("empty conjunction".to_string()))??;
+                let mut result = args.next().ok_or_else(|| {
+                    crate::engine::error::AdhocError("empty conjunction".to_string())
+                })??;
                 for a in args {
                     result = result.conjunctive_to_disjunctive_de_morgen(a?)
                 }

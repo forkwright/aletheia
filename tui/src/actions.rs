@@ -18,11 +18,14 @@ impl App {
                 let session_id = session_id.clone();
                 let text = text.to_string();
                 let span = tracing::info_span!("queue_message");
-                tokio::spawn(async move {
-                    if let Err(e) = client.queue_message(&session_id, &text).await {
-                        tracing::error!("failed to queue message: {e}");
+                tokio::spawn(
+                    async move {
+                        if let Err(e) = client.queue_message(&session_id, &text).await {
+                            tracing::error!("failed to queue message: {e}");
+                        }
                     }
-                }.instrument(span));
+                    .instrument(span),
+                );
             }
             return;
         }

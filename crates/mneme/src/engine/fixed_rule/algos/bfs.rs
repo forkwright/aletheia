@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use crate::engine::error::DbResult as Result;
 use smartstring::{LazyCompact, SmartString};
 
-use crate::engine::data::expr::{eval_bytecode_pred, Expr};
+use crate::engine::data::expr::{Expr, eval_bytecode_pred};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
 use crate::engine::fixed_rule::{FixedRule, FixedRulePayload, NodeNotFoundError};

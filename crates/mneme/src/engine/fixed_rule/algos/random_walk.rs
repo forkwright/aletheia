@@ -15,10 +15,12 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use smartstring::{LazyCompact, SmartString};
 
-use crate::engine::data::expr::{eval_bytecode, Expr};
+use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
-use crate::engine::fixed_rule::{BadExprValueError, FixedRule, FixedRulePayload, NodeNotFoundError};
+use crate::engine::fixed_rule::{
+    BadExprValueError, FixedRule, FixedRulePayload, NodeNotFoundError,
+};
 use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;
 use crate::engine::runtime::temp_store::RegularTempStore;

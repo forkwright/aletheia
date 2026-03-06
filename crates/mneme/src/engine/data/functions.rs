@@ -13,17 +13,17 @@ use std::ops::{Div, Rem};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use base64::engine::general_purpose::STANDARD;
+use crate::engine::error::DbResult as Result;
+use crate::{bail, ensure, miette};
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use chrono::{DateTime, TimeZone, Utc};
 use itertools::Itertools;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Date;
-use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure, miette};
 use num_traits::FloatConst;
 use rand::prelude::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use smartstring::SmartString;
 use unicode_normalization::UnicodeNormalization;
 use uuid::v1::Timestamp;
@@ -1858,7 +1858,10 @@ pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
     let n = args[2]
         .get_int()
         .ok_or_else(|| miette!("third argument to 'slice_string' mut be an integer"))?;
-    ensure!(n >= m, "third argument to 'slice_string' mut be a positive integer greater than the second argument");
+    ensure!(
+        n >= m,
+        "third argument to 'slice_string' mut be a positive integer greater than the second argument"
+    );
     Ok(DataValue::Str(
         s.chars().skip(m as usize).take((n - m) as usize).collect(),
     ))
@@ -1985,7 +1988,7 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
                 .map_err(|_| miette!("The string cannot be interpreted as int"))?
                 .into()
         }
-        DataValue::Validity(vld) => DataValue::Num(Num::Int(vld.timestamp.0 .0)),
+        DataValue::Validity(vld) => DataValue::Num(Num::Int(vld.timestamp.0.0)),
         v => bail!("'to_int' does not recognize {:?}", v),
     })
 }
@@ -2474,7 +2477,7 @@ define_op!(OP_FORMAT_TIMESTAMP, 1, true);
 pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let dt = {
         let millis = match &args[0] {
-            DataValue::Validity(vld) => vld.timestamp.0 .0 / 1000,
+            DataValue::Validity(vld) => vld.timestamp.0.0 / 1000,
             v => {
                 let f = v
                     .get_float()

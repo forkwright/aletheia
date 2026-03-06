@@ -31,7 +31,10 @@ pub struct SettingsField {
 pub enum FieldType {
     Bool,
     Integer,
-    #[expect(dead_code, reason = "used when text editing fields are added to settings")]
+    #[expect(
+        dead_code,
+        reason = "used when text editing fields are added to settings"
+    )]
     Text,
     ReadOnly,
 }

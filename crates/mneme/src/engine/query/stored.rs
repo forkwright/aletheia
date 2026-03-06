@@ -9,34 +9,34 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use snafu::Snafu;
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail};
 use itertools::Itertools;
 use pest::Parser;
 use smartstring::{LazyCompact, SmartString};
+use snafu::Snafu;
 
 use crate::engine::data::expr::{Bytecode, Expr};
-use crate::engine::data::program::{FixedRuleApply, InputInlineRulesOrFixed, InputProgram, RelationOp};
+use crate::engine::data::program::{
+    FixedRuleApply, InputInlineRulesOrFixed, InputProgram, RelationOp,
+};
 use crate::engine::data::relation::{ColumnDef, NullableColType, StoredRelationMetadata};
 use crate::engine::data::symb::Symbol;
-use crate::engine::data::tuple::{Tuple, ENCODED_KEY_MIN_LEN};
+use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple};
 use crate::engine::data::value::{DataValue, ValidityTs};
-use crate::engine::fixed_rule::utilities::constant::Constant;
 use crate::engine::fixed_rule::FixedRuleHandle;
+use crate::engine::fixed_rule::utilities::constant::Constant;
 use crate::engine::fts::tokenizer::TextAnalyzer;
 use crate::engine::parse::expr::build_expr;
-use crate::engine::parse::{parse_script, CozoScriptParser, Rule};
+use crate::engine::parse::{CozoScriptParser, Rule, parse_script};
 use crate::engine::runtime::callback::{CallbackCollector, CallbackOp};
 use crate::engine::runtime::minhash_lsh::HashPermutations;
 use crate::engine::runtime::relation::{
-    extend_tuple_from_v, AccessLevel, InputRelationHandle, RelationHandle,
+    AccessLevel, InputRelationHandle, RelationHandle, extend_tuple_from_v,
 };
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::storage::Storage;
 use crate::engine::{DbCore as Db, NamedRows, SourceSpan, StoreTx};
-
-
 
 impl<'a> SessionTx<'a> {
     pub(crate) fn execute_relation<'s, S: Storage<'s>>(
@@ -56,12 +56,10 @@ impl<'a> SessionTx<'a> {
         let mut replaced_old_triggers = None;
         if op == RelationOp::Replace {
             if !propagate_triggers {
-                
                 bail!("replace op in trigger is not allowed")
             }
             if let Ok(old_handle) = self.get_relation(&meta.name, true) {
                 if !old_handle.indices.is_empty() {
-                    
                     bail!("cannot replace relation since it has indices")
                 }
                 if old_handle.access_level < AccessLevel::Normal {
@@ -79,16 +77,14 @@ impl<'a> SessionTx<'a> {
                     )?
                     .get_single_program()?;
 
-                    let (_, cleanups) = db
-                        .run_query(
-                            self,
-                            program,
-                            cur_vld,
-                            callback_targets,
-                            callback_collector,
-                            false,
-                        )
-                        ?;
+                    let (_, cleanups) = db.run_query(
+                        self,
+                        program,
+                        cur_vld,
+                        callback_targets,
+                        callback_collector,
+                        false,
+                    )?;
                     to_clear.extend(cleanups);
                 }
                 let destroy_res = self.destroy_relation(&meta.name)?;
@@ -205,8 +201,8 @@ impl<'a> SessionTx<'a> {
         force_collect: &str,
         span: SourceSpan,
     ) -> Result<()> {
-        let is_callback_target = callback_targets.contains(&relation_store.name)
-            || force_collect == relation_store.name;
+        let is_callback_target =
+            callback_targets.contains(&relation_store.name) || force_collect == relation_store.name;
 
         if relation_store.access_level < AccessLevel::Protected {
             bail!("Insufficient access level for this operation");
@@ -511,8 +507,8 @@ impl<'a> SessionTx<'a> {
         force_collect: &str,
         span: SourceSpan,
     ) -> Result<()> {
-        let is_callback_target = callback_targets.contains(&relation_store.name)
-            || force_collect == relation_store.name;
+        let is_callback_target =
+            callback_targets.contains(&relation_store.name) || force_collect == relation_store.name;
 
         if relation_store.access_level < AccessLevel::Protected {
             bail!("Insufficient access level for this operation");
@@ -691,16 +687,14 @@ impl<'a> SessionTx<'a> {
                     old_tuples.to_vec(),
                 );
 
-                let (_, cleanups) = db
-                    .run_query(
-                        self,
-                        program,
-                        cur_vld,
-                        callback_targets,
-                        callback_collector,
-                        false,
-                    )
-                    ?;
+                let (_, cleanups) = db.run_query(
+                    self,
+                    program,
+                    cur_vld,
+                    callback_targets,
+                    callback_collector,
+                    false,
+                )?;
                 to_clear.extend(cleanups);
             }
         }
@@ -935,7 +929,12 @@ impl<'a> SessionTx<'a> {
                     });
                 }
             }
-            if need_to_collect || has_indices || has_hnsw_indices || has_fts_indices || has_lsh_indices {
+            if need_to_collect
+                || has_indices
+                || has_hnsw_indices
+                || has_fts_indices
+                || has_lsh_indices
+            {
                 if let Some(existing) = self.store_tx.get(&key, false)? {
                     let mut tup = extracted.clone();
                     extend_tuple_from_v(&mut tup, &existing);
@@ -1006,16 +1005,14 @@ impl<'a> SessionTx<'a> {
                         old_tuples.clone(),
                     );
 
-                    let (_, cleanups) = db
-                        .run_query(
-                            self,
-                            program,
-                            cur_vld,
-                            callback_targets,
-                            callback_collector,
-                            false,
-                        )
-                        ?;
+                    let (_, cleanups) = db.run_query(
+                        self,
+                        program,
+                        cur_vld,
+                        callback_targets,
+                        callback_collector,
+                        false,
+                    )?;
                     to_clear.extend(cleanups);
                 }
             }
@@ -1077,10 +1074,18 @@ impl DataExtractor {
         Ok(match self {
             DataExtractor::DefaultExtractor(expr, typ) => typ
                 .coerce(expr.clone().eval_to_const()?, cur_vld)
-                .map_err(|e| crate::engine::error::AdhocError(format!("{e}: when processing tuple {tuple:?}")))?,
-            DataExtractor::IndexExtractor(i, typ) => typ
-                .coerce(tuple[*i].clone(), cur_vld)
-                .map_err(|e| crate::engine::error::AdhocError(format!("{e}: when processing tuple {tuple:?}")))?,
+                .map_err(|e| {
+                    crate::engine::error::AdhocError(format!(
+                        "{e}: when processing tuple {tuple:?}"
+                    ))
+                })?,
+            DataExtractor::IndexExtractor(i, typ) => {
+                typ.coerce(tuple[*i].clone(), cur_vld).map_err(|e| {
+                    crate::engine::error::AdhocError(format!(
+                        "{e}: when processing tuple {tuple:?}"
+                    ))
+                })?
+            }
         })
     }
 }
@@ -1136,8 +1141,10 @@ fn make_extractor(
             stored.typing.clone(),
         ))
     } else {
-        
-        Err(Box::new(crate::engine::error::AdhocError("cannot make extractor for column".to_string())) as Box<dyn std::error::Error + Send + Sync + 'static>)
+        Err(Box::new(crate::engine::error::AdhocError(
+            "cannot make extractor for column".to_string(),
+        ))
+            as Box<dyn std::error::Error + Send + Sync + 'static>)
     }
 }
 

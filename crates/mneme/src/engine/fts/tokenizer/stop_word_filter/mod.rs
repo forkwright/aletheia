@@ -15,8 +15,8 @@ mod stopwords;
 
 use std::sync::Arc;
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail};
 use rustc_hash::FxHashSet;
 
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};

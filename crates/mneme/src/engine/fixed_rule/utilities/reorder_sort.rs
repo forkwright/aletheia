@@ -8,12 +8,12 @@
 
 use std::collections::BTreeMap;
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail};
 use itertools::Itertools;
 use smartstring::{LazyCompact, SmartString};
 
-use crate::engine::data::expr::{eval_bytecode, Expr};
+use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::functions::OP_LIST;
 use crate::engine::data::program::WrongFixedRuleOptionError;
 use crate::engine::data::symb::Symbol;

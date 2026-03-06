@@ -6,12 +6,12 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail};
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use std::cmp::Ordering;
-use std::collections::btree_map::Range;
 use std::collections::BTreeMap;
+use std::collections::btree_map::Range;
 use std::default::Default;
 use std::iter::Fuse;
 use std::mem;
@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
-use crate::engine::data::tuple::{check_key_for_validity, Tuple};
+use crate::engine::data::tuple::{Tuple, check_key_for_validity};
 use crate::engine::data::value::ValidityTs;
 use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
 use crate::engine::storage::{Storage, StoreTx};

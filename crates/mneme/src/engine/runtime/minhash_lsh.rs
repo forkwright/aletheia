@@ -8,18 +8,18 @@
 
 // Some ideas are from https://github.com/schelterlabs/rust-minhash
 
-use crate::engine::data::expr::{eval_bytecode, eval_bytecode_pred, Bytecode};
-use crate::{bail};
+use crate::bail;
+use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
 use crate::engine::data::tuple::Tuple;
-use crate::engine::fts::tokenizer::TextAnalyzer;
+use crate::engine::error::DbResult as Result;
 use crate::engine::fts::TokenizerConfig;
+use crate::engine::fts::tokenizer::TextAnalyzer;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, Expr, SourceSpan, Symbol};
-use crate::engine::error::DbResult as Result;
 use itertools::Itertools;
 use quadrature::integrate;
-use rand::{thread_rng, RngCore};
+use rand::{RngCore, thread_rng};
 use rustc_hash::FxHashSet;
 use smartstring::{LazyCompact, SmartString};
 use std::cmp::min;
@@ -36,7 +36,9 @@ impl<'a> SessionTx<'a> {
     ) -> Result<()> {
         let bytes = match bytes {
             None => {
-                if let Some(mut found) = inv_idx_handle.get_val_only(self, &tuple[..inv_idx_handle.metadata.keys.len()])? {
+                if let Some(mut found) = inv_idx_handle
+                    .get_val_only(self, &tuple[..inv_idx_handle.metadata.keys.len()])?
+                {
                     let inv_key = inv_idx_handle.encode_key_for_store(tuple, Default::default())?;
                     self.store_tx.del(&inv_key)?;
                     match found.pop() {
@@ -182,10 +184,9 @@ impl<'a> SessionTx<'a> {
         }
         let mut ret = vec![];
         for key in found_tuples {
-            let orig_tuple = config
-                .base_handle
-                .get(self, &key)?
-                .ok_or_else(|| crate::engine::error::AdhocError("Tuple not found in base LSH relation".to_string()))?;
+            let orig_tuple = config.base_handle.get(self, &key)?.ok_or_else(|| {
+                crate::engine::error::AdhocError("Tuple not found in base LSH relation".to_string())
+            })?;
             if let Some((filter_code, span)) = filter_code {
                 if !eval_bytecode_pred(filter_code, &orig_tuple, stack, *span)? {
                     continue;
@@ -310,8 +311,11 @@ impl HashPermutations {
     }
     // this is the inverse of `as_bytes`
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let perms: &[u32] = bytemuck::try_cast_slice(bytes)
-            .map_err(|e| crate::engine::error::AdhocError(format!("MinHash permutation bytes are misaligned: {e}")))?;
+        let perms: &[u32] = bytemuck::try_cast_slice(bytes).map_err(|e| {
+            crate::engine::error::AdhocError(format!(
+                "MinHash permutation bytes are misaligned: {e}"
+            ))
+        })?;
         Ok(Self(perms.to_vec()))
     }
 }
@@ -347,7 +351,7 @@ impl HashValues {
             .zip_eq(&other_minhash.0)
             .filter(|(left, right)| left == right)
             .count();
-        
+
         matches as f32 / self.0.len() as f32
     }
     pub(crate) fn get_bytes(&self) -> &[u8] {
@@ -386,6 +390,9 @@ mod test {
         assert!(m1.jaccard(&m2) < 1.0);
         println!("{:?}", m1.jaccard(&m2));
         // println!("{:?}", m2.get_byte_chunks(2).collect_vec());
-        assert_eq!(perms.0, HashPermutations::from_bytes(perms.as_bytes()).unwrap().0);
+        assert_eq!(
+            perms.0,
+            HashPermutations::from_bytes(perms.as_bytes()).unwrap().0
+        );
     }
 }

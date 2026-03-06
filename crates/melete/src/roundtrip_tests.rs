@@ -193,16 +193,34 @@ async fn distill_preserves_corrections() {
 #[tokio::test]
 async fn distill_reduces_token_count() {
     let messages = vec![
-        text_msg(Role::User, "Help me fix this long complicated bug in the authentication system that spans multiple files"),
-        text_msg(Role::Assistant, "I'll investigate the authentication system. Let me check the auth module, session handler, and login flow for potential issues."),
+        text_msg(
+            Role::User,
+            "Help me fix this long complicated bug in the authentication system that spans multiple files",
+        ),
+        text_msg(
+            Role::Assistant,
+            "I'll investigate the authentication system. Let me check the auth module, session handler, and login flow for potential issues.",
+        ),
         text_msg(Role::User, "The error is in the null check path"),
-        text_msg(Role::Assistant, "Found it — there's a missing null check on line 42 of src/auth/login.rs. The session token can be null when the user's cookie expires mid-request."),
+        text_msg(
+            Role::Assistant,
+            "Found it — there's a missing null check on line 42 of src/auth/login.rs. The session token can be null when the user's cookie expires mid-request.",
+        ),
         text_msg(Role::User, "Fix it and add a test"),
-        text_msg(Role::Assistant, "Done. Added the null check and wrote a regression test that verifies the login flow handles expired cookies gracefully."),
+        text_msg(
+            Role::Assistant,
+            "Done. Added the null check and wrote a regression test that verifies the login flow handles expired cookies gracefully.",
+        ),
         text_msg(Role::User, "Run the tests"),
-        text_msg(Role::Assistant, "All tests pass including the new regression test."),
+        text_msg(
+            Role::Assistant,
+            "All tests pass including the new regression test.",
+        ),
         text_msg(Role::User, "Great work"),
-        text_msg(Role::Assistant, "Thanks! The fix is minimal and backwards compatible."),
+        text_msg(
+            Role::Assistant,
+            "Thanks! The fix is minimal and backwards compatible.",
+        ),
     ];
     let provider = MockProvider::with_summary(FULL_SUMMARY);
     let engine = default_engine();
@@ -262,8 +280,14 @@ async fn distill_handles_long_input() {
     let mut messages = Vec::new();
     for i in 0..24 {
         messages.push(text_msg(
-            if i % 2 == 0 { Role::User } else { Role::Assistant },
-            &format!("Message {i} with some content to make it longer for token estimation purposes."),
+            if i % 2 == 0 {
+                Role::User
+            } else {
+                Role::Assistant
+            },
+            &format!(
+                "Message {i} with some content to make it longer for token estimation purposes."
+            ),
         ));
     }
 
@@ -309,7 +333,10 @@ async fn distill_verbatim_tail_preserves_recent() {
         .expect("distill");
 
     assert_eq!(result.verbatim_messages.len(), 3);
-    assert_eq!(result.verbatim_messages[0].content.text(), "Eighth — recent");
+    assert_eq!(
+        result.verbatim_messages[0].content.text(),
+        "Eighth — recent"
+    );
     assert_eq!(result.verbatim_messages[1].content.text(), "Ninth — recent");
     assert_eq!(
         result.verbatim_messages[2].content.text(),

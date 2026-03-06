@@ -10,12 +10,8 @@ use std::collections::BTreeSet;
 use std::mem;
 
 use crate::bail;
-use crate::engine::error::DbResult as Result;
 use crate::engine::data::program::{NormalFormAtom, NormalFormInlineRule};
-
-
-
-
+use crate::engine::error::DbResult as Result;
 
 impl NormalFormInlineRule {
     pub(crate) fn convert_to_well_ordered_rule(self) -> Result<Self> {

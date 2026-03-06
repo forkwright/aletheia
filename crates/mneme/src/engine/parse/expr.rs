@@ -11,11 +11,11 @@ use std::collections::BTreeMap;
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
 use itertools::Itertools;
-use std::sync::LazyLock;
 use pest::pratt_parser::{Op, PrattParser};
 use smartstring::{LazyCompact, SmartString};
+use std::sync::LazyLock;
 
-use crate::engine::data::expr::{get_op, Bytecode, Expr, NoImplementationError};
+use crate::engine::data::expr::{Bytecode, Expr, NoImplementationError, get_op};
 use crate::engine::data::functions::{
     OP_ADD, OP_AND, OP_COALESCE, OP_CONCAT, OP_DIV, OP_EQ, OP_GE, OP_GT, OP_JSON_OBJECT, OP_LE,
     OP_LIST, OP_LT, OP_MAYBE_GET, OP_MINUS, OP_MOD, OP_MUL, OP_NEGATE, OP_NEQ, OP_OR, OP_POW,
@@ -47,8 +47,6 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
         .op(Op::prefix(Rule::negate))
         .op(Op::infix(Rule::op_field_access, Left))
 });
-
-
 
 pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Result<()> {
     match expr {
@@ -179,25 +177,23 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             tuple_pos: None,
         },
         Rule::param => {
-            
-
             let param_str = pair.as_str().strip_prefix('$').unwrap();
             Expr::Const {
                 val: param_pool
                     .get(param_str)
-                    .ok_or_else(|| crate::engine::error::AdhocError(format!("Required parameter {param_str} not found")))?
+                    .ok_or_else(|| {
+                        crate::engine::error::AdhocError(format!(
+                            "Required parameter {param_str} not found"
+                        ))
+                    })?
                     .clone(),
                 span,
             }
         }
         Rule::pos_int => {
-            
-
-            let i = pair
-                .as_str()
-                .replace('_', "")
-                .parse::<i64>()
-                .map_err(|_| crate::engine::error::AdhocError("Cannot parse integer".to_string()))?;
+            let i = pair.as_str().replace('_', "").parse::<i64>().map_err(|_| {
+                crate::engine::error::AdhocError("Cannot parse integer".to_string())
+            })?;
             Expr::Const {
                 val: DataValue::from(i),
                 span,
@@ -225,13 +221,10 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             }
         }
         Rule::dot_float | Rule::sci_float => {
-            
-
-            let f = pair
-                .as_str()
-                .replace('_', "")
-                .parse::<f64>()
-                .map_err(|_| crate::engine::error::AdhocError("Cannot parse float".to_string()))?;
+            let f =
+                pair.as_str().replace('_', "").parse::<f64>().map_err(|_| {
+                    crate::engine::error::AdhocError("Cannot parse float".to_string())
+                })?;
             Expr::Const {
                 val: DataValue::from(f),
                 span,
@@ -290,12 +283,10 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                 .into_inner()
                 .map(|v| build_expr(v, param_pool))
                 .try_collect()?;
-            
 
             match ident {
                 "cond" => {
                     if args.is_empty() {
-                        
                         bail!("'cond' cannot have empty body");
                     }
                     if args.len() & 1 == 1 {
@@ -334,9 +325,12 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                     Expr::Cond { clauses, span }
                 }
                 "if" => {
-                    
-
-                    ensure!(args.len() == 2 || args.len() == 3, crate::engine::error::AdhocError("wrong number of arguments to if: 2 or 3 required".to_string()));
+                    ensure!(
+                        args.len() == 2 || args.len() == 3,
+                        crate::engine::error::AdhocError(
+                            "wrong number of arguments to if: 2 or 3 required".to_string()
+                        )
+                    );
 
                     let mut clauses = vec![];
                     let mut args = args.into_iter();
@@ -363,17 +357,18 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                     },
                     Some(op) => {
                         op.post_process_args(&mut args);
-                        
 
                         if op.vararg {
                             ensure!(
                                 op.min_arity <= args.len(),
-                                "Wrong number of arguments for function: need at least {} argument(s)", op.min_arity
+                                "Wrong number of arguments for function: need at least {} argument(s)",
+                                op.min_arity
                             );
                         } else {
                             ensure!(
                                 op.min_arity == args.len(),
-                                "Wrong number of arguments for function: need exactly {} argument(s)", op.min_arity
+                                "Wrong number of arguments for function: need exactly {} argument(s)",
+                                op.min_arity
                             );
                         }
                         Expr::Apply {
@@ -404,10 +399,6 @@ pub(crate) fn parse_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
     }
 }
 
-
-
-
-
 fn parse_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
     let pairs = pair.into_inner().next().unwrap().into_inner();
     let mut ret = SmartString::new();
@@ -424,8 +415,9 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
             r"\t" => ret.push('\t'),
             s if s.starts_with(r"\u") => {
                 let code = parse_int(s, 16) as u32;
-                let ch = char::from_u32(code)
-                    .ok_or_else(|| crate::engine::error::AdhocError(format!("invalid UTF8 code {code}")))?;
+                let ch = char::from_u32(code).ok_or_else(|| {
+                    crate::engine::error::AdhocError(format!("invalid UTF8 code {code}"))
+                })?;
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
@@ -453,8 +445,9 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
             r"\t" => ret.push('\t'),
             s if s.starts_with(r"\u") => {
                 let code = parse_int(s, 16) as u32;
-                let ch = char::from_u32(code)
-                    .ok_or_else(|| crate::engine::error::AdhocError(format!("invalid UTF8 code {code}")))?;
+                let ch = char::from_u32(code).ok_or_else(|| {
+                    crate::engine::error::AdhocError(format!("invalid UTF8 code {code}"))
+                })?;
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {

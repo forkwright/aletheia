@@ -22,7 +22,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-
 }
 
 /// Convenience alias for `Result` with agora's [`Error`] type.

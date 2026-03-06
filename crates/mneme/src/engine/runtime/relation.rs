@@ -10,20 +10,20 @@ use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::Ordering;
 
-use snafu::Snafu;
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
 use itertools::Itertools;
-use tracing::error;
 use pest::Parser;
 use rmp_serde::Serializer;
 use serde::Serialize;
 use smartstring::{LazyCompact, SmartString};
+use snafu::Snafu;
+use tracing::error;
 
 use crate::engine::data::memcmp::MemCmpEncoder;
 use crate::engine::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
 use crate::engine::data::symb::Symbol;
-use crate::engine::data::tuple::{decode_tuple_from_key, Tuple, TupleT, ENCODED_KEY_MIN_LEN};
+use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple, TupleT, decode_tuple_from_key};
 use crate::engine::data::value::{DataValue, ValidityTs};
 use crate::engine::fts::FtsIndexManifest;
 use crate::engine::parse::expr::build_expr;
@@ -31,7 +31,9 @@ use crate::engine::parse::sys::{FtsIndexConfig, HnswIndexConfig, MinHashLshConfi
 use crate::engine::parse::{CozoScriptParser, Rule, SourceSpan};
 use crate::engine::query::compile::IndexPositionUse;
 use crate::engine::runtime::hnsw::HnswIndexManifest;
-use crate::engine::runtime::minhash_lsh::{HashPermutations, LshParams, MinHashLshIndexManifest, Weights};
+use crate::engine::runtime::minhash_lsh::{
+    HashPermutations, LshParams, MinHashLshIndexManifest, Weights,
+};
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::utils::TempCollector;
 use crate::engine::{NamedRows, StoreTx};
@@ -141,10 +143,16 @@ impl Display for AccessLevel {
 
 #[derive(Debug, thiserror::Error)]
 #[error("Insufficient access to relation '{0}' for {1} (current level: {2})")]
-pub(crate) struct InsufficientAccessLevel(pub(crate) String, pub(crate) String, pub(crate) AccessLevel);
+pub(crate) struct InsufficientAccessLevel(
+    pub(crate) String,
+    pub(crate) String,
+    pub(crate) AccessLevel,
+);
 
 #[derive(Debug, Snafu)]
-#[snafu(display("Arity mismatch for stored relation {name}: expect {expect_arity}, got {actual_arity}"))]
+#[snafu(display(
+    "Arity mismatch for stored relation {name}: expect {expect_arity}, got {actual_arity}"
+))]
 struct StoredRelArityMismatch {
     name: String,
     expect_arity: usize,
@@ -404,15 +412,27 @@ impl RelationHandle {
         if self.is_temp {
             tx.temp_store_tx
                 .get(&key_data, false)?
-                .map(|val_data| rmp_serde::from_slice::<Vec<DataValue>>(&val_data[ENCODED_KEY_MIN_LEN..])
-                    .map_err(|e| crate::engine::error::AdhocError(format!("failed to deserialize stored tuple: {e}"))))
+                .map(|val_data| {
+                    rmp_serde::from_slice::<Vec<DataValue>>(&val_data[ENCODED_KEY_MIN_LEN..])
+                        .map_err(|e| {
+                            crate::engine::error::AdhocError(format!(
+                                "failed to deserialize stored tuple: {e}"
+                            ))
+                        })
+                })
                 .transpose()
                 .map_err(|e| Box::new(e) as crate::engine::error::BoxErr)
         } else {
             tx.store_tx
                 .get(&key_data, false)?
-                .map(|val_data| rmp_serde::from_slice::<Vec<DataValue>>(&val_data[ENCODED_KEY_MIN_LEN..])
-                    .map_err(|e| crate::engine::error::AdhocError(format!("failed to deserialize stored tuple: {e}"))))
+                .map(|val_data| {
+                    rmp_serde::from_slice::<Vec<DataValue>>(&val_data[ENCODED_KEY_MIN_LEN..])
+                        .map_err(|e| {
+                            crate::engine::error::AdhocError(format!(
+                                "failed to deserialize stored tuple: {e}"
+                            ))
+                        })
+                })
                 .transpose()
                 .map_err(|e| Box::new(e) as crate::engine::error::BoxErr)
         }
@@ -534,10 +554,6 @@ pub fn extend_tuple_from_v(key: &mut Tuple, val: &[u8]) {
     }
 }
 
-
-
-
-
 impl<'a> SessionTx<'a> {
     pub(crate) fn relation_exists(&self, name: &str) -> Result<bool> {
         let key = DataValue::from(name);
@@ -636,19 +652,21 @@ impl<'a> SessionTx<'a> {
         Ok(meta)
     }
     pub(crate) fn get_relation(&self, name: &str, lock: bool) -> Result<RelationHandle> {
-        
-
         let key = DataValue::from(name);
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
 
         let found = if name.starts_with('_') {
-            self.temp_store_tx
-                .get(&encoded, lock)?
-                .ok_or_else(|| crate::engine::error::AdhocError("Cannot find requested stored relation".to_string()))?
+            self.temp_store_tx.get(&encoded, lock)?.ok_or_else(|| {
+                crate::engine::error::AdhocError(
+                    "Cannot find requested stored relation".to_string(),
+                )
+            })?
         } else {
-            self.store_tx
-                .get(&encoded, lock)?
-                .ok_or_else(|| crate::engine::error::AdhocError("Cannot find requested stored relation".to_string()))?
+            self.store_tx.get(&encoded, lock)?.ok_or_else(|| {
+                crate::engine::error::AdhocError(
+                    "Cannot find requested stored relation".to_string(),
+                )
+            })?
         };
         let metadata = RelationHandle::decode(&found)?;
         Ok(metadata)
@@ -1014,10 +1032,20 @@ impl<'a> SessionTx<'a> {
 
                     if let ColType::Vec { eltype, len } = col_type {
                         if eltype != config.dtype {
-                            bail!("Cannot create HNSW index with field {} of type {:?} (expected {:?})", field, eltype, config.dtype);
+                            bail!(
+                                "Cannot create HNSW index with field {} of type {:?} (expected {:?})",
+                                field,
+                                eltype,
+                                config.dtype
+                            );
                         }
                         if len != config.vec_dim {
-                            bail!("Cannot create HNSW index with field {} of dimension {} (expected {})", field, len, config.vec_dim);
+                            bail!(
+                                "Cannot create HNSW index with field {} of dimension {} (expected {})",
+                                field,
+                                len,
+                                config.vec_dim
+                            );
                         }
                     } else {
                         bail!("Cannot create HNSW index with non-vector field {}", field)
@@ -1231,8 +1259,6 @@ impl<'a> SessionTx<'a> {
                 }
             }
 
-            
-
             bail!("column {} in index {} for relation {} not found");
         }
 
@@ -1347,8 +1373,6 @@ impl<'a> SessionTx<'a> {
             && rel.lsh_indices.remove(&idx_name.name).is_none()
             && rel.fts_indices.remove(&idx_name.name).is_none()
         {
-            
-
             bail!("index for relation not found");
         }
 
@@ -1418,5 +1442,3 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 }
-
-

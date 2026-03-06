@@ -1010,9 +1010,7 @@ fn extract_str(val: &crate::engine::DataValue) -> crate::error::Result<String> {
 }
 
 #[cfg(feature = "mneme-engine")]
-fn extract_optional_str(
-    val: &crate::engine::DataValue,
-) -> crate::error::Result<Option<String>> {
+fn extract_optional_str(val: &crate::engine::DataValue) -> crate::error::Result<Option<String>> {
     match val {
         crate::engine::DataValue::Null => Ok(None),
         crate::engine::DataValue::Str(s) => Ok(Some(s.to_string())),
@@ -1249,7 +1247,10 @@ mod tests {
 
     #[cfg(feature = "mneme-engine")]
     #[test]
-    #[expect(clippy::too_many_lines, reason = "integration test with setup/assert phases")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "integration test with setup/assert phases"
+    )]
     fn hybrid_search_graph_aggregation() {
         use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
 

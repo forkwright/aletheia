@@ -6,19 +6,19 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::engine::error::DbResult as Result;
 use itertools::Itertools;
-use tracing::{debug, trace};
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
+use tracing::{debug, trace};
 
 use crate::engine::data::aggr::Aggregation;
 use crate::engine::data::program::{MagicSymbol, NoEntryError};
-use crate::engine::data::symb::{Symbol, PROG_ENTRY};
+use crate::engine::data::symb::{PROG_ENTRY, Symbol};
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::DataValue;
 use crate::engine::fixed_rule::FixedRulePayload;
@@ -542,18 +542,12 @@ impl<'a> SessionTx<'a> {
                     if prev_store.exists(&item) {
                         trace!(
                             "item for {:?}.{}: {:?} at {}, rederived",
-                            rule_symb,
-                            rule_n,
-                            item,
-                            epoch
+                            rule_symb, rule_n, item, epoch
                         );
                     } else {
                         trace!(
                             "item for {:?}.{}: {:?} at {}",
-                            rule_symb,
-                            rule_n,
-                            item,
-                            epoch
+                            rule_symb, rule_n, item, epoch
                         );
                         if limiter.should_skip_next() {
                             out_store.put_with_skip(item);
@@ -582,18 +576,12 @@ impl<'a> SessionTx<'a> {
                         if prev_store.exists(&item) {
                             trace!(
                                 "item for {:?}.{}: {:?} at {}, rederived",
-                                rule_symb,
-                                rule_n,
-                                item,
-                                epoch
+                                rule_symb, rule_n, item, epoch
                             );
                         } else {
                             trace!(
                                 "item for {:?}.{}: {:?} at {}",
-                                rule_symb,
-                                rule_n,
-                                item,
-                                epoch
+                                rule_symb, rule_n, item, epoch
                             );
                             if limiter.should_skip_next() {
                                 out_store.put_with_skip(item);

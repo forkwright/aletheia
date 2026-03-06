@@ -7,9 +7,9 @@
  */
 
 use std::cmp::Ordering;
-use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::Bound::Included;
+use std::collections::btree_map::Entry;
 use std::mem;
 use std::ops::Bound::Excluded;
 
@@ -312,7 +312,10 @@ impl EpochStore {
             self.delta.range_iter(lower, upper, upper_inclusive)
         }
     }
-    pub(crate) fn prefix_iter(&self, prefix: &Tuple) -> impl Iterator<Item = TupleInIter<'_>> + use<'_> {
+    pub(crate) fn prefix_iter(
+        &self,
+        prefix: &Tuple,
+    ) -> impl Iterator<Item = TupleInIter<'_>> + use<'_> {
         let mut upper = prefix.to_vec();
         upper.push(DataValue::Bot);
         self.range_iter(prefix, &upper, true)

@@ -4,31 +4,32 @@ use std::collections::BTreeMap;
 #[cfg(feature = "storage-new-rocksdb")]
 use std::path::Path;
 
-use crossbeam::channel::{bounded, Receiver, Sender};
+use crossbeam::channel::{Receiver, Sender, bounded};
 
 pub mod error;
 pub use error::{Error, Result};
 
 // Public type re-exports
 pub use crate::engine::data::value::{DataValue, ValidityTs, Vector};
-pub use ndarray::Array1;
 pub use crate::engine::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::engine::runtime::callback::CallbackOp;
 pub use crate::engine::runtime::db::{NamedRows, ScriptMutability, TransactionPayload};
 pub use crate::engine::storage::mem::MemStorage;
 #[cfg(feature = "storage-new-rocksdb")]
 pub use crate::engine::storage::newrocks::NewRocksDbStorage;
+pub use ndarray::Array1;
 
 // Internal re-exports needed by submodules (not part of the public API)
-pub(crate) use crate::engine::data::symb::Symbol;
 pub(crate) use crate::engine::data::expr::Expr;
+pub(crate) use crate::engine::data::symb::Symbol;
 pub(crate) use crate::engine::parse::SourceSpan;
 pub(crate) use crate::engine::runtime::db::Db as DbCore;
 pub(crate) use crate::engine::runtime::relation::decode_tuple_from_kv;
 pub(crate) use crate::engine::storage::{Storage, StoreTx};
 // Test-only type alias — matches original `DbInstance` used in internal test modules
 #[cfg(test)]
-pub(crate) type DbInstance = crate::engine::runtime::db::Db<crate::engine::storage::mem::MemStorage>;
+pub(crate) type DbInstance =
+    crate::engine::runtime::db::Db<crate::engine::storage::mem::MemStorage>;
 
 // All internal modules — pub(crate) only
 pub(crate) mod data;
@@ -45,10 +46,15 @@ pub(crate) mod utils;
 
 /// Convert an internal BoxErr to the public Error type, detecting ProcessKilled for typed matching.
 fn convert_err(e: crate::engine::error::BoxErr) -> Error {
-    if e.downcast_ref::<crate::engine::runtime::db::ProcessKilled>().is_some() {
+    if e.downcast_ref::<crate::engine::runtime::db::ProcessKilled>()
+        .is_some()
+    {
         return error::QueryKilledSnafu.build();
     }
-    error::EngineSnafu { message: e.to_string() }.build()
+    error::EngineSnafu {
+        message: e.to_string(),
+    }
+    .build()
 }
 
 /// Public facade replacing DbInstance. Dispatches to concrete storage implementations.
@@ -90,7 +96,10 @@ impl Db {
     }
 
     /// Export relations for backup.
-    pub fn export_relations<I, T>(&self, relations: I) -> crate::engine::Result<BTreeMap<String, NamedRows>>
+    pub fn export_relations<I, T>(
+        &self,
+        relations: I,
+    ) -> crate::engine::Result<BTreeMap<String, NamedRows>>
     where
         I: Iterator<Item = T>,
         T: AsRef<str>,
@@ -133,7 +142,10 @@ impl Db {
         &self,
         relation: &str,
         capacity: Option<usize>,
-    ) -> (u32, crossbeam::channel::Receiver<(CallbackOp, NamedRows, NamedRows)>) {
+    ) -> (
+        u32,
+        crossbeam::channel::Receiver<(CallbackOp, NamedRows, NamedRows)>,
+    ) {
         match self {
             Db::Mem(db) => db.register_callback(relation, capacity),
             #[cfg(feature = "storage-new-rocksdb")]
@@ -215,7 +227,10 @@ impl DbInstance {
         let (db_tx, db_rx) = bounded::<crate::engine::error::DbResult<NamedRows>>(1);
         let db = self.clone();
         rayon::spawn(move || db.run_multi_transaction(write, app_rx, db_tx));
-        TestMultiTx { sender: app_tx, receiver: db_rx }
+        TestMultiTx {
+            sender: app_tx,
+            receiver: db_rx,
+        }
     }
 }
 
@@ -227,8 +242,14 @@ pub(crate) struct TestMultiTx {
 
 #[cfg(test)]
 impl TestMultiTx {
-    pub(crate) fn run_script(&self, script: &str, params: BTreeMap<String, DataValue>) -> crate::engine::error::DbResult<NamedRows> {
-        self.sender.send(TransactionPayload::Query((script.to_string(), params))).unwrap();
+    pub(crate) fn run_script(
+        &self,
+        script: &str,
+        params: BTreeMap<String, DataValue>,
+    ) -> crate::engine::error::DbResult<NamedRows> {
+        self.sender
+            .send(TransactionPayload::Query((script.to_string(), params)))
+            .unwrap();
         self.receiver.recv().unwrap()
     }
 

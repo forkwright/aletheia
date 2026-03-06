@@ -8,12 +8,14 @@ use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use tracing::info;
 
-use aletheia_mneme::embedding::{EmbeddingProvider, create_provider, EmbeddingConfig};
+use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact};
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 use aletheia_taxis::oikos::Oikos;
 use qdrant_client::Qdrant;
-use qdrant_client::qdrant::{ScrollPointsBuilder, with_payload_selector, with_vectors_selector, value};
+use qdrant_client::qdrant::{
+    ScrollPointsBuilder, value, with_payload_selector, with_vectors_selector,
+};
 
 use crate::Cli;
 
@@ -56,8 +58,9 @@ pub async fn run(
         .build()
         .context("failed to connect to Qdrant")?;
 
-    let embedder: Arc<dyn EmbeddingProvider> =
-        Arc::from(create_provider(&EmbeddingConfig::default()).context("failed to create embedder")?);
+    let embedder: Arc<dyn EmbeddingProvider> = Arc::from(
+        create_provider(&EmbeddingConfig::default()).context("failed to create embedder")?,
+    );
 
     let knowledgedb = KnowledgeStore::open_mem_with_config(KnowledgeConfig::default())
         .context("failed to open knowledge store")?;
@@ -67,7 +70,10 @@ pub async fn run(
 
     let mut by_agent: HashMap<String, Vec<MemoryRecord>> = HashMap::new();
     for record in all_records {
-        by_agent.entry(record.agent_id.clone()).or_default().push(record);
+        by_agent
+            .entry(record.agent_id.clone())
+            .or_default()
+            .push(record);
     }
 
     let mut total_imported = 0usize;
@@ -75,15 +81,23 @@ pub async fn run(
     let mut flagged: Vec<String> = Vec::new();
 
     for (agent_id, records) in &by_agent {
-        let (imported, deduped) =
-            process_agent(agent_id, records, &knowledgedb, &embedder, &mut flagged, dry_run)?;
+        let (imported, deduped) = process_agent(
+            agent_id,
+            records,
+            &knowledgedb,
+            &embedder,
+            &mut flagged,
+            dry_run,
+        )?;
         total_imported += imported;
         total_deduped += deduped;
     }
 
     println!(
         "\nTotal: {} imported, {} deduplicated, {} flagged{}",
-        total_imported, total_deduped, flagged.len(),
+        total_imported,
+        total_deduped,
+        flagged.len(),
         if dry_run { " (DRY RUN)" } else { "" }
     );
 
@@ -117,7 +131,10 @@ async fn fetch_from_qdrant(client: &Qdrant, collection: &str) -> Result<Vec<Memo
 
         for point in &response.result {
             let payload = &point.payload;
-            let content = payload.get("memory").and_then(extract_string).unwrap_or_default();
+            let content = payload
+                .get("memory")
+                .and_then(extract_string)
+                .unwrap_or_default();
             if content.is_empty() {
                 continue;
             }
@@ -132,7 +149,12 @@ async fn fetch_from_qdrant(client: &Qdrant, collection: &str) -> Result<Vec<Memo
                 .and_then(extract_string)
                 .unwrap_or_else(|| "2025-01-01T00:00:00Z".to_owned());
 
-            all_records.push(MemoryRecord { content, agent_id, mem_score, created_at });
+            all_records.push(MemoryRecord {
+                content,
+                agent_id,
+                mem_score,
+                created_at,
+            });
         }
 
         offset = response.next_page_offset;
@@ -190,7 +212,10 @@ fn process_agent(
         records.len(),
         agent_deduped,
         unique.len(),
-        flagged.iter().filter(|f| f.starts_with(&format!("[{agent_id}]"))).count()
+        flagged
+            .iter()
+            .filter(|f| f.starts_with(&format!("[{agent_id}]")))
+            .count()
     );
 
     Ok((unique.len(), agent_deduped))
@@ -203,7 +228,9 @@ fn import_fact(
     embedder: &Arc<dyn EmbeddingProvider>,
 ) -> Result<()> {
     let fact_id = format!("migrated-{}", content_hash(&record.content));
-    let now = jiff::Zoned::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let now = jiff::Zoned::now()
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
 
     let fact = Fact {
         id: fact_id.clone(),
@@ -217,7 +244,9 @@ fn import_fact(
         source_session_id: None,
         recorded_at: now.clone(),
     };
-    knowledgedb.insert_fact(&fact).context("failed to insert fact")?;
+    knowledgedb
+        .insert_fact(&fact)
+        .context("failed to insert fact")?;
 
     if let Ok(embedding) = embedder.embed(&record.content) {
         let chunk = EmbeddedChunk {
@@ -229,7 +258,9 @@ fn import_fact(
             embedding,
             created_at: now,
         };
-        knowledgedb.insert_embedding(&chunk).context("failed to insert embedding")?;
+        knowledgedb
+            .insert_embedding(&chunk)
+            .context("failed to insert embedding")?;
     }
 
     Ok(())

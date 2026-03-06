@@ -192,9 +192,14 @@ struct StutteringIterator<T> {
 }
 
 impl<T> StutteringIterator<T>
-where T: Iterator<Item = usize>
+where
+    T: Iterator<Item = usize>,
 {
-    pub(crate) fn new(mut underlying: T, min_gram: usize, max_gram: usize) -> StutteringIterator<T> {
+    pub(crate) fn new(
+        mut underlying: T,
+        min_gram: usize,
+        max_gram: usize,
+    ) -> StutteringIterator<T> {
         assert!(min_gram > 0);
         let memory: Vec<usize> = (&mut underlying).take(max_gram + 1).collect();
         if memory.len() <= min_gram {
@@ -221,7 +226,8 @@ where T: Iterator<Item = usize>
 }
 
 impl<T> Iterator for StutteringIterator<T>
-where T: Iterator<Item = usize>
+where
+    T: Iterator<Item = usize>,
 {
     type Item = (usize, usize);
 
@@ -300,7 +306,7 @@ fn utf8_codepoint_width(b: u8) -> usize {
 #[cfg(test)]
 mod tests {
 
-    use super::{utf8_codepoint_width, CodepointFrontiers, StutteringIterator};
+    use super::{CodepointFrontiers, StutteringIterator, utf8_codepoint_width};
     // use crate::engine::fts::tokenizer::tests::assert_token;
     // use crate::engine::fts::tokenizer::tokenizer_impl::Tokenizer;
     // use crate::engine::fts::tokenizer::{BoxTokenStream, Token};

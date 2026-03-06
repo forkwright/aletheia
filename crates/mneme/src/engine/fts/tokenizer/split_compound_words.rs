@@ -1,5 +1,5 @@
-use crate::engine::error::DbResult as Result;
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
+use crate::engine::error::DbResult as Result;
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
 /// A [`TokenFilter`] which splits compound words into their parts

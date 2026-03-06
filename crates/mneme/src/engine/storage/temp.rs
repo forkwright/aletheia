@@ -9,7 +9,6 @@
 use std::collections::BTreeMap;
 use std::default::Default;
 
-
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::ValidityTs;
 use crate::engine::error::DbResult as Result;
@@ -128,7 +127,10 @@ impl<'s> StoreTx<'s> for TempTx {
         )
     }
 
-    fn range_count<'a>(&'a self, lower: &[u8], upper: &[u8]) -> Result<usize> where 's: 'a {
+    fn range_count<'a>(&'a self, lower: &[u8], upper: &[u8]) -> Result<usize>
+    where
+        's: 'a,
+    {
         Ok(self.store.range(lower.to_vec()..upper.to_vec()).count())
     }
 
