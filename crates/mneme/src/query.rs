@@ -9,7 +9,7 @@ pub trait Field: Copy {
     fn name(self) -> &'static str;
 }
 
-/// Knowledge graph relations stored in the CozoDB engine.
+/// Knowledge graph relations stored in the `CozoDB` engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Relation {
     /// Temporal facts with validity windows and confidence scores.
@@ -23,7 +23,7 @@ pub enum Relation {
 }
 
 impl Relation {
-    /// Return the CozoDB relation name used in Datalog queries.
+    /// Return the `CozoDB` relation name used in Datalog queries.
     pub fn name(self) -> &'static str {
         match self {
             Self::Facts => "facts",
@@ -367,10 +367,12 @@ impl ScanBuilder {
         let mut line = parts.join(",\n");
 
         if let Some(ref ord) = self.order {
-            line.push_str(&format!("\n:order {ord}"));
+            use std::fmt::Write;
+            let _ = write!(line, "\n:order {ord}");
         }
         if let Some(ref lim) = self.limit {
-            line.push_str(&format!("\n:limit {lim}"));
+            use std::fmt::Write;
+            let _ = write!(line, "\n:limit {lim}");
         }
 
         self.parent.lines.push(line);
@@ -382,7 +384,8 @@ impl ScanBuilder {
 // Pre-built query functions
 // ---------------------------------------------------------------------------
 
-/// Builder-generated query scripts for KnowledgeStore operations.
+/// Builder-generated query scripts for `KnowledgeStore` operations.
+#[allow(clippy::enum_glob_use, clippy::wildcard_imports)]
 pub mod queries {
     use super::*;
 
@@ -633,7 +636,7 @@ mod tests {
     use super::*;
 
     /// Normalize whitespace for comparison: collapse runs of whitespace to single
-    /// space, trim, then remove spaces adjacent to brackets/braces (CozoDB
+    /// space, trim, then remove spaces adjacent to brackets/braces (`CozoDB`
     /// ignores these formatting differences).
     fn normalize(s: &str) -> String {
         let collapsed: String = s.split_whitespace().collect::<Vec<_>>().join(" ");

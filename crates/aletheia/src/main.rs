@@ -526,15 +526,39 @@ async fn serve(cli: Cli) -> Result<()> {
         })
     };
 
+    // Knowledge store for vector search and extraction persistence
+    #[cfg(feature = "recall")]
+    let knowledge_store = {
+        let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_mem()
+            .context("failed to create knowledge store")?;
+        info!(dim = 384, "knowledge store created (in-memory)");
+        Some(store)
+    };
+    #[cfg(not(feature = "recall"))]
+    let knowledge_store: Option<std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>> =
+        None;
+
+    // Wire vector search from KnowledgeStore
+    #[cfg(feature = "recall")]
+    let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = knowledge_store
+        .as_ref()
+        .map(|ks| {
+            Arc::new(aletheia_nous::recall::KnowledgeVectorSearch::new(Arc::clone(ks)))
+                as Arc<dyn aletheia_nous::recall::VectorSearch>
+        });
+    #[cfg(not(feature = "recall"))]
+    let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = None;
+
     // Spawn nous actors
-    // vector_search is None until Phase 2 (prompt 28) lands KnowledgeVectorSearch
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),
         Arc::clone(&tool_registry),
         Arc::clone(&oikos_arc),
         Some(embedding_provider),
-        None,
+        vector_search,
         Some(Arc::clone(&session_store)),
+        #[cfg(feature = "recall")]
+        knowledge_store,
         Arc::clone(&packs),
         Some(Arc::clone(&cross_router)),
         Some(tool_services),

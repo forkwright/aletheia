@@ -79,6 +79,8 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         None,
         None,
         Some(Arc::clone(&session_store)),
+        #[cfg(feature = "knowledge-store")]
+        None,
         Arc::new(vec![]),
         None,
         None,

@@ -47,6 +47,7 @@ impl SpawnServiceImpl {
 }
 
 impl SpawnService for SpawnServiceImpl {
+    #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
     fn spawn_and_run(
         &self,
         request: SpawnRequest,
@@ -119,6 +120,8 @@ impl SpawnService for SpawnServiceImpl {
                     oikos,
                     None,
                     None,
+                    None,
+                    #[cfg(feature = "knowledge-store")]
                     None,
                     None,
                     Vec::new(),
@@ -199,6 +202,10 @@ mod tests {
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
         fn name(&self) -> &str {
             "mock"
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 
@@ -333,6 +340,10 @@ mod tests {
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
         fn name(&self) -> &str {
             "slow"
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 }

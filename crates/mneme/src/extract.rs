@@ -401,12 +401,14 @@ fn now_iso8601() -> String {
     let seconds = time_secs % 60;
 
     // Simple epoch-day to y/m/d (civil calendar from days since 1970-01-01).
+    #[expect(clippy::cast_possible_wrap, reason = "epoch days fits in i64")]
     let (y, m, d) = epoch_days_to_ymd(days as i64);
     format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
 /// Convert epoch days to (year, month, day). Algorithm from Howard Hinnant.
 #[cfg(feature = "mneme-engine")]
+#[expect(clippy::cast_possible_truncation, clippy::cast_lossless, reason = "Hinnant algorithm uses known-range casts")]
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);

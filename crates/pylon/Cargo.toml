@@ -13,6 +13,7 @@ workspace = true
 [features]
 default = []
 tls = ["dep:axum-server"]
+knowledge-store = ["aletheia-nous/knowledge-store"]
 
 [dependencies]
 # HTTP framework

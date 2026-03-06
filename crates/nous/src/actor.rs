@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use aletheia_mneme::store::SessionStore;
+#[cfg(feature = "knowledge-store")]
+use aletheia_mneme::knowledge_store::KnowledgeStore;
 
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, info, instrument, warn};
@@ -47,6 +49,8 @@ pub struct NousActor {
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<KnowledgeStore>>,
     tool_services: Option<Arc<ToolServices>>,
     extra_bootstrap: Vec<BootstrapSection>,
 }
@@ -70,6 +74,7 @@ impl NousActor {
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
         session_store: Option<Arc<Mutex<SessionStore>>>,
+        #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
         tool_services: Option<Arc<ToolServices>>,
         extra_bootstrap: Vec<BootstrapSection>,
     ) -> Self {
@@ -88,6 +93,8 @@ impl NousActor {
             embedding_provider,
             vector_search,
             session_store,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store,
             tool_services,
             extra_bootstrap,
         }
@@ -316,6 +323,9 @@ impl NousActor {
             workspace: self.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.oikos.root().to_path_buf()],
             services: self.tool_services.clone(),
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
         };
 
         crate::pipeline::run_pipeline(
@@ -364,10 +374,20 @@ impl NousActor {
         let user = user_content.to_owned();
         let assistant = assistant_content.to_owned();
         let span = tracing::info_span!("extraction", nous.id = %nous_id);
+        #[cfg(feature = "knowledge-store")]
+        let knowledge_store = self.knowledge_store.clone();
 
         tokio::spawn(
             async move {
-                run_extraction(&config, providers, &nous_id, &user, &assistant);
+                run_extraction(
+                    &config,
+                    providers,
+                    &nous_id,
+                    &user,
+                    &assistant,
+                    #[cfg(feature = "knowledge-store")]
+                    knowledge_store.as_ref(),
+                );
             }
             .instrument(span),
         );
@@ -453,6 +473,7 @@ fn run_extraction(
     nous_id: &str,
     user_content: &str,
     assistant_content: &str,
+    #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
     use aletheia_mneme::extract::{ConversationMessage, ExtractionEngine};
 
@@ -472,11 +493,33 @@ fn run_extraction(
 
     match engine.extract(&messages, &provider) {
         Ok(extraction) => {
+            let entities = extraction.entities.len();
+            let relationships = extraction.relationships.len();
+            let facts = extraction.facts.len();
+
+            #[cfg(feature = "knowledge-store")]
+            if let Some(store) = knowledge_store {
+                match engine.persist(&extraction, store, "background", nous_id) {
+                    Ok(result) => {
+                        info!(
+                            nous_id = %nous_id,
+                            entities_persisted = result.entities_inserted,
+                            relationships_persisted = result.relationships_inserted,
+                            facts_persisted = result.facts_inserted,
+                            "extraction persisted to knowledge store"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(nous_id = %nous_id, error = %e, "extraction persist failed");
+                    }
+                }
+            }
+
             info!(
                 nous_id = %nous_id,
-                entities = extraction.entities.len(),
-                relationships = extraction.relationships.len(),
-                facts = extraction.facts.len(),
+                entities,
+                relationships,
+                facts,
                 "extraction completed"
             );
         }
@@ -573,6 +616,7 @@ pub fn spawn(
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
+    #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
     tool_services: Option<Arc<aletheia_organon::types::ToolServices>>,
     extra_bootstrap: Vec<BootstrapSection>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
@@ -593,6 +637,8 @@ pub fn spawn(
         embedding_provider,
         vector_search,
         session_store,
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store,
         tool_services,
         extra_bootstrap,
     );
@@ -697,6 +743,8 @@ mod tests {
             oikos,
             None,
             None,
+            None,
+            #[cfg(feature = "knowledge-store")]
             None,
             None,
             Vec::new(),
