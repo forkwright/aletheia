@@ -576,6 +576,7 @@ mod tests {
                 messenger: None,
                 note_store: Some(note_store),
                 blackboard_store: Some(bb_store),
+                spawn: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: vec![],
             })),

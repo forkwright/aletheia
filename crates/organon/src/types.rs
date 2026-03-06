@@ -290,6 +290,7 @@ pub struct ToolServices {
     pub messenger: Option<Arc<dyn MessageService>>,
     pub note_store: Option<Arc<dyn NoteStore>>,
     pub blackboard_store: Option<Arc<dyn BlackboardStore>>,
+    pub spawn: Option<Arc<dyn SpawnService>>,
     pub http_client: reqwest::Client,
     /// Catalog of lazy tools available for activation via `enable_tool`.
     pub lazy_tool_catalog: Vec<(ToolName, String)>,
@@ -302,6 +303,7 @@ impl std::fmt::Debug for ToolServices {
             .field("messenger", &self.messenger.is_some())
             .field("note_store", &self.note_store.is_some())
             .field("blackboard_store", &self.blackboard_store.is_some())
+            .field("spawn", &self.spawn.is_some())
             .field("lazy_tool_catalog_len", &self.lazy_tool_catalog.len())
             .finish_non_exhaustive()
     }
@@ -387,6 +389,44 @@ pub struct BlackboardEntry {
     pub ttl_seconds: i64,
     pub created_at: String,
     pub expires_at: Option<String>,
+}
+
+/// Request to spawn an ephemeral sub-agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpawnRequest {
+    /// Role identifier (coder, reviewer, researcher, explorer, runner).
+    pub role: String,
+    /// Task prompt sent as the single turn.
+    pub task: String,
+    /// Model override (None = role-based default).
+    pub model: Option<String>,
+    /// Tool name whitelist (None = role-based defaults).
+    pub allowed_tools: Option<Vec<String>>,
+    /// Maximum seconds before the sub-agent is killed.
+    pub timeout_secs: u64,
+}
+
+/// Result from an ephemeral sub-agent's single turn.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpawnResult {
+    /// The sub-agent's text response.
+    pub content: String,
+    /// Whether the sub-agent encountered an error.
+    pub is_error: bool,
+    /// Input tokens consumed.
+    pub input_tokens: u64,
+    /// Output tokens produced.
+    pub output_tokens: u64,
+}
+
+/// Ephemeral sub-agent spawning for tool executors.
+pub trait SpawnService: Send + Sync {
+    /// Spawn an ephemeral actor, run one turn, collect the result, shut down.
+    fn spawn_and_run(
+        &self,
+        request: SpawnRequest,
+        parent_nous_id: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>>;
 }
 
 #[cfg(test)]
