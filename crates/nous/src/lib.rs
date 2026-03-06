@@ -18,6 +18,8 @@ pub mod budget;
 pub mod config;
 /// Inter-agent messaging — fire-and-forget, request-response, and delivery audit.
 pub mod cross;
+/// Distillation trigger logic and orchestration.
+pub mod distillation;
 /// Nous-specific error types.
 pub mod error;
 /// LLM execution stage — sends the assembled prompt to the provider.
