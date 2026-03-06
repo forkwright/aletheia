@@ -13,8 +13,20 @@ pub struct CommandPaletteState {
 pub enum SelectionContext {
     #[default]
     None,
-    UserMessage { index: usize },
-    AgentResponse { index: usize, has_code: bool, has_links: bool },
-    ToolCall { index: usize, tool_id: String, needs_approval: bool },
-    SessionListItem { index: usize },
+    UserMessage {
+        index: usize,
+    },
+    AgentResponse {
+        index: usize,
+        has_code: bool,
+        has_links: bool,
+    },
+    ToolCall {
+        index: usize,
+        tool_id: String,
+        needs_approval: bool,
+    },
+    SessionListItem {
+        index: usize,
+    },
 }

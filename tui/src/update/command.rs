@@ -45,7 +45,9 @@ pub fn handle_delete_word(app: &mut App) {
     while pos > 0 && app.command_palette.input.as_bytes().get(pos - 1) != Some(&b' ') {
         pos -= 1;
     }
-    app.command_palette.input.drain(pos..app.command_palette.cursor);
+    app.command_palette
+        .input
+        .drain(pos..app.command_palette.cursor);
     app.command_palette.cursor = pos;
     refresh_suggestions(app);
     app.command_palette.selected = 0;
@@ -110,8 +112,7 @@ pub async fn handle_select(app: &mut App) {
 }
 
 fn refresh_suggestions(app: &mut App) {
-    app.command_palette.suggestions =
-        build_suggestions(&app.command_palette.input, &app.agents);
+    app.command_palette.suggestions = build_suggestions(&app.command_palette.input, &app.agents);
 }
 
 async fn execute_command(app: &mut App) {
@@ -142,9 +143,11 @@ async fn execute_command(app: &mut App) {
         "agent" => {
             if !args.is_empty() {
                 let target = args.to_lowercase();
-                if let Some(agent) = app.agents.iter().find(|a| {
-                    a.id.to_lowercase() == target || a.name.to_lowercase() == target
-                }) {
+                if let Some(agent) = app
+                    .agents
+                    .iter()
+                    .find(|a| a.id.to_lowercase() == target || a.name.to_lowercase() == target)
+                {
                     let id = agent.id.clone();
                     app.save_scroll_state();
                     if let Some(a) = app.agents.iter_mut().find(|a| a.id == id) {
@@ -154,8 +157,7 @@ async fn execute_command(app: &mut App) {
                     app.load_focused_session().await;
                     app.restore_scroll_state();
                 } else {
-                    app.error_toast =
-                        Some(ErrorToast::new(format!("Unknown agent: {args}")));
+                    app.error_toast = Some(ErrorToast::new(format!("Unknown agent: {args}")));
                 }
             } else {
                 app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
@@ -174,8 +176,7 @@ async fn execute_command(app: &mut App) {
         }
         "recall" | "r" => {
             if args.is_empty() {
-                app.error_toast =
-                    Some(ErrorToast::new("Usage: :recall <query>".into()));
+                app.error_toast = Some(ErrorToast::new("Usage: :recall <query>".into()));
             } else {
                 execute_recall(app, args).await;
             }
@@ -187,16 +188,16 @@ async fn execute_command(app: &mut App) {
             super::settings::handle_open(app).await;
         }
         _ => {
-            app.error_toast =
-                Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
+            app.error_toast = Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
         }
     }
 }
 
 fn execute_model(app: &mut App) {
-    let agent = app.focused_agent.as_ref().and_then(|id| {
-        app.agents.iter().find(|a| &a.id == id)
-    });
+    let agent = app
+        .focused_agent
+        .as_ref()
+        .and_then(|id| app.agents.iter().find(|a| &a.id == id));
 
     match agent {
         Some(agent) => {

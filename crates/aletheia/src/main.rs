@@ -498,13 +498,18 @@ async fn serve(cli: Cli) -> Result<()> {
         let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
             Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
         let messenger: Option<Arc<dyn aletheia_organon::types::MessageService>> =
-            signal_provider
-                .as_ref()
-                .map(|p| Arc::new(tool_adapters::SignalAdapter(Arc::clone(p) as Arc<dyn ChannelProvider>)) as Arc<dyn aletheia_organon::types::MessageService>);
-        let note_store: Option<Arc<dyn aletheia_organon::types::NoteStore>> =
-            Some(Arc::new(aletheia_nous::adapters::SessionNoteAdapter(Arc::clone(&session_store))));
+            signal_provider.as_ref().map(|p| {
+                Arc::new(tool_adapters::SignalAdapter(
+                    Arc::clone(p) as Arc<dyn ChannelProvider>
+                )) as Arc<dyn aletheia_organon::types::MessageService>
+            });
+        let note_store: Option<Arc<dyn aletheia_organon::types::NoteStore>> = Some(Arc::new(
+            aletheia_nous::adapters::SessionNoteAdapter(Arc::clone(&session_store)),
+        ));
         let blackboard_store: Option<Arc<dyn aletheia_organon::types::BlackboardStore>> =
-            Some(Arc::new(aletheia_nous::adapters::SessionBlackboardAdapter(Arc::clone(&session_store))));
+            Some(Arc::new(aletheia_nous::adapters::SessionBlackboardAdapter(
+                Arc::clone(&session_store),
+            )));
         let spawn: Option<Arc<dyn aletheia_organon::types::SpawnService>> =
             Some(Arc::new(aletheia_nous::spawn_svc::SpawnServiceImpl::new(
                 Arc::clone(&provider_registry),
@@ -512,8 +517,9 @@ async fn serve(cli: Cli) -> Result<()> {
                 Arc::clone(&oikos_arc),
             )));
         let planning_root = oikos_arc.data().join("planning");
-        let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> =
-            Some(Arc::new(planning_adapter::FilesystemPlanningService::new(planning_root)));
+        let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> = Some(Arc::new(
+            planning_adapter::FilesystemPlanningService::new(planning_root),
+        ));
         Arc::new(ToolServices {
             cross_nous: Some(cross_nous),
             messenger,
@@ -535,16 +541,17 @@ async fn serve(cli: Cli) -> Result<()> {
         Some(store)
     };
     #[cfg(not(feature = "recall"))]
-    let knowledge_store: Option<std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>> =
-        None;
+    let knowledge_store: Option<
+        std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
+    > = None;
 
     // Wire vector search from KnowledgeStore
     #[cfg(feature = "recall")]
-    let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = knowledge_store
-        .as_ref()
-        .map(|ks| {
-            Arc::new(aletheia_nous::recall::KnowledgeVectorSearch::new(Arc::clone(ks)))
-                as Arc<dyn aletheia_nous::recall::VectorSearch>
+    let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> =
+        knowledge_store.as_ref().map(|ks| {
+            Arc::new(aletheia_nous::recall::KnowledgeVectorSearch::new(
+                Arc::clone(ks),
+            )) as Arc<dyn aletheia_nous::recall::VectorSearch>
         });
     #[cfg(not(feature = "recall"))]
     let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = None;
@@ -665,8 +672,7 @@ async fn serve(cli: Cli) -> Result<()> {
     }
 
     // Pylon HTTP gateway — shares registries with NousManager
-    let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc)
-        .unwrap_or_default();
+    let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc).unwrap_or_default();
     let state = Arc::new(AppState {
         session_store,
         nous_manager: Arc::clone(&nous_manager),

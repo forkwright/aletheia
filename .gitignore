@@ -144,3 +144,4 @@ crates/mneme-bench/target/
 -e 
 # Cargo build output
 /target/
+.cargo/

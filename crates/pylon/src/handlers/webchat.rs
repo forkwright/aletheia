@@ -76,7 +76,10 @@ async fn store_message(
     .map_err(ApiError::from)
 }
 
-#[expect(clippy::too_many_lines, reason = "streaming bridge setup is inherently sequential")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "streaming bridge setup is inherently sequential"
+)]
 #[instrument(skip(state, _claims, body), fields(agent_id = %body.agent_id))]
 pub async fn stream(
     State(state): State<Arc<AppState>>,
@@ -97,7 +100,12 @@ pub async fn stream(
     let handle = state
         .nous_manager
         .get(&agent_id)
-        .ok_or_else(|| NousNotFoundSnafu { id: agent_id.clone() }.build())?
+        .ok_or_else(|| {
+            NousNotFoundSnafu {
+                id: agent_id.clone(),
+            }
+            .build()
+        })?
         .clone();
 
     let model = state
@@ -105,15 +113,16 @@ pub async fn stream(
         .get_config(&agent_id)
         .map(|c| c.model.clone());
 
-    let session_id = resolve_session(
+    let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
+
+    store_message(
         &state,
-        &agent_id,
-        &session_key,
-        model.as_deref(),
+        &session_id,
+        aletheia_mneme::types::Role::User,
+        &message,
+        0,
     )
     .await?;
-
-    store_message(&state, &session_id, aletheia_mneme::types::Role::User, &message, 0).await?;
 
     let turn_id = ulid::Ulid::new().to_string();
     let (webchat_tx, webchat_rx) = mpsc::channel::<WebchatEvent>(32);
@@ -415,8 +424,7 @@ pub async fn events_sse(
     let (tx, rx) = mpsc::channel::<Event>(8);
 
     // Emit init event
-    let init_data =
-        serde_json::json!({"activeTurns": {}, "pendingDeliveries": 0}).to_string();
+    let init_data = serde_json::json!({"activeTurns": {}, "pendingDeliveries": 0}).to_string();
     let _ = tx
         .send(Event::default().event("init").data(init_data))
         .await;

@@ -307,10 +307,7 @@ impl ApiClient {
         data: &serde_json::Value,
     ) -> Result<serde_json::Value> {
         let resp = self
-            .request(
-                reqwest::Method::PUT,
-                &format!("/api/v1/config/{section}"),
-            )
+            .request(reqwest::Method::PUT, &format!("/api/v1/config/{section}"))
             .json(data)
             .send()
             .await

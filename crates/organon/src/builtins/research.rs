@@ -19,7 +19,9 @@ use crate::types::{
 
 use super::workspace::{extract_opt_u64, extract_str};
 
-fn require_services(ctx: &ToolContext) -> std::result::Result<&crate::types::ToolServices, ToolResult> {
+fn require_services(
+    ctx: &ToolContext,
+) -> std::result::Result<&crate::types::ToolServices, ToolResult> {
     ctx.services
         .as_deref()
         .ok_or_else(|| ToolResult::error("tool services not configured"))
@@ -65,10 +67,7 @@ impl ToolExecutor for WebFetchExecutor {
             };
 
             if !response.status().is_success() {
-                return Ok(ToolResult::error(format!(
-                    "HTTP {}",
-                    response.status()
-                )));
+                return Ok(ToolResult::error(format!("HTTP {}", response.status())));
             }
 
             let content_type = response
@@ -96,7 +95,10 @@ impl ToolExecutor for WebFetchExecutor {
                 while end > 0 && !text.is_char_boundary(end) {
                     end -= 1;
                 }
-                format!("{}...\n\n[Truncated at {max_length} characters]", &text[..end])
+                format!(
+                    "{}...\n\n[Truncated at {max_length} characters]",
+                    &text[..end]
+                )
             } else {
                 text
             };

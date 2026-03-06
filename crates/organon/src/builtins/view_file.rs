@@ -34,11 +34,9 @@ fn detect_media_kind(path: &Path) -> Option<MediaKind> {
         "webp" => Some(MediaKind::Image("image/webp")),
         "pdf" => Some(MediaKind::Pdf),
         "svg" | "txt" | "md" | "rs" | "py" | "ts" | "js" | "toml" | "yaml" | "yml" | "json"
-        | "css" | "html" | "sh" | "bash" | "fish" | "sql" | "go" | "java" | "c" | "cpp"
-        | "h" | "hpp" | "rb" | "lua" | "conf" | "cfg" | "ini" | "env" | "log" | "csv"
-        | "xml" | "jsx" | "tsx" | "vue" | "svelte" | "lock" | "makefile" | "dockerfile" => {
-            Some(MediaKind::Text)
-        }
+        | "css" | "html" | "sh" | "bash" | "fish" | "sql" | "go" | "java" | "c" | "cpp" | "h"
+        | "hpp" | "rb" | "lua" | "conf" | "cfg" | "ini" | "env" | "log" | "csv" | "xml" | "jsx"
+        | "tsx" | "vue" | "svelte" | "lock" | "makefile" | "dockerfile" => Some(MediaKind::Text),
         _ => None,
     }
 }
@@ -70,10 +68,7 @@ impl ToolExecutor for ViewFileExecutor {
             };
 
             if !metadata.is_file() {
-                return Ok(ToolResult::error(format!(
-                    "not a file: {}",
-                    path.display()
-                )));
+                return Ok(ToolResult::error(format!("not a file: {}", path.display())));
             }
 
             let Some(kind) = detect_media_kind(&path) else {
@@ -270,11 +265,11 @@ mod tests {
         let png_bytes: Vec<u8> = vec![
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
             0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00,
-            0x90, 0x77, 0x53, 0xDE, // IHDR data + CRC
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+            0x77, 0x53, 0xDE, // IHDR data + CRC
             0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54, // IDAT chunk
-            0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01,
-            0xE2, 0x21, 0xBC, 0x33, // IDAT data + CRC
+            0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21,
+            0xBC, 0x33, // IDAT data + CRC
             0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND chunk
             0xAE, 0x42, 0x60, 0x82, // IEND CRC
         ];
@@ -307,7 +302,12 @@ mod tests {
         let input = tool_input(serde_json::json!({ "path": "data.bin" }));
         let result = ViewFileExecutor.execute(&input, &ctx).await.expect("exec");
         assert!(result.is_error);
-        assert!(result.content.text_summary().contains("unsupported file type"));
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("unsupported file type")
+        );
     }
 
     #[tokio::test]

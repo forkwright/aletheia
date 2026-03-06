@@ -174,9 +174,7 @@ fn deep_merge(base: &mut Value, patch: Value) {
     match (base, patch) {
         (Value::Object(base_map), Value::Object(patch_map)) => {
             for (key, patch_val) in patch_map {
-                let entry = base_map
-                    .entry(key)
-                    .or_insert(Value::Null);
+                let entry = base_map.entry(key).or_insert(Value::Null);
                 deep_merge(entry, patch_val);
             }
         }

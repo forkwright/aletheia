@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use aletheia_mneme::store::SessionStore;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
+use aletheia_mneme::store::SessionStore;
 
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, info, instrument, warn};
@@ -222,7 +222,9 @@ impl NousActor {
         self.lifecycle = NousLifecycle::Active;
         self.active_session = Some(session_key.clone());
 
-        let result = self.execute_streaming_turn(&session_key, &content, &stream_tx).await;
+        let result = self
+            .execute_streaming_turn(&session_key, &content, &stream_tx)
+            .await;
 
         if let Ok(ref turn_result) = result {
             self.maybe_spawn_extraction(&content, &turn_result.content);
@@ -263,7 +265,6 @@ impl NousActor {
             }
             .build()
         })?;
-
 
         let tool_ctx = ToolContext {
             nous_id,
@@ -436,7 +437,8 @@ impl NousActor {
         let store = Arc::clone(store_arc);
         let providers = Arc::clone(&self.providers);
         let nous_id = self.id.clone();
-        let span = tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
+        let span =
+            tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
 
         tokio::spawn(
             run_background_distillation(store, providers, session_id, nous_id, config)
@@ -564,13 +566,12 @@ async fn run_background_distillation(
     };
 
     let messages = crate::distillation::convert_to_hermeneus_messages(&history);
-    let engine = aletheia_melete::distill::DistillEngine::new(
-        aletheia_melete::distill::DistillConfig {
+    let engine =
+        aletheia_melete::distill::DistillEngine::new(aletheia_melete::distill::DistillConfig {
             model: config.model.clone(),
             verbatim_tail: config.verbatim_tail,
             ..Default::default()
-        },
-    );
+        });
 
     #[expect(
         clippy::cast_possible_truncation,
@@ -591,9 +592,7 @@ async fn run_background_distillation(
 
     // Apply results under the lock
     let s = store.lock().expect("session store lock");
-    if let Err(e) =
-        crate::distillation::apply_distillation(&s, &session_id, &result, &history)
-    {
+    if let Err(e) = crate::distillation::apply_distillation(&s, &session_id, &result, &history) {
         warn!(error = %e, "failed to apply distillation");
         return;
     }
@@ -647,7 +646,11 @@ fn validate_workspace(oikos: &Oikos, nous_id: &str) -> crate::error::Result<()> 
         "CONTEXT.md",
     ] {
         if cascade::resolve(oikos, nous_id, filename, None).is_none() {
-            debug!(agent = nous_id, file = *filename, "optional workspace file not found");
+            debug!(
+                agent = nous_id,
+                file = *filename,
+                "optional workspace file not found"
+            );
         }
     }
 
@@ -1031,6 +1034,9 @@ mod tests {
         let result = super::validate_workspace(&oikos, "test-agent");
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("SOUL.md"), "error should mention SOUL.md: {msg}");
+        assert!(
+            msg.contains("SOUL.md"),
+            "error should mention SOUL.md: {msg}"
+        );
     }
 }

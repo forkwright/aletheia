@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "crates/**"
+      - "tui/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/rust.yml"
@@ -12,6 +13,7 @@ on:
     branches: [main]
     paths:
       - "crates/**"
+      - "tui/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/rust.yml"
@@ -35,12 +37,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: |
-          # Per-package — mneme contains vendored engine code rustfmt can't parse
-          for pkg in aletheia aletheia-agora aletheia-oikonomos \
-                     aletheia-hermeneus aletheia-integration-tests \
-                     aletheia-koina aletheia-melete \
-                     aletheia-nous aletheia-organon aletheia-pylon \
-                     aletheia-symbolon aletheia-taxis; do
+          # Per-package — mneme contains vendored CozoDB engine code rustfmt can't parse
+          for pkg in aletheia aletheia-agora aletheia-dianoia \
+                     aletheia-dokimion aletheia-hermeneus \
+                     aletheia-integration-tests aletheia-koina \
+                     aletheia-melete aletheia-nous aletheia-oikonomos \
+                     aletheia-organon aletheia-pylon aletheia-symbolon \
+                     aletheia-taxis aletheia-thesauros aletheia-tui; do
             cargo fmt -p "$pkg" -- --check
           done
       - name: Clippy

@@ -532,8 +532,16 @@ pub async fn run_pipeline(
         let _guard = span.enter();
         let start = Instant::now();
         result = if let Some(tx) = stream_tx {
-            crate::execute::execute_streaming(&ctx, &input.session, config, providers, tools, tool_ctx, tx)
-                .await?
+            crate::execute::execute_streaming(
+                &ctx,
+                &input.session,
+                config,
+                providers,
+                tools,
+                tool_ctx,
+                tx,
+            )
+            .await?
         } else {
             crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx)
                 .await?
@@ -865,7 +873,10 @@ mod tests {
     // --- run_pipeline ---
 
     #[tokio::test]
-    #[expect(clippy::too_many_lines, reason = "integration test with full pipeline setup")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "integration test with full pipeline setup"
+    )]
     async fn run_pipeline_simple() {
         use std::collections::HashSet;
         use std::fs;

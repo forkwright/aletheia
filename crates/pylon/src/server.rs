@@ -90,11 +90,10 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .spawn(nous_config, PipelineConfig::default())
         .await;
 
-    let aletheia_config = aletheia_taxis::loader::load_config(&oikos)
-        .unwrap_or_else(|e| {
-            tracing::warn!("failed to load config, using defaults: {e}");
-            AletheiaConfig::default()
-        });
+    let aletheia_config = aletheia_taxis::loader::load_config(&oikos).unwrap_or_else(|e| {
+        tracing::warn!("failed to load config, using defaults: {e}");
+        AletheiaConfig::default()
+    });
 
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),

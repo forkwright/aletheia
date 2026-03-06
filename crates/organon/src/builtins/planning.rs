@@ -47,12 +47,22 @@ impl ToolExecutor for PlanCreateExecutor {
                 .get("mode")
                 .and_then(|v| v.as_str())
                 .unwrap_or("full");
-            #[expect(clippy::cast_possible_truncation, reason = "appetite_minutes fits in u32")]
-            let appetite_minutes = extract_opt_u64(&input.arguments, "appetite_minutes")
-                .map(|v| v as u32);
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "appetite_minutes fits in u32"
+            )]
+            let appetite_minutes =
+                extract_opt_u64(&input.arguments, "appetite_minutes").map(|v| v as u32);
 
             match planning
-                .create_project(name, description, scope, mode, appetite_minutes, ctx.nous_id.as_str())
+                .create_project(
+                    name,
+                    description,
+                    scope,
+                    mode,
+                    appetite_minutes,
+                    ctx.nous_id.as_str(),
+                )
                 .await
             {
                 Ok(json) => Ok(ToolResult::text(json)),
@@ -78,7 +88,11 @@ impl ToolExecutor for PlanResearchExecutor {
             let project_id = extract_str(&input.arguments, "project_id", &input.name)?;
             let skip = extract_opt_bool(&input.arguments, "skip").unwrap_or(false);
 
-            let transition = if skip { "skip_research" } else { "start_research" };
+            let transition = if skip {
+                "skip_research"
+            } else {
+                "start_research"
+            };
             match planning.transition_project(project_id, transition).await {
                 Ok(json) => Ok(ToolResult::text(json)),
                 Err(e) => Ok(ToolResult::error(e)),
@@ -134,10 +148,8 @@ impl ToolExecutor for PlanRoadmapExecutor {
 
             match action {
                 "add_phase" => {
-                    let phase_name =
-                        extract_str(&input.arguments, "phase_name", &input.name)?;
-                    let phase_goal =
-                        extract_str(&input.arguments, "phase_goal", &input.name)?;
+                    let phase_name = extract_str(&input.arguments, "phase_name", &input.name)?;
+                    let phase_goal = extract_str(&input.arguments, "phase_goal", &input.name)?;
                     match planning.add_phase(project_id, phase_name, phase_goal).await {
                         Ok(json) => Ok(ToolResult::text(json)),
                         Err(e) => Ok(ToolResult::error(e)),
@@ -246,8 +258,7 @@ impl ToolExecutor for PlanVerifyExecutor {
             let transition = match action {
                 "complete" => "complete",
                 "revert" => {
-                    let revert_to =
-                        extract_str(&input.arguments, "revert_to", &input.name)?;
+                    let revert_to = extract_str(&input.arguments, "revert_to", &input.name)?;
                     match revert_to {
                         "scoping" => "revert_to_scoping",
                         "planning" => "revert_to_planning",
@@ -255,7 +266,7 @@ impl ToolExecutor for PlanVerifyExecutor {
                         other => {
                             return Ok(ToolResult::error(format!(
                                 "invalid revert target: {other}"
-                            )))
+                            )));
                         }
                     }
                 }
@@ -308,10 +319,7 @@ impl ToolExecutor for PlanStepCompleteExecutor {
             let project_id = extract_str(&input.arguments, "project_id", &input.name)?;
             let phase_id = extract_str(&input.arguments, "phase_id", &input.name)?;
             let plan_id = extract_str(&input.arguments, "plan_id", &input.name)?;
-            let achievement = input
-                .arguments
-                .get("achievement")
-                .and_then(|v| v.as_str());
+            let achievement = input.arguments.get("achievement").and_then(|v| v.as_str());
 
             match planning
                 .complete_plan(project_id, phase_id, plan_id, achievement)
@@ -477,10 +485,7 @@ fn plan_requirements_def() -> ToolDef {
                     PropertyDef {
                         property_type: PropertyType::String,
                         description: "Action to perform".to_owned(),
-                        enum_values: Some(vec![
-                            "start_scoping".to_owned(),
-                            "complete".to_owned(),
-                        ]),
+                        enum_values: Some(vec!["start_scoping".to_owned(), "complete".to_owned()]),
                         default: None,
                     },
                 ),
@@ -883,12 +888,9 @@ mod tests {
             _appetite_minutes: Option<u32>,
             _owner: &str,
         ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
-            let result = self
-                .create_result
-                .lock()
-                .unwrap()
-                .take()
-                .unwrap_or(Ok(r#"{"id":"01J0000000000000000000000","name":"test","state":"Created"}"#.to_owned()));
+            let result = self.create_result.lock().unwrap().take().unwrap_or(Ok(
+                r#"{"id":"01J0000000000000000000000","name":"test","state":"Created"}"#.to_owned(),
+            ));
             Box::pin(async move { result })
         }
 
@@ -896,12 +898,9 @@ mod tests {
             &self,
             _project_id: &str,
         ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
-            let result = self
-                .load_result
-                .lock()
-                .unwrap()
-                .take()
-                .unwrap_or(Ok(r#"{"id":"01J0000000000000000000000","state":"Created"}"#.to_owned()));
+            let result = self.load_result.lock().unwrap().take().unwrap_or(Ok(
+                r#"{"id":"01J0000000000000000000000","state":"Created"}"#.to_owned(),
+            ));
             Box::pin(async move { result })
         }
 
@@ -914,12 +913,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((project_id.to_owned(), transition.to_owned()));
-            let result = self
-                .transition_result
-                .lock()
-                .unwrap()
-                .take()
-                .unwrap_or(Ok(r#"{"id":"01J0000000000000000000000","state":"Researching"}"#.to_owned()));
+            let result = self.transition_result.lock().unwrap().take().unwrap_or(Ok(
+                r#"{"id":"01J0000000000000000000000","state":"Researching"}"#.to_owned(),
+            ));
             Box::pin(async move { result })
         }
 
@@ -929,16 +925,14 @@ mod tests {
             name: &str,
             goal: &str,
         ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
-            self.add_phase_calls
-                .lock()
-                .unwrap()
-                .push((project_id.to_owned(), name.to_owned(), goal.to_owned()));
-            let result = self
-                .add_phase_result
-                .lock()
-                .unwrap()
-                .take()
-                .unwrap_or(Ok(r#"{"id":"01J0000000000000000000000","phases":[{"name":"Phase 1"}]}"#.to_owned()));
+            self.add_phase_calls.lock().unwrap().push((
+                project_id.to_owned(),
+                name.to_owned(),
+                goal.to_owned(),
+            ));
+            let result = self.add_phase_result.lock().unwrap().take().unwrap_or(Ok(
+                r#"{"id":"01J0000000000000000000000","phases":[{"name":"Phase 1"}]}"#.to_owned(),
+            ));
             Box::pin(async move { result })
         }
 
@@ -949,10 +943,11 @@ mod tests {
             plan_id: &str,
             _achievement: Option<&str>,
         ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
-            self.complete_plan_calls
-                .lock()
-                .unwrap()
-                .push((project_id.to_owned(), phase_id.to_owned(), plan_id.to_owned()));
+            self.complete_plan_calls.lock().unwrap().push((
+                project_id.to_owned(),
+                phase_id.to_owned(),
+                plan_id.to_owned(),
+            ));
             let result = self
                 .complete_plan_result
                 .lock()
@@ -1162,7 +1157,10 @@ mod tests {
 
         let calls = mock_ref.complete_plan_calls.lock().unwrap();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0], ("proj1".to_owned(), "phase1".to_owned(), "plan1".to_owned()));
+        assert_eq!(
+            calls[0],
+            ("proj1".to_owned(), "phase1".to_owned(), "plan1".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -1229,8 +1227,7 @@ mod tests {
             ("start_verification", "start_verification"),
         ] {
             // Reset transition result for each iteration
-            *mock_ref.transition_result.lock().unwrap() =
-                Some(Ok(r#"{"state":"ok"}"#.to_owned()));
+            *mock_ref.transition_result.lock().unwrap() = Some(Ok(r#"{"state":"ok"}"#.to_owned()));
 
             let input = ToolInput {
                 name: ToolName::new("plan_execute").expect("valid"),
@@ -1244,7 +1241,10 @@ mod tests {
 
             let calls = mock_ref.transition_calls.lock().unwrap();
             let last = calls.last().expect("should have a call");
-            assert_eq!(last.1, expected_transition, "action '{action}' should map to '{expected_transition}'");
+            assert_eq!(
+                last.1, expected_transition,
+                "action '{action}' should map to '{expected_transition}'"
+            );
         }
     }
 

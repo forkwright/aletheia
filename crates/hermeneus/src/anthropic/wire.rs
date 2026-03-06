@@ -935,8 +935,14 @@ mod tests {
         let resp: WireResponse = serde_json::from_str(json).unwrap();
         let converted = resp.into_response().unwrap();
         assert_eq!(converted.content.len(), 3);
-        assert!(matches!(&converted.content[0], ContentBlock::ServerToolUse { .. }));
-        assert!(matches!(&converted.content[1], ContentBlock::WebSearchToolResult { .. }));
+        assert!(matches!(
+            &converted.content[0],
+            ContentBlock::ServerToolUse { .. }
+        ));
+        assert!(matches!(
+            &converted.content[1],
+            ContentBlock::WebSearchToolResult { .. }
+        ));
         assert!(matches!(&converted.content[2], ContentBlock::Text { .. }));
     }
 

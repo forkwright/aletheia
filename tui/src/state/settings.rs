@@ -93,11 +93,9 @@ impl SettingsOverlay {
     }
 
     pub fn has_changes(&self) -> bool {
-        self.sections.iter().any(|s| {
-            s.fields
-                .iter()
-                .any(|f| f.value != f.original_value)
-        })
+        self.sections
+            .iter()
+            .any(|s| s.fields.iter().any(|f| f.value != f.original_value))
     }
 
     pub fn changed_sections(&self) -> HashMap<String, serde_json::Value> {
@@ -109,9 +107,10 @@ impl SettingsOverlay {
                     if parts.len() == 2 {
                         let section_key = parts[0];
                         let remainder = parts[1];
-                        let section_val = result
-                            .entry(section_key.to_owned())
-                            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::default()));
+                        let section_val =
+                            result.entry(section_key.to_owned()).or_insert_with(|| {
+                                serde_json::Value::Object(serde_json::Map::default())
+                            });
                         set_nested(section_val, remainder, field.value.clone());
                     }
                 }
@@ -159,21 +158,68 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
         sections.push(SettingsSection {
             name: "Pipeline".to_owned(),
             fields: vec![
-                field("agents.defaults.maxToolIterations", "Max Tool Iterations", agents.get("maxToolIterations"), FieldType::Integer, true, false),
-                field("agents.defaults.thinkingEnabled", "Thinking Enabled", agents.get("thinkingEnabled"), FieldType::Bool, true, false),
-                field("agents.defaults.thinkingBudget", "Thinking Budget", agents.get("thinkingBudget"), FieldType::Integer, true, false),
-                field("agents.defaults.contextTokens", "Context Window", agents.get("contextTokens"), FieldType::Integer, true, false),
-                field("agents.defaults.maxOutputTokens", "Max Output Tokens", agents.get("maxOutputTokens"), FieldType::Integer, true, false),
-                field("agents.defaults.timeoutSeconds", "Turn Timeout (s)", agents.get("timeoutSeconds"), FieldType::Integer, true, false),
+                field(
+                    "agents.defaults.maxToolIterations",
+                    "Max Tool Iterations",
+                    agents.get("maxToolIterations"),
+                    FieldType::Integer,
+                    true,
+                    false,
+                ),
+                field(
+                    "agents.defaults.thinkingEnabled",
+                    "Thinking Enabled",
+                    agents.get("thinkingEnabled"),
+                    FieldType::Bool,
+                    true,
+                    false,
+                ),
+                field(
+                    "agents.defaults.thinkingBudget",
+                    "Thinking Budget",
+                    agents.get("thinkingBudget"),
+                    FieldType::Integer,
+                    true,
+                    false,
+                ),
+                field(
+                    "agents.defaults.contextTokens",
+                    "Context Window",
+                    agents.get("contextTokens"),
+                    FieldType::Integer,
+                    true,
+                    false,
+                ),
+                field(
+                    "agents.defaults.maxOutputTokens",
+                    "Max Output Tokens",
+                    agents.get("maxOutputTokens"),
+                    FieldType::Integer,
+                    true,
+                    false,
+                ),
+                field(
+                    "agents.defaults.timeoutSeconds",
+                    "Turn Timeout (s)",
+                    agents.get("timeoutSeconds"),
+                    FieldType::Integer,
+                    true,
+                    false,
+                ),
             ],
         });
 
         if let Some(timeouts) = agents.get("toolTimeouts") {
             sections.push(SettingsSection {
                 name: "Tool Timeouts".to_owned(),
-                fields: vec![
-                    field("agents.defaults.toolTimeouts.defaultMs", "Default (ms)", timeouts.get("defaultMs"), FieldType::Integer, true, false),
-                ],
+                fields: vec![field(
+                    "agents.defaults.toolTimeouts.defaultMs",
+                    "Default (ms)",
+                    timeouts.get("defaultMs"),
+                    FieldType::Integer,
+                    true,
+                    false,
+                )],
             });
         }
     }
@@ -182,8 +228,22 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
         sections.push(SettingsSection {
             name: "Gateway".to_owned(),
             fields: vec![
-                field("gateway.port", "Port", gw.get("port"), FieldType::ReadOnly, false, true),
-                field("gateway.bind", "Bind", gw.get("bind"), FieldType::ReadOnly, false, true),
+                field(
+                    "gateway.port",
+                    "Port",
+                    gw.get("port"),
+                    FieldType::ReadOnly,
+                    false,
+                    true,
+                ),
+                field(
+                    "gateway.bind",
+                    "Bind",
+                    gw.get("bind"),
+                    FieldType::ReadOnly,
+                    false,
+                    true,
+                ),
             ],
         });
     }
@@ -192,8 +252,22 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
         sections.push(SettingsSection {
             name: "Embedding".to_owned(),
             fields: vec![
-                field("embedding.provider", "Provider", emb.get("provider"), FieldType::ReadOnly, false, false),
-                field("embedding.dimension", "Dimension", emb.get("dimension"), FieldType::ReadOnly, false, false),
+                field(
+                    "embedding.provider",
+                    "Provider",
+                    emb.get("provider"),
+                    FieldType::ReadOnly,
+                    false,
+                    false,
+                ),
+                field(
+                    "embedding.dimension",
+                    "Dimension",
+                    emb.get("dimension"),
+                    FieldType::ReadOnly,
+                    false,
+                    false,
+                ),
             ],
         });
     }
@@ -202,9 +276,30 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
         sections.push(SettingsSection {
             name: "Data Retention".to_owned(),
             fields: vec![
-                field("data.retention.sessionMaxAgeDays", "Session Max Age (days)", data.get("sessionMaxAgeDays"), FieldType::Integer, true, false),
-                field("data.retention.orphanMessageMaxAgeDays", "Orphan Msg Max Age (days)", data.get("orphanMessageMaxAgeDays"), FieldType::Integer, true, false),
-                field("data.retention.archiveBeforeDelete", "Archive Before Delete", data.get("archiveBeforeDelete"), FieldType::Bool, true, false),
+                field(
+                    "data.retention.sessionMaxAgeDays",
+                    "Session Max Age (days)",
+                    data.get("sessionMaxAgeDays"),
+                    FieldType::Integer,
+                    true,
+                    false,
+                ),
+                field(
+                    "data.retention.orphanMessageMaxAgeDays",
+                    "Orphan Msg Max Age (days)",
+                    data.get("orphanMessageMaxAgeDays"),
+                    FieldType::Integer,
+                    true,
+                    false,
+                ),
+                field(
+                    "data.retention.archiveBeforeDelete",
+                    "Archive Before Delete",
+                    data.get("archiveBeforeDelete"),
+                    FieldType::Bool,
+                    true,
+                    false,
+                ),
             ],
         });
     }
@@ -212,13 +307,48 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
     if let Some(maint) = config.get("maintenance") {
         let mut fields = Vec::new();
         if let Some(tr) = maint.get("traceRotation") {
-            fields.push(field("maintenance.traceRotation.enabled", "Trace Rotation", tr.get("enabled"), FieldType::Bool, true, false));
-            fields.push(field("maintenance.traceRotation.maxAgeDays", "Max Age (days)", tr.get("maxAgeDays"), FieldType::Integer, true, false));
+            fields.push(field(
+                "maintenance.traceRotation.enabled",
+                "Trace Rotation",
+                tr.get("enabled"),
+                FieldType::Bool,
+                true,
+                false,
+            ));
+            fields.push(field(
+                "maintenance.traceRotation.maxAgeDays",
+                "Max Age (days)",
+                tr.get("maxAgeDays"),
+                FieldType::Integer,
+                true,
+                false,
+            ));
         }
         if let Some(db) = maint.get("dbMonitoring") {
-            fields.push(field("maintenance.dbMonitoring.enabled", "DB Monitoring", db.get("enabled"), FieldType::Bool, true, false));
-            fields.push(field("maintenance.dbMonitoring.warnThresholdMb", "Warn (MB)", db.get("warnThresholdMb"), FieldType::Integer, true, false));
-            fields.push(field("maintenance.dbMonitoring.alertThresholdMb", "Alert (MB)", db.get("alertThresholdMb"), FieldType::Integer, true, false));
+            fields.push(field(
+                "maintenance.dbMonitoring.enabled",
+                "DB Monitoring",
+                db.get("enabled"),
+                FieldType::Bool,
+                true,
+                false,
+            ));
+            fields.push(field(
+                "maintenance.dbMonitoring.warnThresholdMb",
+                "Warn (MB)",
+                db.get("warnThresholdMb"),
+                FieldType::Integer,
+                true,
+                false,
+            ));
+            fields.push(field(
+                "maintenance.dbMonitoring.alertThresholdMb",
+                "Alert (MB)",
+                db.get("alertThresholdMb"),
+                FieldType::Integer,
+                true,
+                false,
+            ));
         }
         if !fields.is_empty() {
             sections.push(SettingsSection {

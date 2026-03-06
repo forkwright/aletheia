@@ -13,13 +13,16 @@ use crate::theme::ThemePalette;
 use crate::update::extract_text_content;
 use crate::view;
 
-#[expect(unused_imports, reason = "re-exported for downstream modules that import from crate::app")]
+use crate::state::SavedScrollState;
+#[expect(
+    unused_imports,
+    reason = "re-exported for downstream modules that import from crate::app"
+)]
 pub use crate::state::{
     AgentState, AgentStatus, ChatMessage, CommandPaletteState, FilterState, InputState, Overlay,
-    PlanApprovalOverlay, PlanStepApproval, SelectionContext, TabCompletion,
-    ToolApprovalOverlay, ToolCallInfo,
+    PlanApprovalOverlay, PlanStepApproval, SelectionContext, TabCompletion, ToolApprovalOverlay,
+    ToolCallInfo,
 };
-use crate::state::SavedScrollState;
 
 // --- App ---
 

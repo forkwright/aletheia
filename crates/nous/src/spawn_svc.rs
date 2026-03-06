@@ -53,7 +53,11 @@ impl SpawnService for SpawnServiceImpl {
         request: SpawnRequest,
         parent_nous_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
-        let spawn_id = format!("spawn-{}-{}", parent_nous_id, ulid::Ulid::new().to_string().to_lowercase());
+        let spawn_id = format!(
+            "spawn-{}-{}",
+            parent_nous_id,
+            ulid::Ulid::new().to_string().to_lowercase()
+        );
         let model = request
             .model
             .clone()
@@ -241,11 +245,7 @@ mod tests {
     }
 
     fn test_spawn_service(oikos: Arc<Oikos>) -> SpawnServiceImpl {
-        SpawnServiceImpl::new(
-            test_providers(),
-            Arc::new(ToolRegistry::new()),
-            oikos,
-        )
+        SpawnServiceImpl::new(test_providers(), Arc::new(ToolRegistry::new()), oikos)
     }
 
     #[tokio::test]
@@ -290,11 +290,7 @@ mod tests {
         // Use a provider that sleeps longer than the timeout
         let mut providers = ProviderRegistry::new();
         providers.register(Box::new(SlowProvider));
-        let svc = SpawnServiceImpl::new(
-            Arc::new(providers),
-            Arc::new(ToolRegistry::new()),
-            oikos,
-        );
+        let svc = SpawnServiceImpl::new(Arc::new(providers), Arc::new(ToolRegistry::new()), oikos);
 
         let result = svc
             .spawn_and_run(

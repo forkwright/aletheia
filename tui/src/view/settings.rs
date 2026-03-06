@@ -3,7 +3,9 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::symbols;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+};
 
 use crate::state::settings::{FieldType, SaveStatus, SettingsOverlay};
 use crate::theme::ThemePalette;
@@ -29,14 +31,18 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
             let marker = if selected { "▸" } else { " " };
 
             let label_style = if selected {
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 theme.style_fg()
             };
 
             let value_str = format_value(&field.value);
             let value_style = if changed {
-                Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.warning)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 theme.style_dim()
             };
@@ -55,13 +61,16 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
             let restart = if field.requires_restart { " *" } else { "" };
 
             // Show inline edit buffer when editing this field
-            if selected
-                && let Some(ref edit) = overlay.editing
-            {
+            if selected && let Some(ref edit) = overlay.editing {
                 lines.push(Line::from(vec![
                     Span::raw(format!("  {} ", marker)),
                     Span::styled(format!("{:<28}", field.label), label_style),
-                    Span::styled(&edit.buffer, Style::default().fg(theme.accent).add_modifier(Modifier::UNDERLINED)),
+                    Span::styled(
+                        &edit.buffer,
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::UNDERLINED),
+                    ),
                     Span::styled("▎", Style::default().fg(theme.accent)),
                 ]));
             } else {
@@ -82,13 +91,22 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
     lines.push(Line::raw(""));
     match &overlay.save_status {
         SaveStatus::Saving => {
-            lines.push(Line::from(Span::styled("  Saving...", Style::default().fg(theme.spinner))));
+            lines.push(Line::from(Span::styled(
+                "  Saving...",
+                Style::default().fg(theme.spinner),
+            )));
         }
         SaveStatus::Success => {
-            lines.push(Line::from(Span::styled("  Config saved and reloaded", Style::default().fg(theme.success))));
+            lines.push(Line::from(Span::styled(
+                "  Config saved and reloaded",
+                Style::default().fg(theme.success),
+            )));
         }
         SaveStatus::Error(msg) => {
-            lines.push(Line::from(Span::styled(format!("  Error: {msg}"), theme.style_error())));
+            lines.push(Line::from(Span::styled(
+                format!("  Error: {msg}"),
+                theme.style_error(),
+            )));
         }
         SaveStatus::Idle => {}
     }
@@ -97,11 +115,26 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
-        Span::styled("[S]", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[S]",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("ave  ", theme.style_muted()),
-        Span::styled("[R]", Style::default().fg(theme.fg_dim).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[R]",
+            Style::default()
+                .fg(theme.fg_dim)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("eset  ", theme.style_muted()),
-        Span::styled("[Esc]", Style::default().fg(theme.fg_dim).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[Esc]",
+            Style::default()
+                .fg(theme.fg_dim)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" cancel", theme.style_muted()),
         Span::styled("    * requires restart", theme.style_dim()),
     ]));
@@ -137,8 +170,8 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
 
     // Scrollbar
     if total_lines > visible_height {
-        let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(visible_height))
-            .position(scroll);
+        let mut scrollbar_state =
+            ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(scroll);
         frame.render_stateful_widget(
             Scrollbar::new(ScrollbarOrientation::VerticalRight),
             popup,

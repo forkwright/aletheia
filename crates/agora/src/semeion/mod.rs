@@ -131,9 +131,8 @@ impl SignalProvider {
                 account = %account_id
             );
 
-            let handle = tokio::spawn(
-                poll_loop(signal_client, tx, interval, state).instrument(span),
-            );
+            let handle =
+                tokio::spawn(poll_loop(signal_client, tx, interval, state).instrument(span));
             handles.push(handle);
         }
 
