@@ -52,7 +52,8 @@ export const execTool: ToolHandler = {
 
     // Pre-screen against deny patterns (always runs, even for bypassed agents)
     const extraPatterns = sandbox?.denyPatterns ?? [];
-    const screen = screenCommand(command, extraPatterns);
+    const removePatterns = sandbox?.removeDenyPatterns ?? [];
+    const screen = screenCommand(command, extraPatterns, removePatterns);
     if (!screen.allowed) {
       if (sandbox?.auditDenied) {
         log.warn(`Denied exec by ${context.nousId}: ${command.slice(0, 200)} (pattern: ${screen.matchedPattern})`);

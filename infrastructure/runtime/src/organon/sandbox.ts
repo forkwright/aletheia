@@ -31,8 +31,11 @@ export interface ScreenResult {
 export function screenCommand(
   command: string,
   extraDenyPatterns: string[] = [],
+  removeDenyPatterns: string[] = [],
 ): ScreenResult {
-  const patterns = [...DEFAULT_DENY_PATTERNS, ...extraDenyPatterns];
+  const removeSet = new Set(removeDenyPatterns);
+  const defaults = DEFAULT_DENY_PATTERNS.filter((p) => !removeSet.has(p));
+  const patterns = [...defaults, ...extraDenyPatterns];
   const normalized = command.replace(/\s+/g, " ").trim();
 
   for (const pattern of patterns) {
