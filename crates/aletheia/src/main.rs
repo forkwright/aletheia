@@ -592,9 +592,16 @@ async fn serve(cli: Cli) -> Result<()> {
     // Knowledge store for vector search and extraction persistence
     #[cfg(feature = "recall")]
     let knowledge_store = {
-        let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_mem()
-            .context("failed to create knowledge store")?;
-        info!(dim = 384, "knowledge store created (in-memory)");
+        let kb_path = oikos_arc.knowledge_db();
+        if let Some(parent) = kb_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_redb(
+            &kb_path,
+            aletheia_mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .context("failed to open knowledge store")?;
+        info!(path = %kb_path.display(), dim = 384, "knowledge store opened (redb)");
         Some(store)
     };
     #[cfg(not(feature = "recall"))]
