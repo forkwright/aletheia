@@ -51,7 +51,6 @@ impl Config {
     ) -> Result<Self> {
         let file_config = Self::load_file().unwrap_or_default();
 
-        // CLI args override config file, config file overrides defaults
         Ok(Config {
             url: cli_url
                 .or(file_config.url)
@@ -67,8 +66,8 @@ impl Config {
         if path.exists() {
             let mut file_config = Self::load_file().unwrap_or_default();
             file_config.token = None;
-            let toml_str = toml::to_string_pretty(&file_config)?;
-            write_config(&path, &toml_str)?;
+            let yaml_str = serde_yaml::to_string(&file_config)?;
+            write_config(&path, &yaml_str)?;
             tracing::info!("cleared credentials from {}", path.display());
         }
         Ok(())
@@ -79,25 +78,55 @@ impl Config {
         let path = Self::config_path()?;
         let mut file_config = Self::load_file().unwrap_or_default();
         file_config.token = Some(token.to_string());
-        let toml_str = toml::to_string_pretty(&file_config)?;
+        let yaml_str = serde_yaml::to_string(&file_config)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        write_config(&path, &toml_str)?;
+        write_config(&path, &yaml_str)?;
         tracing::info!("saved token to {}", path.display());
         Ok(())
     }
 
     fn config_path() -> Result<PathBuf> {
         dirs::config_dir()
-            .map(|d| d.join("aletheia").join("tui.toml"))
+            .map(|d| d.join("aletheia").join("tui.yaml"))
             .context("could not determine config directory")
+    }
+
+    fn legacy_config_path() -> Option<PathBuf> {
+        dirs::config_dir().map(|d| d.join("aletheia").join("tui.toml"))
     }
 
     fn load_file() -> Option<ConfigFile> {
         let path = Self::config_path().ok()?;
-        let contents = std::fs::read_to_string(&path).ok()?;
-        toml::from_str(&contents).ok()
+
+        // Try YAML first
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            return serde_yaml::from_str(&contents).ok();
+        }
+
+        // Fall back to legacy TOML and auto-migrate
+        let legacy = Self::legacy_config_path()?;
+        let contents = std::fs::read_to_string(&legacy).ok()?;
+        let config: ConfigFile = toml::from_str(&contents).ok()?;
+
+        // Auto-migrate: write YAML, rename TOML to .bak
+        if let Ok(yaml_str) = serde_yaml::to_string(&config) {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if write_config(&path, &yaml_str).is_ok() {
+                let backup = legacy.with_extension("toml.bak");
+                let _ = std::fs::rename(&legacy, &backup);
+                tracing::info!(
+                    "migrated config from {} to {}",
+                    legacy.display(),
+                    path.display()
+                );
+            }
+        }
+
+        Some(config)
     }
 }
 
@@ -109,4 +138,44 @@ fn write_config(path: &Path, content: &str) -> Result<()> {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_overrides_file_config() {
+        let config = Config::load(
+            Some("http://custom:9999".into()),
+            Some("tok".into()),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(config.url, "http://custom:9999");
+        assert_eq!(config.token.as_deref(), Some("tok"));
+    }
+
+    #[test]
+    fn default_url_when_none() {
+        let config = Config::load(None, None, None, None).unwrap();
+        assert_eq!(config.url, DEFAULT_URL);
+    }
+
+    #[test]
+    fn yaml_roundtrip() {
+        let file = ConfigFile {
+            url: Some("http://host:1234".into()),
+            token: Some("secret".into()),
+            default_agent: Some("syn".into()),
+            default_session: None,
+        };
+        let yaml = serde_yaml::to_string(&file).unwrap();
+        let back: ConfigFile = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(file.url, back.url);
+        assert_eq!(file.token, back.token);
+        assert_eq!(file.default_agent, back.default_agent);
+        assert_eq!(file.default_session, back.default_session);
+    }
 }

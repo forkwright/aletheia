@@ -38,6 +38,7 @@ clap = { version = "4", features = ["derive", "env"] }
 
 # Config
 toml = "1.0"
+serde_yaml = { workspace = true }
 dirs = "6"
 
 # Logging (file-based, not stdout)
@@ -52,6 +53,8 @@ anyhow = "1"
 futures-util = "0.3"
 syntect = "5"
 arboard = "3"
+base64 = { workspace = true }
+regex = { workspace = true }
 
 # Fuzzy matching for command palette
 fuzzy-matcher = "0.3"

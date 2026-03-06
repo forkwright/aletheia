@@ -1,5 +1,6 @@
 use crate::api::types::{Agent, HistoryMessage, Session};
 use crate::app::App;
+use crate::id::NousId;
 use crate::msg::ErrorToast;
 use crate::state::{AgentState, AgentStatus, ChatMessage};
 
@@ -21,7 +22,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
         .collect();
 }
 
-pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: String, sessions: Vec<Session>) {
+pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: Vec<Session>) {
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.sessions = sessions;
     }

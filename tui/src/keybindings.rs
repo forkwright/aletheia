@@ -8,6 +8,7 @@ pub struct Keybinding {
     pub show_in_status_bar: bool,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyContext {
     Global,
