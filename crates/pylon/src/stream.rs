@@ -65,3 +65,131 @@ impl SseEvent {
         }
     }
 }
+
+/// SSE events matching the Svelte web UI's `TurnStreamEvent` contract.
+///
+/// Separate from `SseEvent` to avoid changing the v1 API shape.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WebchatEvent {
+    TurnStart {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        #[serde(rename = "nousId")]
+        nous_id: String,
+        #[serde(rename = "turnId")]
+        turn_id: String,
+    },
+    ThinkingDelta {
+        text: String,
+    },
+    TextDelta {
+        text: String,
+    },
+    ToolStart {
+        #[serde(rename = "toolName")]
+        tool_name: String,
+        #[serde(rename = "toolId")]
+        tool_id: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        #[serde(rename = "toolName")]
+        tool_name: String,
+        #[serde(rename = "toolId")]
+        tool_id: String,
+        result: String,
+        #[serde(rename = "isError")]
+        is_error: bool,
+        #[serde(rename = "durationMs")]
+        duration_ms: u64,
+    },
+    TurnComplete {
+        outcome: TurnOutcome,
+    },
+    Error {
+        message: String,
+    },
+}
+
+impl WebchatEvent {
+    pub fn event_type(&self) -> &'static str {
+        match self {
+            Self::TurnStart { .. } => "turn_start",
+            Self::ThinkingDelta { .. } => "thinking_delta",
+            Self::TextDelta { .. } => "text_delta",
+            Self::ToolStart { .. } => "tool_start",
+            Self::ToolResult { .. } => "tool_result",
+            Self::TurnComplete { .. } => "turn_complete",
+            Self::Error { .. } => "error",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnOutcome {
+    pub text: String,
+    pub nous_id: String,
+    pub session_id: String,
+    pub model: Option<String>,
+    pub tool_calls: usize,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+}
+
+/// Convert a `TurnResult` into the webchat event sequence and send via channel.
+pub async fn emit_webchat_events(
+    tx: &tokio::sync::mpsc::Sender<WebchatEvent>,
+    result: &aletheia_nous::pipeline::TurnResult,
+    session_id: &str,
+    nous_id: &str,
+    model: Option<&str>,
+) {
+    for tc in &result.tool_calls {
+        let _ = tx
+            .send(WebchatEvent::ToolStart {
+                tool_name: tc.name.clone(),
+                tool_id: tc.id.clone(),
+                input: tc.input.clone(),
+            })
+            .await;
+        if let Some(ref result_content) = tc.result {
+            let _ = tx
+                .send(WebchatEvent::ToolResult {
+                    tool_name: tc.name.clone(),
+                    tool_id: tc.id.clone(),
+                    result: result_content.clone(),
+                    is_error: tc.is_error,
+                    duration_ms: tc.duration_ms,
+                })
+                .await;
+        }
+    }
+
+    if !result.content.is_empty() {
+        let _ = tx
+            .send(WebchatEvent::TextDelta {
+                text: result.content.clone(),
+            })
+            .await;
+    }
+
+    let _ = tx
+        .send(WebchatEvent::TurnComplete {
+            outcome: TurnOutcome {
+                text: result.content.clone(),
+                nous_id: nous_id.to_owned(),
+                session_id: session_id.to_owned(),
+                model: model.map(ToOwned::to_owned),
+                tool_calls: result.tool_calls.len(),
+                input_tokens: result.usage.input_tokens,
+                output_tokens: result.usage.output_tokens,
+                cache_read_tokens: result.usage.cache_read_tokens,
+                cache_write_tokens: result.usage.cache_write_tokens,
+            },
+        })
+        .await;
+}

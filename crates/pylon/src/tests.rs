@@ -958,22 +958,16 @@ async fn unknown_route_returns_404() {
 }
 
 #[tokio::test]
-async fn old_api_sessions_path_returns_gone() {
+async fn webchat_sessions_list_returns_200() {
     let (app, _dir) = app().await;
     let resp = app
         .oneshot(authed_get("/api/sessions"))
         .await
         .expect("response");
 
-    assert_eq!(resp.status(), StatusCode::GONE);
+    assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "api_version_required");
-    assert!(
-        body["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("/api/v1/sessions")
-    );
+    assert!(body["sessions"].is_array());
 }
 
 #[tokio::test]
