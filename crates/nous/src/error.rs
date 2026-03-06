@@ -146,6 +146,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// A mutex or rwlock was poisoned by a prior panic.
+    #[snafu(display("mutex poisoned: {what}"))]
+    MutexPoisoned {
+        what: &'static str,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].

@@ -1,6 +1,7 @@
 //! Config redaction — strips secrets from config before API exposure.
 
 use serde_json::Value;
+use tracing::debug;
 
 use crate::config::AletheiaConfig;
 
@@ -20,7 +21,10 @@ const SIGNAL_PII_KEYS: &[&str] = &["account"];
 
 /// Serialize config to JSON, then redact sensitive fields.
 pub fn redact(config: &AletheiaConfig) -> Value {
-    let mut value = serde_json::to_value(config).unwrap_or(Value::Null);
+    let mut value = serde_json::to_value(config).unwrap_or_else(|e| {
+        debug!(error = %e, "failed to serialize config for redaction");
+        Value::Null
+    });
     redact_sensitive_leaves(&mut value);
     redact_sensitive_keys(&mut value);
     redact_signal_accounts(&mut value);

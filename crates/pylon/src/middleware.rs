@@ -5,6 +5,7 @@ use axum::extract::Request;
 use axum::http::{Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use tracing::warn;
 
 /// CSRF protection state stored as a router extension.
 #[derive(Debug, Clone)]
@@ -104,7 +105,10 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
 
     if let Some(error) = json.get_mut("error").and_then(|e| e.as_object_mut()) {
         error.insert("request_id".to_owned(), serde_json::Value::String(rid));
-        let new_bytes = serde_json::to_vec(&json).unwrap_or_default();
+        let new_bytes = serde_json::to_vec(&json).unwrap_or_else(|e| {
+            warn!(error = %e, "failed to re-serialize error response body");
+            Vec::new()
+        });
         return Response::from_parts(parts, Body::from(new_bytes));
     }
 

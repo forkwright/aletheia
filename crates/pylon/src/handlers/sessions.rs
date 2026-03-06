@@ -65,8 +65,15 @@ pub async fn create(
     let skey = session_key.clone();
 
     let session = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.find_or_create_session(&id_clone, &nid, &skey, Some(&model), None)
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .find_or_create_session(&id_clone, &nid, &skey, Some(&model), None)
+            .map_err(ApiError::from)
     })
     .await??;
 
@@ -123,8 +130,15 @@ pub async fn close(
     let state_clone = Arc::clone(&state);
     let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.update_session_status(&id_clone, SessionStatus::Archived)
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .update_session_status(&id_clone, SessionStatus::Archived)
+            .map_err(ApiError::from)
     })
     .await??;
 
@@ -161,8 +175,15 @@ pub async fn history(
     let id_clone = id.clone();
     let limit = params.limit;
     let messages = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.get_history(&id_clone, limit.map(i64::from))
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .get_history(&id_clone, limit.map(i64::from))
+            .map_err(ApiError::from)
     })
     .await??;
 
@@ -290,7 +311,10 @@ pub async fn send_message(
     });
 
     let stream = ReceiverStream::new(rx).map(|event| {
-        let data = serde_json::to_string(&event).unwrap_or_default();
+        let data = serde_json::to_string(&event).unwrap_or_else(|e| {
+            warn!(error = %e, "failed to serialize SSE event");
+            String::new()
+        });
         Ok(Event::default().event(event.event_type()).data(data))
     });
 
@@ -351,11 +375,17 @@ async fn store_message(
     let sid = session_id.to_owned();
     let content = content.to_owned();
     tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.append_message(&sid, role, &content, None, None, token_estimate)
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .append_message(&sid, role, &content, None, None, token_estimate)
+            .map_err(ApiError::from)
     })
     .await?
-    .map_err(ApiError::from)
 }
 
 async fn find_session(
@@ -366,8 +396,13 @@ async fn find_session(
     let id_owned = id.to_owned();
     let id_for_error = id.to_owned();
     let session = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().expect("store lock");
-        store.find_session_by_id(&id_owned)
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store.find_session_by_id(&id_owned).map_err(ApiError::from)
     })
     .await??;
 

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use rusqlite::Connection;
 use snafu::{IntoError, ResultExt};
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::error::{self, Result};
 use crate::types::{ApiKeyRecord, Role, User};
@@ -329,11 +329,15 @@ fn get_schema_version(conn: &Connection) -> u32 {
 
 fn map_user(row: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
     let role_str: String = row.get("role")?;
+    let role = role_str.parse().unwrap_or_else(|_| {
+        warn!(role = %role_str, "unknown role in database, defaulting to Readonly");
+        Role::Readonly
+    });
     Ok(User {
         id: row.get("id")?,
         username: row.get("username")?,
         password_hash: row.get("password_hash")?,
-        role: role_str.parse().unwrap_or(Role::Readonly),
+        role,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
@@ -341,11 +345,15 @@ fn map_user(row: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
 
 fn map_api_key(row: &rusqlite::Row<'_>) -> rusqlite::Result<ApiKeyRecord> {
     let role_str: String = row.get("role")?;
+    let role = role_str.parse().unwrap_or_else(|_| {
+        warn!(role = %role_str, "unknown role in database, defaulting to Readonly");
+        Role::Readonly
+    });
     Ok(ApiKeyRecord {
         id: row.get("id")?,
         prefix: row.get("prefix")?,
         key_hash: row.get("key_hash")?,
-        role: role_str.parse().unwrap_or(Role::Readonly),
+        role,
         nous_id: row.get("nous_id")?,
         created_at: row.get("created_at")?,
         expires_at: row.get("expires_at")?,

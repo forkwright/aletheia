@@ -408,7 +408,7 @@ fn now_iso8601() -> String {
 
 /// Convert epoch days to (year, month, day). Algorithm from Howard Hinnant.
 #[cfg(feature = "mneme-engine")]
-#[expect(clippy::cast_possible_truncation, clippy::cast_lossless, reason = "Hinnant algorithm uses known-range casts")]
+#[expect(clippy::cast_possible_truncation, clippy::cast_lossless, clippy::similar_names, reason = "Hinnant algorithm uses known-range casts and standard doe/doy names")]
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
