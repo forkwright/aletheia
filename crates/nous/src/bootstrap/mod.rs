@@ -628,13 +628,13 @@ mod tests {
         // USER.md only in theke (common pattern)
         let (_dir, oikos) = setup_oikos(
             "syn",
-            &[("SOUL.md", "identity"), ("theke:USER.md", "Chris K.")],
+            &[("SOUL.md", "identity"), ("theke:USER.md", "Alice T.")],
         );
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
         let result = assembler.assemble("syn", &mut budget).unwrap();
-        assert!(result.system_prompt.contains("Chris K."));
+        assert!(result.system_prompt.contains("Alice T."));
         assert!(result.sections_included.contains(&"USER.md".to_owned()));
     }
 
