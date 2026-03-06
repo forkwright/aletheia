@@ -39,6 +39,7 @@ use crate::engine::runtime::temp_store::{EpochStore, RegularTempStore};
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::NamedRows;
 
+pub(crate) mod error;
 #[cfg(feature = "graph-algo")]
 pub(crate) mod algos;
 pub(crate) mod utilities;
@@ -83,7 +84,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         Ok(match &self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = self.stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
+                    crate::engine::error::EngineError::from_display(format!("The requested rule '{}' cannot be found", name.symbol()))
                 })?;
                 Box::new(store.all_iter().map(|t| Ok(t.into_tuple())))
             }
@@ -102,7 +103,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         Ok(match self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = self.stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
+                    crate::engine::error::EngineError::from_display(format!("The requested rule '{}' cannot be found", name.symbol()))
                 })?;
                 let t = vec![prefix.clone()];
                 Box::new(store.prefix_iter(&t).map(|t| Ok(t.into_tuple())))
@@ -145,14 +146,14 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
+                        error = Some(crate::engine::error::EngineError::from_display("The relation cannot be interpreted as an edge".to_string()));
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
+                        error = Some(crate::engine::error::EngineError::from_display("The relation cannot be interpreted as an edge".to_string()));
                         return None;
                     }
                     Some(f) => f,
@@ -218,14 +219,14 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
+                        error = Some(crate::engine::error::EngineError::from_display("The relation cannot be interpreted as an edge".to_string()));
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
+                        error = Some(crate::engine::error::EngineError::from_display("The relation cannot be interpreted as an edge".to_string()));
                         return None;
                     }
                     Some(f) => f,
@@ -614,8 +615,8 @@ impl SimpleFixedRule {
                     let (app2db_sender, app2db_receiver) = bounded(0);
                     db2app_sender
                         .send((inputs, options, app2db_sender))
-                        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
-                    app2db_receiver.recv().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                        .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?;
+                    app2db_receiver.recv().map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
                 }),
             },
             db2app_receiver,
@@ -833,8 +834,12 @@ struct BadEdgeWeightError {
     span: SourceSpan,
 }
 
-
-
+impl From<BadEdgeWeightError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: BadEdgeWeightError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
 
 
 #[derive(Debug, Snafu)]
@@ -844,8 +849,12 @@ pub(crate) struct NodeNotFoundError {
     pub(crate) span: SourceSpan,
 }
 
-
-
+impl From<NodeNotFoundError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: NodeNotFoundError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
 
 
 impl MagicFixedRuleRuleArg {
@@ -857,7 +866,7 @@ impl MagicFixedRuleRuleArg {
         Ok(match self {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!("The requested rule '{}' cannot be found", name.symbol()))
+                    crate::engine::error::EngineError::from_display(format!("The requested rule '{}' cannot be found", name.symbol()))
                 })?;
                 store.arity
             }

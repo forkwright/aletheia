@@ -212,9 +212,9 @@ pub(crate) fn parse_query(
                 let _span = pair.extract_span();
                 let timeout = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|_err| crate::engine::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| crate::engine::error::EngineError::from_display("Query option {} is not constant".to_string()))?
                     .get_float()
-                    .ok_or(crate::engine::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
+                    .ok_or(crate::engine::error::EngineError::from_display("Query option {} requires a non-negative integer".to_string()))?;
                 if timeout > 0. {
                     out_opts.timeout = Some(timeout);
                 } else {
@@ -231,10 +231,10 @@ pub(crate) fn parse_query(
                     let _span = pair.extract_span();
                     let sleep = build_expr(pair, param_pool)?
                         .eval_to_const()
-                        .map_err(|_err| crate::engine::error::AdhocError("Query option {} is not constant".to_string()))?
+                        .map_err(|_err| crate::engine::error::EngineError::from_display("Query option {} is not constant".to_string()))?
                         .get_float()
-                        .ok_or(crate::engine::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
-                    ensure!(sleep > 0., crate::engine::error::AdhocError("Query option {} requires a positive integer".to_string()));
+                        .ok_or(crate::engine::error::EngineError::from_display("Query option {} requires a non-negative integer".to_string()))?;
+                    ensure!(sleep > 0., crate::engine::error::EngineError::from_display("Query option {} requires a positive integer".to_string()));
                     out_opts.sleep = Some(sleep);
                 }
             }
@@ -243,9 +243,9 @@ pub(crate) fn parse_query(
                 let _span = pair.extract_span();
                 let limit = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|_err| crate::engine::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| crate::engine::error::EngineError::from_display("Query option {} is not constant".to_string()))?
                     .get_non_neg_int()
-                    .ok_or(crate::engine::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
+                    .ok_or(crate::engine::error::EngineError::from_display("Query option {} requires a non-negative integer".to_string()))?;
                 out_opts.limit = Some(limit as usize);
             }
             Rule::offset_option => {
@@ -253,9 +253,9 @@ pub(crate) fn parse_query(
                 let _span = pair.extract_span();
                 let offset = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|_err| crate::engine::error::AdhocError("Query option {} is not constant".to_string()))?
+                    .map_err(|_err| crate::engine::error::EngineError::from_display("Query option {} is not constant".to_string()))?
                     .get_non_neg_int()
-                    .ok_or(crate::engine::error::AdhocError("Query option {} requires a non-negative integer".to_string()))?;
+                    .ok_or(crate::engine::error::EngineError::from_display("Query option {} requires a non-negative integer".to_string()))?;
                 out_opts.offset = Some(offset as usize);
             }
             Rule::sort_option => {
@@ -341,9 +341,9 @@ pub(crate) fn parse_query(
                 let _span = pair.extract_span();
                 let val = build_expr(pair, param_pool)?
                     .eval_to_const()
-                    .map_err(|_err| crate::engine::error::AdhocError("Query option is not constant".to_string()))?
+                    .map_err(|_err| crate::engine::error::EngineError::from_display("Query option is not constant".to_string()))?
                     .get_bool()
-                    .ok_or(crate::engine::error::AdhocError("Query option requires a boolean".to_string()))?;
+                    .ok_or(crate::engine::error::EngineError::from_display("Query option requires a boolean".to_string()))?;
                 disable_magic_rewrite = val;
             }
             Rule::EOI => break,
@@ -488,7 +488,7 @@ fn parse_rule(
 
     
 
-    ensure!(!head.is_empty(), crate::engine::error::AdhocError("Horn-clause rule cannot have empty rule head".to_string()));
+    ensure!(!head.is_empty(), crate::engine::error::EngineError::from_display("Horn-clause rule cannot have empty rule head".to_string()));
     let body = src.next().unwrap();
     let mut body_clauses = vec![];
     let mut ignored_counter = 0;
@@ -772,7 +772,7 @@ fn parse_rule_head_arg(
                 Symbol::new(var.as_str(), var.extract_span()),
                 Some((
                     parse_aggr(aggr_name)
-                        .ok_or_else(|| crate::engine::error::AdhocError(format!("Aggregation '{aggr_name}' not found")))?
+                        .ok_or_else(|| crate::engine::error::EngineError::from_display(format!("Aggregation '{aggr_name}' not found")))?
                         .clone(),
                     args,
                 )),
@@ -798,7 +798,7 @@ fn parse_fixed_rule(
     
 
     for (a, _v) in aggr.iter().zip(head.iter()) {
-        ensure!(a.is_none(), crate::engine::error::AdhocError("fixed rule cannot be combined with aggregation".to_string()))
+        ensure!(a.is_none(), crate::engine::error::EngineError::from_display("fixed rule cannot be combined with aggregation".to_string()))
     }
 
     let mut seen_bindings = BTreeSet::new();
@@ -947,7 +947,7 @@ fn parse_fixed_rule(
 
     let fixed_impl = fixed_rules
         .get(&fixed.name as &str)
-        .ok_or_else(|| crate::engine::error::AdhocError(format!("Fixed rule '{}' not found", fixed.name)))?;
+        .ok_or_else(|| crate::engine::error::EngineError::from_display(format!("Fixed rule '{}' not found", fixed.name)))?;
     fixed_impl.init_options(&mut options, args_list_span)?;
     let arity = fixed_impl.arity(&options, &head, name_pair.extract_span())?;
 
@@ -1006,13 +1006,13 @@ fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityTs> {
     let _vld_span = expr.span();
     match expr.eval_to_const()? {
         DataValue::Num(n) => {
-            let microseconds = n.get_int().ok_or(crate::engine::error::AdhocError("bad specification of validity".to_string()))?;
+            let microseconds = n.get_int().ok_or(crate::engine::error::EngineError::from_display("bad specification of validity".to_string()))?;
             Ok(ValidityTs(Reverse(microseconds)))
         }
         DataValue::Str(s) => match &s as &str {
             "NOW" => Ok(cur_vld),
             "END" => Ok(MAX_VALIDITY_TS),
-            s => Ok(str2vld(s).map_err(|_| crate::engine::error::AdhocError("bad specification of validity".to_string()))?),
+            s => Ok(str2vld(s).map_err(|_| crate::engine::error::EngineError::from_display("bad specification of validity".to_string()))?),
         },
         _ => {
             bail!("bad specification of validity")

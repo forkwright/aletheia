@@ -56,7 +56,7 @@ impl SplitCompoundWords {
         let dict = AhoCorasickBuilder::new()
             .match_kind(MatchKind::LeftmostLongest)
             .build(dict)
-            .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+            .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?;
 
         Ok(Self::from_automaton(dict))
     }

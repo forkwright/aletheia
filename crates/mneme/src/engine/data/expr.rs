@@ -66,11 +66,25 @@ pub enum Bytecode {
 #[diagnostic(code(eval::unbound))]
 struct UnboundVariableError(String, #[label] SourceSpan);
 
+impl From<UnboundVariableError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: UnboundVariableError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
+
 #[derive(Error, Diagnostic, Debug)]
 #[error("The tuple bound by variable '{0}' is too short: index is {1}, length is {2}")]
 #[diagnostic(help("This is definitely a bug. Please report it."))]
 #[diagnostic(code(eval::tuple_too_short))]
 struct TupleTooShortError(String, usize, usize, #[label] SourceSpan);
+
+impl From<TupleTooShortError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: TupleTooShortError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
 
 pub fn eval_bytecode_pred(
     bytecodes: &[Bytecode],
@@ -251,10 +265,24 @@ impl Display for Expr {
 #[diagnostic(code(eval::no_implementation))]
 pub(crate) struct NoImplementationError(#[label] pub(crate) SourceSpan, pub(crate) String);
 
+impl From<NoImplementationError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: NoImplementationError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
+
 #[derive(Debug, Error, Diagnostic)]
 #[error("Found value {1:?} where a boolean value is expected")]
 #[diagnostic(code(eval::predicate_not_bool))]
 pub(crate) struct PredicateTypeError(#[label] pub(crate) SourceSpan, pub(crate) DataValue);
+
+impl From<PredicateTypeError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: PredicateTypeError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Cannot build entity ID from {0:?}")]
@@ -262,10 +290,24 @@ pub(crate) struct PredicateTypeError(#[label] pub(crate) SourceSpan, pub(crate) 
 #[diagnostic(help("Entity ID should be an integer satisfying certain constraints"))]
 struct BadEntityId(DataValue, #[label] SourceSpan);
 
+impl From<BadEntityId> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: BadEntityId) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
+
 #[derive(Error, Diagnostic, Debug)]
 #[error("Evaluation of expression failed")]
 #[diagnostic(code(eval::throw))]
 struct EvalRaisedError(#[label] SourceSpan, #[help] String);
+
+impl From<EvalRaisedError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: EvalRaisedError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
 
 impl Expr {
     pub(crate) fn compile(&self) -> Result<Vec<Bytecode>> {
@@ -339,6 +381,13 @@ impl Expr {
                 #[diagnostic(code(eval::bad_binding))]
                 struct BadBindingError(String, #[label] SourceSpan);
 
+                impl From<BadBindingError> for crate::engine::error::EngineError {
+                    #[track_caller]
+                    fn from(e: BadBindingError) -> Self {
+                        crate::engine::error::EngineError::from_display(e)
+                    }
+                }
+
                 let found_idx = *binding_map
                     .get(var)
                     .ok_or_else(|| BadBindingError(var.to_string(), var.span))?;
@@ -404,6 +453,13 @@ impl Expr {
         #[error("Expression contains unevaluated constant")]
         #[diagnostic(code(eval::not_constant))]
         struct NotConstError;
+
+        impl From<NotConstError> for crate::engine::error::EngineError {
+            #[track_caller]
+            fn from(e: NotConstError) -> Self {
+                crate::engine::error::EngineError::from_display(e)
+            }
+        }
 
         self.partial_eval()?;
         match self {
@@ -587,6 +643,13 @@ impl Expr {
                                     #[diagnostic(code(eval::bad_string_range_scan))]
                                     #[diagnostic(help("A string argument is required"))]
                                     struct StrRangeScanError(DataValue, #[label] SourceSpan);
+
+                                    impl From<StrRangeScanError> for crate::engine::error::EngineError {
+                                        #[track_caller]
+                                        fn from(e: StrRangeScanError) -> Self {
+                                            crate::engine::error::EngineError::from_display(e)
+                                        }
+                                    }
 
                                     StrRangeScanError(val.clone(), symb.span)
                                 })?;

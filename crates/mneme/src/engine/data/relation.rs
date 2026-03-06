@@ -183,6 +183,13 @@ impl NullableColType {
                 #[diagnostic(code(eval::coercion_null))]
                 struct InvalidNullValue(NullableColType);
 
+                impl From<InvalidNullValue> for crate::engine::error::EngineError {
+                    #[track_caller]
+                    fn from(e: InvalidNullValue) -> Self {
+                        crate::engine::error::EngineError::from_display(e)
+                    }
+                }
+
                 Err(InvalidNullValue(self.clone()).into())
             };
         }
@@ -191,6 +198,13 @@ impl NullableColType {
         #[error("data coercion failed: expected type {0}, got value {1:?}")]
         #[diagnostic(code(eval::coercion_failed))]
         struct DataCoercionFailed(NullableColType, DataValue);
+
+        impl From<DataCoercionFailed> for crate::engine::error::EngineError {
+            #[track_caller]
+            fn from(e: DataCoercionFailed) -> Self {
+                crate::engine::error::EngineError::from_display(e)
+            }
+        }
 
         #[derive(Debug, Error, Diagnostic)]
         #[error("bad list length: expected datatype {0}, got length {1}")]
@@ -229,6 +243,14 @@ impl NullableColType {
                     #[error("cannot decode string as base64-encoded bytes: {0}")]
                     #[diagnostic(code(eval::coercion_bad_base_64))]
                     struct BadBase64EncodedString(String);
+
+                    impl From<BadBase64EncodedString> for crate::engine::error::EngineError {
+                        #[track_caller]
+                        fn from(e: BadBase64EncodedString) -> Self {
+                            crate::engine::error::EngineError::from_display(e)
+                        }
+                    }
+
                     let b = STANDARD
                         .decode(s)
                         .map_err(|e| BadBase64EncodedString(e.to_string()))?;
@@ -337,6 +359,13 @@ impl NullableColType {
                 #[error("{0} cannot be coerced into validity")]
                 #[diagnostic(code(eval::invalid_validity))]
                 struct InvalidValidity(DataValue);
+
+                impl From<InvalidValidity> for crate::engine::error::EngineError {
+                    #[track_caller]
+                    fn from(e: InvalidValidity) -> Self {
+                        crate::engine::error::EngineError::from_display(e)
+                    }
+                }
 
                 match data {
                     vld @ DataValue::Validity(_) => vld,

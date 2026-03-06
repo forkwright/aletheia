@@ -191,31 +191,31 @@ impl NamedRows {
     pub fn from_json(value: &JsonValue) -> Result<Self> {
         let headers = value
             .get("headers")
-            .ok_or_else(|| crate::engine::error::AdhocError("NamedRows requires 'headers' field".to_string()))?;
+            .ok_or_else(|| crate::engine::error::EngineError::from_display("NamedRows requires 'headers' field".to_string()))?;
         let headers = headers
             .as_array()
-            .ok_or_else(|| crate::engine::error::AdhocError("'headers' field must be an array".to_string()))?;
+            .ok_or_else(|| crate::engine::error::EngineError::from_display("'headers' field must be an array".to_string()))?;
         let headers = headers
             .iter()
             .map(|h| -> Result<String> {
                 let h = h
                     .as_str()
-                    .ok_or_else(|| crate::engine::error::AdhocError("'headers' field must be an array of strings".to_string()))?;
+                    .ok_or_else(|| crate::engine::error::EngineError::from_display("'headers' field must be an array of strings".to_string()))?;
                 Ok(h.to_string())
             })
             .try_collect()?;
         let rows = value
             .get("rows")
-            .ok_or_else(|| crate::engine::error::AdhocError("NamedRows requires 'rows' field".to_string()))?;
+            .ok_or_else(|| crate::engine::error::EngineError::from_display("NamedRows requires 'rows' field".to_string()))?;
         let rows = rows
             .as_array()
-            .ok_or_else(|| crate::engine::error::AdhocError("'rows' field must be an array".to_string()))?;
+            .ok_or_else(|| crate::engine::error::EngineError::from_display("'rows' field must be an array".to_string()))?;
         let rows = rows
             .iter()
             .map(|row| -> Result<Vec<DataValue>> {
                 let row = row
                     .as_array()
-                    .ok_or_else(|| crate::engine::error::AdhocError("'rows' field must be an array of arrays".to_string()))?;
+                    .ok_or_else(|| crate::engine::error::EngineError::from_display("'rows' field must be an array of arrays".to_string()))?;
                 Ok(row.iter().map(DataValue::from).collect_vec())
             })
             .try_collect()?;
@@ -535,7 +535,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 .keys
                 .iter()
                 .map(|col| -> Result<(usize, &ColumnDef)> {
-                    let idx = header2idx.get(&col.name as &str).ok_or_else(|| crate::engine::error::AdhocError(format!("required header {} not found for relation {}",
+                    let idx = header2idx.get(&col.name as &str).ok_or_else(|| crate::engine::error::EngineError::from_display(format!("required header {} not found for relation {}",
                             col.name,
                             relation)))?;
                     Ok((*idx, col))
@@ -550,7 +550,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .non_keys
                     .iter()
                     .map(|col| -> Result<(usize, &ColumnDef)> {
-                        let idx = header2idx.get(&col.name as &str).ok_or_else(|| crate::engine::error::AdhocError(format!("required header {} not found for relation {}",
+                        let idx = header2idx.get(&col.name as &str).ok_or_else(|| crate::engine::error::EngineError::from_display(format!("required header {} not found for relation {}",
                                 col.name,
                                 relation)))?;
                         Ok((*idx, col))
@@ -564,7 +564,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .map(|(i, col)| -> Result<DataValue> {
                         let v = row
                             .get(*i)
-                            .ok_or_else(|| crate::engine::error::AdhocError(format!("row too short: {:?}", row)))?;
+                            .ok_or_else(|| crate::engine::error::EngineError::from_display(format!("row too short: {:?}", row)))?;
                         col.typing.coerce(v.clone(), cur_vld)
                     })
                     .try_collect()?;
@@ -592,7 +592,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .map(|(i, col)| -> Result<DataValue> {
                             let v = row
                                 .get(*i)
-                                .ok_or_else(|| crate::engine::error::AdhocError(format!("row too short: {:?}", row)))?;
+                                .ok_or_else(|| crate::engine::error::EngineError::from_display(format!("row too short: {:?}", row)))?;
                             col.typing.coerce(v.clone(), cur_vld)
                         })
                         .try_collect()?;
@@ -1555,7 +1555,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                             ""
                         },
                     )
-                    .map_err(|e| crate::engine::error::AdhocError(format!("{e}: when executing against relation '{}'", meta.name)))?;
+                    .map_err(|e| crate::engine::error::EngineError::from_display(format!("{e}: when executing against relation '{}'", meta.name)))?;
                 clean_ups.extend(to_clear);
                 let returned_rows =
                     tx.get_returning_rows(callback_collector, &meta.name, returning)?;
@@ -1611,7 +1611,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                             ""
                         },
                     )
-                    .map_err(|e| crate::engine::error::AdhocError(format!("{e}: when executing against relation '{}'", meta.name)))?;
+                    .map_err(|e| crate::engine::error::EngineError::from_display(format!("{e}: when executing against relation '{}'", meta.name)))?;
                 clean_ups.extend(to_clear);
                 let returned_rows =
                     tx.get_returning_rows(callback_collector, &meta.name, returning)?;
@@ -1898,7 +1898,7 @@ pub(crate) fn seconds_since_the_epoch() -> Result<f64> {
     #[cfg(not(target_arch = "wasm32"))]
     return Ok(now
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+        .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
         .as_secs_f64());
 
     #[cfg(target_arch = "wasm32")]

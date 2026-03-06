@@ -185,7 +185,7 @@ impl<'a> SessionTx<'a> {
             let orig_tuple = config
                 .base_handle
                 .get(self, &key)?
-                .ok_or_else(|| crate::engine::error::AdhocError("Tuple not found in base LSH relation".to_string()))?;
+                .ok_or_else(|| crate::engine::error::EngineError::from_display("Tuple not found in base LSH relation".to_string()))?;
             if let Some((filter_code, span)) = filter_code {
                 if !eval_bytecode_pred(filter_code, &orig_tuple, stack, *span)? {
                     continue;
@@ -311,7 +311,7 @@ impl HashPermutations {
     // this is the inverse of `as_bytes`
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let perms: &[u32] = bytemuck::try_cast_slice(bytes)
-            .map_err(|e| crate::engine::error::AdhocError(format!("MinHash permutation bytes are misaligned: {e}")))?;
+            .map_err(|e| crate::engine::error::EngineError::from_display(format!("MinHash permutation bytes are misaligned: {e}")))?;
         Ok(Self(perms.to_vec()))
     }
 }

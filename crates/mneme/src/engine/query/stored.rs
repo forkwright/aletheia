@@ -449,7 +449,7 @@ impl<'a> SessionTx<'a> {
                 .get(name, &manifest.tokenizer, &manifest.filters)?;
 
             let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
-                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
                 .next()
                 .unwrap();
             let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -464,7 +464,7 @@ impl<'a> SessionTx<'a> {
                 .get(name, &manifest.tokenizer, &manifest.filters)?;
 
             let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
-                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
                 .next()
                 .unwrap();
             let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -483,7 +483,7 @@ impl<'a> SessionTx<'a> {
         for (name, (_, manifest)) in relation_store.hnsw_indices.iter() {
             if let Some(f_code) = &manifest.index_filter {
                 let parsed = CozoScriptParser::parse(Rule::expr, f_code)
-                    .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                    .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
                     .next()
                     .unwrap();
                 let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -569,7 +569,7 @@ impl<'a> SessionTx<'a> {
                     })
                 }
                 Some(v) => rmp_serde::from_slice(&v[ENCODED_KEY_MIN_LEN..])
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?,
+                    .map_err(|e| crate::engine::error::EngineError::from_display(e))?,
             };
             let mut old_kv = Vec::with_capacity(relation_store.arity());
             old_kv.extend_from_slice(&new_kv);
@@ -1077,10 +1077,10 @@ impl DataExtractor {
         Ok(match self {
             DataExtractor::DefaultExtractor(expr, typ) => typ
                 .coerce(expr.clone().eval_to_const()?, cur_vld)
-                .map_err(|e| crate::engine::error::AdhocError(format!("{e}: when processing tuple {tuple:?}")))?,
+                .map_err(|e| crate::engine::error::EngineError::from_display(format!("{e}: when processing tuple {tuple:?}")))?,
             DataExtractor::IndexExtractor(i, typ) => typ
                 .coerce(tuple[*i].clone(), cur_vld)
-                .map_err(|e| crate::engine::error::AdhocError(format!("{e}: when processing tuple {tuple:?}")))?,
+                .map_err(|e| crate::engine::error::EngineError::from_display(format!("{e}: when processing tuple {tuple:?}")))?,
         })
     }
 }
@@ -1137,7 +1137,7 @@ fn make_extractor(
         ))
     } else {
         
-        Err(Box::new(crate::engine::error::AdhocError("cannot make extractor for column".to_string())) as Box<dyn std::error::Error + Send + Sync + 'static>)
+        Err(crate::engine::error::EngineError::from_display("cannot make extractor for column"))
     }
 }
 

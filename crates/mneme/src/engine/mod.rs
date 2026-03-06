@@ -43,13 +43,6 @@ pub(crate) mod runtime;
 pub(crate) mod storage;
 pub(crate) mod utils;
 
-/// Convert an internal BoxErr to the public Error type, detecting ProcessKilled for typed matching.
-fn convert_err(e: crate::engine::error::BoxErr) -> Error {
-    if e.downcast_ref::<crate::engine::runtime::db::ProcessKilled>().is_some() {
-        return error::QueryKilledSnafu.build();
-    }
-    error::EngineSnafu { message: e.to_string() }.build()
-}
 
 /// Public facade replacing DbInstance. Dispatches to concrete storage implementations.
 pub enum Db {
@@ -63,7 +56,7 @@ impl Db {
     pub fn open_mem() -> crate::engine::Result<Self> {
         crate::engine::storage::mem::new_cozo_mem()
             .map(Db::Mem)
-            .map_err(convert_err)
+            .map_err(Error::from)
     }
 
     /// Open a RocksDB-backed database at the given path.
@@ -71,7 +64,7 @@ impl Db {
     pub fn open_rocksdb(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
         crate::engine::storage::newrocks::new_cozo_newrocksdb(path)
             .map(Db::RocksDb)
-            .map_err(convert_err)
+            .map_err(Error::from)
     }
 
     /// Execute a Datalog script.
@@ -86,7 +79,7 @@ impl Db {
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.run_script(script, params, mutability),
         };
-        result.map_err(convert_err)
+        result.map_err(Error::from)
     }
 
     /// Export relations for backup.
@@ -100,7 +93,7 @@ impl Db {
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.export_relations(relations),
         };
-        result.map_err(convert_err)
+        result.map_err(Error::from)
     }
 
     /// Import relations from backup.
@@ -110,7 +103,7 @@ impl Db {
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.import_relations(data),
         };
-        result.map_err(convert_err)
+        result.map_err(Error::from)
     }
 
     /// Register a custom fixed rule (graph algorithm).
@@ -124,7 +117,7 @@ impl Db {
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.register_fixed_rule(name, rule),
         };
-        result.map_err(convert_err)
+        result.map_err(Error::from)
     }
 
     /// Register a callback for relation changes.

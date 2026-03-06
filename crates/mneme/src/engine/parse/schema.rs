@@ -121,7 +121,7 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
 
                     
 
-                    let n = dv.get_int().ok_or(crate::engine::error::AdhocError("Bad specification of list length in type".to_string()))?;
+                    let n = dv.get_int().ok_or(crate::engine::error::EngineError::from_display("Bad specification of list length in type".to_string()))?;
                     ensure!(n >= 0, "Bad specification of list length in type: negative length");
                     Some(n as usize)
                 }
@@ -139,7 +139,7 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
                 _ => unreachable!()
             };
             let len = inner.next().unwrap();
-            let len = len.as_str().replace('_', "").parse::<usize>().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+            let len = len.as_str().replace('_', "").parse::<usize>().map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?;
             ColType::Vec {
                 eltype,
                 len,

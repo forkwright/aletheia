@@ -32,6 +32,7 @@ use crate::engine::parse::schema::parse_nullable_type;
 use crate::engine::parse::sys::{parse_sys, SysOp};
 use crate::engine::{Expr, FixedRule};
 
+pub(crate) mod error;
 pub(crate) mod expr;
 pub(crate) mod fts;
 pub(crate) mod imperative;
@@ -259,9 +260,16 @@ pub(crate) struct ParseError {
     pub(crate) span: SourceSpan,
 }
 
+impl From<ParseError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: ParseError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
+
 pub(crate) fn parse_type(src: &str) -> Result<NullableColType> {
     let parsed = CozoScriptParser::parse(Rule::col_type_with_term, src)
-        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+        .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
         .next()
         .unwrap();
     parse_nullable_type(parsed.into_inner().next().unwrap())

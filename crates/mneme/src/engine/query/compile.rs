@@ -130,7 +130,7 @@ impl<'a> SessionTx<'a> {
                                     let mut relation =
                                         self.compile_magic_rule_body(rule, &k, &store_arities, header)?;
                                     relation.fill_binding_indices_and_compile().map_err(|e| {
-                                        crate::engine::error::AdhocError(format!(
+                                        crate::engine::error::EngineError::from_display(format!(
                                             "{e}: error encountered when filling binding indices for {relation:#?}"
                                         ))
                                     })?;
@@ -172,7 +172,7 @@ impl<'a> SessionTx<'a> {
             match atom {
                 MagicAtom::Rule(rule_app) => {
                     let store_arity = store_arities.get(&rule_app.name).ok_or_else(|| {
-                        crate::engine::error::AdhocError(format!("Requested rule '{}' not found", rule_app.name.symbol()))
+                        crate::engine::error::EngineError::from_display(format!("Requested rule '{}' not found", rule_app.name.symbol()))
                     })?;
 
                     ensure!(
@@ -351,7 +351,7 @@ impl<'a> SessionTx<'a> {
                 }
                 MagicAtom::NegatedRule(rule_app) => {
                     let store_arity = store_arities.get(&rule_app.name).ok_or_else(|| {
-                        crate::engine::error::AdhocError(format!("Requested rule '{}' not found", rule_app.name.symbol()))
+                        crate::engine::error::EngineError::from_display(format!("Requested rule '{}' not found", rule_app.name.symbol()))
                     })?;
                     ensure!(
                         *store_arity == rule_app.args.len(),

@@ -132,7 +132,7 @@ impl FixedRule for ReorderSort {
         _span: SourceSpan,
     ) -> Result<usize> {
         let out_opts = opts.get("out").ok_or_else(|| {
-            crate::engine::error::AdhocError("ReorderSort: option 'out' not provided".to_string())
+            crate::engine::error::EngineError::from_display("ReorderSort: option 'out' not provided".to_string())
         })?;
         Ok(match out_opts {
             Expr::Const {

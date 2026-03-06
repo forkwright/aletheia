@@ -6,6 +6,7 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+pub(crate) mod error;
 pub(crate) mod compile;
 pub(crate) mod eval;
 pub(crate) mod graph;

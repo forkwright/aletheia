@@ -346,7 +346,7 @@ impl<'a> SessionTx<'a> {
                     };
                     let mut target_self_val: Vec<DataValue> =
                         rmp_serde::from_slice(&target_self_val_bytes[ENCODED_KEY_MIN_LEN..])
-                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                            .map_err(|e| crate::engine::error::EngineError::from_display(e))?;
                     let mut target_degree = target_self_val[0].get_float().unwrap() as usize + 1; // INVARIANT: float stored by HNSW insert path
                     if target_degree > m_max {
                         // shrink links
@@ -461,7 +461,7 @@ impl<'a> SessionTx<'a> {
                     }
                 };
                 let old_existing_val: Vec<DataValue> =
-                    rmp_serde::from_slice(&old_existing_val[ENCODED_KEY_MIN_LEN..]).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                    rmp_serde::from_slice(&old_existing_val[ENCODED_KEY_MIN_LEN..]).map_err(|e| crate::engine::error::EngineError::from_display(e))?;
                 if old_existing_val[2].get_bool().unwrap() {
                     self.store_tx.del(&old_key_bytes)?;
                 } else {
@@ -828,7 +828,7 @@ impl<'a> SessionTx<'a> {
                     )?
                     .unwrap();
                 let mut neighbour_val: Vec<DataValue> =
-                    rmp_serde::from_slice(&neighbour_val_bytes[ENCODED_KEY_MIN_LEN..]).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                    rmp_serde::from_slice(&neighbour_val_bytes[ENCODED_KEY_MIN_LEN..]).map_err(|e| crate::engine::error::EngineError::from_display(e))?;
                 neighbour_val[0] = DataValue::from(neighbour_val[0].get_float().unwrap() - 1.); // INVARIANT: float stored by HNSW insert path
                 self.store_tx.put(
                     &idx_table.encode_key_for_store(&neighbour_self_key, Default::default())?,
@@ -970,7 +970,7 @@ impl<'a> SessionTx<'a> {
                 let mut cand_tuple = config
                     .base_handle
                     .get(self, &cand_key.0)?
-                    .ok_or_else(|| crate::engine::error::AdhocError("corrupted index".to_string()))?;
+                    .ok_or_else(|| crate::engine::error::EngineError::from_display("corrupted index".to_string()))?;
 
                 // make sure the order is the same as in all_bindings()!!!
                 if config.bind_field.is_some() {

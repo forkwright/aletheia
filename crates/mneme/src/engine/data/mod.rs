@@ -8,6 +8,7 @@
 
 // Vendored from CozoDB v0.7.6. Suppress all clippy lints.
 #[allow(warnings, clippy::all, clippy::pedantic, clippy::nursery, clippy::restriction)]
+pub(crate) mod error;
 pub(crate) mod aggr;
 #[allow(warnings, clippy::all, clippy::pedantic, clippy::nursery, clippy::restriction)]
 pub(crate) mod expr;

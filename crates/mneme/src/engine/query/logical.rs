@@ -204,7 +204,7 @@ impl InputAtom {
                     .map(|a| a.do_disjunctive_normal_form(r#gen, tx));
                 let mut result = args
                     .next()
-                    .ok_or_else(|| crate::engine::error::AdhocError("empty conjunction".to_string()))??;
+                    .ok_or_else(|| crate::engine::error::EngineError::from_display("empty conjunction".to_string()))??;
                 for a in args {
                     result = result.conjunctive_to_disjunctive_de_morgen(a?)
                 }

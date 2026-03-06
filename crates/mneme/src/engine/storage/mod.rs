@@ -13,6 +13,7 @@ use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::ValidityTs;
 use crate::engine::runtime::relation::decode_tuple_from_kv;
 
+pub(crate) mod error;
 pub(crate) mod mem;
 pub(crate) mod temp;
 #[cfg(feature = "storage-new-rocksdb")]

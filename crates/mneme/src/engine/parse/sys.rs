@@ -115,7 +115,7 @@ pub(crate) fn parse_sys(
             let i_val = i_val.eval_to_const()?;
             let i_val = i_val
                 .get_int()
-                .ok_or_else(|| crate::engine::error::AdhocError("Process ID must be an integer".to_string()))?;
+                .ok_or_else(|| crate::engine::error::EngineError::from_display("Process ID must be an integer".to_string()))?;
             SysOp::KillRunning(i_val as u64)
         }
         Rule::explain_op => {
@@ -247,7 +247,7 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 false_positive_weight = v.get_float().ok_or_else(|| {
-                                    crate::engine::error::AdhocError("false_positive_weight must be a float".to_string())
+                                    crate::engine::error::EngineError::from_display("false_positive_weight must be a float".to_string())
                                 })?;
                             }
                             "false_negative_weight" => {
@@ -255,7 +255,7 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 false_negative_weight = v.get_float().ok_or_else(|| {
-                                    crate::engine::error::AdhocError("false_negative_weight must be a float".to_string())
+                                    crate::engine::error::EngineError::from_display("false_negative_weight must be a float".to_string())
                                 })?;
                             }
                             "n_gram" => {
@@ -264,7 +264,7 @@ pub(crate) fn parse_sys(
                                 let v = expr.eval_to_const()?;
                                 n_gram = v
                                     .get_int()
-                                    .ok_or_else(|| crate::engine::error::AdhocError("n_gram must be an integer".to_string()))?
+                                    .ok_or_else(|| crate::engine::error::EngineError::from_display("n_gram must be an integer".to_string()))?
                                     as usize;
                             }
                             "n_perm" => {
@@ -273,7 +273,7 @@ pub(crate) fn parse_sys(
                                 let v = expr.eval_to_const()?;
                                 n_perm = v
                                     .get_int()
-                                    .ok_or_else(|| crate::engine::error::AdhocError("n_perm must be an integer".to_string()))?
+                                    .ok_or_else(|| crate::engine::error::EngineError::from_display("n_perm must be an integer".to_string()))?
                                     as usize;
                             }
                             "target_threshold" => {
@@ -282,7 +282,7 @@ pub(crate) fn parse_sys(
                                 let v = expr.eval_to_const()?;
                                 target_threshold = v
                                     .get_float()
-                                    .ok_or_else(|| crate::engine::error::AdhocError("target_threshold must be a float".to_string()))?;
+                                    .ok_or_else(|| crate::engine::error::EngineError::from_display("target_threshold must be a float".to_string()))?;
                             }
                             "extractor" => {
                                 let mut ex = build_expr(opt_val, param_pool)?;
@@ -537,7 +537,7 @@ pub(crate) fn parse_sys(
                                 let v = build_expr(opt_val, param_pool)?
                                     .eval_to_const()?
                                     .get_int()
-                                    .ok_or_else(|| crate::engine::error::AdhocError(format!("Invalid vec_dim: {}", opt_val_str)))?;
+                                    .ok_or_else(|| crate::engine::error::EngineError::from_display(format!("Invalid vec_dim: {}", opt_val_str)))?;
                                 ensure!(v > 0, "Invalid vec_dim: {}", v);
                                 vec_dim = v as usize;
                             }
@@ -546,7 +546,7 @@ pub(crate) fn parse_sys(
                                     .eval_to_const()?
                                     .get_int()
                                     .ok_or_else(|| {
-                                        crate::engine::error::AdhocError(format!("Invalid ef_construction: {}", opt_val_str))
+                                        crate::engine::error::EngineError::from_display(format!("Invalid ef_construction: {}", opt_val_str))
                                     })?;
                                 ensure!(v > 0, "Invalid ef_construction: {}", v);
                                 ef_construction = v as usize;
@@ -556,7 +556,7 @@ pub(crate) fn parse_sys(
                                     .eval_to_const()?
                                     .get_int()
                                     .ok_or_else(|| {
-                                        crate::engine::error::AdhocError(format!("Invalid m_neighbours: {}", opt_val_str))
+                                        crate::engine::error::EngineError::from_display(format!("Invalid m_neighbours: {}", opt_val_str))
                                     })?;
                                 ensure!(v > 0, "Invalid m_neighbours: {}", v);
                                 m_neighbours = v as usize;
@@ -566,7 +566,7 @@ pub(crate) fn parse_sys(
                                     "F32" | "Float" => VecElementType::F32,
                                     "F64" | "Double" => VecElementType::F64,
                                     _ => {
-                                        return Err(Box::new(crate::engine::error::AdhocError(format!("Invalid dtype: {}", opt_val.as_str()))) as crate::engine::error::BoxErr)
+                                        return Err(crate::engine::error::EngineError::from_display(format!("Invalid dtype: {}", opt_val.as_str())))
                                     }
                                 }
                             }
@@ -596,7 +596,7 @@ pub(crate) fn parse_sys(
                             "keep_pruned_connections" => {
                                 keep_pruned_connections = opt_val.as_str().trim() == "true";
                             }
-                            _ => return Err(Box::new(crate::engine::error::AdhocError(format!("Invalid option: {}", opt_name.as_str()))) as crate::engine::error::BoxErr),
+                            _ => return Err(crate::engine::error::EngineError::from_display(format!("Invalid option: {}", opt_name.as_str()))),
                         }
                     }
                     if ef_construction == 0 {
@@ -645,7 +645,7 @@ pub(crate) fn parse_sys(
 
                     
 
-                    ensure!(!cols.is_empty(), crate::engine::error::AdhocError("index must have at least one column specified".to_string()));
+                    ensure!(!cols.is_empty(), crate::engine::error::EngineError::from_display("index must have at least one column specified".to_string()));
                     SysOp::CreateIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),

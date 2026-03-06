@@ -339,6 +339,13 @@ impl Debug for RelationHandle {
 #[snafu(display("Cannot deserialize relation"))]
 pub(crate) struct RelationDeserError;
 
+impl From<RelationDeserError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: RelationDeserError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
+
 impl RelationHandle {
     pub(crate) fn arity(&self) -> usize {
         self.metadata.non_keys.len() + self.metadata.keys.len()
@@ -405,16 +412,16 @@ impl RelationHandle {
             tx.temp_store_tx
                 .get(&key_data, false)?
                 .map(|val_data| rmp_serde::from_slice::<Vec<DataValue>>(&val_data[ENCODED_KEY_MIN_LEN..])
-                    .map_err(|e| crate::engine::error::AdhocError(format!("failed to deserialize stored tuple: {e}"))))
+                    .map_err(|e| crate::engine::error::EngineError::from_display(format!("failed to deserialize stored tuple: {e}"))))
                 .transpose()
-                .map_err(|e| Box::new(e) as crate::engine::error::BoxErr)
+                .map_err(|e| crate::engine::error::EngineError::from_display(e))
         } else {
             tx.store_tx
                 .get(&key_data, false)?
                 .map(|val_data| rmp_serde::from_slice::<Vec<DataValue>>(&val_data[ENCODED_KEY_MIN_LEN..])
-                    .map_err(|e| crate::engine::error::AdhocError(format!("failed to deserialize stored tuple: {e}"))))
+                    .map_err(|e| crate::engine::error::EngineError::from_display(format!("failed to deserialize stored tuple: {e}"))))
                 .transpose()
-                .map_err(|e| Box::new(e) as crate::engine::error::BoxErr)
+                .map_err(|e| crate::engine::error::EngineError::from_display(e))
         }
     }
 
@@ -644,11 +651,11 @@ impl<'a> SessionTx<'a> {
         let found = if name.starts_with('_') {
             self.temp_store_tx
                 .get(&encoded, lock)?
-                .ok_or_else(|| crate::engine::error::AdhocError("Cannot find requested stored relation".to_string()))?
+                .ok_or_else(|| crate::engine::error::EngineError::from_display("Cannot find requested stored relation".to_string()))?
         } else {
             self.store_tx
                 .get(&encoded, lock)?
-                .ok_or_else(|| crate::engine::error::AdhocError("Cannot find requested stored relation".to_string()))?
+                .ok_or_else(|| crate::engine::error::EngineError::from_display("Cannot find requested stored relation".to_string()))?
         };
         let metadata = RelationHandle::decode(&found)?;
         Ok(metadata)
@@ -798,7 +805,7 @@ impl<'a> SessionTx<'a> {
             self.tokenizers
                 .get(&idx_handle.name, &manifest.tokenizer, &manifest.filters)?;
         let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
-            .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+            .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
             .next()
             .unwrap();
         let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -931,7 +938,7 @@ impl<'a> SessionTx<'a> {
                 .get(&idx_handle.name, &manifest.tokenizer, &manifest.filters)?;
 
         let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
-            .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+            .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
             .next()
             .unwrap();
         let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -1130,7 +1137,7 @@ impl<'a> SessionTx<'a> {
         }
         let filter = if let Some(f_code) = &manifest.index_filter {
             let parsed = CozoScriptParser::parse(Rule::expr, f_code)
-                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                .map_err(|e| crate::engine::error::EngineError::from_display(e.to_string()))?
                 .next()
                 .unwrap();
             let mut code_expr = build_expr(parsed, &Default::default())?;

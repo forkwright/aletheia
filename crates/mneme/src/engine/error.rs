@@ -1,15 +1,14 @@
-// Public crate-level error type for mneme-engine.
+// Public and internal error types for mneme-engine.
 use snafu::Snafu;
 
 /// Top-level error type for the mneme-engine public API.
 ///
-/// Internal modules use `DbResult<T>` (see below). The public `Db` facade
-/// converts internal errors to this type at the boundary.
+/// Consumers match on `QueryKilled` for cancellation handling; all other
+/// engine failures surface through `Engine`.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum Error {
-    /// A database engine operation failed.
     #[snafu(display("{message}"))]
     Engine {
         message: String,
@@ -17,10 +16,6 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// A running query was cancelled via poison/timeout.
-    ///
-    /// Replaces fragile string-matching on "killed before completion".
-    /// Consumers can match this variant instead of parsing error messages.
     #[snafu(display("Running query was killed before completion"))]
     QueryKilled {
         #[snafu(implicit)]
@@ -30,81 +25,140 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Internal error type replacing `miette::Box<dyn std::error::Error + Send + Sync>`.
+/// Internal error type replacing `BoxErr`.
 ///
-/// All CozoDB internal modules use this for `?`-based error propagation.
-/// At the public `Db` facade boundary, this is converted to `Error::Engine`.
-pub(crate) type BoxErr = Box<dyn std::error::Error + Send + Sync + 'static>;
-pub(crate) type DbResult<T> = std::result::Result<T, BoxErr>;
+/// All engine modules propagate errors through this enum. Per-module error
+/// enums feed in via `#[snafu(transparent)]` which auto-generates `From` impls.
+/// At the public `Db` facade, `EngineError` converts to `Error` via `From`.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
+pub(crate) enum EngineError {
+    #[snafu(display("{message}"))]
+    Internal {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 
-/// Ad-hoc string error, replaces `bail!("message")` at internal call sites.
-#[derive(Debug)]
-pub(crate) struct AdhocError(pub(crate) String);
+    #[snafu(display("Running query was killed before completion"))]
+    ProcessKilled {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 
-impl std::fmt::Display for AdhocError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+    #[snafu(transparent)]
+    Storage {
+        source: crate::engine::storage::error::StorageError,
+    },
+
+    #[snafu(transparent)]
+    Data {
+        source: crate::engine::data::error::DataError,
+    },
+
+    #[snafu(transparent)]
+    Fts {
+        source: crate::engine::fts::error::FtsError,
+    },
+
+    #[snafu(transparent)]
+    Parse {
+        source: crate::engine::parse::error::CozoParseError,
+    },
+
+    #[snafu(transparent)]
+    Query {
+        source: crate::engine::query::error::QueryError,
+    },
+
+    #[snafu(transparent)]
+    Runtime {
+        source: crate::engine::runtime::error::RuntimeError,
+    },
+
+    #[snafu(transparent)]
+    FixedRule {
+        source: crate::engine::fixed_rule::error::FixedRuleError,
+    },
+}
+
+impl From<EngineError> for Error {
+    fn from(e: EngineError) -> Self {
+        match e {
+            EngineError::ProcessKilled { .. } => QueryKilledSnafu.build(),
+            other => EngineSnafu {
+                message: other.to_string(),
+            }
+            .build(),
+        }
     }
 }
 
-impl std::error::Error for AdhocError {}
+pub(crate) type DbResult<T> = std::result::Result<T, EngineError>;
 
-/// Compatibility `bail!` macro replacing miette's `bail!` in internal CozoDB code.
-///
-/// Supports both string-format form (`bail!("msg")`, `bail!("fmt {}", val)`)
-/// and struct form (`bail!(SomeErrorStruct { ... })`).
+impl EngineError {
+    #[track_caller]
+    pub(crate) fn from_display(e: impl std::fmt::Display) -> Self {
+        EngineError::Internal {
+            message: e.to_string(),
+            location: snafu::Location::default(),
+        }
+    }
+}
+
+/// Compatibility `bail!` macro — produces `EngineError::Internal` for string forms.
 #[macro_export]
 macro_rules! bail {
-    // String literal with format args
     ($fmt:literal, $($arg:tt)+) => {
-        return Err(Box::new($crate::engine::error::AdhocError(format!($fmt, $($arg)+)))
-            as Box<dyn std::error::Error + Send + Sync + 'static>)
+        return Err($crate::engine::error::EngineError::Internal {
+            message: format!($fmt, $($arg)+),
+            location: snafu::Location::default(),
+        })
     };
-    // String literal alone (optional trailing comma)
     ($msg:literal $(,)?) => {
-        return Err(Box::new($crate::engine::error::AdhocError($msg.to_string()))
-            as Box<dyn std::error::Error + Send + Sync + 'static>)
+        return Err($crate::engine::error::EngineError::Internal {
+            message: $msg.to_string(),
+            location: snafu::Location::default(),
+        })
     };
-    // Struct/enum expression form
     ($e:expr) => {
-        return Err(Box::new($e) as Box<dyn std::error::Error + Send + Sync + 'static>)
+        return Err($crate::engine::error::EngineError::from_display($e))
     };
 }
 
-/// Compatibility `miette!` macro: creates a `BoxErr` from a format string or struct expression.
-///
-/// Replaces `miette::miette!("msg")` in vendored CozoDB data module code.
+/// Compatibility `miette!` macro — creates an `EngineError` value (no return).
 #[macro_export]
 macro_rules! miette {
     ($fmt:literal, $($arg:tt)+) => {
-        Box::new($crate::engine::error::AdhocError(format!($fmt, $($arg)+)))
-            as Box<dyn std::error::Error + Send + Sync + 'static>
+        $crate::engine::error::EngineError::Internal {
+            message: format!($fmt, $($arg)+),
+            location: snafu::Location::default(),
+        }
     };
     ($msg:literal $(,)?) => {
-        Box::new($crate::engine::error::AdhocError($msg.to_string()))
-            as Box<dyn std::error::Error + Send + Sync + 'static>
+        $crate::engine::error::EngineError::Internal {
+            message: $msg.to_string(),
+            location: snafu::Location::default(),
+        }
     };
     ($e:expr) => {
-        Box::new($e) as Box<dyn std::error::Error + Send + Sync + 'static>
+        $crate::engine::error::EngineError::from_display($e)
     };
 }
 
-/// Compatibility `ensure!` macro replacing miette's `ensure!` in internal CozoDB code.
+/// Compatibility `ensure!` macro — conditional bail.
 #[macro_export]
 macro_rules! ensure {
-    // Format string with args (optional trailing comma)
     ($cond:expr, $fmt:literal, $($arg:tt)+) => {
         if !($cond) {
             $crate::bail!($fmt, $($arg)+)
         }
     };
-    // String literal alone (optional trailing comma)
     ($cond:expr, $msg:literal $(,)?) => {
         if !($cond) {
             $crate::bail!($msg)
         }
     };
-    // Struct/enum expression form
     ($cond:expr, $e:expr) => {
         if !($cond) {
             $crate::bail!($e)

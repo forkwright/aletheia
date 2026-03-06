@@ -298,6 +298,13 @@ pub(crate) struct FixedRuleOptionNotFoundError {
     pub(crate) rule_name: String,
 }
 
+impl From<FixedRuleOptionNotFoundError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: FixedRuleOptionNotFoundError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
+
 #[derive(Error, Diagnostic, Debug)]
 #[error("Wrong value for option '{name}' of '{rule_name}'")]
 #[diagnostic(code(fixed_rule::arg_wrong))]
@@ -308,6 +315,13 @@ pub(crate) struct WrongFixedRuleOptionError {
     pub(crate) rule_name: String,
     #[help]
     pub(crate) help: String,
+}
+
+impl From<WrongFixedRuleOptionError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: WrongFixedRuleOptionError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
 }
 
 impl MagicFixedRuleApply {
@@ -345,6 +359,13 @@ impl MagicFixedRuleApply {
             #[label]
             span: SourceSpan,
             rule_name: String,
+        }
+
+        impl From<FixedRuleNotEnoughRelationError> for crate::engine::error::EngineError {
+            #[track_caller]
+            fn from(e: FixedRuleNotEnoughRelationError) -> Self {
+                crate::engine::error::EngineError::from_display(e)
+            }
         }
 
         Ok(self
@@ -550,11 +571,25 @@ impl Display for InputProgram {
 #[diagnostic(help("You need to explicitly name your entry arguments"))]
 struct EntryHeadNotExplicitlyDefinedError(#[label] SourceSpan);
 
+impl From<EntryHeadNotExplicitlyDefinedError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: EntryHeadNotExplicitlyDefinedError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
+
 #[derive(Debug, Diagnostic, Error)]
 #[error("Program has no entry")]
 #[diagnostic(code(parser::no_entry))]
 #[diagnostic(help("You need to have one rule named '?'"))]
 pub(crate) struct NoEntryError;
+
+impl From<NoEntryError> for crate::engine::error::EngineError {
+    #[track_caller]
+    fn from(e: NoEntryError) -> Self {
+        crate::engine::error::EngineError::from_display(e)
+    }
+}
 
 impl InputProgram {
     pub(crate) fn needs_write_lock(&self) -> Option<SmartString<LazyCompact>> {
@@ -1139,6 +1174,13 @@ impl SearchInput {
                 #[diagnostic(code(parser::expected_int_for_hnsw_k))]
                 struct ExpectedPosIntForFtsK(#[label] SourceSpan);
 
+                impl From<ExpectedPosIntForFtsK> for crate::engine::error::EngineError {
+                    #[track_caller]
+                    fn from(e: ExpectedPosIntForFtsK) -> Self {
+                        crate::engine::error::EngineError::from_display(e)
+                    }
+                }
+
                 ensure!(k > 0, ExpectedPosIntForFtsK(self.span));
                 Some(k as usize)
             }
@@ -1273,6 +1315,13 @@ impl SearchInput {
         #[error("Expected positive integer for `k`")]
         #[diagnostic(code(parser::expected_int_for_hnsw_k))]
         struct ExpectedPosIntForFtsK(#[label] SourceSpan);
+
+        impl From<ExpectedPosIntForFtsK> for crate::engine::error::EngineError {
+            #[track_caller]
+            fn from(e: ExpectedPosIntForFtsK) -> Self {
+                crate::engine::error::EngineError::from_display(e)
+            }
+        }
 
         ensure!(k > 0, ExpectedPosIntForFtsK(self.span));
 
@@ -1438,6 +1487,13 @@ impl SearchInput {
         #[diagnostic(code(parser::expected_int_for_hnsw_k))]
         struct ExpectedPosIntForHnswK(#[label] SourceSpan);
 
+        impl From<ExpectedPosIntForHnswK> for crate::engine::error::EngineError {
+            #[track_caller]
+            fn from(e: ExpectedPosIntForHnswK) -> Self {
+                crate::engine::error::EngineError::from_display(e)
+            }
+        }
+
         ensure!(k > 0, ExpectedPosIntForHnswK(self.span));
 
         let ef_expr = self
@@ -1452,6 +1508,13 @@ impl SearchInput {
         #[diagnostic(code(parser::expected_int_for_hnsw_ef))]
         struct ExpectedPosIntForHnswEf(#[label] SourceSpan);
 
+        impl From<ExpectedPosIntForHnswEf> for crate::engine::error::EngineError {
+            #[track_caller]
+            fn from(e: ExpectedPosIntForHnswEf) -> Self {
+                crate::engine::error::EngineError::from_display(e)
+            }
+        }
+
         ensure!(ef > 0, ExpectedPosIntForHnswEf(self.span));
 
         let radius_expr = self.parameters.remove("radius");
@@ -1464,6 +1527,13 @@ impl SearchInput {
                 #[error("Expected positive float for `radius`")]
                 #[diagnostic(code(parser::expected_float_for_hnsw_radius))]
                 struct ExpectedFloatForHnswRadius(#[label] SourceSpan);
+
+                impl From<ExpectedFloatForHnswRadius> for crate::engine::error::EngineError {
+                    #[track_caller]
+                    fn from(e: ExpectedFloatForHnswRadius) -> Self {
+                        crate::engine::error::EngineError::from_display(e)
+                    }
+                }
 
                 ensure!(r > 0.0, ExpectedFloatForHnswRadius(self.span));
                 Some(r)

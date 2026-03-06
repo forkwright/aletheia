@@ -64,7 +64,7 @@ impl FtsCache {
                     let doc_key = key_tuple[1..].to_vec();
                     let vals: Vec<DataValue> =
                         rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
-                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                            .map_err(|e| crate::engine::error::EngineError::from_display(e))?;
                     let total_length = vals[3].get_int().unwrap_or(0) as u32;
                     doc_lengths
                         .entry(doc_key)
@@ -148,7 +148,7 @@ impl<'a> SessionTx<'a> {
             }
 
             let vals: Vec<DataValue> = rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                .map_err(|e| crate::engine::error::EngineError::from_display(e))?;
             let froms = vals[0].get_slice().unwrap();
             let tos = vals[1].get_slice().unwrap();
             let positions = vals[2].get_slice().unwrap();
@@ -354,7 +354,7 @@ impl<'a> SessionTx<'a> {
             let mut cand_tuple = config
                 .base_handle
                 .get(self, &found_key)?
-                .ok_or_else(|| crate::engine::error::AdhocError("corrupted index".to_string()))?;
+                .ok_or_else(|| crate::engine::error::EngineError::from_display("corrupted index".to_string()))?;
 
             if config.bind_score.is_some() {
                 cand_tuple.push(DataValue::from(score));

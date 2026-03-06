@@ -42,15 +42,11 @@ impl FixedRule for MinimumSpanningTreePrim {
             Err(_) => 0,
             Ok(rel) => {
                 let tuple = rel.iter()?.next().ok_or_else(|| {
-                    
-
-                    crate::engine::error::AdhocError("The provided starting nodes relation is empty".to_string()))
+                    crate::engine::error::EngineError::from_display("The provided starting nodes relation is empty")
                 })??;
                 let dv = &tuple[0];
                 *inv_indices.get(dv).ok_or_else(|| {
-                    
-
-                    crate::engine::error::AdhocError("The requested starting node {0:?} is not found".to_string()), rel.span())
+                    crate::engine::error::EngineError::from_display(format!("The requested starting node {dv:?} is not found"))
                 })?
             }
         };

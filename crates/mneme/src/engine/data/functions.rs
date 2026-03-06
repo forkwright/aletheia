@@ -270,7 +270,8 @@ define_op!(OP_PARSE_JSON, 1, false);
 pub(crate) fn op_parse_json(args: &[DataValue]) -> Result<DataValue> {
     match args[0].get_str() {
         Some(s) => {
-            let value: serde_json::Value = serde_json::from_str(s)?;
+            let value: serde_json::Value = serde_json::from_str(s)
+                .map_err(|e| crate::engine::error::EngineError::from_display(e))?;
             Ok(DataValue::Json(JsonData(value)))
         }
         None => bail!("parse_json requires a string argument"),

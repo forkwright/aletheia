@@ -98,7 +98,7 @@ impl FixedRule for Constant {
 
                         ensure!(
                             *l == tuple.len(),
-                            crate::engine::error::AdhocError("Constant head must have the same arity as the data given".to_string())
+                            crate::engine::error::EngineError::from_display("Constant head must have the same arity as the data given".to_string())
                         );
                     };
                     last_len = Some(tuple.len());

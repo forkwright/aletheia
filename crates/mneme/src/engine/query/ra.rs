@@ -137,7 +137,7 @@ impl UnificationRA {
                     let result_list = result_list.get_slice().ok_or_else(|| {
                         
 
-                        crate::engine::error::AdhocError("Invalid spread unification".to_string())
+                        crate::engine::error::EngineError::from_display("Invalid spread unification".to_string())
                     })?;
                     let mut coll = vec![];
                     for result in result_list {
@@ -818,7 +818,7 @@ impl InlineFixedRA {
 }
 
 pub(crate) fn flatten_err<T>(
-    v: std::result::Result<Result<T>, crate::engine::error::BoxErr>,
+    v: std::result::Result<Result<T>, crate::engine::error::EngineError>,
 ) -> Result<T> {
     match v {
         Err(e) => Err(e),
