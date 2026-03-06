@@ -116,7 +116,7 @@ tokio-stream = "0.1"
 flate2 = "1"
 
 # TLS / Security
-rcgen = "0.13"
+rcgen = "0.14"
 regex = "1"
 
 # Testing
