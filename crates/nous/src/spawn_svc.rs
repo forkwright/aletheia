@@ -72,6 +72,7 @@ impl SpawnService for SpawnServiceImpl {
             max_tool_iterations: 25,
             loop_detection_threshold: 3,
             domains: Vec::new(),
+            server_tools: Vec::new(),
         };
 
         let pipeline_config = PipelineConfig {

@@ -26,6 +26,9 @@ pub struct NousConfig {
     /// Domain tags for this agent (static config + pack overlays).
     #[serde(default)]
     pub domains: Vec<String>,
+    /// Server-side tools to include in API requests (e.g., web search).
+    #[serde(default)]
+    pub server_tools: Vec<aletheia_hermeneus::types::ServerToolDefinition>,
 }
 
 impl Default for NousConfig {
@@ -41,6 +44,7 @@ impl Default for NousConfig {
             max_tool_iterations: 50,
             loop_detection_threshold: 3,
             domains: Vec::new(),
+            server_tools: Vec::new(),
         }
     }
 }

@@ -567,6 +567,7 @@ async fn serve(cli: Cli) -> Result<()> {
                 max_tool_iterations: resolved.max_tool_iterations,
                 loop_detection_threshold: 3,
                 domains,
+                server_tools: Vec::new(),
             };
             nous_manager
                 .spawn(
