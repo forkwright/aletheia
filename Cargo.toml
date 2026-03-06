@@ -58,8 +58,7 @@ match_wildcard_for_single_variants = "warn"
 needless_for_each = "warn"
 rc_mutex = "warn"
 string_add = "warn"
-# string_to_string removed in clippy 1.94 — covered by implicit_clone
-implicit_clone = "warn"
+# string_to_string removed in clippy 1.94 — covered by implicit_clone (line 54)
 trait_duplication_in_bounds = "warn"
 unused_self = "warn"
 
