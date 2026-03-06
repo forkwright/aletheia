@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure, miette};
-use miette::Diagnostic;
 use smallvec::SmallVec;
 use smartstring::{LazyCompact, SmartString};
 

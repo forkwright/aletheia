@@ -31,6 +31,7 @@ mneme-engine = [
     "dep:aho-corasick", "dep:rust-stemmers",
     "dep:bytemuck",
 ]
+storage-redb = ["dep:redb", "mneme-engine"]
 storage-new-rocksdb = ["dep:rocksdb", "mneme-engine"]
 
 [dependencies]
@@ -70,6 +71,7 @@ unicode-normalization = { version = "0.1", optional = true }
 aho-corasick = { version = "1.1", optional = true }
 rust-stemmers = { version = "1.2", optional = true }
 bytemuck = { version = "1.25", optional = true }
+redb = { version = "2", optional = true }
 rocksdb = { version = "0.22.0", optional = true }
 
 [dev-dependencies]

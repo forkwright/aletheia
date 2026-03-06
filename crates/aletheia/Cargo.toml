@@ -14,7 +14,7 @@ path = "src/main.rs"
 [features]
 default = ["tui", "recall"]
 # Recall pipeline: enables KnowledgeStore (CozoDB) for vector search + extraction persistence.
-recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-pylon/knowledge-store"]
+recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-redb", "aletheia-pylon/knowledge-store"]
 migrate-qdrant = ["dep:qdrant-client"]
 tls = ["aletheia-pylon/tls"]
 tui = ["dep:aletheia-tui"]

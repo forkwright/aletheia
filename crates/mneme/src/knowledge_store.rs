@@ -205,9 +205,43 @@ impl KnowledgeStore {
         Ok(std::sync::Arc::new(store))
     }
 
+    /// Open a persistent knowledge store backed by redb at the given path.
+    #[cfg(feature = "storage-redb")]
+    pub fn open_redb(
+        path: impl AsRef<std::path::Path>,
+        config: KnowledgeConfig,
+    ) -> crate::error::Result<std::sync::Arc<Self>> {
+        let db = crate::engine::Db::open_redb(path).map_err(|e| {
+            crate::error::EngineInitSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+        let store = Self {
+            db: std::sync::Arc::new(db),
+            dim: config.dim,
+        };
+        store.init_schema()?;
+        Ok(std::sync::Arc::new(store))
+    }
+
     fn init_schema(&self) -> crate::error::Result<()> {
         use crate::engine::ScriptMutability;
         use std::collections::BTreeMap;
+
+        // Check if the database is already initialized (persistent reopen)
+        let already_initialized = self
+            .db
+            .run(
+                "?[v] := *schema_version{version: v}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .is_ok();
+
+        if already_initialized {
+            return Ok(());
+        }
 
         for ddl in KNOWLEDGE_DDL {
             self.db
@@ -250,8 +284,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        // Schema version tracking relation (no underscore prefix — CozoDB stores underscore
-        // relations only in temp_store_tx which does not persist across run() calls).
+        // Schema version tracking relation
         self.db
             .run(
                 r":create schema_version { key: String => version: Int }",
@@ -265,7 +298,6 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        // Insert initial version
         let mut params = BTreeMap::new();
         params.insert(
             "key".to_owned(),

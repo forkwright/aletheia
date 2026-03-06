@@ -9,6 +9,8 @@ use crate::engine::data::value::ValidityTs;
 use crate::engine::runtime::relation::decode_tuple_from_kv;
 
 pub(crate) mod mem;
+#[cfg(feature = "storage-redb")]
+pub(crate) mod redb;
 #[cfg(feature = "storage-new-rocksdb")]
 pub(crate) mod newrocks;
 pub(crate) mod temp;
