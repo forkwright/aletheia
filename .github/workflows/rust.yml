@@ -56,6 +56,13 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install tool dependencies
+        run: |
+          # fd and ripgrep are required by organon filesystem tool tests
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fd-find ripgrep
+          # Debian packages install as fdfind; organon expects 'fd'
+          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
       - name: Unit + integration tests
         run: cargo test --workspace
       - name: Doc tests
