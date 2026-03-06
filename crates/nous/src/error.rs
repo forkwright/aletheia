@@ -31,6 +31,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Workspace validation failed on actor startup.
+    #[snafu(display("workspace validation failed for '{nous_id}': {message}"))]
+    WorkspaceValidation {
+        nous_id: String,
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Pipeline stage failed.
     #[snafu(display("pipeline stage '{stage}' failed: {message}"))]
     PipelineStage {
