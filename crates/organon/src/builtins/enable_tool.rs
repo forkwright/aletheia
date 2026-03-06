@@ -124,6 +124,8 @@ mod tests {
                 messenger: None,
                 note_store: None,
                 blackboard_store: None,
+                spawn: None,
+                planning: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: catalog,
             })),
