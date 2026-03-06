@@ -17,7 +17,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Anthropic API | Own client (~600 LOC) | @anthropic-ai/sdk | Stable API, reqwest + SSE, adaptive thinking, Tool Search Tool |
 | Unified store | cozo (CozoDB) | Qdrant + Neo4j | Rust-native embedded, Datalog, HNSW vectors + graph + relations in one DB. Zero external services. `StorageProvider` trait boundary for risk mitigation. |
 | Embeddings | fastembed-rs + `EmbeddingProvider` trait | Python fastembed | Default: local ONNX (nomic-embed-text-v1.5). Optional: Voyage-4-large via HTTP API. Per-instance config. |
-| Memory | Direct (no abstraction) | mem0 | ~50 LOC replaces the library |
+| Memory | Direct (no abstraction) | KnowledgeStore (embedded CozoDB) | ~50 LOC replaces the library |
 | Sessions | rusqlite + bundled | better-sqlite3 | WAL mode, no native addon |
 | Encryption | XChaCha20Poly1305 | None (plaintext) | Per-message encryption at rest, ~700ns overhead, zero plaintext on disk |
 | Config | figment + serde + validator | Zod | figment handles oikos cascade natively (YAML + env + CLI, hierarchical merge). By Rocket author. |

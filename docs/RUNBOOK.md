@@ -7,7 +7,7 @@ For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 ```text
 aletheia gateway              (port 18789)  -- Rust binary, web UI, API
 +-- signal-cli daemon         (port 8080)   -- Signal messaging
-+-- aletheia-memory sidecar   (port 8230)   -- mem0 FastAPI (Python)
++-- aletheia-memory sidecar   (port 8230)   -- (deprecated, replaced by embedded KnowledgeStore)
 |   +-- qdrant                (port 6333)   -- vector store (container)
 +-- daemon (oikonomos)        (in-process)  -- heartbeats, scheduled tasks, prosoche
 ```

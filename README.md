@@ -53,7 +53,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and tr
 | Top | `aletheia` (binary entrypoint) |
 
 **Models:** Anthropic (OAuth or API key). Complexity-based routing.
-**Memory:** Mem0 (Qdrant + embeddings) for cross-agent long-term memory. CozoDB embedded for sessions and graph.
+**Memory:** CozoDB embedded for knowledge graph, long-term memory, and sessions.
 **Observability:** Structured tracing with tokio-tracing.
 
 ---
@@ -94,8 +94,7 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 |---------|------|----------|
 | aletheia | 18789 | Yes |
 | signal-cli | 8080 | For Signal |
-| aletheia-memory | 8230 | Recommended |
-| qdrant | 6333 | If using Mem0 |
+| aletheia-memory | 8230 | Deprecated (replaced by embedded KnowledgeStore) |
 
 ## Privacy
 

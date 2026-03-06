@@ -346,6 +346,55 @@ pub trait PlanningService: Send + Sync {
     fn list_projects(&self) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
 }
 
+/// A result from knowledge store search.
+pub struct MemoryResult {
+    pub id: String,
+    pub content: String,
+    pub score: f64,
+    pub source_type: String,
+}
+
+/// Summary of a stored fact for audit display.
+pub struct FactSummary {
+    pub id: String,
+    pub content: String,
+    pub confidence: f64,
+    pub tier: String,
+    pub recorded_at: String,
+}
+
+/// Abstracts knowledge store operations for memory tools.
+///
+/// Implemented by an adapter in the binary crate wrapping `KnowledgeStore` + `EmbeddingProvider`.
+pub trait KnowledgeSearchService: Send + Sync {
+    fn search(
+        &self,
+        query: &str,
+        nous_id: &str,
+        limit: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, String>> + Send + '_>>;
+
+    fn correct_fact(
+        &self,
+        fact_id: &str,
+        new_content: &str,
+        nous_id: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+
+    fn retract_fact(
+        &self,
+        fact_id: &str,
+        reason: Option<&str>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+
+    fn audit_facts(
+        &self,
+        nous_id: Option<&str>,
+        since: Option<&str>,
+        limit: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, String>> + Send + '_>>;
+}
+
 /// Service locator for tool executors needing access to runtime services.
 pub struct ToolServices {
     pub cross_nous: Option<Arc<dyn CrossNousService>>,
@@ -354,6 +403,7 @@ pub struct ToolServices {
     pub blackboard_store: Option<Arc<dyn BlackboardStore>>,
     pub spawn: Option<Arc<dyn SpawnService>>,
     pub planning: Option<Arc<dyn PlanningService>>,
+    pub knowledge: Option<Arc<dyn KnowledgeSearchService>>,
     pub http_client: reqwest::Client,
     /// Catalog of lazy tools available for activation via `enable_tool`.
     pub lazy_tool_catalog: Vec<(ToolName, String)>,
@@ -368,6 +418,7 @@ impl std::fmt::Debug for ToolServices {
             .field("blackboard_store", &self.blackboard_store.is_some())
             .field("spawn", &self.spawn.is_some())
             .field("planning", &self.planning.is_some())
+            .field("knowledge", &self.knowledge.is_some())
             .field("lazy_tool_catalog_len", &self.lazy_tool_catalog.len())
             .finish_non_exhaustive()
     }

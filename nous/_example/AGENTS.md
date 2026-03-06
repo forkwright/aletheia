@@ -47,7 +47,7 @@ Your workspace (`nous/{id}/`) holds **identity and session memory only**:
 |------|------|---------|------|
 | **Raw** | `memory/YYYY-MM-DD.md` | Session logs | During/end of sessions |
 | **Curated** | `MEMORY.md` | Distilled insights | When something matters |
-| **Searchable** | Mem0 (`mem0_search`) | Queryable facts | Auto-extracted |
+| **Searchable** | KnowledgeStore (`memory_search`) | Queryable facts | Auto-extracted |
 
 "Mental notes" don't survive sessions. Files do. **Text > Brain.**
 
