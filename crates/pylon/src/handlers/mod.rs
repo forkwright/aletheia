@@ -10,3 +10,5 @@ pub mod metrics;
 pub mod nous;
 /// Session lifecycle, history retrieval, and SSE message streaming.
 pub mod sessions;
+/// Webchat compatibility layer for the Svelte web UI.
+pub mod webchat;
