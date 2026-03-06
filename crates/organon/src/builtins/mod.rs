@@ -10,6 +10,8 @@ pub mod enable_tool;
 pub mod filesystem;
 /// Knowledge graph and session memory tools (remember, recall).
 pub mod memory;
+/// Planning project management tools (create, status, execute, verify).
+pub mod planning;
 /// Web research tools (web_search, web_fetch).
 pub mod research;
 /// File viewing with multimodal support (images, PDFs, text).
@@ -29,6 +31,7 @@ pub fn register_all(registry: &mut ToolRegistry) -> Result<()> {
     view_file::register(registry)?;
     agent::register(registry)?;
     enable_tool::register(registry)?;
+    planning::register(registry)?;
     research::register(registry)?;
     Ok(())
 }

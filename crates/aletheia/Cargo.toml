@@ -21,6 +21,7 @@ tls = ["aletheia-pylon/tls"]
 tui = ["dep:aletheia-tui"]
 
 [dependencies]
+aletheia-dianoia = { path = "../dianoia" }
 aletheia-oikonomos = { path = "../daemon" }
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
@@ -52,6 +53,9 @@ rcgen = { workspace = true }
 time = "0.3"
 owo-colors = "4"
 supports-color = "3"
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

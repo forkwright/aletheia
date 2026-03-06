@@ -42,6 +42,7 @@ name = "aletheia"
 version = "0.10.0"
 dependencies = [
  "aletheia-agora",
+ "aletheia-dianoia",
  "aletheia-dokimion",
  "aletheia-hermeneus",
  "aletheia-koina",
@@ -64,6 +65,7 @@ dependencies = [
  "serde",
  "serde_json",
  "supports-color",
+ "tempfile",
  "time",
  "tokio",
  "tracing",

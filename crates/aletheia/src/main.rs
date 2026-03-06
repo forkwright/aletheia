@@ -2,6 +2,7 @@
 
 mod daemon_bridge;
 mod dispatch;
+mod planning_adapter;
 mod status;
 
 use std::path::{Path, PathBuf};
@@ -510,12 +511,16 @@ async fn serve(cli: Cli) -> Result<()> {
                 Arc::clone(&tool_registry),
                 Arc::clone(&oikos_arc),
             )));
+        let planning_root = oikos_arc.data().join("planning");
+        let planning: Option<Arc<dyn aletheia_organon::types::PlanningService>> =
+            Some(Arc::new(planning_adapter::FilesystemPlanningService::new(planning_root)));
         Arc::new(ToolServices {
             cross_nous: Some(cross_nous),
             messenger,
             note_store,
             blackboard_store,
             spawn,
+            planning,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
         })

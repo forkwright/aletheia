@@ -577,6 +577,7 @@ mod tests {
                 note_store: Some(note_store),
                 blackboard_store: Some(bb_store),
                 spawn: None,
+                planning: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: vec![],
             })),
