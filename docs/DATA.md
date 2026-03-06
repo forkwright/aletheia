@@ -28,7 +28,6 @@ instance/
 ├── config/credentials/      # API keys
 ├── data/
 │   ├── sessions.db          # Session store (SQLite, WAL mode)
-│   ├── planning.db          # Planning state
 │   ├── cozo/                # Knowledge graph (CozoDB)
 │   ├── backups/             # Database backups
 │   └── archive/sessions/    # Archived session JSON files

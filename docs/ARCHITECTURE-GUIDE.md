@@ -72,31 +72,32 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 ### Leaf (no workspace dependencies)
 
 - **koina** — shared foundation: error types (snafu), tracing setup, safe wrappers (`trySafe`), filesystem utilities. Every other crate depends on this.
-- **symbolon** — authentication: JWT tokens, bearer validation, RBAC. Standalone — uses its own SQLite for token storage.
 
 ### Low (depends on koina)
 
 - **taxis** — configuration and paths. Loads the YAML config cascade (figment), resolves the oikos instance directory structure.
 - **hermeneus** — LLM provider abstraction. The Anthropic streaming client lives here. Handles retries, cost tracking, model routing.
+- **symbolon** — authentication: JWT tokens, bearer validation, RBAC. Depends on koina; uses its own SQLite for token storage.
 - **mneme** — memory engine. SQLite session store, embedded CozoDB for knowledge graphs and vector search, fastembed-rs for local embeddings, LLM-driven fact extraction.
-- **organon** — tool system. The `ToolRegistry` and `ToolExecutor` trait, plus built-in tools (write, edit, exec, web_search).
-- **agora** — channel system. The `ChannelProvider` trait, Signal client (semeion), message routing via bindings.
-- **melete** — distillation. Compresses conversation history when context windows fill up, flushes extracted knowledge to memory.
 
 ### Mid (depends on lower layers)
 
+- **melete** — distillation. Compresses conversation history when context windows fill up, flushes extracted knowledge to memory. Depends on koina + hermeneus.
+- **organon** — tool system. The `ToolRegistry` and `ToolExecutor` trait, plus built-in tools (write, edit, exec, web_search). Depends on koina + hermeneus.
+- **agora** — channel system. The `ChannelProvider` trait, Signal client (semeion), message routing via bindings. Depends on koina + taxis.
+- **oikonomos** (daemon) — background task runner. Cron scheduling, prosoche attention checks, trace rotation, drift detection, DB monitoring. Depends on koina.
+- **dianoia** — planning orchestrator. Multi-phase project state machine, workspace persistence. Depends on koina.
+- **thesauros** — domain pack loader. Reads `pack.yaml` manifests, registers pack tools and context overlays. Depends on koina + organon.
+
+### High (depends on multiple mid+low layers)
+
 - **nous** — the agent pipeline. `NousManager` owns all agents. `NousActor` is a Tokio actor (Alice Ryhl pattern) that runs the pipeline stages. Bootstrap file loading, recall integration, tool execution loop, finalization.
-- **dianoia** — planning orchestrator. Multi-phase project state machine, workspace persistence.
-- **thesauros** — domain pack loader. Reads `pack.yaml` manifests, registers pack tools and context overlays.
-
-### High (depends on everything)
-
 - **pylon** — HTTP gateway. Axum router with versioned API (`/api/v1/`), SSE streaming, OpenAPI spec, Prometheus metrics, security middleware (CORS, CSRF, TLS, auth).
-- **oikonomos** (daemon) — background task runner. Cron scheduling, prosoche attention checks, trace rotation, drift detection, DB monitoring.
 
 ### Top
 
 - **aletheia** — the binary. Wires everything together, CLI parsing (clap), graceful shutdown.
+- **tui** — terminal dashboard. Separate workspace member at `tui/`.
 
 ---
 

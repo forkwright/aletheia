@@ -5,17 +5,17 @@ For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 ## Service Architecture
 
 ```text
-aletheia gateway              (port 18789)  -- Rust binary, web UI, API
-+-- signal-cli daemon         (port 8080)   -- Signal messaging
-+-- aletheia-memory sidecar   (port 8230)   -- (deprecated, replaced by embedded KnowledgeStore)
-|   +-- qdrant                (port 6333)   -- vector store (container)
-+-- daemon (oikonomos)        (in-process)  -- heartbeats, scheduled tasks, prosoche
+aletheia                         (port 18789)  -- Rust binary, web UI, API
++-- signal-cli daemon            (port 8080)   -- Signal messaging (subprocess)
++-- daemon (oikonomos)           (in-process)  -- heartbeats, scheduled tasks, prosoche
 ```
+
+Memory (CozoDB, fastembed-rs, SQLite) is embedded in the binary. No external databases or sidecars required.
 
 ## Quick Health Check
 
 ```bash
-aletheia doctor          # connectivity, dependencies, boot persistence
+aletheia health          # connectivity, dependencies
 aletheia status          # agent status, sessions, cron jobs
 ```
 
@@ -23,31 +23,7 @@ aletheia status          # agent status, sessions, cron jobs
 
 ## Start Procedure
 
-### 1. Verify containers
-
-```bash
-podman ps | grep -E "qdrant|neo4j"
-# If not running:
-podman start qdrant neo4j
-```
-
-### 2. Verify memory sidecar
-
-```bash
-curl -s http://localhost:8230/health | python3 -m json.tool
-# Expected: {"status":"ok","qdrant":"ok","neo4j":"ok","embedder":"ok"}
-```
-
-If down:
-
-```bash
-systemctl --user status aletheia-memory
-# Or start manually:
-cd <repo>/infrastructure/memory/sidecar
-.venv/bin/uvicorn aletheia_memory.app:app --host 0.0.0.0 --port 8230 &
-```
-
-### 3. Check port is free
+### 1. Check port is free
 
 ```bash
 ss -tlnp | grep 18789
@@ -55,35 +31,36 @@ ss -tlnp | grep 18789
 fuser -k 18789/tcp
 ```
 
-### 4. Start gateway
+### 2. Start the binary
 
 ```bash
-aletheia gateway start
+aletheia
 ```
 
-### 5. Verify
+The binary serves the HTTP gateway, spawns nous actors, starts the daemon, and (if configured) launches signal-cli. No subcommand needed.
+
+Or via systemd:
+
+```bash
+systemctl --user start aletheia
+```
+
+### 3. Verify
 
 ```bash
 sleep 3
 curl -s http://localhost:18789/api/setup/status | python3 -m json.tool
 ```
 
-
-
 ---
 
 ## Stop Procedure
 
 ```bash
-# Gateway
 systemctl --user stop aletheia
-
-# Memory sidecar (optional -- usually leave running)
-pkill -f "aletheia_memory"
-
-# Containers (optional -- usually leave running)
-podman stop qdrant
 ```
+
+Or send SIGTERM / Ctrl+C to the running process. The binary shuts down gracefully.
 
 ---
 
@@ -106,25 +83,14 @@ systemctl --user restart aletheia
 fuser 18789/tcp              # find PID
 fuser -k 18789/tcp           # kill it
 sleep 2
-aletheia gateway start
-```
-
-### Memory sidecar unhealthy
-
-```bash
-curl -s http://localhost:8230/health
-curl -s http://localhost:6333/healthz       # Qdrant
-curl -s http://localhost:7474               # Neo4j
-
-# Restart (VOYAGE_API_KEY only in systemd service file):
-systemctl --user restart aletheia-memory
+aletheia
 ```
 
 ### Signal-cli not receiving messages
 
 ```bash
 ps aux | grep signal-cli | grep -v grep
-# If not running, restart gateway -- it auto-starts signal-cli.
+# If not running, restart the binary -- it auto-starts signal-cli.
 # If running but not receiving:
 signal-cli -a +15550100001 receive --timeout 5
 ```
@@ -139,8 +105,8 @@ journalctl --user -u aletheia --since "1 hour ago" | grep prosoche
 ### Agent not responding
 
 ```bash
-aletheia sessions             # check session exists
-aletheia doctor               # check agent config
+aletheia status              # check agent and session state
+aletheia health              # check config and connectivity
 ls -la <repo>/nous/<agent-id>/SOUL.md   # verify workspace readable
 ```
 
@@ -160,8 +126,6 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 | Service | Log |
 |---------|-----|
 | Gateway | stdout / `journalctl --user -u aletheia` |
-| Memory sidecar | stdout / `journalctl --user -u aletheia-memory` |
-| Qdrant | `podman logs qdrant` |
 | Signal-cli | Gateway stdout (subprocess) |
 
 ## Key Paths
@@ -170,10 +134,10 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 |------|---------|
 | `instance/config/aletheia.yaml` | Main config |
 | `instance/data/sessions.db` | SQLite session store |
+| `instance/data/cozo/` | CozoDB knowledge graph (embedded) |
 | `instance/nous/<id>/` | Agent workspaces |
-| `infrastructure/memory/sidecar/` | Python memory sidecar |
 | `ui/` | Svelte web UI |
 
 ## Pre-Restart Checklist
 
-Always run `aletheia doctor` before restarting. Fix reported failures first - restarting with broken dependencies adds confusion.
+Always run `aletheia health` before restarting. Fix reported failures first - restarting with broken dependencies adds confusion.

@@ -337,14 +337,12 @@ unused_self = "warn"
 Features are additive. Never negative names. Binary crate is the feature aggregator.
 
 ```toml
+# Illustrative pattern — see crates/aletheia/Cargo.toml for actual binary features
 [features]
-default = ["signal", "fastembed", "graph"]
-signal = ["dep:signal-ipc"]
-browser = ["dep:chromiumoxide"]
-graph = ["dep:cozo"]
-fastembed = ["dep:fastembed"]
-voyage = ["dep:reqwest"]
-wasm-plugins = ["dep:wasmtime"]
+default = ["tui", "recall"]
+recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-pylon/knowledge-store"]
+tui = ["dep:aletheia-tui"]
+tls = ["aletheia-pylon/tls"]
 ```
 
 ### Conversion Methods
@@ -414,23 +412,31 @@ cargo bench  # regression detection via divan
 
 ### Supply Chain (`deny.toml`)
 ```toml
+[graph]
+exclude = ["aletheia-mneme-engine", "aletheia-integration-tests"]
+
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "rsa timing side-channel via jsonwebtoken — no safe upgrade, local-only use" },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained — transitive via graph_builder, no safe upgrade" },
+]
 
 [licenses]
-unlicensed = "deny"
-allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "Unicode-3.0"]
-copyleft = "deny"
+allow = [
+    "MIT", "Apache-2.0", "AGPL-3.0-or-later",
+    "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib",
+    "Unicode-3.0", "BSL-1.0", "CC0-1.0", "0BSD",
+]
+confidence-threshold = 0.8
 
 [bans]
 multiple-versions = "warn"
-wildcards = "deny"
+wildcards = "allow"
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+allow-git = []
 ```
 
 ---

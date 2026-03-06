@@ -40,7 +40,7 @@ The config system uses figment with `serde(default)` on all structs. New config 
 
 Both `snake_case` and `camelCase` field names work via serde's `rename_all = "camelCase"`.
 
-Check [CHANGELOG.md](../CHANGELOG.md) for breaking changes per version. Pre-1.0, MINOR bumps may include breaking changes with documented migration steps.
+Check `git log --oneline` or [GitHub releases](https://github.com/forkwright/aletheia/releases) for breaking changes per version. Pre-1.0, MINOR bumps may include breaking changes with documented migration steps.
 
 ---
 

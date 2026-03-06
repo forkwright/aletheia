@@ -39,7 +39,18 @@ Aletheia makes zero unsolicited outbound network connections. There is no:
 - License validation
 - Beacon or heartbeat to any external service
 
-The only outbound connections are to services you explicitly configure (LLM provider, Signal). This is verifiable by inspecting the codebase — the only HTTP client (`reqwest`) usage is in `crates/hermeneus/` (LLM calls) and `crates/agora/` (Signal JSON-RPC).
+The only outbound connections are to services you explicitly configure (LLM provider, Signal). Crates that use `reqwest`:
+
+- `hermeneus` — LLM provider API calls (Anthropic, etc.)
+- `agora` — Signal JSON-RPC (localhost)
+- `symbolon` — OAuth token refresh/validation
+- `organon` — tool execution (web_search, HTTP tools)
+- `nous` — pipeline HTTP calls
+- `aletheia` — binary entry point (health checks, eval runner)
+- `eval` (dokimion) — behavioral eval HTTP scenario runner
+- `tui` — terminal dashboard API client
+
+All reqwest usage targets either the configured LLM provider, localhost services, or user-initiated tool calls. No unsolicited outbound connections.
 
 ---
 
