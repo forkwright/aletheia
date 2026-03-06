@@ -2,10 +2,11 @@
 
 use std::fmt;
 
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::error;
 use crate::pipeline::TurnResult;
+use crate::stream::TurnStreamEvent;
 
 /// Messages sent to a [`NousActor`](crate::actor::NousActor) via its inbox.
 pub enum NousMessage {
@@ -13,6 +14,13 @@ pub enum NousMessage {
     Turn {
         session_key: String,
         content: String,
+        reply: oneshot::Sender<error::Result<TurnResult>>,
+    },
+    /// Process a user message with real-time streaming events.
+    StreamingTurn {
+        session_key: String,
+        content: String,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
         reply: oneshot::Sender<error::Result<TurnResult>>,
     },
     /// Query current lifecycle state.

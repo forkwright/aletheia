@@ -42,5 +42,7 @@ pub mod pipeline;
 pub mod recall;
 /// Session state tracking within a nous actor.
 pub mod session;
+/// Real-time streaming events for the turn pipeline.
+pub mod stream;
 /// User-facing error formatting for display in chat responses.
 pub mod user_error;

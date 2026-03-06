@@ -5,6 +5,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::error::{self, ActorRecvSnafu, ActorSendSnafu};
 use crate::message::{NousMessage, NousStatus};
 use crate::pipeline::TurnResult;
+use crate::stream::TurnStreamEvent;
 
 /// Cloneable handle for communicating with a nous actor.
 ///
@@ -39,6 +40,39 @@ impl NousHandle {
             .send(NousMessage::Turn {
                 session_key: session_key.into(),
                 content: content.into(),
+                reply: tx,
+            })
+            .await
+            .map_err(|_send_err| {
+                ActorSendSnafu {
+                    message: format!("actor '{}' inbox closed", self.id),
+                }
+                .build()
+            })?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })?
+    }
+
+    /// Send a turn message with real-time streaming and await the result.
+    ///
+    /// Events are sent to `stream_tx` as the LLM generates content and tools execute.
+    /// The final `TurnResult` is returned when the turn completes.
+    pub async fn send_turn_streaming(
+        &self,
+        session_key: impl Into<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(NousMessage::StreamingTurn {
+                session_key: session_key.into(),
+                content: content.into(),
+                stream_tx,
                 reply: tx,
             })
             .await
