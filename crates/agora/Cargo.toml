@@ -11,7 +11,6 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
 indexmap = { workspace = true }
 reqwest = { workspace = true }

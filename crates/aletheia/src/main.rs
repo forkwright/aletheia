@@ -144,7 +144,7 @@ enum Command {
     Export {
         /// Agent (nous) ID to export
         nous_id: String,
-        /// Output file path (default: <nous-id>-<date>.agent.json)
+        /// Output file path (default: `{nous-id}-{date}.agent.json`)
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// Include archived/distilled sessions

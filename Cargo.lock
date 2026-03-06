@@ -79,7 +79,6 @@ dependencies = [
 name = "aletheia-agora"
 version = "0.10.0"
 dependencies = [
- "aletheia-koina",
  "aletheia-taxis",
  "indexmap 2.13.0",
  "reqwest",
@@ -97,7 +96,6 @@ dependencies = [
 name = "aletheia-dianoia"
 version = "0.10.0"
 dependencies = [
- "aletheia-koina",
  "jiff",
  "serde",
  "serde_json",
@@ -173,7 +171,6 @@ dependencies = [
  "serde_json",
  "snafu",
  "static_assertions",
- "tracing",
  "tracing-subscriber",
  "ulid",
 ]
@@ -183,7 +180,6 @@ name = "aletheia-melete"
 version = "0.10.0"
 dependencies = [
  "aletheia-hermeneus",
- "aletheia-koina",
  "jiff",
  "serde",
  "serde_json",
@@ -198,7 +194,6 @@ name = "aletheia-mneme"
 version = "0.10.0"
 dependencies = [
  "aho-corasick",
- "aletheia-koina",
  "approx",
  "base64 0.22.1",
  "bytemuck",
@@ -224,9 +219,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "regex",
- "rmp",
  "rmp-serde",
- "rmpv",
  "rocksdb",
  "rusqlite",
  "rust-stemmers",
@@ -266,7 +259,6 @@ dependencies = [
  "indexmap 2.13.0",
  "jiff",
  "prometheus",
- "reqwest",
  "serde",
  "serde_json",
  "snafu",
@@ -281,7 +273,6 @@ dependencies = [
 name = "aletheia-oikonomos"
 version = "0.10.0"
 dependencies = [
- "aletheia-koina",
  "chrono",
  "cron",
  "flate2",
@@ -319,7 +310,6 @@ name = "aletheia-pylon"
 version = "0.10.0"
 dependencies = [
  "aletheia-hermeneus",
- "aletheia-koina",
  "aletheia-mneme",
  "aletheia-nous",
  "aletheia-organon",
@@ -371,7 +361,6 @@ dependencies = [
 name = "aletheia-taxis"
 version = "0.10.0"
 dependencies = [
- "aletheia-koina",
  "figment",
  "serde",
  "serde_json",
@@ -416,7 +405,6 @@ dependencies = [
  "serde",
  "serde_json",
  "syntect",
- "textwrap",
  "tokio",
  "toml",
  "tracing",
@@ -5268,15 +5256,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rmpv"
-version = "1.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a4e1d4b9b938a26d2996af33229f0ca0956c652c1375067f0b45291c1df8417"
-dependencies = [
- "rmp",
-]
-
-[[package]]
 name = "rocksdb"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5794,12 +5773,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "smawk"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7c388c1b5e93756d0c740965c41e8822f866621d41acbdf6336a6a168f8840c"
-
-[[package]]
 name = "snafu"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6116,17 +6089,6 @@ dependencies = [
  "wezterm-dynamic",
  "wezterm-input-types",
  "winapi",
-]
-
-[[package]]
-name = "textwrap"
-version = "0.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
-dependencies = [
- "smawk",
- "unicode-linebreak",
- "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -6666,12 +6628,6 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
-
-[[package]]
-name = "unicode-linebreak"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f"
 
 [[package]]
 name = "unicode-normalization"

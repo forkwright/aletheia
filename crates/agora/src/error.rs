@@ -23,22 +23,6 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Channel send operation failed.
-    #[snafu(display("send failed on channel {channel}: {message}"))]
-    Send {
-        channel: String,
-        message: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Signal-specific error.
-    #[snafu(display("signal error: {source}"))]
-    Signal {
-        source: crate::semeion::error::Error,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
 }
 
 /// Convenience alias for `Result` with agora's [`Error`] type.

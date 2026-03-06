@@ -11,7 +11,6 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
 chrono = { workspace = true }
 cron = { workspace = true }
 flate2 = { workspace = true }
