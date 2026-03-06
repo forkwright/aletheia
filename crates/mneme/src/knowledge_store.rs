@@ -1249,6 +1249,7 @@ mod tests {
 
     #[cfg(feature = "mneme-engine")]
     #[test]
+    #[expect(clippy::too_many_lines, reason = "integration test with setup/assert phases")]
     fn hybrid_search_graph_aggregation() {
         use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
 

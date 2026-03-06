@@ -122,6 +122,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         None,
         None,
         Some(Arc::clone(&session_store)),
+        None,
         Arc::new(vec![]),
         None,
         None,

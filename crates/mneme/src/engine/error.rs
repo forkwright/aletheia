@@ -71,6 +71,24 @@ macro_rules! bail {
     };
 }
 
+/// Compatibility `miette!` macro: creates a `BoxErr` from a format string or struct expression.
+///
+/// Replaces `miette::miette!("msg")` in vendored CozoDB data module code.
+#[macro_export]
+macro_rules! miette {
+    ($fmt:literal, $($arg:tt)+) => {
+        Box::new($crate::engine::error::AdhocError(format!($fmt, $($arg)+)))
+            as Box<dyn std::error::Error + Send + Sync + 'static>
+    };
+    ($msg:literal $(,)?) => {
+        Box::new($crate::engine::error::AdhocError($msg.to_string()))
+            as Box<dyn std::error::Error + Send + Sync + 'static>
+    };
+    ($e:expr) => {
+        Box::new($e) as Box<dyn std::error::Error + Send + Sync + 'static>
+    };
+}
+
 /// Compatibility `ensure!` macro replacing miette's `ensure!` in internal CozoDB code.
 #[macro_export]
 macro_rules! ensure {

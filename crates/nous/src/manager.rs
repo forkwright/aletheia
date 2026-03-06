@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use aletheia_mneme::store::SessionStore;
+#[cfg(feature = "knowledge-store")]
+use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_thesauros::loader::LoadedPack;
 
 use tokio::sync::watch;
@@ -38,6 +40,8 @@ pub struct NousManager {
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<KnowledgeStore>>,
     packs: Arc<Vec<LoadedPack>>,
     router: Option<Arc<crate::cross::CrossNousRouter>>,
     tool_services: Option<Arc<ToolServices>>,
@@ -59,6 +63,7 @@ impl NousManager {
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
         session_store: Option<Arc<Mutex<SessionStore>>>,
+        #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
         packs: Arc<Vec<LoadedPack>>,
         router: Option<Arc<crate::cross::CrossNousRouter>>,
         tool_services: Option<Arc<ToolServices>>,
@@ -72,6 +77,8 @@ impl NousManager {
             embedding_provider,
             vector_search,
             session_store,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store,
             packs,
             router,
             tool_services,
@@ -145,6 +152,8 @@ impl NousManager {
             self.embedding_provider.clone(),
             self.vector_search.clone(),
             self.session_store.clone(),
+            #[cfg(feature = "knowledge-store")]
+            self.knowledge_store.clone(),
             self.tool_services.clone(),
             extra_bootstrap,
             cross_rx,
@@ -331,6 +340,8 @@ mod tests {
             oikos,
             None,
             None,
+            None,
+            #[cfg(feature = "knowledge-store")]
             None,
             Arc::new(Vec::new()),
             None,

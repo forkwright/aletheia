@@ -124,7 +124,7 @@ use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 /// `TextEmbedding` is `Send + Sync`.
 #[cfg(feature = "fastembed")]
 pub struct FastEmbedProvider {
-    model: TextEmbedding,
+    model: std::sync::Mutex<TextEmbedding>,
     model_name: String,
     dimension: usize,
 }
@@ -174,7 +174,7 @@ impl FastEmbedProvider {
         })?;
 
         Ok(Self {
-            model,
+            model: std::sync::Mutex::new(model),
             model_name: code,
             dimension,
         })
@@ -198,6 +198,8 @@ impl FastEmbedProvider {
 impl EmbeddingProvider for FastEmbedProvider {
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
         self.model
+            .lock()
+            .expect("fastembed model lock")
             .embed(vec![text], None)
             .map_err(|e| {
                 EmbedFailedSnafu {
@@ -216,12 +218,16 @@ impl EmbeddingProvider for FastEmbedProvider {
     }
 
     fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
-        self.model.embed(texts.to_vec(), None).map_err(|e| {
-            EmbedFailedSnafu {
-                message: format!("{e}"),
-            }
-            .build()
-        })
+        self.model
+            .lock()
+            .expect("fastembed model lock")
+            .embed(texts, None)
+            .map_err(|e| {
+                EmbedFailedSnafu {
+                    message: format!("{e}"),
+                }
+                .build()
+            })
     }
 
     fn dimension(&self) -> usize {

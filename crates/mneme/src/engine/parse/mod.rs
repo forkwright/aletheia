@@ -246,6 +246,12 @@ impl SourceSpan {
     }
 }
 
+impl From<SourceSpan> for miette::SourceSpan {
+    fn from(s: SourceSpan) -> Self {
+        miette::SourceSpan::new(s.0.into(), s.1.into())
+    }
+}
+
 
 #[derive(Debug, Snafu)]
 #[snafu(display("The query parser has encountered unexpected input / end of input at {span}"))]

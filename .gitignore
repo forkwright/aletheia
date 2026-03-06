@@ -20,6 +20,14 @@ data/
 # Rust crate source directories named 'data' are source code, not runtime data
 !crates/*/src/data/
 !crates/*/src/data/**
+# Vendored CozoDB engine data module (nested deeper than crates/*/src/data/)
+!crates/mneme/src/engine/data/
+!crates/mneme/src/engine/data/**
+!vendor/cozo/cozo-core/src/data/
+!vendor/cozo/cozo-core/src/data/**
+
+# === Model caches ===
+.fastembed_cache/
 
 # === Secrets ===
 *.env

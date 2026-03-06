@@ -11,14 +11,14 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["sqlite"]
+default = ["sqlite", "fastembed"]
 sqlite = ["dep:rusqlite", "dep:jiff"]
 fastembed = ["dep:fastembed"]
-# mneme-engine excluded from default — sqlite3 link conflict with rusqlite.
+# mneme-engine coexists with sqlite (no link conflict verified).
 # Build with: cargo build -p aletheia-mneme --no-default-features --features mneme-engine
 # In production binary, only one storage backend is active.
 mneme-engine = [
-    "dep:miette", "dep:ndarray", "dep:tokio",
+    "dep:miette", "dep:ndarray", "dep:tokio", "dep:thiserror",
     # Engine (vendored CozoDB) dependencies
     "dep:rayon", "dep:graph", "dep:ordered-float", "dep:priority-queue",
     "dep:approx", "dep:smallvec", "dep:smartstring", "dep:serde_derive",
@@ -83,6 +83,7 @@ swapvec = { version = "0.3", optional = true }
 quadrature = { version = "0.1", optional = true }
 bytemuck = { version = "1.25", optional = true }
 rocksdb = { version = "0.22.0", optional = true }
+thiserror = { version = "1", optional = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }

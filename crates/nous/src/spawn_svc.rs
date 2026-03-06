@@ -47,6 +47,7 @@ impl SpawnServiceImpl {
 }
 
 impl SpawnService for SpawnServiceImpl {
+    #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
     fn spawn_and_run(
         &self,
         request: SpawnRequest,
@@ -120,6 +121,8 @@ impl SpawnService for SpawnServiceImpl {
                     oikos,
                     None,
                     None,
+                    None,
+                    #[cfg(feature = "knowledge-store")]
                     None,
                     None,
                     Vec::new(),
