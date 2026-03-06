@@ -15,7 +15,7 @@ aletheia-koina = { path = "../koina" }
 argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
-rand = "0.8"
+rand = "0.9"
 reqwest = { workspace = true }
 rusqlite = { version = "0.38", features = ["bundled"] }
 secrecy = { workspace = true }
