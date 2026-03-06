@@ -20,7 +20,7 @@ fastembed = ["dep:fastembed"]
 mneme-engine = [
     "dep:miette", "dep:ndarray", "dep:tokio", "dep:thiserror",
     # Engine (vendored CozoDB) dependencies
-    "dep:rayon", "dep:graph", "dep:ordered-float", "dep:priority-queue",
+    "dep:rayon", "dep:ordered-float", "dep:priority-queue",
     "dep:approx", "dep:smallvec", "dep:smartstring", "dep:serde_derive",
     "dep:serde_bytes", "dep:rmp-serde",
     "dep:crossbeam", "dep:itertools", "dep:rustc-hash", "dep:twox-hash",
@@ -47,7 +47,6 @@ ulid = { workspace = true }
 
 # Engine (vendored CozoDB) dependencies — activated by mneme-engine feature
 rayon = { workspace = true, optional = true }
-graph = { version = "0.3.1", optional = true }
 ordered-float = { version = "5.1.0", optional = true }
 priority-queue = { version = "2.7", optional = true }
 approx = { version = "0.5.1", optional = true }

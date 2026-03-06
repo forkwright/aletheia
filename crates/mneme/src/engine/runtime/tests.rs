@@ -177,24 +177,13 @@ fn rm_does_not_need_all_keys() {
     assert!(db.run_default("?[uid] <- [[1]] :rm status {uid}").is_ok());
 }
 
-#[cfg(feature = "graph-algo")]
 #[test]
 fn strict_checks_for_fixed_rules_args() {
     let db = DbInstance::default();
     let res = db.run_default(
         r#"
             r[] <- [[1, 2]]
-            ?[] <~ PageRank(r[_, _])
-        "#,
-    );
-    println!("{:?}", res);
-    assert!(res.is_ok());
-
-    let db = DbInstance::default();
-    let res = db.run_default(
-        r#"
-            r[] <- [[1, 2]]
-            ?[] <~ PageRank(r[a, b])
+            ?[rank, x, y] <~ ReorderSort(r[_, _], out: [0, 1])
         "#,
     );
     assert!(res.is_ok());
@@ -203,7 +192,16 @@ fn strict_checks_for_fixed_rules_args() {
     let res = db.run_default(
         r#"
             r[] <- [[1, 2]]
-            ?[] <~ PageRank(r[a, a])
+            ?[rank, a, b] <~ ReorderSort(r[a, b], out: [a, b])
+        "#,
+    );
+    assert!(res.is_ok());
+
+    let db = DbInstance::default();
+    let res = db.run_default(
+        r#"
+            r[] <- [[1, 2]]
+            ?[rank, a, b] <~ ReorderSort(r[a, a], out: [a, a])
         "#,
     );
     assert!(res.is_err());

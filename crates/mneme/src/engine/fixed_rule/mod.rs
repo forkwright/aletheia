@@ -9,17 +9,11 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use snafu::Snafu;
 use crate::engine::error::DbResult as Result;
 use crate::ensure;
 use crossbeam::channel::{bounded, Receiver, Sender};
-#[allow(unused_imports)]
-use either::{Left, Right};
-#[cfg(feature = "graph-algo")]
-use graph::prelude::{CsrLayout, DirectedCsrGraph, GraphBuilder};
 use itertools::Itertools;
 use std::sync::LazyLock;
-#[allow(unused_imports)]
 use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;
@@ -30,8 +24,6 @@ use crate::engine::data::program::{
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::TupleIter;
 use crate::engine::data::value::DataValue;
-#[cfg(feature = "graph-algo")]
-use crate::engine::fixed_rule::algos::*;
 use crate::engine::fixed_rule::utilities::*;
 use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;
@@ -39,8 +31,6 @@ use crate::engine::runtime::temp_store::{EpochStore, RegularTempStore};
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::NamedRows;
 
-#[cfg(feature = "graph-algo")]
-pub(crate) mod algos;
 pub(crate) mod utilities;
 
 /// Passed into implementation of fixed rule, can be used to obtain relation inputs and options
@@ -121,206 +111,6 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     /// Get the source span of the input relation. Useful for generating informative error messages.
     pub fn span(&self) -> SourceSpan {
         self.arg_manifest.span()
-    }
-    /// Convert the input relation into a directed graph.
-    /// If `undirected` is true, then each edge in the input relation is treated as a pair
-    /// of edges, one for each direction.
-    ///
-    /// Returns the graph, the vertices in a vector with the index the same as used in the graph,
-    /// and the inverse vertex mapping.
-    #[cfg(feature = "graph-algo")]
-    pub fn as_directed_graph(
-        &self,
-        undirected: bool,
-    ) -> Result<(
-        DirectedCsrGraph<u32>,
-        Vec<DataValue>,
-        BTreeMap<DataValue, u32>,
-    )> {
-        let mut indices: Vec<DataValue> = vec![];
-        let mut inv_indices: BTreeMap<DataValue, u32> = Default::default();
-        let mut error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
-        let it = self.iter()?.filter_map(|r_tuple| match r_tuple {
-            Ok(tuple) => {
-                let mut tuple = tuple.into_iter();
-                let from = match tuple.next() {
-                    None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
-                        return None;
-                    }
-                    Some(f) => f,
-                };
-                let to = match tuple.next() {
-                    None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
-                        return None;
-                    }
-                    Some(f) => f,
-                };
-                let from_idx = if let Some(idx) = inv_indices.get(&from) {
-                    *idx
-                } else {
-                    let idx = indices.len() as u32;
-                    inv_indices.insert(from.clone(), idx);
-                    indices.push(from.clone());
-                    idx
-                };
-                let to_idx = if let Some(idx) = inv_indices.get(&to) {
-                    *idx
-                } else {
-                    let idx = indices.len() as u32;
-                    inv_indices.insert(to.clone(), idx);
-                    indices.push(to.clone());
-                    idx
-                };
-                Some((from_idx, to_idx))
-            }
-            Err(err) => {
-                error = Some(err);
-                None
-            }
-        });
-        let it = if undirected {
-            Right(it.flat_map(|(f, t)| [(f, t), (t, f)]))
-        } else {
-            Left(it)
-        };
-        let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
-            .csr_layout(CsrLayout::Sorted)
-            .edges(it)
-            .build();
-        if let Some(err) = error {
-            bail!(err)
-        }
-        Ok((graph, indices, inv_indices))
-    }
-    /// Convert the input relation into a directed weighted graph.
-    /// If `undirected` is true, then each edge in the input relation is treated as a pair
-    /// of edges, one for each direction.
-    ///
-    /// Returns the graph, the vertices in a vector with the index the same as used in the graph,
-    /// and the inverse vertex mapping.
-    #[cfg(feature = "graph-algo")]
-    pub fn as_directed_weighted_graph(
-        &self,
-        undirected: bool,
-        allow_negative_weights: bool,
-    ) -> Result<(
-        DirectedCsrGraph<u32, (), f32>,
-        Vec<DataValue>,
-        BTreeMap<DataValue, u32>,
-    )> {
-        let mut indices: Vec<DataValue> = vec![];
-        let mut inv_indices: BTreeMap<DataValue, u32> = Default::default();
-        let mut error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
-        let it = self.iter()?.filter_map(|r_tuple| match r_tuple {
-            Ok(tuple) => {
-                let mut tuple = tuple.into_iter();
-                let from = match tuple.next() {
-                    None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
-                        return None;
-                    }
-                    Some(f) => f,
-                };
-                let to = match tuple.next() {
-                    None => {
-                        error = Some(crate::engine::error::AdhocError("The relation cannot be interpreted as an edge".to_string()));
-                        return None;
-                    }
-                    Some(f) => f,
-                };
-                let from_idx = if let Some(idx) = inv_indices.get(&from) {
-                    *idx
-                } else {
-                    let idx = indices.len() as u32;
-                    inv_indices.insert(from.clone(), idx);
-                    indices.push(from.clone());
-                    idx
-                };
-                let to_idx = if let Some(idx) = inv_indices.get(&to) {
-                    *idx
-                } else {
-                    let idx = indices.len() as u32;
-                    inv_indices.insert(to.clone(), idx);
-                    indices.push(to.clone());
-                    idx
-                };
-
-                let weight = match tuple.next() {
-                    None => 1.0,
-                    Some(d) => match d.get_float() {
-                        Some(f) => {
-                            if !f.is_finite() {
-                                error = Some(
-                                    BadEdgeWeightError {
-                                        val: d,
-                                        span: self.arg_manifest
-                                            .bindings()
-                                            .get(2)
-                                            .map(|s| s.span)
-                                            .unwrap_or_else(|| self.span()),
-                                    }
-                                    .into(),
-                                );
-                                return None;
-                            };
-
-                            if f < 0. && !allow_negative_weights {
-                                error = Some(
-                                    BadEdgeWeightError {
-                                        val: d,
-                                        span: self.arg_manifest
-                                            .bindings()
-                                            .get(2)
-                                            .map(|s| s.span)
-                                            .unwrap_or_else(|| self.span()),
-                                    }
-                                    .into(),
-                                );
-                                return None;
-                            }
-                            f
-                        }
-                        None => {
-                            error = Some(
-                                BadEdgeWeightError {
-                                    val: d,
-                                    span: self.arg_manifest
-                                        .bindings()
-                                        .get(2)
-                                        .map(|s| s.span)
-                                        .unwrap_or_else(|| self.span()),
-                                }
-                                .into(),
-                            );
-                            return None;
-                        }
-                    },
-                };
-
-                Some((from_idx, to_idx, weight as f32))
-            }
-            Err(err) => {
-                error = Some(err);
-                None
-            }
-        });
-        let it = if undirected {
-            Right(it.flat_map(|(f, t, w)| [(f, t, w), (t, f, w)]))
-        } else {
-            Left(it)
-        };
-        let graph: DirectedCsrGraph<u32, (), f32> = GraphBuilder::new()
-            .csr_layout(CsrLayout::Sorted)
-            .edges_with_values(it)
-            .build();
-
-        if let Some(err) = error {
-            bail!(err)
-        }
-
-        Ok((graph, indices, inv_indices))
     }
 }
 
@@ -691,116 +481,6 @@ pub(crate) struct FixedRuleHandle {
 pub(crate) static DEFAULT_FIXED_RULES: LazyLock<BTreeMap<String, Arc<Box<dyn FixedRule>>>> =
     LazyLock::new(|| {
         BTreeMap::from([
-            #[cfg(feature = "graph-algo")]
-            (
-                "ClusteringCoefficients".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(ClusteringCoefficients)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "DegreeCentrality".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(DegreeCentrality)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "ClosenessCentrality".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(ClosenessCentrality)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "BetweennessCentrality".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(BetweennessCentrality)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "DepthFirstSearch".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(Dfs)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "DFS".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(Dfs)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "BreadthFirstSearch".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(Bfs)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "BFS".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(Bfs)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "ShortestPathBFS".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(ShortestPathBFS)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "ShortestPathDijkstra".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(ShortestPathDijkstra)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "ShortestPathAStar".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(ShortestPathAStar)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "KShortestPathYen".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(KShortestPathYen)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "MinimumSpanningTreePrim".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(MinimumSpanningTreePrim)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "MinimumSpanningForestKruskal".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(MinimumSpanningForestKruskal)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "TopSort".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(TopSort)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "ConnectedComponents".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(StronglyConnectedComponent::new(false))),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "StronglyConnectedComponents".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(StronglyConnectedComponent::new(true))),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "SCC".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(StronglyConnectedComponent::new(true))),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "PageRank".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(PageRank)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "CommunityDetectionLouvain".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(CommunityDetectionLouvain)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "LabelPropagation".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(LabelPropagation)),
-            ),
-            #[cfg(feature = "graph-algo")]
-            (
-                "RandomWalk".to_string(),
-                Arc::<Box<dyn FixedRule>>::new(Box::new(RandomWalk)),
-            ),
             (
                 "ReorderSort".to_string(),
                 Arc::<Box<dyn FixedRule>>::new(Box::new(ReorderSort)),
@@ -823,29 +503,6 @@ impl FixedRuleHandle {
         }
     }
 }
-
-
-
-#[derive(Debug, Snafu)]
-#[snafu(display("The value {val:?} at the third position in the relation cannot be interpreted as edge weights"))]
-struct BadEdgeWeightError {
-    val: DataValue,
-    span: SourceSpan,
-}
-
-
-
-
-
-#[derive(Debug, Snafu)]
-#[snafu(display("Required node with key {missing:?} not found"))]
-pub(crate) struct NodeNotFoundError {
-    pub(crate) missing: DataValue,
-    pub(crate) span: SourceSpan,
-}
-
-
-
 
 
 impl MagicFixedRuleRuleArg {
