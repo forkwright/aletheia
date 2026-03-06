@@ -171,13 +171,22 @@ pub struct AuthMode {
     pub mode: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct LoginResponse {
     pub token: String,
 }
 
+impl std::fmt::Debug for LoginResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoginResponse")
+            .field("token", &"[REDACTED]")
+            .finish()
+    }
+}
+
 // --- Costs ---
 
+#[expect(dead_code, reason = "deserialization target for /api/v1/costs")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CostSummary {
     #[serde(rename = "totalCost", default)]

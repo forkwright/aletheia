@@ -60,14 +60,10 @@ fuzzy-matcher = "0.3"
 # Cross-platform URL/file opening
 open = "5"
 
-# Standalone lint config — TUI was developed outside the workspace.
-# Matches workspace lints but relaxes pedantic + dead_code until cleanup.
 [lints.rust]
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
 unsafe_code = "deny"
-dead_code = "allow"
-elided_lifetimes_in_paths = "allow"
 
 [lints.clippy]
 dbg_macro = "deny"
@@ -75,7 +71,3 @@ todo = "deny"
 unimplemented = "deny"
 exit = "deny"
 await_holding_lock = "warn"
-similar_names = "allow"
-unnested_or_patterns = "allow"
-too_many_lines = "allow"
-struct_excessive_bools = "allow"

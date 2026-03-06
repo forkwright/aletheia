@@ -1,6 +1,7 @@
 use futures_util::StreamExt;
 use reqwest_eventsource::{Event as EsEvent, EventSource};
 use tokio::sync::mpsc;
+use tracing::Instrument;
 
 use crate::events::StreamEvent;
 
@@ -31,6 +32,7 @@ pub fn stream_message(
         builder = builder.bearer_auth(t);
     }
 
+    let span = tracing::info_span!("stream_message");
     tokio::spawn(async move {
         let mut es = match EventSource::new(builder) {
             Ok(es) => es,
@@ -71,7 +73,7 @@ pub fn stream_message(
                 }
             }
         }
-    });
+    }.instrument(span));
 
     rx
 }

@@ -113,6 +113,9 @@ pub(crate) fn handle_copy_last_response(app: &mut App) {
     }
 }
 
+// Blocking is intentional: the TUI is suspended (ratatui::restore) so the event
+// loop is paused. The editor runs in the foreground terminal. No async work can
+// proceed while the terminal is owned by the child process.
 pub(crate) fn handle_compose_in_editor(app: &mut App) {
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
     let tmpfile = std::env::temp_dir().join("aletheia-compose.md");

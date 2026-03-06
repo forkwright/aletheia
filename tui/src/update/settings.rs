@@ -99,7 +99,7 @@ pub fn handle_edit_char(app: &mut App, c: char) {
         && let Some(edit) = &mut s.editing
     {
         edit.buffer.insert(edit.cursor, c);
-        edit.cursor += 1;
+        edit.cursor += c.len_utf8();
     }
 }
 
@@ -108,8 +108,12 @@ pub fn handle_edit_backspace(app: &mut App) {
         && let Some(edit) = &mut s.editing
         && edit.cursor > 0
     {
-        edit.cursor -= 1;
-        edit.buffer.remove(edit.cursor);
+        let mut prev = edit.cursor - 1;
+        while prev > 0 && !edit.buffer.is_char_boundary(prev) {
+            prev -= 1;
+        }
+        edit.buffer.remove(prev);
+        edit.cursor = prev;
     }
 }
 

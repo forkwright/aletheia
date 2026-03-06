@@ -14,6 +14,7 @@ pub enum ColorDepth {
 /// Semantic color palette for the entire TUI.
 /// Every color usage flows through this — no ad-hoc `Color::Cyan` calls.
 #[derive(Debug, Clone)]
+#[expect(dead_code, reason = "palette fields are the complete semantic color set")]
 pub struct ThemePalette {
     // --- Surface colors ---
     pub bg: Color,
@@ -240,6 +241,7 @@ impl ThemePalette {
         Style::default().fg(self.success)
     }
 
+    #[expect(dead_code, reason = "part of the complete style API")]
     pub fn style_warning(&self) -> Style {
         Style::default().fg(self.warning)
     }
@@ -268,6 +270,7 @@ impl ThemePalette {
             .add_modifier(Modifier::BOLD)
     }
 
+    #[expect(dead_code, reason = "part of the complete style API")]
     pub fn style_code(&self) -> Style {
         Style::default().fg(self.code_fg).bg(self.code_bg)
     }
@@ -284,6 +287,7 @@ impl ThemePalette {
         Style::default().fg(self.border)
     }
 
+    #[expect(dead_code, reason = "part of the complete style API")]
     pub fn style_border_focused(&self) -> Style {
         Style::default().fg(self.border_focused)
     }

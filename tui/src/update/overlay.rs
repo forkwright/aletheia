@@ -1,3 +1,5 @@
+use tracing::Instrument;
+
 use crate::app::App;
 use crate::msg::OverlayKind;
 use crate::state::Overlay;
@@ -30,20 +32,22 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
         let turn_id = approval.turn_id.clone();
         let tool_id = approval.tool_id.clone();
         let client = app.client.clone();
+        let span = tracing::info_span!("deny_tool");
         tokio::spawn(async move {
             if let Err(e) = client.deny_tool(&turn_id, &tool_id).await {
                 tracing::error!("failed to deny tool: {e}");
             }
-        });
+        }.instrument(span));
     }
     if let Some(Overlay::PlanApproval(ref plan)) = app.overlay {
         let plan_id = plan.plan_id.clone();
         let client = app.client.clone();
+        let span = tracing::info_span!("cancel_plan");
         tokio::spawn(async move {
             if let Err(e) = client.cancel_plan(&plan_id).await {
                 tracing::error!("failed to cancel plan: {e}");
             }
-        });
+        }.instrument(span));
     }
     app.overlay = None;
 }
@@ -95,21 +99,23 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             let turn_id = approval.turn_id.clone();
             let tool_id = approval.tool_id.clone();
             let client = app.client.clone();
+            let span = tracing::info_span!("approve_tool");
             tokio::spawn(async move {
                 if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
                     tracing::error!("failed to approve tool: {e}");
                 }
-            });
+            }.instrument(span));
             app.overlay = None;
         }
         Some(Overlay::PlanApproval(plan)) => {
             let plan_id = plan.plan_id.clone();
             let client = app.client.clone();
+            let span = tracing::info_span!("approve_plan");
             tokio::spawn(async move {
                 if let Err(e) = client.approve_plan(&plan_id).await {
                     tracing::error!("failed to approve plan: {e}");
                 }
-            });
+            }.instrument(span));
             app.overlay = None;
         }
         Some(Overlay::Settings(_)) => {
