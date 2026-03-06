@@ -11,7 +11,6 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-aletheia-koina = { path = "../koina" }
 figment = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
