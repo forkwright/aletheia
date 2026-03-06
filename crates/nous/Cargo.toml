@@ -16,6 +16,7 @@ knowledge-store = ["aletheia-mneme/mneme-engine"]
 [dependencies]
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-koina = { path = "../koina" }
+aletheia-melete = { path = "../melete" }
 aletheia-mneme = { path = "../mneme" }
 aletheia-organon = { path = "../organon" }
 aletheia-taxis = { path = "../taxis" }
