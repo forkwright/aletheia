@@ -87,7 +87,7 @@ impl App {
                     a.id.starts_with(prefix)
                         || a.name.to_lowercase().starts_with(&prefix.to_lowercase())
                 })
-                .map(|a| a.id.clone())
+                .map(|a| a.id.to_string())
                 .collect();
 
             if !candidates.is_empty() {

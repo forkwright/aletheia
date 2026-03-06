@@ -3,6 +3,23 @@ use reqwest::{Client, Response, StatusCode};
 
 use super::types::*;
 
+/// Percent-encode a value for use in a URL path segment.
+fn encode_path(s: &str) -> String {
+    let mut encoded = String::with_capacity(s.len());
+    for byte in s.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(*byte as char);
+            }
+            _ => {
+                use std::fmt::Write;
+                let _ = write!(encoded, "%{byte:02X}");
+            }
+        }
+    }
+    encoded
+}
+
 /// HTTP client for the Aletheia gateway REST API.
 #[derive(Clone)]
 pub struct ApiClient {
@@ -62,6 +79,7 @@ impl ApiClient {
 
     // --- Health ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn health(&self) -> Result<bool> {
         let resp = self
             .client
@@ -74,6 +92,7 @@ impl ApiClient {
 
     // --- Auth ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn auth_mode(&self) -> Result<AuthMode> {
         let resp = self
             .request(reqwest::Method::GET, "/api/auth/mode")
@@ -83,6 +102,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
+    #[tracing::instrument(skip(self, password))]
     pub async fn login(&self, username: &str, password: &str) -> Result<LoginResponse> {
         let resp = self
             .client
@@ -103,6 +123,7 @@ impl ApiClient {
 
     // --- Agents ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn agents(&self) -> Result<Vec<Agent>> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/nous")
@@ -118,11 +139,13 @@ impl ApiClient {
 
     // --- Sessions ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn sessions(&self, nous_id: &str) -> Result<Vec<Session>> {
+        let encoded = encode_path(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/sessions?nousId={nous_id}"),
+                &format!("/api/v1/sessions?nousId={encoded}"),
             )
             .send()
             .await
@@ -134,11 +157,13 @@ impl ApiClient {
         Ok(wrapper.sessions)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
+        let encoded = encode_path(session_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/sessions/{session_id}/history"),
+                &format!("/api/v1/sessions/{encoded}/history"),
             )
             .send()
             .await
@@ -150,6 +175,7 @@ impl ApiClient {
         Ok(wrapper.messages)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn create_session(&self, nous_id: &str, session_key: &str) -> Result<Session> {
         let resp = self
             .request(reqwest::Method::POST, "/api/v1/sessions")
@@ -166,10 +192,12 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
+        let encoded = encode_path(session_id);
         self.request(
             reqwest::Method::POST,
-            &format!("/api/v1/sessions/{session_id}/archive"),
+            &format!("/api/v1/sessions/{encoded}/archive"),
         )
         .send()
         .await
@@ -181,10 +209,12 @@ impl ApiClient {
 
     // --- Turns ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
+        let encoded = encode_path(turn_id);
         self.request(
             reqwest::Method::POST,
-            &format!("/api/v1/turns/{turn_id}/abort"),
+            &format!("/api/v1/turns/{encoded}/abort"),
         )
         .send()
         .await
@@ -194,10 +224,13 @@ impl ApiClient {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn approve_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
+        let t = encode_path(turn_id);
+        let d = encode_path(tool_id);
         self.request(
             reqwest::Method::POST,
-            &format!("/api/v1/turns/{turn_id}/tools/{tool_id}/approve"),
+            &format!("/api/v1/turns/{t}/tools/{d}/approve"),
         )
         .send()
         .await
@@ -207,10 +240,13 @@ impl ApiClient {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn deny_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
+        let t = encode_path(turn_id);
+        let d = encode_path(tool_id);
         self.request(
             reqwest::Method::POST,
-            &format!("/api/v1/turns/{turn_id}/tools/{tool_id}/deny"),
+            &format!("/api/v1/turns/{t}/tools/{d}/deny"),
         )
         .send()
         .await
@@ -222,10 +258,12 @@ impl ApiClient {
 
     // --- Plans ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
+        let encoded = encode_path(plan_id);
         self.request(
             reqwest::Method::POST,
-            &format!("/api/v1/plans/{plan_id}/approve"),
+            &format!("/api/v1/plans/{encoded}/approve"),
         )
         .send()
         .await
@@ -235,10 +273,12 @@ impl ApiClient {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn cancel_plan(&self, plan_id: &str) -> Result<()> {
+        let encoded = encode_path(plan_id);
         self.request(
             reqwest::Method::POST,
-            &format!("/api/v1/plans/{plan_id}/cancel"),
+            &format!("/api/v1/plans/{encoded}/cancel"),
         )
         .send()
         .await
@@ -250,6 +290,7 @@ impl ApiClient {
 
     // --- Costs ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn today_cost_cents(&self) -> Result<u32> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/costs/daily")
@@ -267,10 +308,12 @@ impl ApiClient {
 
     // --- Distillation ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn compact(&self, session_id: &str) -> Result<()> {
+        let encoded = encode_path(session_id);
         self.request(
             reqwest::Method::POST,
-            &format!("/api/v1/sessions/{session_id}/distill"),
+            &format!("/api/v1/sessions/{encoded}/distill"),
         )
         .send()
         .await
@@ -282,11 +325,13 @@ impl ApiClient {
 
     // --- Memory recall ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn recall(&self, nous_id: &str, query: &str) -> Result<String> {
+        let encoded = encode_path(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/nous/{nous_id}/recall"),
+                &format!("/api/v1/nous/{encoded}/recall"),
             )
             .query(&[("q", query)])
             .send()
@@ -299,6 +344,7 @@ impl ApiClient {
 
     // --- Config ---
 
+    #[tracing::instrument(skip(self))]
     pub async fn config(&self) -> Result<serde_json::Value> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/config")
@@ -311,13 +357,15 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
+    #[tracing::instrument(skip(self, data))]
     pub async fn update_config_section(
         &self,
         section: &str,
         data: &serde_json::Value,
     ) -> Result<serde_json::Value> {
+        let encoded = encode_path(section);
         let resp = self
-            .request(reqwest::Method::PUT, &format!("/api/v1/config/{section}"))
+            .request(reqwest::Method::PUT, &format!("/api/v1/config/{encoded}"))
             .json(data)
             .send()
             .await
@@ -330,10 +378,12 @@ impl ApiClient {
 
     // --- Message queue (mid-turn) ---
 
+    #[tracing::instrument(skip(self, text))]
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
+        let encoded = encode_path(session_id);
         self.request(
             reqwest::Method::POST,
-            &format!("/api/v1/sessions/{session_id}/queue"),
+            &format!("/api/v1/sessions/{encoded}/queue"),
         )
         .json(&serde_json::json!({ "text": text }))
         .send()
@@ -373,3 +423,21 @@ impl std::fmt::Display for AuthError {
 }
 
 impl std::error::Error for AuthError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_path_clean_string() {
+        assert_eq!(encode_path("hello-world"), "hello-world");
+        assert_eq!(encode_path("abc123"), "abc123");
+    }
+
+    #[test]
+    fn encode_path_special_chars() {
+        assert_eq!(encode_path("a/b"), "a%2Fb");
+        assert_eq!(encode_path("hello world"), "hello%20world");
+        assert_eq!(encode_path("id=1&x=2"), "id%3D1%26x%3D2");
+    }
+}

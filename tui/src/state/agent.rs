@@ -1,5 +1,7 @@
 use crate::api::types::Session;
+use crate::id::NousId;
 
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgentStatus {
     Idle,
@@ -10,7 +12,7 @@ pub enum AgentStatus {
 
 #[derive(Debug, Clone)]
 pub struct AgentState {
-    pub id: String,
+    pub id: NousId,
     pub name: String,
     pub emoji: Option<String>,
     pub status: AgentStatus,

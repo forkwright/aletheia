@@ -57,12 +57,11 @@ fn update_match_counts(app: &mut App) {
         return;
     }
 
-    let pattern_lower = pattern.to_lowercase();
     let count = app
         .messages
         .iter()
         .filter(|m| {
-            let contains = m.text.to_lowercase().contains(&pattern_lower);
+            let contains = m.text.to_lowercase().contains(pattern);
             if inverted { !contains } else { contains }
         })
         .count();

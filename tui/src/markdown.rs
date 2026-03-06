@@ -3,19 +3,21 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::highlight::Highlighter;
+use crate::sanitize::strip_ansi;
 use crate::theme::ThemePalette;
 
 /// Render markdown text into ratatui Lines.
 /// Supports: bold, italic, code, headings, lists, code blocks (with syntax highlighting),
-/// blockquotes, rules, and tables.
+/// blockquotes, rules, tables, links, images, and strikethrough.
 pub fn render(
     text: &str,
     _width: usize,
     theme: &ThemePalette,
     highlighter: &Highlighter,
 ) -> Vec<Line<'static>> {
+    let clean = strip_ansi(text);
     let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
-    let parser = Parser::new_ext(text, options);
+    let parser = Parser::new_ext(&clean, options);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
@@ -24,6 +26,13 @@ pub fn render(
     let mut code_block_lines: Vec<String> = Vec::new();
     let mut code_block_lang: Option<String> = None;
     let mut list_depth: usize = 0;
+
+    // Link state
+    let mut link_url: Option<String> = None;
+
+    // Image state
+    let mut in_image = false;
+    let mut image_alt = String::new();
 
     // Table state
     let mut in_table = false;
@@ -53,6 +62,10 @@ pub fn render(
                 }
                 Tag::Emphasis => {
                     let style = current_style(&style_stack).add_modifier(Modifier::ITALIC);
+                    style_stack.push(style);
+                }
+                Tag::Strikethrough => {
+                    let style = current_style(&style_stack).add_modifier(Modifier::CROSSED_OUT);
                     style_stack.push(style);
                 }
                 Tag::CodeBlock(kind) => {
@@ -86,6 +99,16 @@ pub fn render(
                         Style::default().fg(theme.border),
                     ));
                 }
+                Tag::Link { dest_url, .. } => {
+                    link_url = Some(dest_url.to_string());
+                    let style = current_style(&style_stack).add_modifier(Modifier::UNDERLINED);
+                    style_stack.push(style);
+                }
+                Tag::Image { dest_url, .. } => {
+                    in_image = true;
+                    image_alt.clear();
+                    link_url = Some(dest_url.to_string());
+                }
                 Tag::Table(_alignments) => {
                     flush_line(&mut lines, &mut current_spans);
                     in_table = true;
@@ -108,7 +131,7 @@ pub fn render(
                     style_stack.pop();
                     flush_line(&mut lines, &mut current_spans);
                 }
-                TagEnd::Strong | TagEnd::Emphasis => {
+                TagEnd::Strong | TagEnd::Emphasis | TagEnd::Strikethrough => {
                     style_stack.pop();
                 }
                 TagEnd::CodeBlock => {
@@ -162,8 +185,25 @@ pub fn render(
                     style_stack.pop();
                     flush_line(&mut lines, &mut current_spans);
                 }
+                TagEnd::Link => {
+                    style_stack.pop();
+                    if let Some(url) = link_url.take() {
+                        current_spans
+                            .push(Span::styled(format!(" ({url})"), theme.style_dim()));
+                    }
+                }
+                TagEnd::Image => {
+                    let alt = std::mem::take(&mut image_alt);
+                    let display = if alt.is_empty() {
+                        "[image]".to_string()
+                    } else {
+                        format!("[image: {alt}]")
+                    };
+                    current_spans.push(Span::styled(display, theme.style_dim()));
+                    link_url = None;
+                    in_image = false;
+                }
                 TagEnd::Table => {
-                    // Render the accumulated table
                     render_table(&table_rows, &mut lines, theme);
                     in_table = false;
                     table_rows.clear();
@@ -181,7 +221,9 @@ pub fn render(
                 _ => {}
             },
             Event::Text(text) => {
-                if in_code_block {
+                if in_image {
+                    image_alt.push_str(&text);
+                } else if in_code_block {
                     for line in text.lines() {
                         code_block_lines.push(line.to_string());
                     }
@@ -316,4 +358,60 @@ fn flush_line(lines: &mut Vec<Line<'static>>, spans: &mut Vec<Span<'static>>) {
 
 fn current_style(stack: &[Style]) -> Style {
     stack.last().copied().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::highlight::Highlighter;
+    use crate::theme::ThemePalette;
+
+    fn test_render(md: &str) -> Vec<Line<'static>> {
+        let theme = ThemePalette::detect();
+        let hl = Highlighter::new();
+        render(md, 80, &theme, &hl)
+    }
+
+    fn line_text(line: &Line) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    #[test]
+    fn bold_text() {
+        let lines = test_render("**bold**");
+        assert!(!lines.is_empty());
+        let text = line_text(&lines[0]);
+        assert!(text.contains("bold"));
+    }
+
+    #[test]
+    fn code_block() {
+        let lines = test_render("```rust\nlet x = 1;\n```");
+        let all_text: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
+        assert!(all_text.contains("let x = 1"));
+    }
+
+    #[test]
+    fn list_items() {
+        let lines = test_render("- one\n- two");
+        let all_text: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join("\n");
+        assert!(all_text.contains("one"));
+        assert!(all_text.contains("two"));
+    }
+
+    #[test]
+    fn strikethrough_renders() {
+        let lines = test_render("~~deleted~~");
+        assert!(!lines.is_empty());
+        let text = line_text(&lines[0]);
+        assert!(text.contains("deleted"));
+    }
+
+    #[test]
+    fn link_renders_with_url() {
+        let lines = test_render("[click](https://example.com)");
+        let all_text: String = lines.iter().map(|l| line_text(l)).collect::<Vec<_>>().join(" ");
+        assert!(all_text.contains("click"));
+        assert!(all_text.contains("example.com"));
+    }
 }

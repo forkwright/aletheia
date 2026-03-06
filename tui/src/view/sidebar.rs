@@ -15,7 +15,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     lines.push(Line::raw(""));
 
     for agent in &app.agents {
-        let is_focused = app.focused_agent.as_deref() == Some(&agent.id);
+        let is_focused = app.focused_agent.as_ref() == Some(&agent.id);
 
         let status_icon = match agent.status {
             AgentStatus::Idle => Span::styled("○", theme.style_dim()),

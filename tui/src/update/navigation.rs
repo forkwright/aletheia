@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::id::NousId;
 
 pub(crate) fn handle_scroll_up(app: &mut App) {
     app.scroll_offset = app.scroll_offset.saturating_add(3);
@@ -33,7 +34,7 @@ pub(crate) fn handle_scroll_to_bottom(app: &mut App) {
     app.auto_scroll = true;
 }
 
-pub(crate) async fn handle_focus_agent(app: &mut App, id: String) {
+pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
     app.save_scroll_state();
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == id) {
         agent.has_notification = false;

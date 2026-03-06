@@ -3,6 +3,8 @@ use reqwest_eventsource::{Event as EsEvent, EventSource};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
+use crate::id::{NousId, SessionId, TurnId};
+
 use super::types::SseEvent;
 
 /// Manages the global SSE connection to /api/events.
@@ -85,30 +87,48 @@ impl SseConnection {
     }
 }
 
+fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
+    json.get(field).and_then(|v| v.as_str()).or_else(|| {
+        tracing::warn!(event_type, field, "missing required field in SSE event");
+        None
+    })
+}
+
 fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
-    let json: serde_json::Value = serde_json::from_str(data).ok()?;
+    let json: serde_json::Value = match serde_json::from_str(data) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(event_type, error = %e, "failed to parse SSE event JSON");
+            return None;
+        }
+    };
 
     match event_type {
         "init" => {
-            let active_turns = serde_json::from_value(json.get("activeTurns")?.clone()).ok()?;
+            let active_turns = json.get("activeTurns").and_then(|v| {
+                serde_json::from_value(v.clone()).ok()
+            }).or_else(|| {
+                tracing::warn!("SSE init: missing or invalid activeTurns");
+                None
+            })?;
             Some(SseEvent::Init { active_turns })
         }
         "turn:before" => Some(SseEvent::TurnBefore {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            session_id: json.get("sessionId")?.as_str()?.to_string(),
-            turn_id: json.get("turnId")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
+            turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
         }),
         "turn:after" => Some(SseEvent::TurnAfter {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            session_id: json.get("sessionId")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
         "tool:called" => Some(SseEvent::ToolCalled {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            tool_name: json.get("toolName")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
         }),
         "tool:failed" => Some(SseEvent::ToolFailed {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            tool_name: json.get("toolName")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
             error: json
                 .get("error")
                 .and_then(|e| e.as_str())
@@ -116,31 +136,83 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
                 .to_string(),
         }),
         "status:update" => Some(SseEvent::StatusUpdate {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            status: json.get("status")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            status: str_field(&json, "status", event_type)?.to_string(),
         }),
         "session:created" => Some(SseEvent::SessionCreated {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            session_id: json.get("sessionId")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
         "session:archived" => Some(SseEvent::SessionArchived {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            session_id: json.get("sessionId")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
         "distill:before" => Some(SseEvent::DistillBefore {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
         }),
         "distill:stage" => Some(SseEvent::DistillStage {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            stage: json.get("stage")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            stage: str_field(&json, "stage", event_type)?.to_string(),
         }),
         "distill:after" => Some(SseEvent::DistillAfter {
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
         }),
         "ping" => Some(SseEvent::Ping),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
             None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_turn_before_valid() {
+        let data = r#"{"nousId":"syn","sessionId":"sess-1","turnId":"turn-1"}"#;
+        let result = parse_sse_event("turn:before", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::TurnBefore { nous_id, session_id, turn_id }) = result {
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*session_id, "sess-1");
+            assert_eq!(&*turn_id, "turn-1");
+        } else {
+            panic!("expected TurnBefore");
+        }
+    }
+
+    #[test]
+    fn parse_invalid_json_returns_none() {
+        let result = parse_sse_event("turn:before", "not json");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_missing_field_returns_none() {
+        let data = r#"{"nousId":"syn"}"#;
+        let result = parse_sse_event("turn:before", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_unknown_event_returns_none() {
+        let data = r#"{"foo":"bar"}"#;
+        let result = parse_sse_event("custom:unknown", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_init_with_active_turns() {
+        let data = r#"{"activeTurns":[{"nousId":"syn","sessionId":"s1","turnId":"t1"}]}"#;
+        let result = parse_sse_event("init", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::Init { active_turns }) = result {
+            assert_eq!(active_turns.len(), 1);
+            assert_eq!(&*active_turns[0].nous_id, "syn");
+        } else {
+            panic!("expected Init");
         }
     }
 }

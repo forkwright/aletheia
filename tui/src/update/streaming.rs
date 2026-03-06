@@ -1,12 +1,13 @@
 use crate::api::types::{Plan, TurnOutcome};
 use crate::app::App;
+use crate::id::{NousId, ToolId, TurnId};
 use crate::msg::ErrorToast;
 use crate::state::{
     AgentStatus, ChatMessage, Overlay, PlanApprovalOverlay, PlanStepApproval, ToolApprovalOverlay,
     ToolCallInfo,
 };
 
-pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: String, nous_id: String) {
+pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
     app.active_turn_id = Some(turn_id);
     app.streaming_text.clear();
     app.streaming_thinking.clear();
@@ -75,9 +76,9 @@ pub(crate) fn handle_stream_tool_result(
 
 pub(crate) fn handle_stream_tool_approval_required(
     app: &mut App,
-    turn_id: String,
+    turn_id: TurnId,
     tool_name: String,
-    tool_id: String,
+    tool_id: ToolId,
     input: serde_json::Value,
     risk: String,
     reason: String,

@@ -181,7 +181,7 @@ fn action_inspect(app: &mut App, idx: usize) {
         return;
     }
     // Toggle expanded state for all tool calls on this message
-    let key = format!("msg:{idx}");
+    let key = crate::id::ToolId::from(format!("msg:{idx}"));
     if app.tool_expanded.contains(&key) {
         app.tool_expanded.remove(&key);
     } else {

@@ -27,6 +27,7 @@ pub struct SettingsField {
     pub requires_restart: bool,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldType {
     Bool,
@@ -42,6 +43,7 @@ pub struct EditState {
     pub cursor: usize,
 }
 
+#[non_exhaustive]
 #[derive(Debug)]
 pub enum SaveStatus {
     Idle,

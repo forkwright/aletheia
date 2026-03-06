@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 use tracing::Instrument;
 
 use crate::events::StreamEvent;
+use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
 /// Streams a turn response from POST /api/sessions/stream.
 /// Returns a channel that yields parsed StreamEvents.
@@ -78,72 +79,113 @@ pub fn stream_message(
     rx
 }
 
+fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
+    json.get(field).and_then(|v| v.as_str()).or_else(|| {
+        tracing::warn!(event_type, field, "missing required field in stream event");
+        None
+    })
+}
+
 fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
-    let json: serde_json::Value = serde_json::from_str(data).ok()?;
+    let json: serde_json::Value = match serde_json::from_str(data) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(event_type, error = %e, "failed to parse stream event JSON");
+            return None;
+        }
+    };
 
     match event_type {
         "turn_start" => Some(StreamEvent::TurnStart {
-            session_id: json.get("sessionId")?.as_str()?.to_string(),
-            nous_id: json.get("nousId")?.as_str()?.to_string(),
-            turn_id: json.get("turnId")?.as_str()?.to_string(),
+            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
+            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
         }),
         "text_delta" => Some(StreamEvent::TextDelta(
-            json.get("text")?.as_str()?.to_string(),
+            str_field(&json, "text", event_type)?.to_string(),
         )),
         "thinking_delta" => Some(StreamEvent::ThinkingDelta(
-            json.get("text")?.as_str()?.to_string(),
+            str_field(&json, "text", event_type)?.to_string(),
         )),
         "tool_start" => Some(StreamEvent::ToolStart {
-            tool_name: json.get("toolName")?.as_str()?.to_string(),
-            tool_id: json.get("toolId")?.as_str()?.to_string(),
+            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
+            tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
         }),
-        "tool_result" => Some(StreamEvent::ToolResult {
-            tool_name: json.get("toolName")?.as_str()?.to_string(),
-            tool_id: json.get("toolId")?.as_str()?.to_string(),
-            is_error: json.get("isError")?.as_bool()?,
-            duration_ms: json.get("durationMs")?.as_u64()?,
-        }),
+        "tool_result" => {
+            let tool_name = str_field(&json, "toolName", event_type)?.to_string();
+            let tool_id = ToolId::from(str_field(&json, "toolId", event_type)?.to_string());
+            let is_error = json.get("isError").and_then(|v| v.as_bool()).or_else(|| {
+                tracing::warn!(event_type, field = "isError", "missing required field in stream event");
+                None
+            })?;
+            let duration_ms = json.get("durationMs").and_then(|v| v.as_u64()).or_else(|| {
+                tracing::warn!(event_type, field = "durationMs", "missing required field in stream event");
+                None
+            })?;
+            Some(StreamEvent::ToolResult { tool_name, tool_id, is_error, duration_ms })
+        }
         "tool_approval_required" => Some(StreamEvent::ToolApprovalRequired {
-            turn_id: json.get("turnId")?.as_str()?.to_string(),
-            tool_name: json.get("toolName")?.as_str()?.to_string(),
-            tool_id: json.get("toolId")?.as_str()?.to_string(),
-            input: json.get("input")?.clone(),
-            risk: json.get("risk")?.as_str()?.to_string(),
-            reason: json.get("reason")?.as_str()?.to_string(),
+            turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
+            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
+            tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
+            input: json.get("input").cloned().unwrap_or(serde_json::Value::Null),
+            risk: str_field(&json, "risk", event_type)?.to_string(),
+            reason: str_field(&json, "reason", event_type)?.to_string(),
         }),
         "tool_approval_resolved" => Some(StreamEvent::ToolApprovalResolved {
-            tool_id: json.get("toolId")?.as_str()?.to_string(),
-            decision: json.get("decision")?.as_str()?.to_string(),
+            tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
+            decision: str_field(&json, "decision", event_type)?.to_string(),
         }),
         "plan_proposed" => {
-            let plan = serde_json::from_value(json.get("plan")?.clone()).ok()?;
+            let plan = json.get("plan").and_then(|v| {
+                serde_json::from_value(v.clone()).ok()
+            }).or_else(|| {
+                tracing::warn!(event_type, "missing or invalid plan in stream event");
+                None
+            })?;
             Some(StreamEvent::PlanProposed { plan })
         }
-        "plan_step_start" => Some(StreamEvent::PlanStepStart {
-            plan_id: json.get("planId")?.as_str()?.to_string(),
-            step_id: json.get("stepId")?.as_u64()? as u32,
-        }),
-        "plan_step_complete" => Some(StreamEvent::PlanStepComplete {
-            plan_id: json.get("planId")?.as_str()?.to_string(),
-            step_id: json.get("stepId")?.as_u64()? as u32,
-            status: json.get("status")?.as_str()?.to_string(),
-        }),
+        "plan_step_start" => {
+            let step_id = json.get("stepId").and_then(|v| v.as_u64()).or_else(|| {
+                tracing::warn!(event_type, field = "stepId", "missing required field in stream event");
+                None
+            })? as u32;
+            Some(StreamEvent::PlanStepStart {
+                plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+                step_id,
+            })
+        }
+        "plan_step_complete" => {
+            let step_id = json.get("stepId").and_then(|v| v.as_u64()).or_else(|| {
+                tracing::warn!(event_type, field = "stepId", "missing required field in stream event");
+                None
+            })? as u32;
+            Some(StreamEvent::PlanStepComplete {
+                plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+                step_id,
+                status: str_field(&json, "status", event_type)?.to_string(),
+            })
+        }
         "plan_complete" => Some(StreamEvent::PlanComplete {
-            plan_id: json.get("planId")?.as_str()?.to_string(),
-            status: json.get("status")?.as_str()?.to_string(),
+            plan_id: PlanId::from(str_field(&json, "planId", event_type)?.to_string()),
+            status: str_field(&json, "status", event_type)?.to_string(),
         }),
         "turn_complete" => {
-            let outcome = serde_json::from_value(json.get("outcome")?.clone()).ok()?;
+            let outcome = json.get("outcome").and_then(|v| {
+                serde_json::from_value(v.clone()).ok()
+            }).or_else(|| {
+                tracing::warn!(event_type, "missing or invalid outcome in stream event");
+                None
+            })?;
             Some(StreamEvent::TurnComplete { outcome })
         }
         "turn_abort" => Some(StreamEvent::TurnAbort {
-            reason: json.get("reason")?.as_str()?.to_string(),
+            reason: str_field(&json, "reason", event_type)?.to_string(),
         }),
         "error" => Some(StreamEvent::Error(
-            json.get("message")?.as_str()?.to_string(),
+            str_field(&json, "message", event_type)?.to_string(),
         )),
         "queue_drained" => {
-            // Informational — don't need to surface this
             tracing::debug!("queue drained: {}", json);
             None
         }
@@ -151,5 +193,57 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             tracing::debug!("unknown stream event: {other}");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_text_delta_valid() {
+        let data = r#"{"text":"hello"}"#;
+        let result = parse_stream_event("text_delta", data);
+        assert!(matches!(result, Some(StreamEvent::TextDelta(ref t)) if t == "hello"));
+    }
+
+    #[test]
+    fn parse_turn_complete_valid() {
+        let data = r#"{"outcome":{"text":"done","nousId":"syn","sessionId":"s1","model":"gpt","toolCalls":0,"inputTokens":100,"outputTokens":50,"cacheReadTokens":0,"cacheWriteTokens":0}}"#;
+        let result = parse_stream_event("turn_complete", data);
+        assert!(result.is_some());
+        if let Some(StreamEvent::TurnComplete { outcome }) = result {
+            assert_eq!(outcome.text, "done");
+            assert_eq!(&*outcome.nous_id, "syn");
+        } else {
+            panic!("expected TurnComplete");
+        }
+    }
+
+    #[test]
+    fn parse_tool_result_valid() {
+        let data = r#"{"toolName":"exec","toolId":"t1","isError":false,"durationMs":150}"#;
+        let result = parse_stream_event("tool_result", data);
+        assert!(result.is_some());
+        if let Some(StreamEvent::ToolResult { tool_name, is_error, duration_ms, .. }) = result {
+            assert_eq!(tool_name, "exec");
+            assert!(!is_error);
+            assert_eq!(duration_ms, 150);
+        } else {
+            panic!("expected ToolResult");
+        }
+    }
+
+    #[test]
+    fn parse_invalid_json_returns_none() {
+        let result = parse_stream_event("text_delta", "{broken");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_queue_drained_returns_none() {
+        let data = r#"{"count":0}"#;
+        let result = parse_stream_event("queue_drained", data);
+        assert!(result.is_none());
     }
 }

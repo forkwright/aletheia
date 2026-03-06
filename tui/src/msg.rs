@@ -1,7 +1,9 @@
 use crate::api::types::*;
+use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
 /// Every possible state transition in the application.
 /// No I/O happens here — only data describing what happened.
+#[non_exhaustive]
 #[derive(Debug)]
 #[expect(dead_code, reason = "enum variants and fields are reserved for event handling")]
 pub enum Msg {
@@ -59,7 +61,7 @@ pub enum Msg {
     ScrollPageUp,
     ScrollPageDown,
     ScrollToBottom,
-    FocusAgent(String),
+    FocusAgent(NousId),
     NextAgent, // Ctrl+Tab or similar
     PrevAgent,
 
@@ -84,90 +86,90 @@ pub enum Msg {
         active_turns: Vec<ActiveTurn>,
     },
     SseTurnBefore {
-        nous_id: String,
-        session_id: String,
-        turn_id: String,
+        nous_id: NousId,
+        session_id: SessionId,
+        turn_id: TurnId,
     },
     SseTurnAfter {
-        nous_id: String,
-        session_id: String,
+        nous_id: NousId,
+        session_id: SessionId,
     },
     SseToolCalled {
-        nous_id: String,
+        nous_id: NousId,
         tool_name: String,
     },
     SseToolFailed {
-        nous_id: String,
+        nous_id: NousId,
         tool_name: String,
         error: String,
     },
     SseStatusUpdate {
-        nous_id: String,
+        nous_id: NousId,
         status: String,
     },
     SseSessionCreated {
-        nous_id: String,
-        session_id: String,
+        nous_id: NousId,
+        session_id: SessionId,
     },
     SseSessionArchived {
-        nous_id: String,
-        session_id: String,
+        nous_id: NousId,
+        session_id: SessionId,
     },
     SseDistillBefore {
-        nous_id: String,
+        nous_id: NousId,
     },
     SseDistillStage {
-        nous_id: String,
+        nous_id: NousId,
         stage: String,
     },
     SseDistillAfter {
-        nous_id: String,
+        nous_id: NousId,
     },
 
     // --- Streaming response events ---
     StreamTurnStart {
-        session_id: String,
-        nous_id: String,
-        turn_id: String,
+        session_id: SessionId,
+        nous_id: NousId,
+        turn_id: TurnId,
     },
     StreamTextDelta(String),
     StreamThinkingDelta(String),
     StreamToolStart {
         tool_name: String,
-        tool_id: String,
+        tool_id: ToolId,
     },
     StreamToolResult {
         tool_name: String,
-        tool_id: String,
+        tool_id: ToolId,
         is_error: bool,
         duration_ms: u64,
     },
     StreamToolApprovalRequired {
-        turn_id: String,
+        turn_id: TurnId,
         tool_name: String,
-        tool_id: String,
+        tool_id: ToolId,
         input: serde_json::Value,
         risk: String,
         reason: String,
     },
     StreamToolApprovalResolved {
-        tool_id: String,
+        tool_id: ToolId,
         decision: String,
     },
     StreamPlanProposed {
         plan: Plan,
     },
     StreamPlanStepStart {
-        plan_id: String,
+        plan_id: PlanId,
         step_id: u32,
     },
     StreamPlanStepComplete {
-        plan_id: String,
+        plan_id: PlanId,
         step_id: u32,
         status: String,
     },
     StreamPlanComplete {
-        plan_id: String,
+        plan_id: PlanId,
         status: String,
     },
     StreamTurnComplete {
@@ -181,11 +183,11 @@ pub enum Msg {
     // --- API responses ---
     AgentsLoaded(Vec<Agent>),
     SessionsLoaded {
-        nous_id: String,
+        nous_id: NousId,
         sessions: Vec<Session>,
     },
     HistoryLoaded {
-        session_id: String,
+        session_id: SessionId,
         messages: Vec<HistoryMessage>,
     },
     CostLoaded {
@@ -208,6 +210,7 @@ pub enum Msg {
     Tick,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageActionKind {
     Copy,
@@ -218,6 +221,7 @@ pub enum MessageActionKind {
     Inspect,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum OverlayKind {
     Help,
@@ -248,6 +252,7 @@ impl ErrorToast {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug)]
 #[expect(dead_code, reason = "auth flow variants")]
 pub enum AuthOutcome {

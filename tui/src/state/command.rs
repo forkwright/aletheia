@@ -9,6 +9,7 @@ pub struct CommandPaletteState {
 }
 
 /// Selection context for context-aware status bar hints.
+#[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[expect(dead_code, reason = "variants reserved for context-aware keybind hints")]
 pub enum SelectionContext {
@@ -24,7 +25,7 @@ pub enum SelectionContext {
     },
     ToolCall {
         index: usize,
-        tool_id: String,
+        tool_id: crate::id::ToolId,
         needs_approval: bool,
     },
     SessionListItem {

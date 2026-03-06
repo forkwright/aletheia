@@ -8,6 +8,7 @@ use crate::api::client::ApiClient;
 use crate::api::sse::SseConnection;
 use crate::config::Config;
 use crate::events::StreamEvent;
+use crate::id::{NousId, SessionId, TurnId};
 use crate::msg::{ErrorToast, Msg};
 use crate::theme::ThemePalette;
 use crate::update::extract_text_content;
@@ -35,9 +36,9 @@ pub struct App {
 
     // Dashboard state
     pub agents: Vec<AgentState>,
-    pub focused_agent: Option<String>,
+    pub focused_agent: Option<NousId>,
     pub messages: Vec<ChatMessage>,
-    pub focused_session_id: Option<String>,
+    pub focused_session_id: Option<SessionId>,
     pub daily_cost_cents: u32,
 
     // Input
@@ -51,7 +52,7 @@ pub struct App {
     pub overlay: Option<Overlay>,
 
     // Streaming state
-    pub active_turn_id: Option<String>,
+    pub active_turn_id: Option<TurnId>,
     pub streaming_text: String,
     pub streaming_thinking: String,
     pub streaming_tool_calls: Vec<ToolCallInfo>,
@@ -64,7 +65,7 @@ pub struct App {
     // Scroll
     pub scroll_offset: usize,
     pub auto_scroll: bool,
-    pub(crate) scroll_states: HashMap<String, SavedScrollState>,
+    pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
 
     // Markdown cache — avoid re-parsing on every frame
     pub cached_markdown_text: String,
@@ -93,7 +94,7 @@ pub struct App {
 
     // Message selection (None = auto-scroll mode, Some(index) = message selected)
     pub selected_message: Option<usize>,
-    pub tool_expanded: HashSet<String>,
+    pub tool_expanded: HashSet<crate::id::ToolId>,
 
     // Live filter (`/` mode)
     pub filter: FilterState,
@@ -140,7 +141,7 @@ impl App {
             terminal_height: 40,
             command_palette: CommandPaletteState::default(),
             session_cost_cents: 0,
-            context_usage_pct: Option::None,
+            context_usage_pct: None,
             selection: SelectionContext::default(),
             selected_message: None,
             tool_expanded: HashSet::new(),
@@ -206,6 +207,7 @@ impl App {
             .config
             .default_agent
             .clone()
+            .map(NousId::from)
             .or_else(|| self.agents.first().map(|a| a.id.clone()));
 
         if let Some(ref agent_id) = self.focused_agent {

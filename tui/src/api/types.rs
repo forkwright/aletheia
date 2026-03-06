@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+use crate::id::{NousId, PlanId, SessionId, TurnId};
+
 // --- Agent ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
-    pub id: String,
+    pub id: NousId,
     pub name: String,
     #[serde(default)]
     pub model: Option<String>,
@@ -16,9 +18,9 @@ pub struct Agent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
-    pub id: String,
+    pub id: SessionId,
     #[serde(rename = "nousId")]
-    pub nous_id: String,
+    pub nous_id: NousId,
     #[serde(rename = "sessionKey")]
     pub key: String,
     #[serde(default)]
@@ -57,9 +59,9 @@ pub struct HistoryResponse {
 pub struct TurnOutcome {
     pub text: String,
     #[serde(rename = "nousId")]
-    pub nous_id: String,
+    pub nous_id: NousId,
     #[serde(rename = "sessionId")]
-    pub session_id: String,
+    pub session_id: SessionId,
     pub model: String,
     #[serde(rename = "toolCalls", default)]
     pub tool_calls: u32,
@@ -91,11 +93,11 @@ pub struct PlanStep {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plan {
-    pub id: String,
+    pub id: PlanId,
     #[serde(rename = "sessionId")]
-    pub session_id: String,
+    pub session_id: SessionId,
     #[serde(rename = "nousId")]
-    pub nous_id: String,
+    pub nous_id: NousId,
     pub steps: Vec<PlanStep>,
     #[serde(rename = "totalEstimatedCostCents", default)]
     pub total_estimated_cost_cents: u32,
@@ -104,6 +106,7 @@ pub struct Plan {
 
 // --- SSE events ---
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum SseEvent {
     Connected,
@@ -112,44 +115,44 @@ pub enum SseEvent {
         active_turns: Vec<ActiveTurn>,
     },
     TurnBefore {
-        nous_id: String,
-        session_id: String,
-        turn_id: String,
+        nous_id: NousId,
+        session_id: SessionId,
+        turn_id: TurnId,
     },
     TurnAfter {
-        nous_id: String,
-        session_id: String,
+        nous_id: NousId,
+        session_id: SessionId,
     },
     ToolCalled {
-        nous_id: String,
+        nous_id: NousId,
         tool_name: String,
     },
     ToolFailed {
-        nous_id: String,
+        nous_id: NousId,
         tool_name: String,
         error: String,
     },
     StatusUpdate {
-        nous_id: String,
+        nous_id: NousId,
         status: String,
     },
     SessionCreated {
-        nous_id: String,
-        session_id: String,
+        nous_id: NousId,
+        session_id: SessionId,
     },
     SessionArchived {
-        nous_id: String,
-        session_id: String,
+        nous_id: NousId,
+        session_id: SessionId,
     },
     DistillBefore {
-        nous_id: String,
+        nous_id: NousId,
     },
     DistillStage {
-        nous_id: String,
+        nous_id: NousId,
         stage: String,
     },
     DistillAfter {
-        nous_id: String,
+        nous_id: NousId,
     },
     Ping,
 }
@@ -157,11 +160,11 @@ pub enum SseEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveTurn {
     #[serde(rename = "nousId")]
-    pub nous_id: String,
+    pub nous_id: NousId,
     #[serde(rename = "sessionId")]
-    pub session_id: String,
+    pub session_id: SessionId,
     #[serde(rename = "turnId")]
-    pub turn_id: String,
+    pub turn_id: TurnId,
 }
 
 // --- Auth ---
@@ -198,7 +201,7 @@ pub struct CostSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCost {
     #[serde(rename = "agentId")]
-    pub agent_id: String,
+    pub agent_id: NousId,
     #[serde(rename = "totalCost", default)]
     pub total_cost: f64,
     #[serde(default)]
