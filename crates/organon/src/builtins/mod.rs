@@ -1,5 +1,7 @@
 //! Built-in tool executors and stubs.
 
+/// Agent coordination tools (spawn, dispatch).
+pub mod agent;
 /// Inter-agent communication tools (send_message, broadcast).
 pub mod communication;
 /// Dynamic tool activation meta-tool.
@@ -25,6 +27,7 @@ pub fn register_all(registry: &mut ToolRegistry) -> Result<()> {
     communication::register(registry)?;
     filesystem::register(registry)?;
     view_file::register(registry)?;
+    agent::register(registry)?;
     enable_tool::register(registry)?;
     research::register(registry)?;
     Ok(())

@@ -42,6 +42,8 @@ pub mod pipeline;
 pub mod recall;
 /// Session state tracking within a nous actor.
 pub mod session;
+/// Ephemeral sub-agent spawning service.
+pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
 pub mod stream;
 /// User-facing error formatting for display in chat responses.

@@ -448,6 +448,7 @@ mod tests {
             cross_nous: None,
             note_store: None,
             blackboard_store: None,
+            spawn: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
             messenger: Some(messenger),
@@ -472,6 +473,7 @@ mod tests {
             cross_nous: None,
             note_store: None,
             blackboard_store: None,
+            spawn: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
             messenger: Some(messenger),
@@ -503,6 +505,7 @@ mod tests {
             messenger: None,
                     note_store: None,
             blackboard_store: None,
+            spawn: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
         });
@@ -534,6 +537,7 @@ mod tests {
             messenger: None,
                     note_store: None,
             blackboard_store: None,
+            spawn: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
         });
@@ -560,6 +564,7 @@ mod tests {
             messenger: None,
                     note_store: None,
             blackboard_store: None,
+            spawn: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
         });
@@ -584,6 +589,7 @@ mod tests {
             messenger: None,
                     note_store: None,
             blackboard_store: None,
+            spawn: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
         });

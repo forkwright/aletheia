@@ -504,11 +504,18 @@ async fn serve(cli: Cli) -> Result<()> {
             Some(Arc::new(aletheia_nous::adapters::SessionNoteAdapter(Arc::clone(&session_store))));
         let blackboard_store: Option<Arc<dyn aletheia_organon::types::BlackboardStore>> =
             Some(Arc::new(aletheia_nous::adapters::SessionBlackboardAdapter(Arc::clone(&session_store))));
+        let spawn: Option<Arc<dyn aletheia_organon::types::SpawnService>> =
+            Some(Arc::new(aletheia_nous::spawn_svc::SpawnServiceImpl::new(
+                Arc::clone(&provider_registry),
+                Arc::clone(&tool_registry),
+                Arc::clone(&oikos_arc),
+            )));
         Arc::new(ToolServices {
             cross_nous: Some(cross_nous),
             messenger,
             note_store,
             blackboard_store,
+            spawn,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
         })
