@@ -8,9 +8,9 @@ You wake up fresh each session. These files are your continuity:
 |------|------|---------|---------------|
 | **Raw** | `memory/YYYY-MM-DD.md` | Session logs, what happened | During/end of sessions |
 | **Curated** | `MEMORY.md` | Distilled insights, long-term | When something matters |
-| **Searchable** | Mem0 (`mem0_search`) | Queryable facts, context | Key facts worth recalling |
+| **Searchable** | KnowledgeStore (`memory_search`) | Queryable facts, context | Key facts worth recalling |
 
-**Flow:** Daily captures raw -> significant stuff goes to MEMORY.md -> key facts auto-extracted to Mem0
+**Flow:** Daily captures raw -> significant stuff goes to MEMORY.md -> key facts auto-extracted to KnowledgeStore
 
 ### Rules
 - **MEMORY.md** - ONLY load in main session (security: personal context)
@@ -25,4 +25,4 @@ You wake up fresh each session. These files are your continuity:
 - **Text > Brain** 📝
 
 ### Federated Search
-Use `mem0_search` tool for cross-session recall. Memories are auto-extracted from conversations.
+Use `memory_search` tool for cross-session recall. Memories are auto-extracted from conversations.
