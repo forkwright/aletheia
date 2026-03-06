@@ -74,9 +74,13 @@ struct WorkspaceFileSpec {
 /// Priority ordering:
 /// - SOUL.md: Required (core identity)
 /// - USER.md: Important (operator profile, typically in theke/)
-/// - TELOS.md: Important (active goals)
-/// - AGENTS.md: Important (team topology, typically in theke/)
-/// - MNEME.md: Flexible + truncatable (operational memory, oldest entries dropped first)
+/// - AGENTS.md: Important (operating instructions, typically in theke/)
+/// - GOALS.md: Important + truncatable (active/completed/deferred goals)
+/// - TOOLS.md: Important + truncatable (available commands, SSH, paths)
+/// - MEMORY.md: Flexible + truncatable (operational memory, oldest entries dropped first)
+/// - IDENTITY.md: Flexible (name, emoji, avatar metadata)
+/// - PROSOCHE.md: Flexible (heartbeat checklist)
+/// - CONTEXT.md: Flexible + truncatable (runtime config, auto-generated)
 const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
     WorkspaceFileSpec {
         filename: "SOUL.md",
@@ -89,17 +93,37 @@ const WORKSPACE_FILES: &[WorkspaceFileSpec] = &[
         truncatable: false,
     },
     WorkspaceFileSpec {
-        filename: "TELOS.md",
-        priority: SectionPriority::Important,
-        truncatable: false,
-    },
-    WorkspaceFileSpec {
         filename: "AGENTS.md",
         priority: SectionPriority::Important,
         truncatable: false,
     },
     WorkspaceFileSpec {
-        filename: "MNEME.md",
+        filename: "GOALS.md",
+        priority: SectionPriority::Important,
+        truncatable: true,
+    },
+    WorkspaceFileSpec {
+        filename: "TOOLS.md",
+        priority: SectionPriority::Important,
+        truncatable: true,
+    },
+    WorkspaceFileSpec {
+        filename: "MEMORY.md",
+        priority: SectionPriority::Flexible,
+        truncatable: true,
+    },
+    WorkspaceFileSpec {
+        filename: "IDENTITY.md",
+        priority: SectionPriority::Flexible,
+        truncatable: false,
+    },
+    WorkspaceFileSpec {
+        filename: "PROSOCHE.md",
+        priority: SectionPriority::Flexible,
+        truncatable: false,
+    },
+    WorkspaceFileSpec {
+        filename: "CONTEXT.md",
         priority: SectionPriority::Flexible,
         truncatable: true,
     },
@@ -469,32 +493,32 @@ mod tests {
             "test",
             &[
                 ("SOUL.md", "identity"),
-                ("MNEME.md", "memory notes"),
-                ("TELOS.md", "goals"),
+                ("MEMORY.md", "memory notes"),
+                ("GOALS.md", "goals"),
             ],
         );
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
         let result = assembler.assemble("test", &mut budget).unwrap();
-        // Required (SOUL) before Important (TELOS) before Flexible (MNEME)
+        // Required (SOUL) before Important (GOALS) before Flexible (MEMORY)
         let soul_pos = result
             .sections_included
             .iter()
             .position(|s| s == "SOUL.md")
             .unwrap();
-        let telos_pos = result
+        let goals_pos = result
             .sections_included
             .iter()
-            .position(|s| s == "TELOS.md")
+            .position(|s| s == "GOALS.md")
             .unwrap();
-        let mneme_pos = result
+        let memory_pos = result
             .sections_included
             .iter()
-            .position(|s| s == "MNEME.md")
+            .position(|s| s == "MEMORY.md")
             .unwrap();
-        assert!(soul_pos < telos_pos);
-        assert!(telos_pos < mneme_pos);
+        assert!(soul_pos < goals_pos);
+        assert!(goals_pos < memory_pos);
     }
 
     #[test]
@@ -504,16 +528,20 @@ mod tests {
             &[
                 ("SOUL.md", "identity"),
                 ("USER.md", "user info"),
-                ("TELOS.md", "goals"),
                 ("AGENTS.md", "team topology"),
-                ("MNEME.md", "memory"),
+                ("GOALS.md", "goals"),
+                ("TOOLS.md", "tool list"),
+                ("MEMORY.md", "memory"),
+                ("IDENTITY.md", "name and emoji"),
+                ("PROSOCHE.md", "checklist"),
+                ("CONTEXT.md", "runtime config"),
             ],
         );
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
         let result = assembler.assemble("test", &mut budget).unwrap();
-        assert_eq!(result.sections_included.len(), 5);
+        assert_eq!(result.sections_included.len(), 9);
         assert!(result.total_tokens > 0);
     }
 
@@ -524,7 +552,7 @@ mod tests {
             &[
                 ("SOUL.md", "identity"),
                 ("AGENTS.md", ""),
-                ("TELOS.md", "   \n  \n  "), // whitespace-only
+                ("GOALS.md", "   \n  \n  "), // whitespace-only
             ],
         );
         let assembler = BootstrapAssembler::new(&oikos);
@@ -535,20 +563,20 @@ mod tests {
     }
 
     #[test]
-    fn assemble_mneme_truncated() {
-        // Create a large MNEME.md that exceeds a small budget
-        let large_mneme = "## Recent\nNew stuff here.\n## Old\nOld stuff here that is much longer and should be truncated when the budget is tight. ".repeat(50);
+    fn assemble_memory_truncated() {
+        // Create a large MEMORY.md that exceeds a small budget
+        let large_memory = "## Recent\nNew stuff here.\n## Old\nOld stuff here that is much longer and should be truncated when the budget is tight. ".repeat(50);
         let (_dir, oikos) = setup_oikos(
             "test",
-            &[("SOUL.md", "identity"), ("MNEME.md", &large_mneme)],
+            &[("SOUL.md", "identity"), ("MEMORY.md", &large_memory)],
         );
         let assembler = BootstrapAssembler::new(&oikos);
         // Small budget: enough for SOUL.md but not full MNEME.md
         let mut budget = TokenBudget::new(100_000, 0.0, 0, 500);
 
         let result = assembler.assemble("test", &mut budget).unwrap();
-        assert!(result.sections_included.contains(&"MNEME.md".to_owned()));
-        assert!(result.sections_truncated.contains(&"MNEME.md".to_owned()));
+        assert!(result.sections_included.contains(&"MEMORY.md".to_owned()));
+        assert!(result.sections_truncated.contains(&"MEMORY.md".to_owned()));
         assert!(
             result
                 .system_prompt
@@ -558,18 +586,18 @@ mod tests {
 
     #[test]
     fn assemble_optional_dropped() {
-        // SOUL.md fills the entire budget, MNEME.md gets dropped
+        // SOUL.md fills the entire budget, MEMORY.md gets dropped
         let large_soul = "x".repeat(2000); // ~500 tokens at 4 chars/token
         let (_dir, oikos) = setup_oikos(
             "test",
-            &[("SOUL.md", &large_soul), ("MNEME.md", "memory notes")],
+            &[("SOUL.md", &large_soul), ("MEMORY.md", "memory notes")],
         );
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = TokenBudget::new(100_000, 0.0, 0, 500);
 
         let result = assembler.assemble("test", &mut budget).unwrap();
         assert!(result.sections_included.contains(&"SOUL.md".to_owned()));
-        assert!(result.sections_dropped.contains(&"MNEME.md".to_owned()));
+        assert!(result.sections_dropped.contains(&"MEMORY.md".to_owned()));
     }
 
     #[test]
@@ -638,7 +666,7 @@ mod tests {
         let assembler = BootstrapAssembler::new(&oikos);
 
         let section = BootstrapSection {
-            name: "MNEME.md".to_owned(),
+            name: "MEMORY.md".to_owned(),
             priority: SectionPriority::Flexible,
             content: "## Section A\nContent A.\n## Section B\nContent B.\n## Section C\nContent C."
                 .to_owned(),
@@ -658,7 +686,7 @@ mod tests {
         let assembler = BootstrapAssembler::new(&oikos);
 
         let section = BootstrapSection {
-            name: "MNEME.md".to_owned(),
+            name: "MEMORY.md".to_owned(),
             priority: SectionPriority::Flexible,
             content: "Line one\nLine two\nLine three\nLine four\nLine five".to_owned(),
             tokens: 100,

@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use aletheia_mneme::store::SessionStore;
 
 use tokio::sync::mpsc;
-use tracing::{Instrument, debug, info, instrument, warn};
+use tracing::{Instrument, debug, error, info, instrument, warn};
 
 use crate::cross::CrossNousEnvelope;
 use crate::stream::TurnStreamEvent;
@@ -16,6 +16,7 @@ use aletheia_koina::id::{NousId, SessionId};
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{ToolContext, ToolServices};
+use aletheia_taxis::cascade;
 use aletheia_taxis::oikos::Oikos;
 
 use crate::bootstrap::BootstrapSection;
@@ -96,6 +97,11 @@ impl NousActor {
     /// Run the actor loop until shutdown or all handles are dropped.
     #[instrument(skip(self), fields(nous.id = %self.id))]
     pub async fn run(mut self) {
+        if let Err(e) = validate_workspace(&self.oikos, &self.id) {
+            error!(error = %e, "workspace validation failed, shutting down");
+            return;
+        }
+
         info!(lifecycle = %self.lifecycle, "actor started");
 
         loop {
@@ -316,6 +322,9 @@ impl NousActor {
             workspace: self.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.oikos.root().to_path_buf()],
             services: self.tool_services.clone(),
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
         };
 
         crate::pipeline::run_pipeline(
@@ -554,6 +563,56 @@ async fn run_background_distillation(
         messages_distilled = result.messages_distilled,
         "background distillation complete"
     );
+}
+
+/// Validate the workspace directory exists and required files are resolvable.
+///
+/// Called at actor startup before entering the message loop. Creates the
+/// workspace directory if missing and fails fast if SOUL.md cannot be found
+/// through the cascade.
+fn validate_workspace(oikos: &Oikos, nous_id: &str) -> crate::error::Result<()> {
+    let workspace = oikos.nous_dir(nous_id);
+    if !workspace.exists() {
+        warn!(
+            agent = nous_id,
+            path = %workspace.display(),
+            "workspace directory missing, creating"
+        );
+        std::fs::create_dir_all(&workspace).map_err(|e| {
+            crate::error::WorkspaceValidationSnafu {
+                nous_id: nous_id.to_owned(),
+                message: format!("failed to create workspace directory: {e}"),
+            }
+            .build()
+        })?;
+    }
+
+    if cascade::resolve(oikos, nous_id, "SOUL.md", None).is_none() {
+        return Err(crate::error::WorkspaceValidationSnafu {
+            nous_id: nous_id.to_owned(),
+            message: "SOUL.md not found in cascade (nous/, shared/, theke/)".to_owned(),
+        }
+        .build());
+    }
+
+    // Log warnings for missing optional workspace files
+    for filename in &[
+        "USER.md",
+        "AGENTS.md",
+        "GOALS.md",
+        "TOOLS.md",
+        "MEMORY.md",
+        "IDENTITY.md",
+        "PROSOCHE.md",
+        "CONTEXT.md",
+    ] {
+        if cascade::resolve(oikos, nous_id, filename, None).is_none() {
+            debug!(agent = nous_id, file = *filename, "optional workspace file not found");
+        }
+    }
+
+    info!(agent = nous_id, "workspace validated");
+    Ok(())
 }
 
 /// Spawn a nous actor, returning its handle and join handle.
@@ -899,5 +958,34 @@ mod tests {
     #[test]
     fn default_inbox_capacity_is_32() {
         assert_eq!(DEFAULT_INBOX_CAPACITY, 32);
+    }
+
+    #[test]
+    fn validate_workspace_creates_missing_dir() {
+        let dir = tempfile::TempDir::new().expect("tmpdir");
+        let root = dir.path();
+        // Only create shared/ with SOUL.md for cascade fallback
+        std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
+        std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
+        std::fs::write(root.join("shared/SOUL.md"), "# Test Soul").expect("write");
+
+        let oikos = Oikos::from_root(root);
+        super::validate_workspace(&oikos, "test-agent").unwrap();
+        assert!(root.join("nous/test-agent").exists());
+    }
+
+    #[test]
+    fn validate_workspace_fails_without_soul() {
+        let dir = tempfile::TempDir::new().expect("tmpdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("nous/test-agent")).expect("mkdir");
+        std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
+        std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
+
+        let oikos = Oikos::from_root(root);
+        let result = super::validate_workspace(&oikos, "test-agent");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("SOUL.md"), "error should mention SOUL.md: {msg}");
     }
 }
