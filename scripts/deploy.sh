@@ -48,6 +48,7 @@ git pull --rebase origin main
 if [[ "$SKIP_RUNTIME" == "false" ]]; then
   log "Building runtime..."
   cd "$RUNTIME_DIR"
+  npm ci || die "Runtime dependency install failed"
   npm run build || die "Runtime build failed"
 else
   log "Skipping runtime build"
@@ -57,6 +58,7 @@ fi
 if [[ "$SKIP_UI" == "false" ]]; then
   log "Building UI..."
   cd "$UI_DIR"
+  npm ci || die "UI dependency install failed"
   npm run build || die "UI build failed"
 else
   log "Skipping UI build"
@@ -75,7 +77,8 @@ fi
 git rev-parse HEAD > "$BACKUP_DIR/$TIMESTAMP/git-sha"
 
 # Keep only last 5 backups
-cd "$BACKUP_DIR" && ls -dt */ 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
+mapfile -t old_backups < <(find "$BACKUP_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%p\n' | sort -rn | tail -n +6 | cut -f2-)
+for f in "${old_backups[@]}"; do rm -rf "$f"; done
 
 if [[ "$DRY_RUN" == "true" ]]; then
   log "Dry run — skipping restart. Artifacts built and backed up."

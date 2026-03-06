@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Verify all 18 milestone hashes (15 milestones, some with range endpoints) resolve in the repo
 
 HASHES=(
@@ -15,10 +16,10 @@ for hash in "${HASHES[@]}"; do
   result=$(git log --oneline -1 "$hash" 2>/dev/null)
   if [[ -n "$result" ]]; then
     echo "OK: $hash $result"
-    ((VERIFIED++))
+    VERIFIED=$((VERIFIED + 1))
   else
     echo "MISSING: $hash"
-    ((MISSING++))
+    MISSING=$((MISSING + 1))
   fi
 done
 
