@@ -228,7 +228,7 @@ dependencies = [
  "rocksdb",
  "rusqlite",
  "rust-stemmers",
- "rustc-hash 1.1.0",
+ "rustc-hash 2.1.1",
  "serde",
  "serde_bytes",
  "serde_derive",
