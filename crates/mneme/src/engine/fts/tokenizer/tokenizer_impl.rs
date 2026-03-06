@@ -9,7 +9,7 @@ use std::ops::{Deref, DerefMut};
 use crate::engine::fts::tokenizer::empty_tokenizer::EmptyTokenizer;
 
 /// Token
-#[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 pub(crate) struct Token {
     /// Offset (byte index) of the first character of the token.
     /// Offsets shall not be modified by token filters.

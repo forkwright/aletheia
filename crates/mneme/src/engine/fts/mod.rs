@@ -1,10 +1,5 @@
-/*
- * Copyright 2023, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::data::memcmp::MemCmpEncoder;
 use crate::engine::data::value::DataValue;
@@ -25,7 +20,7 @@ pub(crate) mod ast;
 pub(crate) mod indexing;
 pub(crate) mod tokenizer;
 
-#[derive(Debug, Clone, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct FtsIndexManifest {
     pub(crate) base_relation: SmartString<LazyCompact>,
     pub(crate) index_name: SmartString<LazyCompact>,
@@ -35,7 +30,7 @@ pub(crate) struct FtsIndexManifest {
 }
 
 #[allow(missing_docs)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerConfig {
     pub name: SmartString<LazyCompact>,
     pub args: Vec<DataValue>,
@@ -240,7 +235,7 @@ impl TokenizerConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct FtsIndexConfig {
     base_relation: SmartString<LazyCompact>,
     index_name: SmartString<LazyCompact>,

@@ -1,17 +1,11 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
 use std::io::Write;
 use std::str::FromStr;
 
-use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use regex::Regex;
 
 use crate::engine::data::value::{
@@ -45,101 +39,101 @@ const EXACT_INT_BOUND: i64 = 0x20_0000_0000_0000;
 pub(crate) trait MemCmpEncoder: Write {
     fn encode_datavalue(&mut self, v: &DataValue) {
         match v {
-            DataValue::Null => self.write_u8(NULL_TAG).unwrap(),
-            DataValue::Bool(false) => self.write_u8(FALSE_TAG).unwrap(),
-            DataValue::Bool(true) => self.write_u8(TRUE_TAG).unwrap(),
+            DataValue::Null => self.write_all(&[NULL_TAG]).unwrap(),
+            DataValue::Bool(false) => self.write_all(&[FALSE_TAG]).unwrap(),
+            DataValue::Bool(true) => self.write_all(&[TRUE_TAG]).unwrap(),
             DataValue::Vec(arr) => {
-                self.write_u8(VEC_TAG).unwrap();
+                self.write_all(&[VEC_TAG]).unwrap();
                 match arr {
                     Vector::F32(a) => {
-                        self.write_u8(VEC_F32).unwrap();
+                        self.write_all(&[VEC_F32]).unwrap();
                         let l = a.len();
-                        self.write_u64::<BigEndian>(l as u64).unwrap();
+                        self.write_all(&(l as u64).to_be_bytes()).unwrap();
                         for el in a {
-                            self.write_f32::<BigEndian>(*el).unwrap();
+                            self.write_all(&el.to_be_bytes()).unwrap();
                         }
                     }
                     Vector::F64(a) => {
-                        self.write_u8(VEC_F64).unwrap();
+                        self.write_all(&[VEC_F64]).unwrap();
                         let l = a.len();
-                        self.write_u64::<BigEndian>(l as u64).unwrap();
+                        self.write_all(&(l as u64).to_be_bytes()).unwrap();
                         for el in a {
-                            self.write_f64::<BigEndian>(*el).unwrap();
+                            self.write_all(&el.to_be_bytes()).unwrap();
                         }
                     }
                 }
             }
             DataValue::Num(n) => {
-                self.write_u8(NUM_TAG).unwrap();
+                self.write_all(&[NUM_TAG]).unwrap();
                 self.encode_num(*n);
             }
             DataValue::Str(s) => {
-                self.write_u8(STR_TAG).unwrap();
+                self.write_all(&[STR_TAG]).unwrap();
                 self.encode_bytes(s.as_bytes());
             }
             DataValue::Json(j) => {
-                self.write_u8(JSON_TAG).unwrap();
+                self.write_all(&[JSON_TAG]).unwrap();
                 let s = j.0.to_string();
                 self.encode_bytes(s.as_bytes());
             }
             DataValue::Bytes(b) => {
-                self.write_u8(BYTES_TAG).unwrap();
+                self.write_all(&[BYTES_TAG]).unwrap();
                 self.encode_bytes(b)
             }
             DataValue::Uuid(u) => {
-                self.write_u8(UUID_TAG).unwrap();
+                self.write_all(&[UUID_TAG]).unwrap();
                 let (s_l, s_m, s_h, s_rest) = u.0.as_fields();
-                self.write_u16::<BigEndian>(s_h).unwrap();
-                self.write_u16::<BigEndian>(s_m).unwrap();
-                self.write_u32::<BigEndian>(s_l).unwrap();
+                self.write_all(&s_h.to_be_bytes()).unwrap();
+                self.write_all(&s_m.to_be_bytes()).unwrap();
+                self.write_all(&s_l.to_be_bytes()).unwrap();
                 self.write_all(s_rest.as_ref()).unwrap();
             }
             DataValue::Regex(rx) => {
-                self.write_u8(REGEX_TAG).unwrap();
+                self.write_all(&[REGEX_TAG]).unwrap();
                 let s = rx.0.as_str().as_bytes();
                 self.encode_bytes(s)
             }
             DataValue::List(l) => {
-                self.write_u8(LIST_TAG).unwrap();
+                self.write_all(&[LIST_TAG]).unwrap();
                 for el in l {
                     self.encode_datavalue(el);
                 }
-                self.write_u8(INIT_TAG).unwrap()
+                self.write_all(&[INIT_TAG]).unwrap()
             }
             DataValue::Set(s) => {
-                self.write_u8(SET_TAG).unwrap();
+                self.write_all(&[SET_TAG]).unwrap();
                 for el in s {
                     self.encode_datavalue(el);
                 }
-                self.write_u8(INIT_TAG).unwrap()
+                self.write_all(&[INIT_TAG]).unwrap()
             }
             DataValue::Validity(vld) => {
                 let ts = vld.timestamp.0.0;
                 let ts_u64 = order_encode_i64(ts);
                 let ts_flipped = !ts_u64;
-                self.write_u8(VLD_TAG).unwrap();
-                self.write_u64::<BigEndian>(ts_flipped).unwrap();
-                self.write_u8(!vld.is_assert.0 as u8).unwrap();
+                self.write_all(&[VLD_TAG]).unwrap();
+                self.write_all(&ts_flipped.to_be_bytes()).unwrap();
+                self.write_all(&[!vld.is_assert.0 as u8]).unwrap();
             }
-            DataValue::Bot => self.write_u8(BOT_TAG).unwrap(),
+            DataValue::Bot => self.write_all(&[BOT_TAG]).unwrap(),
         }
     }
     fn encode_num(&mut self, v: Num) {
         let f = v.get_float();
         let u = order_encode_f64(f);
-        self.write_u64::<BigEndian>(u).unwrap();
+        self.write_all(&u.to_be_bytes()).unwrap();
         match v {
             Num::Int(i) => {
                 if i > -EXACT_INT_BOUND && i < EXACT_INT_BOUND {
-                    self.write_u8(IS_EXACT_INT).unwrap();
+                    self.write_all(&[IS_EXACT_INT]).unwrap();
                 } else {
-                    self.write_u8(IS_APPROX_INT).unwrap();
+                    self.write_all(&[IS_APPROX_INT]).unwrap();
                     let en = order_encode_i64(i);
-                    self.write_u64::<BigEndian>(en).unwrap();
+                    self.write_all(&en.to_be_bytes()).unwrap();
                 }
             }
             Num::Float(_) => {
-                self.write_u8(IS_FLOAT).unwrap();
+                self.write_all(&[IS_FLOAT]).unwrap();
             }
         }
     }
@@ -226,7 +220,7 @@ const ENC_ASC_PADDING: [u8; ENC_GROUP_SIZE] = [0; ENC_GROUP_SIZE];
 impl Num {
     pub(crate) fn decode_from_key(bs: &[u8]) -> (Self, &[u8]) {
         let (float_part, remaining) = bs.split_at(8);
-        let fu = BigEndian::read_u64(float_part);
+        let fu = u64::from_be_bytes(float_part.try_into().unwrap());
         let f = order_decode_f64(fu);
         let (tag, remaining) = remaining.split_first().unwrap();
         match *tag {
@@ -234,23 +228,12 @@ impl Num {
             IS_EXACT_INT => (Num::Int(f as i64), remaining),
             IS_APPROX_INT => {
                 let (int_part, remaining) = remaining.split_at(8);
-                let iu = BigEndian::read_u64(int_part);
+                let iu = u64::from_be_bytes(int_part.try_into().unwrap());
                 let i = order_decode_i64(iu);
                 (Num::Int(i), remaining)
             }
             _ => unreachable!(),
         }
-        // if *tag == 0x80 {
-        //     return (Num::F(f), remaining);
-        // }
-        // let (subtag, remaining) = remaining.split_first().unwrap();
-        // let n = f as i64;
-        // let mut n_bytes = n.to_be_bytes();
-        // n_bytes[6] &= 0x80;
-        // n_bytes[6] |= tag;
-        // n_bytes[7] = *subtag;
-        // let n = BigEndian::read_i64(&n_bytes);
-        // (Num::I(n), remaining)
     }
 }
 
@@ -283,9 +266,9 @@ impl DataValue {
             }
             UUID_TAG => {
                 let (uuid_data, remaining) = remaining.split_at(16);
-                let s_h = BigEndian::read_u16(&uuid_data[0..2]);
-                let s_m = BigEndian::read_u16(&uuid_data[2..4]);
-                let s_l = BigEndian::read_u32(&uuid_data[4..8]);
+                let s_h = u16::from_be_bytes(uuid_data[0..2].try_into().unwrap());
+                let s_m = u16::from_be_bytes(uuid_data[2..4].try_into().unwrap());
+                let s_l = u32::from_be_bytes(uuid_data[4..8].try_into().unwrap());
                 let mut s_rest = [0u8; 8];
                 s_rest.copy_from_slice(&uuid_data[8..]);
                 let uuid = uuid::Uuid::from_fields(s_l, s_m, s_h, &s_rest);
@@ -321,7 +304,7 @@ impl DataValue {
             }
             VLD_TAG => {
                 let (ts_flipped_bytes, rest) = remaining.split_at(8);
-                let ts_flipped = BigEndian::read_u64(ts_flipped_bytes);
+                let ts_flipped = u64::from_be_bytes(ts_flipped_bytes.try_into().unwrap());
                 let ts_u64 = !ts_flipped;
                 let ts = order_decode_i64(ts_u64);
                 let (is_assert_byte, rest) = rest.split_first().unwrap();
@@ -338,14 +321,14 @@ impl DataValue {
             VEC_TAG => {
                 let (t_tag, remaining) = remaining.split_first().unwrap();
                 let (len_bytes, mut rest) = remaining.split_at(8);
-                let len = BigEndian::read_u64(len_bytes) as usize;
+                let len = u64::from_be_bytes(len_bytes.try_into().unwrap()) as usize;
                 match *t_tag {
                     VEC_F32 => {
                         let mut res_arr = ndarray::Array1::zeros(len);
                         for mut row in res_arr.axis_iter_mut(ndarray::Axis(0)) {
                             let (f_bytes, next_chunk) = rest.split_at(4);
                             rest = next_chunk;
-                            let f = BigEndian::read_f32(f_bytes);
+                            let f = f32::from_be_bytes(f_bytes.try_into().unwrap());
                             row.fill(f);
                         }
                         (DataValue::Vec(Vector::F32(res_arr)), rest)
@@ -355,7 +338,7 @@ impl DataValue {
                         for mut row in res_arr.axis_iter_mut(ndarray::Axis(0)) {
                             let (f_bytes, next_chunk) = rest.split_at(8);
                             rest = next_chunk;
-                            let f = BigEndian::read_f64(f_bytes);
+                            let f = f64::from_be_bytes(f_bytes.try_into().unwrap());
                             row.fill(f);
                         }
                         (DataValue::Vec(Vector::F64(res_arr)), rest)

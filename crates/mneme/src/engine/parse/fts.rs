@@ -1,15 +1,10 @@
-/*
- * Copyright 2023, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::engine::parse::expr::parse_string;
-use crate::engine::parse::{CozoScriptParser, Pair, Rule};
+use crate::engine::parse::{DatalogParser, Pair, Rule};
 use itertools::Itertools;
 use pest::Parser;
 use pest::pratt_parser::{Op, PrattParser};
@@ -17,7 +12,7 @@ use smartstring::SmartString;
 use std::sync::LazyLock;
 
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
-    let mut pairs = CozoScriptParser::parse(Rule::fts_doc, q)
+    let mut pairs = DatalogParser::parse(Rule::fts_doc, q)
         .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
     let pairs = pairs.next().unwrap().into_inner();
     let pairs: Vec<_> = pairs

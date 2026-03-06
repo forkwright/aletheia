@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
@@ -28,7 +23,7 @@ use crate::engine::data::value::{DataValue, ValidityTs};
 use crate::engine::fts::FtsIndexManifest;
 use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::sys::{FtsIndexConfig, HnswIndexConfig, MinHashLshConfig};
-use crate::engine::parse::{CozoScriptParser, Rule, SourceSpan};
+use crate::engine::parse::{DatalogParser, Rule, SourceSpan};
 use crate::engine::query::compile::IndexPositionUse;
 use crate::engine::runtime::hnsw::HnswIndexManifest;
 use crate::engine::runtime::minhash_lsh::{
@@ -39,15 +34,7 @@ use crate::engine::utils::TempCollector;
 use crate::engine::{NamedRows, StoreTx};
 
 #[derive(
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Debug,
-    serde_derive::Serialize,
-    serde_derive::Deserialize,
-    PartialOrd,
-    Ord,
+    Copy, Clone, Eq, PartialEq, Debug, serde::Serialize, serde::Deserialize, PartialOrd, Ord,
 )]
 pub(crate) struct RelationId(pub(crate) u64);
 
@@ -74,7 +61,7 @@ impl RelationId {
     }
 }
 
-#[derive(Clone, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct RelationHandle {
     pub(crate) name: SmartString<LazyCompact>,
     pub(crate) id: RelationId,
@@ -116,8 +103,8 @@ impl RelationHandle {
     Debug,
     Eq,
     PartialEq,
-    serde_derive::Serialize,
-    serde_derive::Deserialize,
+    serde::Serialize,
+    serde::Deserialize,
     Default,
     Ord,
     PartialOrd,
@@ -141,13 +128,24 @@ impl Display for AccessLevel {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("Insufficient access to relation '{0}' for {1} (current level: {2})")]
+#[derive(Debug)]
 pub(crate) struct InsufficientAccessLevel(
     pub(crate) String,
     pub(crate) String,
     pub(crate) AccessLevel,
 );
+
+impl std::fmt::Display for InsufficientAccessLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Insufficient access to relation '{}' for {} (current level: {})",
+            self.0, self.1, self.2
+        )
+    }
+}
+
+impl std::error::Error for InsufficientAccessLevel {}
 
 #[derive(Debug, Snafu)]
 #[snafu(display(
@@ -328,7 +326,7 @@ impl RelationHandle {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct InputRelationHandle {
     pub(crate) name: Symbol,
     pub(crate) metadata: StoredRelationMetadata,
@@ -815,7 +813,7 @@ impl<'a> SessionTx<'a> {
         let tokenizer =
             self.tokenizers
                 .get(&idx_handle.name, &manifest.tokenizer, &manifest.filters)?;
-        let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
+        let parsed = DatalogParser::parse(Rule::expr, &manifest.extractor)
             .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
             .next()
             .unwrap();
@@ -948,7 +946,7 @@ impl<'a> SessionTx<'a> {
             self.tokenizers
                 .get(&idx_handle.name, &manifest.tokenizer, &manifest.filters)?;
 
-        let parsed = CozoScriptParser::parse(Rule::expr, &manifest.extractor)
+        let parsed = DatalogParser::parse(Rule::expr, &manifest.extractor)
             .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
             .next()
             .unwrap();
@@ -1157,7 +1155,7 @@ impl<'a> SessionTx<'a> {
             all_tuples.push(tuple?);
         }
         let filter = if let Some(f_code) = &manifest.index_filter {
-            let parsed = CozoScriptParser::parse(Rule::expr, f_code)
+            let parsed = DatalogParser::parse(Rule::expr, f_code)
                 .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
                 .next()
                 .unwrap();

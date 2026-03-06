@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -28,7 +23,7 @@ use smartstring::{LazyCompact, SmartString};
 use uuid::Uuid;
 
 /// UUID value in the database
-#[derive(Clone, Hash, Eq, PartialEq, serde_derive::Deserialize, serde_derive::Serialize)]
+#[derive(Clone, Hash, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct UuidWrapper(pub Uuid);
 
 impl PartialOrd<Self> for UuidWrapper {
@@ -98,30 +93,13 @@ impl PartialOrd for RegexWrapper {
 
 /// Timestamp part of validity
 #[derive(
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    serde_derive::Deserialize,
-    serde_derive::Serialize,
-    Hash,
-    Debug,
+    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, serde::Deserialize, serde::Serialize, Hash, Debug,
 )]
 pub struct ValidityTs(pub Reverse<i64>);
 
 /// Validity for time travel
 #[derive(
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    serde_derive::Deserialize,
-    serde_derive::Serialize,
-    Hash,
+    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, serde::Deserialize, serde::Serialize, Hash,
 )]
 pub struct Validity {
     /// Timestamp, sorted descendingly
@@ -140,9 +118,7 @@ impl From<(i64, bool)> for Validity {
 }
 
 /// A Value in the database
-#[derive(
-    Clone, PartialEq, Eq, PartialOrd, Ord, serde_derive::Deserialize, serde_derive::Serialize, Hash,
-)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, serde::Serialize, Hash)]
 pub enum DataValue {
     /// null
     Null,
@@ -174,7 +150,7 @@ pub enum DataValue {
 }
 
 /// Wrapper for JsonValue
-#[derive(Clone, PartialEq, Eq, serde_derive::Deserialize, serde_derive::Serialize)]
+#[derive(Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct JsonData(pub JsonValue);
 
 impl PartialOrd<Self> for JsonData {
@@ -469,7 +445,7 @@ impl From<bool> for DataValue {
 }
 
 /// Representing a number
-#[derive(Copy, Clone, serde_derive::Deserialize, serde_derive::Serialize)]
+#[derive(Copy, Clone, serde::Deserialize, serde::Serialize)]
 pub enum Num {
     /// intger number
     Int(i64),

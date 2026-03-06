@@ -1,10 +1,5 @@
-/*
- * Copyright 2023, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
 
 use crate::bail;
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
@@ -25,7 +20,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use smartstring::{LazyCompact, SmartString};
 use std::cmp::{Reverse, max};
 
-#[derive(Debug, Clone, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct HnswIndexManifest {
     pub(crate) base_relation: SmartString<LazyCompact>,
     pub(crate) index_name: SmartString<LazyCompact>,

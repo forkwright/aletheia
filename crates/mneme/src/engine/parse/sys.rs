@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -88,9 +83,7 @@ pub struct HnswIndexConfig {
     pub keep_pruned_connections: bool,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde_derive::Serialize, serde_derive::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum HnswDistance {
     L2,
     InnerProduct,

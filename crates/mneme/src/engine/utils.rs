@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 #[inline(always)]
 pub(crate) fn swap_option_result<T, E>(d: Result<Option<T>, E>) -> Option<Result<T, E>> {
@@ -16,16 +11,15 @@ pub(crate) fn swap_option_result<T, E>(d: Result<Option<T>, E>) -> Option<Result
 }
 
 #[derive(Default)]
-pub(crate) struct TempCollector<T: serde::Serialize + for<'a> serde::Deserialize<'a>> {
-    // pub(crate) inner: Vec<T>,
-    pub(crate) inner: swapvec::SwapVec<T>,
+pub(crate) struct TempCollector<T> {
+    pub(crate) inner: Vec<T>,
 }
 
-impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> TempCollector<T> {
+impl<T> TempCollector<T> {
     pub(crate) fn push(&mut self, val: T) {
-        self.inner.push(val).unwrap();
+        self.inner.push(val);
     }
     pub(crate) fn into_iter(self) -> impl Iterator<Item = T> {
-        self.inner.into_iter().map(|v| v.unwrap())
+        self.inner.into_iter()
     }
 }

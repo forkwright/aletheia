@@ -1,10 +1,5 @@
-/*
- * Copyright 2022, The Cozo Project Authors.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file,
- * You can obtain one at https://mozilla.org/MPL/2.0/.
- */
+// Originally derived from CozoDB v0.7.6 (MPL-2.0).
+// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
@@ -13,10 +8,8 @@ use std::ops::Deref;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
-use miette::Diagnostic;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use smartstring::{LazyCompact, SmartString};
-use thiserror::Error;
 
 use crate::engine::parse::SourceSpan;
 
@@ -95,10 +88,16 @@ impl Symbol {
     }
     pub(crate) fn ensure_valid_field(&self) -> Result<()> {
         if self.name.contains('(') || self.name.contains(')') {
-            #[derive(Debug, Error, Diagnostic)]
-            #[error("The symbol {0} is not valid as a field")]
-            #[diagnostic(code(parser::symbol_invalid_as_field))]
-            struct SymbolInvalidAsField(String, #[label] SourceSpan);
+            #[derive(Debug)]
+            struct SymbolInvalidAsField(String, SourceSpan);
+
+            impl std::fmt::Display for SymbolInvalidAsField {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    write!(f, "The symbol {} is not valid as a field", self.0)
+                }
+            }
+
+            impl std::error::Error for SymbolInvalidAsField {}
 
             bail!(SymbolInvalidAsField(self.name.to_string(), self.span))
         }
