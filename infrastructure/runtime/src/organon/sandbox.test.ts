@@ -53,6 +53,27 @@ describe("screenCommand", () => {
     expect(r.matchedPattern).toBe("npm publish*");
   });
 
+  it("supports removing default deny patterns", () => {
+    // sudo is blocked by default
+    expect(screenCommand("sudo whoami").allowed).toBe(false);
+
+    // remove the sudo pattern
+    const r = screenCommand("sudo whoami", [], ["sudo *"]);
+    expect(r.allowed).toBe(true);
+  });
+
+  it("remove only affects exact matching patterns", () => {
+    // removing "sudo *" should not affect other patterns
+    const r = screenCommand("rm -rf /", [], ["sudo *"]);
+    expect(r.allowed).toBe(false);
+  });
+
+  it("extra patterns still apply after removing defaults", () => {
+    // remove sudo, but add it back as extra — still blocked
+    const r = screenCommand("sudo whoami", ["sudo *"], ["sudo *"]);
+    expect(r.allowed).toBe(false);
+  });
+
   it("exports default patterns list", () => {
     const patterns = getDefaultDenyPatterns();
     expect(patterns.length).toBeGreaterThan(5);
