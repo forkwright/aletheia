@@ -28,7 +28,7 @@ EMBED_MODEL = os.environ.get("VOYAGE_MODEL", "voyage-4-large")  # 1024-dim defau
 CHUNK_SIZE = 512  # tokens ~= words * 1.3, keep chunks focused
 CHUNK_OVERLAP = 50  # overlap for context continuity
 BATCH_SIZE = 64  # Voyage batch limit
-USER_ID = os.environ.get("ALETHEIA_MEMORY_USER", "ck")
+USER_ID = os.environ.get("ALETHEIA_MEMORY_USER", "default")
 
 # Directories
 ALETHEIA_ROOT = Path(__file__).resolve().parent.parent.parent.parent

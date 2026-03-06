@@ -59,7 +59,7 @@ instance/
 │
 ├── theke/                      # ALL working files — single shared tree
 │   ├── projects/               # Project-scoped work
-│   │   ├── {project-name}/     # e.g. aletheia/, ardent/, mba/, homelab/
+│   │   ├── {project-name}/     # e.g. aletheia/, my-project/, mba/, homelab/
 │   │   └── ...
 │   ├── research/               # Research not tied to a specific project
 │   ├── reference/              # Persistent reference material
