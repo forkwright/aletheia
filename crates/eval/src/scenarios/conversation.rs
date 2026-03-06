@@ -1,5 +1,7 @@
 //! Conversation scenarios — message flow, SSE, history.
 
+use tracing::Instrument;
+
 use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
 use crate::sse;
@@ -53,7 +55,7 @@ impl Scenario for ConversationSendSse {
             assert_eval(!text.is_empty(), "response text should not be empty")?;
             let _ = client.close_session(&session.id).await;
             Ok(())
-        })
+        }.instrument(tracing::info_span!("scenario", id = "conversation-send-sse")))
     }
 }
 
@@ -101,7 +103,7 @@ impl Scenario for ConversationHistoryReflects {
             )?;
             let _ = client.close_session(&session.id).await;
             Ok(())
-        })
+        }.instrument(tracing::info_span!("scenario", id = "conversation-history-reflects")))
     }
 }
 
@@ -138,7 +140,7 @@ impl Scenario for ConversationMultiTurn {
             )?;
             let _ = client.close_session(&session.id).await;
             Ok(())
-        })
+        }.instrument(tracing::info_span!("scenario", id = "conversation-multi-turn")))
     }
 }
 
@@ -169,6 +171,6 @@ impl Scenario for ConversationEmptyRejected {
                 }
                 .fail(),
             }
-        })
+        }.instrument(tracing::info_span!("scenario", id = "conversation-empty-rejected")))
     }
 }

@@ -1,5 +1,7 @@
 //! Auth rejection scenarios.
 
+use tracing::Instrument;
+
 use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval};
 
@@ -25,7 +27,7 @@ impl Scenario for AuthRejectsNoToken {
             let resp = client.raw_post("/api/v1/sessions", &body).await?;
             let status = resp.status().as_u16();
             assert_eq_eval(&status, &401, "expected 401 for unauthenticated request")
-        })
+        }.instrument(tracing::info_span!("scenario", id = "auth-rejects-no-token")))
     }
 }
 
@@ -47,6 +49,6 @@ impl Scenario for AuthRejectsBadToken {
                 .await?;
             let status = resp.status().as_u16();
             assert_eq_eval(&status, &401, "expected 401 for invalid token")
-        })
+        }.instrument(tracing::info_span!("scenario", id = "auth-rejects-bad-token")))
     }
 }

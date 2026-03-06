@@ -1,5 +1,7 @@
 //! Session CRUD lifecycle scenarios.
 
+use tracing::Instrument;
+
 use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval};
 
@@ -51,7 +53,7 @@ impl Scenario for SessionCreateAndGet {
             assert_eq_eval(&fetched.id, &session.id, "fetched session id should match")?;
             let _ = client.close_session(&session.id).await;
             Ok(())
-        })
+        }.instrument(tracing::info_span!("scenario", id = "session-create-and-get")))
     }
 }
 
@@ -79,7 +81,7 @@ impl Scenario for SessionCloseArchives {
                 &"archived".to_owned(),
                 "closed session should be archived",
             )
-        })
+        }.instrument(tracing::info_span!("scenario", id = "session-close-archives")))
     }
 }
 
@@ -106,6 +108,6 @@ impl Scenario for SessionUnknown404 {
                 }
                 .fail(),
             }
-        })
+        }.instrument(tracing::info_span!("scenario", id = "session-unknown-404")))
     }
 }

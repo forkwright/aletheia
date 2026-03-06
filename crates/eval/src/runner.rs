@@ -47,6 +47,7 @@ impl ScenarioRunner {
 
     /// Run all scenarios matching the configured filter.
     #[expect(clippy::too_many_lines, reason = "sequential scenario orchestration")]
+    #[tracing::instrument(skip(self))]
     pub async fn run(&self) -> RunReport {
         let start = Instant::now();
         let all_scenarios = scenarios::all_scenarios();
