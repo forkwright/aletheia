@@ -34,13 +34,19 @@ fn simple_hash(value: &serde_json::Value) -> String {
 }
 
 /// Classify the interaction signals based on tool calls and content.
-fn classify_signals(tool_calls: &[ToolCall], _content: &str) -> Vec<InteractionSignal> {
+fn classify_signals(
+    tool_calls: &[ToolCall],
+    _content: &str,
+    used_server_web_search: bool,
+) -> Vec<InteractionSignal> {
     let mut signals = Vec::new();
 
-    if tool_calls.is_empty() {
+    if tool_calls.is_empty() && !used_server_web_search {
         signals.push(InteractionSignal::Conversation);
     } else {
-        signals.push(InteractionSignal::ToolExecution);
+        if !tool_calls.is_empty() {
+            signals.push(InteractionSignal::ToolExecution);
+        }
 
         let code_tools = ["write", "edit", "exec"];
         if tool_calls
@@ -51,9 +57,10 @@ fn classify_signals(tool_calls: &[ToolCall], _content: &str) -> Vec<InteractionS
         }
 
         let research_tools = ["web_search", "web_fetch"];
-        if tool_calls
-            .iter()
-            .any(|tc| research_tools.contains(&tc.name.as_str()))
+        if used_server_web_search
+            || tool_calls
+                .iter()
+                .any(|tc| research_tools.contains(&tc.name.as_str()))
         {
             signals.push(InteractionSignal::Research);
         }
@@ -202,6 +209,7 @@ pub async fn execute(
     let mut iterations: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
+    let mut used_server_web_search = false;
 
     let thinking = if config.thinking_enabled {
         Some(ThinkingConfig {
@@ -234,6 +242,7 @@ pub async fn execute(
             messages: messages.clone(),
             max_tokens: config.max_output_tokens,
             tools: tool_defs,
+            server_tools: config.server_tools.clone(),
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
@@ -268,6 +277,9 @@ pub async fn execute(
                 }
                 ContentBlock::Thinking { thinking, .. } => {
                     debug!(len = thinking.len(), "thinking block received");
+                }
+                ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
+                    used_server_web_search = true;
                 }
                 _ => {}
             }
@@ -309,7 +321,7 @@ pub async fn execute(
         "execute stage complete"
     );
 
-    let signals = classify_signals(&all_tool_calls, &final_content);
+    let signals = classify_signals(&all_tool_calls, &final_content, used_server_web_search);
 
     Ok(TurnResult {
         content: final_content,
@@ -465,6 +477,7 @@ pub async fn execute_streaming(
     let mut iterations: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
+    let mut used_server_web_search = false;
 
     let thinking = if config.thinking_enabled {
         Some(ThinkingConfig {
@@ -491,6 +504,7 @@ pub async fn execute_streaming(
             messages: messages.clone(),
             max_tokens: config.max_output_tokens,
             tools: tool_defs.clone(),
+            server_tools: config.server_tools.clone(),
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
@@ -528,6 +542,9 @@ pub async fn execute_streaming(
                 }
                 ContentBlock::Thinking { thinking, .. } => {
                     debug!(len = thinking.len(), "thinking block received");
+                }
+                ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
+                    used_server_web_search = true;
                 }
                 _ => {}
             }
@@ -570,7 +587,7 @@ pub async fn execute_streaming(
         "streaming execute stage complete"
     );
 
-    let signals = classify_signals(&all_tool_calls, &final_content);
+    let signals = classify_signals(&all_tool_calls, &final_content, used_server_web_search);
 
     Ok(TurnResult {
         content: final_content,
@@ -950,7 +967,7 @@ mod tests {
 
     #[test]
     fn signal_classification_conversation() {
-        let signals = classify_signals(&[], "Hello");
+        let signals = classify_signals(&[], "Hello", false);
         assert_eq!(signals, vec![InteractionSignal::Conversation]);
     }
 
@@ -964,7 +981,7 @@ mod tests {
             is_error: false,
             duration_ms: 10,
         }];
-        let signals = classify_signals(&calls, "");
+        let signals = classify_signals(&calls, "", false);
         assert!(signals.contains(&InteractionSignal::ToolExecution));
         assert!(signals.contains(&InteractionSignal::CodeGeneration));
     }
@@ -979,7 +996,7 @@ mod tests {
             is_error: false,
             duration_ms: 10,
         }];
-        let signals = classify_signals(&calls, "");
+        let signals = classify_signals(&calls, "", false);
         assert!(signals.contains(&InteractionSignal::ToolExecution));
         assert!(signals.contains(&InteractionSignal::Research));
     }
@@ -994,7 +1011,7 @@ mod tests {
             is_error: true,
             duration_ms: 10,
         }];
-        let signals = classify_signals(&calls, "");
+        let signals = classify_signals(&calls, "", false);
         assert!(signals.contains(&InteractionSignal::ToolExecution));
         assert!(signals.contains(&InteractionSignal::ErrorRecovery));
     }
@@ -1110,7 +1127,7 @@ mod tests {
 
     #[test]
     fn classify_signals_conversation_when_no_tools() {
-        let signals = classify_signals(&[], "some text");
+        let signals = classify_signals(&[], "some text", false);
         assert_eq!(signals, vec![InteractionSignal::Conversation]);
     }
 
@@ -1124,7 +1141,7 @@ mod tests {
             is_error: true,
             duration_ms: 5,
         }];
-        let signals = classify_signals(&calls, "");
+        let signals = classify_signals(&calls, "", false);
         assert!(
             signals.contains(&InteractionSignal::ToolExecution),
             "should have ToolExecution"
@@ -1132,6 +1149,19 @@ mod tests {
         assert!(
             signals.contains(&InteractionSignal::ErrorRecovery),
             "should have ErrorRecovery"
+        );
+    }
+
+    #[test]
+    fn classify_signals_server_web_search() {
+        let signals = classify_signals(&[], "", true);
+        assert!(
+            signals.contains(&InteractionSignal::Research),
+            "should have Research from server web search"
+        );
+        assert!(
+            !signals.contains(&InteractionSignal::Conversation),
+            "should not be Conversation when server web search was used"
         );
     }
 

@@ -71,6 +71,15 @@ enum BlockBuilder {
         text: String,
         signature: String,
     },
+    ServerToolUse {
+        id: String,
+        name: String,
+        input_json: String,
+    },
+    WebSearchToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
+    },
 }
 
 impl StreamAccumulator {
@@ -113,6 +122,10 @@ impl StreamAccumulator {
                     WireContentBlockStart::Text { .. } => "text",
                     WireContentBlockStart::ToolUse { .. } => "tool_use",
                     WireContentBlockStart::Thinking { .. } => "thinking",
+                    WireContentBlockStart::ServerToolUse { .. } => "server_tool_use",
+                    WireContentBlockStart::WebSearchToolResult { .. } => {
+                        "web_search_tool_result"
+                    }
                 };
                 on_event(StreamEvent::ContentBlockStart {
                     index,
@@ -130,6 +143,19 @@ impl StreamAccumulator {
                         text: thinking,
                         signature: String::new(),
                     },
+                    WireContentBlockStart::ServerToolUse { id, name } => {
+                        BlockBuilder::ServerToolUse {
+                            id,
+                            name,
+                            input_json: String::new(),
+                        }
+                    }
+                    WireContentBlockStart::WebSearchToolResult { tool_use_id } => {
+                        BlockBuilder::WebSearchToolResult {
+                            tool_use_id,
+                            content: serde_json::Value::Null,
+                        }
+                    }
                 };
                 // Ensure the blocks vec is large enough.
                 let idx = index as usize;
@@ -149,11 +175,12 @@ impl StreamAccumulator {
                             on_event(StreamEvent::TextDelta { text });
                         }
                         WireDelta::InputJsonDelta { partial_json } => {
-                            if let BlockBuilder::ToolUse {
-                                ref mut input_json, ..
-                            } = self.blocks[idx]
-                            {
-                                input_json.push_str(&partial_json);
+                            match &mut self.blocks[idx] {
+                                BlockBuilder::ToolUse { input_json, .. }
+                                | BlockBuilder::ServerToolUse { input_json, .. } => {
+                                    input_json.push_str(&partial_json);
+                                }
+                                _ => {}
                             }
                             on_event(StreamEvent::InputJsonDelta { partial_json });
                         }
@@ -230,6 +257,21 @@ impl StreamAccumulator {
                     } else {
                         Some(signature)
                     },
+                },
+                BlockBuilder::ServerToolUse {
+                    id,
+                    name,
+                    input_json,
+                } => {
+                    let input = serde_json::from_str(&input_json).unwrap_or_default();
+                    ContentBlock::ServerToolUse { id, name, input }
+                }
+                BlockBuilder::WebSearchToolResult {
+                    tool_use_id,
+                    content,
+                } => ContentBlock::WebSearchToolResult {
+                    tool_use_id,
+                    content,
                 },
             })
             .collect();
@@ -547,6 +589,78 @@ data: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"messag
             matches!(err, Error::ApiError { status: 0, .. }),
             "expected ApiError, got: {err:?}"
         );
+    }
+
+    #[test]
+    fn parses_server_tool_use_stream() {
+        let sse = "\
+event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_srv\",\"model\":\"claude-opus-4-20250514\",\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"server_tool_use\",\"id\":\"srvtoolu_1\",\"name\":\"web_search\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\": \\\"rust async\\\"}\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"web_search_tool_result\",\"tool_use_id\":\"srvtoolu_1\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":1}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\
+\n\
+event: content_block_delta\n\
+data: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"text_delta\",\"text\":\"Based on my search...\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":2}\n\
+\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":20}}\n\
+\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\
+\n";
+
+        let (events, response) = collect_events(sse);
+
+        // Verify block_type events emitted correctly
+        let block_starts: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ContentBlockStart { block_type, .. } => Some(block_type.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            block_starts,
+            vec!["server_tool_use", "web_search_tool_result", "text"]
+        );
+
+        // Verify content blocks in response
+        assert_eq!(response.content.len(), 3);
+        match &response.content[0] {
+            ContentBlock::ServerToolUse { id, name, input } => {
+                assert_eq!(id, "srvtoolu_1");
+                assert_eq!(name, "web_search");
+                assert_eq!(input["query"], "rust async");
+            }
+            _ => panic!("expected ServerToolUse"),
+        }
+        assert!(matches!(
+            &response.content[1],
+            ContentBlock::WebSearchToolResult { .. }
+        ));
+        match &response.content[2] {
+            ContentBlock::Text { text, .. } => assert_eq!(text, "Based on my search..."),
+            _ => panic!("expected Text"),
+        }
     }
 
     #[test]

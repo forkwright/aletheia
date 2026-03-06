@@ -1,6 +1,9 @@
-//! Web research tools: web_search (Brave Search API) and web_fetch (HTTP GET).
+//! Web research tools: web_fetch (HTTP GET to text).
+//!
+//! Web search is now handled by Anthropic's server-side `web_search` tool,
+//! configured via `NousConfig.server_tools`. This module only provides
+//! `web_fetch` for direct URL retrieval.
 
-use std::fmt::Write as _;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -20,117 +23,6 @@ fn require_services(ctx: &ToolContext) -> std::result::Result<&crate::types::Too
     ctx.services
         .as_deref()
         .ok_or_else(|| ToolResult::error("tool services not configured"))
-}
-
-// --- web_search ---
-
-struct WebSearchExecutor;
-
-impl ToolExecutor for WebSearchExecutor {
-    fn execute<'a>(
-        &'a self,
-        input: &'a ToolInput,
-        ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
-        Box::pin(async {
-            let services = match require_services(ctx) {
-                Ok(s) => s,
-                Err(r) => return Ok(r),
-            };
-
-            let query = extract_str(&input.arguments, "query", &input.name)?;
-            let count = extract_opt_u64(&input.arguments, "count")
-                .unwrap_or(10)
-                .min(20);
-
-            let api_key = match std::env::var("BRAVE_API_KEY") {
-                Ok(key) if !key.is_empty() => key,
-                _ => {
-                    return Ok(ToolResult::error(
-                        "BRAVE_API_KEY environment variable not set. \
-                         Set it to use web_search.",
-                    ))
-                }
-            };
-
-            let url = format!(
-                "https://api.search.brave.com/res/v1/web/search?q={}&count={count}",
-                urlencoding(query)
-            );
-
-            let response = services
-                .http_client
-                .get(&url)
-                .header("X-Subscription-Token", &api_key)
-                .header("Accept", "application/json")
-                .send()
-                .await;
-
-            let response = match response {
-                Ok(r) => r,
-                Err(e) => return Ok(ToolResult::error(format!("search request failed: {e}"))),
-            };
-
-            if !response.status().is_success() {
-                return Ok(ToolResult::error(format!(
-                    "search API returned status {}",
-                    response.status()
-                )));
-            }
-
-            let body: serde_json::Value = match response.json().await {
-                Ok(v) => v,
-                Err(e) => return Ok(ToolResult::error(format!("failed to parse response: {e}"))),
-            };
-
-            let results = body
-                .get("web")
-                .and_then(|w| w.get("results"))
-                .and_then(|r| r.as_array());
-
-            let Some(results) = results else {
-                return Ok(ToolResult::text("No results found."));
-            };
-
-            let mut output = String::new();
-            for (i, result) in results.iter().enumerate() {
-                let title = result.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                let url = result.get("url").and_then(|v| v.as_str()).unwrap_or("");
-                let desc = result
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                if i > 0 {
-                    output.push_str("\n\n");
-                }
-                let _ = write!(output, "{title}\n{url}\n{desc}");
-            }
-
-            if output.is_empty() {
-                Ok(ToolResult::text("No results found."))
-            } else {
-                Ok(ToolResult::text(output))
-            }
-        })
-    }
-}
-
-/// Minimal URL encoding for query parameters.
-fn urlencoding(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                result.push(b as char);
-            }
-            b' ' => result.push('+'),
-            _ => {
-                result.push('%');
-                let _ = write!(result, "{b:02X}");
-            }
-        }
-    }
-    result
 }
 
 // --- web_fetch ---
@@ -229,7 +121,6 @@ fn strip_html_tags(html: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'<' {
-            // Check for script/style open/close
             if i + 7 < lower_bytes.len() && &lower_bytes[i..i + 7] == b"<script" {
                 in_script = true;
             }
@@ -255,7 +146,6 @@ fn strip_html_tags(html: &str) -> String {
 
         if bytes[i] == b'>' {
             in_tag = false;
-            // Insert space after closing tags to separate content
             if !last_was_whitespace && !result.is_empty() {
                 result.push(' ');
                 last_was_whitespace = true;
@@ -319,41 +209,7 @@ fn strip_html_tags(html: &str) -> String {
     result.trim().to_owned()
 }
 
-// --- Definitions ---
-
-fn web_search_def() -> ToolDef {
-    ToolDef {
-        name: ToolName::new("web_search").expect("valid tool name"),
-        description: "Search the web using Brave Search. Returns titles, URLs, and descriptions."
-            .to_owned(),
-        extended_description: None,
-        input_schema: InputSchema {
-            properties: IndexMap::from([
-                (
-                    "query".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Search query".to_owned(),
-                        enum_values: None,
-                        default: None,
-                    },
-                ),
-                (
-                    "count".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::Number,
-                        description: "Number of results (default: 10, max: 20)".to_owned(),
-                        enum_values: None,
-                        default: Some(serde_json::json!(10)),
-                    },
-                ),
-            ]),
-            required: vec!["query".to_owned()],
-        },
-        category: ToolCategory::Research,
-        auto_activate: false,
-    }
-}
+// --- Definition ---
 
 fn web_fetch_def() -> ToolDef {
     ToolDef {
@@ -392,7 +248,6 @@ fn web_fetch_def() -> ToolDef {
 }
 
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(web_search_def(), Box::new(WebSearchExecutor))?;
     registry.register(web_fetch_def(), Box::new(WebFetchExecutor))?;
     Ok(())
 }
@@ -419,6 +274,8 @@ mod tests {
                 messenger: None,
                 note_store: None,
                 blackboard_store: None,
+                spawn: None,
+                planning: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: vec![],
             })),
@@ -455,44 +312,10 @@ mod tests {
     }
 
     #[test]
-    fn urlencoding_basic() {
-        assert_eq!(urlencoding("hello world"), "hello+world");
-        assert_eq!(urlencoding("a&b=c"), "a%26b%3Dc");
-        assert_eq!(urlencoding("simple"), "simple");
-    }
-
-    #[test]
-    fn web_search_def_is_lazy() {
-        let def = web_search_def();
-        assert!(!def.auto_activate);
-        assert_eq!(def.category, ToolCategory::Research);
-    }
-
-    #[test]
     fn web_fetch_def_is_lazy() {
         let def = web_fetch_def();
         assert!(!def.auto_activate);
         assert_eq!(def.category, ToolCategory::Research);
-    }
-
-    #[tokio::test]
-    async fn web_search_missing_api_key() {
-        // This test relies on BRAVE_API_KEY not being set or being empty
-        // in the CI/test environment. The executor checks for empty string.
-        let ctx = test_ctx();
-        let executor = WebSearchExecutor;
-        let input = ToolInput {
-            name: ToolName::new("web_search").expect("valid"),
-            tool_use_id: "toolu_1".to_owned(),
-            arguments: serde_json::json!({"query": "test"}),
-        };
-
-        let result = executor.execute(&input, &ctx).await.expect("execute");
-        // Either BRAVE_API_KEY is not set (error) or is set and makes a real request.
-        // In CI, it won't be set, so this tests the error path.
-        if result.is_error {
-            assert!(result.content.text_summary().contains("BRAVE_API_KEY"));
-        }
     }
 
     #[tokio::test]

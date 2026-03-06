@@ -12,7 +12,7 @@ pub mod filesystem;
 pub mod memory;
 /// Planning project management tools (create, status, execute, verify).
 pub mod planning;
-/// Web research tools (web_search, web_fetch).
+/// Web research tools (web_fetch). Web search uses Anthropic server-side tools.
 pub mod research;
 /// File viewing with multimodal support (images, PDFs, text).
 pub mod view_file;

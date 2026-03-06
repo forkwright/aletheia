@@ -116,6 +116,21 @@ pub enum ContentBlock {
         #[serde(skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
     },
+
+    /// Server-side tool use (informational, not dispatched locally).
+    #[serde(rename = "server_tool_use")]
+    ServerToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+
+    /// Server-side web search tool result (opaque, round-tripped verbatim).
+    #[serde(rename = "web_search_tool_result")]
+    WebSearchToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
+    },
 }
 
 /// Tool result content — simple text or rich content blocks.
@@ -203,6 +218,28 @@ pub struct DocumentSource {
     pub media_type: String,
     /// Base64-encoded PDF data.
     pub data: String,
+}
+
+/// A server-side tool definition (runs on the API provider's infrastructure).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerToolDefinition {
+    /// Server tool type identifier (e.g., `"web_search_20250305"`).
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    /// Display name.
+    pub name: String,
+    /// Maximum uses per turn.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_uses: Option<u32>,
+    /// Allowed domains for web search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_domains: Option<Vec<String>>,
+    /// Blocked domains for web search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_domains: Option<Vec<String>>,
+    /// User location hint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_location: Option<serde_json::Value>,
 }
 
 /// A tool definition.
@@ -301,8 +338,10 @@ pub struct CompletionRequest {
     pub messages: Vec<Message>,
     /// Maximum output tokens.
     pub max_tokens: u32,
-    /// Available tools.
+    /// Available user-defined tools.
     pub tools: Vec<ToolDefinition>,
+    /// Server-side tools (e.g., web search) that execute on the provider's infrastructure.
+    pub server_tools: Vec<ServerToolDefinition>,
     /// Temperature (0.0–1.0).
     pub temperature: Option<f32>,
     /// Whether to enable extended thinking.
@@ -329,6 +368,7 @@ impl Default for CompletionRequest {
             messages: Vec::new(),
             max_tokens: 4096,
             tools: Vec::new(),
+            server_tools: Vec::new(),
             temperature: None,
             thinking: None,
             stop_sequences: Vec::new(),
@@ -681,12 +721,73 @@ mod tests {
     }
 
     #[test]
+    fn server_tool_use_block_serde() {
+        let block = ContentBlock::ServerToolUse {
+            id: "srvtoolu_123".to_owned(),
+            name: "web_search".to_owned(),
+            input: serde_json::json!({"query": "rust async"}),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        assert!(json.contains("server_tool_use"));
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        match back {
+            ContentBlock::ServerToolUse { id, name, input } => {
+                assert_eq!(id, "srvtoolu_123");
+                assert_eq!(name, "web_search");
+                assert_eq!(input["query"], "rust async");
+            }
+            _ => panic!("expected ServerToolUse"),
+        }
+    }
+
+    #[test]
+    fn web_search_tool_result_block_serde() {
+        let block = ContentBlock::WebSearchToolResult {
+            tool_use_id: "srvtoolu_123".to_owned(),
+            content: serde_json::json!([
+                {"type": "web_search_result", "url": "https://example.com", "title": "Example", "encrypted_content": "abc"}
+            ]),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        assert!(json.contains("web_search_tool_result"));
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        match back {
+            ContentBlock::WebSearchToolResult {
+                tool_use_id,
+                content,
+            } => {
+                assert_eq!(tool_use_id, "srvtoolu_123");
+                assert!(content.is_array());
+            }
+            _ => panic!("expected WebSearchToolResult"),
+        }
+    }
+
+    #[test]
+    fn server_tool_definition_serde() {
+        let def = ServerToolDefinition {
+            tool_type: "web_search_20250305".to_owned(),
+            name: "web_search".to_owned(),
+            max_uses: Some(5),
+            allowed_domains: None,
+            blocked_domains: None,
+            user_location: None,
+        };
+        let json = serde_json::to_string(&def).unwrap();
+        assert!(json.contains("web_search_20250305"));
+        let back: ServerToolDefinition = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.tool_type, "web_search_20250305");
+        assert_eq!(back.max_uses, Some(5));
+    }
+
+    #[test]
     fn completion_request_default() {
         let req = CompletionRequest::default();
         assert!(req.model.is_empty());
         assert!(req.system.is_none());
         assert!(req.messages.is_empty());
         assert_eq!(req.max_tokens, 4096);
+        assert!(req.server_tools.is_empty());
         assert!(!req.cache_system);
         assert!(!req.cache_tools);
         assert!(req.tool_choice.is_none());

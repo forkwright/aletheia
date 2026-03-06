@@ -72,6 +72,7 @@ impl SpawnService for SpawnServiceImpl {
             max_tool_iterations: 25,
             loop_detection_threshold: 3,
             domains: Vec::new(),
+            server_tools: Vec::new(),
         };
 
         let pipeline_config = PipelineConfig {
@@ -199,6 +200,10 @@ mod tests {
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
         fn name(&self) -> &str {
             "mock"
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 
@@ -333,6 +338,10 @@ mod tests {
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
         fn name(&self) -> &str {
             "slow"
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 }

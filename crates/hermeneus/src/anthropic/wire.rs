@@ -19,7 +19,7 @@ pub(crate) struct WireRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<WireTool<'a>>,
+    pub tools: Vec<WireToolEntry<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -49,6 +49,28 @@ pub(crate) struct WireTool<'a> {
     pub input_schema: &'a serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<CacheControl>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WireServerTool<'a> {
+    #[serde(rename = "type")]
+    pub tool_type: &'a str,
+    pub name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_uses: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_domains: Option<&'a [String]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_domains: Option<&'a [String]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_location: Option<&'a serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub(crate) enum WireToolEntry<'a> {
+    UserDefined(WireTool<'a>),
+    ServerSide(WireServerTool<'a>),
 }
 
 #[derive(Debug, Serialize)]
@@ -102,6 +124,17 @@ pub(crate) enum WireContentBlock {
     },
     #[serde(rename = "thinking")]
     Thinking { thinking: String, signature: String },
+    #[serde(rename = "server_tool_use")]
+    ServerToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename = "web_search_tool_result")]
+    WebSearchToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -168,25 +201,36 @@ impl<'a> WireRequest<'a> {
             })
             .collect();
 
-        let tool_count = req.tools.len();
-        let tools: Vec<WireTool<'a>> = req
+        let user_tool_count = req.tools.len();
+        let mut tools: Vec<WireToolEntry<'a>> = req
             .tools
             .iter()
             .enumerate()
             .map(|(i, t)| {
-                let cache_control = if req.cache_tools && i == tool_count - 1 {
+                let cache_control = if req.cache_tools && i == user_tool_count - 1 {
                     Some(CacheControl::ephemeral())
                 } else {
                     None
                 };
-                WireTool {
+                WireToolEntry::UserDefined(WireTool {
                     name: &t.name,
                     description: &t.description,
                     input_schema: &t.input_schema,
                     cache_control,
-                }
+                })
             })
             .collect();
+
+        for st in &req.server_tools {
+            tools.push(WireToolEntry::ServerSide(WireServerTool {
+                tool_type: &st.tool_type,
+                name: &st.name,
+                max_uses: st.max_uses,
+                allowed_domains: st.allowed_domains.as_deref(),
+                blocked_domains: st.blocked_domains.as_deref(),
+                user_location: st.user_location.as_ref(),
+            }));
+        }
 
         let thinking = req.thinking.as_ref().and_then(|tc| {
             if tc.enabled {
@@ -255,6 +299,16 @@ impl WireContentBlock {
             } => ContentBlock::Thinking {
                 thinking,
                 signature: Some(signature),
+            },
+            Self::ServerToolUse { id, name, input } => {
+                ContentBlock::ServerToolUse { id, name, input }
+            }
+            Self::WebSearchToolResult {
+                tool_use_id,
+                content,
+            } => ContentBlock::WebSearchToolResult {
+                tool_use_id,
+                content,
             },
         }
     }
@@ -328,6 +382,10 @@ pub(crate) enum WireContentBlockStart {
     ToolUse { id: String, name: String },
     #[serde(rename = "thinking")]
     Thinking { thinking: String },
+    #[serde(rename = "server_tool_use")]
+    ServerToolUse { id: String, name: String },
+    #[serde(rename = "web_search_tool_result")]
+    WebSearchToolResult { tool_use_id: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -786,6 +844,134 @@ mod tests {
             }
             _ => panic!("expected Thinking"),
         }
+    }
+
+    #[test]
+    fn wire_request_mixed_user_and_server_tools() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("search for rust".to_owned()),
+            }],
+            max_tokens: 1024,
+            tools: vec![ToolDefinition {
+                name: "read".to_owned(),
+                description: "Read a file".to_owned(),
+                input_schema: serde_json::json!({"type": "object"}),
+            }],
+            server_tools: vec![crate::types::ServerToolDefinition {
+                tool_type: "web_search_20250305".to_owned(),
+                name: "web_search".to_owned(),
+                max_uses: Some(5),
+                allowed_domains: None,
+                blocked_domains: None,
+                user_location: None,
+            }],
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        // First: user-defined tool (has input_schema)
+        assert_eq!(tools[0]["name"], "read");
+        assert!(tools[0].get("input_schema").is_some());
+        assert!(tools[0].get("type").is_none());
+        // Second: server-side tool (has type, no input_schema)
+        assert_eq!(tools[1]["type"], "web_search_20250305");
+        assert_eq!(tools[1]["name"], "web_search");
+        assert_eq!(tools[1]["max_uses"], 5);
+        assert!(tools[1].get("input_schema").is_none());
+    }
+
+    #[test]
+    fn wire_content_block_server_tool_use() {
+        let json = r#"{"type":"server_tool_use","id":"srvtoolu_123","name":"web_search","input":{"query":"rust async"}}"#;
+        let block: WireContentBlock = serde_json::from_str(json).unwrap();
+        let converted = block.into_content_block();
+        match converted {
+            ContentBlock::ServerToolUse { id, name, input } => {
+                assert_eq!(id, "srvtoolu_123");
+                assert_eq!(name, "web_search");
+                assert_eq!(input["query"], "rust async");
+            }
+            _ => panic!("expected ServerToolUse"),
+        }
+    }
+
+    #[test]
+    fn wire_content_block_web_search_tool_result() {
+        let json = r#"{"type":"web_search_tool_result","tool_use_id":"srvtoolu_123","content":[{"type":"web_search_result","url":"https://example.com","title":"Example","encrypted_content":"abc"}]}"#;
+        let block: WireContentBlock = serde_json::from_str(json).unwrap();
+        let converted = block.into_content_block();
+        match converted {
+            ContentBlock::WebSearchToolResult {
+                tool_use_id,
+                content,
+            } => {
+                assert_eq!(tool_use_id, "srvtoolu_123");
+                assert!(content.is_array());
+            }
+            _ => panic!("expected WebSearchToolResult"),
+        }
+    }
+
+    #[test]
+    fn wire_response_with_server_tool_blocks() {
+        let json = r#"{
+            "id": "msg_srv",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": {"query": "test"}},
+                {"type": "web_search_tool_result", "tool_use_id": "srvtoolu_1", "content": []},
+                {"type": "text", "text": "Based on my search..."}
+            ],
+            "model": "claude-opus-4-20250514",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 5}
+        }"#;
+        let resp: WireResponse = serde_json::from_str(json).unwrap();
+        let converted = resp.into_response().unwrap();
+        assert_eq!(converted.content.len(), 3);
+        assert!(matches!(&converted.content[0], ContentBlock::ServerToolUse { .. }));
+        assert!(matches!(&converted.content[1], ContentBlock::WebSearchToolResult { .. }));
+        assert!(matches!(&converted.content[2], ContentBlock::Text { .. }));
+    }
+
+    #[test]
+    fn wire_request_cache_tools_only_on_user_tools() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            tools: vec![ToolDefinition {
+                name: "read".to_owned(),
+                description: "Read".to_owned(),
+                input_schema: serde_json::json!({}),
+            }],
+            server_tools: vec![crate::types::ServerToolDefinition {
+                tool_type: "web_search_20250305".to_owned(),
+                name: "web_search".to_owned(),
+                max_uses: Some(5),
+                allowed_domains: None,
+                blocked_domains: None,
+                user_location: None,
+            }],
+            cache_tools: true,
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        // cache_control on last user-defined tool
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        // server tool has no cache_control
+        assert!(tools[1].get("cache_control").is_none());
     }
 
     #[test]

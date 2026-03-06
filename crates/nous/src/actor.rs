@@ -316,6 +316,9 @@ impl NousActor {
             workspace: self.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.oikos.root().to_path_buf()],
             services: self.tool_services.clone(),
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
         };
 
         crate::pipeline::run_pipeline(
