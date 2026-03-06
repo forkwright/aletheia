@@ -80,7 +80,7 @@ utoipa = { version = "5", features = ["axum_extras"] }
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace", "limit", "set-header", "fs"] }
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+axum-server = { version = "0.8", features = ["tls-rustls"] }
 
 # Secrets
 secrecy = { version = "0.10", features = ["serde"] }
