@@ -1,4 +1,6 @@
 /// App action methods — message sending, tab completion, scroll state, cursor helpers.
+use tracing::Instrument;
+
 use crate::api::streaming;
 use crate::app::App;
 use crate::state::{ChatMessage, SavedScrollState, TabCompletion};
@@ -15,11 +17,12 @@ impl App {
                 let client = self.client.clone();
                 let session_id = session_id.clone();
                 let text = text.to_string();
+                let span = tracing::info_span!("queue_message");
                 tokio::spawn(async move {
                     if let Err(e) = client.queue_message(&session_id, &text).await {
                         tracing::error!("failed to queue message: {e}");
                     }
-                });
+                }.instrument(span));
             }
             return;
         }

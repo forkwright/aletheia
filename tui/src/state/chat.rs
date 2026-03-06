@@ -17,6 +17,7 @@ pub struct ChatMessage {
     pub text: String,
     pub timestamp: Option<String>,
     pub model: Option<String>,
+    #[expect(dead_code, reason = "set during streaming, used for future rendering")]
     pub is_streaming: bool,
     pub tool_calls: Vec<ToolCallInfo>,
 }

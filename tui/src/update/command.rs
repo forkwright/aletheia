@@ -27,8 +27,12 @@ pub fn handle_input(app: &mut App, c: char) {
 
 pub fn handle_backspace(app: &mut App) {
     if app.command_palette.cursor > 0 {
-        app.command_palette.cursor -= 1;
-        app.command_palette.input.remove(app.command_palette.cursor);
+        let mut prev = app.command_palette.cursor - 1;
+        while prev > 0 && !app.command_palette.input.is_char_boundary(prev) {
+            prev -= 1;
+        }
+        app.command_palette.input.remove(prev);
+        app.command_palette.cursor = prev;
         refresh_suggestions(app);
         app.command_palette.selected = 0;
     } else {
@@ -245,7 +249,7 @@ async fn execute_recall(app: &mut App, query: &str) {
     match client.recall(&nous_id, &query).await {
         Ok(result) => {
             let display = if result.len() > 200 {
-                format!("{}...", &result[..200])
+                format!("{}...", safe_truncate(&result, 200))
             } else {
                 result
             };
@@ -255,4 +259,15 @@ async fn execute_recall(app: &mut App, query: &str) {
             app.error_toast = Some(ErrorToast::new(format!("Recall failed: {e}")));
         }
     }
+}
+
+fn safe_truncate(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
 }

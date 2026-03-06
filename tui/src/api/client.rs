@@ -4,13 +4,23 @@ use reqwest::{Client, Response, StatusCode};
 use super::types::*;
 
 /// HTTP client for the Aletheia gateway REST API.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ApiClient {
     client: Client,
     base_url: String,
     token: Option<String>,
 }
 
+impl std::fmt::Debug for ApiClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ApiClient")
+            .field("base_url", &self.base_url)
+            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .finish_non_exhaustive()
+    }
+}
+
+#[expect(dead_code, reason = "API surface for auth, sessions, and admin operations")]
 impl ApiClient {
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
         let client = Client::builder()
@@ -334,17 +344,17 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Check a response for 401 and return a typed error.
     fn check_auth(resp: &Response) -> Result<()> {
-        if resp.status() == StatusCode::UNAUTHORIZED {
-            anyhow::bail!("UNAUTHORIZED: token expired or invalid");
+        if resp.status() == StatusCode::UNAUTHORIZED
+            || resp.status() == StatusCode::FORBIDDEN
+        {
+            return Err(AuthError.into());
         }
         Ok(())
     }
 
-    /// Returns true if the error message indicates an auth failure (401).
     pub fn is_auth_error(err: &anyhow::Error) -> bool {
-        format!("{err}").contains("UNAUTHORIZED")
+        err.downcast_ref::<AuthError>().is_some()
     }
 
     /// Get the raw reqwest client for SSE/streaming (they manage their own connections)
@@ -352,3 +362,14 @@ impl ApiClient {
         &self.client
     }
 }
+
+#[derive(Debug)]
+struct AuthError;
+
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "authentication failed: token expired or invalid")
+    }
+}
+
+impl std::error::Error for AuthError {}
