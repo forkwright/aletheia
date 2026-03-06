@@ -139,6 +139,10 @@ impl Display for AccessLevel {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Insufficient access to relation '{0}' for {1} (current level: {2})")]
+pub(crate) struct InsufficientAccessLevel(pub(crate) String, pub(crate) String, pub(crate) AccessLevel);
+
 #[derive(Debug, Snafu)]
 #[snafu(display("Arity mismatch for stored relation {name}: expect {expect_arity}, got {actual_arity}"))]
 struct StoredRelArityMismatch {

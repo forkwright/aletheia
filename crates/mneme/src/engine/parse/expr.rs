@@ -103,7 +103,7 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
             }
         }
         Expr::UnboundApply { op, span, .. } => {
-            bail!(NoImplementationError { span: *span, op: op.to_string() });
+            bail!(NoImplementationError(*span, op.to_string()));
         }
     }
     Ok(())

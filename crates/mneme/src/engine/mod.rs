@@ -34,8 +34,11 @@ pub(crate) type DbInstance = crate::engine::runtime::db::Db<crate::engine::stora
 pub(crate) mod data;
 pub(crate) mod fixed_rule;
 pub(crate) mod fts;
+#[allow(clippy::all, clippy::restriction, unused_assignments)]
 pub(crate) mod parse;
+#[allow(clippy::all, clippy::restriction, unused_assignments)]
 pub(crate) mod query;
+#[allow(clippy::all, clippy::restriction, unused_assignments)]
 pub(crate) mod runtime;
 pub(crate) mod storage;
 pub(crate) mod utils;
