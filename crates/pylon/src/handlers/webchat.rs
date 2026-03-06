@@ -13,10 +13,13 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{instrument, warn};
 
+use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
+use aletheia_nous::stream::TurnStreamEvent;
+
 use crate::error::{ApiError, BadRequestSnafu, NousNotFoundSnafu};
 use crate::extract::OptionalClaims;
 use crate::state::AppState;
-use crate::stream::{WebchatEvent, emit_webchat_events};
+use crate::stream::{TurnOutcome, WebchatEvent};
 
 // --- POST /api/sessions/stream ---
 
@@ -73,6 +76,7 @@ async fn store_message(
     .map_err(ApiError::from)
 }
 
+#[expect(clippy::too_many_lines, reason = "streaming bridge setup is inherently sequential")]
 #[instrument(skip(state, _claims, body), fields(agent_id = %body.agent_id))]
 pub async fn stream(
     State(state): State<Arc<AppState>>,
@@ -112,9 +116,10 @@ pub async fn stream(
     store_message(&state, &session_id, aletheia_mneme::types::Role::User, &message, 0).await?;
 
     let turn_id = ulid::Ulid::new().to_string();
-    let (tx, rx) = mpsc::channel::<WebchatEvent>(32);
+    let (webchat_tx, webchat_rx) = mpsc::channel::<WebchatEvent>(32);
+    let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
 
-    let _ = tx
+    let _ = webchat_tx
         .send(WebchatEvent::TurnStart {
             session_id: session_id.clone(),
             nous_id: agent_id.clone(),
@@ -125,16 +130,82 @@ pub async fn stream(
     let sid = session_id;
     let aid = agent_id;
 
+    // Bridge nous stream events to webchat events in real-time
+    let bridge_tx = webchat_tx.clone();
     tokio::spawn(async move {
-        match handle.send_turn(&session_key, &message).await {
+        while let Some(event) = nous_rx.recv().await {
+            let webchat_event = match event {
+                TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
+                    WebchatEvent::TextDelta { text }
+                }
+                TurnStreamEvent::LlmDelta(LlmStreamEvent::ThinkingDelta { thinking }) => {
+                    WebchatEvent::ThinkingDelta { text: thinking }
+                }
+                TurnStreamEvent::ToolStart {
+                    tool_id,
+                    tool_name,
+                    input,
+                } => WebchatEvent::ToolStart {
+                    tool_name,
+                    tool_id,
+                    input,
+                },
+                TurnStreamEvent::ToolResult {
+                    tool_id,
+                    tool_name,
+                    result,
+                    is_error,
+                    duration_ms,
+                } => WebchatEvent::ToolResult {
+                    tool_name,
+                    tool_id,
+                    result,
+                    is_error,
+                    duration_ms,
+                },
+                _ => continue,
+            };
+            if bridge_tx.send(webchat_event).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Run the turn and emit completion event
+    tokio::spawn(async move {
+        match handle
+            .send_turn_streaming(&session_key, &message, nous_tx)
+            .await
+        {
             Ok(result) => {
-                emit_webchat_events(&tx, &result, &sid, &aid, model.as_deref()).await;
                 let token_estimate = i64::try_from(result.usage.output_tokens).unwrap_or(0);
-                let _ = store_message(&state, &sid, aletheia_mneme::types::Role::Assistant, &result.content, token_estimate).await;
+                let _ = webchat_tx
+                    .send(WebchatEvent::TurnComplete {
+                        outcome: TurnOutcome {
+                            text: result.content.clone(),
+                            nous_id: aid,
+                            session_id: sid.clone(),
+                            model,
+                            tool_calls: result.tool_calls.len(),
+                            input_tokens: result.usage.input_tokens,
+                            output_tokens: result.usage.output_tokens,
+                            cache_read_tokens: result.usage.cache_read_tokens,
+                            cache_write_tokens: result.usage.cache_write_tokens,
+                        },
+                    })
+                    .await;
+                let _ = store_message(
+                    &state,
+                    &sid,
+                    aletheia_mneme::types::Role::Assistant,
+                    &result.content,
+                    token_estimate,
+                )
+                .await;
             }
             Err(err) => {
                 warn!(error = %err, "turn failed");
-                let _ = tx
+                let _ = webchat_tx
                     .send(WebchatEvent::Error {
                         message: err.to_string(),
                     })
@@ -143,7 +214,7 @@ pub async fn stream(
         }
     });
 
-    let stream = ReceiverStream::new(rx).map(|event| {
+    let stream = ReceiverStream::new(webchat_rx).map(|event| {
         let data = serde_json::to_string(&event).unwrap_or_default();
         Ok(Event::default().event(event.event_type()).data(data))
     });
