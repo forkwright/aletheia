@@ -223,7 +223,9 @@ impl TaskRunner {
                 continue;
             }
 
-            // Clone action/nous_id to release borrow on self before calling methods.
+            // Clone action and nous_id to release the borrow on self.tasks before
+            // calling self.execute_action (which needs &self). TaskAction contains
+            // heap data (String, Value) so Copy is not possible.
             let action = self.tasks[i].def.action.clone();
             let nous_id = self.tasks[i].def.nous_id.clone();
 
