@@ -865,11 +865,12 @@ mod tests {
     // --- run_pipeline ---
 
     #[tokio::test]
-    #[expect(clippy::too_many_lines, reason = "pipeline integration test requires full setup")]
+    #[expect(clippy::too_many_lines, reason = "integration test with full pipeline setup")]
     async fn run_pipeline_simple() {
+        use std::collections::HashSet;
         use std::fs;
         use std::path::PathBuf;
-        use std::sync::Mutex;
+        use std::sync::{Arc, Mutex, RwLock};
 
         use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
         use aletheia_hermeneus::types::{
@@ -946,6 +947,7 @@ mod tests {
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         };
 
         let session = crate::session::SessionState::new(

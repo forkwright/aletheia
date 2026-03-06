@@ -212,8 +212,6 @@ pub async fn execute(
         None
     };
 
-    let tool_defs = tools.to_hermeneus_tools();
-
     loop {
         iterations += 1;
 
@@ -222,12 +220,20 @@ pub async fn execute(
             break;
         }
 
+        // Rebuild tool list each iteration so enable_tool activations take effect
+        let active = tool_ctx
+            .active_tools
+            .read()
+            .expect("active_tools lock")
+            .clone();
+        let tool_defs = tools.to_hermeneus_tools_filtered(&active);
+
         let request = CompletionRequest {
             model: config.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.max_output_tokens,
-            tools: tool_defs.clone(),
+            tools: tool_defs,
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
@@ -577,10 +583,11 @@ pub async fn execute_streaming(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::future::Future;
     use std::path::PathBuf;
     use std::pin::Pin;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex, RwLock};
 
     use aletheia_hermeneus::provider::ProviderRegistry;
     use aletheia_hermeneus::types::{
@@ -687,6 +694,7 @@ mod tests {
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 

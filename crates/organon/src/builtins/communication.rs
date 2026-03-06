@@ -169,7 +169,7 @@ fn message_def() -> ToolDef {
             required: vec!["to".to_owned(), "text".to_owned()],
         },
         category: ToolCategory::Communication,
-        auto_activate: false,
+        auto_activate: true,
     }
 }
 
@@ -220,7 +220,7 @@ fn sessions_ask_def() -> ToolDef {
             required: vec!["agentId".to_owned(), "message".to_owned()],
         },
         category: ToolCategory::Communication,
-        auto_activate: false,
+        auto_activate: true,
     }
 }
 
@@ -262,7 +262,7 @@ fn sessions_send_def() -> ToolDef {
             required: vec!["agentId".to_owned(), "message".to_owned()],
         },
         category: ToolCategory::Communication,
-        auto_activate: false,
+        auto_activate: true,
     }
 }
 
@@ -272,6 +272,9 @@ mod tests {
     use std::path::PathBuf;
     use std::pin::Pin;
     use std::sync::{Arc, Mutex};
+
+    use std::collections::HashSet;
+    use std::sync::RwLock;
 
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
@@ -285,6 +288,7 @@ mod tests {
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -295,6 +299,7 @@ mod tests {
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: Some(Arc::new(services)),
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -444,6 +449,7 @@ mod tests {
             note_store: None,
             blackboard_store: None,
             http_client: reqwest::Client::new(),
+            lazy_tool_catalog: vec![],
             messenger: Some(messenger),
         });
         let mut reg = ToolRegistry::new();
@@ -467,6 +473,7 @@ mod tests {
             note_store: None,
             blackboard_store: None,
             http_client: reqwest::Client::new(),
+            lazy_tool_catalog: vec![],
             messenger: Some(messenger),
         });
         let mut reg = ToolRegistry::new();
@@ -497,6 +504,7 @@ mod tests {
                     note_store: None,
             blackboard_store: None,
             http_client: reqwest::Client::new(),
+            lazy_tool_catalog: vec![],
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -527,6 +535,7 @@ mod tests {
                     note_store: None,
             blackboard_store: None,
             http_client: reqwest::Client::new(),
+            lazy_tool_catalog: vec![],
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -552,6 +561,7 @@ mod tests {
                     note_store: None,
             blackboard_store: None,
             http_client: reqwest::Client::new(),
+            lazy_tool_catalog: vec![],
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -575,6 +585,7 @@ mod tests {
                     note_store: None,
             blackboard_store: None,
             http_client: reqwest::Client::new(),
+            lazy_tool_catalog: vec![],
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");

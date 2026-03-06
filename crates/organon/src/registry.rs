@@ -1,5 +1,6 @@
 //! Tool registry — the single source of truth for available tools.
 
+use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Instant;
@@ -131,11 +132,46 @@ impl ToolRegistry {
             })
             .collect()
     }
+
+    /// Convert tools to LLM wire format, filtered by activation state.
+    ///
+    /// Includes tools where:
+    /// - `auto_activate == true` (always-on essentials)
+    /// - name is in the `active` set (dynamically activated via `enable_tool`)
+    /// - name is `enable_tool` (always available so agents can activate more)
+    pub fn to_hermeneus_tools_filtered(
+        &self,
+        active: &HashSet<ToolName>,
+    ) -> Vec<aletheia_hermeneus::types::ToolDefinition> {
+        self.tools
+            .values()
+            .filter(|t| {
+                t.def.auto_activate
+                    || active.contains(&t.def.name)
+                    || t.def.name.as_str() == "enable_tool"
+            })
+            .map(|t| aletheia_hermeneus::types::ToolDefinition {
+                name: t.def.name.as_str().to_owned(),
+                description: t.def.description.clone(),
+                input_schema: t.def.input_schema.to_json_schema(),
+            })
+            .collect()
+    }
+
+    /// Catalog of lazy tools (`auto_activate=false`) for the `enable_tool` executor.
+    #[must_use]
+    pub fn lazy_tool_catalog(&self) -> Vec<(ToolName, String)> {
+        self.tools
+            .values()
+            .filter(|t| !t.def.auto_activate && t.def.name.as_str() != "enable_tool")
+            .map(|t| (t.def.name.clone(), t.def.description.clone()))
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, RwLock};
 
     use aletheia_koina::id::{NousId, SessionId};
 
@@ -168,6 +204,7 @@ mod tests {
             workspace: std::path::PathBuf::from("/tmp/test"),
             allowed_roots: vec![std::path::PathBuf::from("/tmp")],
             services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -363,5 +400,117 @@ mod tests {
 
         let id = captured.lock().expect("lock").clone();
         assert_eq!(id.as_deref(), Some("test-agent"));
+    }
+
+    fn test_def_with_activate(name: &str, category: ToolCategory, auto_activate: bool) -> ToolDef {
+        ToolDef {
+            name: ToolName::new(name).expect("valid"),
+            description: format!("Test tool: {name}"),
+            extended_description: None,
+            input_schema: InputSchema {
+                properties: IndexMap::new(),
+                required: vec![],
+            },
+            category,
+            auto_activate,
+        }
+    }
+
+    #[test]
+    fn filtered_tools_respects_auto_activate() {
+        let mut reg = ToolRegistry::new();
+        let (e1, _) = mock_executor("ok");
+        let (e2, _) = mock_executor("ok");
+        let (e3, _) = mock_executor("ok");
+        reg.register(
+            test_def_with_activate("read", ToolCategory::Workspace, true),
+            e1,
+        )
+        .expect("register");
+        reg.register(
+            test_def_with_activate("web_search", ToolCategory::Research, false),
+            e2,
+        )
+        .expect("register");
+        reg.register(
+            test_def_with_activate("enable_tool", ToolCategory::System, true),
+            e3,
+        )
+        .expect("register");
+
+        let active = HashSet::new();
+        let tools = reg.to_hermeneus_tools_filtered(&active);
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"read"));
+        assert!(names.contains(&"enable_tool"));
+        assert!(!names.contains(&"web_search"));
+    }
+
+    #[test]
+    fn filtered_tools_includes_active_set() {
+        let mut reg = ToolRegistry::new();
+        let (e1, _) = mock_executor("ok");
+        let (e2, _) = mock_executor("ok");
+        reg.register(
+            test_def_with_activate("read", ToolCategory::Workspace, true),
+            e1,
+        )
+        .expect("register");
+        reg.register(
+            test_def_with_activate("web_search", ToolCategory::Research, false),
+            e2,
+        )
+        .expect("register");
+
+        let mut active = HashSet::new();
+        active.insert(ToolName::new("web_search").expect("valid"));
+        let tools = reg.to_hermeneus_tools_filtered(&active);
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"read"));
+        assert!(names.contains(&"web_search"));
+    }
+
+    #[test]
+    fn filtered_tools_always_includes_enable_tool() {
+        let mut reg = ToolRegistry::new();
+        let (e1, _) = mock_executor("ok");
+        // enable_tool with auto_activate=false should still appear
+        reg.register(
+            test_def_with_activate("enable_tool", ToolCategory::System, false),
+            e1,
+        )
+        .expect("register");
+
+        let active = HashSet::new();
+        let tools = reg.to_hermeneus_tools_filtered(&active);
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "enable_tool");
+    }
+
+    #[test]
+    fn lazy_tool_catalog_excludes_auto_activate_and_enable_tool() {
+        let mut reg = ToolRegistry::new();
+        let (e1, _) = mock_executor("ok");
+        let (e2, _) = mock_executor("ok");
+        let (e3, _) = mock_executor("ok");
+        reg.register(
+            test_def_with_activate("read", ToolCategory::Workspace, true),
+            e1,
+        )
+        .expect("register");
+        reg.register(
+            test_def_with_activate("web_search", ToolCategory::Research, false),
+            e2,
+        )
+        .expect("register");
+        reg.register(
+            test_def_with_activate("enable_tool", ToolCategory::System, true),
+            e3,
+        )
+        .expect("register");
+
+        let catalog = reg.lazy_tool_catalog();
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].0.as_str(), "web_search");
     }
 }

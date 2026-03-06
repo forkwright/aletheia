@@ -323,7 +323,7 @@ fn mem0_search_def() -> ToolDef {
             required: vec!["query".to_owned()],
         },
         category: ToolCategory::Memory,
-        auto_activate: false,
+        auto_activate: true,
     }
 }
 
@@ -377,7 +377,7 @@ fn note_def() -> ToolDef {
             required: vec!["action".to_owned()],
         },
         category: ToolCategory::Memory,
-        auto_activate: false,
+        auto_activate: true,
     }
 }
 
@@ -428,14 +428,15 @@ fn blackboard_def() -> ToolDef {
             required: vec!["action".to_owned()],
         },
         category: ToolCategory::Memory,
-        auto_activate: false,
+        auto_activate: true,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::path::PathBuf;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, RwLock};
 
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
@@ -557,6 +558,7 @@ mod tests {
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -575,7 +577,9 @@ mod tests {
                 note_store: Some(note_store),
                 blackboard_store: Some(bb_store),
                 http_client: reqwest::Client::new(),
+                lazy_tool_catalog: vec![],
             })),
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -803,6 +807,7 @@ mod tests {
             workspace: PathBuf::from("/tmp/test"),
             allowed_roots: vec![PathBuf::from("/tmp")],
             services: ctx.services.clone(),
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
         };
         let del = ToolInput {
             name: ToolName::new("blackboard").expect("valid"),
