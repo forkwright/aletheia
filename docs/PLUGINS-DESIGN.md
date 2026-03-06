@@ -1,4 +1,16 @@
-# Plugins
+# Plugin System (Design Document)
+
+<!-- TODO: not yet implemented — planned for M5 milestone (prostheke crate, WASM host via wasmtime) -->
+
+This document describes the **planned** plugin system. It is not yet implemented in the Rust binary.
+
+**Current extension mechanism:** Domain packs via the `thesauros` crate. See [ARCHITECTURE.md](ARCHITECTURE.md) for the thesauros entry.
+
+---
+
+The design below is from the TypeScript-era plugin loader (`infrastructure/runtime/src/prostheke/`). The Rust implementation will use WASM (wasmtime) instead of JavaScript, but the lifecycle hook model is expected to carry forward.
+
+## Planned Structure
 
 Plugins hook into the agent lifecycle and register custom tools.
 

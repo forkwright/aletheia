@@ -14,36 +14,18 @@ cargo build --release
 cp target/release/aletheia ~/.local/bin/
 ```
 
-For headless or CLI-only setups, run `aletheia init` instead.
-
 ## Daily Use
 
 ```bash
-aletheia start      # start memory services + gateway
-aletheia stop       # stop gateway
-aletheia restart    # stop then start
-aletheia logs -f    # follow gateway logs
-aletheia status     # live metrics (requires running gateway)
-aletheia doctor     # validate config and connectivity
+aletheia              # start the server (gateway, agents, daemon)
+aletheia health       # check config and connectivity
+aletheia status       # agent status, sessions, cron jobs
+aletheia backup       # create a point-in-time database backup
 ```
 
-Run `aletheia help` for the full command reference.
+Run `aletheia --help` for the full command reference.
 
-## Memory Infrastructure
-
-`aletheia start` brings up Qdrant automatically if Podman or Docker is installed and `infrastructure/memory/docker-compose.yml` exists.
-
-```text
-Memory services:
-  qdrant      OK running
-  mem0        -  deprecated (replaced by embedded KnowledgeStore)
-```
-
-**macOS (native, no Docker):** `brew install qdrant` - `aletheia start` detects native services.
-
-**Linux / Docker / Podman:** Ensure Docker or Podman is running. `aletheia start` handles the rest.
-
-Skip with `aletheia start --no-memory`. Memory is now embedded via KnowledgeStore (no external sidecar needed).
+Memory (CozoDB, fastembed-rs) is embedded in the binary. No external databases, containers, or sidecars required.
 
 ## Optional: Signal Integration
 
@@ -54,4 +36,4 @@ Requires [signal-cli](https://github.com/AsamK/signal-cli) and a registered phon
 - [CONFIGURATION.md](CONFIGURATION.md) - config reference
 - [DEPLOYMENT.md](DEPLOYMENT.md) - production setup
 - [WORKSPACE_FILES.md](WORKSPACE_FILES.md) - agent workspace files
-- [PLUGINS.md](PLUGINS.md) - plugin system
+- [ARCHITECTURE.md](ARCHITECTURE.md) - system architecture and extension points

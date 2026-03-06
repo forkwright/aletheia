@@ -14,23 +14,11 @@
 | Copyright | Copyright 2022-2024 Ziyang Hu and CozoDB contributors |
 | Location | `crates/mneme/src/engine/` (behind `mneme-engine` feature gate) |
 
-### graph_builder (vendored for CozoDB transitive use)
-
-| Field | Value |
-|-------|-------|
-| Original project | graph (neo4j-labs) |
-| Original crate | graph_builder |
-| Version | 0.4.1 |
-| Source | https://github.com/neo4j-labs/graph |
-| License | MIT |
-| Copyright | Copyright (c) neo4j-labs contributors |
-| Location | `vendor/graph_builder/` (transitive dependency of CozoDB, not a workspace crate) |
+CozoDB transitively depends on `graph_builder` (0.4.1, MIT, neo4j-labs) via crates.io. It is not vendored on disk. Rayon is pinned to =1.10.0 to work around a type mismatch in `EdgeList::edges()` (graph#138).
 
 ## License Compliance
 
 Per MPL-2.0 Section 3.1, source files from CozoDB retain their original license. MPL-2.0 is compatible with Aletheia's AGPL-3.0-or-later per Section 3.3 (Secondary License). Copyright headers in absorbed source files are preserved verbatim.
-
-graph_builder is MIT-licensed. No additional compliance requirements beyond preserving the copyright notice.
 
 ## Modifications from Original
 
@@ -45,14 +33,6 @@ graph_builder is MIT-licensed. No additional compliance requirements beyond pres
 - `lib.rs` rewritten: new `Db` facade enum replacing `DbInstance`
 - `env_logger` moved to dev-dependencies
 - Absorbed into `crates/mneme/src/engine/` as a feature-gated module
-
-### graph_builder (vendor/)
-
-- `compat.rs` removed (polyfills replaced with stdlib equivalents)
-- `build.rs` removed (feature probes for pre-1.80 Rust no longer needed)
-- Unused input formats removed: dotgraph, gdl, graph500, binary
-- `adj_list.rs` removed (only CSR graphs used)
-- rayon pinned to =1.10.0 (1.11 breaks `EdgeList::edges()`)
 
 ## Upstream Status
 
@@ -70,19 +50,6 @@ graph_builder is MIT-licensed. No additional compliance requirements beyond pres
 - **#287** - env_logger in non-dev dependencies. Moved to dev-dependencies in absorption.
 
 No unmerged PRs contain fixes we need. Upstream is inactive - no divergence risk. Future CozoDB development (if any) would need manual review for cherry-pick into the engine module.
-
-### graph_builder
-
-| Field | Value |
-|-------|-------|
-| Repository | https://github.com/neo4j-labs/graph |
-| Version absorbed | 0.4.1 |
-| Upstream status | Inactive |
-
-**Relevant issues:**
-- **graph#138** - rayon 1.11 type mismatch in `EdgeList::edges()`. Pinned rayon to =1.10.0.
-
-Upstream inactive. graph_builder 0.4.1 is the final version used by CozoDB. The `graph` facade crate (0.3.1) remains a crates.io dependency for PageRank.
 
 ## Cleanup Backlog
 
