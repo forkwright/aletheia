@@ -2,8 +2,26 @@
 
 use serde_json::Value;
 
+/// Validation errors collected during config validation.
+#[derive(Debug)]
+pub struct ValidationErrors(pub Vec<String>);
+
+impl std::fmt::Display for ValidationErrors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, err) in self.0.iter().enumerate() {
+            if i > 0 {
+                writeln!(f)?;
+            }
+            write!(f, "  - {err}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for ValidationErrors {}
+
 /// Validate a config section update. Returns errors for invalid values.
-pub fn validate_section(section: &str, value: &Value) -> Result<(), Vec<String>> {
+pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationErrors> {
     let mut errors = Vec::new();
 
     match section {
@@ -18,7 +36,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), Vec<String>>
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(errors)
+        Err(ValidationErrors(errors))
     }
 }
 
@@ -124,7 +142,7 @@ mod tests {
         let section = json!({ "defaults": { "timeoutSeconds": 0 } });
         let result = validate_section("agents", &section);
         assert!(result.is_err());
-        assert!(result.unwrap_err()[0].contains("timeoutSeconds"));
+        assert!(result.unwrap_err().0[0].contains("timeoutSeconds"));
     }
 
     #[test]
