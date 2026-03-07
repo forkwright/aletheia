@@ -1,16 +1,16 @@
 # Aletheia
 
-> Self-hosted multi-agent AI system with persistent memory, Signal messaging, and a web UI.
+> Self-hosted multi-agent AI system with persistent memory and Signal messaging.
 
 Privacy-first distributed cognition. N agents + 1 human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use. Runs on commodity hardware with no cloud dependencies beyond your LLM API key.
 
-Rust workspace with 16 crates. Svelte 5 web UI. TUI client.
+Rust workspace with 16 crates. TUI client.
 
 ## Getting Started
 
 - [QUICKSTART](docs/QUICKSTART.md): Zero-to-running in 5 minutes
 - [CONFIGURATION](docs/CONFIGURATION.md): Full config reference
-- [DEPLOYMENT](docs/DEPLOYMENT.md): Production setup with systemd, Signal, memory sidecar
+- [DEPLOYMENT](docs/DEPLOYMENT.md): Production setup with systemd and Signal
 
 ## Architecture
 
@@ -45,8 +45,6 @@ Rust workspace with 16 crates. Svelte 5 web UI. TUI client.
 
 - `crates/`: Rust workspace (koina, taxis, mneme, hermeneus, organon, nous, pylon, etc.)
 - `tui/`: Terminal UI client (workspace member)
-- `ui/`: Svelte 5 web interface
-- `nous/_example/`: Template agent workspace (SOUL.md, USER.md, AGENTS.md)
-- `infrastructure/memory/`: Mem0 sidecar + Qdrant
+- `instance.example/nous/_template/`: Template agent workspace (SOUL.md, USER.md, AGENTS.md)
 - `config/`: Example gateway config
 - `.claude/rules/`: AI agent coding rules per language

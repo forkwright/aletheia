@@ -25,7 +25,7 @@ These components make **no network calls**:
 
 | Listener | Protocol | Default Port | Purpose |
 |----------|----------|-------------|---------|
-| Pylon HTTP gateway | HTTP/HTTPS | 18789 | REST API, web UI, SSE streams, OpenAPI docs, metrics |
+| Pylon HTTP gateway | HTTP/HTTPS | 18789 | REST API, SSE streams, OpenAPI docs, metrics |
 
 ---
 

@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # aletheia-backup — Create a timestamped backup of all Aletheia state.
 #
-# Backs up: config, sessions DB, agent workspaces, shared config/bin.
-# Optionally includes Qdrant and Neo4j data (--full).
+# Backs up: config, sessions DB, CozoDB, agent workspaces, shared config/bin.
 #
 # Usage:
 #   aletheia-backup              # Core backup (~50MB)
-#   aletheia-backup --full       # Core + vector/graph data (~600MB)
 #   aletheia-backup --dest /path # Custom destination
 #   aletheia-backup --list       # List existing backups
 
@@ -36,7 +34,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: aletheia-backup [--full] [--dest DIR] [--list]"
       echo ""
       echo "Options:"
-      echo "  --full   Include Qdrant + Neo4j data (~600MB vs ~50MB)"
+      echo "  --full   Include CozoDB knowledge data"
       echo "  --dest   Custom backup destination (default: $ALETHEIA_ROOT/backups)"
       echo "  --list   List existing backups"
       exit 0
@@ -108,18 +106,13 @@ if [[ -d "$ALETHEIA_ROOT/shared" ]]; then
   ln -s "$ALETHEIA_ROOT/shared" "$STAGE_DIR/shared"
 fi
 
-# Full mode: vector + graph data
+# Full mode: CozoDB knowledge data
 if $FULL; then
   mkdir -p "$STAGE_DIR/data"
-  if [[ -d "$ALETHEIA_ROOT/data/qdrant" ]]; then
-    SIZE=$(du -sh "$ALETHEIA_ROOT/data/qdrant" | cut -f1)
-    echo "→ Qdrant data: $SIZE"
-    ln -s "$ALETHEIA_ROOT/data/qdrant" "$STAGE_DIR/data/qdrant"
-  fi
-  if [[ -d "$ALETHEIA_ROOT/data/neo4j" ]]; then
-    SIZE=$(du -sh "$ALETHEIA_ROOT/data/neo4j" | cut -f1)
-    echo "→ Neo4j data: $SIZE"
-    ln -s "$ALETHEIA_ROOT/data/neo4j" "$STAGE_DIR/data/neo4j"
+  if [[ -d "$ALETHEIA_ROOT/data/cozo" ]]; then
+    SIZE=$(du -sh "$ALETHEIA_ROOT/data/cozo" | cut -f1)
+    echo "→ CozoDB data: $SIZE"
+    ln -s "$ALETHEIA_ROOT/data/cozo" "$STAGE_DIR/data/cozo"
   fi
 fi
 

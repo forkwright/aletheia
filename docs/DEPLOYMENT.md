@@ -32,7 +32,7 @@ Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For 
 ### Network
 
 - **Outbound:** HTTPS to your LLM provider (default: `api.anthropic.com:443`)
-- **Inbound:** configurable listen port (default `18789`) for API and web UI
+- **Inbound:** configurable listen port (default `18789`) for API
 - **Local:** signal-cli JSON-RPC if Signal channel is enabled (default `localhost:8080`)
 
 See [NETWORK.md](NETWORK.md) for the complete network call inventory.
@@ -92,7 +92,6 @@ instance/
 ├── shared/                 # Shared tools, coordination, hooks
 ├── theke/                  # Human + agent collaborative space
 ├── signal/                 # signal-cli data (if using Signal)
-└── ui/                     # Web UI build artifacts
 ```
 
 See [instance.example/README.md](../instance.example/README.md) for the three-tier cascade and what goes where.
@@ -313,8 +312,6 @@ View logs:
 ```bash
 journalctl --user -u aletheia -f
 ```
-
-> **Note:** The file at `config/services/aletheia.service` in the repo still references the TypeScript runtime. Use the unit file above for the Rust binary.
 
 ---
 

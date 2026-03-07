@@ -5,12 +5,7 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 | Tool | Purpose |
 |------|---------|
 | aletheia-backup | Timestamped backup of all Aletheia state (config, sessions, workspaces) |
-| aletheia-export | Export an agent to a portable AgentFile |
-| aletheia-graph | Knowledge graph CLI (Neo4j) |
-| aletheia-setup | Install and start Aletheia systemd user services |
-| aletheia-update | Self-update: pull, build, restart, health-check with auto-rollback |
-| audit-tokens | Measure token consumption per bootstrap section for an agent |
-| config-reload | Reload gateway config from disk without restart |
+| aletheia-graph | Knowledge graph CLI |
 | consolidate-memory | Prune daily memory files older than retention threshold |
 | credential-refresh | Auto-refresh Anthropic OAuth tokens before expiry |
 | gcal | Google Calendar event query |
@@ -25,9 +20,7 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 
 | System | Location | Purpose |
 |--------|----------|---------|
-| sqlite-vec | Per-agent workspace | Fast local search over MEMORY.md and workspace files |
-| KnowledgeStore | CozoDB (embedded) | Long-term extracted memories (cross-agent, cross-session) |
-| Neo4j | localhost:7687 | Entity relationship graph (auto-extracted) |
+| KnowledgeStore | CozoDB (embedded) | Long-term extracted memories, entity relationships, vector search |
 | Blackboard | sessions.db | Cross-agent shared state (TTL-based, SQLite) |
 
 ## Built-in Runtime Tools

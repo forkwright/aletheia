@@ -31,7 +31,7 @@ aletheia
 ├── organon       — tool registry + built-in tools
 ├── nous          — agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia       — planning / project orchestration
-├── pylon         — Axum HTTP gateway, SSE, static UI serving
+├── pylon         — Axum HTTP gateway, SSE streaming
 ├── symbolon      — JWT auth, sessions, RBAC
 ├── agora         — channel registry + ChannelProvider trait
 │   └── semeion   — Signal (signal-cli subprocess)
@@ -51,7 +51,6 @@ Platform (tracked) vs. instance (gitignored). One directory, one boundary.
 ```text
 aletheia/                          # git root — the platform
 ├── crates/                        # Rust workspace
-├── ui/                            # Svelte 5 frontend
 ├── docs/                          # platform docs
 │
 ├── instance/                      # GITIGNORED — all instance state
@@ -124,7 +123,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
 | `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
-| `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
+| `pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
 | `tui` | Terminal dashboard — separate workspace member at `tui/` | reqwest (standalone UI client) |
 | `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, oikonomos, dianoia, tui (optional) |
 

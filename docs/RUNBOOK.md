@@ -5,7 +5,7 @@ For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 ## Service Architecture
 
 ```text
-aletheia                         (port 18789)  -- Rust binary, web UI, API
+aletheia                         (port 18789)  -- Rust binary, API
 +-- signal-cli daemon            (port 8080)   -- Signal messaging (subprocess)
 +-- daemon (oikonomos)           (in-process)  -- heartbeats, scheduled tasks, prosoche
 ```
@@ -136,7 +136,6 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 | `instance/data/sessions.db` | SQLite session store |
 | `instance/data/cozo/` | CozoDB knowledge graph (embedded) |
 | `instance/nous/<id>/` | Agent workspaces |
-| `ui/` | Svelte web UI |
 
 ## Pre-Restart Checklist
 

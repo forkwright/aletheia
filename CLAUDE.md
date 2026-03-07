@@ -7,7 +7,6 @@ Project conventions for AI coding agents working on this codebase.
 Full reference: [docs/STANDARDS.md](docs/STANDARDS.md).
 
 @.claude/rules/rust.md
-@.claude/rules/svelte.md
 @.claude/rules/python.md
 
 ## Structure
@@ -27,7 +26,6 @@ cargo build --release                  # Release (LTO, stripped)
 cargo test --workspace                 # All tests
 cargo test -p aletheia-hermeneus       # Single crate
 cargo clippy --workspace               # Lint (zero warnings)
-cd ui && npm run build                 # Build Svelte UI
 ```
 
 ## Key Patterns

@@ -103,7 +103,7 @@ agents:
 
 ## gateway
 
-HTTP gateway serving the API and web UI.
+HTTP gateway serving the API.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
