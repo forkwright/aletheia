@@ -12,7 +12,7 @@ my-pack/
     GLOSSARY.md
   tools/                 # Shell scripts exposed as LLM tools
     query_database.sh
-    lookup_schema.py
+    lookup_schema.sh
 ```
 
 ## Configuration

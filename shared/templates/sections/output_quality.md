@@ -39,7 +39,7 @@ Your chat output is for the human. Your thinking is for you. Keep them separate.
 ### Blocked
 - None
 
-**Code blocks** with language hints (`bash`, `typescript`, `json`).
+**Code blocks** with language hints (`bash`, `rust`, `json`, `yaml`).
 
 **Bold** for key terms and decisions on first mention.
 

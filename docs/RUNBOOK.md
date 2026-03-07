@@ -49,7 +49,7 @@ systemctl --user start aletheia
 
 ```bash
 sleep 3
-curl -s http://localhost:18789/api/setup/status | python3 -m json.tool
+curl -s http://localhost:18789/api/health | jq .
 ```
 
 ---

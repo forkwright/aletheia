@@ -37,9 +37,7 @@ aletheia
 │   └── semeion   — Signal (signal-cli subprocess)
 ├── daemon        — oikonomos: per-nous background tasks, cron, evolution, prosoche
 ├── melete        — distillation, reflection, memory flush, consolidation
-├── tui           — terminal dashboard                                  (separate workspace member at tui/)
-├── prostheke     — WASM plugin host (wasmtime)                         [planned: M5]
-└── autarkeia     — agent export/import                                 [planned: M5]
+└── tui           — terminal dashboard                                  (separate workspace member at tui/)
 ```
 
 ---
@@ -174,7 +172,6 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 |-------|--------|-----------|
 | `prostheke` | WASM plugin host (wasmtime) | M5 |
 | `autarkeia` | Agent export/import | M5 |
-| `theatron` | Composable operations UI | M6 |
 
 ---
 
@@ -187,10 +184,6 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 3. Declare its layer in the dependency graph
 4. Update this file
 5. Workspace lints apply automatically
-
-### Plugin
-
-Plugin system (prostheke) is planned for v2. See requirements in project planning docs.
 
 ---
 

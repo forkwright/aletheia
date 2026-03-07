@@ -67,10 +67,7 @@ instance/
 │   │   └── {agent-id}/         # When an agent needs private working files
 │   └── archive/                # Completed/historical (one place for all)
 │
-├── signal/                     # Signal-cli data directory
-│
-└── ui/                         # Built webchat assets (if deploying UI)
-    └── dist/                   # Static build output
+└── signal/                     # Signal-cli data directory
 ```
 
 ## Three-Tier Cascade

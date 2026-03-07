@@ -17,11 +17,11 @@ If you need to change one, update the test first and explain why in the commit m
 - **RELATES_TO must never appear in controlled vocabulary or extraction prompts.**
   It was eliminated in the vocab redesign (0% density validated across 1,194 edges).
   Reintroducing it as a "fallback" undoes the semantic typing system.
-  Test: `tests/test_vocab.py` -> `test_relates_to_not_in_vocab`, `test_graph_extraction_prompt_no_relates_to`
+  Test: `crates/mneme/src/vocab.rs` → `relates_to_rejected`, `controlled_vocab_excludes_relates_to`
 
-- **Unknown relationship types return None, not a fallback.**
-  `normalize_type()` returns `None` for unmatched types. The caller decides what to do.
-  Test: `tests/test_vocab.py` -> `test_normalize_unknown_returns_none`
+- **Unknown relationship types return `Unknown(String)`, not a fallback.**
+  `normalize_relation()` returns `RelationType::Unknown` for unmatched types. The caller decides what to do.
+  Test: `crates/mneme/src/vocab.rs` → `unknown_passes_through`
 
 ## Tool Registry
 

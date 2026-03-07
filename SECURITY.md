@@ -23,7 +23,7 @@ Include: description, reproduction steps, potential impact, and any suggested fi
 **In scope:**
 - Authentication and session token handling (`symbolon/`)
 - Credential exposure in logs or API responses
-- Path traversal in plugin loader (`prostheke/`) or export (`autarkeia/`)
+- Path traversal in tool execution or workspace file loading
 - SSRF via agent tool calls
 - Prompt injection leading to tool abuse
 - Memory data leakage between agent namespaces
@@ -112,8 +112,6 @@ git config --global commit.gpgsign true
 
 - `cargo audit` runs in CI on every PR and weekly
 - `cargo deny` enforces license compatibility and bans specific crates
-- `npm audit` checks UI dependencies (high severity, production only)
-- `pip-audit` checks memory sidecar Python dependencies
 - Dependabot creates PRs for vulnerable dependencies automatically
 
 ### Branch Protection

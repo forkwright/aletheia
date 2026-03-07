@@ -7,7 +7,6 @@ Project conventions for AI coding agents working on this codebase.
 Full reference: [docs/STANDARDS.md](docs/STANDARDS.md).
 
 @.claude/rules/rust.md
-@.claude/rules/python.md
 
 ## Structure
 

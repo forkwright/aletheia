@@ -1,17 +1,17 @@
 # Aletheia - Project Plan
 
-Roadmap and design intent for Aletheia's evolution from TypeScript prototype to Rust production system.
+Roadmap and design intent for Aletheia's evolution.
 
 ## Vision
 
 Aletheia is a distributed cognition system: a team of AI agents (nous) that operate as cognitive extensions of their human operator. Always-on, Signal-native, self-improving.
 
-The TypeScript + Python implementation works but carries inherited decisions from its OpenClaw fork lineage. The Rust rewrite is driven by five pressures:
+Five design pressures shape every decision:
 
-1. **Single static binary.** `scp + systemctl`. No Node, no Python venv, no npm, no bundling.
+1. **Single static binary.** `scp + systemctl`. No runtime dependencies beyond glibc.
 2. **Portable by default.** Runs on any Linux and macOS. No OS-specific dependencies in core.
 3. **True parallelism.** Multiple nous on Tokio threads, not interleaved on one event loop.
-4. **No inherited debt.** Every decision deliberate, nothing carried forward unexamined.
+4. **Every decision deliberate.** Nothing carried forward unexamined.
 5. **Correct primitives.** No event loop blocking, no GC pauses, no per-request DB connections.
 
 The always-on ambient model shapes every design decision: Signal-native, independent routines, household access, autonomous background cycles.
@@ -26,16 +26,25 @@ See [TECHNOLOGY.md](TECHNOLOGY.md) for technology decisions, dependency policy, 
 
 | Milestone | Summary | Status |
 |-----------|---------|--------|
-| M0a | Oikos migration (TypeScript) - instance structure, tool resolution, config cascade | Done |
-| M0b | Foundation crates (Rust) - koina errors, taxis config, newtypes, tracing | Done |
-| M1 | Memory + LLM client - Anthropic streaming, CozoDB absorption, hybrid recall, embeddings | Done |
-| M2 | Agent core - tool registry, nous pipeline, bootstrap assembly, execute stage | Done |
-| M3 | Gateway + auth + channels - pylon HTTP, symbolon JWT, agora Signal, end-to-end wiring | Done |
-| M4 | Multi-nous + background - NousActor, daemon, dianoia planning, cross-nous sessions | In progress |
-| M5 | Plugins + portability + cutover - WASM plugins, agent export, TS retirement | Not started |
-| M6 | Platform extensions - composable ops, A2A interop, eBPF sensing, NixOS module | Backlog |
+| M0a | Oikos migration — instance structure, tool resolution, config cascade | Done |
+| M0b | Foundation crates — koina errors, taxis config, newtypes, tracing | Done |
+| M1 | Memory + LLM client — Anthropic streaming, CozoDB absorption, hybrid recall, embeddings | Done |
+| M2 | Agent core — tool registry, nous pipeline, bootstrap assembly, execute stage | Done |
+| M3 | Gateway + auth + channels — pylon HTTP, symbolon JWT, agora Signal, end-to-end wiring | Done |
+| M4 | Multi-nous + background — NousActor, daemon, dianoia planning, cross-nous sessions | In progress |
+| M5 | Plugins + portability — WASM plugins, agent export/import | Not started |
+| M6 | Platform extensions — composable ops, A2A interop, eBPF sensing, NixOS module | Backlog |
 
 See `Cargo.toml` workspace members for current crate inventory.
+
+## Interfaces
+
+| Interface | Status | Notes |
+|-----------|--------|-------|
+| TUI | Active | Terminal dashboard, rich markdown, session management |
+| Signal | Active | 15 `!` commands, always-on ambient messaging |
+| HTTP API | Active | REST on port 18789, SSE streaming |
+| Desktop app | Planned | Design knowledge captured in planning docs |
 
 ## Related Documents
 

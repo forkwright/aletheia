@@ -66,10 +66,10 @@ jobs:
         run: |
           PATTERNS=$(grep -v '^#' .github/pii-patterns.txt | grep -v '^$' | paste -sd'|')
           HITS=$(grep -rnE "$PATTERNS" \
-            --include='*.rs' --include='*.py' --include='*.json' \
+            --include='*.rs' --include='*.json' \
             --include='*.md' --include='*.yaml' --include='*.yml' --include='*.toml' \
             . | grep -v 'scrub-callback' | grep -v 'pii-patterns' | \
-            grep -v 'target/' | grep -v '.venv/' || true)
+            grep -v 'target/' || true)
           if [ -n "$HITS" ]; then
             echo "::error::PII patterns detected in tracked files:"
             echo "$HITS"
