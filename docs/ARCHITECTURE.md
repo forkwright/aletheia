@@ -20,11 +20,13 @@ Module and crate names use Greek terms reflecting their purpose (nous = mind, mn
 aletheia
 ├── koina         — errors, tracing, safe wrappers, fs utils
 ├── taxis         — config, path resolution, oikos hierarchy, secret refs
-├── mneme         — unified memory (CozoDB embedded + fastembed-rs + extraction)
-│   ├── store     — CozoDB: vectors, graph, relations, bi-temporal facts — single embedded DB
-│   ├── embed     — EmbeddingProvider trait: fastembed-rs (local default) | HTTP API (Voyage, optional)
-│   ├── extract   — LLM-driven fact extraction, entity resolution, contradiction detection
-│   └── recall    — hybrid retrieval (vector + graph + BM25), MMR diversity, recollection-as-memory
+├── mneme         — session store (SQLite) + knowledge engine (vendored Datalog) + fastembed-rs
+│   ├── store     — SQLite session store: WAL, migrations, retention
+│   ├── knowledge — Datalog knowledge graph, HNSW vectors, entity relations
+│   ├── embedding — EmbeddingProvider trait: fastembed-rs (local default)
+│   ├── extract   — LLM-driven fact extraction, entity resolution
+│   ├── recall    — hybrid retrieval (vector + graph + BM25), MMR diversity
+│   └── engine/   — vendored Datalog + HNSW engine (mneme-engine feature gate)
 ├── hermeneus     — Anthropic client, model routing, credentials, provider trait
 ├── organon       — tool registry + built-in tools
 ├── nous          — agent pipeline, bootstrap, recall, finalize, actor model

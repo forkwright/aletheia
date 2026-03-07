@@ -78,7 +78,7 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 - **taxis** — configuration and paths. Loads the YAML config cascade (figment), resolves the oikos instance directory structure.
 - **hermeneus** — LLM provider abstraction. The Anthropic streaming client lives here. Handles retries, cost tracking, model routing.
 - **symbolon** — authentication: JWT tokens, bearer validation, RBAC. Depends on koina; uses its own SQLite for token storage.
-- **mneme** — memory engine. SQLite session store, embedded CozoDB for knowledge graphs and vector search, fastembed-rs for local embeddings, LLM-driven fact extraction.
+- **mneme** — memory engine. SQLite session store, vendored Datalog engine for knowledge graphs and vector search, fastembed-rs for local embeddings, LLM-driven fact extraction.
 
 ### Mid (depends on lower layers)
 
