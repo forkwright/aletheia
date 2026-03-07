@@ -50,6 +50,14 @@ This ordering exploits the U-shaped attention curve: identity and reference mate
 
 **Confidence: Confirmed** — directly from Anthropic documentation.
 
+#### Motivation over imperatives
+
+Anthropic recommends explaining WHY behind rules, not just stating them. "Instead of 'NEVER use ellipses,' say 'Your response will be read aloud by a text-to-speech engine, so never use ellipses since the text-to-speech engine will not know how to pronounce them.'" Claude generalizes from motivation to novel situations it wasn't explicitly instructed about.
+
+**Prompt style influences output style.** If the prompt itself contains markdown, Claude's output will contain more markdown. Match prompt formatting to desired output formatting.
+
+Source: [Prompting best practices](https://platform.claude.com/docs/en/docs/build-with-claude/prompt-engineering/system-prompts) [Confirmed]
+
 #### XML tags vs markdown
 
 XML tags are Claude's preferred structural mechanism. Anthropic states: "XML tags help Claude parse complex prompts unambiguously, especially when your prompt mixes instructions, context, examples, and variable inputs. Wrapping each type of content in its own tag (e.g. `<instructions>`, `<context>`, `<input>`) reduces misinterpretation."
@@ -71,7 +79,15 @@ There are no published Anthropic numbers on exact performance degradation curves
 - Frontier thinking LLMs can follow approximately 150-200 instructions with reasonable consistency; smaller and non-thinking models attend to fewer
 - The SPRIG paper (arXiv:2410.14826) found that a single optimized system prompt performs on par with task-specific prompts across 47 task types, and combining system + task optimization produces further improvement
 
-Source: [HumanLayer](https://www.humanlayer.dev/blog/writing-a-good-claude-md), [SPRIG paper](https://arxiv.org/abs/2410.14826) [Likely — community consensus + academic]
+**System prompt length sweet spot** (Particula.tech, 500 tests):
+- 800-2,000 tokens: optimal accuracy across models
+- Claude specifically maintains accuracy up to ~5,500 tokens (better than GPT-4's ~4,000)
+- Above 2,000 tokens: response times increase 40-80%, accuracy gains marginal
+- Accuracy difference between 1,000 and 3,000 tokens was only 4%, while response time tripled
+
+**Redundancy as design pattern**: Analysis of Claude's own system prompt shows copyright restrictions appear ~10 times. Single mentions of critical rules may be insufficient — repeating key constraints in different phrasings increases adherence, though at the cost of instruction budget. The full CC system prompt exceeds 24K tokens with 110+ specialized strings, made economical by prompt caching.
+
+Source: [HumanLayer](https://www.humanlayer.dev/blog/writing-a-good-claude-md), [SPRIG paper](https://arxiv.org/abs/2410.14826), [Particula.tech](https://particula.tech/blog/optimal-prompt-length-ai-performance), [Simon Willison system prompt analysis](https://simonwillison.net/2025/May/25/claude-4-system-prompt/) [Likely — community consensus + academic]
 
 #### Claude 4.6-specific changes
 
@@ -272,7 +288,9 @@ Based on Anthropic's guidance and the "lost in the middle" research:
 
 The "lost in the middle" effect (Liu et al., 2023) demonstrated a U-shaped attention curve: LLMs attend strongly to the beginning and end of context, with a blind spot in the middle. This has been confirmed across multiple model families.
 
-Source: [Lost in the Middle](https://direct.mit.edu/tacl/article/doi/10.1162/tacl_a_00638/119630/Lost-in-the-Middle-How-Language-Models-Use-Long) [Confirmed — academic]
+**Serial Position Effects (ACL 2025)** further quantified this: primacy effects appeared in 73 out of 104 test instances across all models and tasks — the most common effect. Critically, as prompt length increases, attention shifts further toward the beginning. Model architecture proved more influential than prompt design in determining position bias (Adjusted Rand Index: 0.18-0.39 for models vs ~0 for prompt engineering). This means position bias is largely a property of the model, not something easily fixed by prompt tricks.
+
+Source: [Lost in the Middle](https://direct.mit.edu/tacl/article/doi/10.1162/tacl_a_00638/119630/Lost-in-the-Middle-How-Language-Models-Use-Long), [Serial Position Effects (ACL 2025)](https://aclanthology.org/2025.findings-acl.52.pdf) [Confirmed — academic]
 
 **Claude-specific finding**: Claude achieves "state-of-the-art results on long-context retrieval benchmarks like MRCR and GraphWalks," but Anthropic acknowledges "these gains depend on what's in context, not just how much fits." Context quality matters more than quantity.
 
@@ -842,6 +860,10 @@ For each finding:
 | Smart routing (90/10 Sonnet/Opus) saves 60-70% on API costs | **Likely** | Multiple independent cost analyses |
 | Opus manual extended thinking deprecated, will be removed | **Confirmed** | Anthropic extended thinking docs |
 | Haiku 4.5 strips thinking blocks from previous turns | **Confirmed** | Anthropic extended thinking docs |
+| Explain WHY behind rules improves generalization | **Confirmed** | Anthropic prompting best practices |
+| Primacy effect in 73/104 instances; model architecture > prompt design for position bias | **Confirmed** | ACL 2025 peer-reviewed study |
+| System prompt sweet spot 800-2,000 tokens for accuracy | **Likely** | Particula.tech benchmark (500 tests) |
+| Redundancy (repeating key rules) increases adherence | **Likely** | Simon Willison analysis of Claude's own system prompt |
 
 ---
 
@@ -889,5 +911,8 @@ For each finding:
 | [Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) | Degrees of freedom framework, progressive disclosure, description optimization, anti-patterns. |
 | [Qodo: Thinking vs Thinking (400 PRs)](https://www.qodo.ai/blog/thinking-vs-thinking-benchmarking-claude-haiku-4-5-and-sonnet-4-5-on-400-real-prs/) | Haiku 4.5 Thinking vs Sonnet 4.5 Thinking on real PR reviews. 58% vs 42% win rate. |
 | [Anthropic: Introducing Opus 4.6](https://www.anthropic.com/news/claude-opus-4-6) | Opus 4.6 benchmarks, pricing, Agent Teams, 1M MRCR v2 results. |
+| [Serial Position Effects (ACL 2025)](https://aclanthology.org/2025.findings-acl.52.pdf) | Primacy effect dominates (73/104 instances). Model architecture > prompt design for position bias. |
+| [Particula.tech: Optimal Prompt Length](https://particula.tech/blog/optimal-prompt-length-ai-performance) | 800-2,000 token sweet spot. Claude maintains accuracy up to ~5,500 tokens. |
+| [Simon Willison: Claude 4 system prompt](https://simonwillison.net/2025/May/25/claude-4-system-prompt/) | Redundancy as design pattern. 24K+ tokens. Copyright restrictions repeated ~10 times. |
 | [CC Skill Format research](cc-skill-format.md) | Internal research doc — skill matching, invocation flow, context budget, CC-native export requirements. |
 | [Model Capability Audit](model-capability-audit.md) | Internal research doc — native vs built capabilities, redundancy analysis. |
