@@ -95,11 +95,14 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
 
             // Mark old fact as superseded
             let retract_script = r"
-                ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at] :=
-                    *facts{id: $old_id, valid_from, content, nous_id, confidence, tier, source_session_id, recorded_at},
+                ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
+                  access_count, last_accessed_at, stability_hours, fact_type] :=
+                    *facts{id: $old_id, valid_from, content, nous_id, confidence, tier, source_session_id, recorded_at,
+                           access_count, last_accessed_at, stability_hours, fact_type},
                     valid_to = $now,
                     superseded_by = $new_id
-                :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at}
+                :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
+                            access_count, last_accessed_at, stability_hours, fact_type}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(
@@ -130,6 +133,10 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 superseded_by: None,
                 source_session_id: None,
                 recorded_at: now,
+                access_count: 0,
+                last_accessed_at: String::new(),
+                stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
+                fact_type: String::new(),
             };
             self.store
                 .insert_fact(&new_fact)
@@ -151,10 +158,13 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .to_string();
 
             let script = r"
-                ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at] :=
-                    *facts{id: $fact_id, valid_from, content, nous_id, confidence, tier, superseded_by, source_session_id, recorded_at},
+                ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
+                  access_count, last_accessed_at, stability_hours, fact_type] :=
+                    *facts{id: $fact_id, valid_from, content, nous_id, confidence, tier, superseded_by, source_session_id, recorded_at,
+                           access_count, last_accessed_at, stability_hours, fact_type},
                     valid_to = $now
-                :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at}
+                :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
+                            access_count, last_accessed_at, stability_hours, fact_type}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(

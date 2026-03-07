@@ -18,6 +18,10 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
         superseded_by: None,
         source_session_id: None,
         recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        access_count: 0,
+        last_accessed_at: String::new(),
+        stability_hours: 720.0,
+        fact_type: String::new(),
     }
 }
 
@@ -37,6 +41,10 @@ fn fact_round_trip() {
         superseded_by: None,
         source_session_id: Some("ses-abc".to_owned()),
         recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        access_count: 0,
+        last_accessed_at: String::new(),
+        stability_hours: 720.0,
+        fact_type: String::new(),
     };
 
     store.insert_fact(&fact).expect("insert");
@@ -98,7 +106,7 @@ fn hnsw_vector_search() {
 fn schema_version_queryable() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
     let version = store.schema_version().expect("version");
-    assert_eq!(version, 1);
+    assert_eq!(version, 2);
 }
 
 // Verify ordering of multiple facts by confidence (descending).
@@ -141,6 +149,10 @@ async fn async_spawn_blocking_wrapper() {
         superseded_by: None,
         source_session_id: None,
         recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        access_count: 0,
+        last_accessed_at: String::new(),
+        stability_hours: 720.0,
+        fact_type: String::new(),
     };
 
     store.insert_fact_async(fact).await.expect("async insert");
@@ -195,6 +207,10 @@ fn hybrid_retrieval_end_to_end() {
             superseded_by: None,
             source_session_id: None,
             recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         store.insert_fact(&fact).expect("insert fact");
     }

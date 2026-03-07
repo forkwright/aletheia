@@ -350,6 +350,10 @@ Rules:
                 superseded_by: None,
                 source_session_id: Some(source.to_owned()),
                 recorded_at: now.clone(),
+                access_count: 0,
+                last_accessed_at: String::new(),
+                stability_hours: crate::knowledge::default_stability_hours("inference"),
+                fact_type: "inference".to_owned(),
             };
             store.insert_fact(&f).map_err(|e| {
                 PersistSnafu {

@@ -47,6 +47,10 @@ pub enum FactsField {
     SupersededBy,
     SourceSessionId,
     RecordedAt,
+    AccessCount,
+    LastAccessedAt,
+    StabilityHours,
+    FactType,
 }
 
 impl Field for FactsField {
@@ -62,6 +66,10 @@ impl Field for FactsField {
             Self::SupersededBy => "superseded_by",
             Self::SourceSessionId => "source_session_id",
             Self::RecordedAt => "recorded_at",
+            Self::AccessCount => "access_count",
+            Self::LastAccessedAt => "last_accessed_at",
+            Self::StabilityHours => "stability_hours",
+            Self::FactType => "fact_type",
         }
     }
 }
@@ -406,6 +414,10 @@ pub mod queries {
                 SupersededBy,
                 SourceSessionId,
                 RecordedAt,
+                AccessCount,
+                LastAccessedAt,
+                StabilityHours,
+                FactType,
             ])
             .done()
             .build_script()
@@ -427,6 +439,10 @@ pub mod queries {
             .bind(ValidTo)
             .bind(SupersededBy)
             .bind(RecordedAt)
+            .bind(AccessCount)
+            .bind(LastAccessedAt)
+            .bind(StabilityHours)
+            .bind(FactType)
             .filter("nous_id = $nous_id")
             .filter("valid_from <= $now")
             .filter("valid_to > $now")
@@ -454,6 +470,10 @@ pub mod queries {
                 ValidTo,
                 SupersededBy,
                 SourceSessionId,
+                AccessCount,
+                LastAccessedAt,
+                StabilityHours,
+                FactType,
             ])
             .bind(Id)
             .bind(ValidFrom)
@@ -465,6 +485,10 @@ pub mod queries {
             .bind(SupersededBy)
             .bind(SourceSessionId)
             .bind(RecordedAt)
+            .bind(AccessCount)
+            .bind(LastAccessedAt)
+            .bind(StabilityHours)
+            .bind(FactType)
             .filter("nous_id = $nous_id")
             .filter("valid_from <= $now")
             .filter("valid_to > $now")
@@ -512,6 +536,10 @@ pub mod queries {
                 SupersededBy,
                 SourceSessionId,
                 RecordedAt,
+                AccessCount,
+                LastAccessedAt,
+                StabilityHours,
+                FactType,
             ])
             .row(&[
                 "$old_id",
@@ -524,6 +552,10 @@ pub mod queries {
                 "$new_id",
                 "$old_source",
                 "$old_recorded",
+                "$old_access_count",
+                "$old_last_accessed_at",
+                "$old_stability_hours",
+                "$old_fact_type",
             ])
             .row(&[
                 "$new_id",
@@ -536,6 +568,10 @@ pub mod queries {
                 "null",
                 "$source_session_id",
                 "$now",
+                "0",
+                "\"\"",
+                "$stability_hours",
+                "$fact_type",
             ])
             .done()
             .build_script()
@@ -771,6 +807,10 @@ mod tests {
             "superseded_by",
             "source_session_id",
             "recorded_at",
+            "access_count",
+            "last_accessed_at",
+            "stability_hours",
+            "fact_type",
         ];
         let facts_enum_fields: Vec<&str> = [
             FactsField::Id,
@@ -783,6 +823,10 @@ mod tests {
             FactsField::SupersededBy,
             FactsField::SourceSessionId,
             FactsField::RecordedAt,
+            FactsField::AccessCount,
+            FactsField::LastAccessedAt,
+            FactsField::StabilityHours,
+            FactsField::FactType,
         ]
         .iter()
         .map(|f| f.name())
@@ -867,11 +911,14 @@ mod tests {
     fn test_builder_matches_upsert_fact() {
         let original = r"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-          superseded_by, source_session_id, recorded_at] <- [[$id, $valid_from,
+          superseded_by, source_session_id, recorded_at,
+          access_count, last_accessed_at, stability_hours, fact_type] <- [[$id, $valid_from,
           $content, $nous_id, $confidence, $tier, $valid_to, $superseded_by,
-          $source_session_id, $recorded_at]]
+          $source_session_id, $recorded_at,
+          $access_count, $last_accessed_at, $stability_hours, $fact_type]]
         :put facts {id, valid_from => content, nous_id, confidence, tier,
-                    valid_to, superseded_by, source_session_id, recorded_at}
+                    valid_to, superseded_by, source_session_id, recorded_at,
+                    access_count, last_accessed_at, stability_hours, fact_type}
     ";
         let built = queries::upsert_fact();
         assert_eq!(normalize(&built), normalize(original));
@@ -882,7 +929,8 @@ mod tests {
         let original = r"
         ?[id, content, confidence, tier, recorded_at] :=
             *facts{id, valid_from, content, nous_id, confidence, tier,
-                   valid_to, superseded_by, recorded_at},
+                   valid_to, superseded_by, recorded_at,
+                   access_count, last_accessed_at, stability_hours, fact_type},
             nous_id = $nous_id,
             valid_from <= $now,
             valid_to > $now,
@@ -910,14 +958,18 @@ mod tests {
     fn test_builder_matches_supersede_fact() {
         let original = r#"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-          superseded_by, source_session_id, recorded_at] <- [
+          superseded_by, source_session_id, recorded_at,
+          access_count, last_accessed_at, stability_hours, fact_type] <- [
             [$old_id, $old_valid_from, $old_content, $nous_id, $old_confidence,
-             $old_tier, $now, $new_id, $old_source, $old_recorded],
+             $old_tier, $now, $new_id, $old_source, $old_recorded,
+             $old_access_count, $old_last_accessed_at, $old_stability_hours, $old_fact_type],
             [$new_id, $now, $new_content, $nous_id, $new_confidence,
-             $new_tier, "9999-12-31", null, $source_session_id, $now]
+             $new_tier, "9999-12-31", null, $source_session_id, $now,
+             0, "", $stability_hours, $fact_type]
         ]
         :put facts {id, valid_from => content, nous_id, confidence, tier,
-                    valid_to, superseded_by, source_session_id, recorded_at}
+                    valid_to, superseded_by, source_session_id, recorded_at,
+                    access_count, last_accessed_at, stability_hours, fact_type}
     "#;
         let built = queries::supersede_fact();
         assert_eq!(normalize(&built), normalize(original));
@@ -960,9 +1012,11 @@ mod tests {
     #[test]
     fn test_builder_matches_full_current_facts() {
         let original = r"
-    ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id] :=
+    ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id,
+      access_count, last_accessed_at, stability_hours, fact_type] :=
         *facts{id, valid_from, content, nous_id, confidence, tier,
-               valid_to, superseded_by, source_session_id, recorded_at},
+               valid_to, superseded_by, source_session_id, recorded_at,
+               access_count, last_accessed_at, stability_hours, fact_type},
         nous_id = $nous_id,
         valid_from <= $now,
         valid_to > $now,

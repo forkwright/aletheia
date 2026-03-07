@@ -35,6 +35,10 @@ fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
         superseded_by: None,
         source_session_id: None,
         recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        access_count: 0,
+        last_accessed_at: String::new(),
+        stability_hours: 720.0,
+        fact_type: String::new(),
     }
 }
 
