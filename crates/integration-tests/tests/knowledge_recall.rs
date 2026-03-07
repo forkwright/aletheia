@@ -39,6 +39,9 @@ fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
         last_accessed_at: String::new(),
         stability_hours: 720.0,
         fact_type: String::new(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
     }
 }
 

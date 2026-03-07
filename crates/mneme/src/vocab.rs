@@ -92,12 +92,8 @@ pub fn normalize_relation(raw: &str) -> RelationType {
 fn lookup_alias(key: &str) -> Option<&'static str> {
     match key {
         "has" | "HAS" | "has_a" | "HAS_A" => Some("OWNS"),
-        "is_part_of" | "IS_PART_OF" | "part_of" | "PART_OF" => {
-            Some(vocab_entry("PART_OF"))
-        }
-        "works_at" | "WORKS_AT" | "works_on" | "WORKS_ON" => {
-            Some(vocab_entry("WORKS_AT"))
-        }
+        "is_part_of" | "IS_PART_OF" | "part_of" | "PART_OF" => Some(vocab_entry("PART_OF")),
+        "works_at" | "WORKS_AT" | "works_on" | "WORKS_ON" => Some(vocab_entry("WORKS_AT")),
         "lives_in" | "LIVES_IN" => Some(vocab_entry("LIVES_IN")),
         "located_in" | "LOCATED_IN" | "located_at" | "LOCATED_AT" => {
             Some(vocab_entry("LOCATED_IN"))
@@ -106,9 +102,7 @@ fn lookup_alias(key: &str) -> Option<&'static str> {
             Some(vocab_entry("USES"))
         }
         "runs_on" | "RUNS_ON" | "runs" | "RUNS" => Some(vocab_entry("RUNS_ON")),
-        "depends_on" | "DEPENDS_ON" | "requires" | "REQUIRES" => {
-            Some(vocab_entry("DEPENDS_ON"))
-        }
+        "depends_on" | "DEPENDS_ON" | "requires" | "REQUIRES" => Some(vocab_entry("DEPENDS_ON")),
         "knows" | "KNOWS" | "knows_about" | "KNOWS_ABOUT" | "knows_of" | "KNOWS_OF" => {
             Some(vocab_entry("KNOWS"))
         }
@@ -118,12 +112,8 @@ fn lookup_alias(key: &str) -> Option<&'static str> {
         "created" | "CREATED" | "created_by" | "CREATED_BY" | "built" | "BUILT" | "made"
         | "MADE" => Some(vocab_entry("CREATED")),
         "maintains" | "MAINTAINS" => Some(vocab_entry("MAINTAINS")),
-        "managed_by" | "MANAGED_BY" | "manages" | "MANAGES" => {
-            Some(vocab_entry("MANAGES"))
-        }
-        "member_of" | "MEMBER_OF" | "belongs_to" | "BELONGS_TO" => {
-            Some(vocab_entry("MEMBER_OF"))
-        }
+        "managed_by" | "MANAGED_BY" | "manages" | "MANAGES" => Some(vocab_entry("MANAGES")),
+        "member_of" | "MEMBER_OF" | "belongs_to" | "BELONGS_TO" => Some(vocab_entry("MEMBER_OF")),
         "skilled_in" | "SKILLED_IN" | "skilled_at" | "SKILLED_AT" => {
             Some(vocab_entry("SKILLED_IN"))
         }

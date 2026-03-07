@@ -59,7 +59,9 @@ fn correct_fact(
     params.insert("old_id".to_owned(), DataValue::Str(old_id.into()));
     params.insert("now".to_owned(), DataValue::Str(correction_time.into()));
     params.insert("new_id".to_owned(), DataValue::Str(new_id.into()));
-    store.run_mut_query(script, params).expect("correct: supersede old fact");
+    store
+        .run_mut_query(script, params)
+        .expect("correct: supersede old fact");
 
     let new_fact = Fact {
         id: new_id.to_owned(),
@@ -80,7 +82,9 @@ fn correct_fact(
         forgotten_at: None,
         forget_reason: None,
     };
-    store.insert_fact(&new_fact).expect("correct: insert new fact");
+    store
+        .insert_fact(&new_fact)
+        .expect("correct: insert new fact");
 }
 
 /// Replicates the adapter's `retract_fact` logic at the store level.
@@ -136,7 +140,11 @@ fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> 
                 json.as_f64()
                     .or_else(|| json.get("Float").and_then(JsonValue::as_f64))
                     .or_else(|| json.get("Int").and_then(JsonValue::as_f64))
-                    .or_else(|| json.get("Num").and_then(|v| v.get("Float")).and_then(JsonValue::as_f64))
+                    .or_else(|| {
+                        json.get("Num")
+                            .and_then(|v| v.get("Float"))
+                            .and_then(JsonValue::as_f64)
+                    })
                     .unwrap_or_else(|| panic!("confidence as f64, got: {json}"))
             };
             let tier = match &row[3] {
@@ -192,7 +200,10 @@ fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> 
 }
 
 #[derive(Debug)]
-#[expect(dead_code, reason = "fields populated for debug output and future assertions")]
+#[expect(
+    dead_code,
+    reason = "fields populated for debug output and future assertions"
+)]
 struct AuditRow {
     id: String,
     content: String,
@@ -218,48 +229,99 @@ fn full_knowledge_lifecycle() {
     let query_time = "2026-07-01T00:00:00Z";
 
     // 1. Insert original fact
-    let original = make_fact("f-1", nous, "Cody's favorite language is Rust", 0.9, EpistemicTier::Inferred);
+    let original = make_fact(
+        "f-1",
+        nous,
+        "Cody's favorite language is Rust",
+        0.9,
+        EpistemicTier::Inferred,
+    );
     store.insert_fact(&original).expect("insert original");
 
     // Verify searchable
-    let results = store.query_facts(nous, query_time, 10).expect("query after insert");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after insert");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].content, "Cody's favorite language is Rust");
 
     // 2. Correct the fact
-    correct_fact(&store, "f-1", "f-2", "Cody's favorite languages are Rust and TypeScript", nous, "2026-06-01T00:00:00Z");
+    correct_fact(
+        &store,
+        "f-1",
+        "f-2",
+        "Cody's favorite languages are Rust and TypeScript",
+        nous,
+        "2026-06-01T00:00:00Z",
+    );
 
     // 3. Verify correction — only new fact visible
-    let results = store.query_facts(nous, query_time, 10).expect("query after correct");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after correct");
     assert_eq!(results.len(), 1, "only corrected fact should be visible");
     assert_eq!(results[0].id, "f-2");
-    assert_eq!(results[0].content, "Cody's favorite languages are Rust and TypeScript");
+    assert_eq!(
+        results[0].content,
+        "Cody's favorite languages are Rust and TypeScript"
+    );
 
     // Audit: both facts visible with supersession metadata
     let audit = audit_all_facts(&store, nous);
-    assert_eq!(audit.len(), 2, "audit should show both original and corrected");
+    assert_eq!(
+        audit.len(),
+        2,
+        "audit should show both original and corrected"
+    );
 
-    let old = audit.iter().find(|r| r.id == "f-1").expect("original in audit");
-    assert_eq!(old.valid_to, "2026-06-01T00:00:00Z", "old fact should be expired");
-    assert_eq!(old.superseded_by.as_deref(), Some("f-2"), "old fact should point to new");
+    let old = audit
+        .iter()
+        .find(|r| r.id == "f-1")
+        .expect("original in audit");
+    assert_eq!(
+        old.valid_to, "2026-06-01T00:00:00Z",
+        "old fact should be expired"
+    );
+    assert_eq!(
+        old.superseded_by.as_deref(),
+        Some("f-2"),
+        "old fact should point to new"
+    );
 
-    let new = audit.iter().find(|r| r.id == "f-2").expect("corrected in audit");
+    let new = audit
+        .iter()
+        .find(|r| r.id == "f-2")
+        .expect("corrected in audit");
     assert_eq!(new.valid_to, "9999-12-31", "new fact should be current");
-    assert!(new.superseded_by.is_none(), "new fact should not be superseded");
+    assert!(
+        new.superseded_by.is_none(),
+        "new fact should not be superseded"
+    );
 
     // 4. Retract the corrected fact
     retract_fact(&store, "f-2", "2026-06-15T00:00:00Z");
 
     // 5. Verify retraction — nothing visible
-    let results = store.query_facts(nous, query_time, 10).expect("query after retract");
-    assert!(results.is_empty(), "no facts should be visible after retraction");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after retract");
+    assert!(
+        results.is_empty(),
+        "no facts should be visible after retraction"
+    );
 
     // 6. Audit: both facts still present with full temporal metadata
     let audit = audit_all_facts(&store, nous);
     assert_eq!(audit.len(), 2, "audit should still show both facts");
 
-    let retracted = audit.iter().find(|r| r.id == "f-2").expect("retracted in audit");
-    assert_eq!(retracted.valid_to, "2026-06-15T00:00:00Z", "retracted fact should have valid_to set");
+    let retracted = audit
+        .iter()
+        .find(|r| r.id == "f-2")
+        .expect("retracted in audit");
+    assert_eq!(
+        retracted.valid_to, "2026-06-15T00:00:00Z",
+        "retracted fact should have valid_to set"
+    );
 }
 
 #[test]
@@ -268,24 +330,52 @@ fn correct_preserves_metadata() {
     let nous = "test-agent";
 
     // Insert fact with specific metadata
-    let original = make_fact("f-orig", nous, "Alice prefers tea", 0.75, EpistemicTier::Assumed);
+    let original = make_fact(
+        "f-orig",
+        nous,
+        "Alice prefers tea",
+        0.75,
+        EpistemicTier::Assumed,
+    );
     store.insert_fact(&original).expect("insert original");
 
     // Correct it
-    correct_fact(&store, "f-orig", "f-corrected", "Alice prefers green tea", nous, "2026-06-01T00:00:00Z");
+    correct_fact(
+        &store,
+        "f-orig",
+        "f-corrected",
+        "Alice prefers green tea",
+        nous,
+        "2026-06-01T00:00:00Z",
+    );
 
     let audit = audit_all_facts(&store, nous);
     assert_eq!(audit.len(), 2);
 
     // Old fact's original metadata should be unchanged (except valid_to and superseded_by)
-    let old = audit.iter().find(|r| r.id == "f-orig").expect("original in audit");
-    assert!((old.confidence - 0.75).abs() < f64::EPSILON, "original confidence unchanged");
+    let old = audit
+        .iter()
+        .find(|r| r.id == "f-orig")
+        .expect("original in audit");
+    assert!(
+        (old.confidence - 0.75).abs() < f64::EPSILON,
+        "original confidence unchanged"
+    );
     assert_eq!(old.tier, "assumed", "original tier unchanged");
-    assert_eq!(old.content, "Alice prefers tea", "original content unchanged");
+    assert_eq!(
+        old.content, "Alice prefers tea",
+        "original content unchanged"
+    );
 
     // New fact has corrected content and Verified tier
-    let new = audit.iter().find(|r| r.id == "f-corrected").expect("corrected in audit");
-    assert!((new.confidence - 1.0).abs() < f64::EPSILON, "corrected fact gets confidence 1.0");
+    let new = audit
+        .iter()
+        .find(|r| r.id == "f-corrected")
+        .expect("corrected in audit");
+    assert!(
+        (new.confidence - 1.0).abs() < f64::EPSILON,
+        "corrected fact gets confidence 1.0"
+    );
     assert_eq!(new.tier, "verified", "corrected fact gets Verified tier");
     assert_eq!(new.content, "Alice prefers green tea");
 }
@@ -298,9 +388,27 @@ fn retract_excludes_from_recall() {
 
     // Insert 3 facts on different topics
     let facts = [
-        make_fact("f-1", nous, "Bob works at Acme Corp", 0.9, EpistemicTier::Verified),
-        make_fact("f-2", nous, "Bob lives in Springfield", 0.8, EpistemicTier::Inferred),
-        make_fact("f-3", nous, "Bob speaks three languages", 0.7, EpistemicTier::Assumed),
+        make_fact(
+            "f-1",
+            nous,
+            "Bob works at Acme Corp",
+            0.9,
+            EpistemicTier::Verified,
+        ),
+        make_fact(
+            "f-2",
+            nous,
+            "Bob lives in Springfield",
+            0.8,
+            EpistemicTier::Inferred,
+        ),
+        make_fact(
+            "f-3",
+            nous,
+            "Bob speaks three languages",
+            0.7,
+            EpistemicTier::Assumed,
+        ),
     ];
     for f in &facts {
         store.insert_fact(f).expect("insert fact");
@@ -314,7 +422,9 @@ fn retract_excludes_from_recall() {
     retract_fact(&store, "f-2", "2026-06-01T00:00:00Z");
 
     // Only facts #1 and #3 visible
-    let results = store.query_facts(nous, query_time, 10).expect("query after retract");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after retract");
     assert_eq!(results.len(), 2, "retracted fact should be excluded");
     let ids: Vec<&str> = results.iter().map(|f| f.id.as_str()).collect();
     assert!(ids.contains(&"f-1"), "fact 1 should still be visible");
@@ -323,9 +433,16 @@ fn retract_excludes_from_recall() {
 
     // Audit returns all 3 including retracted
     let audit = audit_all_facts(&store, nous);
-    assert_eq!(audit.len(), 3, "audit should show all facts including retracted");
+    assert_eq!(
+        audit.len(),
+        3,
+        "audit should show all facts including retracted"
+    );
 
-    let retracted = audit.iter().find(|r| r.id == "f-2").expect("retracted in audit");
+    let retracted = audit
+        .iter()
+        .find(|r| r.id == "f-2")
+        .expect("retracted in audit");
     assert_eq!(retracted.valid_to, "2026-06-01T00:00:00Z");
 }
 
@@ -335,12 +452,28 @@ fn audit_filters_by_nous_id() {
 
     // Insert facts under different nous_ids
     let facts_a = [
-        make_fact("fa-1", "agent-a", "Agent A fact one", 0.9, EpistemicTier::Verified),
-        make_fact("fa-2", "agent-a", "Agent A fact two", 0.8, EpistemicTier::Inferred),
+        make_fact(
+            "fa-1",
+            "agent-a",
+            "Agent A fact one",
+            0.9,
+            EpistemicTier::Verified,
+        ),
+        make_fact(
+            "fa-2",
+            "agent-a",
+            "Agent A fact two",
+            0.8,
+            EpistemicTier::Inferred,
+        ),
     ];
-    let facts_b = [
-        make_fact("fb-1", "agent-b", "Agent B fact one", 0.85, EpistemicTier::Verified),
-    ];
+    let facts_b = [make_fact(
+        "fb-1",
+        "agent-b",
+        "Agent B fact one",
+        0.85,
+        EpistemicTier::Verified,
+    )];
 
     for f in facts_a.iter().chain(facts_b.iter()) {
         store.insert_fact(f).expect("insert fact");
@@ -349,7 +482,10 @@ fn audit_filters_by_nous_id() {
     // Audit for agent-a
     let audit_a = audit_all_facts(&store, "agent-a");
     assert_eq!(audit_a.len(), 2, "agent-a should have 2 facts");
-    assert!(audit_a.iter().all(|r| r.id.starts_with("fa-")), "all should be agent-a facts");
+    assert!(
+        audit_a.iter().all(|r| r.id.starts_with("fa-")),
+        "all should be agent-a facts"
+    );
 
     // Audit for agent-b
     let audit_b = audit_all_facts(&store, "agent-b");
@@ -357,10 +493,14 @@ fn audit_filters_by_nous_id() {
     assert_eq!(audit_b[0].id, "fb-1");
 
     // query_facts also scoped by nous_id
-    let results_a = store.query_facts("agent-a", "2026-07-01T00:00:00Z", 10).expect("query a");
+    let results_a = store
+        .query_facts("agent-a", "2026-07-01T00:00:00Z", 10)
+        .expect("query a");
     assert_eq!(results_a.len(), 2);
 
-    let results_b = store.query_facts("agent-b", "2026-07-01T00:00:00Z", 10).expect("query b");
+    let results_b = store
+        .query_facts("agent-b", "2026-07-01T00:00:00Z", 10)
+        .expect("query b");
     assert_eq!(results_b.len(), 1);
 }
 
@@ -371,14 +511,34 @@ fn supersession_chain() {
     let query_time = "2026-09-01T00:00:00Z";
 
     // v1: original fact
-    let v1 = make_fact("v1", nous, "Project uses Python", 0.8, EpistemicTier::Inferred);
+    let v1 = make_fact(
+        "v1",
+        nous,
+        "Project uses Python",
+        0.8,
+        EpistemicTier::Inferred,
+    );
     store.insert_fact(&v1).expect("insert v1");
 
     // v1 -> v2: first correction
-    correct_fact(&store, "v1", "v2", "Project uses Python and Rust", nous, "2026-04-01T00:00:00Z");
+    correct_fact(
+        &store,
+        "v1",
+        "v2",
+        "Project uses Python and Rust",
+        nous,
+        "2026-04-01T00:00:00Z",
+    );
 
     // v2 -> v3: second correction
-    correct_fact(&store, "v2", "v3", "Project migrated fully to Rust", nous, "2026-07-01T00:00:00Z");
+    correct_fact(
+        &store,
+        "v2",
+        "v3",
+        "Project migrated fully to Rust",
+        nous,
+        "2026-07-01T00:00:00Z",
+    );
 
     // Only v3 visible in query
     let results = store.query_facts(nous, query_time, 10).expect("query");
@@ -395,13 +555,30 @@ fn supersession_chain() {
     let a_v3 = audit.iter().find(|r| r.id == "v3").expect("v3 in audit");
 
     // Supersession chain: v1 -> v2 -> v3
-    assert_eq!(a_v1.superseded_by.as_deref(), Some("v2"), "v1 superseded by v2");
-    assert_eq!(a_v2.superseded_by.as_deref(), Some("v3"), "v2 superseded by v3");
-    assert!(a_v3.superseded_by.is_none(), "v3 is current — not superseded");
+    assert_eq!(
+        a_v1.superseded_by.as_deref(),
+        Some("v2"),
+        "v1 superseded by v2"
+    );
+    assert_eq!(
+        a_v2.superseded_by.as_deref(),
+        Some("v3"),
+        "v2 superseded by v3"
+    );
+    assert!(
+        a_v3.superseded_by.is_none(),
+        "v3 is current — not superseded"
+    );
 
     // Temporal validity: each version expired when the next was created
-    assert_eq!(a_v1.valid_to, "2026-04-01T00:00:00Z", "v1 expired at v2 creation");
-    assert_eq!(a_v2.valid_to, "2026-07-01T00:00:00Z", "v2 expired at v3 creation");
+    assert_eq!(
+        a_v1.valid_to, "2026-04-01T00:00:00Z",
+        "v1 expired at v2 creation"
+    );
+    assert_eq!(
+        a_v2.valid_to, "2026-07-01T00:00:00Z",
+        "v2 expired at v3 creation"
+    );
     assert_eq!(a_v3.valid_to, "9999-12-31", "v3 still current");
 }
 
@@ -415,19 +592,34 @@ fn forget_excludes_from_recall() {
     let nous = "test-agent";
     let query_time = "2026-07-01T00:00:00Z";
 
-    let fact = make_fact("f-forget", nous, "Bob's SSN is 123-45-6789", 0.9, EpistemicTier::Verified);
+    let fact = make_fact(
+        "f-forget",
+        nous,
+        "Bob's SSN is 123-45-6789",
+        0.9,
+        EpistemicTier::Verified,
+    );
     store.insert_fact(&fact).expect("insert");
 
     // Visible before forget
-    let results = store.query_facts(nous, query_time, 10).expect("query before forget");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query before forget");
     assert_eq!(results.len(), 1);
 
     // Forget it
-    store.forget_fact("f-forget", ForgetReason::Privacy).expect("forget");
+    store
+        .forget_fact("f-forget", ForgetReason::Privacy)
+        .expect("forget");
 
     // Not visible after forget
-    let results = store.query_facts(nous, query_time, 10).expect("query after forget");
-    assert!(results.is_empty(), "forgotten fact should be excluded from recall");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after forget");
+    assert!(
+        results.is_empty(),
+        "forgotten fact should be excluded from recall"
+    );
 }
 
 #[test]
@@ -437,18 +629,33 @@ fn forget_preserves_for_audit() {
     let store = open_store();
     let nous = "test-agent";
 
-    let fact = make_fact("f-audit", nous, "sensitive data", 0.9, EpistemicTier::Verified);
+    let fact = make_fact(
+        "f-audit",
+        nous,
+        "sensitive data",
+        0.9,
+        EpistemicTier::Verified,
+    );
     store.insert_fact(&fact).expect("insert");
 
-    store.forget_fact("f-audit", ForgetReason::Privacy).expect("forget");
+    store
+        .forget_fact("f-audit", ForgetReason::Privacy)
+        .expect("forget");
 
     let audit = audit_all_facts(&store, nous);
     assert_eq!(audit.len(), 1, "forgotten fact should appear in audit");
 
     let row = &audit[0];
     assert!(row.is_forgotten, "should be marked forgotten");
-    assert!(row.forgotten_at.is_some(), "should have forgotten_at timestamp");
-    assert_eq!(row.forget_reason.as_deref(), Some("privacy"), "should have privacy reason");
+    assert!(
+        row.forgotten_at.is_some(),
+        "should have forgotten_at timestamp"
+    );
+    assert_eq!(
+        row.forget_reason.as_deref(),
+        Some("privacy"),
+        "should have privacy reason"
+    );
 }
 
 #[test]
@@ -459,26 +666,44 @@ fn unforget_restores_to_search() {
     let nous = "test-agent";
     let query_time = "2026-07-01T00:00:00Z";
 
-    let fact = make_fact("f-unforget", nous, "reinstated fact", 0.9, EpistemicTier::Verified);
+    let fact = make_fact(
+        "f-unforget",
+        nous,
+        "reinstated fact",
+        0.9,
+        EpistemicTier::Verified,
+    );
     store.insert_fact(&fact).expect("insert");
 
-    store.forget_fact("f-unforget", ForgetReason::Outdated).expect("forget");
+    store
+        .forget_fact("f-unforget", ForgetReason::Outdated)
+        .expect("forget");
 
-    let results = store.query_facts(nous, query_time, 10).expect("query after forget");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after forget");
     assert!(results.is_empty(), "should be excluded after forget");
 
     store.unforget_fact("f-unforget").expect("unforget");
 
-    let results = store.query_facts(nous, query_time, 10).expect("query after unforget");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after unforget");
     assert_eq!(results.len(), 1, "should be restored after unforget");
     assert_eq!(results[0].id, "f-unforget");
 
     // Audit should show cleared forget metadata
     let audit = audit_all_facts(&store, nous);
     let row = &audit[0];
-    assert!(!row.is_forgotten, "should not be marked forgotten after unforget");
+    assert!(
+        !row.is_forgotten,
+        "should not be marked forgotten after unforget"
+    );
     assert!(row.forgotten_at.is_none(), "forgotten_at should be cleared");
-    assert!(row.forget_reason.is_none(), "forget_reason should be cleared");
+    assert!(
+        row.forget_reason.is_none(),
+        "forget_reason should be cleared"
+    );
 }
 
 #[test]
@@ -498,15 +723,27 @@ fn forget_with_each_reason() {
     .enumerate()
     {
         let id = format!("f-reason-{i}");
-        let fact = make_fact(&id, nous, &format!("fact for {reason_str}"), 0.9, EpistemicTier::Verified);
+        let fact = make_fact(
+            &id,
+            nous,
+            &format!("fact for {reason_str}"),
+            0.9,
+            EpistemicTier::Verified,
+        );
         store.insert_fact(&fact).expect("insert");
         store.forget_fact(&id, *reason).expect("forget");
     }
 
     let audit = audit_all_facts(&store, nous);
     assert_eq!(audit.len(), 4);
-    for (i, reason_str) in ["user_requested", "outdated", "incorrect", "privacy"].iter().enumerate() {
-        let row = audit.iter().find(|r| r.id == format!("f-reason-{i}")).expect("find fact");
+    for (i, reason_str) in ["user_requested", "outdated", "incorrect", "privacy"]
+        .iter()
+        .enumerate()
+    {
+        let row = audit
+            .iter()
+            .find(|r| r.id == format!("f-reason-{i}"))
+            .expect("find fact");
         assert!(row.is_forgotten);
         assert_eq!(row.forget_reason.as_deref(), Some(*reason_str));
     }
@@ -521,7 +758,13 @@ fn full_forget_lifecycle() {
     let query_time = "2026-07-01T00:00:00Z";
 
     // 1. Insert
-    let fact = make_fact("f-lifecycle", nous, "Alice's phone number is 555-0123", 0.95, EpistemicTier::Verified);
+    let fact = make_fact(
+        "f-lifecycle",
+        nous,
+        "Alice's phone number is 555-0123",
+        0.95,
+        EpistemicTier::Verified,
+    );
     store.insert_fact(&fact).expect("insert");
 
     // 2. Search — found
@@ -529,10 +772,14 @@ fn full_forget_lifecycle() {
     assert_eq!(results.len(), 1);
 
     // 3. Forget — privacy
-    store.forget_fact("f-lifecycle", ForgetReason::Privacy).expect("forget");
+    store
+        .forget_fact("f-lifecycle", ForgetReason::Privacy)
+        .expect("forget");
 
     // 4. Search — not found
-    let results = store.query_facts(nous, query_time, 10).expect("query after forget");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after forget");
     assert!(results.is_empty());
 
     // 5. Audit — found with metadata
@@ -545,7 +792,9 @@ fn full_forget_lifecycle() {
     store.unforget_fact("f-lifecycle").expect("unforget");
 
     // 7. Search — found again
-    let results = store.query_facts(nous, query_time, 10).expect("query after unforget");
+    let results = store
+        .query_facts(nous, query_time, 10)
+        .expect("query after unforget");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].content, "Alice's phone number is 555-0123");
 }

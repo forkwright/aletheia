@@ -9,9 +9,10 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["sqlite-tests"]
+default = ["sqlite-tests", "knowledge-store"]
 sqlite-tests = ["aletheia-mneme/sqlite"]
 engine-tests = ["aletheia-mneme/mneme-engine"]
+knowledge-store = ["aletheia-nous/knowledge-store", "aletheia-pylon/knowledge-store"]
 
 [dev-dependencies]
 aletheia-dokimion = { path = "../eval" }

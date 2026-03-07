@@ -94,6 +94,8 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         None,
         None,
         Some(Arc::clone(&session_store)),
+        #[cfg(feature = "knowledge-store")]
+        None,
         Arc::new(vec![]),
         None,
         None,

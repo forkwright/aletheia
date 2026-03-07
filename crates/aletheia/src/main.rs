@@ -369,11 +369,26 @@ async fn run_migrate_memory(
 ) -> Result<()> {
     #[cfg(feature = "migrate-qdrant")]
     {
-        return migrate_memory::run(cli, qdrant_url, collection, knowledge_path, review_file, dry_run).await;
+        return migrate_memory::run(
+            cli,
+            qdrant_url,
+            collection,
+            knowledge_path,
+            review_file,
+            dry_run,
+        )
+        .await;
     }
     #[cfg(not(feature = "migrate-qdrant"))]
     {
-        let _ = (cli, qdrant_url, collection, knowledge_path, review_file, dry_run);
+        let _ = (
+            cli,
+            qdrant_url,
+            collection,
+            knowledge_path,
+            review_file,
+            dry_run,
+        );
         anyhow::bail!(
             "migrate-memory requires the `migrate-qdrant` feature.\n\
              Rebuild with: cargo build --features migrate-qdrant"

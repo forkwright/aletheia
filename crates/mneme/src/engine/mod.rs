@@ -14,10 +14,10 @@ pub use crate::engine::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRule
 pub use crate::engine::runtime::callback::CallbackOp;
 pub use crate::engine::runtime::db::{NamedRows, ScriptMutability, TransactionPayload};
 pub use crate::engine::storage::mem::MemStorage;
-#[cfg(feature = "storage-redb")]
-pub use crate::engine::storage::redb::RedbStorage;
 #[cfg(feature = "storage-new-rocksdb")]
 pub use crate::engine::storage::newrocks::NewRocksDbStorage;
+#[cfg(feature = "storage-redb")]
+pub use crate::engine::storage::redb::RedbStorage;
 pub use ndarray::Array1;
 
 // Internal re-exports needed by submodules (not part of the public API)
