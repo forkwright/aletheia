@@ -146,7 +146,9 @@ mod tests {
     #[test]
     fn valid_categories_matches_ddl_check_constraint() {
         let marker = "CHECK(category IN (";
-        let start = DDL.find(marker).expect("CHECK constraint for category exists in DDL");
+        let start = DDL
+            .find(marker)
+            .expect("CHECK constraint for category exists in DDL");
         let inner_start = start + marker.len();
         let inner_end = DDL[inner_start..]
             .find("))")

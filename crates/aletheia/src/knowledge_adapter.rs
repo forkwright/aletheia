@@ -203,10 +203,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let agent = nous_id.as_deref().unwrap_or("");
             let facts = self
                 .store
-                .audit_all_facts_async(
-                    agent.to_owned(),
-                    i64::try_from(limit).unwrap_or(i64::MAX),
-                )
+                .audit_all_facts_async(agent.to_owned(), i64::try_from(limit).unwrap_or(i64::MAX))
                 .await
                 .map_err(|e| format!("failed to query facts: {e}"))?;
 
@@ -237,9 +234,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let fact_id = fact_id.to_owned();
         let reason = reason.to_owned();
         Box::pin(async move {
-            let reason: aletheia_mneme::knowledge::ForgetReason = reason
-                .parse()
-                .map_err(|e: String| e)?;
+            let reason: aletheia_mneme::knowledge::ForgetReason =
+                reason.parse().map_err(|e: String| e)?;
             self.store
                 .forget_fact_async(fact_id, reason)
                 .await

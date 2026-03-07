@@ -660,10 +660,7 @@ impl KnowledgeStore {
             "id".to_owned(),
             crate::engine::DataValue::Str(fact_id.into()),
         );
-        params.insert(
-            "now".to_owned(),
-            crate::engine::DataValue::Str(now.into()),
-        );
+        params.insert("now".to_owned(), crate::engine::DataValue::Str(now.into()));
         params.insert(
             "reason".to_owned(),
             crate::engine::DataValue::Str(reason.as_str().into()),
@@ -796,7 +793,10 @@ impl KnowledgeStore {
 
     // --- Migration ---
 
-    #[expect(clippy::too_many_lines, reason = "migration is a single linear sequence")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "migration is a single linear sequence"
+    )]
     fn migrate_v1_to_v2(&self) -> crate::error::Result<()> {
         use crate::engine::{DataValue, ScriptMutability};
         use std::collections::BTreeMap;
@@ -923,7 +923,10 @@ impl KnowledgeStore {
         Ok(())
     }
 
-    #[expect(clippy::too_many_lines, reason = "migration is a single linear sequence")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "migration is a single linear sequence"
+    )]
     fn migrate_v2_to_v3(&self) -> crate::error::Result<()> {
         use crate::engine::{DataValue, ScriptMutability};
         use std::collections::BTreeMap;
@@ -1265,7 +1268,10 @@ fn embedding_to_params(
 // Parse rows from FULL_CURRENT_FACTS into Vec<Fact>.
 // Columns: id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id
 #[cfg(feature = "mneme-engine")]
-#[expect(clippy::too_many_lines, reason = "column extraction is sequential — splitting would obscure the mapping")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "column extraction is sequential — splitting would obscure the mapping"
+)]
 fn rows_to_facts(
     rows: crate::engine::NamedRows,
     nous_id: &str,
@@ -1336,11 +1342,12 @@ fn rows_to_facts(
 
         let tier = parse_epistemic_tier(&tier_str)?;
 
-        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "access count fits in u32")]
-        let access_count = row
-            .get(10)
-            .and_then(|v| extract_int(v).ok())
-            .unwrap_or(0) as u32;
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "access count fits in u32"
+        )]
+        let access_count = row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0) as u32;
         let last_accessed_at = row
             .get(11)
             .and_then(|v| extract_str(v).ok())

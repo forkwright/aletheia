@@ -202,10 +202,7 @@ impl ToolExecutor for MemoryAuditExecutor {
                         .iter()
                         .map(|f| {
                             let forgotten_suffix = if f.is_forgotten {
-                                let reason = f
-                                    .forget_reason
-                                    .as_deref()
-                                    .unwrap_or("unknown");
+                                let reason = f.forget_reason.as_deref().unwrap_or("unknown");
                                 format!(" [FORGOTTEN: {reason}]")
                             } else {
                                 String::new()
@@ -530,8 +527,7 @@ fn memory_forget_def() -> ToolDef {
                     "reason".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description:
-                            "Why: user_requested, outdated, incorrect, privacy".to_owned(),
+                        description: "Why: user_requested, outdated, incorrect, privacy".to_owned(),
                         enum_values: Some(vec![
                             "user_requested".to_owned(),
                             "outdated".to_owned(),

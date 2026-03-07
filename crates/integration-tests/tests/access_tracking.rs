@@ -2,7 +2,7 @@
 #![cfg(feature = "engine-tests")]
 
 use aletheia_mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
-use aletheia_mneme::knowledge::{default_stability_hours, EmbeddedChunk, EpistemicTier, Fact};
+use aletheia_mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, default_stability_hours};
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 use std::sync::Arc;
 
@@ -59,9 +59,18 @@ fn insert_fact_then_search_increments_access_count() {
     let facts = store
         .query_facts("syn", "2026-06-01T00:00:00Z", 10)
         .expect("query facts");
-    let tracked = facts.iter().find(|f| f.id == "f-track-1").expect("find fact");
-    assert_eq!(tracked.access_count, 1, "access_count should be 1 after one search");
-    assert!(!tracked.last_accessed_at.is_empty(), "last_accessed_at should be set");
+    let tracked = facts
+        .iter()
+        .find(|f| f.id == "f-track-1")
+        .expect("find fact");
+    assert_eq!(
+        tracked.access_count, 1,
+        "access_count should be 1 after one search"
+    );
+    assert!(
+        !tracked.last_accessed_at.is_empty(),
+        "last_accessed_at should be set"
+    );
 }
 
 #[test]
@@ -87,20 +96,30 @@ fn triple_search_yields_access_count_3() {
 
     // Search 3 times
     for _ in 0..3 {
-        store.search_vectors(embedding.clone(), 5, 20).expect("search");
+        store
+            .search_vectors(embedding.clone(), 5, 20)
+            .expect("search");
     }
 
     let facts = store
         .query_facts("syn", "2026-06-01T00:00:00Z", 10)
         .expect("query facts");
-    let tracked = facts.iter().find(|f| f.id == "f-triple").expect("find fact");
-    assert_eq!(tracked.access_count, 3, "access_count should be 3 after three searches");
+    let tracked = facts
+        .iter()
+        .find(|f| f.id == "f-triple")
+        .expect("find fact");
+    assert_eq!(
+        tracked.access_count, 3,
+        "access_count should be 3 after three searches"
+    );
 }
 
 #[test]
 fn increment_access_empty_ids_is_noop() {
     let store = open_store(4);
-    store.increment_access(&[]).expect("empty increment should succeed");
+    store
+        .increment_access(&[])
+        .expect("empty increment should succeed");
 }
 
 #[test]
@@ -121,15 +140,23 @@ fn knowledge_graph_data_audit() {
     let store = open_store(4);
 
     // Query facts, entities, relationships
-    let facts = store.query_facts("", "9999-12-31", 1000).unwrap_or_default();
+    let facts = store
+        .query_facts("", "9999-12-31", 1000)
+        .unwrap_or_default();
 
     let entity_rows = store
-        .run_query("?[id, name, entity_type] := *entities{id, name, entity_type}", Default::default())
+        .run_query(
+            "?[id, name, entity_type] := *entities{id, name, entity_type}",
+            Default::default(),
+        )
         .map(|r| r.rows.len())
         .unwrap_or(0);
 
     let rel_rows = store
-        .run_query("?[src, dst, relation] := *relationships{src, dst, relation}", Default::default())
+        .run_query(
+            "?[src, dst, relation] := *relationships{src, dst, relation}",
+            Default::default(),
+        )
         .map(|r| r.rows.len())
         .unwrap_or(0);
 
@@ -139,9 +166,18 @@ fn knowledge_graph_data_audit() {
     println!("Relationships: {rel_rows}");
 
     // Fact tier distribution
-    let verified = facts.iter().filter(|f| f.tier == EpistemicTier::Verified).count();
-    let inferred = facts.iter().filter(|f| f.tier == EpistemicTier::Inferred).count();
-    let assumed = facts.iter().filter(|f| f.tier == EpistemicTier::Assumed).count();
+    let verified = facts
+        .iter()
+        .filter(|f| f.tier == EpistemicTier::Verified)
+        .count();
+    let inferred = facts
+        .iter()
+        .filter(|f| f.tier == EpistemicTier::Inferred)
+        .count();
+    let assumed = facts
+        .iter()
+        .filter(|f| f.tier == EpistemicTier::Assumed)
+        .count();
     println!("\nFact tiers:");
     println!("  Verified:  {verified}");
     println!("  Inferred:  {inferred}");
@@ -173,7 +209,11 @@ fn knowledge_graph_data_audit() {
     if facts.is_empty() {
         println!("No data yet. Phase F has nothing to calibrate against.");
     } else {
-        println!("Facts with access data: {accessed}/{} ({:.0}%)", facts.len(), accessed as f64 / facts.len() as f64 * 100.0);
+        println!(
+            "Facts with access data: {accessed}/{} ({:.0}%)",
+            facts.len(),
+            accessed as f64 / facts.len() as f64 * 100.0
+        );
         if accessed > 10 {
             println!("Sufficient access data for initial FSRS calibration.");
         } else {

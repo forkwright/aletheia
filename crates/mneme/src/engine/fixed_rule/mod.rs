@@ -852,7 +852,11 @@ pub(crate) struct NodeNotFoundError {
 }
 
 #[derive(Debug)]
-pub(crate) struct BadExprValueError(pub(crate) DataValue, pub(crate) SourceSpan, pub(crate) String);
+pub(crate) struct BadExprValueError(
+    pub(crate) DataValue,
+    pub(crate) SourceSpan,
+    pub(crate) String,
+);
 
 impl std::fmt::Display for BadExprValueError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
