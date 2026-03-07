@@ -314,7 +314,14 @@ Anthropic's guidance on format:
 
 **Tell Claude what to do, not what not to do.** Instead of "Do not use markdown in your response," try "Your response should be composed of smoothly flowing prose paragraphs." Positive instructions produce more reliable behavior than negations.
 
-Source: [Prompting best practices](https://platform.claude.com/docs/en/docs/build-with-claude/prompt-engineering/system-prompts) [Confirmed]
+**Degrees of freedom framework.** Anthropic's skill best practices introduce a calibration model:
+- **High freedom** (text instructions): When multiple approaches are valid. Example: code review checklists.
+- **Medium freedom** (pseudocode with parameters): When a preferred pattern exists but variation is acceptable.
+- **Low freedom** (exact scripts, no parameters): When operations are fragile. Example: database migrations.
+
+The analogy: "Think of Claude as a robot exploring a path. Narrow bridge with cliffs: provide specific guardrails (low freedom). Open field: give general direction (high freedom)."
+
+Source: [Prompting best practices](https://platform.claude.com/docs/en/docs/build-with-claude/prompt-engineering/system-prompts), [Skill best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) [Confirmed]
 
 #### Skill description quality
 
@@ -408,7 +415,7 @@ Source: [Prompting best practices](https://platform.claude.com/docs/en/docs/buil
 
 #### Context passing without token bloat
 
-Three strategies for efficient parent-to-child context transfer:
+Five strategies for efficient parent-to-child context transfer:
 
 1. **Structured task files**: Write task specification to a file (JSON preferred over markdown — "the model is less likely to inappropriately change or overwrite JSON files compared to Markdown files"). Sub-agent reads the file at start.
 
@@ -416,7 +423,15 @@ Three strategies for efficient parent-to-child context transfer:
 
 3. **Condensed summaries**: Lead agent summarizes findings before delegating. The summary, not the raw research, goes to the implementer.
 
-Source: [Long-running agents blog](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) [Confirmed]
+4. **Filesystem discovery**: Claude 4.6 models are "extremely effective at discovering state from the local filesystem." Rather than passing context through messages, let sub-agents discover it from CLAUDE.md, code, and git logs. This is fundamentally cheaper than message-based context transfer.
+
+5. **Persistent sub-agent memory**: The `memory` field on sub-agents enables cross-session learning without re-passing context. The sub-agent gets a persistent directory (e.g., `~/.claude/agent-memory/<name>/`) with first 200 lines of `MEMORY.md` auto-injected into its system prompt each session.
+
+**Chain of Agents pattern** (Google, NeurIPS 2024): For long-context processing, split text into chunks processed by sequential worker agents, each passing a summary to the next. A manager agent synthesizes the final result. Outperformed both RAG and long-context LLMs. Relevant for Aletheia's cross-agent topology.
+
+**Anti-pattern — full trace sharing**: Cognition's engineering team warns that copying entire conversation traces to sub-agents is impractical in production. Sub-agents need visibility into prior decisions but not raw traces. Use structured summaries or filesystem state instead.
+
+Source: [Long-running agents blog](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), [Chain of Agents (NeurIPS 2024)](https://research.google/blog/chain-of-agents-large-language-models-collaborating-on-long-context-tasks/), [Cognition](https://cognition.ai/blog/dont-build-multi-agents) [Confirmed + Likely]
 
 ---
 
@@ -767,5 +782,8 @@ For each finding:
 | [claudefa.st: Rules directory guide](https://claudefa.st/blog/guide/mechanics/rules-directory) | Path-scoped rules, instruction budget math, CLAUDE.md as slim constitution. |
 | [claudefa.st: Context buffer management](https://claudefa.st/blog/guide/mechanics/context-buffer-management) | 33K-45K token working buffer estimate for CC sessions. |
 | [dasroot.net: Context window scaling](https://dasroot.net/posts/2026/02/context-window-scaling-200k-tokens-help/) | Performance degradation starting at 130K+ tokens. |
+| [Chain of Agents (NeurIPS 2024)](https://research.google/blog/chain-of-agents-large-language-models-collaborating-on-long-context-tasks/) | Sequential worker agents with summary passing. Outperforms RAG and long-context LLMs. |
+| [Cognition: Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) | Anti-pattern warnings for multi-agent context sharing. Filesystem discovery over trace copying. |
+| [Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) | Degrees of freedom framework, progressive disclosure, description optimization, anti-patterns. |
 | [CC Skill Format research](cc-skill-format.md) | Internal research doc — skill matching, invocation flow, context budget, CC-native export requirements. |
 | [Model Capability Audit](model-capability-audit.md) | Internal research doc — native vs built capabilities, redundancy analysis. |
