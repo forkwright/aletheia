@@ -26,6 +26,9 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         last_accessed_at: String::new(),
         stability_hours: 720.0,
         fact_type: "inference".to_owned(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
     }
 }
 

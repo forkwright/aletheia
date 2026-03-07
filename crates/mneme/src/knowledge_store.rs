@@ -591,10 +591,11 @@ impl KnowledgeStore {
                   superseded_by, source_session_id, recorded_at,
                   new_count, new_last, stability_hours, fact_type,
                   is_forgotten, forgotten_at, forget_reason] :=
-                    *facts{id: $id, valid_from, content, nous_id, confidence, tier,
+                    *facts{id, valid_from, content, nous_id, confidence, tier,
                            valid_to, superseded_by, source_session_id, recorded_at,
                            access_count, last_accessed_at, stability_hours, fact_type,
                            is_forgotten, forgotten_at, forget_reason},
+                    id = $id,
                     new_count = access_count + 1,
                     new_last = $now
                 :put facts {id, valid_from => content, nous_id, confidence, tier,
@@ -644,9 +645,10 @@ impl KnowledgeStore {
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
               is_forgotten, forgotten_at, forget_reason] :=
-                *facts{id: $id, valid_from, content, nous_id, confidence, tier,
+                *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type},
+                id = $id,
                 is_forgotten = true,
                 forgotten_at = $now,
                 forget_reason = $reason
@@ -675,9 +677,10 @@ impl KnowledgeStore {
               superseded_by, source_session_id, recorded_at,
               access_count, last_accessed_at, stability_hours, fact_type,
               is_forgotten, forgotten_at, forget_reason] :=
-                *facts{id: $id, valid_from, content, nous_id, confidence, tier,
+                *facts{id, valid_from, content, nous_id, confidence, tier,
                        valid_to, superseded_by, source_session_id, recorded_at,
                        access_count, last_accessed_at, stability_hours, fact_type},
+                id = $id,
                 is_forgotten = false,
                 forgotten_at = null,
                 forget_reason = null

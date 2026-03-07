@@ -22,6 +22,9 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
         last_accessed_at: String::new(),
         stability_hours: 720.0,
         fact_type: String::new(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
     }
 }
 
@@ -45,6 +48,9 @@ fn fact_round_trip() {
         last_accessed_at: String::new(),
         stability_hours: 720.0,
         fact_type: String::new(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
     };
 
     store.insert_fact(&fact).expect("insert");
@@ -153,6 +159,9 @@ async fn async_spawn_blocking_wrapper() {
         last_accessed_at: String::new(),
         stability_hours: 720.0,
         fact_type: String::new(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
     };
 
     store.insert_fact_async(fact).await.expect("async insert");
@@ -211,6 +220,9 @@ fn hybrid_retrieval_end_to_end() {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         store.insert_fact(&fact).expect("insert fact");
     }

@@ -168,6 +168,7 @@ impl TestHarness {
             None,
             None,
             Some(Arc::clone(&session_store)),
+            #[cfg(feature = "knowledge-store")]
             None,
             Arc::new(vec![]),
             None,

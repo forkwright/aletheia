@@ -134,6 +134,7 @@ context:
         None,
         None,
         None,
+        #[cfg(feature = "knowledge-store")]
         None,
         Arc::new(packs),
         None,
@@ -266,6 +267,7 @@ overlays:
         None,
         None,
         None,
+        #[cfg(feature = "knowledge-store")]
         None,
         Arc::new(packs.clone()),
         None,
@@ -299,6 +301,7 @@ overlays:
         None,
         None,
         None,
+        #[cfg(feature = "knowledge-store")]
         None,
         Arc::new(packs),
         None,
