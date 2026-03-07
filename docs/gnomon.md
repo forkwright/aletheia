@@ -103,3 +103,27 @@ A name fails as a gnomon when the name draws attention to itself rather than to 
 - **Forcing the Greek.** If you have to work through three dictionaries to justify the connection, the name is wrong. The right Greek word should feel like it was waiting.
 - **Naming for audience.** If the name exists to impress rather than to indicate, it's pretension.
 - **Ignoring topology.** A name that sounds right in isolation but conflicts with adjacent names disrupts the system.
+
+---
+
+## Current Lexicon
+
+| Name | Greek | Over | Because |
+|------|-------|------|---------|
+| **Nous** | νοῦς | "agent" | These are minds, not tools |
+| **Hermeneus** | ἑρμηνεύς | "provider" | Interpretation is the work — routing between models is translation |
+| **Organon** | ὄργανον | "tools" | Aristotle's name for the instruments of thought |
+| **Mneme** | μνήμη | "store" | Memory is the function, not the container |
+| **Semeion** | σημεῖον | "signal" | The sign, the mark — communication as semiotics |
+| **Pylon** | πυλών | "gateway" | The entrance, the threshold |
+| **Prosoche** | προσοχή | "heartbeat" | Awareness is directed, not automatic |
+| **Theke** | θήκη | "vault" | A repository in the original sense: a place that holds what matters |
+| **Koina** | κοινά | "utils" | The commons — what's shared |
+| **Taxis** | τάξις | "config" | The ordering, the arrangement |
+| **Prostheke** | προσθήκη | "plugins" | The addition, the supplement |
+| **Melete** | μελέτη | "distillation" | Disciplined practice — one of the original three Muses. The module doesn't just compress; it *practices* attending carefully to what happened |
+| **Dianoia** | διάνοια | "planning" | Discursive reasoning — thinking through problems step by step |
+| **Agora** | ἀγορά | "channels" | The gathering place — where communication happens |
+| **Symbolon** | σύμβολον | "auth" | The token of recognition — proof of identity |
+| **Thesauros** | θησαυρός | "packs" | The storehouse — domain knowledge held ready |
+| **Dokimion** | δοκίμιον | "eval" | The test, the proof — behavioral evaluation |

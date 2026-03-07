@@ -1,35 +1,30 @@
 #!/usr/bin/env bash
-# deploy.sh — Build and deploy Aletheia runtime + UI
+# deploy.sh — Build and deploy Aletheia
 #
-# Usage: ./scripts/deploy.sh [--skip-ui] [--skip-runtime] [--dry-run]
+# Usage: ./scripts/deploy.sh [--skip-ui] [--dry-run]
 #
 # Steps:
 #   1. Pull latest main
-#   2. Build runtime (tsdown)
-#   3. Build UI (vite)
-#   4. Back up current artifacts
-#   5. Copy new artifacts into place
-#   6. Validate config (aletheia doctor)
-#   7. Restart daemon (systemctl restart aletheia)
+#   2. Build Rust binary (release)
+#   3. Build UI (optional, vite)
+#   4. Validate config (aletheia health)
+#   5. Restart daemon
 #
 # Rollback: ./scripts/rollback.sh
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RUNTIME_DIR="$REPO_ROOT/infrastructure/runtime"
 UI_DIR="$REPO_ROOT/ui"
 BACKUP_DIR="$REPO_ROOT/.deploy-backup"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 SKIP_UI=false
-SKIP_RUNTIME=false
 DRY_RUN=false
 
 for arg in "$@"; do
   case $arg in
     --skip-ui) SKIP_UI=true ;;
-    --skip-runtime) SKIP_RUNTIME=true ;;
     --dry-run) DRY_RUN=true ;;
     *) echo "Unknown option: $arg"; exit 1 ;;
   esac
@@ -44,18 +39,12 @@ cd "$REPO_ROOT"
 git checkout main
 git pull --rebase origin main
 
-# 2. Build runtime
-if [[ "$SKIP_RUNTIME" == "false" ]]; then
-  log "Building runtime..."
-  cd "$RUNTIME_DIR"
-  npm ci || die "Runtime dependency install failed"
-  npm run build || die "Runtime build failed"
-else
-  log "Skipping runtime build"
-fi
+# 2. Build Rust binary
+log "Building release binary..."
+cargo build --release || die "Rust build failed"
 
-# 3. Build UI
-if [[ "$SKIP_UI" == "false" ]]; then
+# 3. Build UI (optional)
+if [[ "$SKIP_UI" == "false" ]] && [[ -d "$UI_DIR" ]]; then
   log "Building UI..."
   cd "$UI_DIR"
   npm ci || die "UI dependency install failed"
@@ -64,16 +53,12 @@ else
   log "Skipping UI build"
 fi
 
-# 4. Back up current artifacts
-log "Backing up current artifacts to $BACKUP_DIR/$TIMESTAMP..."
+# 4. Back up current binary
+log "Backing up current binary to $BACKUP_DIR/$TIMESTAMP..."
 mkdir -p "$BACKUP_DIR/$TIMESTAMP"
-if [[ -f "$RUNTIME_DIR/dist/entry.mjs" ]]; then
-  cp -r "$RUNTIME_DIR/dist" "$BACKUP_DIR/$TIMESTAMP/runtime-dist"
+if [[ -f "$REPO_ROOT/target/release/aletheia" ]]; then
+  cp "$REPO_ROOT/target/release/aletheia" "$BACKUP_DIR/$TIMESTAMP/aletheia"
 fi
-if [[ -d "$UI_DIR/dist" ]]; then
-  cp -r "$UI_DIR/dist" "$BACKUP_DIR/$TIMESTAMP/ui-dist"
-fi
-# Record git SHA for rollback reference
 git rev-parse HEAD > "$BACKUP_DIR/$TIMESTAMP/git-sha"
 
 # Keep only last 5 backups
@@ -81,17 +66,13 @@ mapfile -t old_backups < <(find "$BACKUP_DIR" -maxdepth 1 -mindepth 1 -type d -p
 for f in "${old_backups[@]}"; do rm -rf "$f"; done
 
 if [[ "$DRY_RUN" == "true" ]]; then
-  log "Dry run — skipping restart. Artifacts built and backed up."
+  log "Dry run — skipping restart. Binary built and backed up."
   exit 0
 fi
 
-# 5. Validate config
-log "Validating config..."
-if command -v aletheia &>/dev/null; then
-  aletheia doctor || die "Config validation failed — NOT deploying"
-else
-  log "aletheia CLI not in PATH — skipping doctor check"
-fi
+# 5. Validate
+log "Validating..."
+"$REPO_ROOT/target/release/aletheia" health || log "Warning: health check failed (may not be running yet)"
 
 # 6. Restart daemon
 log "Restarting aletheia daemon..."

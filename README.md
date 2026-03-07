@@ -1,6 +1,6 @@
 # Aletheia
 
-Self-hosted multi-agent AI system with persistent memory, Signal messaging, and a web UI.
+Self-hosted multi-agent AI system with persistent memory and Signal messaging.
 
 Privacy-first. Runs on commodity hardware. No cloud dependencies beyond your LLM API key.
 
@@ -19,7 +19,7 @@ Not a chatbot framework. A distributed cognition system.
 Rust workspace with 16 crates. Single binary deployment.
 
 ```text
-         Web UI (Svelte 5)          Signal Messenger
+     TUI / HTTP API              Signal Messenger
               |                          |
          HTTP/SSE                   signal-cli (JSON-RPC)
               |                          |
@@ -73,17 +73,17 @@ aletheia start
 
 ## Why Greek?
 
-Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See [ALETHEIA.md](ALETHEIA.md) for the manifesto, [gnomon.md](docs/gnomon.md) for the naming system.
+Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See [ALETHEIA.md](docs/ALETHEIA.md) for the manifesto, [gnomon.md](docs/gnomon.md) for the naming system.
 
 ---
 
 ## Agents
 
-Each agent has a workspace under `nous/` with character, operations, and memory files. See `nous/_example/` for a template, [WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.
+Each agent has a workspace under `nous/` with character, operations, and memory files. See `instance.example/nous/_template/` for a template, [WORKSPACE_FILES.md](docs/WORKSPACE_FILES.md) for the full reference.
 
 ## Interfaces
 
-- **Web UI** - Svelte 5 at `/ui`. Streaming, file upload, syntax highlighting, thinking visualization.
+- **TUI** - Terminal dashboard. Rich markdown rendering, session management.
 - **Signal** - 15 `!` commands. `!help` for the list.
 - **CLI** - `aletheia help` for the full command reference.
 - **API** - REST on port 18789. See [ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -94,7 +94,6 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 |---------|------|----------|
 | aletheia | 18789 | Yes |
 | signal-cli | 8080 | For Signal |
-| aletheia-memory | 8230 | Deprecated (replaced by embedded KnowledgeStore) |
 
 ## Privacy
 
@@ -104,4 +103,4 @@ The only outbound connections are to services you explicitly configure (LLM prov
 
 ## License
 
-AGPL-3.0 (runtime) + Apache-2.0 (SDK/client). See [LICENSING.md](LICENSING.md).
+AGPL-3.0-or-later for the runtime and all crates. Apache-2.0 for SDK and client libraries (when published). See [LICENSE](LICENSE).

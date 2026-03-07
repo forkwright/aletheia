@@ -24,7 +24,7 @@ cargo build --release
 cargo run
 ```
 
-Configuration is read from `~/.aletheia/aletheia.json`. The TUI connects to the gateway URL defined in that file (default `http://localhost:18789`).
+Configuration is read from `instance/config/aletheia.yaml`. The TUI connects to the gateway URL defined in that file (default `http://localhost:18789`).
 
 ## Configuration
 

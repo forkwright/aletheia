@@ -54,26 +54,6 @@ CozoDB (embedded knowledge store) manages its own schema versioning internally.
 
 ---
 
-## From TypeScript to Rust
-
-If migrating from the TypeScript runtime to the Rust binary:
-
-| Aspect | TypeScript | Rust |
-|--------|-----------|------|
-| Config format | JSON (`aletheia.json`) | YAML (`aletheia.yaml`) |
-| Config location | `~/.aletheia/` | `instance/config/` |
-| Services | Gateway + memory sidecar + containers | Single binary |
-| Memory backend | Qdrant + Neo4j (external) | CozoDB (embedded) |
-| Embeddings | CozoDB (embedded) | fastembed-rs (local) |
-| CLI | `aletheia start/stop/restart` | `aletheia` (is the server) |
-| API paths | `/api/sessions`, `/health` | `/api/v1/sessions`, `/api/health` |
-
-Migration steps:
-1. Create a new `instance/` directory from `instance.example/`
-2. Translate your JSON config to YAML (see [CONFIGURATION.md](CONFIGURATION.md))
-3. Move agent workspaces (`nous/*/`) into the new instance
-4. Session data does not migrate — the SQLite schema differs between stacks
-5. Set `ANTHROPIC_API_KEY` as an environment variable (replaces `credentials/` files)
 
 ---
 

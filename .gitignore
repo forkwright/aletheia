@@ -7,8 +7,6 @@
 /projects/
 /archive/
 nous/*/
-!nous/_example/
-!nous/_example/**
 shared/memory/
 shared/contracts/
 shared/checkpoints/
@@ -141,3 +139,5 @@ crates/mneme-bench/target/
 # Cargo build output
 /target/
 .cargo/
+infrastructure/runtime/dist/
+infrastructure/runtime/

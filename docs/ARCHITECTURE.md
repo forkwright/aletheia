@@ -1,7 +1,7 @@
 # Architecture
 
 > Module map, dependency graph, trait boundaries, and extension points.
-> Covers the Rust crate workspace and TypeScript runtime (legacy).
+> Covers the Rust crate workspace.
 >
 > Technology choices and dependency policy: [TECHNOLOGY.md](TECHNOLOGY.md).
 > Project roadmap: [PROJECT.md](PROJECT.md).
@@ -10,7 +10,7 @@
 
 ## Naming
 
-Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See [ALETHEIA.md](../ALETHEIA.md) for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
+Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See [ALETHEIA.md](ALETHEIA.md) for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
 
 ---
 
@@ -31,7 +31,7 @@ aletheia
 ├── organon       — tool registry + built-in tools
 ├── nous          — agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia       — planning / project orchestration
-├── pylon         — Axum HTTP gateway, SSE, static UI serving
+├── pylon         — Axum HTTP gateway, SSE streaming
 ├── symbolon      — JWT auth, sessions, RBAC
 ├── agora         — channel registry + ChannelProvider trait
 │   └── semeion   — Signal (signal-cli subprocess)
@@ -51,7 +51,6 @@ Platform (tracked) vs. instance (gitignored). One directory, one boundary.
 ```text
 aletheia/                          # git root — the platform
 ├── crates/                        # Rust workspace
-├── ui/                            # Svelte 5 frontend
 ├── docs/                          # platform docs
 │
 ├── instance/                      # GITIGNORED — all instance state
@@ -82,7 +81,7 @@ aletheia/                          # git root — the platform
 │   │   │   ├── tools/            #   Nous-specific tools
 │   │   │   ├── hooks/            #   Nous-specific hooks
 │   │   │   └── memory/           #   Daily memory files
-│   │   └── _example/             #   Template for new agents
+
 │   │
 │   ├── config/                   # Deployment config
 │   │   ├── aletheia.yaml
@@ -124,7 +123,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
 | `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
-| `pylon` | Axum HTTP gateway, SSE streaming, static UI serving, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
+| `pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
 | `tui` | Terminal dashboard — separate workspace member at `tui/` | reqwest (standalone UI client) |
 | `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, oikonomos, dianoia, tui (optional) |
 
@@ -179,58 +178,6 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
 ---
 
-## TypeScript Runtime (Legacy)
-
-All modules in `infrastructure/runtime/src/`:
-
-| Module | Domain |
-|--------|--------|
-| `koina` | Logger, errors, event bus, safe wrappers, crypto |
-| `taxis` | Config loading + Zod validation |
-| `mneme` | Session store (better-sqlite3, migrations) |
-| `hermeneus` | Anthropic SDK, provider routing, token counting |
-| `organon` | Built-in tools, skills registry, MCP client |
-| `nous` | Agent bootstrap, turn pipeline, competence model |
-| `melete` | Distillation, reflection, memory flush |
-| `symbolon` | Split-token authentication, JWT, sessions, RBAC |
-| `dianoia` | Multi-phase planning orchestrator |
-| `agora` | Channel registry, CLI commands |
-| `semeion` | Signal client, listener, commands, TTS |
-| `pylon` | Hono HTTP gateway, MCP, Web UI routes |
-| `prostheke` | Plugin system, lifecycle hooks |
-| `oikonomos` | Cron scheduler, watchdog, update checker |
-| `portability` | Agent import/export (AgentFile format) |
-
-### Initialization Order
-
-```text
-taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → oikonomos
-                                           ↑
-                                     (semeion and pylon wired at runtime start)
-```
-
-### Dependency Rules
-
-| Module | May Import | Must Not Import |
-|--------|-----------|-----------------|
-| `koina` | nothing (leaf) | everything |
-| `taxis` | `koina` | everything else |
-| `mneme` | `koina`, `taxis` | everything else |
-| `hermeneus` | `koina`, `taxis` | everything else |
-| `organon` | `koina`, `taxis`, `hermeneus` | everything else |
-| `nous` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `melete`, `portability` | `semeion`, `pylon`, `prostheke`, `oikonomos`, `dianoia`, `symbolon` |
-| `melete` | `koina`, `taxis`, `mneme`, `hermeneus` | everything else |
-| `symbolon` | `koina` | everything else (stateless utilities) |
-| `dianoia` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | `semeion`, `pylon`, `prostheke`, `oikonomos` |
-| `agora` | `koina`, `taxis`, `semeion` | everything else |
-| `semeion` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia` | `pylon`, `prostheke`, `oikonomos` |
-| `pylon` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia`, `semeion`, `symbolon`, `oikonomos` | `prostheke`, `melete`, `portability` |
-| `prostheke` | `koina`, `organon` | everything else |
-| `oikonomos` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `melete` | everything else |
-| `portability` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | everything else |
-
----
-
 ## Adding Components
 
 ### Rust Crate
@@ -241,16 +188,9 @@ taxis → mneme → hermeneus → organon → nous → dianoia → prostheke →
 4. Update this file
 5. Workspace lints apply automatically
 
-### TypeScript Module
-
-1. Create `src/<name>/` with entry file
-2. Define its layer in the dependency graph
-3. Wire into initialization in `aletheia.ts`
-4. Update this file
-
 ### Plugin
 
-See [docs/PLUGINS-DESIGN.md](PLUGINS-DESIGN.md).
+Plugin system (prostheke) is planned for v2. See requirements in project planning docs.
 
 ---
 
@@ -271,8 +211,8 @@ opt-level = 2      # optimize deps in dev — faster iteration
 
 ## Structural Properties
 
-- **koina is a true leaf node** in both stacks. No `index.ts` in TS - import from specific files. No workspace deps in Rust.
-- **symbolon depends only on koina** in Rust (plus external crates: reqwest, rusqlite, jsonwebtoken). Zero-dependency in TS (takes `Database.Database` as constructor argument).
+- **koina is a true leaf node.** No workspace deps in Rust.
+- **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, jsonwebtoken).
 - **CozoDB engine is vendored** inside `mneme/src/engine/`, gated behind the `mneme-engine` feature.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **oikonomos depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.

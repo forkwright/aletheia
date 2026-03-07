@@ -2,61 +2,44 @@
 # rollback.sh — Restore previous Aletheia deployment
 #
 # Usage: ./scripts/rollback.sh [backup-timestamp]
-#
-# Without arguments, restores the most recent backup.
-# With a timestamp argument (e.g. 20260227-143052), restores that specific backup.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RUNTIME_DIR="$REPO_ROOT/infrastructure/runtime"
-UI_DIR="$REPO_ROOT/ui"
 BACKUP_DIR="$REPO_ROOT/.deploy-backup"
 
 log() { echo "[rollback] $(date +%H:%M:%S) $*"; }
 die() { echo "[rollback] ERROR: $*" >&2; exit 1; }
 
-# Find backup to restore
-if [[ $# -gt 0 ]]; then
-  TARGET="$BACKUP_DIR/$1"
+# Find the latest backup or use specified timestamp
+if [[ -n "${1:-}" ]]; then
+  BACKUP="$BACKUP_DIR/$1"
 else
-  TARGET=$(find "$BACKUP_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%p\n' 2>/dev/null | sort -rn | head -1 | cut -f2-)
+  BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%p\n' | sort -rn | head -1 | cut -f2-)
 fi
 
-[[ -z "${TARGET:-}" || ! -d "$TARGET" ]] && die "No backup found at ${TARGET:-$BACKUP_DIR/}"
+[[ -d "$BACKUP" ]] || die "No backup found at $BACKUP"
 
-log "Restoring from: $TARGET"
+log "Rolling back from $BACKUP..."
 
-# Show what we're rolling back to
-if [[ -f "$TARGET/git-sha" ]]; then
-  log "  Git SHA: $(cat "$TARGET/git-sha")"
+# Restore binary
+if [[ -f "$BACKUP/aletheia" ]]; then
+  cp "$BACKUP/aletheia" "$REPO_ROOT/target/release/aletheia"
+  log "Binary restored"
 fi
 
-# Restore runtime
-if [[ -d "$TARGET/runtime-dist" ]]; then
-  log "Restoring runtime artifacts..."
-  rm -rf "$RUNTIME_DIR/dist"
-  cp -r "$TARGET/runtime-dist" "$RUNTIME_DIR/dist"
-else
-  log "No runtime backup — skipping"
+# Show the git SHA for reference
+if [[ -f "$BACKUP/git-sha" ]]; then
+  log "Backup was from commit: $(cat "$BACKUP/git-sha")"
 fi
 
-# Restore UI
-if [[ -d "$TARGET/ui-dist" ]]; then
-  log "Restoring UI artifacts..."
-  rm -rf "$UI_DIR/dist"
-  cp -r "$TARGET/ui-dist" "$UI_DIR/dist"
-else
-  log "No UI backup — skipping"
-fi
-
-# Restart daemon
+# Restart
 log "Restarting daemon..."
-sudo systemctl restart aletheia || die "Daemon restart failed after rollback"
+sudo systemctl restart aletheia || die "Restart failed after rollback"
 
 sleep 3
 if systemctl is-active --quiet aletheia; then
   log "✓ Rollback complete. Daemon is running."
 else
-  die "Daemon failed to start even after rollback. Manual intervention required."
+  die "Daemon failed to start after rollback"
 fi
