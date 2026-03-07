@@ -293,10 +293,33 @@ Rules:
         }
 
         for rel in &extraction.relationships {
+            let relation_type = match crate::vocab::normalize_relation(&rel.relation) {
+                crate::vocab::RelationType::Valid(canonical) => canonical.to_owned(),
+                crate::vocab::RelationType::Rejected => {
+                    tracing::warn!(
+                        relation = %rel.relation,
+                        source = %rel.source,
+                        target = %rel.target,
+                        "rejected relationship with banned type"
+                    );
+                    result.relationships_skipped += 1;
+                    continue;
+                }
+                crate::vocab::RelationType::Unknown(normalized) => {
+                    tracing::warn!(
+                        relation = %normalized,
+                        raw = %rel.relation,
+                        source = %rel.source,
+                        target = %rel.target,
+                        "persisting relationship with unknown type"
+                    );
+                    normalized
+                }
+            };
             let r = Relationship {
                 src: slugify(&rel.source),
                 dst: slugify(&rel.target),
-                relation: rel.relation.clone(),
+                relation: relation_type,
                 weight: rel.confidence,
                 created_at: now.clone(),
             };
@@ -352,6 +375,8 @@ pub struct PersistResult {
     pub entities_inserted: usize,
     /// Number of relationships written.
     pub relationships_inserted: usize,
+    /// Number of relationships skipped due to validation.
+    pub relationships_skipped: usize,
     /// Number of facts written.
     pub facts_inserted: usize,
 }
@@ -632,6 +657,7 @@ mod tests {
             .unwrap();
         assert_eq!(result.entities_inserted, 2);
         assert_eq!(result.relationships_inserted, 1);
+        assert_eq!(result.relationships_skipped, 0);
         assert_eq!(result.facts_inserted, 1);
 
         // Verify entities are queryable via entity_neighborhood.
@@ -650,5 +676,154 @@ mod tests {
             facts.iter().any(|f| f.content.contains("CozoDB")),
             "persisted fact should be retrievable"
         );
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn persist_skips_relates_to() {
+        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+
+        let extraction = Extraction {
+            entities: vec![
+                ExtractedEntity {
+                    name: "Alice".to_owned(),
+                    entity_type: "person".to_owned(),
+                    description: String::new(),
+                },
+                ExtractedEntity {
+                    name: "Bob".to_owned(),
+                    entity_type: "person".to_owned(),
+                    description: String::new(),
+                },
+            ],
+            relationships: vec![ExtractedRelationship {
+                source: "Alice".to_owned(),
+                relation: "RELATES_TO".to_owned(),
+                target: "Bob".to_owned(),
+                confidence: 0.8,
+            }],
+            facts: vec![],
+        };
+
+        let result = engine
+            .persist(&extraction, &store, "session:test", "syn")
+            .unwrap();
+        assert_eq!(result.relationships_inserted, 0);
+        assert_eq!(result.relationships_skipped, 1);
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn persist_normalizes_relation_type() {
+        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+
+        let extraction = Extraction {
+            entities: vec![
+                ExtractedEntity {
+                    name: "Alice".to_owned(),
+                    entity_type: "person".to_owned(),
+                    description: String::new(),
+                },
+                ExtractedEntity {
+                    name: "Acme".to_owned(),
+                    entity_type: "project".to_owned(),
+                    description: String::new(),
+                },
+            ],
+            relationships: vec![ExtractedRelationship {
+                source: "Alice".to_owned(),
+                relation: "works on".to_owned(),
+                target: "Acme".to_owned(),
+                confidence: 0.9,
+            }],
+            facts: vec![],
+        };
+
+        let result = engine
+            .persist(&extraction, &store, "session:test", "syn")
+            .unwrap();
+        assert_eq!(result.relationships_inserted, 1);
+        assert_eq!(result.relationships_skipped, 0);
+
+        let neighborhood = store.entity_neighborhood("alice").unwrap();
+        assert!(
+            neighborhood
+                .rows
+                .iter()
+                .any(|row| row.iter().any(|v| v.get_str() == Some("WORKS_AT"))),
+            "relationship should be stored as normalized WORKS_AT"
+        );
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn persist_accepts_unknown_type() {
+        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+
+        let extraction = Extraction {
+            entities: vec![
+                ExtractedEntity {
+                    name: "Alice".to_owned(),
+                    entity_type: "person".to_owned(),
+                    description: String::new(),
+                },
+                ExtractedEntity {
+                    name: "Bob".to_owned(),
+                    entity_type: "person".to_owned(),
+                    description: String::new(),
+                },
+            ],
+            relationships: vec![ExtractedRelationship {
+                source: "Alice".to_owned(),
+                relation: "MENTORS".to_owned(),
+                target: "Bob".to_owned(),
+                confidence: 0.7,
+            }],
+            facts: vec![],
+        };
+
+        let result = engine
+            .persist(&extraction, &store, "session:test", "syn")
+            .unwrap();
+        assert_eq!(result.relationships_inserted, 1);
+        assert_eq!(result.relationships_skipped, 0);
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn persist_skips_is_type() {
+        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+
+        let extraction = Extraction {
+            entities: vec![
+                ExtractedEntity {
+                    name: "Rust".to_owned(),
+                    entity_type: "tool".to_owned(),
+                    description: String::new(),
+                },
+                ExtractedEntity {
+                    name: "Language".to_owned(),
+                    entity_type: "concept".to_owned(),
+                    description: String::new(),
+                },
+            ],
+            relationships: vec![ExtractedRelationship {
+                source: "Rust".to_owned(),
+                relation: "is".to_owned(),
+                target: "Language".to_owned(),
+                confidence: 0.9,
+            }],
+            facts: vec![],
+        };
+
+        let result = engine
+            .persist(&extraction, &store, "session:test", "syn")
+            .unwrap();
+        assert_eq!(result.relationships_inserted, 0);
+        assert_eq!(result.relationships_skipped, 1);
     }
 }

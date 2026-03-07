@@ -64,6 +64,8 @@ pub mod schema;
 pub mod store;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types;
+/// Controlled relationship type vocabulary for knowledge graph validation.
+pub mod vocab;
 
 #[cfg(all(test, feature = "sqlite"))]
 mod assertions {
