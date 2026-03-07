@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
 use crate::ensure;
 use crossbeam::channel::{Receiver, Sender, bounded};
@@ -144,18 +145,18 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError(
+                        error = Some(Box::new(crate::engine::error::AdhocError(
                             "The relation cannot be interpreted as an edge".to_string(),
-                        ));
+                        )));
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError(
+                        error = Some(Box::new(crate::engine::error::AdhocError(
                             "The relation cannot be interpreted as an edge".to_string(),
-                        ));
+                        )));
                         return None;
                     }
                     Some(f) => f,
@@ -193,7 +194,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
             .edges(it)
             .build();
         if let Some(err) = error {
-            bail!(err)
+            return Err(err);
         }
         Ok((graph, indices, inv_indices))
     }
@@ -221,18 +222,18 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError(
+                        error = Some(Box::new(crate::engine::error::AdhocError(
                             "The relation cannot be interpreted as an edge".to_string(),
-                        ));
+                        )));
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(crate::engine::error::AdhocError(
+                        error = Some(Box::new(crate::engine::error::AdhocError(
                             "The relation cannot be interpreted as an edge".to_string(),
-                        ));
+                        )));
                         return None;
                     }
                     Some(f) => f,
@@ -327,7 +328,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
             .build();
 
         if let Some(err) = error {
-            bail!(err)
+            return Err(err);
         }
 
         Ok((graph, indices, inv_indices))
@@ -849,6 +850,17 @@ pub(crate) struct NodeNotFoundError {
     pub(crate) missing: DataValue,
     pub(crate) span: SourceSpan,
 }
+
+#[derive(Debug)]
+pub(crate) struct BadExprValueError(pub(crate) DataValue, pub(crate) SourceSpan, pub(crate) String);
+
+impl std::fmt::Display for BadExprValueError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Bad expression value {:?}: {}", self.0, self.2)
+    }
+}
+
+impl std::error::Error for BadExprValueError {}
 
 impl MagicFixedRuleRuleArg {
     pub(crate) fn arity(

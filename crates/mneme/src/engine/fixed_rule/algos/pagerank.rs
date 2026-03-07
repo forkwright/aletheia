@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::engine::error::DbResult as Result;
 use graph::prelude::{PageRankConfig, page_rank};
 use smartstring::{LazyCompact, SmartString};
 
