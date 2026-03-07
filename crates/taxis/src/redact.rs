@@ -115,7 +115,7 @@ mod tests {
         config.channels.signal.accounts.insert(
             "main".to_owned(),
             crate::config::SignalAccountConfig {
-                account: Some("+15551234567".to_owned()),
+                account: Some("+447700900000".to_owned()),
                 ..Default::default()
             },
         );

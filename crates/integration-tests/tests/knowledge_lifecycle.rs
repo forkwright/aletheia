@@ -333,7 +333,7 @@ fn correct_preserves_metadata() {
     let original = make_fact(
         "f-orig",
         nous,
-        "Alice prefers tea",
+        "The user prefers tea",
         0.75,
         EpistemicTier::Assumed,
     );
@@ -344,7 +344,7 @@ fn correct_preserves_metadata() {
         &store,
         "f-orig",
         "f-corrected",
-        "Alice prefers green tea",
+        "The user prefers green tea",
         nous,
         "2026-06-01T00:00:00Z",
     );
@@ -363,7 +363,7 @@ fn correct_preserves_metadata() {
     );
     assert_eq!(old.tier, "assumed", "original tier unchanged");
     assert_eq!(
-        old.content, "Alice prefers tea",
+        old.content, "The user prefers tea",
         "original content unchanged"
     );
 
@@ -377,7 +377,7 @@ fn correct_preserves_metadata() {
         "corrected fact gets confidence 1.0"
     );
     assert_eq!(new.tier, "verified", "corrected fact gets Verified tier");
-    assert_eq!(new.content, "Alice prefers green tea");
+    assert_eq!(new.content, "The user prefers green tea");
 }
 
 #[test]
@@ -391,21 +391,21 @@ fn retract_excludes_from_recall() {
         make_fact(
             "f-1",
             nous,
-            "Bob works at Acme Corp",
+            "The engineer works at a startup",
             0.9,
             EpistemicTier::Verified,
         ),
         make_fact(
             "f-2",
             nous,
-            "Bob lives in Springfield",
+            "The engineer studies distributed systems",
             0.8,
             EpistemicTier::Inferred,
         ),
         make_fact(
             "f-3",
             nous,
-            "Bob speaks three languages",
+            "The engineer speaks three languages",
             0.7,
             EpistemicTier::Assumed,
         ),
@@ -595,7 +595,7 @@ fn forget_excludes_from_recall() {
     let fact = make_fact(
         "f-forget",
         nous,
-        "Bob's SSN is 123-45-6789",
+        "Sensitive credential: token-abc-12345",
         0.9,
         EpistemicTier::Verified,
     );
@@ -761,7 +761,7 @@ fn full_forget_lifecycle() {
     let fact = make_fact(
         "f-lifecycle",
         nous,
-        "Alice's phone number is 555-0123",
+        "The user stores a private note here",
         0.95,
         EpistemicTier::Verified,
     );
@@ -796,5 +796,5 @@ fn full_forget_lifecycle() {
         .query_facts(nous, query_time, 10)
         .expect("query after unforget");
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].content, "Alice's phone number is 555-0123");
+    assert_eq!(results[0].content, "The user stores a private note here");
 }
