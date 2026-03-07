@@ -273,17 +273,24 @@ Source: [claudefa.st context buffer analysis](https://claudefa.st/blog/guide/mec
 
 #### Diminishing returns threshold
 
-**Context rot is real and documented.** "As token count grows, accuracy and recall degrade, a phenomenon known as context rot. This makes curating what's in context just as important as how much space is available."
+**Context rot is real and documented.** "As token count grows, accuracy and recall degrade, a phenomenon known as context rot. This makes curating what's in context just as important as how much space is available." Anthropic identifies four failure modes: (1) Context Poisoning (incorrect/outdated information), (2) Context Distraction (irrelevant information reducing focus), (3) Context Confusion (similar but distinct information mixed), (4) Context Clash (contradictory information).
 
-Specific signals:
-- Community analysis found performance degradation starting around 130K tokens (at 200K window)
-- When context exceeds 50% capacity, earliest tokens begin to drop from effective attention
-- Below 50%, middle-position information is most at risk
-- No production model has fully eliminated position bias as of 2026
+**Positional bias shifts at 50% context fill** (Veseli et al., 2025):
+- Below 50% fill: U-shaped performance — beginning and end favored, middle lost (classic "lost in the middle")
+- Above 50% fill: Recency-dominated — latest information favored, earliest lost
+- This means the optimal placement strategy changes depending on how full the context window is
 
-**Practical threshold**: Keep total context utilization below 60-70% of the window for reliable performance. Use compaction aggressively to maintain this.
+**Degradation thresholds:**
+- Community analysis found sharp performance drops around 130K tokens (at 200K window)
+- Claude Opus 4 variants maintain "less than 5% accuracy degradation across the full 200K range" — better than peers
+- However, on semantic reasoning tasks (NoLiMa benchmark, ICML 2025), effective context collapsed to just 4K tokens for Claude 3.5 Sonnet. Later models are better but the gap between literal retrieval and semantic reasoning persists
+- Chroma research found Claude shows "the most pronounced gap between focused and full prompt performance" — Claude benefits disproportionately from curated context
 
-Source: [dasroot.net analysis](https://dasroot.net/posts/2026/02/context-window-scaling-200k-tokens-help/), [Context windows docs](https://platform.claude.com/docs/en/build-with-claude/context-windows) [Likely + Confirmed]
+**Scratchpad mitigation**: Anthropic's own testing found that extracting relevant quotes into a "scratchpad" before answering improves accuracy across all positions, especially middle. "Performance on the beginning and middle of the doc are substantially improved by the use of a scratchpad and examples."
+
+**Practical threshold**: Keep total context utilization below 60-70% of the window for reliable performance. Use compaction aggressively to maintain this. For semantic tasks (reasoning, analysis), treat the effective window as much smaller than the raw token limit.
+
+Source: [dasroot.net](https://dasroot.net/posts/2026/02/context-window-scaling-200k-tokens-help/), [Context windows docs](https://platform.claude.com/docs/en/build-with-claude/context-windows), [Veseli et al. 2025](https://arxiv.org/abs/2508.07479), [NoLiMa (ICML 2025)](https://arxiv.org/html/2502.05167v1), [Chroma context rot](https://research.trychroma.com/context-rot), [Anthropic long context prompting](https://www.anthropic.com/news/prompting-long-context) [Confirmed + Likely]
 
 #### Prompt caching for static context
 
@@ -747,6 +754,11 @@ For each finding:
 | Opus 4.6 overtriggers with aggressive prompting | **Confirmed** | Anthropic docs: explicit migration guidance |
 | Haiku for Explore agents | **Confirmed** | CC default behavior: Explore agent type uses Haiku |
 | JSON preferred over markdown for state files | **Confirmed** | Anthropic long-running agents blog |
+| Positional bias shifts at 50% context fill | **Confirmed** | Academic (Veseli et al. 2025), tested on multiple model families |
+| Scratchpad extraction mitigates lost-in-middle | **Confirmed** | Anthropic's own long context testing |
+| Semantic reasoning degrades faster than literal retrieval | **Confirmed** | NoLiMa benchmark (ICML 2025), Claude 3.5 Sonnet tested |
+| Four context degradation types (poisoning/distraction/confusion/clash) | **Confirmed** | Anthropic AWS re:Invent presentation |
+| Degrees of freedom calibration for skills | **Confirmed** | Anthropic skill best practices documentation |
 
 ---
 
@@ -782,6 +794,10 @@ For each finding:
 | [claudefa.st: Rules directory guide](https://claudefa.st/blog/guide/mechanics/rules-directory) | Path-scoped rules, instruction budget math, CLAUDE.md as slim constitution. |
 | [claudefa.st: Context buffer management](https://claudefa.st/blog/guide/mechanics/context-buffer-management) | 33K-45K token working buffer estimate for CC sessions. |
 | [dasroot.net: Context window scaling](https://dasroot.net/posts/2026/02/context-window-scaling-200k-tokens-help/) | Performance degradation starting at 130K+ tokens. |
+| [Veseli et al. 2025: Positional biases](https://arxiv.org/abs/2508.07479) | Positional bias shifts at 50% context fill — U-shaped below, recency-dominated above. |
+| [NoLiMa (ICML 2025)](https://arxiv.org/html/2502.05167v1) | Semantic reasoning context collapse. Effective context 4K for Claude 3.5 Sonnet. |
+| [Chroma: Context rot research](https://research.trychroma.com/context-rot) | Claude shows strongest gap between focused and full prompt performance. |
+| [Anthropic: Long context prompting](https://www.anthropic.com/news/prompting-long-context) | Scratchpad extraction, document-first ordering, Claude-specific NIAH results. |
 | [Chain of Agents (NeurIPS 2024)](https://research.google/blog/chain-of-agents-large-language-models-collaborating-on-long-context-tasks/) | Sequential worker agents with summary passing. Outperforms RAG and long-context LLMs. |
 | [Cognition: Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) | Anti-pattern warnings for multi-agent context sharing. Filesystem discovery over trace copying. |
 | [Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) | Degrees of freedom framework, progressive disclosure, description optimization, anti-patterns. |
