@@ -243,7 +243,7 @@ fn import_sessions(
         }
 
         // Import notes
-        let valid_categories = ["task", "decision", "preference", "correction", "context"];
+        let valid_categories = crate::schema::VALID_CATEGORIES;
         for note in &exported.notes {
             let category = if valid_categories.contains(&note.category.as_str()) {
                 &note.category
