@@ -10,7 +10,7 @@ Five evidence-backed recommendations for Aletheia's prompting architecture:
 
 1. **Put long-form data first, instructions last.** Anthropic's own testing shows queries at the end of long prompts improve response quality by up to 30%. System prompts should place reference material (identity, knowledge) above directives and task instructions. [Confirmed — Anthropic docs]
 
-2. **Keep CLAUDE.md under 200 lines; use progressive disclosure for everything else.** Claude Code reliably follows ~100-150 custom instructions after accounting for its own system prompt (~50 instructions). Beyond that, instruction-following quality degrades uniformly. Move domain knowledge into `.claude/rules/` with path scoping and skills with on-demand loading. [Confirmed — Anthropic docs + community consensus]
+2. **Keep CLAUDE.md under 200 lines; use progressive disclosure for everything else.** Claude Code reliably follows ~100-150 custom instructions after accounting for its own system prompt (~50 instructions). Beyond that, instruction-following quality degrades uniformly. Move domain knowledge into `.claude/rules/` with path scoping and skills with on-demand loading. Critically, CLAUDE.md content is NOT in the system prompt — it's injected as `<system-reminder>` user messages with an advisory disclaimer, meaning Claude can deprioritize instructions it deems irrelevant. [Confirmed — Anthropic docs + observable CC behavior]
 
 3. **Use XML tags as structural boundaries, not decoration.** XML tags (`<instructions>`, `<context>`, `<identity>`) are Claude's preferred parsing mechanism for disambiguating prompt sections. They outperform markdown headers for structural separation when mixing instructions, context, and examples. Markdown works within sections; XML works between them. [Confirmed — Anthropic docs]
 
@@ -147,6 +147,25 @@ Source: [HumanLayer](https://www.humanlayer.dev/blog/writing-a-good-claude-md) [
 
 #### How Claude Code processes CLAUDE.md
 
+**Critical architecture detail: CLAUDE.md is NOT in the system prompt.** CLAUDE.md content is concatenated, wrapped in `<system-reminder>` XML tags with a `# claudeMd` header, and injected into user-role messages — not the system prompt. This is a fundamental distinction: system prompt instructions have unconditional authority, while `<system-reminder>` content is treated as advisory context that the model can deprioritize.
+
+The injection format looks like:
+```xml
+<system-reminder>
+Contents of /path/to/CLAUDE.md (project instructions, checked into the codebase):
+
+# claudeMd
+[CLAUDE.md contents here]
+
+IMPORTANT: this context may or may not be relevant to your tasks.
+You should not respond to this context unless it is highly relevant to your task.
+</system-reminder>
+```
+
+This "may or may not be relevant" disclaimer is load-bearing. It causes Claude to selectively ignore CLAUDE.md instructions it deems irrelevant to the current task. This is by design — it prevents distant project rules from interfering with unrelated tasks — but it means CLAUDE.md cannot enforce invariants with the same reliability as system prompt instructions.
+
+**Implication for Aletheia:** When Aletheia assembles context for its own agents, truly critical instructions (identity, safety boundaries, tool restrictions) should go in the system prompt proper, not in a CLAUDE.md-style advisory block. Reserve advisory injection for conventions, preferences, and domain knowledge that can safely be deprioritized.
+
 CLAUDE.md files are loaded at the start of every session by walking up the directory tree from the current working directory. The loading cascade:
 
 1. Managed policy CLAUDE.md (org-level, cannot be excluded)
@@ -160,11 +179,15 @@ CLAUDE.md files are loaded at the start of every session by walking up the direc
 
 More specific locations take precedence over broader ones. User-level rules load first; project rules load second with higher priority.
 
-**CLAUDE.md fully survives compaction.** "After `/compact`, Claude re-reads your CLAUDE.md from disk and re-injects it fresh into the session."
+**`@` imports are eagerly loaded at startup.** When CLAUDE.md references files via `@path/to/file.md`, those files are resolved and inlined during initial loading, not lazily fetched on demand. This means `@` imports increase the upfront context cost of every session, regardless of whether the referenced content is relevant to the current task. Use `@` imports sparingly for content needed on most turns; prefer tool-based reads for situational context.
 
-**CLAUDE.md is treated as advisory context, not enforcement.** The system includes a reminder: "this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant." This means irrelevant instructions are actively deprioritized by the model.
+**CLAUDE.md fully survives compaction.** "After `/compact`, Claude re-reads your CLAUDE.md from disk and re-injects it fresh into the session." However, because CLAUDE.md is in user messages (not the system prompt), each re-injection after compaction creates a new user message, consuming fresh context.
 
-Source: [Claude Code memory docs](https://code.claude.com/docs/en/memory) [Confirmed]
+**System reminders consume significant context.** Community analysis estimates that CLAUDE.md + rules + system reminders consume 15%+ of the context window before any user interaction begins. This is on top of CC's own system prompt (~50 instructions). Combined, the "overhead" before user work begins can be 25-35% of the total window.
+
+**CLAUDE.md is treated as advisory context, not enforcement.** As noted above, the "may or may not be relevant" disclaimer means irrelevant instructions are actively deprioritized by the model. This is different from system prompt instructions, which Claude treats as authoritative regardless of perceived relevance.
+
+Source: [Claude Code memory docs](https://code.claude.com/docs/en/memory), [Observable CC behavior] [Confirmed]
 
 #### Progressive disclosure architecture
 
@@ -552,6 +575,7 @@ Aletheia's `nous::bootstrap` should assemble system prompts in this order:
 - Session context goes last (most recent, strongest attention)
 - Use XML tags for section boundaries, markdown within sections
 - Cache breakpoint after `</instructions>` — everything above is static within a session
+- Critical invariants (identity, safety, tool restrictions) go in the system prompt proper — not in advisory `<system-reminder>` blocks. CC's CLAUDE.md is advisory and can be deprioritized; Aletheia's core agent rules should not be.
 
 ### 3.2 CLAUDE.md structure for CC sub-agents
 
@@ -759,6 +783,10 @@ For each finding:
 | Semantic reasoning degrades faster than literal retrieval | **Confirmed** | NoLiMa benchmark (ICML 2025), Claude 3.5 Sonnet tested |
 | Four context degradation types (poisoning/distraction/confusion/clash) | **Confirmed** | Anthropic AWS re:Invent presentation |
 | Degrees of freedom calibration for skills | **Confirmed** | Anthropic skill best practices documentation |
+| CLAUDE.md injected as `<system-reminder>` in user messages, not system prompt | **Confirmed** | Observable CC behavior, verified in session context |
+| `@` imports are eagerly loaded at startup, not lazy | **Confirmed** | Observable CC behavior, consistent with docs stating they're "expanded" |
+| System reminders consume 15%+ of context window | **Likely** | Community analysis, consistent with observed overhead |
+| Advisory disclaimer causes selective deprioritization of CLAUDE.md instructions | **Confirmed** | Observable CC behavior, documented disclaimer text |
 
 ---
 
