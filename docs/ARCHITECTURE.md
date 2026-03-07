@@ -1,7 +1,7 @@
 # Architecture
 
 > Module map, dependency graph, trait boundaries, and extension points.
-> Covers the Rust crate workspace and TypeScript runtime (legacy).
+> Covers the Rust crate workspace.
 >
 > Technology choices and dependency policy: [TECHNOLOGY.md](TECHNOLOGY.md).
 > Project roadmap: [PROJECT.md](PROJECT.md).
@@ -82,7 +82,7 @@ aletheia/                          # git root — the platform
 │   │   │   ├── tools/            #   Nous-specific tools
 │   │   │   ├── hooks/            #   Nous-specific hooks
 │   │   │   └── memory/           #   Daily memory files
-│   │   └── _example/             #   Template for new agents
+
 │   │
 │   ├── config/                   # Deployment config
 │   │   ├── aletheia.yaml
@@ -179,58 +179,6 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
 ---
 
-## TypeScript Runtime (Legacy)
-
-All modules in `infrastructure/runtime/src/`:
-
-| Module | Domain |
-|--------|--------|
-| `koina` | Logger, errors, event bus, safe wrappers, crypto |
-| `taxis` | Config loading + Zod validation |
-| `mneme` | Session store (better-sqlite3, migrations) |
-| `hermeneus` | Anthropic SDK, provider routing, token counting |
-| `organon` | Built-in tools, skills registry, MCP client |
-| `nous` | Agent bootstrap, turn pipeline, competence model |
-| `melete` | Distillation, reflection, memory flush |
-| `symbolon` | Split-token authentication, JWT, sessions, RBAC |
-| `dianoia` | Multi-phase planning orchestrator |
-| `agora` | Channel registry, CLI commands |
-| `semeion` | Signal client, listener, commands, TTS |
-| `pylon` | Hono HTTP gateway, MCP, Web UI routes |
-| `prostheke` | Plugin system, lifecycle hooks |
-| `oikonomos` | Cron scheduler, watchdog, update checker |
-| `portability` | Agent import/export (AgentFile format) |
-
-### Initialization Order
-
-```text
-taxis → mneme → hermeneus → organon → nous → dianoia → prostheke → oikonomos
-                                           ↑
-                                     (semeion and pylon wired at runtime start)
-```
-
-### Dependency Rules
-
-| Module | May Import | Must Not Import |
-|--------|-----------|-----------------|
-| `koina` | nothing (leaf) | everything |
-| `taxis` | `koina` | everything else |
-| `mneme` | `koina`, `taxis` | everything else |
-| `hermeneus` | `koina`, `taxis` | everything else |
-| `organon` | `koina`, `taxis`, `hermeneus` | everything else |
-| `nous` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `melete`, `portability` | `semeion`, `pylon`, `prostheke`, `oikonomos`, `dianoia`, `symbolon` |
-| `melete` | `koina`, `taxis`, `mneme`, `hermeneus` | everything else |
-| `symbolon` | `koina` | everything else (stateless utilities) |
-| `dianoia` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | `semeion`, `pylon`, `prostheke`, `oikonomos` |
-| `agora` | `koina`, `taxis`, `semeion` | everything else |
-| `semeion` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia` | `pylon`, `prostheke`, `oikonomos` |
-| `pylon` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous`, `dianoia`, `semeion`, `symbolon`, `oikonomos` | `prostheke`, `melete`, `portability` |
-| `prostheke` | `koina`, `organon` | everything else |
-| `oikonomos` | `koina`, `taxis`, `mneme`, `hermeneus`, `nous`, `melete` | everything else |
-| `portability` | `koina`, `taxis`, `mneme`, `hermeneus`, `organon`, `nous` | everything else |
-
----
-
 ## Adding Components
 
 ### Rust Crate
@@ -240,13 +188,6 @@ taxis → mneme → hermeneus → organon → nous → dianoia → prostheke →
 3. Declare its layer in the dependency graph
 4. Update this file
 5. Workspace lints apply automatically
-
-### TypeScript Module
-
-1. Create `src/<name>/` with entry file
-2. Define its layer in the dependency graph
-3. Wire into initialization in `aletheia.ts`
-4. Update this file
 
 ### Plugin
 
@@ -271,8 +212,8 @@ opt-level = 2      # optimize deps in dev — faster iteration
 
 ## Structural Properties
 
-- **koina is a true leaf node** in both stacks. No `index.ts` in TS - import from specific files. No workspace deps in Rust.
-- **symbolon depends only on koina** in Rust (plus external crates: reqwest, rusqlite, jsonwebtoken). Zero-dependency in TS (takes `Database.Database` as constructor argument).
+- **koina is a true leaf node.** No workspace deps in Rust.
+- **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, jsonwebtoken).
 - **CozoDB engine is vendored** inside `mneme/src/engine/`, gated behind the `mneme-engine` feature.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **oikonomos depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.

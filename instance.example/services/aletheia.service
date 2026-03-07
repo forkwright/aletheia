@@ -7,7 +7,7 @@ Wants=network-online.target aletheia-memory.service
 Type=simple
 Environment=ALETHEIA_HOME=__ALETHEIA_HOME__
 EnvironmentFile=-__ALETHEIA_HOME__/instance/config/env
-ExecStart=__NODE_BIN__ __ALETHEIA_HOME__/infrastructure/runtime/dist/entry.mjs gateway start
+ExecStart=__ALETHEIA_HOME__/target/release/aletheia
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -17,12 +17,9 @@ StandardError=journal
 WantedBy=default.target
 
 # Usage:
-#   aletheia enable            # recommended — registers for boot persistence
-#   aletheia start             # start services now
-#
-#   Manual install:
 #   mkdir -p ~/.config/systemd/user
-#   cp config/services/aletheia{,-memory}.service ~/.config/systemd/user/
+#   cp instance.example/services/aletheia.service ~/.config/systemd/user/
+#   # Edit ExecStart path to match your installation
 #   systemctl --user daemon-reload
-#   systemctl --user enable --now aletheia-memory aletheia
+#   systemctl --user enable --now aletheia
 #   loginctl enable-linger

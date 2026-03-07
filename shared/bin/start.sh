@@ -56,5 +56,4 @@ fi
 
 export ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/.aletheia}"
 export ALETHEIA_MEMORY_USER="${ALETHEIA_MEMORY_USER:-$(whoami)}"
-exec node "$ALETHEIA_ROOT/dist/entry.mjs" gateway start \
-  --config "$HOME/.aletheia/aletheia.json" "$@"
+exec "${ALETHEIA_ROOT}/target/release/aletheia" "$@"

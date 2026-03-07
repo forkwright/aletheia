@@ -71,7 +71,7 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 
 ### Leaf (no workspace dependencies)
 
-- **koina** — shared foundation: error types (snafu), tracing setup, safe wrappers (`trySafe`), filesystem utilities. Every other crate depends on this.
+- **koina** — shared foundation: error types (snafu), tracing setup, filesystem utilities. Every other crate depends on this.
 
 ### Low (depends on koina)
 

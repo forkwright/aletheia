@@ -61,7 +61,7 @@ All other files are optional. A minimal nous needs only these two. In practice, 
 
 ## Token Budget
 
-The bootstrap system enforces a configurable token budget (default: 40,000 tokens, set via `bootstrapMaxTokens` in `aletheia.json`).
+The bootstrap system enforces a configurable token budget (default: 40,000 tokens, set via `bootstrap_max_tokens` in `aletheia.yaml`).
 
 **Budget enforcement algorithm:**
 

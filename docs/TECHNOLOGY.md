@@ -1,6 +1,6 @@
 # Technology Decisions
 
-Technology decisions and dependency policy for the Rust rewrite.
+Technology decisions and dependency policy.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJECT.md) for the roadmap.
 
