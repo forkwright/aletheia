@@ -194,7 +194,7 @@ dependencies = [
  "either",
  "fastembed",
  "graph",
- "itertools 0.12.1",
+ "itertools 0.14.0",
  "jiff",
  "ndarray 0.16.1",
  "ordered-float 5.1.0",
