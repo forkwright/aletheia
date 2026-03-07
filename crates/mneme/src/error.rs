@@ -80,6 +80,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Backup path contains characters unsafe for SQL interpolation.
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("invalid backup path: {path}"))]
+    InvalidBackupPath {
+        path: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Engine initialization failed.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("engine initialization failed: {message}"))]

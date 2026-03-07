@@ -8,6 +8,34 @@ use tracing::info;
 
 use crate::error::{self, Result};
 
+/// Validate a backup path contains only safe characters for SQL interpolation.
+///
+/// `SQLite` `VACUUM INTO` doesn't support parameter binding, so this is the
+/// only defense against path injection.
+fn validate_backup_path(path: &Path) -> Result<()> {
+    let path_str = path.to_str().ok_or_else(|| {
+        error::InvalidBackupPathSnafu {
+            path: path.to_string_lossy().into_owned(),
+        }
+        .build()
+    })?;
+
+    let has_safe_chars = path_str
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | '\\' | ' '));
+
+    let has_sql_comment = path_str.contains("--");
+
+    snafu::ensure!(
+        has_safe_chars && !has_sql_comment,
+        error::InvalidBackupPathSnafu {
+            path: path_str.to_owned(),
+        }
+    );
+
+    Ok(())
+}
+
 /// Manages database backups and exports.
 pub struct BackupManager<'a> {
     conn: &'a Connection,
@@ -57,6 +85,7 @@ impl<'a> BackupManager<'a> {
         let timestamp = jiff::Timestamp::now().strftime("%Y%m%dT%H%M%S").to_string();
         let filename = format!("sessions_{timestamp}.db");
         let backup_path = self.backup_dir.join(&filename);
+        validate_backup_path(&backup_path)?;
 
         self.conn
             .execute(&format!("VACUUM INTO '{}'", backup_path.display()), [])
@@ -360,5 +389,47 @@ mod tests {
         let manager = BackupManager::new(&conn, "/nonexistent/path");
         let backups = manager.list_backups().unwrap();
         assert!(backups.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_single_quote() {
+        let path = Path::new("/tmp/it's-a-trap.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_semicolon() {
+        let path = Path::new("/tmp/backup;DROP TABLE sessions.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_backtick() {
+        let path = Path::new("/tmp/backup`cmd`.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_double_dash() {
+        let path = Path::new("/tmp/backup--comment.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_accepts_normal_path() {
+        let path = Path::new("/tmp/backup-2026-01-01.db");
+        assert!(validate_backup_path(path).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_path_with_spaces() {
+        let path = Path::new("/tmp/my backup.db");
+        assert!(validate_backup_path(path).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_dotted_path() {
+        let path = Path::new("/home/user/.config/backup.db");
+        assert!(validate_backup_path(path).is_ok());
     }
 }
