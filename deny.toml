@@ -24,6 +24,10 @@ allow = [
     "BSL-1.0",
     "CC0-1.0",
     "0BSD",
+    "MPL-2.0",              # option-ext, smartstring
+    "LGPL-3.0-or-later",    # priority-queue
+    "NCSA",                 # libfuzzer-sys (transitive via rav1e)
+    "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs
 ]
 confidence-threshold = 0.8
 

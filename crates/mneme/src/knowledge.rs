@@ -223,7 +223,7 @@ mod tests {
         let fact = Fact {
             id: "fact-1".to_owned(),
             nous_id: "syn".to_owned(),
-            content: "Alice lives in Springfield".to_owned(),
+            content: "The researcher published findings on memory consolidation".to_owned(),
             confidence: 0.95,
             tier: EpistemicTier::Verified,
             valid_from: "2026-02-01".to_owned(),
@@ -249,9 +249,9 @@ mod tests {
     fn entity_serde_roundtrip() {
         let entity = Entity {
             id: "e-1".to_owned(),
-            name: "Alice".to_owned(),
+            name: "Dr. Chen".to_owned(),
             entity_type: "person".to_owned(),
-            aliases: vec!["acme_user".to_owned(), "forkwright".to_owned()],
+            aliases: vec!["acme_user".to_owned(), "test-user-01".to_owned()],
             created_at: "2026-01-28T00:00:00Z".to_owned(),
             updated_at: "2026-02-28T00:00:00Z".to_owned(),
         };
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn recall_result_serde_roundtrip() {
         let result = RecallResult {
-            content: "Alice lives in Springfield".to_owned(),
+            content: "The researcher published findings on memory consolidation".to_owned(),
             distance: 0.12,
             source_type: "fact".to_owned(),
             source_id: "fact-1".to_owned(),
@@ -339,7 +339,7 @@ mod tests {
         let fact = Fact {
             id: "f-uni".to_owned(),
             nous_id: "syn".to_owned(),
-            content: "Alice uses 日本語 and emoji 🦀".to_owned(),
+            content: "The user writes 日本語 and emoji 🦀".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Verified,
             valid_from: "2026-01-01".to_owned(),

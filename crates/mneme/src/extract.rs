@@ -508,11 +508,11 @@ mod tests {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let json = r#"{
             "entities": [
-                { "name": "Alice", "entity_type": "person", "description": "Developer of Aletheia" },
+                { "name": "Dr. Chen", "entity_type": "person", "description": "Developer of Aletheia" },
                 { "name": "Aletheia", "entity_type": "project", "description": "AI memory system" }
             ],
             "relationships": [
-                { "source": "Alice", "relation": "works on", "target": "Aletheia", "confidence": 0.95 }
+                { "source": "Dr. Chen", "relation": "works on", "target": "Aletheia", "confidence": 0.95 }
             ],
             "facts": [
                 { "subject": "Aletheia", "predicate": "is", "object": "an AI memory system", "confidence": 0.9 }
@@ -521,7 +521,7 @@ mod tests {
 
         let extraction = engine.parse_response(json).unwrap();
         assert_eq!(extraction.entities.len(), 2);
-        assert_eq!(extraction.entities[0].name, "Alice");
+        assert_eq!(extraction.entities[0].name, "Dr. Chen");
         assert_eq!(extraction.entities[1].entity_type, "project");
         assert_eq!(extraction.relationships.len(), 1);
         assert_eq!(extraction.relationships[0].relation, "works on");
@@ -581,25 +581,25 @@ mod tests {
         struct MockProvider;
         impl ExtractionProvider for MockProvider {
             fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
-                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"Alice","predicate":"lives in","object":"Springfield","confidence":0.95}]}"#.to_owned())
+                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"Dr. Chen","predicate":"studies","object":"neural networks","confidence":0.95}]}"#.to_owned())
             }
         }
 
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let messages = vec![ConversationMessage {
             role: "user".to_owned(),
-            content: "Alice lives in Springfield, Oregon and works on AI memory systems every day."
+            content: "Dr. Chen studies neural networks at the university and works on AI memory systems every day."
                 .to_owned(),
         }];
 
         let result = engine.extract(&messages, &MockProvider).unwrap();
         assert_eq!(result.facts.len(), 1);
-        assert_eq!(result.facts[0].subject, "Alice");
+        assert_eq!(result.facts[0].subject, "Dr. Chen");
     }
 
     #[test]
     fn slugify_works() {
-        assert_eq!(slugify("Alice Johnson"), "alice-johnson");
+        assert_eq!(slugify("Data Processor"), "data-processor");
         assert_eq!(slugify("AI Memory System"), "ai-memory-system");
         assert_eq!(slugify("  hello  world  "), "hello-world");
         assert_eq!(slugify("C++/Rust"), "c-rust");
@@ -635,7 +635,7 @@ mod tests {
         let extraction = Extraction {
             entities: vec![
                 ExtractedEntity {
-                    name: "Alice".to_owned(),
+                    name: "Dr. Chen".to_owned(),
                     entity_type: "person".to_owned(),
                     description: "Developer of Aletheia".to_owned(),
                 },
@@ -646,7 +646,7 @@ mod tests {
                 },
             ],
             relationships: vec![ExtractedRelationship {
-                source: "Alice".to_owned(),
+                source: "Dr. Chen".to_owned(),
                 relation: "works on".to_owned(),
                 target: "Aletheia".to_owned(),
                 confidence: 0.95,
@@ -668,10 +668,10 @@ mod tests {
         assert_eq!(result.facts_inserted, 1);
 
         // Verify entities are queryable via entity_neighborhood.
-        let neighborhood = store.entity_neighborhood("alice").unwrap();
+        let neighborhood = store.entity_neighborhood("dr-chen").unwrap();
         assert!(
             !neighborhood.rows.is_empty(),
-            "alice entity should be reachable in the graph"
+            "dr-chen entity should be reachable in the graph"
         );
 
         // query_facts filters: valid_from <= now AND valid_to > now
@@ -694,20 +694,20 @@ mod tests {
         let extraction = Extraction {
             entities: vec![
                 ExtractedEntity {
-                    name: "Alice".to_owned(),
+                    name: "Nyx".to_owned(),
                     entity_type: "person".to_owned(),
                     description: String::new(),
                 },
                 ExtractedEntity {
-                    name: "Bob".to_owned(),
+                    name: "Sol".to_owned(),
                     entity_type: "person".to_owned(),
                     description: String::new(),
                 },
             ],
             relationships: vec![ExtractedRelationship {
-                source: "Alice".to_owned(),
+                source: "Nyx".to_owned(),
                 relation: "RELATES_TO".to_owned(),
-                target: "Bob".to_owned(),
+                target: "Sol".to_owned(),
                 confidence: 0.8,
             }],
             facts: vec![],
@@ -729,20 +729,20 @@ mod tests {
         let extraction = Extraction {
             entities: vec![
                 ExtractedEntity {
-                    name: "Alice".to_owned(),
+                    name: "Nyx".to_owned(),
                     entity_type: "person".to_owned(),
                     description: String::new(),
                 },
                 ExtractedEntity {
-                    name: "Acme".to_owned(),
+                    name: "Helios".to_owned(),
                     entity_type: "project".to_owned(),
                     description: String::new(),
                 },
             ],
             relationships: vec![ExtractedRelationship {
-                source: "Alice".to_owned(),
+                source: "Nyx".to_owned(),
                 relation: "works on".to_owned(),
-                target: "Acme".to_owned(),
+                target: "Helios".to_owned(),
                 confidence: 0.9,
             }],
             facts: vec![],
@@ -754,7 +754,7 @@ mod tests {
         assert_eq!(result.relationships_inserted, 1);
         assert_eq!(result.relationships_skipped, 0);
 
-        let neighborhood = store.entity_neighborhood("alice").unwrap();
+        let neighborhood = store.entity_neighborhood("nyx").unwrap();
         assert!(
             neighborhood
                 .rows
@@ -773,20 +773,20 @@ mod tests {
         let extraction = Extraction {
             entities: vec![
                 ExtractedEntity {
-                    name: "Alice".to_owned(),
+                    name: "Nyx".to_owned(),
                     entity_type: "person".to_owned(),
                     description: String::new(),
                 },
                 ExtractedEntity {
-                    name: "Bob".to_owned(),
+                    name: "Sol".to_owned(),
                     entity_type: "person".to_owned(),
                     description: String::new(),
                 },
             ],
             relationships: vec![ExtractedRelationship {
-                source: "Alice".to_owned(),
+                source: "Nyx".to_owned(),
                 relation: "MENTORS".to_owned(),
-                target: "Bob".to_owned(),
+                target: "Sol".to_owned(),
                 confidence: 0.7,
             }],
             facts: vec![],
