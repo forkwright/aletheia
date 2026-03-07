@@ -3,6 +3,9 @@
 //! The DDL is the v1 baseline. Migration management lives in `migration.rs`.
 //! This matches the TS schema exactly for wire-compatible databases.
 
+/// Valid agent note categories. Single source of truth — used by DDL CHECK constraint and import validation.
+pub const VALID_CATEGORIES: &[&str] = &["task", "decision", "preference", "correction", "context"];
+
 /// Base DDL — creates all tables for a fresh database (migration v1).
 pub const DDL: &str = r"
 CREATE TABLE IF NOT EXISTS sessions (
@@ -97,6 +100,7 @@ mod tests {
     use rusqlite::Connection;
 
     use crate::migration;
+    use crate::schema::{DDL, VALID_CATEGORIES};
 
     #[test]
     fn fresh_database_initializes_via_migration() {
@@ -136,6 +140,35 @@ mod tests {
                 )
                 .unwrap();
             assert!(exists, "table {table} should exist");
+        }
+    }
+
+    #[test]
+    fn valid_categories_matches_ddl_check_constraint() {
+        let marker = "CHECK(category IN (";
+        let start = DDL.find(marker).expect("CHECK constraint for category exists in DDL");
+        let inner_start = start + marker.len();
+        let inner_end = DDL[inner_start..]
+            .find("))")
+            .expect("closing parens for CHECK constraint")
+            + inner_start;
+        let inner = &DDL[inner_start..inner_end];
+
+        let ddl_cats: Vec<&str> = inner.split(", ").map(|s| s.trim_matches('\'')).collect();
+
+        assert_eq!(
+            ddl_cats.len(),
+            VALID_CATEGORIES.len(),
+            "DDL has {} categories but VALID_CATEGORIES has {}: DDL={ddl_cats:?}, const={VALID_CATEGORIES:?}",
+            ddl_cats.len(),
+            VALID_CATEGORIES.len(),
+        );
+
+        for cat in VALID_CATEGORIES {
+            assert!(
+                ddl_cats.contains(cat),
+                "VALID_CATEGORIES has '{cat}' but it is missing from DDL CHECK constraint"
+            );
         }
     }
 }

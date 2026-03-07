@@ -1,7 +1,6 @@
 // aletheia-mneme-engine -- embedded Datalog + HNSW + graph engine for Aletheia
 
 use std::collections::BTreeMap;
-#[cfg(any(feature = "storage-redb", feature = "storage-new-rocksdb"))]
 use std::path::Path;
 
 use crossbeam::channel::{Receiver, Sender, bounded};
@@ -105,6 +104,64 @@ impl Db {
             Db::Redb(db) => db.run_script(script, params, mutability),
             #[cfg(feature = "storage-new-rocksdb")]
             Db::RocksDb(db) => db.run_script(script, params, mutability),
+        };
+        result.map_err(convert_err)
+    }
+
+    /// Execute a Datalog script in read-only mode.
+    pub fn run_read_only(
+        &self,
+        script: &str,
+        params: BTreeMap<String, DataValue>,
+    ) -> crate::engine::Result<NamedRows> {
+        self.run(script, params, ScriptMutability::Immutable)
+    }
+
+    /// Backup the running database into an SQLite file.
+    ///
+    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    pub fn backup_db(&self, out_file: impl AsRef<Path>) -> crate::engine::Result<()> {
+        let path = out_file.as_ref();
+        let result = match self {
+            Db::Mem(db) => db.backup_db(path),
+            #[cfg(feature = "storage-redb")]
+            Db::Redb(db) => db.backup_db(path),
+            #[cfg(feature = "storage-new-rocksdb")]
+            Db::RocksDb(db) => db.backup_db(path),
+        };
+        result.map_err(convert_err)
+    }
+
+    /// Restore from an SQLite backup.
+    ///
+    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    pub fn restore_backup(&self, in_file: impl AsRef<Path>) -> crate::engine::Result<()> {
+        let path = in_file.as_ref();
+        let result = match self {
+            Db::Mem(db) => db.restore_backup(path),
+            #[cfg(feature = "storage-redb")]
+            Db::Redb(db) => db.restore_backup(path),
+            #[cfg(feature = "storage-new-rocksdb")]
+            Db::RocksDb(db) => db.restore_backup(path),
+        };
+        result.map_err(convert_err)
+    }
+
+    /// Import data from relations in a backup file.
+    ///
+    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    pub fn import_from_backup(
+        &self,
+        in_file: impl AsRef<Path>,
+        relations: &[String],
+    ) -> crate::engine::Result<()> {
+        let path = in_file.as_ref();
+        let result = match self {
+            Db::Mem(db) => db.import_from_backup(path, relations),
+            #[cfg(feature = "storage-redb")]
+            Db::Redb(db) => db.import_from_backup(path, relations),
+            #[cfg(feature = "storage-new-rocksdb")]
+            Db::RocksDb(db) => db.import_from_backup(path, relations),
         };
         result.map_err(convert_err)
     }
