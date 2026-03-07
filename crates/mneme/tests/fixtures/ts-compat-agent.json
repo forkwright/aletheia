@@ -40,7 +40,7 @@
       "distillationPriming": {
         "facts": ["Agent portability uses AgentFile format"],
         "decisions": ["camelCase JSON for TS compat"],
-        "openItems": ["memory import requires sidecar"],
+        "openItems": ["memory import needs testing"],
         "summary": "Building export/import for agent portability",
         "distillationNumber": 1,
         "distilledAt": "2026-03-05T11:00:00.000Z"

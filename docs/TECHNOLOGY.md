@@ -31,9 +31,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Hot reload | arc-swap + notify | SIGUSR1 | arc-swap for zero-downtime config swap. notify for file watching. |
 | Strings | compact_str | String | 24-byte inline for short strings (agent names, tool names, domain tags) |
 | Enums | strum | None | Derive Display, EnumString, EnumIter for all typed enums |
-| Git | gix | simple-git (npm) | Rust-native git for workspace auto-commit. No subprocess. |
-| Password | argon2 | bcrypt | Password hashing for symbolon. Memory-hard. |
-| Cron | cron + jiff | cron (npm) + luxon | cron for schedule parsing. jiff for time/date (by BurntSushi). |
+| Git | gix | — | Rust-native git for workspace auto-commit. No subprocess. |
+| Password | argon2 | — | Password hashing for symbolon. Memory-hard. |
+| Cron | cron + jiff | — | cron for schedule parsing. jiff for time/date (by BurntSushi). |
 | Concurrent maps | papaya | DashMap | Lock-free, better scaling under contention |
 | Seccomp | extrasafe | None | Declarative syscall filtering for sandboxed tools |
 | HTML | dom_smoothie | scraper | Readability extraction + HTML-to-Markdown, single pass |
@@ -42,7 +42,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Plugins | WASM (wasmtime) | Dynamic JS import() | Sandboxed, portable, any-language |
 | MCP | rmcp (pin version) | @modelcontextprotocol/sdk | Pre-1.0 - pin exact, wrap in trait |
 | Testing | bolero + proptest + cargo-llvm-cov | vitest | Unified fuzz/property/coverage |
-| UI | Svelte 5 (unchanged) | - | No reason to change |
+| TUI | ratatui + crossterm | Svelte 5 web UI | Terminal-native, embedded in workspace, zero web dependencies |
 
 ---
 
@@ -91,5 +91,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | **agora** | koina, taxis, nous, tokio (semeion: tokio::process, slack: tokio-tungstenite) |
 | **daemon** | koina, taxis, nous, mneme, cron, notify, arc-swap |
 | **melete** | koina, taxis, mneme, hermeneus, nous |
-| **prostheke** | koina, taxis, wasmtime |
-| **autarkeia** | koina, taxis, mneme, nous, flate2 |
+| **tui** | ratatui, crossterm, reqwest, tokio |

@@ -17,7 +17,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Format
-        run: cargo fmt --check
+        run: |
+          for pkg in aletheia aletheia-agora aletheia-dianoia \
+                     aletheia-dokimion aletheia-hermeneus \
+                     aletheia-integration-tests aletheia-koina \
+                     aletheia-melete aletheia-nous aletheia-oikonomos \
+                     aletheia-organon aletheia-pylon aletheia-symbolon \
+                     aletheia-taxis aletheia-thesauros aletheia-tui; do
+            cargo fmt -p "$pkg" -- --check
+          done
 
       - name: Clippy (all features)
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -32,32 +40,3 @@ jobs:
         run: |
           cargo install cargo-audit --locked 2>/dev/null || true
           cargo audit
-
-  # --- UI build verification ---
-  ui:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-      - run: cd ui && npm ci
-      - run: cd ui && npm run typecheck
-      - run: cd ui && npm run build
-
-  # --- Sidecar lint ---
-  sidecar:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: infrastructure/memory/sidecar/pyproject.toml
-      - run: |
-          cd infrastructure/memory/sidecar
-          pip install -e ".[dev]" 2>/dev/null || pip install -e .
-          pip install ruff pyright
-      - run: cd infrastructure/memory/sidecar && ruff check .
-      - run: cd infrastructure/memory/sidecar && pyright

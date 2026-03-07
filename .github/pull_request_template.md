@@ -21,7 +21,8 @@ How this was tested. Include relevant commands or test output.
 
 ## Checklist
 
-- [ ] `npm run typecheck && npm run lint:check` passes
+- [ ] `cargo test -p <affected-crate>` passes
+- [ ] `cargo clippy --workspace` — zero warnings
 - [ ] New functionality has tests
 - [ ] No secrets or credentials in the diff
-- [ ] Commit message follows convention (`type: description`)
+- [ ] Commit message follows convention (`type(scope): description`)

@@ -64,7 +64,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and tr
 git clone https://github.com/forkwright/aletheia.git && cd aletheia
 cargo build --release
 cp target/release/aletheia ~/.local/bin/
-aletheia start
+aletheia
 ```
 
 [Full setup guide](docs/QUICKSTART.md) · [Production deployment](docs/DEPLOYMENT.md)

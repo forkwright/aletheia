@@ -27,7 +27,7 @@ The parent `nous.dir/.gitignore` (written by `aletheia init`) contains:
 
 - `*/workspace/plans/` - planning artifacts (large, ephemeral)
 - `*/workspace/data/` - datasets and outputs (potentially large, private)
-- `memory/` - memory sidecar state
+- `memory/` - session memory logs
 - `.aletheia-index/` - workspace file index
 - `.env`, `*.key`, `*.pem`, `*.secret`, `secrets/`, `credentials/` - credentials
 

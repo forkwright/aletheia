@@ -35,9 +35,9 @@ Does not apply to: variables, functions, test fixtures, temporary branches.
 
 | Context | Convention | Example |
 |---------|-----------|---------|
-| Files | `kebab-case` | `session-store.rs`, `event-bus.ts` |
+| Files | `snake_case` (Rust) / `kebab-case` (scripts) | `session_store.rs`, `deploy.sh` |
 | Types / Traits / Classes | `PascalCase` | `SessionStore`, `EmbeddingProvider` |
-| Functions / Methods | `camelCase` (TS) / `snake_case` (Rust/Python) | `loadConfig` / `load_config` |
+| Functions / Methods | `snake_case` | `load_config` |
 | Constants | `UPPER_SNAKE` | `MAX_TURNS`, `DEFAULT_PORT` |
 | Events | `noun:verb` | `turn:before`, `tool:called` |
 
@@ -81,7 +81,7 @@ Behavior over implementation:
 - Test what the code does, not how it does it
 - One logical assertion per test
 - Descriptive names: `returns_empty_when_session_has_no_turns`, not `test_add` or `it_works`
-- Same-directory test files (`foo.test.ts`, `#[cfg(test)] mod tests`)
+- Same-directory test files (`#[cfg(test)] mod tests`)
 
 Property-based testing:
 - Serialization round-trips, algebraic properties, state machine invariants

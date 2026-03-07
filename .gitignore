@@ -2,7 +2,7 @@
 /instance/
 !/instance.example/
 
-# === Legacy paths (remove after migration completes) ===
+# === Legacy paths ===
 /theke/
 /projects/
 /archive/
@@ -21,33 +21,24 @@ data/
 !crates/mneme/src/engine/data/
 !crates/mneme/src/engine/data/**
 
+# === Cargo build output ===
+/target/
+tui/target/
+crates/mneme-bench/target/
+.cargo/
+
 # === Model caches ===
 .fastembed_cache/
 
 # === Secrets ===
 *.env
-infrastructure/memory/.env
 **/credentials.json
 **/credentials.yaml
 **/credentials.yml
-!**/credentials.py
 **/secrets*
 **/*.key
 **/*.pem
 **/api-key
-
-# === Infrastructure (local-only) ===
-infrastructure/signal-cli/
-infrastructure/repos/
-infrastructure/data/
-infrastructure/syncthing/
-infrastructure/prosoche/config.yaml
-
-# === Runtime ===
-node_modules/
-__pycache__/
-*.pyc
-.cache/
 
 # === OS ===
 .DS_Store
@@ -60,8 +51,6 @@ Thumbs.db
 
 # === Workspace backups ===
 *.aletheia-backup
-
-# === Backup files ===
 *.bak
 *.pre-compile.bak
 
@@ -84,60 +73,29 @@ clawd
 *.zip
 *.tar.gz
 
-# === Python build artifacts ===
-**/*.egg-info/
-
-# === Python venvs ===
-**/venv/
-**/.venv/
-**/lib/python*/
-**/site-packages/
-**/pyvenv.cfg
-**/.venv*
-
-# === GSD planning (local only) ===
+# === Ephemeral state ===
 .planning/
-
-# === Generated/ephemeral ===
-shared/logs/
-infrastructure/runtime/node_modules/
-infrastructure/runtime/package-lock.json
-ui/node_modules/
-ui/dist/
+**/.task/
+**/.taskrc
+**/cookies.txt
+**/heartbeat-state.json
 *sync-conflict*
 
 # === Learned skills (instance-specific, not shipped) ===
 shared/skills/
 !shared/skills/_examples/
 
-# === Ephemeral state ===
-**/.task/
-**/.taskrc
-**/cookies.txt
-**/heartbeat-state.json
-
 # === Cache/logs ===
 shared/cache/
 shared/blackboard/
 shared/traces/
+shared/logs/
 
 # === Config with tokens ===
 nous/*/config/
 shared/competence/model.json
 shared/config/tools.yaml
 shared/prosoche/activity_model.json
-infrastructure/prosoche/config.yaml
-tui/target/
 
-# Deploy backups
+# === Deploy backups ===
 .deploy-backup/
--e 
-# Vendored deps — source tracked, build artifacts ignored
-vendor/graph_builder/target/
-crates/mneme-bench/target/
--e 
-# Cargo build output
-/target/
-.cargo/
-infrastructure/runtime/dist/
-infrastructure/runtime/

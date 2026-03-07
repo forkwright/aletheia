@@ -29,30 +29,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: EmbarkStudios/cargo-deny-action@v2
 
-  npm-audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-      - run: cd ui && npm ci
-      - name: Audit UI dependencies
-        run: cd ui && npm audit --omit=dev --audit-level=high
-
-  pip-audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install pip-audit
-      - name: Audit memory sidecar
-        working-directory: infrastructure/memory/sidecar
-        run: pip-audit .
-
   secret-scan:
     runs-on: ubuntu-latest
     steps:

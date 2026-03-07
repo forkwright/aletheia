@@ -1,7 +1,7 @@
 [Unit]
 Description=Aletheia AI Gateway
 After=network-online.target
-Wants=network-online.target aletheia-memory.service
+Wants=network-online.target
 
 [Service]
 Type=simple

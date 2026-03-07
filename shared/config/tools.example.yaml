@@ -11,9 +11,9 @@ redshift:
   commands:
     query: 'query_redshift.sh "SQL"'
     query_file: 'query_redshift.sh -f path/to/query.sql'
-    schema_table: 'schema_lookup.py table <name>'
-    schema_column: 'schema_lookup.py column <name>'
-    schema_search: 'schema_lookup.py search <term>'
+    schema_table: 'schema_lookup.sh table <name>'
+    schema_column: 'schema_lookup.sh column <name>'
+    schema_search: 'schema_lookup.sh search <term>'
   notes: "Read-only by default. AWS SSO tokens expire; run 'aws sso login' to refresh."
 
 hex:
@@ -44,9 +44,8 @@ github:
 
 quality:
   shellcheck: "shellcheck script.sh"
-  ruff_check: "ruff check file.py"
-  ruff_fix: "ruff check --fix file.py"
-  ruff_format: "ruff format file.py"
+  cargo_clippy: "cargo clippy --workspace"
+  cargo_fmt: "cargo fmt --check"
 
 office:
   extract: "office extract file.pptx"
@@ -83,34 +82,19 @@ browser_automation:
 # -- Memory and knowledge management --
 
 memory:
-  memory_search: "memory_search tool (queries embedded KnowledgeStore)"
-  knowledge_graph:
-    db: neo4j
-    commands:
-      stats: "aletheia-graph stats"
-      query: "aletheia-graph query CYPHER"
-      add: "aletheia-graph add SUBJECT PREDICATE OBJECT"
-      connections: "aletheia-graph connections ENTITY"
-      recent: "aletheia-graph recent [--hours 24] [--nous AGENT]"
   knowledge_store:
     description: "Long-term extracted memories (embedded CozoDB, cross-agent, cross-session)"
     tool: "memory_search (always available)"
-  facts:
-    store: "shared/memory/facts.jsonl"
+  knowledge_graph:
+    db: "CozoDB (embedded)"
     commands:
-      list: "facts"
-      add: "facts add <subj> <pred> <obj>"
-      about: "facts about <subject>"
-      search: "facts search <query>"
-      reinforce: 'facts reinforce <id> -e "evidence"'
-      contradict: 'facts contradict <id> -e "evidence"'
+      stats: "aletheia-graph stats"
+      query: "aletheia-graph query DATALOG"
+      add: "aletheia-graph add SUBJECT PREDICATE OBJECT"
+      connections: "aletheia-graph connections ENTITY"
+      recent: "aletheia-graph recent [--hours 24] [--nous AGENT]"
 
 # -- System tools --
-
-aletheia:
-  distill: "distill --nous AGENT --text \"SUMMARY\""
-  assemble: "assemble-context --nous AGENT"
-  compile: "compile-context [AGENT]"
 
 agents:
   health: "nous-health"
@@ -119,9 +103,4 @@ runtime:
   config:
     bindings_use: "channel (not provider)"
     model_ids: "full date suffix for pre-4.6 models"
-    validate: "aletheia doctor"
-
-langfuse:
-  description: "Session observability and cross-nous pattern analysis"
-  url: "http://localhost:3100"
-  notes: "Self-hosted. Configure API keys via dashboard."
+    validate: "aletheia health"

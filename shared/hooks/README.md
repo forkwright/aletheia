@@ -93,7 +93,7 @@ Or use `nousFilter` in a global hook to restrict which agents trigger it.
 ## Allowed Script Extensions
 
 For security, only these file extensions are allowed as hook commands:
-`.sh`, `.py`, `.js`, `.ts`, `.rb`, `.pl`
+`.sh`, `.rb`, `.pl`
 
 Commands without extensions (e.g., `/usr/bin/curl`) are also allowed.
 

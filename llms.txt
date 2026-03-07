@@ -27,7 +27,6 @@ Rust workspace with 16 crates. TUI client.
 ## Agents
 
 - [WORKSPACE_FILES](docs/WORKSPACE_FILES.md): Agent workspace files, priority, caching, token budgets
-- [PLUGINS](docs/PLUGINS.md): Plugin system, lifecycle hooks, tool registration
 - [PACKS](docs/PACKS.md): Domain packs for agent specialization
 
 ## Operations
@@ -46,5 +45,5 @@ Rust workspace with 16 crates. TUI client.
 - `crates/`: Rust workspace (koina, taxis, mneme, hermeneus, organon, nous, pylon, etc.)
 - `tui/`: Terminal UI client (workspace member)
 - `instance.example/nous/_template/`: Template agent workspace (SOUL.md, USER.md, AGENTS.md)
-- `config/`: Example gateway config
-- `.claude/rules/`: AI agent coding rules per language
+- `instance.example/config/`: Example gateway config
+- `.claude/rules/`: Rust coding rules for AI agents

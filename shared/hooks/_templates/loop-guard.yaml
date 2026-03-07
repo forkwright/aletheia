@@ -1,6 +1,6 @@
 # Loop guard — write sentinel when an agent appears stuck in a tool loop
 # Copy to shared/hooks/ and set enabled: true to activate.
-# Supplements the built-in loop-detector.ts (which runs inside the pipeline).
+# Supplements the built-in loop detector (which runs inside the pipeline).
 
 name: loop-guard
 event: turn:after
