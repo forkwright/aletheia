@@ -18,7 +18,8 @@
 //!         confidence: Float, tier: String, valid_to: String, superseded_by: String?,
 //!         source_session_id: String?, recorded_at: String,
 //!         access_count: Int, last_accessed_at: String, stability_hours: Float,
-//!         fact_type: String }
+//!         fact_type: String, is_forgotten: Bool, forgotten_at: String?,
+//!         forget_reason: String? }
 //!
 //! entities { id: String => name: String, entity_type: String, aliases: String,
 //!            created_at: String, updated_at: String }
@@ -61,7 +62,10 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         access_count: Int,
         last_accessed_at: String,
         stability_hours: Float,
-        fact_type: String
+        fact_type: String,
+        is_forgotten: Bool default false,
+        forgotten_at: String?,
+        forget_reason: String?
     }",
     // Entities: typed nodes in the knowledge graph
     r":create entities {
@@ -186,7 +190,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 2;
+    const SCHEMA_VERSION: i64 = 3;
 
     /// Open an in-memory knowledge store with default configuration.
     pub fn open_mem() -> crate::error::Result<std::sync::Arc<Self>> {
@@ -247,8 +251,11 @@ impl KnowledgeStore {
 
         if already_initialized {
             let current_version = self.schema_version().unwrap_or(0);
-            if current_version < Self::SCHEMA_VERSION {
+            if current_version < 2 {
                 self.migrate_v1_to_v2()?;
+            }
+            if current_version < 3 {
+                self.migrate_v2_to_v3()?;
             }
             return Ok(());
         }
@@ -582,16 +589,19 @@ impl KnowledgeStore {
             let script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
                   superseded_by, source_session_id, recorded_at,
-                  new_count, new_last, stability_hours, fact_type] :=
+                  new_count, new_last, stability_hours, fact_type,
+                  is_forgotten, forgotten_at, forget_reason] :=
                     *facts{id: $id, valid_from, content, nous_id, confidence, tier,
                            valid_to, superseded_by, source_session_id, recorded_at,
-                           access_count, last_accessed_at, stability_hours, fact_type},
+                           access_count, last_accessed_at, stability_hours, fact_type,
+                           is_forgotten, forgotten_at, forget_reason},
                     new_count = access_count + 1,
                     new_last = $now
                 :put facts {id, valid_from => content, nous_id, confidence, tier,
                             valid_to, superseded_by, source_session_id, recorded_at,
                             access_count: new_count, last_accessed_at: new_last,
-                            stability_hours, fact_type}
+                            stability_hours, fact_type,
+                            is_forgotten, forgotten_at, forget_reason}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(
@@ -620,7 +630,129 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
+    /// Soft-delete a fact: set `is_forgotten = true` with reason and timestamp.
+    pub fn forget_fact(
+        &self,
+        fact_id: &str,
+        reason: crate::knowledge::ForgetReason,
+    ) -> crate::error::Result<()> {
+        let now = jiff::Zoned::now()
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let script = r"
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason] :=
+                *facts{id: $id, valid_from, content, nous_id, confidence, tier,
+                       valid_to, superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type},
+                is_forgotten = true,
+                forgotten_at = $now,
+                forget_reason = $reason
+            :put facts {id, valid_from => content, nous_id, confidence, tier,
+                        valid_to, superseded_by, source_session_id, recorded_at,
+                        access_count, last_accessed_at, stability_hours, fact_type,
+                        is_forgotten, forgotten_at, forget_reason}
+        ";
+        let mut params = std::collections::BTreeMap::new();
+        params.insert(
+            "id".to_owned(),
+            crate::engine::DataValue::Str(fact_id.into()),
+        );
+        params.insert(
+            "now".to_owned(),
+            crate::engine::DataValue::Str(now.into()),
+        );
+        params.insert(
+            "reason".to_owned(),
+            crate::engine::DataValue::Str(reason.as_str().into()),
+        );
+        self.run_mut(script, params)
+    }
+
+    /// Reverse a soft-delete: clear `is_forgotten`, `forgotten_at`, `forget_reason`.
+    pub fn unforget_fact(&self, fact_id: &str) -> crate::error::Result<()> {
+        let script = r"
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason] :=
+                *facts{id: $id, valid_from, content, nous_id, confidence, tier,
+                       valid_to, superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type},
+                is_forgotten = false,
+                forgotten_at = null,
+                forget_reason = null
+            :put facts {id, valid_from => content, nous_id, confidence, tier,
+                        valid_to, superseded_by, source_session_id, recorded_at,
+                        access_count, last_accessed_at, stability_hours, fact_type,
+                        is_forgotten, forgotten_at, forget_reason}
+        ";
+        let mut params = std::collections::BTreeMap::new();
+        params.insert(
+            "id".to_owned(),
+            crate::engine::DataValue::Str(fact_id.into()),
+        );
+        self.run_mut(script, params)
+    }
+
+    /// Audit query: returns all facts regardless of forgotten/superseded/temporal state.
+    pub fn audit_all_facts(
+        &self,
+        nous_id: &str,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert("limit".to_owned(), DataValue::from(limit));
+
+        let rows = self.run_read(&queries::audit_all_facts(), params)?;
+        rows_to_facts(rows, nous_id)
+    }
+
     // --- Async wrappers ---
+
+    /// Async `forget_fact` — wraps sync call in `spawn_blocking`.
+    pub async fn forget_fact_async(
+        self: &std::sync::Arc<Self>,
+        fact_id: String,
+        reason: crate::knowledge::ForgetReason,
+    ) -> crate::error::Result<()> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.forget_fact(&fact_id, reason))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
+    /// Async `unforget_fact` — wraps sync call in `spawn_blocking`.
+    pub async fn unforget_fact_async(
+        self: &std::sync::Arc<Self>,
+        fact_id: String,
+    ) -> crate::error::Result<()> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.unforget_fact(&fact_id))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
+    /// Async `audit_all_facts` — wraps sync call in `spawn_blocking`.
+    pub async fn audit_all_facts_async(
+        self: &std::sync::Arc<Self>,
+        nous_id: String,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.audit_all_facts(&nous_id, limit))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
 
     /// Async `insert_fact` — wraps sync call in `spawn_blocking`.
     pub async fn insert_fact_async(
@@ -791,6 +923,142 @@ impl KnowledgeStore {
         Ok(())
     }
 
+    #[expect(clippy::too_many_lines, reason = "migration is a single linear sequence")]
+    fn migrate_v2_to_v3(&self) -> crate::error::Result<()> {
+        use crate::engine::{DataValue, ScriptMutability};
+        use std::collections::BTreeMap;
+
+        tracing::info!("migrating knowledge schema v2 -> v3");
+
+        // 1. Read all existing facts (v2 schema: 14 columns)
+        let all_facts = self
+            .db
+            .run(
+                r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                    superseded_by, source_session_id, recorded_at,
+                    access_count, last_accessed_at, stability_hours, fact_type] :=
+                    *facts{id, valid_from, content, nous_id, confidence, tier,
+                           valid_to, superseded_by, source_session_id, recorded_at,
+                           access_count, last_accessed_at, stability_hours, fact_type}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v2->v3 read facts: {e}"),
+                }
+                .build()
+            })?;
+
+        // 2. Drop FTS index
+        let _ = self.db.run(
+            "::fts drop facts:content_fts",
+            BTreeMap::new(),
+            ScriptMutability::Mutable,
+        );
+
+        // 3. Drop old facts relation
+        self.db
+            .run("::remove facts", BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v2->v3 remove facts: {e}"),
+                }
+                .build()
+            })?;
+
+        // 4. Recreate with new schema (includes forget columns)
+        self.db
+            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v2->v3 recreate facts: {e}"),
+                }
+                .build()
+            })?;
+
+        // 5. Reinsert facts with defaults for new columns
+        for row in &all_facts.rows {
+            let script = r"
+                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                  superseded_by, source_session_id, recorded_at,
+                  access_count, last_accessed_at, stability_hours, fact_type,
+                  is_forgotten, forgotten_at, forget_reason] <- [[
+                    $id, $valid_from, $content, $nous_id, $confidence, $tier, $valid_to,
+                    $superseded_by, $source_session_id, $recorded_at,
+                    $access_count, $last_accessed_at, $stability_hours, $fact_type,
+                    false, null, null
+                ]]
+                :put facts {id, valid_from => content, nous_id, confidence, tier,
+                            valid_to, superseded_by, source_session_id, recorded_at,
+                            access_count, last_accessed_at, stability_hours, fact_type,
+                            is_forgotten, forgotten_at, forget_reason}
+            ";
+            let mut params = BTreeMap::new();
+            for (i, name) in [
+                "id",
+                "valid_from",
+                "content",
+                "nous_id",
+                "confidence",
+                "tier",
+                "valid_to",
+                "superseded_by",
+                "source_session_id",
+                "recorded_at",
+                "access_count",
+                "last_accessed_at",
+                "stability_hours",
+                "fact_type",
+            ]
+            .iter()
+            .enumerate()
+            {
+                if let Some(val) = row.get(i) {
+                    params.insert((*name).to_owned(), val.clone());
+                }
+            }
+            self.db
+                .run(script, params, ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v2->v3 reinsert fact: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        // 6. Recreate FTS index
+        self.db
+            .run(fts_ddl(), BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v2->v3 recreate FTS: {e}"),
+                }
+                .build()
+            })?;
+
+        // 7. Update schema version
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v2->v3 update version: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v2 -> v3 complete");
+        Ok(())
+    }
+
     // --- Internal helpers ---
 
     fn run_mut(
@@ -887,6 +1155,24 @@ fn fact_to_params(
     p.insert(
         "fact_type".to_owned(),
         DataValue::Str(fact.fact_type.as_str().into()),
+    );
+    p.insert(
+        "is_forgotten".to_owned(),
+        DataValue::Bool(fact.is_forgotten),
+    );
+    p.insert(
+        "forgotten_at".to_owned(),
+        match &fact.forgotten_at {
+            Some(s) => DataValue::Str(s.as_str().into()),
+            None => DataValue::Null,
+        },
+    );
+    p.insert(
+        "forget_reason".to_owned(),
+        match &fact.forget_reason {
+            Some(r) => DataValue::Str(r.as_str().into()),
+            None => DataValue::Null,
+        },
     );
     p
 }
@@ -1067,6 +1353,19 @@ fn rows_to_facts(
             .get(13)
             .and_then(|v| extract_str(v).ok())
             .unwrap_or_default();
+        let is_forgotten = row
+            .get(14)
+            .and_then(|v| extract_bool(v).ok())
+            .unwrap_or(false);
+        let forgotten_at = row
+            .get(15)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None);
+        let forget_reason = row
+            .get(16)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None)
+            .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
 
         out.push(Fact {
             id,
@@ -1087,6 +1386,9 @@ fn rows_to_facts(
             last_accessed_at,
             stability_hours,
             fact_type,
+            is_forgotten,
+            forgotten_at,
+            forget_reason,
         });
     }
     Ok(out)
@@ -1141,6 +1443,9 @@ fn rows_to_facts_partial(
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         });
     }
     Ok(out)
@@ -1324,6 +1629,17 @@ fn extract_int(val: &crate::engine::DataValue) -> crate::error::Result<i64> {
 }
 
 #[cfg(feature = "mneme-engine")]
+fn extract_bool(val: &crate::engine::DataValue) -> crate::error::Result<bool> {
+    match val {
+        crate::engine::DataValue::Bool(b) => Ok(*b),
+        other => Err(crate::error::ConversionSnafu {
+            message: format!("expected Bool, got {other:?}"),
+        }
+        .build()),
+    }
+}
+
+#[cfg(feature = "mneme-engine")]
 fn parse_epistemic_tier(s: &str) -> crate::error::Result<crate::knowledge::EpistemicTier> {
     use crate::knowledge::EpistemicTier;
     match s {
@@ -1495,6 +1811,9 @@ mod tests {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         store.insert_fact(&fact).expect("insert fact");
 
@@ -1560,6 +1879,9 @@ mod tests {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         store.insert_fact(&f1).expect("insert f1");
         store
@@ -1590,6 +1912,9 @@ mod tests {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         store.insert_fact(&f2).expect("insert f2");
         store
@@ -1699,6 +2024,9 @@ mod tests {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         store.insert_fact(&fact).expect("insert fact");
 
@@ -1774,6 +2102,9 @@ mod tests {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         store.insert_fact(&fact).expect("insert fact");
 

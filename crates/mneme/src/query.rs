@@ -51,6 +51,9 @@ pub enum FactsField {
     LastAccessedAt,
     StabilityHours,
     FactType,
+    IsForgotten,
+    ForgottenAt,
+    ForgetReason,
 }
 
 impl Field for FactsField {
@@ -70,6 +73,9 @@ impl Field for FactsField {
             Self::LastAccessedAt => "last_accessed_at",
             Self::StabilityHours => "stability_hours",
             Self::FactType => "fact_type",
+            Self::IsForgotten => "is_forgotten",
+            Self::ForgottenAt => "forgotten_at",
+            Self::ForgetReason => "forget_reason",
         }
     }
 }
@@ -418,6 +424,9 @@ pub mod queries {
                 LastAccessedAt,
                 StabilityHours,
                 FactType,
+                IsForgotten,
+                ForgottenAt,
+                ForgetReason,
             ])
             .done()
             .build_script()
@@ -443,10 +452,14 @@ pub mod queries {
             .bind(LastAccessedAt)
             .bind(StabilityHours)
             .bind(FactType)
+            .bind(IsForgotten)
+            .bind(ForgottenAt)
+            .bind(ForgetReason)
             .filter("nous_id = $nous_id")
             .filter("valid_from <= $now")
             .filter("valid_to > $now")
             .filter("is_null(superseded_by)")
+            .filter("is_forgotten == false")
             .order("-confidence")
             .limit("$limit")
             .done()
@@ -474,6 +487,9 @@ pub mod queries {
                 LastAccessedAt,
                 StabilityHours,
                 FactType,
+                IsForgotten,
+                ForgottenAt,
+                ForgetReason,
             ])
             .bind(Id)
             .bind(ValidFrom)
@@ -489,10 +505,14 @@ pub mod queries {
             .bind(LastAccessedAt)
             .bind(StabilityHours)
             .bind(FactType)
+            .bind(IsForgotten)
+            .bind(ForgottenAt)
+            .bind(ForgetReason)
             .filter("nous_id = $nous_id")
             .filter("valid_from <= $now")
             .filter("valid_to > $now")
             .filter("is_null(superseded_by)")
+            .filter("is_forgotten == false")
             .order("-confidence")
             .limit("$limit")
             .done()
@@ -511,8 +531,10 @@ pub mod queries {
             .bind(Confidence)
             .bind(Tier)
             .bind(ValidTo)
+            .bind(IsForgotten)
             .filter("valid_from <= $time")
             .filter("valid_to > $time")
+            .filter("is_forgotten == false")
             .done()
             .build_script()
     }
@@ -540,6 +562,9 @@ pub mod queries {
                 LastAccessedAt,
                 StabilityHours,
                 FactType,
+                IsForgotten,
+                ForgottenAt,
+                ForgetReason,
             ])
             .row(&[
                 "$old_id",
@@ -556,6 +581,9 @@ pub mod queries {
                 "$old_last_accessed_at",
                 "$old_stability_hours",
                 "$old_fact_type",
+                "$old_is_forgotten",
+                "$old_forgotten_at",
+                "$old_forget_reason",
             ])
             .row(&[
                 "$new_id",
@@ -572,6 +600,9 @@ pub mod queries {
                 "\"\"",
                 "$stability_hours",
                 "$fact_type",
+                "false",
+                "null",
+                "null",
             ])
             .done()
             .build_script()
@@ -661,6 +692,55 @@ pub mod queries {
         :order -rrf_score
         :limit $limit
     ";
+
+    /// Audit query returning all facts regardless of forgotten/superseded/temporal state.
+    /// Params: `$nous_id`, `$limit`.
+    pub fn audit_all_facts() -> String {
+        use FactsField::*;
+        QueryBuilder::new()
+            .scan(Relation::Facts)
+            .select(&[
+                Id,
+                Content,
+                Confidence,
+                Tier,
+                RecordedAt,
+                NousId,
+                ValidFrom,
+                ValidTo,
+                SupersededBy,
+                SourceSessionId,
+                AccessCount,
+                LastAccessedAt,
+                StabilityHours,
+                FactType,
+                IsForgotten,
+                ForgottenAt,
+                ForgetReason,
+            ])
+            .bind(Id)
+            .bind(ValidFrom)
+            .bind(Content)
+            .bind(NousId)
+            .bind(Confidence)
+            .bind(Tier)
+            .bind(ValidTo)
+            .bind(SupersededBy)
+            .bind(SourceSessionId)
+            .bind(RecordedAt)
+            .bind(AccessCount)
+            .bind(LastAccessedAt)
+            .bind(StabilityHours)
+            .bind(FactType)
+            .bind(IsForgotten)
+            .bind(ForgottenAt)
+            .bind(ForgetReason)
+            .filter("nous_id = $nous_id")
+            .order("-recorded_at")
+            .limit("$limit")
+            .done()
+            .build_script()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -811,6 +891,9 @@ mod tests {
             "last_accessed_at",
             "stability_hours",
             "fact_type",
+            "is_forgotten",
+            "forgotten_at",
+            "forget_reason",
         ];
         let facts_enum_fields: Vec<&str> = [
             FactsField::Id,
@@ -827,6 +910,9 @@ mod tests {
             FactsField::LastAccessedAt,
             FactsField::StabilityHours,
             FactsField::FactType,
+            FactsField::IsForgotten,
+            FactsField::ForgottenAt,
+            FactsField::ForgetReason,
         ]
         .iter()
         .map(|f| f.name())
@@ -912,13 +998,16 @@ mod tests {
         let original = r"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
           superseded_by, source_session_id, recorded_at,
-          access_count, last_accessed_at, stability_hours, fact_type] <- [[$id, $valid_from,
+          access_count, last_accessed_at, stability_hours, fact_type,
+          is_forgotten, forgotten_at, forget_reason] <- [[$id, $valid_from,
           $content, $nous_id, $confidence, $tier, $valid_to, $superseded_by,
           $source_session_id, $recorded_at,
-          $access_count, $last_accessed_at, $stability_hours, $fact_type]]
+          $access_count, $last_accessed_at, $stability_hours, $fact_type,
+          $is_forgotten, $forgotten_at, $forget_reason]]
         :put facts {id, valid_from => content, nous_id, confidence, tier,
                     valid_to, superseded_by, source_session_id, recorded_at,
-                    access_count, last_accessed_at, stability_hours, fact_type}
+                    access_count, last_accessed_at, stability_hours, fact_type,
+                    is_forgotten, forgotten_at, forget_reason}
     ";
         let built = queries::upsert_fact();
         assert_eq!(normalize(&built), normalize(original));
@@ -930,11 +1019,13 @@ mod tests {
         ?[id, content, confidence, tier, recorded_at] :=
             *facts{id, valid_from, content, nous_id, confidence, tier,
                    valid_to, superseded_by, recorded_at,
-                   access_count, last_accessed_at, stability_hours, fact_type},
+                   access_count, last_accessed_at, stability_hours, fact_type,
+                   is_forgotten, forgotten_at, forget_reason},
             nous_id = $nous_id,
             valid_from <= $now,
             valid_to > $now,
-            is_null(superseded_by)
+            is_null(superseded_by),
+            is_forgotten == false
         :order -confidence
         :limit $limit
     ";
@@ -946,9 +1037,10 @@ mod tests {
     fn test_builder_matches_facts_at_time() {
         let original = r"
         ?[id, content, confidence, tier] :=
-            *facts{id, valid_from, content, confidence, tier, valid_to},
+            *facts{id, valid_from, content, confidence, tier, valid_to, is_forgotten},
             valid_from <= $time,
-            valid_to > $time
+            valid_to > $time,
+            is_forgotten == false
     ";
         let built = queries::facts_at_time();
         assert_eq!(normalize(&built), normalize(original));
@@ -959,17 +1051,21 @@ mod tests {
         let original = r#"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
           superseded_by, source_session_id, recorded_at,
-          access_count, last_accessed_at, stability_hours, fact_type] <- [
+          access_count, last_accessed_at, stability_hours, fact_type,
+          is_forgotten, forgotten_at, forget_reason] <- [
             [$old_id, $old_valid_from, $old_content, $nous_id, $old_confidence,
              $old_tier, $now, $new_id, $old_source, $old_recorded,
-             $old_access_count, $old_last_accessed_at, $old_stability_hours, $old_fact_type],
+             $old_access_count, $old_last_accessed_at, $old_stability_hours, $old_fact_type,
+             $old_is_forgotten, $old_forgotten_at, $old_forget_reason],
             [$new_id, $now, $new_content, $nous_id, $new_confidence,
              $new_tier, "9999-12-31", null, $source_session_id, $now,
-             0, "", $stability_hours, $fact_type]
+             0, "", $stability_hours, $fact_type,
+             false, null, null]
         ]
         :put facts {id, valid_from => content, nous_id, confidence, tier,
                     valid_to, superseded_by, source_session_id, recorded_at,
-                    access_count, last_accessed_at, stability_hours, fact_type}
+                    access_count, last_accessed_at, stability_hours, fact_type,
+                    is_forgotten, forgotten_at, forget_reason}
     "#;
         let built = queries::supersede_fact();
         assert_eq!(normalize(&built), normalize(original));
@@ -1013,14 +1109,17 @@ mod tests {
     fn test_builder_matches_full_current_facts() {
         let original = r"
     ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id,
-      access_count, last_accessed_at, stability_hours, fact_type] :=
+      access_count, last_accessed_at, stability_hours, fact_type,
+      is_forgotten, forgotten_at, forget_reason] :=
         *facts{id, valid_from, content, nous_id, confidence, tier,
                valid_to, superseded_by, source_session_id, recorded_at,
-               access_count, last_accessed_at, stability_hours, fact_type},
+               access_count, last_accessed_at, stability_hours, fact_type,
+               is_forgotten, forgotten_at, forget_reason},
         nous_id = $nous_id,
         valid_from <= $now,
         valid_to > $now,
-        is_null(superseded_by)
+        is_null(superseded_by),
+        is_forgotten == false
     :order -confidence
     :limit $limit
 ";

@@ -41,6 +41,12 @@ pub struct Fact {
     pub stability_hours: f64,
     /// Fact classification for stability defaults.
     pub fact_type: String,
+    /// Whether this fact has been intentionally excluded from recall.
+    pub is_forgotten: bool,
+    /// When the fact was forgotten (ISO 8601).
+    pub forgotten_at: Option<String>,
+    /// Why the fact was forgotten.
+    pub forget_reason: Option<ForgetReason>,
 }
 
 /// An entity in the knowledge graph.
@@ -123,6 +129,52 @@ impl std::fmt::Display for EpistemicTier {
     }
 }
 
+/// Reason for intentionally forgetting a fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForgetReason {
+    /// User explicitly requested removal.
+    UserRequested,
+    /// Fact is outdated.
+    Outdated,
+    /// Fact is incorrect.
+    Incorrect,
+    /// Privacy concern.
+    Privacy,
+}
+
+impl ForgetReason {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UserRequested => "user_requested",
+            Self::Outdated => "outdated",
+            Self::Incorrect => "incorrect",
+            Self::Privacy => "privacy",
+        }
+    }
+}
+
+impl std::fmt::Display for ForgetReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for ForgetReason {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "user_requested" => Ok(Self::UserRequested),
+            "outdated" => Ok(Self::Outdated),
+            "incorrect" => Ok(Self::Incorrect),
+            "privacy" => Ok(Self::Privacy),
+            other => Err(format!("unknown forget reason: {other}")),
+        }
+    }
+}
+
 /// Default FSRS stability by fact type (hours until 50% recall probability).
 #[must_use]
 pub fn default_stability_hours(fact_type: &str) -> f64 {
@@ -183,6 +235,9 @@ mod tests {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         let json = serde_json::to_string(&fact).unwrap();
         let back: Fact = serde_json::from_str(&json).unwrap();
@@ -270,6 +325,9 @@ mod tests {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         let json = serde_json::to_string(&fact).unwrap();
         let back: Fact = serde_json::from_str(&json).unwrap();
@@ -293,6 +351,9 @@ mod tests {
             last_accessed_at: String::new(),
             stability_hours: 720.0,
             fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
         };
         let json = serde_json::to_string(&fact).unwrap();
         let back: Fact = serde_json::from_str(&json).unwrap();
@@ -345,5 +406,59 @@ mod tests {
             let expected = format!("\"{}\"", tier.as_str());
             assert_eq!(json, expected);
         }
+    }
+
+    #[test]
+    fn forget_reason_serde_roundtrip() {
+        for reason in [
+            ForgetReason::UserRequested,
+            ForgetReason::Outdated,
+            ForgetReason::Incorrect,
+            ForgetReason::Privacy,
+        ] {
+            let json = serde_json::to_string(&reason).unwrap();
+            let back: ForgetReason = serde_json::from_str(&json).unwrap();
+            assert_eq!(reason, back);
+        }
+    }
+
+    #[test]
+    fn forget_reason_as_str_matches_serde() {
+        for reason in [
+            ForgetReason::UserRequested,
+            ForgetReason::Outdated,
+            ForgetReason::Incorrect,
+            ForgetReason::Privacy,
+        ] {
+            let json = serde_json::to_string(&reason).unwrap();
+            let expected = format!("\"{}\"", reason.as_str());
+            assert_eq!(json, expected);
+        }
+    }
+
+    #[test]
+    fn forget_reason_from_str_roundtrip() {
+        for reason in [
+            ForgetReason::UserRequested,
+            ForgetReason::Outdated,
+            ForgetReason::Incorrect,
+            ForgetReason::Privacy,
+        ] {
+            let parsed: ForgetReason = reason.as_str().parse().unwrap();
+            assert_eq!(reason, parsed);
+        }
+    }
+
+    #[test]
+    fn forget_reason_from_str_unknown() {
+        assert!("bogus".parse::<ForgetReason>().is_err());
+    }
+
+    #[test]
+    fn forget_reason_display() {
+        assert_eq!(ForgetReason::UserRequested.to_string(), "user_requested");
+        assert_eq!(ForgetReason::Outdated.to_string(), "outdated");
+        assert_eq!(ForgetReason::Incorrect.to_string(), "incorrect");
+        assert_eq!(ForgetReason::Privacy.to_string(), "privacy");
     }
 }

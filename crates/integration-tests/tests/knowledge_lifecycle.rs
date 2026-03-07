@@ -24,6 +24,9 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
         last_accessed_at: String::new(),
         stability_hours: 720.0,
         fact_type: String::new(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
     }
 }
 
@@ -40,14 +43,17 @@ fn correct_fact(
 ) {
     let script = r"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
-          access_count, last_accessed_at, stability_hours, fact_type] :=
+          access_count, last_accessed_at, stability_hours, fact_type,
+          is_forgotten, forgotten_at, forget_reason] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, source_session_id, recorded_at,
-                   access_count, last_accessed_at, stability_hours, fact_type},
+                   access_count, last_accessed_at, stability_hours, fact_type,
+                   is_forgotten, forgotten_at, forget_reason},
             id = $old_id,
             valid_to = $now,
             superseded_by = $new_id
         :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
-                    access_count, last_accessed_at, stability_hours, fact_type}
+                    access_count, last_accessed_at, stability_hours, fact_type,
+                    is_forgotten, forgotten_at, forget_reason}
     ";
     let mut params = BTreeMap::new();
     params.insert("old_id".to_owned(), DataValue::Str(old_id.into()));
@@ -70,6 +76,9 @@ fn correct_fact(
         last_accessed_at: String::new(),
         stability_hours: 720.0,
         fact_type: String::new(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
     };
     store.insert_fact(&new_fact).expect("correct: insert new fact");
 }
@@ -79,13 +88,16 @@ fn correct_fact(
 fn retract_fact(store: &Arc<KnowledgeStore>, fact_id: &str, retraction_time: &str) {
     let script = r"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
-          access_count, last_accessed_at, stability_hours, fact_type] :=
+          access_count, last_accessed_at, stability_hours, fact_type,
+          is_forgotten, forgotten_at, forget_reason] :=
             *facts{id, valid_from, content, nous_id, confidence, tier, superseded_by, source_session_id, recorded_at,
-                   access_count, last_accessed_at, stability_hours, fact_type},
+                   access_count, last_accessed_at, stability_hours, fact_type,
+                   is_forgotten, forgotten_at, forget_reason},
             id = $fact_id,
             valid_to = $now
         :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
-                    access_count, last_accessed_at, stability_hours, fact_type}
+                    access_count, last_accessed_at, stability_hours, fact_type,
+                    is_forgotten, forgotten_at, forget_reason}
     ";
     let mut params = BTreeMap::new();
     params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));
@@ -97,8 +109,10 @@ fn retract_fact(store: &Arc<KnowledgeStore>, fact_id: &str, retraction_time: &st
 /// This is what `audit_facts` SHOULD do (the adapter currently filters out historical facts).
 fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> {
     let script = r"
-        ?[id, content, confidence, tier, valid_from, valid_to, superseded_by, recorded_at] :=
-            *facts{id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, recorded_at},
+        ?[id, content, confidence, tier, valid_from, valid_to, superseded_by, recorded_at,
+          is_forgotten, forgotten_at, forget_reason] :=
+            *facts{id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, recorded_at,
+                   is_forgotten, forgotten_at, forget_reason},
             nous_id = $nous_id
         :order recorded_at
     ";
@@ -146,6 +160,20 @@ fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> 
                 DataValue::Str(s) => s.to_string(),
                 other => panic!("expected Str for recorded_at, got {other:?}"),
             };
+            let is_forgotten = match &row[8] {
+                DataValue::Bool(b) => *b,
+                other => panic!("expected Bool for is_forgotten, got {other:?}"),
+            };
+            let forgotten_at = match &row[9] {
+                DataValue::Null => None,
+                DataValue::Str(s) => Some(s.to_string()),
+                other => panic!("expected Str or Null for forgotten_at, got {other:?}"),
+            };
+            let forget_reason = match &row[10] {
+                DataValue::Null => None,
+                DataValue::Str(s) => Some(s.to_string()),
+                other => panic!("expected Str or Null for forget_reason, got {other:?}"),
+            };
             AuditRow {
                 id,
                 content,
@@ -155,6 +183,9 @@ fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> 
                 valid_to,
                 superseded_by,
                 recorded_at,
+                is_forgotten,
+                forgotten_at,
+                forget_reason,
             }
         })
         .collect()
@@ -171,6 +202,9 @@ struct AuditRow {
     valid_to: String,
     superseded_by: Option<String>,
     recorded_at: String,
+    is_forgotten: bool,
+    forgotten_at: Option<String>,
+    forget_reason: Option<String>,
 }
 
 fn open_store() -> Arc<KnowledgeStore> {
@@ -369,4 +403,149 @@ fn supersession_chain() {
     assert_eq!(a_v1.valid_to, "2026-04-01T00:00:00Z", "v1 expired at v2 creation");
     assert_eq!(a_v2.valid_to, "2026-07-01T00:00:00Z", "v2 expired at v3 creation");
     assert_eq!(a_v3.valid_to, "9999-12-31", "v3 still current");
+}
+
+// --- Forget lifecycle tests ---
+
+#[test]
+fn forget_excludes_from_recall() {
+    use aletheia_mneme::knowledge::ForgetReason;
+
+    let store = open_store();
+    let nous = "test-agent";
+    let query_time = "2026-07-01T00:00:00Z";
+
+    let fact = make_fact("f-forget", nous, "Bob's SSN is 123-45-6789", 0.9, EpistemicTier::Verified);
+    store.insert_fact(&fact).expect("insert");
+
+    // Visible before forget
+    let results = store.query_facts(nous, query_time, 10).expect("query before forget");
+    assert_eq!(results.len(), 1);
+
+    // Forget it
+    store.forget_fact("f-forget", ForgetReason::Privacy).expect("forget");
+
+    // Not visible after forget
+    let results = store.query_facts(nous, query_time, 10).expect("query after forget");
+    assert!(results.is_empty(), "forgotten fact should be excluded from recall");
+}
+
+#[test]
+fn forget_preserves_for_audit() {
+    use aletheia_mneme::knowledge::ForgetReason;
+
+    let store = open_store();
+    let nous = "test-agent";
+
+    let fact = make_fact("f-audit", nous, "sensitive data", 0.9, EpistemicTier::Verified);
+    store.insert_fact(&fact).expect("insert");
+
+    store.forget_fact("f-audit", ForgetReason::Privacy).expect("forget");
+
+    let audit = audit_all_facts(&store, nous);
+    assert_eq!(audit.len(), 1, "forgotten fact should appear in audit");
+
+    let row = &audit[0];
+    assert!(row.is_forgotten, "should be marked forgotten");
+    assert!(row.forgotten_at.is_some(), "should have forgotten_at timestamp");
+    assert_eq!(row.forget_reason.as_deref(), Some("privacy"), "should have privacy reason");
+}
+
+#[test]
+fn unforget_restores_to_search() {
+    use aletheia_mneme::knowledge::ForgetReason;
+
+    let store = open_store();
+    let nous = "test-agent";
+    let query_time = "2026-07-01T00:00:00Z";
+
+    let fact = make_fact("f-unforget", nous, "reinstated fact", 0.9, EpistemicTier::Verified);
+    store.insert_fact(&fact).expect("insert");
+
+    store.forget_fact("f-unforget", ForgetReason::Outdated).expect("forget");
+
+    let results = store.query_facts(nous, query_time, 10).expect("query after forget");
+    assert!(results.is_empty(), "should be excluded after forget");
+
+    store.unforget_fact("f-unforget").expect("unforget");
+
+    let results = store.query_facts(nous, query_time, 10).expect("query after unforget");
+    assert_eq!(results.len(), 1, "should be restored after unforget");
+    assert_eq!(results[0].id, "f-unforget");
+
+    // Audit should show cleared forget metadata
+    let audit = audit_all_facts(&store, nous);
+    let row = &audit[0];
+    assert!(!row.is_forgotten, "should not be marked forgotten after unforget");
+    assert!(row.forgotten_at.is_none(), "forgotten_at should be cleared");
+    assert!(row.forget_reason.is_none(), "forget_reason should be cleared");
+}
+
+#[test]
+fn forget_with_each_reason() {
+    use aletheia_mneme::knowledge::ForgetReason;
+
+    let store = open_store();
+    let nous = "test-agent";
+
+    for (i, (reason, reason_str)) in [
+        (ForgetReason::UserRequested, "user_requested"),
+        (ForgetReason::Outdated, "outdated"),
+        (ForgetReason::Incorrect, "incorrect"),
+        (ForgetReason::Privacy, "privacy"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let id = format!("f-reason-{i}");
+        let fact = make_fact(&id, nous, &format!("fact for {reason_str}"), 0.9, EpistemicTier::Verified);
+        store.insert_fact(&fact).expect("insert");
+        store.forget_fact(&id, *reason).expect("forget");
+    }
+
+    let audit = audit_all_facts(&store, nous);
+    assert_eq!(audit.len(), 4);
+    for (i, reason_str) in ["user_requested", "outdated", "incorrect", "privacy"].iter().enumerate() {
+        let row = audit.iter().find(|r| r.id == format!("f-reason-{i}")).expect("find fact");
+        assert!(row.is_forgotten);
+        assert_eq!(row.forget_reason.as_deref(), Some(*reason_str));
+    }
+}
+
+#[test]
+fn full_forget_lifecycle() {
+    use aletheia_mneme::knowledge::ForgetReason;
+
+    let store = open_store();
+    let nous = "test-agent";
+    let query_time = "2026-07-01T00:00:00Z";
+
+    // 1. Insert
+    let fact = make_fact("f-lifecycle", nous, "Alice's phone number is 555-0123", 0.95, EpistemicTier::Verified);
+    store.insert_fact(&fact).expect("insert");
+
+    // 2. Search — found
+    let results = store.query_facts(nous, query_time, 10).expect("query");
+    assert_eq!(results.len(), 1);
+
+    // 3. Forget — privacy
+    store.forget_fact("f-lifecycle", ForgetReason::Privacy).expect("forget");
+
+    // 4. Search — not found
+    let results = store.query_facts(nous, query_time, 10).expect("query after forget");
+    assert!(results.is_empty());
+
+    // 5. Audit — found with metadata
+    let audit = audit_all_facts(&store, nous);
+    assert_eq!(audit.len(), 1);
+    assert!(audit[0].is_forgotten);
+    assert_eq!(audit[0].forget_reason.as_deref(), Some("privacy"));
+
+    // 6. Unforget
+    store.unforget_fact("f-lifecycle").expect("unforget");
+
+    // 7. Search — found again
+    let results = store.query_facts(nous, query_time, 10).expect("query after unforget");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].content, "Alice's phone number is 555-0123");
 }
