@@ -33,6 +33,14 @@ pub struct Fact {
     pub source_session_id: Option<String>,
     /// When this fact was recorded in the system.
     pub recorded_at: String,
+    /// Number of times this fact has been returned in recall/search results.
+    pub access_count: u32,
+    /// When this fact was last accessed (ISO 8601, empty = never).
+    pub last_accessed_at: String,
+    /// Initial stability for FSRS decay model (hours).
+    pub stability_hours: f64,
+    /// Fact classification for stability defaults.
+    pub fact_type: String,
 }
 
 /// An entity in the knowledge graph.
@@ -115,6 +123,19 @@ impl std::fmt::Display for EpistemicTier {
     }
 }
 
+/// Default FSRS stability by fact type (hours until 50% recall probability).
+#[must_use]
+pub fn default_stability_hours(fact_type: &str) -> f64 {
+    match fact_type {
+        "identity" => 17520.0,
+        "preference" => 8760.0,
+        "relationship" => 4380.0,
+        "skill" => 2190.0,
+        "task" => 168.0,
+        _ => 720.0,
+    }
+}
+
 /// Results from a semantic recall query.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallResult {
@@ -158,6 +179,10 @@ mod tests {
             superseded_by: None,
             source_session_id: Some("ses-123".to_owned()),
             recorded_at: "2026-02-28T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         let json = serde_json::to_string(&fact).unwrap();
         let back: Fact = serde_json::from_str(&json).unwrap();
@@ -241,6 +266,10 @@ mod tests {
             superseded_by: None,
             source_session_id: None,
             recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         let json = serde_json::to_string(&fact).unwrap();
         let back: Fact = serde_json::from_str(&json).unwrap();
@@ -260,6 +289,10 @@ mod tests {
             superseded_by: None,
             source_session_id: None,
             recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         let json = serde_json::to_string(&fact).unwrap();
         let back: Fact = serde_json::from_str(&json).unwrap();
@@ -286,6 +319,19 @@ mod tests {
         assert_eq!(EpistemicTier::Verified.to_string(), "verified");
         assert_eq!(EpistemicTier::Inferred.to_string(), "inferred");
         assert_eq!(EpistemicTier::Assumed.to_string(), "assumed");
+    }
+
+    #[test]
+    fn default_stability_by_fact_type() {
+        assert!((default_stability_hours("identity") - 17520.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("preference") - 8760.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("relationship") - 4380.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("skill") - 2190.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("event") - 720.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("task") - 168.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("inference") - 720.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("unknown") - 720.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("") - 720.0).abs() < f64::EPSILON);
     }
 
     #[test]

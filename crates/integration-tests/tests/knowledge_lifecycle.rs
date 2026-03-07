@@ -20,6 +20,10 @@ fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: Epis
         superseded_by: None,
         source_session_id: Some("ses-test".to_owned()),
         recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        access_count: 0,
+        last_accessed_at: String::new(),
+        stability_hours: 720.0,
+        fact_type: String::new(),
     }
 }
 
@@ -35,12 +39,15 @@ fn correct_fact(
     correction_time: &str,
 ) {
     let script = r"
-        ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at] :=
-            *facts{id, valid_from, content, nous_id, confidence, tier, source_session_id, recorded_at},
+        ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
+          access_count, last_accessed_at, stability_hours, fact_type] :=
+            *facts{id, valid_from, content, nous_id, confidence, tier, source_session_id, recorded_at,
+                   access_count, last_accessed_at, stability_hours, fact_type},
             id = $old_id,
             valid_to = $now,
             superseded_by = $new_id
-        :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at}
+        :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
+                    access_count, last_accessed_at, stability_hours, fact_type}
     ";
     let mut params = BTreeMap::new();
     params.insert("old_id".to_owned(), DataValue::Str(old_id.into()));
@@ -59,6 +66,10 @@ fn correct_fact(
         superseded_by: None,
         source_session_id: None,
         recorded_at: correction_time.to_owned(),
+        access_count: 0,
+        last_accessed_at: String::new(),
+        stability_hours: 720.0,
+        fact_type: String::new(),
     };
     store.insert_fact(&new_fact).expect("correct: insert new fact");
 }
@@ -67,11 +78,14 @@ fn correct_fact(
 /// Sets `valid_to` = `retraction_time` on the fact (soft delete).
 fn retract_fact(store: &Arc<KnowledgeStore>, fact_id: &str, retraction_time: &str) {
     let script = r"
-        ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at] :=
-            *facts{id, valid_from, content, nous_id, confidence, tier, superseded_by, source_session_id, recorded_at},
+        ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
+          access_count, last_accessed_at, stability_hours, fact_type] :=
+            *facts{id, valid_from, content, nous_id, confidence, tier, superseded_by, source_session_id, recorded_at,
+                   access_count, last_accessed_at, stability_hours, fact_type},
             id = $fact_id,
             valid_to = $now
-        :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at}
+        :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
+                    access_count, last_accessed_at, stability_hours, fact_type}
     ";
     let mut params = BTreeMap::new();
     params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));

@@ -16,7 +16,9 @@
 //! ```text
 //! facts { id: String, valid_from: String => content: String, nous_id: String,
 //!         confidence: Float, tier: String, valid_to: String, superseded_by: String?,
-//!         source_session_id: String?, recorded_at: String }
+//!         source_session_id: String?, recorded_at: String,
+//!         access_count: Int, last_accessed_at: String, stability_hours: Float,
+//!         fact_type: String }
 //!
 //! entities { id: String => name: String, entity_type: String, aliases: String,
 //!            created_at: String, updated_at: String }
@@ -55,7 +57,11 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         valid_to: String,
         superseded_by: String?,
         source_session_id: String?,
-        recorded_at: String
+        recorded_at: String,
+        access_count: Int,
+        last_accessed_at: String,
+        stability_hours: Float,
+        fact_type: String
     }",
     // Entities: typed nodes in the knowledge graph
     r":create entities {
@@ -180,7 +186,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 1;
+    const SCHEMA_VERSION: i64 = 2;
 
     /// Open an in-memory knowledge store with default configuration.
     pub fn open_mem() -> crate::error::Result<std::sync::Arc<Self>> {
@@ -240,6 +246,10 @@ impl KnowledgeStore {
             .is_ok();
 
         if already_initialized {
+            let current_version = self.schema_version().unwrap_or(0);
+            if current_version < Self::SCHEMA_VERSION {
+                self.migrate_v1_to_v2()?;
+            }
             return Ok(());
         }
 
@@ -416,7 +426,18 @@ impl KnowledgeStore {
         params.insert("ef".to_owned(), DataValue::from(ef));
 
         let rows = self.run_read(queries::SEMANTIC_SEARCH, params)?;
-        rows_to_recall_results(rows)
+        let results = rows_to_recall_results(rows)?;
+
+        let source_ids: Vec<String> = results
+            .iter()
+            .filter(|r| r.source_type == "fact")
+            .map(|r| r.source_id.clone())
+            .collect();
+        if let Err(e) = self.increment_access(&source_ids) {
+            tracing::warn!(error = %e, "failed to increment access counts");
+        }
+
+        Ok(results)
     }
 
     /// Get the current schema version.
@@ -527,7 +548,14 @@ impl KnowledgeStore {
 
         let script = build_hybrid_query(q);
         let rows = self.run_read(&script, params)?;
-        rows_to_hybrid_results(rows)
+        let results = rows_to_hybrid_results(rows)?;
+
+        let fact_ids: Vec<String> = results.iter().map(|r| r.id.clone()).collect();
+        if let Err(e) = self.increment_access(&fact_ids) {
+            tracing::warn!(error = %e, "failed to increment access counts");
+        }
+
+        Ok(results)
     }
 
     /// Async `search_hybrid` — wraps sync call in `spawn_blocking`.
@@ -538,6 +566,56 @@ impl KnowledgeStore {
         use snafu::ResultExt;
         let this = std::sync::Arc::clone(self);
         tokio::task::spawn_blocking(move || this.search_hybrid(&q))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
+    /// Increment access count and update last-accessed timestamp for the given fact IDs.
+    pub fn increment_access(&self, fact_ids: &[String]) -> crate::error::Result<()> {
+        if fact_ids.is_empty() {
+            return Ok(());
+        }
+        let now = jiff::Zoned::now()
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        for id in fact_ids {
+            let script = r"
+                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                  superseded_by, source_session_id, recorded_at,
+                  new_count, new_last, stability_hours, fact_type] :=
+                    *facts{id: $id, valid_from, content, nous_id, confidence, tier,
+                           valid_to, superseded_by, source_session_id, recorded_at,
+                           access_count, last_accessed_at, stability_hours, fact_type},
+                    new_count = access_count + 1,
+                    new_last = $now
+                :put facts {id, valid_from => content, nous_id, confidence, tier,
+                            valid_to, superseded_by, source_session_id, recorded_at,
+                            access_count: new_count, last_accessed_at: new_last,
+                            stability_hours, fact_type}
+            ";
+            let mut params = std::collections::BTreeMap::new();
+            params.insert(
+                "id".to_owned(),
+                crate::engine::DataValue::Str(id.as_str().into()),
+            );
+            params.insert(
+                "now".to_owned(),
+                crate::engine::DataValue::Str(now.as_str().into()),
+            );
+            // Silently skip if fact doesn't exist (e.g. embedding-only result)
+            let _ = self.run_mut(script, params);
+        }
+        Ok(())
+    }
+
+    /// Async `increment_access` — wraps sync call in `spawn_blocking`.
+    pub async fn increment_access_async(
+        self: &std::sync::Arc<Self>,
+        fact_ids: Vec<String>,
+    ) -> crate::error::Result<()> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.increment_access(&fact_ids))
             .await
             .context(crate::error::JoinSnafu)?
     }
@@ -582,6 +660,135 @@ impl KnowledgeStore {
         tokio::task::spawn_blocking(move || this.search_vectors(query_vec, k, ef))
             .await
             .context(crate::error::JoinSnafu)?
+    }
+
+    // --- Migration ---
+
+    #[expect(clippy::too_many_lines, reason = "migration is a single linear sequence")]
+    fn migrate_v1_to_v2(&self) -> crate::error::Result<()> {
+        use crate::engine::{DataValue, ScriptMutability};
+        use std::collections::BTreeMap;
+
+        tracing::info!("migrating knowledge schema v1 -> v2");
+
+        // 1. Read all existing facts
+        let all_facts = self
+            .db
+            .run(
+                r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                    superseded_by, source_session_id, recorded_at] :=
+                    *facts{id, valid_from, content, nous_id, confidence, tier,
+                           valid_to, superseded_by, source_session_id, recorded_at}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v1->v2 read facts: {e}"),
+                }
+                .build()
+            })?;
+
+        // 2. Drop FTS index (must be dropped before relation)
+        let _ = self.db.run(
+            "::fts drop facts:content_fts",
+            BTreeMap::new(),
+            ScriptMutability::Mutable,
+        );
+
+        // 3. Drop old facts relation
+        self.db
+            .run("::remove facts", BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v1->v2 remove facts: {e}"),
+                }
+                .build()
+            })?;
+
+        // 4. Recreate with new schema (includes access tracking columns)
+        self.db
+            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v1->v2 recreate facts: {e}"),
+                }
+                .build()
+            })?;
+
+        // 5. Reinsert facts with defaults for new columns
+        for row in &all_facts.rows {
+            let script = r"
+                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                  superseded_by, source_session_id, recorded_at,
+                  access_count, last_accessed_at, stability_hours, fact_type] <- [[
+                    $id, $valid_from, $content, $nous_id, $confidence, $tier, $valid_to,
+                    $superseded_by, $source_session_id, $recorded_at,
+                    0, '', 720.0, ''
+                ]]
+                :put facts {id, valid_from => content, nous_id, confidence, tier,
+                            valid_to, superseded_by, source_session_id, recorded_at,
+                            access_count, last_accessed_at, stability_hours, fact_type}
+            ";
+            let mut params = BTreeMap::new();
+            for (i, name) in [
+                "id",
+                "valid_from",
+                "content",
+                "nous_id",
+                "confidence",
+                "tier",
+                "valid_to",
+                "superseded_by",
+                "source_session_id",
+                "recorded_at",
+            ]
+            .iter()
+            .enumerate()
+            {
+                if let Some(val) = row.get(i) {
+                    params.insert((*name).to_owned(), val.clone());
+                }
+            }
+            self.db
+                .run(script, params, ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v1->v2 reinsert fact: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        // 6. Recreate FTS index
+        self.db
+            .run(fts_ddl(), BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v1->v2 recreate FTS: {e}"),
+                }
+                .build()
+            })?;
+
+        // 7. Update schema version
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v1->v2 update version: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v1 -> v2 complete");
+        Ok(())
     }
 
     // --- Internal helpers ---
@@ -664,6 +871,22 @@ fn fact_to_params(
     p.insert(
         "recorded_at".to_owned(),
         DataValue::Str(fact.recorded_at.as_str().into()),
+    );
+    p.insert(
+        "access_count".to_owned(),
+        DataValue::from(i64::from(fact.access_count)),
+    );
+    p.insert(
+        "last_accessed_at".to_owned(),
+        DataValue::Str(fact.last_accessed_at.as_str().into()),
+    );
+    p.insert(
+        "stability_hours".to_owned(),
+        DataValue::from(fact.stability_hours),
+    );
+    p.insert(
+        "fact_type".to_owned(),
+        DataValue::Str(fact.fact_type.as_str().into()),
     );
     p
 }
@@ -756,6 +979,7 @@ fn embedding_to_params(
 // Parse rows from FULL_CURRENT_FACTS into Vec<Fact>.
 // Columns: id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id
 #[cfg(feature = "mneme-engine")]
+#[expect(clippy::too_many_lines, reason = "column extraction is sequential — splitting would obscure the mapping")]
 fn rows_to_facts(
     rows: crate::engine::NamedRows,
     nous_id: &str,
@@ -826,6 +1050,24 @@ fn rows_to_facts(
 
         let tier = parse_epistemic_tier(&tier_str)?;
 
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "access count fits in u32")]
+        let access_count = row
+            .get(10)
+            .and_then(|v| extract_int(v).ok())
+            .unwrap_or(0) as u32;
+        let last_accessed_at = row
+            .get(11)
+            .and_then(|v| extract_str(v).ok())
+            .unwrap_or_default();
+        let stability_hours = row
+            .get(12)
+            .and_then(|v| extract_float(v).ok())
+            .unwrap_or(720.0);
+        let fact_type = row
+            .get(13)
+            .and_then(|v| extract_str(v).ok())
+            .unwrap_or_default();
+
         out.push(Fact {
             id,
             nous_id: if nous_id_col.is_empty() {
@@ -841,6 +1083,10 @@ fn rows_to_facts(
             superseded_by,
             source_session_id,
             recorded_at,
+            access_count,
+            last_accessed_at,
+            stability_hours,
+            fact_type,
         });
     }
     Ok(out)
@@ -891,6 +1137,10 @@ fn rows_to_facts_partial(
             superseded_by: None,
             source_session_id: None,
             recorded_at: String::new(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         });
     }
     Ok(out)
@@ -1241,6 +1491,10 @@ mod tests {
             superseded_by: None,
             source_session_id: None,
             recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         store.insert_fact(&fact).expect("insert fact");
 
@@ -1302,6 +1556,10 @@ mod tests {
             superseded_by: None,
             source_session_id: None,
             recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         store.insert_fact(&f1).expect("insert f1");
         store
@@ -1328,6 +1586,10 @@ mod tests {
             superseded_by: None,
             source_session_id: None,
             recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         store.insert_fact(&f2).expect("insert f2");
         store
@@ -1433,6 +1695,10 @@ mod tests {
             superseded_by: None,
             source_session_id: None,
             recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         store.insert_fact(&fact).expect("insert fact");
 
@@ -1504,6 +1770,10 @@ mod tests {
             superseded_by: None,
             source_session_id: None,
             recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
         };
         store.insert_fact(&fact).expect("insert fact");
 

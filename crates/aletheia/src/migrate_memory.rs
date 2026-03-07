@@ -243,6 +243,10 @@ fn import_fact(
         superseded_by: None,
         source_session_id: None,
         recorded_at: now.clone(),
+        access_count: 0,
+        last_accessed_at: String::new(),
+        stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
+        fact_type: String::new(),
     };
     knowledgedb
         .insert_fact(&fact)
