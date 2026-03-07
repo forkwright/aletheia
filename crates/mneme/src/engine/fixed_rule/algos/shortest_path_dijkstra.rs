@@ -310,7 +310,7 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
         }
     }
 
-    let ret = goals
+    goals
         .iter(edges.node_count())
         .map(|target| {
             let cost = distance[target as usize];
@@ -328,9 +328,7 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
                 (target, cost, path)
             }
         })
-        .collect_vec();
-
-    ret
+        .collect_vec()
 }
 
 pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(

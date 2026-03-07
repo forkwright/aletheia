@@ -183,6 +183,9 @@ enum Command {
         /// Qdrant collection name
         #[arg(long, default_value = "aletheia_memories")]
         collection: String,
+        /// Path to persistent knowledge store (redb)
+        #[arg(long, env = "ALETHEIA_KNOWLEDGE_PATH")]
+        knowledge_path: Option<PathBuf>,
         /// Write flagged facts to a review file
         #[arg(long)]
         review_file: Option<PathBuf>,
@@ -332,6 +335,7 @@ async fn main() -> Result<()> {
         Some(Command::MigrateMemory {
             qdrant_url,
             collection,
+            knowledge_path,
             review_file,
             dry_run,
         }) => {
@@ -339,6 +343,7 @@ async fn main() -> Result<()> {
                 &cli,
                 qdrant_url,
                 collection,
+                knowledge_path.as_ref(),
                 review_file.as_ref(),
                 *dry_run,
             )
@@ -358,16 +363,17 @@ async fn run_migrate_memory(
     cli: &Cli,
     qdrant_url: &str,
     collection: &str,
+    knowledge_path: Option<&PathBuf>,
     review_file: Option<&PathBuf>,
     dry_run: bool,
 ) -> Result<()> {
     #[cfg(feature = "migrate-qdrant")]
     {
-        return migrate_memory::run(cli, qdrant_url, collection, review_file, dry_run).await;
+        return migrate_memory::run(cli, qdrant_url, collection, knowledge_path, review_file, dry_run).await;
     }
     #[cfg(not(feature = "migrate-qdrant"))]
     {
-        let _ = (cli, qdrant_url, collection, review_file, dry_run);
+        let _ = (cli, qdrant_url, collection, knowledge_path, review_file, dry_run);
         anyhow::bail!(
             "migrate-memory requires the `migrate-qdrant` feature.\n\
              Rebuild with: cargo build --features migrate-qdrant"

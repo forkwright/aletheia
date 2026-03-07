@@ -44,10 +44,11 @@ pub async fn run(
     cli: &Cli,
     qdrant_url: &str,
     collection: &str,
+    knowledge_path: Option<&PathBuf>,
     review_file: Option<&PathBuf>,
     dry_run: bool,
 ) -> Result<()> {
-    let _oikos = match &cli.instance_root {
+    let oikos = match &cli.instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
@@ -62,8 +63,22 @@ pub async fn run(
         create_provider(&EmbeddingConfig::default()).context("failed to create embedder")?,
     );
 
-    let knowledgedb = KnowledgeStore::open_mem_with_config(KnowledgeConfig::default())
-        .context("failed to open knowledge store")?;
+    let config = KnowledgeConfig::default();
+    let knowledgedb = if dry_run {
+        KnowledgeStore::open_mem_with_config(config)
+            .context("failed to open in-memory knowledge store")?
+    } else {
+        let path = knowledge_path
+            .cloned()
+            .unwrap_or_else(|| oikos.knowledge_db());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .context("failed to create knowledge store directory")?;
+        }
+        info!(path = %path.display(), "opening persistent knowledge store");
+        KnowledgeStore::open_redb(&path, config)
+            .context("failed to open persistent knowledge store")?
+    };
 
     let all_records = fetch_from_qdrant(&client, collection).await?;
     info!(total = all_records.len(), "fetched memories from Qdrant");
@@ -133,6 +148,7 @@ async fn fetch_from_qdrant(client: &Qdrant, collection: &str) -> Result<Vec<Memo
             let payload = &point.payload;
             let content = payload
                 .get("memory")
+                .or_else(|| payload.get("data"))
                 .and_then(extract_string)
                 .unwrap_or_default();
             if content.is_empty() {
@@ -143,7 +159,11 @@ async fn fetch_from_qdrant(client: &Qdrant, collection: &str) -> Result<Vec<Memo
                 .get("agent_id")
                 .and_then(extract_string)
                 .unwrap_or_else(|| "unknown".to_owned());
-            let mem_score = payload.get("score").and_then(extract_double).unwrap_or(0.5);
+            let mem_score = payload
+                .get("score")
+                .or_else(|| payload.get("confidence"))
+                .and_then(extract_double)
+                .unwrap_or(0.5);
             let created_at = payload
                 .get("created_at")
                 .and_then(extract_string)
