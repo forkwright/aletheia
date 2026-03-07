@@ -11,7 +11,8 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["sqlite", "fastembed"]
+default = ["sqlite", "fastembed", "graph-algo"]
+graph-algo = []
 sqlite = ["dep:rusqlite", "dep:jiff"]
 fastembed = ["dep:fastembed"]
 # mneme-engine coexists with sqlite (no link conflict verified).
