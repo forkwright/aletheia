@@ -6,20 +6,19 @@
 //! Depends on `aletheia-koina` for types and errors.
 
 #[cfg(feature = "mneme-engine")]
-#[allow(
+#[expect(
     unsafe_code,
     dead_code,
     private_interfaces,
     unexpected_cfgs,
     unused_imports,
-    unreachable_code,
-    unused_variables,
     clippy::pedantic,
     clippy::mutable_key_type,
     clippy::type_complexity,
     clippy::too_many_arguments,
     clippy::non_canonical_partial_ord_impl,
-    clippy::neg_cmp_op_on_partial_ord
+    clippy::neg_cmp_op_on_partial_ord,
+    reason = "absorbed CozoDB engine code — refactoring deferred to Phase E"
 )]
 pub mod engine;
 
