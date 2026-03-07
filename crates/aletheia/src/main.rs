@@ -781,7 +781,10 @@ async fn serve(cli: Cli) -> Result<()> {
     }
 
     // Pylon HTTP gateway — shares registries with NousManager
-    let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc).unwrap_or_default();
+    let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc).unwrap_or_else(|e| {
+        tracing::warn!("failed to load config, using defaults: {e}");
+        aletheia_taxis::config::AletheiaConfig::default()
+    });
     let state = Arc::new(AppState {
         session_store,
         nous_manager: Arc::clone(&nous_manager),

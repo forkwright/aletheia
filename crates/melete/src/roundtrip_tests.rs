@@ -42,7 +42,7 @@ impl LlmProvider for MockProvider {
     ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
         self.response
             .lock()
-            .expect("lock")
+            .expect("lock") // INVARIANT: test mock, panic = test bug
             .take()
             .expect("mock provider called more than once")
     }

@@ -202,7 +202,7 @@ impl EmbeddingProvider for FastEmbedProvider {
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
         self.model
             .lock()
-            .expect("fastembed model lock")
+            .expect("fastembed model lock") // INVARIANT: lock held only for embed call, poisoned = prior panic
             .embed(vec![text], None)
             .map_err(|e| {
                 EmbedFailedSnafu {
@@ -223,7 +223,7 @@ impl EmbeddingProvider for FastEmbedProvider {
     fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
         self.model
             .lock()
-            .expect("fastembed model lock")
+            .expect("fastembed model lock") // INVARIANT: lock held only for embed call, poisoned = prior panic
             .embed(texts, None)
             .map_err(|e| {
                 EmbedFailedSnafu {

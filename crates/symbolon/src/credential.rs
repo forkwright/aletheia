@@ -471,7 +471,10 @@ async fn do_refresh(client: &reqwest::Client, refresh_token: &str) -> Option<OAu
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp.text().await.unwrap_or_else(|e| {
+            warn!("failed to read OAuth error response body: {e}");
+            String::new()
+        });
         warn!(status = %status, body = %body, "OAuth refresh returned error");
         return None;
     }

@@ -206,7 +206,7 @@ impl SignalClient {
             Some(serde_json::Value::Array(items)) => {
                 let mut envelopes = Vec::with_capacity(items.len());
                 for item in items {
-                    let env_value = item.get("envelope").cloned().unwrap_or(item.clone());
+                    let env_value = item.get("envelope").cloned().unwrap_or(item);
 
                     match serde_json::from_value::<SignalEnvelope>(env_value) {
                         Ok(env) => envelopes.push(env),

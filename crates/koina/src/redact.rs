@@ -7,21 +7,24 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-static RE_ANTHROPIC_KEY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"sk-ant-api03-[A-Za-z0-9_-]+").expect("regex"));
+static RE_ANTHROPIC_KEY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"sk-ant-api03-[A-Za-z0-9_-]+").expect("static regex must compile")
+});
 
 static RE_SK_KEY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"sk-[A-Za-z0-9_-]{20,}").expect("regex"));
+    LazyLock::new(|| Regex::new(r"sk-[A-Za-z0-9_-]{20,}").expect("static regex must compile"));
 
 static RE_BEARER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"Bearer [A-Za-z0-9._-]+").expect("regex"));
+    LazyLock::new(|| Regex::new(r"Bearer [A-Za-z0-9._-]+").expect("static regex must compile"));
 
 static RE_JWT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").expect("regex")
+    Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+        .expect("static regex must compile")
 });
 
 static RE_SECRETS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(password|secret|api_key|apikey)\s*[:=]\s*\S+").expect("regex")
+    Regex::new(r"(?i)(password|secret|api_key|apikey)\s*[:=]\s*\S+")
+        .expect("static regex must compile")
 });
 
 /// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.

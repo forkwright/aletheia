@@ -166,17 +166,17 @@ impl SignalProvider {
     fn build_send_params(account: &str, params: &ChannelSendParams) -> client::SendParams {
         let target = parse_target(&params.to);
         match target {
-            SignalTarget::Phone(ref phone) => client::SendParams {
+            SignalTarget::Phone(phone) => client::SendParams {
                 message: Some(params.text.clone()),
-                recipient: Some(phone.clone()),
+                recipient: Some(phone),
                 group_id: None,
                 account: Some(account.to_owned()),
                 attachments: params.attachments.clone(),
             },
-            SignalTarget::Group(ref group_id) => client::SendParams {
+            SignalTarget::Group(group_id) => client::SendParams {
                 message: Some(params.text.clone()),
                 recipient: None,
-                group_id: Some(group_id.clone()),
+                group_id: Some(group_id),
                 account: Some(account.to_owned()),
                 attachments: params.attachments.clone(),
             },

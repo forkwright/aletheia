@@ -197,7 +197,7 @@ mod tests {
             &self,
             _request: &CompletionRequest,
         ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-            Ok(self.response.lock().expect("lock").clone())
+            Ok(self.response.lock().expect("lock").clone()) // INVARIANT: test mock, panic = test bug
         }
 
         fn supported_models(&self) -> &[&str] {

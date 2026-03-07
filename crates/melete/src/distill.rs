@@ -373,7 +373,7 @@ mod tests {
         ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
             self.response
                 .lock()
-                .expect("lock poisoned")
+                .expect("lock poisoned") // INVARIANT: test mock, panic = test bug
                 .take()
                 .expect("mock provider called more than once")
         }

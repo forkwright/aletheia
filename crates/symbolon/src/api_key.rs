@@ -38,7 +38,10 @@ pub fn generate(
         let expiry = std::time::SystemTime::now() + d;
         let secs = expiry
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
+            .unwrap_or_else(|e| {
+                tracing::warn!("failed to compute expiry timestamp: {e}");
+                std::time::Duration::default()
+            })
             .as_secs();
         time_from_unix(secs)
     });
@@ -130,7 +133,10 @@ fn parse_key(raw: &str) -> Result<(&str, &str, &str)> {
 fn now_iso() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
+        .unwrap_or_else(|e| {
+            tracing::warn!("failed to get current timestamp: {e}");
+            std::time::Duration::default()
+        })
         .as_secs();
     time_from_unix(secs)
 }
