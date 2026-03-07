@@ -7,8 +7,6 @@
 /projects/
 /archive/
 nous/*/
-!nous/_example/
-!nous/_example/**
 shared/memory/
 shared/contracts/
 shared/checkpoints/

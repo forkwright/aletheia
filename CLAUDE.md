@@ -4,7 +4,7 @@ Project conventions for AI coding agents working on this codebase.
 
 ## Standards
 
-Follow [CONTRIBUTING.md](./CONTRIBUTING.md). Full reference: [docs/STANDARDS.md](docs/STANDARDS.md).
+Full reference: [docs/STANDARDS.md](docs/STANDARDS.md).
 
 @.claude/rules/rust.md
 @.claude/rules/typescript.md
@@ -102,3 +102,62 @@ aletheia doctor                        # Validate config
 2. **exactOptionalPropertyTypes:** Use conditional spread (`...(value !== undefined ? { field: value } : {})`) not `field: value ?? undefined`.
 3. **oxlint require-await:** Use `return Promise.resolve(result)` instead of `async` on functions with no `await`.
 4. **Orchestrator registration:** New orchestrators follow the `NousManager` setter/getter pattern with conditional spread in `RouteDeps`.
+
+## Adding Tools
+
+Tools live in `crates/organon/`. Each tool implements the `ToolExecutor` trait:
+
+```rust
+pub trait ToolExecutor: Send + Sync {
+    fn definition(&self) -> &ToolDefinition;
+    fn execute(
+        &self,
+        input: serde_json::Value,
+        context: &ToolContext,
+    ) -> Result<String, ToolError>;
+}
+```
+
+Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
+
+## CLI
+
+```text
+aletheia                            # start server (default)
+aletheia health [--url URL]         # check if server is running
+aletheia status [--url URL]         # system status dashboard
+aletheia backup [--list] [--prune --keep N] [--export-json]
+aletheia maintenance status         # show maintenance task status
+aletheia maintenance run <task>     # run: trace-rotation, drift-detection, db-monitor, all
+aletheia tls generate [--output-dir PATH] [--days N] [--san NAMES...]
+```
+
+## API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/health` | Health check |
+| GET | `/api/docs/openapi.json` | OpenAPI spec |
+| GET | `/metrics` | Prometheus metrics |
+| POST | `/api/v1/sessions` | Create session |
+| GET | `/api/v1/sessions/{id}` | Get session |
+| DELETE | `/api/v1/sessions/{id}` | Close session |
+| POST | `/api/v1/sessions/{id}/messages` | Send message |
+| GET | `/api/v1/sessions/{id}/history` | Message history |
+| GET | `/api/v1/nous` | List agents |
+| GET | `/api/v1/nous/{id}` | Agent status |
+| GET | `/api/v1/nous/{id}/tools` | Agent tools |
+
+## Git
+
+Conventional commits: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`. Present tense imperative, first line ≤72 chars. Scope is the crate name.
+
+| Branch Type | Pattern | Example |
+|-------------|---------|---------|
+| Feature | `feat/<description>` | `feat/recall-pipeline` |
+| Bug fix | `fix/<description>` | `fix/session-timeout` |
+| Docs | `docs/<description>` | `docs/deployment-guide` |
+| Refactor | `refactor/<description>` | `refactor/config-cascade` |
+| Chore | `chore/<description>` | `chore/update-deps` |
+
+Branch from `main`. Rebase before pushing. Always squash merge.

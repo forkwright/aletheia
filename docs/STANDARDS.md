@@ -589,7 +589,7 @@ export const myTool: ToolHandler = {
 };
 ```
 
-**Enforced by:** `require-await` (oxlint). See CONTRIBUTING.md Gotcha 3.
+**Enforced by:** `require-await` (oxlint). See Dianoia Gotchas in CLAUDE.md.
 
 
 ---
@@ -1073,36 +1073,19 @@ import { SessionStore } from "../mneme/index.js";
 
 ---
 
-## Pre-commit Hook
+## Pre-commit Hooks
 
-`.githooks/pre-commit` runs lint and type checks for each sub-project when relevant files are staged. The full test suite runs in CI only.
+Gitleaks runs via `.pre-commit-config.yaml` to catch credential leaks. Install with `pre-commit install`.
 
-### What runs
-
-| Sub-project | Trigger | Commands |
-|-------------|---------|----------|
-| TypeScript runtime | Any `infrastructure/runtime/` file staged | `npm run typecheck && npm run lint:check` |
-| Svelte UI | Any `ui/` file staged | `npm run lint:check` (oxlint + eslint-plugin-svelte) |
-| Python sidecar | Any `infrastructure/memory/sidecar/` file staged | `uv run ruff check . && uv run pyright` |
-
-### Timing
-
-| Sub-project | Command | Wall time |
-|-------------|---------|-----------|
-| TypeScript runtime | `npm run typecheck` (tsc --noEmit) | ~3.5s |
-| TypeScript runtime | `npm run lint:check` (oxlint) | ~0.1s |
-| TypeScript runtime | **Total** | **~3.6s** |
-| Svelte UI | `npm run lint:check` (oxlint + eslint-plugin-svelte) | ~0.1s |
-| Python sidecar | `uv run ruff check .` | ~0.5s |
-| Python sidecar | `uv run pyright` | ~3.4s |
-| Python sidecar | **Total** | **~4.0s** |
-
-All sub-projects are well under the 10-second threshold (HOOK-03).
-
-### Install
+The instance guard (`scripts/pre-commit-instance-guard`) prevents accidental commits of `instance/` files. Install manually if desired:
 
 ```bash
-git config core.hooksPath .githooks
+cp scripts/pre-commit-instance-guard .git/hooks/pre-commit
 ```
 
-Run this once after cloning. See also `CONTRIBUTING.md`.
+Lint and type checks run in CI. Run them locally before pushing:
+
+```bash
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test -p <affected-crate>
+```

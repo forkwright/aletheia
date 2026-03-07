@@ -10,7 +10,7 @@
 
 ## Naming
 
-Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See [ALETHEIA.md](../ALETHEIA.md) for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
+Module and crate names use Greek terms reflecting their purpose (nous = mind, mneme = memory, hermeneus = interpreter). See [ALETHEIA.md](ALETHEIA.md) for philosophical grounding. Names unconceal essential natures - they don't describe implementations.
 
 ---
 
@@ -250,7 +250,7 @@ taxis → mneme → hermeneus → organon → nous → dianoia → prostheke →
 
 ### Plugin
 
-See [docs/PLUGINS-DESIGN.md](PLUGINS-DESIGN.md).
+Plugin system (prostheke) is planned for v2. See requirements in project planning docs.
 
 ---
 

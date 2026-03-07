@@ -73,7 +73,7 @@ aletheia start
 
 ## Why Greek?
 
-Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See [ALETHEIA.md](ALETHEIA.md) for the manifesto, [gnomon.md](docs/gnomon.md) for the naming system.
+Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See [ALETHEIA.md](docs/ALETHEIA.md) for the manifesto, [gnomon.md](docs/gnomon.md) for the naming system.
 
 ---
 
@@ -104,4 +104,4 @@ The only outbound connections are to services you explicitly configure (LLM prov
 
 ## License
 
-AGPL-3.0 (runtime) + Apache-2.0 (SDK/client). See [LICENSING.md](LICENSING.md).
+AGPL-3.0-or-later for the runtime and all crates. Apache-2.0 for SDK and client libraries (when published). See [LICENSE](LICENSE).

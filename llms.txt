@@ -17,12 +17,11 @@ Rust workspace with 16 crates. Svelte 5 web UI. TUI client.
 - [ARCHITECTURE](docs/ARCHITECTURE.md): Crate workspace, module map, dependency graph, trait boundaries
 - [PROJECT](docs/PROJECT.md): Project plan, milestones, dependency policy, crate-to-module mapping
 - [TECHNOLOGY](docs/TECHNOLOGY.md): Technology decisions, dependency rationale, pinning policy
-- [ALETHEIA](ALETHEIA.md): System manifesto and naming philosophy
+- [ALETHEIA](docs/ALETHEIA.md): System manifesto and naming philosophy
 
 ## Standards
 
 - [STANDARDS](docs/STANDARDS.md): Coding standards
-- [CONTRIBUTING](CONTRIBUTING.md): Contribution workflow, PR discipline, commit conventions
 - [CLAUDE](CLAUDE.md): AI agent workspace rules and conventions
 
 ## Agents
