@@ -472,15 +472,33 @@ Source: [Long-running agents blog](https://www.anthropic.com/engineering/effecti
 | Dimension | Opus 4.6 | Sonnet 4.6 | Haiku 4.5 |
 |-----------|----------|------------|-----------|
 | **Best for** | Long-horizon reasoning, deep research, extended autonomous work | Most agentic coding, fast turnaround, cost-efficient tasks | Classification, filtering, simple extraction, fast codebase search |
-| **Context window** | 200K (1M beta) | 200K (1M beta) | 200K |
+| **Context window** | 200K (1M beta) | 200K (1M beta) | 200K (no 1M beta) |
 | **Max output tokens** | 128K | 64K | 64K |
-| **Thinking** | Adaptive only (manual deprecated) | Adaptive + manual + interleaved | Manual with budget_tokens |
+| **Thinking** | Adaptive only (manual deprecated) | Adaptive + manual + interleaved | Manual with budget_tokens only |
 | **Context awareness** | No | Yes | Yes |
 | **Prompt caching min** | 4,096 tokens | 2,048 tokens | 4,096 tokens |
 | **Input price (per 1M)** | $5 | $3 | $1 |
 | **Output price (per 1M)** | $25 | $15 | $5 |
+| **Effort parameter** | low/medium/high/max | low/medium/high (default: high) | N/A |
 
-Source: [Anthropic model overview](https://platform.claude.com/docs/en/about-claude/models/overview) [Confirmed]
+Note: Opus 4.6 pricing dropped 67% from Opus 4.1 ($15/$75). The `effort: max` level is Opus-exclusive.
+
+Source: [Anthropic model overview](https://platform.claude.com/docs/en/about-claude/models/overview), [Pricing](https://platform.claude.com/docs/en/about-claude/pricing) [Confirmed]
+
+#### Benchmark evidence for model selection
+
+Key benchmarks that reveal where each tier genuinely differs:
+
+| Benchmark | Opus 4.6 | Sonnet 4.6 | Gap | Implication |
+|-----------|----------|------------|-----|-------------|
+| **GPQA Diamond** (PhD science) | 91.3% | 74.1% | **17.2 pts** | Opus required for expert reasoning |
+| **SWE-bench Verified** (coding) | 80.8% | 79.6% | 1.2 pts | Sonnet sufficient for standard coding |
+| **OSWorld-Verified** (computer use) | 72.7% | 72.5% | 0.2 pts | Tied — use Sonnet |
+| **MRCR v2** (1M, 8-needle) | 76% | ~18.5% (4.5) | ~57.5 pts | Opus required for 1M context retrieval |
+
+Additional finding: Haiku 4.5 Thinking outperforms Sonnet 4.5 Thinking on single-pass PR reviews (58% vs 42% win rate in Qodo's 400-PR benchmark), suggesting Haiku follows focused review instructions more precisely for scoped tasks.
+
+Source: [Anthropic Opus 4.6 announcement](https://www.anthropic.com/news/claude-opus-4-6), [Qodo PR review benchmark](https://www.qodo.ai/blog/thinking-vs-thinking-benchmarking-claude-haiku-4-5-and-sonnet-4-5-on-400-real-prs/) [Confirmed]
 
 #### Prompting differences by model
 
@@ -491,49 +509,77 @@ Key model-specific adjustments:
 **Opus 4.6:**
 - Most responsive to system prompt. Overtriggers on aggressive language. Use natural phrasing.
 - Does extensive upfront exploration. May need "choose an approach and commit to it" guidance.
-- Adaptive thinking only — manual `budget_tokens` is deprecated.
+- Adaptive thinking only — manual `budget_tokens` is deprecated and will be removed.
+- Adaptive mode automatically enables interleaved thinking (thinking between tool calls).
 - Has a tendency to over-engineer. Needs explicit "keep solutions minimal" guidance.
+- Supports `effort: max` (Opus-exclusive; returns error on other models).
+- Thinking blocks from previous turns are **preserved** in conversation history by default.
 
 **Sonnet 4.6:**
-- Defaults to `high` effort (may cause higher latency). Explicitly set effort for your use case.
+- Defaults to `high` effort (may cause higher latency). Explicitly set `medium` for most use cases.
 - Most versatile: supports adaptive thinking, manual extended thinking, and interleaved thinking.
+- Manual mode also supports interleaved thinking via beta header (`interleaved-thinking-2025-05-14`).
 - Best cost-performance tradeoff for agentic coding at `medium` effort.
+- Thinking blocks from previous turns are **preserved** in conversation history by default.
 - "For the hardest, longest-horizon problems... Opus 4.6 remains the right choice."
 
 **Haiku 4.5:**
-- Supports extended thinking with manual `budget_tokens`.
-- Has context awareness (like Sonnet 4.6, unlike Opus 4.6).
+- Supports **only** manual extended thinking (`type: "enabled"` with `budget_tokens`). Does NOT support adaptive thinking or the effort parameter.
+- Has context awareness (like Sonnet 4.6, unlike Opus 4.6). Adjusts verbosity based on remaining context space.
 - Best for Explore agent type (fast codebase search/analysis).
-- Thinking block summarization behaves the same as other Claude 4 models.
+- Thinking blocks from previous turns are **stripped** when a non-tool-result user message appears.
+- Outperforms Sonnet 4.5 Thinking on focused, single-pass tasks like PR review (Qodo benchmark).
 
-Source: [Prompting best practices](https://platform.claude.com/docs/en/docs/build-with-claude/prompt-engineering/system-prompts), [Model overview](https://platform.claude.com/docs/en/about-claude/models/overview) [Confirmed]
+**Thinking block handling difference**: Claude 4 models return **summarized** thinking blocks (full tokens billed, summaries visible). This means external tooling cannot inspect full reasoning chains without Anthropic enterprise access.
+
+Source: [Prompting best practices](https://platform.claude.com/docs/en/docs/build-with-claude/prompt-engineering/system-prompts), [Model overview](https://platform.claude.com/docs/en/about-claude/models/overview), [Extended thinking docs](https://platform.claude.com/docs/en/build-with-claude/extended-thinking), [Adaptive thinking docs](https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking) [Confirmed]
 
 #### When Opus is worth the cost
 
 Anthropic's explicit guidance: use Opus 4.6 for "the hardest, longest-horizon problems (large-scale code migrations, deep research, extended autonomous work)."
+
+**Cost-justified Opus use cases** (benchmark-backed):
+1. **Expert-level reasoning**: 17-point GPQA Diamond advantage. For scientific, legal, or financial analysis where a single reasoning error is expensive.
+2. **1M context retrieval**: 76% on MRCR v2 vs Sonnet 4.5's 18.5%. If the task requires finding information across massive contexts, Sonnet cannot do it.
+3. **128K output generation**: Opus supports 128K output vs 64K for Sonnet/Haiku. Required for very long-form generation.
+4. **Agent Teams**: Multi-agent coordination is Opus-exclusive.
+
+**Cost-unjustified Opus use** (Sonnet preferred):
+1. Standard coding: 1.2-point SWE-bench gap does not justify 5x cost.
+2. Computer use: 0.2-point OSWorld gap — use Sonnet.
+3. High-volume classification: Use Haiku at 1/5th the cost of Sonnet.
+4. PR reviews: Haiku Thinking actually wins on focused single-pass reviews.
+
+**Smart routing**: A 90/10 Sonnet-default/Opus-escalation split covers ~90% of tasks with negligible quality loss, saving approximately 60-70% on API costs vs defaulting to Opus.
 
 Evidence-based thresholds for model selection:
 
 | Task Type | Recommended Model | Rationale |
 |-----------|-------------------|-----------|
 | Multi-file refactoring across a codebase | Opus 4.6 | Long-horizon reasoning, state tracking across many files |
-| Single-file feature implementation | Sonnet 4.6 (medium effort) | Sufficient capability, 40% cheaper |
+| Single-file feature implementation | Sonnet 4.6 (medium effort) | SWE-bench within 1.2 pts of Opus |
 | Code review and analysis | Sonnet 4.6 (medium effort) | Read-heavy, no extended thinking needed |
+| Focused PR review | Haiku 4.5 (thinking enabled) | 58% win rate vs Sonnet Thinking on 400-PR benchmark |
 | Codebase exploration / search | Haiku 4.5 | Speed matters more than depth; CC uses Haiku for Explore agents |
 | Classification / filtering | Haiku 4.5 | Simple task, 5x cheaper than Opus |
 | Research synthesis across many sources | Opus 4.6 | Requires maintaining coherence across large context |
 | Bug fix with clear reproduction | Sonnet 4.6 (low-medium effort) | Scoped task, doesn't need maximum reasoning |
+| PhD-level science reasoning | Opus 4.6 | 17.2-point GPQA Diamond advantage |
 
-Source: [Prompting best practices](https://platform.claude.com/docs/en/docs/build-with-claude/prompt-engineering/system-prompts) [Confirmed + Likely]
+Source: [Prompting best practices](https://platform.claude.com/docs/en/docs/build-with-claude/prompt-engineering/system-prompts), [Anthropic Opus 4.6 announcement](https://www.anthropic.com/news/claude-opus-4-6), [Qodo benchmark](https://www.qodo.ai/blog/thinking-vs-thinking-benchmarking-claude-haiku-4-5-and-sonnet-4-5-on-400-real-prs/) [Confirmed]
 
 #### Context degradation by model
 
 No published data on model-specific degradation curves. However:
 - All three models share the same architecture family and are subject to the same "lost in the middle" attention patterns
-- Haiku 4.5's context awareness feature (shared with Sonnet 4.6) gives it explicit token budget tracking, which may help it manage context more efficiently than Opus 4.6 (which lacks this feature)
+- Haiku 4.5's context awareness feature (shared with Sonnet 4.6) gives it explicit token budget tracking — it adjusts verbosity based on remaining context space, shortening outputs and simplifying reasoning as tokens run low
 - Anthropic's decision to give Haiku and Sonnet context awareness but not Opus suggests Opus may handle long contexts better natively
+- Haiku 4.5 has no 1M beta option (hard cap at 200K), meaning large CLAUDE.md + conversation history hits absolute limits sooner than Opus/Sonnet with 1M beta enabled
+- No published MRCR or needle-in-haystack scores exist for Haiku 4.5 specifically
 
-**Confidence: Speculative** — no published evidence on differential degradation.
+**Practical implication**: For Haiku-targeted Aletheia sub-agents, keep injected context lean. Use progressive disclosure (Skills tier 2/3 loading) rather than front-loading everything into CLAUDE.md.
+
+**Confidence: Speculative** — no published evidence on differential degradation rates at equivalent fill ratios.
 
 ---
 
@@ -622,14 +668,17 @@ For a 200K token context window:
 
 ### 3.4 Model selection policy
 
-| Agent Type | Model | Effort | Thinking |
-|------------|-------|--------|----------|
-| Core nous (Syn, persistent agents) | Opus 4.6 | high | adaptive |
-| Task execution sub-agent | Sonnet 4.6 | medium | adaptive |
-| Code review sub-agent | Sonnet 4.6 | medium | adaptive |
-| Codebase exploration | Haiku 4.5 | — | enabled, budget 8K |
-| Fact extraction (mneme) | Sonnet 4.6 | low | enabled, budget 4K |
-| Classification / filtering | Haiku 4.5 | — | disabled |
+| Agent Type | Model | Effort | Thinking | Rationale |
+|------------|-------|--------|----------|-----------|
+| Core nous (Syn, persistent agents) | Opus 4.6 | high | adaptive | Long-horizon reasoning, 128K output, Agent Teams |
+| Task execution sub-agent | Sonnet 4.6 | medium | adaptive | SWE-bench within 1.2 pts of Opus at 40% cost |
+| Code review sub-agent | Sonnet 4.6 | medium | adaptive | Read-heavy, sufficient depth |
+| Focused PR review | Haiku 4.5 | — | enabled, budget 8K | 58% win rate vs Sonnet Thinking (Qodo) |
+| Codebase exploration | Haiku 4.5 | — | enabled, budget 8K | Speed over depth; CC default for Explore |
+| Fact extraction (mneme) | Sonnet 4.6 | low | adaptive | Semantic reasoning needs more than Haiku |
+| Classification / filtering | Haiku 4.5 | — | disabled | Simple task, 5x cheaper |
+
+**Escalation rule**: Default to Sonnet 4.6. Escalate to Opus when: (1) task spans >10 files, (2) requires expert-level scientific reasoning, (3) needs 1M context window, or (4) requires multi-agent coordination.
 
 ### 3.5 Skill definition format for Aletheia
 
@@ -787,6 +836,12 @@ For each finding:
 | `@` imports are eagerly loaded at startup, not lazy | **Confirmed** | Observable CC behavior, consistent with docs stating they're "expanded" |
 | System reminders consume 15%+ of context window | **Likely** | Community analysis, consistent with observed overhead |
 | Advisory disclaimer causes selective deprioritization of CLAUDE.md instructions | **Confirmed** | Observable CC behavior, documented disclaimer text |
+| Opus 4.6 GPQA Diamond 17.2-point advantage over Sonnet | **Confirmed** | Anthropic benchmark, third-party verification |
+| SWE-bench near-parity (1.2 pts) between Opus and Sonnet | **Confirmed** | Anthropic benchmark |
+| Haiku Thinking beats Sonnet Thinking on focused PR review (58% vs 42%) | **Confirmed** | Qodo 400-PR benchmark |
+| Smart routing (90/10 Sonnet/Opus) saves 60-70% on API costs | **Likely** | Multiple independent cost analyses |
+| Opus manual extended thinking deprecated, will be removed | **Confirmed** | Anthropic extended thinking docs |
+| Haiku 4.5 strips thinking blocks from previous turns | **Confirmed** | Anthropic extended thinking docs |
 
 ---
 
@@ -804,6 +859,9 @@ For each finding:
 | [CC Skills docs](https://code.claude.com/docs/en/skills) | Skill format, frontmatter fields, matching algorithm, context budget, dynamic context injection. |
 | [CC Subagents docs](https://code.claude.com/docs/en/sub-agents) | Subagent creation, memory, tool access, skill preloading. |
 | [Model overview](https://platform.claude.com/docs/en/about-claude/models/overview) | Model capabilities, pricing, context windows, thinking support. |
+| [Extended thinking](https://platform.claude.com/docs/en/build-with-claude/extended-thinking) | Thinking modes, budget_tokens, interleaved thinking, thinking block handling across turns. |
+| [Adaptive thinking](https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking) | Adaptive vs manual thinking, effort parameter, model-specific support. |
+| [Effort parameter](https://platform.claude.com/docs/en/build-with-claude/effort) | Effort levels by model, default behaviors, Opus-exclusive `max` level. |
 
 ### Anthropic Engineering Blog
 
@@ -829,5 +887,7 @@ For each finding:
 | [Chain of Agents (NeurIPS 2024)](https://research.google/blog/chain-of-agents-large-language-models-collaborating-on-long-context-tasks/) | Sequential worker agents with summary passing. Outperforms RAG and long-context LLMs. |
 | [Cognition: Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) | Anti-pattern warnings for multi-agent context sharing. Filesystem discovery over trace copying. |
 | [Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) | Degrees of freedom framework, progressive disclosure, description optimization, anti-patterns. |
+| [Qodo: Thinking vs Thinking (400 PRs)](https://www.qodo.ai/blog/thinking-vs-thinking-benchmarking-claude-haiku-4-5-and-sonnet-4-5-on-400-real-prs/) | Haiku 4.5 Thinking vs Sonnet 4.5 Thinking on real PR reviews. 58% vs 42% win rate. |
+| [Anthropic: Introducing Opus 4.6](https://www.anthropic.com/news/claude-opus-4-6) | Opus 4.6 benchmarks, pricing, Agent Teams, 1M MRCR v2 results. |
 | [CC Skill Format research](cc-skill-format.md) | Internal research doc — skill matching, invocation flow, context budget, CC-native export requirements. |
 | [Model Capability Audit](model-capability-audit.md) | Internal research doc — native vs built capabilities, redundancy analysis. |
