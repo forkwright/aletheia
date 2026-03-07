@@ -132,6 +132,38 @@ impl ToolExecutor for MemoryRetractExecutor {
     }
 }
 
+// --- Memory Forget ---
+
+struct MemoryForgetExecutor;
+
+impl ToolExecutor for MemoryForgetExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async {
+            let services = match require_services(ctx) {
+                Ok(s) => s,
+                Err(e) => return Ok(e),
+            };
+            let Some(knowledge) = services.knowledge.as_ref() else {
+                return Ok(ToolResult::error("knowledge store not configured"));
+            };
+
+            let fact_id = extract_str(&input.arguments, "fact_id", &input.name)?;
+            let reason = extract_str(&input.arguments, "reason", &input.name)?;
+
+            match knowledge.forget_fact(fact_id, reason).await {
+                Ok(()) => Ok(ToolResult::text(format!(
+                    "Fact {fact_id} forgotten (reason: {reason})."
+                ))),
+                Err(e) => Ok(ToolResult::error(format!("Failed to forget fact: {e}"))),
+            }
+        })
+    }
+}
+
 // --- Memory Audit ---
 
 struct MemoryAuditExecutor;
@@ -169,8 +201,17 @@ impl ToolExecutor for MemoryAuditExecutor {
                     let lines: Vec<String> = facts
                         .iter()
                         .map(|f| {
+                            let forgotten_suffix = if f.is_forgotten {
+                                let reason = f
+                                    .forget_reason
+                                    .as_deref()
+                                    .unwrap_or("unknown");
+                                format!(" [FORGOTTEN: {reason}]")
+                            } else {
+                                String::new()
+                            };
                             format!(
-                                "- [{}] ({:.0}% {}) {} ({})",
+                                "- [{}] ({:.0}% {}) {} ({}){forgotten_suffix}",
                                 f.id,
                                 f.confidence * 100.0,
                                 f.tier,
@@ -360,6 +401,7 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(memory_search_def(), Box::new(MemorySearchExecutor))?;
     registry.register(memory_correct_def(), Box::new(MemoryCorrectExecutor))?;
     registry.register(memory_retract_def(), Box::new(MemoryRetractExecutor))?;
+    registry.register(memory_forget_def(), Box::new(MemoryForgetExecutor))?;
     registry.register(memory_audit_def(), Box::new(MemoryAuditExecutor))?;
     registry.register(note_def(), Box::new(NoteExecutor))?;
     registry.register(blackboard_def(), Box::new(BlackboardExecutor))?;
@@ -461,6 +503,46 @@ fn memory_retract_def() -> ToolDef {
                 ),
             ]),
             required: vec!["fact_id".to_owned()],
+        },
+        category: ToolCategory::Memory,
+        auto_activate: false,
+    }
+}
+
+fn memory_forget_def() -> ToolDef {
+    ToolDef {
+        name: ToolName::new("memory_forget").expect("valid tool name"),
+        description: "Soft-delete a fact from memory (reversible, preserves audit trail)"
+            .to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([
+                (
+                    "fact_id".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "ID of the fact to forget".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
+                (
+                    "reason".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description:
+                            "Why: user_requested, outdated, incorrect, privacy".to_owned(),
+                        enum_values: Some(vec![
+                            "user_requested".to_owned(),
+                            "outdated".to_owned(),
+                            "incorrect".to_owned(),
+                            "privacy".to_owned(),
+                        ]),
+                        default: None,
+                    },
+                ),
+            ]),
+            required: vec!["fact_id".to_owned(), "reason".to_owned()],
         },
         category: ToolCategory::Memory,
         auto_activate: false,
@@ -772,7 +854,7 @@ mod tests {
     async fn register_memory_tools() {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
-        assert_eq!(reg.definitions().len(), 6);
+        assert_eq!(reg.definitions().len(), 7);
     }
 
     #[tokio::test]
@@ -1118,6 +1200,38 @@ mod tests {
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
         let name = ToolName::new("memory_audit").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert!(!def.auto_activate);
+    }
+
+    #[tokio::test]
+    async fn memory_forget_no_knowledge_returns_error() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let note_store = Arc::new(MockNoteStore::new());
+        let bb_store = Arc::new(MockBlackboardStore::new());
+        let ctx = ctx_with_services(note_store, bb_store);
+
+        let input = ToolInput {
+            name: ToolName::new("memory_forget").expect("valid"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({"fact_id": "f-1", "reason": "privacy"}),
+        };
+        let result = reg.execute(&input, &ctx).await.expect("execute");
+        assert!(result.is_error);
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("knowledge store not configured")
+        );
+    }
+
+    #[tokio::test]
+    async fn memory_forget_not_auto_activated() {
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("memory_forget").expect("valid");
         let def = reg.get_def(&name).expect("found");
         assert!(!def.auto_activate);
     }

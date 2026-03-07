@@ -361,6 +361,9 @@ pub struct FactSummary {
     pub confidence: f64,
     pub tier: String,
     pub recorded_at: String,
+    pub is_forgotten: bool,
+    pub forgotten_at: Option<String>,
+    pub forget_reason: Option<String>,
 }
 
 /// Abstracts knowledge store operations for memory tools.
@@ -393,6 +396,17 @@ pub trait KnowledgeSearchService: Send + Sync {
         since: Option<&str>,
         limit: usize,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, String>> + Send + '_>>;
+
+    fn forget_fact(
+        &self,
+        fact_id: &str,
+        reason: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+
+    fn unforget_fact(
+        &self,
+        fact_id: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
 }
 
 /// Service locator for tool executors needing access to runtime services.

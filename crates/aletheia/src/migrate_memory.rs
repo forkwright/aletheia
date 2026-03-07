@@ -247,6 +247,9 @@ fn import_fact(
         last_accessed_at: String::new(),
         stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
         fact_type: String::new(),
+        is_forgotten: false,
+        forgotten_at: None,
+        forget_reason: None,
     };
     knowledgedb
         .insert_fact(&fact)

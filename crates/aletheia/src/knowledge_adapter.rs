@@ -96,13 +96,16 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             // Mark old fact as superseded
             let retract_script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
-                  access_count, last_accessed_at, stability_hours, fact_type] :=
+                  access_count, last_accessed_at, stability_hours, fact_type,
+                  is_forgotten, forgotten_at, forget_reason] :=
                     *facts{id: $old_id, valid_from, content, nous_id, confidence, tier, source_session_id, recorded_at,
-                           access_count, last_accessed_at, stability_hours, fact_type},
+                           access_count, last_accessed_at, stability_hours, fact_type,
+                           is_forgotten, forgotten_at, forget_reason},
                     valid_to = $now,
                     superseded_by = $new_id
                 :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
-                            access_count, last_accessed_at, stability_hours, fact_type}
+                            access_count, last_accessed_at, stability_hours, fact_type,
+                            is_forgotten, forgotten_at, forget_reason}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(
@@ -137,6 +140,9 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 last_accessed_at: String::new(),
                 stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
                 fact_type: String::new(),
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
             };
             self.store
                 .insert_fact(&new_fact)
@@ -159,12 +165,15 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
 
             let script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
-                  access_count, last_accessed_at, stability_hours, fact_type] :=
+                  access_count, last_accessed_at, stability_hours, fact_type,
+                  is_forgotten, forgotten_at, forget_reason] :=
                     *facts{id: $fact_id, valid_from, content, nous_id, confidence, tier, superseded_by, source_session_id, recorded_at,
-                           access_count, last_accessed_at, stability_hours, fact_type},
+                           access_count, last_accessed_at, stability_hours, fact_type,
+                           is_forgotten, forgotten_at, forget_reason},
                     valid_to = $now
                 :put facts {id, valid_from => content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
-                            access_count, last_accessed_at, stability_hours, fact_type}
+                            access_count, last_accessed_at, stability_hours, fact_type,
+                            is_forgotten, forgotten_at, forget_reason}
             ";
             let mut params = std::collections::BTreeMap::new();
             params.insert(
@@ -191,15 +200,11 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let nous_id = nous_id.map(str::to_owned);
         let since = since.map(str::to_owned);
         Box::pin(async move {
-            let now = jiff::Zoned::now()
-                .strftime("%Y-%m-%dT%H:%M:%SZ")
-                .to_string();
             let agent = nous_id.as_deref().unwrap_or("");
             let facts = self
                 .store
-                .query_facts_async(
+                .audit_all_facts_async(
                     agent.to_owned(),
-                    now,
                     i64::try_from(limit).unwrap_or(i64::MAX),
                 )
                 .await
@@ -215,9 +220,43 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                     confidence: f.confidence,
                     tier: f.tier.to_string(),
                     recorded_at: f.recorded_at,
+                    is_forgotten: f.is_forgotten,
+                    forgotten_at: f.forgotten_at,
+                    forget_reason: f.forget_reason.map(|r| r.to_string()),
                 })
                 .collect();
             Ok(out)
+        })
+    }
+
+    fn forget_fact(
+        &self,
+        fact_id: &str,
+        reason: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+        let fact_id = fact_id.to_owned();
+        let reason = reason.to_owned();
+        Box::pin(async move {
+            let reason: aletheia_mneme::knowledge::ForgetReason = reason
+                .parse()
+                .map_err(|e: String| e)?;
+            self.store
+                .forget_fact_async(fact_id, reason)
+                .await
+                .map_err(|e| format!("failed to forget fact: {e}"))
+        })
+    }
+
+    fn unforget_fact(
+        &self,
+        fact_id: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+        let fact_id = fact_id.to_owned();
+        Box::pin(async move {
+            self.store
+                .unforget_fact_async(fact_id)
+                .await
+                .map_err(|e| format!("failed to unforget fact: {e}"))
         })
     }
 }
