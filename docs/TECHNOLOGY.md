@@ -15,8 +15,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | HTTP | Axum | Hono | SSE built-in, cleaner middleware |
 | HTTP client | reqwest | node-fetch | Async, connection pooling, Anthropic + channel calls |
 | Anthropic API | Own client (~600 LOC) | @anthropic-ai/sdk | Stable API, reqwest + SSE, adaptive thinking, Tool Search Tool |
-| Unified store | cozo (CozoDB) | Qdrant + Neo4j | Rust-native embedded, Datalog, HNSW vectors + graph + relations in one DB. Zero external services. `StorageProvider` trait boundary for risk mitigation. |
-| Embeddings | fastembed-rs + `EmbeddingProvider` trait | Python fastembed | Default: local ONNX (nomic-embed-text-v1.5). Optional: Voyage-4-large via HTTP API. Per-instance config. |
+| Unified store | Vendored Datalog engine (from CozoDB) | Qdrant + Neo4j | Rust-native embedded, Datalog, HNSW vectors + graph + relations in one DB. Zero external services. Vendored into `mneme/src/engine/`, gated behind `mneme-engine` feature. |
+| Embeddings | fastembed-rs + `EmbeddingProvider` trait | Python fastembed | Default: local ONNX (BAAI/bge-small-en-v1.5, 384 dims). Per-instance config. |
 | Memory | Direct (no abstraction) | KnowledgeStore (embedded CozoDB) | ~50 LOC replaces the library |
 | Sessions | rusqlite + bundled | better-sqlite3 | WAL mode, no native addon |
 | Encryption | XChaCha20Poly1305 | None (plaintext) | Per-message encryption at rest, ~700ns overhead, zero plaintext on disk |
@@ -55,7 +55,6 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 - **Unstable crates** (pre-1.0, aggressive releases): pin exact version. Wrap in trait.
   - `wasmtime` - monthly major versions. Pin exact.
   - `rmcp` - 5 minor releases in 6 weeks. Pin exact. `McpProvider` trait.
-  - `cozo` - pre-1.0, single maintainer. Pin exact. `StorageProvider` trait boundary.
   - `fastembed` - active development. Pin minor.
   - `chromiumoxide` - niche. Pin exact.
 - **Stable crates** (1.0+): pin minor (`"1.49"` not `"=1.49.0"`).
@@ -69,7 +68,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 
 ### Cross-Compilation Notes
 
-- `fastembed` (ONNX): may need special builds for aarch64. Feature-gate behind `embed-local`.
+- `fastembed` (ONNX): may need special builds for aarch64. Feature-gate behind `fastembed`.
 - `sonic-rs` (SIMD): aarch64 NEON supported but verify. Fallback to `serde_json` via feature flag.
 - `chromiumoxide`: requires Chromium on host. Feature-gate behind `browser`.
 - `extrasafe` (seccomp): Linux-only. Feature-gate behind `sandbox-seccomp`.
@@ -82,7 +81,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 |-------|-----------------|
 | **koina** | snafu, tracing, tracing-subscriber, miette |
 | **taxis** | koina, figment, serde, serde_json, snafu, tracing |
-| **mneme** | koina, taxis, cozo, fastembed, reqwest (HTTP embedding), ulid, blake3 |
+| **mneme** | koina, snafu, serde, tracing, ulid, rusqlite (sqlite), fastembed (fastembed), jiff, ndarray |
 | **hermeneus** | koina, taxis, reqwest, reqwest-eventsource, sonic-rs, tokio, secrecy |
 | **organon** | koina, taxis, hermeneus, tokio, gix, extrasafe, chromiumoxide |
 | **nous** | koina, taxis, mneme, hermeneus, organon, melete, tokio, ulid, compact_str |
