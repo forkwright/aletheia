@@ -28,6 +28,9 @@ impl FromRequestParts<Arc<AppState>> for OptionalClaims {
 }
 
 /// Authenticated user claims extracted from a JWT Bearer token.
+///
+/// When `auth_mode` is `"none"` in the gateway config, a synthetic admin
+/// identity is injected without requiring a Bearer token.
 #[derive(Debug, Clone)]
 pub struct Claims {
     /// Subject identifier (user or service principal).
@@ -45,6 +48,15 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
+        // When auth is disabled, inject a synthetic admin identity.
+        if state.auth_mode == "none" {
+            return Ok(Self {
+                sub: "anonymous".to_owned(),
+                role: Role::Operator,
+                nous_id: None,
+            });
+        }
+
         let header = parts
             .headers
             .get("authorization")

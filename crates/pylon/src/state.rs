@@ -29,4 +29,6 @@ pub struct AppState {
     pub start_time: Instant,
     /// Runtime configuration, updatable via config API.
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Auth mode from gateway config (`"token"`, `"none"`, etc.).
+    pub auth_mode: String,
 }
