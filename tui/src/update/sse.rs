@@ -23,8 +23,8 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                 .map(|a| {
                     let notif = notifications.get(&a.id).copied().unwrap_or(false);
                     AgentState {
-                        id: a.id,
-                        name: a.name,
+                        id: a.id.clone(),
+                        name: a.display_name().to_owned(),
                         emoji: a.emoji,
                         status: AgentStatus::Idle,
                         active_tool: None,

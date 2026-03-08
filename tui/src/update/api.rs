@@ -8,8 +8,8 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
     app.agents = agents
         .into_iter()
         .map(|a| AgentState {
-            id: a.id,
-            name: a.name,
+            id: a.id.clone(),
+            name: a.display_name().to_owned(),
             emoji: a.emoji,
             status: AgentStatus::Idle,
             active_tool: None,

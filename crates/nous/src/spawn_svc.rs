@@ -68,6 +68,7 @@ impl SpawnService for SpawnServiceImpl {
 
         let config = NousConfig {
             id: spawn_id.clone(),
+            name: None,
             model,
             context_window: 200_000,
             max_output_tokens: 16_384,
