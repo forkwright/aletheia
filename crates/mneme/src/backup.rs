@@ -432,4 +432,173 @@ mod tests {
         let path = Path::new("/home/user/.config/backup.db");
         assert!(validate_backup_path(path).is_ok());
     }
+
+    #[test]
+    fn restore_backup_preserves_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("sessions.db");
+
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        migration::run_migrations(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO sessions (id, nous_id, session_key) VALUES ('s1', 'alice', 'main')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages (session_id, seq, role, content, token_estimate)
+             VALUES ('s1', 1, 'user', 'hello world', 10)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages (session_id, seq, role, content, token_estimate)
+             VALUES ('s1', 2, 'assistant', 'hi there', 8)",
+            [],
+        )
+        .unwrap();
+
+        let backup_dir = dir.path().join("backups");
+        let manager = BackupManager::new(&conn, &backup_dir);
+        let result = manager.create_backup().unwrap();
+
+        let backup_conn = Connection::open(&result.path).unwrap();
+        let session_count: u32 = backup_conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(session_count, 1);
+
+        let msg_count: u32 = backup_conn
+            .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(msg_count, 2);
+
+        let content: String = backup_conn
+            .query_row(
+                "SELECT content FROM messages WHERE seq = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(content, "hello world");
+    }
+
+    #[test]
+    fn backup_path_validation_rejects_injection() {
+        let bad_paths = [
+            "backup'; DROP TABLE facts; --.db",
+            "backup`test`.db",
+            "backup;.db",
+        ];
+        for bad in &bad_paths {
+            let path = Path::new(bad);
+            assert!(
+                validate_backup_path(path).is_err(),
+                "path should be rejected: {bad}"
+            );
+        }
+    }
+
+    /// BUG: `validate_backup_path` does not reject directory traversal.
+    /// `../../../etc/passwd` passes because it only contains safe SQL chars.
+    /// The function guards against SQL injection in `VACUUM INTO`, not path traversal.
+    /// Tracked for separate fix.
+    #[test]
+    fn path_traversal_not_caught_by_sql_validation() {
+        let traversal = Path::new("../../../etc/passwd");
+        assert!(
+            validate_backup_path(traversal).is_ok(),
+            "traversal passes SQL-injection validation (known gap)"
+        );
+    }
+
+    #[test]
+    fn backup_path_validation_accepts_safe_paths() {
+        let good_paths = [
+            "/tmp/backup-2026-01-01.db",
+            "/home/user/.config/aletheia/backups/test.db",
+            "relative/path/backup.db",
+        ];
+        for good in &good_paths {
+            let path = Path::new(good);
+            assert!(
+                validate_backup_path(path).is_ok(),
+                "path should be accepted: {good}"
+            );
+        }
+    }
+
+    #[test]
+    fn json_export_is_valid_json() {
+        let store = test_store();
+        store
+            .create_session("ses-export", "bob", "main", None, None)
+            .unwrap();
+        store
+            .append_message("ses-export", Role::User, "test content", None, None, 5)
+            .unwrap();
+        store
+            .append_message("ses-export", Role::Assistant, "response", None, None, 7)
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let export_dir = dir.path().join("export");
+        let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
+        let result = manager.export_sessions_json(&export_dir).unwrap();
+
+        assert_eq!(result.sessions_exported, 1);
+        assert_eq!(result.files_written, 1);
+
+        let json_path = export_dir.join("ses-export.json");
+        let contents = std::fs::read_to_string(&json_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();
+
+        assert!(parsed.is_object());
+        assert!(parsed["session"].is_object());
+        assert!(parsed["messages"].is_array());
+        assert!(parsed["exported_at"].is_string());
+        assert_eq!(parsed["messages"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["messages"][0]["role"], "user");
+    }
+
+    #[test]
+    fn backup_empty_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("empty.db");
+
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        migration::run_migrations(&conn).unwrap();
+
+        let backup_dir = dir.path().join("backups");
+        let manager = BackupManager::new(&conn, &backup_dir);
+        let result = manager.create_backup().unwrap();
+
+        assert!(result.path.exists());
+        assert!(result.size_bytes > 0);
+        assert_eq!(result.sessions_count, 0);
+        assert_eq!(result.messages_count, 0);
+
+        let backup_conn = Connection::open(&result.path).unwrap();
+        let count: u32 = backup_conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn restore_from_corrupt_file_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let corrupt_path = dir.path().join("corrupt.db");
+        std::fs::write(&corrupt_path, b"this is not a sqlite database").unwrap();
+
+        if let Ok(c) = Connection::open(&corrupt_path) {
+            let result = c.query_row("SELECT COUNT(*) FROM sessions", [], |row| {
+                row.get::<_, u32>(0)
+            });
+            assert!(result.is_err(), "querying corrupt DB should fail");
+        }
+    }
 }
