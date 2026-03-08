@@ -24,6 +24,7 @@ impl SessionStore {
     ///
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
+    #[instrument(skip(path))]
     pub fn open(path: &Path) -> Result<Self> {
         info!("Opening session store at {}", path.display());
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
@@ -45,6 +46,7 @@ impl SessionStore {
     ///
     /// # Errors
     /// Returns an error if initialization fails.
+    #[instrument]
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory().context(error::DatabaseSnafu)?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")
@@ -125,6 +127,7 @@ impl SessionStore {
     }
 
     /// Find or create an active session. Reactivates archived sessions if found.
+    #[instrument(skip(self))]
     pub fn find_or_create_session(
         &self,
         id: &str,
@@ -175,6 +178,7 @@ impl SessionStore {
     }
 
     /// List sessions, optionally filtered by nous ID.
+    #[instrument(skip(self))]
     pub fn list_sessions(&self, nous_id: Option<&str>) -> Result<Vec<Session>> {
         let mut sessions = Vec::new();
 
@@ -208,6 +212,7 @@ impl SessionStore {
     }
 
     /// Update session status.
+    #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
         self.conn
             .execute(
@@ -301,6 +306,7 @@ impl SessionStore {
     }
 
     /// Get message history within a token budget (most recent first, working backward).
+    #[instrument(skip(self), level = "debug")]
     pub fn get_history_with_budget(
         &self,
         session_id: &str,
@@ -477,6 +483,7 @@ impl SessionStore {
     // --- Usage ---
 
     /// Record token usage for a turn.
+    #[instrument(skip(self, record), level = "debug")]
     pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {
         self.conn
             .execute(
@@ -499,6 +506,7 @@ impl SessionStore {
     // --- Agent Notes ---
 
     /// Add an agent note.
+    #[instrument(skip(self, content))]
     pub fn add_note(
         &self,
         session_id: &str,
@@ -518,6 +526,7 @@ impl SessionStore {
     }
 
     /// Get notes for a session.
+    #[instrument(skip(self))]
     pub fn get_notes(&self, session_id: &str) -> Result<Vec<AgentNote>> {
         let mut stmt = self
             .conn
@@ -547,6 +556,7 @@ impl SessionStore {
     }
 
     /// Delete a note by ID.
+    #[instrument(skip(self))]
     pub fn delete_note(&self, note_id: i64) -> Result<bool> {
         let rows = self
             .conn
@@ -558,6 +568,7 @@ impl SessionStore {
     // --- Blackboard ---
 
     /// Write or update a blackboard entry. Upserts on key.
+    #[instrument(skip(self, value), level = "debug")]
     pub fn blackboard_write(
         &self,
         key: &str,

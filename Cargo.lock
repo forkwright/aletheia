@@ -148,6 +148,7 @@ dependencies = [
  "aletheia-taxis",
  "aletheia-thesauros",
  "axum 0.8.8",
+ "reqwest",
  "secrecy",
  "serde_json",
  "tempfile",

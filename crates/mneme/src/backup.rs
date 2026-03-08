@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 use snafu::ResultExt;
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::error::{self, Result};
 
@@ -77,6 +77,7 @@ impl<'a> BackupManager<'a> {
     }
 
     /// Create a `SQLite` backup using `VACUUM INTO`.
+    #[instrument(skip(self))]
     pub fn create_backup(&self) -> Result<BackupResult> {
         std::fs::create_dir_all(&self.backup_dir).context(error::IoSnafu {
             path: self.backup_dir.display().to_string(),
@@ -122,6 +123,7 @@ impl<'a> BackupManager<'a> {
     }
 
     /// Export all sessions as individual JSON files.
+    #[instrument(skip(self))]
     pub fn export_sessions_json(&self, output_dir: &Path) -> Result<ExportResult> {
         std::fs::create_dir_all(output_dir).context(error::IoSnafu {
             path: output_dir.display().to_string(),
@@ -159,6 +161,7 @@ impl<'a> BackupManager<'a> {
     }
 
     /// List available backup files.
+    #[instrument(skip(self))]
     pub fn list_backups(&self) -> Result<Vec<BackupInfo>> {
         if !self.backup_dir.exists() {
             return Ok(Vec::new());
@@ -195,6 +198,7 @@ impl<'a> BackupManager<'a> {
     }
 
     /// Prune old backups, keeping the N most recent.
+    #[instrument(skip(self))]
     pub fn prune_backups(&self, keep: usize) -> Result<u32> {
         let backups = self.list_backups()?;
         let mut removed = 0u32;

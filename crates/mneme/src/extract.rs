@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
+use tracing::instrument;
 
 // ---------------------------------------------------------------------------
 // Error
@@ -182,6 +183,7 @@ impl ExtractionEngine {
 
     /// Build the system prompt and user message for knowledge extraction.
     #[must_use]
+    #[instrument(skip(self, messages), fields(msg_count = messages.len()))]
     pub fn build_prompt(&self, messages: &[ConversationMessage]) -> ExtractionPrompt {
         let system = format!(
             r#"You are a knowledge extraction engine. Analyze the conversation and extract structured knowledge.
@@ -229,12 +231,14 @@ Rules:
     /// Parse a JSON extraction response from the LLM.
     ///
     /// Strips markdown code fences if present.
+    #[instrument(skip(self, response))]
     pub fn parse_response(&self, response: &str) -> Result<Extraction, ExtractionError> {
         let trimmed = strip_code_fences(response);
         serde_json::from_str(trimmed).context(ParseResponseSnafu)
     }
 
     /// Run extraction end-to-end: build prompt, call provider, parse response.
+    #[instrument(skip(self, provider))]
     pub fn extract(
         &self,
         messages: &[ConversationMessage],
@@ -256,6 +260,7 @@ Rules:
 
     /// Persist an extraction to the knowledge store.
     #[cfg(feature = "mneme-engine")]
+    #[instrument(skip(self, store))]
     pub fn persist(
         &self,
         extraction: &Extraction,
