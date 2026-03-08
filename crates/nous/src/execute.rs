@@ -232,7 +232,7 @@ pub async fn execute(
         let active = tool_ctx
             .active_tools
             .read()
-            .expect("active_tools lock")
+            .expect("active_tools lock") // INVARIANT: RwLock read, short critical section, poisoned = prior panic
             .clone();
         let tool_defs = tools.to_hermeneus_tools_filtered(&active);
 
@@ -638,7 +638,7 @@ mod tests {
             &self,
             _request: &CompletionRequest,
         ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-            let mut responses = self.responses.lock().expect("lock");
+            let mut responses = self.responses.lock().expect("lock"); // INVARIANT: test mock, panic = test bug
             if responses.len() > 1 {
                 Ok(responses.remove(0))
             } else {

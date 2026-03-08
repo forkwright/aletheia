@@ -171,7 +171,7 @@ mod tests {
                 .contains("Activated 'web_search'")
         );
 
-        let active = ctx.active_tools.read().expect("lock");
+        let active = ctx.active_tools.read().expect("lock"); // INVARIANT: test assertion, panic = test bug
         assert!(active.contains(&ToolName::new("web_search").expect("valid")));
     }
 

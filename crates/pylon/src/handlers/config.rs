@@ -119,9 +119,9 @@ pub async fn update_section(
     }
 
     // Validate
-    if let Err(errors) = aletheia_taxis::validate::validate_section(&section, &body) {
+    if let Err(err) = aletheia_taxis::validate::validate_section(&section, &body) {
         return Err(ApiError::ValidationFailed {
-            errors: errors.0,
+            errors: err.errors,
             location: snafu::Location::default(),
         });
     }
@@ -165,7 +165,10 @@ pub async fn update_section(
     // Update in-memory config
     *config = new_config;
     let redacted = aletheia_taxis::redact::redact(&config);
-    let section_value = redacted.get(&section).cloned().unwrap_or(Value::Null);
+    let section_value = redacted.get(&section).cloned().unwrap_or_else(|| {
+        tracing::debug!(section = %section, "config section absent after update, returning null");
+        Value::Null
+    });
 
     Ok((
         StatusCode::OK,

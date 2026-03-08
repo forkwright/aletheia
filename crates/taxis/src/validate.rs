@@ -1,27 +1,17 @@
 //! Config section validation — rejects invalid values before persisting.
 
 use serde_json::Value;
+use snafu::Snafu;
 
-/// Validation errors collected during config validation.
-#[derive(Debug)]
-pub struct ValidationErrors(pub Vec<String>);
-
-impl std::fmt::Display for ValidationErrors {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (i, err) in self.0.iter().enumerate() {
-            if i > 0 {
-                writeln!(f)?;
-            }
-            write!(f, "  - {err}")?;
-        }
-        Ok(())
-    }
+/// Validation error with collected messages.
+#[derive(Debug, Snafu)]
+#[snafu(display("config validation failed:\n  - {}", errors.join("\n  - ")))]
+pub struct ValidationError {
+    pub errors: Vec<String>,
 }
 
-impl std::error::Error for ValidationErrors {}
-
 /// Validate a config section update. Returns errors for invalid values.
-pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationErrors> {
+pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
 
     match section {
@@ -36,7 +26,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(ValidationErrors(errors))
+        Err(ValidationError { errors })
     }
 }
 
@@ -142,7 +132,7 @@ mod tests {
         let section = json!({ "defaults": { "timeoutSeconds": 0 } });
         let result = validate_section("agents", &section);
         assert!(result.is_err());
-        assert!(result.unwrap_err().0[0].contains("timeoutSeconds"));
+        assert!(result.unwrap_err().errors[0].contains("timeoutSeconds"));
     }
 
     #[test]

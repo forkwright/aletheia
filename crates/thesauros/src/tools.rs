@@ -37,7 +37,10 @@ impl ToolExecutor for ShellToolExecutor {
     ) -> Pin<Box<dyn Future<Output = aletheia_organon::error::Result<ToolResult>> + Send + 'a>>
     {
         Box::pin(async {
-            let json_input = serde_json::to_string(&input.arguments).unwrap_or_default();
+            let json_input = serde_json::to_string(&input.arguments).unwrap_or_else(|e| {
+                tracing::debug!("failed to serialize tool arguments: {e}");
+                String::new()
+            });
             let timeout = Duration::from_millis(self.timeout_ms);
 
             let mut child = match Command::new(&self.command_path)
