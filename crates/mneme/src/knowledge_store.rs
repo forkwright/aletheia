@@ -2227,11 +2227,7 @@ mod knowledge_store_tests {
     fn insert_multiple_facts_and_retrieve() {
         let store = make_store();
         for i in 0..5 {
-            let fact = make_fact(
-                &format!("f{i}"),
-                "agent-a",
-                &format!("Fact number {i}"),
-            );
+            let fact = make_fact(&format!("f{i}"), "agent-a", &format!("Fact number {i}"));
             store.insert_fact(&fact).expect("insert fact");
         }
 
@@ -2277,7 +2273,9 @@ mod knowledge_store_tests {
         let store = make_store();
         let mut entity = make_entity("e1", "Rust", "language");
         entity.aliases = vec!["rustlang".to_owned(), "rust-lang".to_owned()];
-        store.insert_entity(&entity).expect("insert entity with aliases");
+        store
+            .insert_entity(&entity)
+            .expect("insert entity with aliases");
 
         // Verify via raw query that the entity was stored
         let rows = store
@@ -2388,12 +2386,13 @@ mod knowledge_store_tests {
         store.unforget_fact("f1").expect("unforget");
 
         // After unforgetting, audit should show it as not forgotten
-        let all = store
-            .audit_all_facts("agent-a", 100)
-            .expect("audit facts");
+        let all = store.audit_all_facts("agent-a", 100).expect("audit facts");
         let found = all.iter().find(|f| f.id == "f1");
         assert!(found.is_some(), "fact should still exist");
-        assert!(!found.expect("checked").is_forgotten, "should not be forgotten");
+        assert!(
+            !found.expect("checked").is_forgotten,
+            "should not be forgotten"
+        );
     }
 
     #[test]
@@ -2406,9 +2405,7 @@ mod knowledge_store_tests {
             .forget_fact("f1", ForgetReason::Privacy)
             .expect("forget");
 
-        let all = store
-            .audit_all_facts("agent-a", 100)
-            .expect("audit all");
+        let all = store.audit_all_facts("agent-a", 100).expect("audit all");
         let found = all.iter().find(|f| f.id == "f1");
         assert!(found.is_some(), "audit must return forgotten facts");
         let found = found.expect("checked");
@@ -2443,7 +2440,9 @@ mod knowledge_store_tests {
     #[test]
     fn increment_access_empty_ids_is_noop() {
         let store = make_store();
-        store.increment_access(&[]).expect("empty increment should succeed");
+        store
+            .increment_access(&[])
+            .expect("empty increment should succeed");
     }
 
     #[test]
@@ -2497,7 +2496,11 @@ mod knowledge_store_tests {
         let store = make_store();
         for i in 0..20 {
             store
-                .insert_fact(&make_fact(&format!("f{i}"), "agent-a", &format!("Fact {i}")))
+                .insert_fact(&make_fact(
+                    &format!("f{i}"),
+                    "agent-a",
+                    &format!("Fact {i}"),
+                ))
                 .expect("insert");
         }
 
@@ -2620,7 +2623,10 @@ mod knowledge_store_tests {
                 &format!("f{i}"),
                 "agent-a",
             );
-            #[expect(clippy::cast_precision_loss, reason = "test data — i is 0..9, fits in f32")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "test data — i is 0..9, fits in f32"
+            )]
             let component = i as f32 * 0.1;
             chunk.embedding = vec![component, 0.5, 0.3, 0.1];
             store.insert_embedding(&chunk).expect("insert");
@@ -2826,10 +2832,7 @@ mod knowledge_store_tests {
 
         // Use run_mut_query to delete the fact
         let mut params = std::collections::BTreeMap::new();
-        params.insert(
-            "id".to_owned(),
-            crate::engine::DataValue::Str("f1".into()),
-        );
+        params.insert("id".to_owned(), crate::engine::DataValue::Str("f1".into()));
         store
             .run_mut_query(
                 r"?[id, valid_from] := *facts{id, valid_from}, id = $id :rm facts {id, valid_from}",
@@ -2929,7 +2932,10 @@ mod knowledge_store_tests {
             .audit_all_facts_async("agent-a".to_owned(), 100)
             .await
             .expect("async audit");
-        let found = all.iter().find(|f| f.id == "f-forget-async").expect("found");
+        let found = all
+            .iter()
+            .find(|f| f.id == "f-forget-async")
+            .expect("found");
         assert!(found.is_forgotten);
     }
 

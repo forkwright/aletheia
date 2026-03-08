@@ -830,13 +830,17 @@ mod tests {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let messages = vec![ConversationMessage {
             role: "user".to_owned(),
-            content: "Alice works on Aletheia, an AI memory system built in Rust for agent cognition."
-                .to_owned(),
+            content:
+                "Alice works on Aletheia, an AI memory system built in Rust for agent cognition."
+                    .to_owned(),
         }];
 
         let result = engine.extract(&messages, &FailingProvider);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ExtractionError::LlmCall { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            ExtractionError::LlmCall { .. }
+        ));
     }
 
     #[cfg(feature = "mneme-engine")]

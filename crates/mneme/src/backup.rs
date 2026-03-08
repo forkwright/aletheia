@@ -480,11 +480,9 @@ mod tests {
         assert_eq!(msg_count, 2);
 
         let content: String = backup_conn
-            .query_row(
-                "SELECT content FROM messages WHERE seq = 1",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT content FROM messages WHERE seq = 1", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(content, "hello world");
     }

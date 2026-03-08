@@ -11,12 +11,13 @@
 //! - Real `SessionStore` ↔ `SessionBlackboardAdapter` ↔ blackboard tool executor path
 //! - `KnowledgeSearchService` → memory tool executor wiring
 
+use std::collections::HashSet;
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::collections::HashSet;
-use std::path::PathBuf;
 
+use aletheia_koina::id::ToolName;
 use aletheia_koina::id::{NousId, SessionId};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
@@ -25,7 +26,6 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{
     FactSummary, KnowledgeSearchService, MemoryResult, ToolContext, ToolInput, ToolServices,
 };
-use aletheia_koina::id::ToolName;
 use std::sync::RwLock;
 
 // ---------------------------------------------------------------------------
@@ -97,7 +97,11 @@ async fn note_add_and_list_uses_real_store() {
         serde_json::json!({"action": "add", "content": "remember the vow", "category": "task"}),
     );
     let r = reg.execute(&add, &ctx).await.expect("execute");
-    assert!(!r.is_error, "add should succeed: {}", r.content.text_summary());
+    assert!(
+        !r.is_error,
+        "add should succeed: {}",
+        r.content.text_summary()
+    );
     assert!(r.content.text_summary().contains("#1"));
 
     // List notes — should show the note
@@ -146,10 +150,17 @@ async fn blackboard_write_and_read_uses_real_store() {
         serde_json::json!({"action": "write", "key": "status", "value": "ready", "ttl_seconds": 3600}),
     );
     let r = reg.execute(&write, &ctx).await.expect("execute");
-    assert!(!r.is_error, "write should succeed: {}", r.content.text_summary());
+    assert!(
+        !r.is_error,
+        "write should succeed: {}",
+        r.content.text_summary()
+    );
     assert!(r.content.text_summary().contains("status"));
 
-    let read = tool_input("blackboard", serde_json::json!({"action": "read", "key": "status"}));
+    let read = tool_input(
+        "blackboard",
+        serde_json::json!({"action": "read", "key": "status"}),
+    );
     let r = reg.execute(&read, &ctx).await.expect("execute");
     assert!(!r.is_error);
     assert!(r.content.text_summary().contains("ready"));
@@ -177,7 +188,10 @@ async fn blackboard_delete_uses_real_store() {
     assert!(r.content.text_summary().contains("deleted"));
 
     // Should be gone
-    let read = tool_input("blackboard", serde_json::json!({"action": "read", "key": "temp"}));
+    let read = tool_input(
+        "blackboard",
+        serde_json::json!({"action": "read", "key": "temp"}),
+    );
     let r = reg.execute(&read, &ctx).await.expect("execute");
     assert!(r.content.text_summary().contains("No entry"));
 }
@@ -187,11 +201,11 @@ async fn blackboard_delete_uses_real_store() {
 // ---------------------------------------------------------------------------
 
 struct StubKnowledgeService {
-    facts: Mutex<Vec<(String, String)>>,    // (id, content)
+    facts: Mutex<Vec<(String, String)>>, // (id, content)
     next_id: Mutex<u32>,
     corrected: Mutex<Vec<(String, String)>>, // (old_id, new_id)
     retracted: Mutex<Vec<String>>,
-    audited: Mutex<Vec<(String, String)>>,  // (id, content) — FactSummary not Clone
+    audited: Mutex<Vec<(String, String)>>, // (id, content) — FactSummary not Clone
 }
 
 impl StubKnowledgeService {
@@ -261,10 +275,7 @@ impl KnowledgeSearchService for StubKnowledgeService {
         fact_id: &str,
         _reason: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
-        self.retracted
-            .lock()
-            .unwrap()
-            .push(fact_id.to_owned());
+        self.retracted.lock().unwrap().push(fact_id.to_owned());
         Box::pin(std::future::ready(Ok(())))
     }
 
@@ -347,9 +358,15 @@ async fn memory_search_tool_returns_results() {
         serde_json::json!({"query": "Aletheia", "limit": 5}),
     );
     let r = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!r.is_error, "search should succeed: {}", r.content.text_summary());
     assert!(
-        r.content.text_summary().contains("Alice works on the Aletheia project"),
+        !r.is_error,
+        "search should succeed: {}",
+        r.content.text_summary()
+    );
+    assert!(
+        r.content
+            .text_summary()
+            .contains("Alice works on the Aletheia project"),
         "result should include seeded fact: {}",
         r.content.text_summary()
     );
@@ -387,7 +404,11 @@ async fn memory_correct_tool_reports_new_id() {
         serde_json::json!({"fact_id": "fact-42", "new_content": "Bob prefers Rust"}),
     );
     let r = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!r.is_error, "correct should succeed: {}", r.content.text_summary());
+    assert!(
+        !r.is_error,
+        "correct should succeed: {}",
+        r.content.text_summary()
+    );
     assert!(
         r.content.text_summary().contains("fact-42"),
         "response should reference original fact: {}",
@@ -414,13 +435,20 @@ async fn memory_audit_tool_returns_facts() {
     let reg = registry();
     let ctx = ctx_with_knowledge(Arc::clone(&svc));
 
-    let input = tool_input(
-        "memory_audit",
-        serde_json::json!({"limit": 10}),
-    );
+    let input = tool_input("memory_audit", serde_json::json!({"limit": 10}));
     let r = reg.execute(&input, &ctx).await.expect("execute");
-    assert!(!r.is_error, "audit should succeed: {}", r.content.text_summary());
+    assert!(
+        !r.is_error,
+        "audit should succeed: {}",
+        r.content.text_summary()
+    );
     let text = r.content.text_summary();
-    assert!(text.contains("Alice is an engineer"), "fact-a in output: {text}");
-    assert!(text.contains("Bob works at acme.corp"), "fact-b in output: {text}");
+    assert!(
+        text.contains("Alice is an engineer"),
+        "fact-a in output: {text}"
+    );
+    assert!(
+        text.contains("Bob works at acme.corp"),
+        "fact-b in output: {text}"
+    );
 }
