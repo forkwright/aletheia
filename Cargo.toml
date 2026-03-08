@@ -99,7 +99,7 @@ figment = { version = "0.10", features = ["yaml", "json", "env"] }
 uuid = { version = "1", features = ["v4"] }
 
 # Types
-compact_str = { version = "0.8", features = ["serde"] }
+compact_str = { version = "0.9", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 ulid = { version = "1", features = ["serde"] }
 
