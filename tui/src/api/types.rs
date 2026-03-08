@@ -7,11 +7,21 @@ use crate::id::{NousId, PlanId, SessionId, TurnId};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
     pub id: NousId,
-    pub name: String,
+    /// Display name — falls back to `id` if absent.
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
     pub emoji: Option<String>,
+}
+
+impl Agent {
+    /// Display name: uses `name` if set, otherwise `id`.
+    #[must_use]
+    pub fn display_name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
+    }
 }
 
 // --- Session ---
@@ -227,7 +237,9 @@ pub struct DailyEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentsResponse {
-    pub agents: Vec<Agent>,
+    /// Server returns `{"nous": [...]}` — accept both keys for resilience.
+    #[serde(alias = "agents")]
+    pub nous: Vec<Agent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

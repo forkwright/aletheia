@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 pub struct NousConfig {
     /// Agent identifier (e.g. "syn", "demiurge").
     pub id: String,
+    /// Human-readable display name (e.g. "Syn"). Falls back to `id` if absent.
+    #[serde(default)]
+    pub name: Option<String>,
     /// Default model for this agent.
     pub model: String,
     /// Maximum context window tokens.
@@ -35,6 +38,7 @@ impl Default for NousConfig {
     fn default() -> Self {
         Self {
             id: "default".to_owned(),
+            name: None,
             model: "claude-opus-4-20250514".to_owned(),
             context_window: 200_000,
             max_output_tokens: 16_384,

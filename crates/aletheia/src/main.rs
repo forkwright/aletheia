@@ -698,6 +698,7 @@ async fn serve(cli: Cli) -> Result<()> {
 
             let nous_config = NousConfig {
                 id: resolved.id,
+                name: resolved.name,
                 model: resolved.model,
                 context_window: resolved.context_tokens,
                 max_output_tokens: resolved.max_output_tokens,

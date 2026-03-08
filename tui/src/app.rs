@@ -191,7 +191,7 @@ impl App {
             .into_iter()
             .map(|a| AgentState {
                 id: a.id.clone(),
-                name: a.name,
+                name: a.display_name().to_owned(),
                 emoji: a.emoji,
                 status: AgentStatus::Idle,
                 active_tool: None,

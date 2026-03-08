@@ -137,7 +137,7 @@ impl ApiClient {
         resp.error_for_status_ref()
             .context("agents request failed")?;
         let wrapper: AgentsResponse = resp.json().await?;
-        Ok(wrapper.agents)
+        Ok(wrapper.nous)
     }
 
     // --- Sessions ---

@@ -28,6 +28,7 @@ pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<N
         .into_iter()
         .map(|c| NousSummary {
             id: c.id.clone(),
+            name: c.name.clone().unwrap_or_else(|| c.id.clone()),
             model: c.model.clone(),
             status: "active".to_owned(),
         })
@@ -125,6 +126,8 @@ pub struct NousListResponse {
 pub struct NousSummary {
     /// Agent identifier.
     pub id: String,
+    /// Human-readable display name (falls back to `id`).
+    pub name: String,
     /// LLM model assigned to this agent.
     pub model: String,
     /// Lifecycle status (e.g. `"active"`).
