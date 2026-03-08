@@ -508,4 +508,205 @@ mod tests {
         assert_eq!(result.sessions_deleted, 0);
         assert_eq!(count_sessions(&conn), 3);
     }
+
+    #[test]
+    fn retention_archives_before_delete() {
+        let conn = test_conn();
+        let dir = tempfile::tempdir().unwrap();
+        let archive_dir = dir.path().join("archive");
+
+        insert_session(&conn, "expired-1", "alice", "archived", 100);
+        insert_message(&conn, "expired-1", 1);
+
+        let policy = RetentionPolicy {
+            session_max_age_days: 90,
+            archive_before_delete: true,
+            ..RetentionPolicy::default()
+        };
+
+        let result = policy.apply(&conn, &archive_dir).unwrap();
+        assert_eq!(result.sessions_deleted, 1);
+
+        let archive_path = archive_dir.join("expired-1.json");
+        assert!(archive_path.exists(), "archive file must be created");
+
+        let contents = std::fs::read_to_string(&archive_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        assert_eq!(parsed["session"]["id"], "expired-1");
+        assert_eq!(parsed["messages"].as_array().unwrap().len(), 1);
+        assert!(parsed["archived_at"].is_string());
+
+        assert_eq!(count_sessions(&conn), 0, "session deleted after archive");
+    }
+
+    #[test]
+    fn retention_policy_respects_age() {
+        let conn = test_conn();
+        let dir = tempfile::tempdir().unwrap();
+
+        insert_session(&conn, "young", "bob", "archived", 30);
+        insert_session(&conn, "old", "bob", "archived", 100);
+
+        let policy = RetentionPolicy {
+            session_max_age_days: 90,
+            archive_before_delete: false,
+            ..RetentionPolicy::default()
+        };
+
+        let result = policy.apply(&conn, dir.path()).unwrap();
+        assert_eq!(result.sessions_deleted, 1);
+
+        let remaining: String = conn
+            .query_row("SELECT id FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(remaining, "young", "30-day session survives 90-day policy");
+    }
+
+    #[test]
+    fn retention_idempotent() {
+        let conn = test_conn();
+        let dir = tempfile::tempdir().unwrap();
+
+        insert_session(&conn, "old-1", "alice", "archived", 100);
+        insert_session(&conn, "old-2", "alice", "archived", 120);
+        insert_session(&conn, "recent-1", "alice", "archived", 10);
+
+        let policy = RetentionPolicy {
+            session_max_age_days: 90,
+            archive_before_delete: false,
+            ..RetentionPolicy::default()
+        };
+
+        let first = policy.apply(&conn, dir.path()).unwrap();
+        assert_eq!(first.sessions_deleted, 2);
+        assert_eq!(count_sessions(&conn), 1);
+
+        let second = policy.apply(&conn, dir.path()).unwrap();
+        assert_eq!(second.sessions_deleted, 0, "second pass deletes nothing");
+        assert_eq!(count_sessions(&conn), 1);
+    }
+
+    #[test]
+    fn retention_concurrent_access() {
+        let conn = test_conn();
+        let dir = tempfile::tempdir().unwrap();
+
+        for i in 0..10 {
+            insert_session(
+                &conn,
+                &format!("ses-{i}"),
+                "charlie",
+                "archived",
+                100 + i64::from(i),
+            );
+        }
+
+        let policy = RetentionPolicy {
+            session_max_age_days: 90,
+            archive_before_delete: false,
+            ..RetentionPolicy::default()
+        };
+
+        let r1 = policy.apply(&conn, dir.path()).unwrap();
+
+        // Second run on same conn after first completed
+        let r2 = policy.apply(&conn, dir.path()).unwrap();
+
+        let total_deleted = r1.sessions_deleted + r2.sessions_deleted;
+        assert_eq!(total_deleted, 10, "all expired sessions removed");
+        assert_eq!(count_sessions(&conn), 0);
+    }
+
+    #[test]
+    fn retention_empty_store() {
+        let conn = test_conn();
+        let dir = tempfile::tempdir().unwrap();
+
+        assert_eq!(count_sessions(&conn), 0);
+
+        let policy = RetentionPolicy::default();
+        let result = policy.apply(&conn, dir.path()).unwrap();
+
+        assert_eq!(result.sessions_deleted, 0);
+        assert_eq!(result.messages_deleted, 0);
+    }
+
+    #[test]
+    fn retention_preserves_active_facts() {
+        let conn = test_conn();
+        let dir = tempfile::tempdir().unwrap();
+
+        for i in 0..7 {
+            insert_session(
+                &conn,
+                &format!("active-{i}"),
+                "alice",
+                "active",
+                100 + i64::from(i),
+            );
+        }
+        for i in 0..3 {
+            insert_session(
+                &conn,
+                &format!("expired-{i}"),
+                "alice",
+                "archived",
+                100 + i64::from(i),
+            );
+        }
+
+        let policy = RetentionPolicy {
+            session_max_age_days: 90,
+            archive_before_delete: false,
+            ..RetentionPolicy::default()
+        };
+
+        let result = policy.apply(&conn, dir.path()).unwrap();
+        assert_eq!(result.sessions_deleted, 3, "only archived sessions deleted");
+        assert_eq!(count_sessions(&conn), 7, "active sessions untouched");
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn retention_idempotency(
+                fact_count in 1_usize..20,
+                policy_days in 1_u32..365,
+            ) {
+                let conn = test_conn();
+                let dir = tempfile::tempdir().unwrap();
+
+                for i in 0..fact_count {
+                    let age = i64::try_from(i).expect("test index fits i64") * 10 + 5;
+                    insert_session(
+                        &conn,
+                        &format!("prop-ses-{i}"),
+                        "alice",
+                        "archived",
+                        age,
+                    );
+                }
+
+                let policy = RetentionPolicy {
+                    session_max_age_days: policy_days,
+                    archive_before_delete: false,
+                    ..RetentionPolicy::default()
+                };
+
+                policy.apply(&conn, dir.path()).unwrap();
+                let after_first = count_sessions(&conn);
+
+                policy.apply(&conn, dir.path()).unwrap();
+                let after_second = count_sessions(&conn);
+
+                prop_assert_eq!(
+                    after_first, after_second,
+                    "second retention pass must not change session count"
+                );
+            }
+        }
+    }
 }
