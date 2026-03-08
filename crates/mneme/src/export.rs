@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use snafu::ResultExt;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 use crate::error::{self, Result};
 use crate::portability::{
@@ -56,6 +56,7 @@ impl Default for ExportOptions {
 /// # Errors
 ///
 /// Returns an error if session store queries or workspace I/O fails.
+#[instrument(skip(store))]
 pub fn export_agent(
     nous_id: &str,
     agent_name: Option<&str>,

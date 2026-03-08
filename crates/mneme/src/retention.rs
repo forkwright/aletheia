@@ -5,7 +5,7 @@ use std::path::Path;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 
 use crate::error::{self, Result};
 
@@ -58,6 +58,7 @@ impl RetentionPolicy {
     ///
     /// `archive_dir` is used when `archive_before_delete` is true. One JSON file
     /// per session is written to `{archive_dir}/{session_id}.json`.
+    #[instrument(skip(self, conn))]
     pub fn apply(&self, conn: &Connection, archive_dir: &Path) -> Result<RetentionResult> {
         let page_size = get_page_size(conn);
         let free_before = get_free_pages(conn);

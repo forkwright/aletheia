@@ -371,7 +371,10 @@ mod tests {
     fn embedding_empty_input() {
         let provider = MockEmbeddingProvider::new(64);
         let result = provider.embed("");
-        assert!(result.is_ok(), "empty string should produce a valid embedding");
+        assert!(
+            result.is_ok(),
+            "empty string should produce a valid embedding"
+        );
         let vec = result.unwrap();
         assert_eq!(vec.len(), 64);
     }

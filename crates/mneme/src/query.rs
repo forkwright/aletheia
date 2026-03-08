@@ -1200,10 +1200,7 @@ mod tests {
 
         assert!(script.contains("nous_id = $nous_id"), "first filter");
         assert!(script.contains("confidence > 0.5"), "second filter");
-        assert!(
-            script.contains("tier != \"assumed\""),
-            "third filter"
-        );
+        assert!(script.contains("tier != \"assumed\""), "third filter");
 
         let filter_count = script.matches(",\n").count();
         assert!(
@@ -1225,14 +1222,8 @@ mod tests {
 
         assert!(script.contains("?[id, content]"), "select list present");
         assert!(script.contains("*facts{id, content}"), "scan present");
-        assert!(
-            !script.contains(":order"),
-            "no order when not specified"
-        );
-        assert!(
-            !script.contains(":limit"),
-            "no limit when not specified"
-        );
+        assert!(!script.contains(":order"), "no order when not specified");
+        assert!(!script.contains(":limit"), "no limit when not specified");
     }
 
     mod proptests {

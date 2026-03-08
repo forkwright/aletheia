@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use snafu::{ResultExt, ensure};
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 use crate::error::{self, Result};
 use crate::portability::{AGENT_FILE_VERSION, AgentFile};
@@ -45,6 +45,7 @@ pub struct ImportResult {
 /// # Errors
 ///
 /// Returns errors for unsupported versions, path traversal attempts, or store/IO failures.
+#[instrument(skip(agent_file, store, id_generator))]
 pub fn import_agent(
     agent_file: &AgentFile,
     store: &SessionStore,
