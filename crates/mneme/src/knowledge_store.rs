@@ -586,35 +586,23 @@ impl KnowledgeStore {
             .strftime("%Y-%m-%dT%H:%M:%SZ")
             .to_string();
         for id in fact_ids {
-            let script = r"
-                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-                  superseded_by, source_session_id, recorded_at,
-                  new_count, new_last, stability_hours, fact_type,
-                  is_forgotten, forgotten_at, forget_reason] :=
-                    *facts{id, valid_from, content, nous_id, confidence, tier,
-                           valid_to, superseded_by, source_session_id, recorded_at,
-                           access_count, last_accessed_at, stability_hours, fact_type,
-                           is_forgotten, forgotten_at, forget_reason},
-                    id = $id,
-                    new_count = access_count + 1,
-                    new_last = $now
-                :put facts {id, valid_from => content, nous_id, confidence, tier,
-                            valid_to, superseded_by, source_session_id, recorded_at,
-                            access_count: new_count, last_accessed_at: new_last,
-                            stability_hours, fact_type,
-                            is_forgotten, forgotten_at, forget_reason}
-            ";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "id".to_owned(),
-                crate::engine::DataValue::Str(id.as_str().into()),
-            );
-            params.insert(
-                "now".to_owned(),
-                crate::engine::DataValue::Str(now.as_str().into()),
-            );
-            // Silently skip if fact doesn't exist (e.g. embedding-only result)
-            let _ = self.run_mut(script, params);
+            // Read the current fact rows, increment in Rust, then write back.
+            // CozoDB in-memory read-modify-write in a single Datalog rule does not
+            // reflect the mutation in subsequent reads — avoid that pattern.
+            let facts = match self.read_facts_by_id(id) {
+                Ok(f) => f,
+                Err(e) => {
+                    tracing::warn!(error = %e, fact_id = %id, "failed to read fact for access increment");
+                    continue;
+                }
+            };
+            for mut fact in facts {
+                fact.access_count = fact.access_count.saturating_add(1);
+                fact.last_accessed_at.clone_from(&now);
+                if let Err(e) = self.insert_fact(&fact) {
+                    tracing::warn!(error = %e, fact_id = %id, "failed to write incremented access count");
+                }
+            }
         }
         Ok(())
     }
@@ -1067,6 +1055,29 @@ impl KnowledgeStore {
 
     // --- Internal helpers ---
 
+    /// Read a single fact by its ID (all temporal records matching).
+    /// Returns all fields; does not apply time/validity filters.
+    fn read_facts_by_id(&self, id: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let script = r"
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason] :=
+                *facts{id, valid_from, content, nous_id, confidence, tier,
+                       valid_to, superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       is_forgotten, forgotten_at, forget_reason},
+                id = $id
+        ";
+        let mut params = BTreeMap::new();
+        params.insert("id".to_owned(), DataValue::Str(id.into()));
+        let rows = self.run_read(script, params)?;
+        rows_to_raw_facts(rows)
+    }
+
     fn run_mut(
         &self,
         script: &str,
@@ -1384,6 +1395,133 @@ fn rows_to_facts(
             } else {
                 nous_id_col
             },
+            content,
+            confidence,
+            tier,
+            valid_from,
+            valid_to,
+            superseded_by,
+            source_session_id,
+            recorded_at,
+            access_count,
+            last_accessed_at,
+            stability_hours,
+            fact_type,
+            is_forgotten,
+            forgotten_at,
+            forget_reason,
+        });
+    }
+    Ok(out)
+}
+
+// Parse rows from a raw all-fields fact scan (used by read_facts_by_id).
+// Columns: id(0), valid_from(1), content(2), nous_id(3), confidence(4), tier(5),
+//          valid_to(6), superseded_by(7), source_session_id(8), recorded_at(9),
+//          access_count(10), last_accessed_at(11), stability_hours(12), fact_type(13),
+//          is_forgotten(14), forgotten_at(15), forget_reason(16).
+#[cfg(feature = "mneme-engine")]
+fn rows_to_raw_facts(
+    rows: crate::engine::NamedRows,
+) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+    use crate::knowledge::Fact;
+    let mut out = Vec::with_capacity(rows.rows.len());
+    for row in rows.rows {
+        let id = extract_str(row.first().ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing id",
+            }
+            .build()
+        })?)?;
+        let valid_from = extract_str(row.get(1).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing valid_from",
+            }
+            .build()
+        })?)?;
+        let content = extract_str(row.get(2).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing content",
+            }
+            .build()
+        })?)?;
+        let nous_id = extract_str(row.get(3).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing nous_id",
+            }
+            .build()
+        })?)?;
+        let confidence = extract_float(row.get(4).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing confidence",
+            }
+            .build()
+        })?)?;
+        let tier_str = extract_str(row.get(5).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing tier",
+            }
+            .build()
+        })?)?;
+        let valid_to = extract_str(row.get(6).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing valid_to",
+            }
+            .build()
+        })?)?;
+        let superseded_by = extract_optional_str(row.get(7).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing superseded_by",
+            }
+            .build()
+        })?)?;
+        let source_session_id = extract_optional_str(row.get(8).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing source_session_id",
+            }
+            .build()
+        })?)?;
+        let recorded_at = extract_str(row.get(9).ok_or_else(|| {
+            crate::error::ConversionSnafu {
+                message: "raw fact: missing recorded_at",
+            }
+            .build()
+        })?)?;
+        let tier = parse_epistemic_tier(&tier_str)?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "access count fits in u32"
+        )]
+        let access_count = row.get(10).and_then(|v| extract_int(v).ok()).unwrap_or(0) as u32;
+        let last_accessed_at = row
+            .get(11)
+            .and_then(|v| extract_str(v).ok())
+            .unwrap_or_default();
+        let stability_hours = row
+            .get(12)
+            .and_then(|v| extract_float(v).ok())
+            .unwrap_or(720.0);
+        let fact_type = row
+            .get(13)
+            .and_then(|v| extract_str(v).ok())
+            .unwrap_or_default();
+        let is_forgotten = row
+            .get(14)
+            .and_then(|v| extract_bool(v).ok())
+            .unwrap_or(false);
+        let forgotten_at = row
+            .get(15)
+            .and_then(|v| extract_optional_str(v).ok())
+            .flatten();
+        let forget_reason = row
+            .get(16)
+            .and_then(|v| extract_optional_str(v).ok())
+            .unwrap_or(None)
+            .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
+        out.push(Fact {
+            id,
+            nous_id,
             content,
             confidence,
             tier,
@@ -2416,8 +2554,6 @@ mod knowledge_store_tests {
     // ---- Increment Access ----
 
     #[test]
-    #[ignore = "BUG: increment_access does not update access_count as observed by query_facts — \
-                the Datalog :put succeeds but the updated count is not reflected in subsequent reads"]
     fn increment_access_updates_count() {
         let store = make_store();
         let fact = make_fact("f1", "agent-a", "Accessed fact");
@@ -2966,7 +3102,6 @@ mod knowledge_store_tests {
     }
 
     #[tokio::test]
-    #[ignore = "BUG: same as increment_access_updates_count — async wrapper inherits the bug"]
     async fn increment_access_async_works() {
         let store = make_store();
         let fact = make_fact("f-access-async", "agent-a", "Async access");
