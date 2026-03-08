@@ -16,8 +16,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::{info, instrument, warn};
 use utoipa::ToSchema;
 
+use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use aletheia_mneme::types::SessionStatus;
 use aletheia_nous::pipeline::TurnResult;
+use aletheia_nous::stream::TurnStreamEvent;
 
 use crate::error::{
     ApiError, BadRequestSnafu, ErrorResponse, InternalSnafu, NousNotFoundSnafu,
@@ -25,7 +27,7 @@ use crate::error::{
 };
 use crate::extract::Claims;
 use crate::state::AppState;
-use crate::stream::{SseEvent, UsageData};
+use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
 
 /// POST /api/v1/sessions — create a new session.
 #[utoipa::path(
@@ -85,6 +87,44 @@ pub async fn create(
     ))
 }
 
+/// GET /api/v1/sessions — list sessions, optionally filtered by agent.
+#[instrument(skip(state, _claims))]
+pub async fn list_sessions(
+    State(state): State<Arc<AppState>>,
+    _claims: Claims,
+    Query(params): Query<ListSessionsParams>,
+) -> Result<Json<ListSessionsResponse>, ApiError> {
+    let nous_id = params.nous_id;
+
+    let state_clone = Arc::clone(&state);
+    let sessions = tokio::task::spawn_blocking(move || {
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .list_sessions(nous_id.as_deref())
+            .map_err(ApiError::from)
+    })
+    .await??;
+
+    let items = sessions
+        .into_iter()
+        .map(|s| SessionListItem {
+            id: s.id,
+            nous_id: s.nous_id,
+            session_key: s.session_key,
+            status: s.status.as_str().to_owned(),
+            message_count: s.message_count,
+            updated_at: s.updated_at,
+        })
+        .collect();
+
+    Ok(Json(ListSessionsResponse { sessions: items }))
+}
+
 /// GET /api/v1/sessions/{id} — get session state.
 #[utoipa::path(
     get,
@@ -125,10 +165,27 @@ pub async fn close(
     _claims: Claims,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let _ = find_session(&state, &id).await?;
+    archive_session_by_id(&state, &id).await
+}
 
-    let state_clone = Arc::clone(&state);
-    let id_clone = id.clone();
+/// POST /api/v1/sessions/{id}/archive — archive a session.
+///
+/// Same behavior as DELETE but via POST, matching the TUI's API contract.
+#[instrument(skip(state, _claims))]
+pub async fn archive(
+    State(state): State<Arc<AppState>>,
+    _claims: Claims,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    archive_session_by_id(&state, &id).await
+}
+
+/// Shared archive logic for both DELETE and POST archive routes.
+async fn archive_session_by_id(state: &Arc<AppState>, id: &str) -> Result<StatusCode, ApiError> {
+    let _ = find_session(state, id).await?;
+
+    let state_clone = Arc::clone(state);
+    let id_clone = id.to_owned();
     tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.lock().map_err(|_poison| {
             InternalSnafu {
@@ -142,7 +199,7 @@ pub async fn close(
     })
     .await??;
 
-    info!(session_id = %id, "session closed");
+    info!(session_id = %id, "session archived");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -325,6 +382,218 @@ pub async fn send_message(
     ))
 }
 
+/// POST /api/v1/sessions/stream — stream a conversation turn (TUI protocol).
+///
+/// Accepts the webchat-style `StreamRequest` (agentId, message, sessionKey) and
+/// returns SSE events in the `WebchatEvent` format that the TUI expects:
+/// `turn_start`, `text_delta`, `thinking_delta`, `tool_start`, `tool_result`,
+/// `turn_complete`, `error`.
+#[expect(
+    clippy::too_many_lines,
+    reason = "streaming bridge setup is inherently sequential"
+)]
+#[instrument(skip(state, _claims, body), fields(agent_id = %body.agent_id))]
+pub async fn stream_turn(
+    State(state): State<Arc<AppState>>,
+    _claims: Claims,
+    Json(body): Json<StreamTurnRequest>,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    let agent_id = body.agent_id;
+    let message = body.message;
+    let session_key = body.session_key;
+
+    if message.is_empty() {
+        return Err(BadRequestSnafu {
+            message: "message must not be empty",
+        }
+        .build());
+    }
+
+    let handle = state
+        .nous_manager
+        .get(&agent_id)
+        .ok_or_else(|| {
+            NousNotFoundSnafu {
+                id: agent_id.clone(),
+            }
+            .build()
+        })?
+        .clone();
+
+    let model = state
+        .nous_manager
+        .get_config(&agent_id)
+        .map(|c| c.model.clone());
+
+    let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
+
+    store_message(
+        &state,
+        &session_id,
+        aletheia_mneme::types::Role::User,
+        &message,
+        0,
+    )
+    .await?;
+
+    let turn_id = ulid::Ulid::new().to_string();
+    let (webchat_tx, webchat_rx) = mpsc::channel::<WebchatEvent>(32);
+    let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
+
+    let _ = webchat_tx
+        .send(WebchatEvent::TurnStart {
+            session_id: session_id.clone(),
+            nous_id: agent_id.clone(),
+            turn_id,
+        })
+        .await;
+
+    let sid = session_id;
+    let aid = agent_id;
+
+    // Bridge nous stream events to webchat events in real-time.
+    let bridge_tx = webchat_tx.clone();
+    tokio::spawn(async move {
+        while let Some(event) = nous_rx.recv().await {
+            let webchat_event = match event {
+                TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
+                    WebchatEvent::TextDelta { text }
+                }
+                TurnStreamEvent::LlmDelta(LlmStreamEvent::ThinkingDelta { thinking }) => {
+                    WebchatEvent::ThinkingDelta { text: thinking }
+                }
+                TurnStreamEvent::ToolStart {
+                    tool_id,
+                    tool_name,
+                    input,
+                } => WebchatEvent::ToolStart {
+                    tool_name,
+                    tool_id,
+                    input,
+                },
+                TurnStreamEvent::ToolResult {
+                    tool_id,
+                    tool_name,
+                    result,
+                    is_error,
+                    duration_ms,
+                } => WebchatEvent::ToolResult {
+                    tool_name,
+                    tool_id,
+                    result,
+                    is_error,
+                    duration_ms,
+                },
+                _ => continue,
+            };
+            if bridge_tx.send(webchat_event).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Run the turn and emit completion event.
+    tokio::spawn(async move {
+        match handle
+            .send_turn_streaming(&session_key, &message, nous_tx)
+            .await
+        {
+            Ok(result) => {
+                let token_estimate = i64::try_from(result.usage.output_tokens).unwrap_or(0);
+                let _ = webchat_tx
+                    .send(WebchatEvent::TurnComplete {
+                        outcome: TurnOutcome {
+                            text: result.content.clone(),
+                            nous_id: aid,
+                            session_id: sid.clone(),
+                            model,
+                            tool_calls: result.tool_calls.len(),
+                            input_tokens: result.usage.input_tokens,
+                            output_tokens: result.usage.output_tokens,
+                            cache_read_tokens: result.usage.cache_read_tokens,
+                            cache_write_tokens: result.usage.cache_write_tokens,
+                        },
+                    })
+                    .await;
+                let _ = store_message(
+                    &state,
+                    &sid,
+                    aletheia_mneme::types::Role::Assistant,
+                    &result.content,
+                    token_estimate,
+                )
+                .await;
+            }
+            Err(err) => {
+                warn!(error = %err, "streaming turn failed");
+                let _ = webchat_tx
+                    .send(WebchatEvent::Error {
+                        message: err.to_string(),
+                    })
+                    .await;
+            }
+        }
+    });
+
+    let stream = ReceiverStream::new(webchat_rx).map(|event| {
+        let data = serde_json::to_string(&event).unwrap_or_else(|e| {
+            warn!(error = %e, "failed to serialize SSE event");
+            String::new()
+        });
+        Ok(Event::default().event(event.event_type()).data(data))
+    });
+
+    Ok(Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(30))
+            .text("heartbeat"),
+    ))
+}
+
+/// GET /api/v1/events — global SSE event channel.
+///
+/// Provides system-wide events for the TUI dashboard: turn lifecycle,
+/// tool calls, status changes, and session events. Currently emits
+/// `init` (with empty active turns) and periodic `ping` heartbeats.
+pub async fn events(
+    _claims: Claims,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let (tx, rx) = mpsc::channel::<Event>(8);
+
+    // Emit init event with empty active turns.
+    let init_data = serde_json::json!({"activeTurns": [], "pendingDeliveries": 0}).to_string();
+    let _ = tx
+        .send(Event::default().event("init").data(init_data))
+        .await;
+
+    // Ping every 15 seconds to keep the connection alive.
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(15));
+        loop {
+            interval.tick().await;
+            if tx
+                .send(Event::default().event("ping").data("{}"))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+
+    let stream = ReceiverStream::new(rx).map(Ok);
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(30))
+            .text("heartbeat"),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
 /// Emit turn result as individual SSE events to a single client channel.
 ///
 /// Each SSE endpoint serves exactly one client — there is no multi-subscriber
@@ -366,6 +635,36 @@ async fn emit_turn_result_events(tx: &mpsc::Sender<SseEvent>, result: &TurnResul
             },
         })
         .await;
+}
+
+/// Resolve or create a session for the given agent and session key.
+async fn resolve_session(
+    state: &Arc<AppState>,
+    agent_id: &str,
+    session_key: &str,
+    model: Option<&str>,
+) -> Result<String, ApiError> {
+    let id = ulid::Ulid::new().to_string();
+    let state_clone = Arc::clone(state);
+    let id_clone = id.clone();
+    let aid = agent_id.to_owned();
+    let skey = session_key.to_owned();
+    let model_owned = model.map(ToOwned::to_owned);
+
+    let session = tokio::task::spawn_blocking(move || {
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None)
+            .map_err(ApiError::from)
+    })
+    .await??;
+
+    Ok(session.id)
 }
 
 async fn store_message(
@@ -415,7 +714,7 @@ async fn find_session(
 
 // --- Request/Response types ---
 
-/// Body for `POST /api/sessions`.
+/// Body for `POST /api/v1/sessions`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// Target nous agent to bind the session to.
@@ -424,20 +723,63 @@ pub struct CreateSessionRequest {
     pub session_key: String,
 }
 
-/// Body for `POST /api/sessions/{id}/messages`.
+/// Body for `POST /api/v1/sessions/{id}/messages`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SendMessageRequest {
     /// User message text.
     pub content: String,
 }
 
-/// Query parameters for `GET /api/sessions/{id}/history`.
+/// Body for `POST /api/v1/sessions/stream` (TUI streaming protocol).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamTurnRequest {
+    /// Target agent ID.
+    pub agent_id: String,
+    /// User message text.
+    pub message: String,
+    /// Session key for deduplication (defaults to "main").
+    #[serde(default = "default_session_key")]
+    pub session_key: String,
+}
+
+fn default_session_key() -> String {
+    "main".to_owned()
+}
+
+/// Query parameters for `GET /api/v1/sessions`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSessionsParams {
+    /// Filter sessions by agent ID.
+    pub nous_id: Option<String>,
+}
+
+/// Query parameters for `GET /api/v1/sessions/{id}/history`.
 #[derive(Debug, Deserialize)]
 pub struct HistoryParams {
     /// Maximum number of messages to return.
     pub limit: Option<u32>,
     /// Return messages with `seq` strictly less than this value.
     pub before: Option<i64>,
+}
+
+/// Response for `GET /api/v1/sessions` (list).
+#[derive(Debug, Serialize)]
+pub struct ListSessionsResponse {
+    pub sessions: Vec<SessionListItem>,
+}
+
+/// Session summary for list endpoints.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionListItem {
+    pub id: String,
+    pub nous_id: String,
+    pub session_key: String,
+    pub status: String,
+    pub message_count: i64,
+    pub updated_at: String,
 }
 
 /// Session metadata returned by create and get endpoints.
@@ -479,7 +821,7 @@ impl SessionResponse {
     }
 }
 
-/// Response for `GET /api/sessions/{id}/history`.
+/// Response for `GET /api/v1/sessions/{id}/history`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HistoryResponse {
     /// Conversation messages in chronological order.
