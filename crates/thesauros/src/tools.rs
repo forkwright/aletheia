@@ -43,16 +43,41 @@ impl ToolExecutor for ShellToolExecutor {
             });
             let timeout = Duration::from_millis(self.timeout_ms);
 
-            let mut child = match Command::new(&self.command_path)
-                .current_dir(&self.pack_root)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    return Ok(ToolResult::error(format!("spawn failed: {e}")));
+            // Retry on ETXTBSY (errno 26) — a benign race between writing/chmod
+            // on a script and exec'ing it. Common in CI and on busy systems.
+            let mut child = {
+                let mut last_err = None;
+                let mut spawned = None;
+                for attempt in 0..4 {
+                    match Command::new(&self.command_path)
+                        .current_dir(&self.pack_root)
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()
+                    {
+                        Ok(c) => {
+                            spawned = Some(c);
+                            break;
+                        }
+                        Err(e) if e.raw_os_error() == Some(26) && attempt < 3 => {
+                            // ETXTBSY — brief backoff (1ms, 5ms, 25ms)
+                            std::thread::sleep(Duration::from_millis(1 << (2 * attempt)));
+                            last_err = Some(e);
+                        }
+                        Err(e) => {
+                            return Ok(ToolResult::error(format!("spawn failed: {e}")));
+                        }
+                    }
+                }
+                match spawned {
+                    Some(c) => c,
+                    None => {
+                        return Ok(ToolResult::error(format!(
+                            "spawn failed after retries: {}",
+                            last_err.unwrap()
+                        )));
+                    }
                 }
             };
 
