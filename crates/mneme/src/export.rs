@@ -569,4 +569,130 @@ mod tests {
         assert_eq!(agent.sessions[0].messages.len(), 3);
         assert_eq!(agent.sessions[0].messages[0].content, "msg 1");
     }
+
+    #[test]
+    fn export_empty_agent() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let opts = ExportOptions::default();
+
+        let agent = export_agent(
+            "nobody",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &opts,
+        )
+        .unwrap();
+
+        assert_eq!(agent.sessions.len(), 0);
+        assert!(agent.workspace.files.is_empty());
+        assert!(agent.workspace.binary_files.is_empty());
+        assert_eq!(agent.nous.id, "nobody");
+        assert!(agent.memory.is_none());
+
+        let json = serde_json::to_string(&agent).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.is_object(), "empty export produces valid JSON");
+    }
+
+    #[test]
+    fn export_preserves_timestamps() {
+        let store = test_store();
+        store
+            .create_session("ses-ts", "ts-agent", "main", None, None)
+            .unwrap();
+        store
+            .append_message("ses-ts", Role::User, "time test", None, None, 30)
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let agent = export_agent(
+            "ts-agent",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &ExportOptions::default(),
+        )
+        .unwrap();
+
+        let session = &agent.sessions[0];
+        assert!(!session.created_at.is_empty(), "created_at must be set");
+        assert!(!session.updated_at.is_empty(), "updated_at must be set");
+        assert!(
+            !session.messages[0].created_at.is_empty(),
+            "message created_at must be set"
+        );
+
+        let json = serde_json::to_string(&agent).unwrap();
+        let restored: crate::portability::AgentFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.sessions[0].created_at, session.created_at);
+        assert_eq!(restored.sessions[0].updated_at, session.updated_at);
+        assert_eq!(
+            restored.sessions[0].messages[0].created_at,
+            session.messages[0].created_at
+        );
+    }
+
+    #[test]
+    fn export_preserves_unicode() {
+        let store = test_store();
+        store
+            .create_session("ses-uni", "uni-agent", "main", None, None)
+            .unwrap();
+
+        let emoji = "Hello 🌍🔥 world";
+        let cjk = "你好世界 こんにちは";
+        let rtl = "مرحبا بالعالم";
+        let mixed = format!("{emoji} {cjk} {rtl}");
+
+        store
+            .append_message("ses-uni", Role::User, &mixed, None, None, 100)
+            .unwrap();
+        store
+            .add_note("ses-uni", "uni-agent", "context", &mixed)
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let unicode_file = "日本語.txt";
+        std::fs::write(dir.path().join(unicode_file), &mixed).unwrap();
+
+        let agent = export_agent(
+            "uni-agent",
+            Some("Ünïcödé Àgënt"),
+            None,
+            serde_json::json!({"note": cjk}),
+            &store,
+            dir.path(),
+            &ExportOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(agent.sessions[0].messages[0].content, mixed);
+        assert_eq!(agent.sessions[0].notes[0].content, mixed);
+        assert_eq!(agent.nous.name.as_deref(), Some("Ünïcödé Àgënt"));
+
+        let json = serde_json::to_string_pretty(&agent).unwrap();
+        let restored: crate::portability::AgentFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.sessions[0].messages[0].content, mixed);
+        assert_eq!(restored.sessions[0].notes[0].content, mixed);
+    }
+
+    #[test]
+    fn scan_workspace_nested_structure() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub/deep");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(dir.path().join("root.txt"), "root").unwrap();
+        std::fs::write(sub.join("nested.md"), "nested").unwrap();
+
+        let ws = scan_workspace(dir.path()).unwrap();
+        assert_eq!(ws.files.len(), 2);
+        assert!(ws.files.contains_key("root.txt"));
+        assert!(ws.files.contains_key("sub/deep/nested.md"));
+    }
 }

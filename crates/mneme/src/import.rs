@@ -687,4 +687,324 @@ mod tests {
         assert_eq!(result.files_restored, 0);
         assert_eq!(result.sessions_imported, 0);
     }
+
+    #[test]
+    fn import_corrupt_json_errors() {
+        let garbage_inputs = [
+            "",
+            "not json",
+            "{",
+            "null",
+            "42",
+            r#"{"version": "not_a_number"}"#,
+            r#"{"version": 1}"#, // missing required fields
+            r#"{"version": 1, "exportedAt": "x", "generator": "x"}"#, // missing nous
+        ];
+
+        for input in &garbage_inputs {
+            let result = serde_json::from_str::<AgentFile>(input);
+            assert!(
+                result.is_err(),
+                "expected error for input: {input:?}, got: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn import_missing_optional_sections() {
+        let json = r#"{
+            "version": 1,
+            "exportedAt": "2026-03-05T12:00:00Z",
+            "generator": "test",
+            "nous": {
+                "id": "sparse",
+                "config": {}
+            },
+            "workspace": {
+                "files": {},
+                "binaryFiles": []
+            },
+            "sessions": []
+        }"#;
+
+        let agent: AgentFile = serde_json::from_str(json).unwrap();
+        assert!(agent.nous.name.is_none());
+        assert!(agent.nous.model.is_none());
+        assert!(agent.memory.is_none());
+
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let id_gen = counter_id_gen();
+        let result = import_agent(
+            &agent,
+            &store,
+            dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(result.sessions_imported, 0);
+        assert_eq!(result.files_restored, 0);
+    }
+
+    #[test]
+    fn export_import_preserves_timestamps() {
+        let store = test_store();
+        store
+            .create_session("ses-ts", "ts-agent", "main", None, None)
+            .unwrap();
+        store
+            .append_message("ses-ts", Role::User, "hello", None, None, 50)
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let exported = export_agent(
+            "ts-agent",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &ExportOptions::default(),
+        )
+        .unwrap();
+
+        let orig_created = exported.sessions[0].created_at.clone();
+        let orig_updated = exported.sessions[0].updated_at.clone();
+        let orig_msg_ts = exported.sessions[0].messages[0].created_at.clone();
+
+        let json = serde_json::to_string(&exported).unwrap();
+        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+
+        let import_store = test_store();
+        let import_dir = tempfile::tempdir().unwrap();
+        let id_gen = counter_id_gen();
+        import_agent(
+            &restored,
+            &import_store,
+            import_dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
+
+        let sessions = import_store.list_sessions(Some("ts-agent")).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].created_at, orig_created);
+        assert_eq!(sessions[0].updated_at, orig_updated);
+
+        let messages = import_store.get_history(&sessions[0].id, None).unwrap();
+        assert_eq!(messages[0].created_at, orig_msg_ts);
+    }
+
+    #[test]
+    fn export_import_preserves_unicode() {
+        let store = test_store();
+        store
+            .create_session("ses-uni", "uni", "main", None, None)
+            .unwrap();
+
+        let emoji = "Hello 🌍🔥 world";
+        let cjk = "你好世界 こんにちは";
+        let rtl = "مرحبا بالعالم";
+        let combined = format!("{emoji} {cjk} {rtl}");
+
+        store
+            .append_message("ses-uni", Role::User, &combined, None, None, 200)
+            .unwrap();
+        store
+            .add_note("ses-uni", "uni", "context", &combined)
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("unicode.txt"), &combined).unwrap();
+
+        let exported = export_agent(
+            "uni",
+            Some("Ünïcödé"),
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &ExportOptions::default(),
+        )
+        .unwrap();
+
+        let json = serde_json::to_string_pretty(&exported).unwrap();
+        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+
+        let import_store = test_store();
+        let import_dir = tempfile::tempdir().unwrap();
+        let id_gen = counter_id_gen();
+        import_agent(
+            &restored,
+            &import_store,
+            import_dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
+
+        let content = std::fs::read_to_string(import_dir.path().join("unicode.txt")).unwrap();
+        assert_eq!(content, combined);
+
+        let sessions = import_store.list_sessions(Some("uni")).unwrap();
+        let messages = import_store.get_history(&sessions[0].id, None).unwrap();
+        assert_eq!(messages[0].content, combined);
+    }
+
+    #[test]
+    fn export_import_large_data() {
+        let store = test_store();
+        for i in 0..100 {
+            let sid = format!("ses-{i}");
+            store
+                .create_session(&sid, "bulk", &format!("key-{i}"), None, None)
+                .unwrap();
+            for j in 0..10 {
+                store
+                    .append_message(
+                        &sid,
+                        Role::User,
+                        &format!("message {j} in session {i}"),
+                        None,
+                        None,
+                        20,
+                    )
+                    .unwrap();
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let exported = export_agent(
+            "bulk",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &ExportOptions {
+                max_messages_per_session: 0,
+                include_archived: false,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(exported.sessions.len(), 100);
+        let total_msgs: usize = exported.sessions.iter().map(|s| s.messages.len()).sum();
+        assert_eq!(total_msgs, 1000);
+
+        let json = serde_json::to_string(&exported).unwrap();
+        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+
+        let import_store = test_store();
+        let import_dir = tempfile::tempdir().unwrap();
+        let id_gen = counter_id_gen();
+        let result = import_agent(
+            &restored,
+            &import_store,
+            import_dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(result.sessions_imported, 100);
+        assert_eq!(result.messages_imported, 1000);
+    }
+
+    #[test]
+    fn category_validation_uses_shared_constant() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+
+        let valid_categories = crate::schema::VALID_CATEGORIES;
+
+        let mut agent = minimal_agent_file();
+        agent.sessions[0].notes.clear();
+        for cat in valid_categories {
+            agent.sessions[0].notes.push(ExportedNote {
+                category: (*cat).to_owned(),
+                content: format!("note for {cat}"),
+                created_at: "2026-03-05T10:30:00Z".to_owned(),
+            });
+        }
+        agent.sessions[0].notes.push(ExportedNote {
+            category: "bogus_category".to_owned(),
+            content: "should default to context".to_owned(),
+            created_at: "2026-03-05T10:30:00Z".to_owned(),
+        });
+
+        let id_gen = counter_id_gen();
+        let result = import_agent(
+            &agent,
+            &store,
+            dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.notes_imported as usize,
+            valid_categories.len() + 1,
+            "all valid + 1 defaulted note imported"
+        );
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn export_import_preserves_content(
+                content in "[a-zA-Z0-9 ]{1,200}",
+                note_text in "[a-zA-Z0-9 ]{1,100}",
+            ) {
+                let store = test_store();
+                store
+                    .create_session("ses-prop", "prop-agent", "main", None, None)
+                    .unwrap();
+                store
+                    .append_message("ses-prop", Role::User, &content, None, None, 50)
+                    .unwrap();
+                store
+                    .add_note("ses-prop", "prop-agent", "context", &note_text)
+                    .unwrap();
+
+                let dir = tempfile::tempdir().unwrap();
+                let exported = export_agent(
+                    "prop-agent",
+                    None,
+                    None,
+                    serde_json::json!({}),
+                    &store,
+                    dir.path(),
+                    &ExportOptions::default(),
+                )
+                .unwrap();
+
+                let json = serde_json::to_string(&exported).unwrap();
+                let restored: AgentFile = serde_json::from_str(&json).unwrap();
+
+                let import_store = test_store();
+                let import_dir = tempfile::tempdir().unwrap();
+                let id_gen = counter_id_gen();
+                import_agent(
+                    &restored,
+                    &import_store,
+                    import_dir.path(),
+                    &*id_gen,
+                    &ImportOptions::default(),
+                )
+                .unwrap();
+
+                let sessions = import_store.list_sessions(Some("prop-agent")).unwrap();
+                let messages = import_store.get_history(&sessions[0].id, None).unwrap();
+                prop_assert_eq!(&messages[0].content, &content);
+            }
+        }
+    }
 }

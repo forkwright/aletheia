@@ -367,6 +367,94 @@ mod tests {
         assert_send_sync::<MockEmbeddingProvider>();
     }
 
+    #[test]
+    fn embedding_empty_input() {
+        let provider = MockEmbeddingProvider::new(64);
+        let result = provider.embed("");
+        assert!(result.is_ok(), "empty string should produce a valid embedding");
+        let vec = result.unwrap();
+        assert_eq!(vec.len(), 64);
+    }
+
+    #[test]
+    fn embedding_long_input() {
+        let provider = MockEmbeddingProvider::new(128);
+        let long_text = "word ".repeat(10_000);
+        let result = provider.embed(&long_text);
+        assert!(result.is_ok(), "long input should succeed");
+        let vec = result.unwrap();
+        assert_eq!(vec.len(), 128);
+        let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!(
+            (norm - 1.0).abs() < 0.01,
+            "long input embedding should be normalized, got {norm}"
+        );
+    }
+
+    #[test]
+    fn embedding_provider_switching() {
+        let small = create_provider(&EmbeddingConfig {
+            provider: "mock".to_owned(),
+            dimension: Some(64),
+            ..EmbeddingConfig::default()
+        })
+        .unwrap();
+
+        let large = create_provider(&EmbeddingConfig {
+            provider: "mock".to_owned(),
+            dimension: Some(256),
+            ..EmbeddingConfig::default()
+        })
+        .unwrap();
+
+        assert_eq!(small.dimension(), 64);
+        assert_eq!(large.dimension(), 256);
+
+        let v_small = small.embed("test").unwrap();
+        let v_large = large.embed("test").unwrap();
+        assert_eq!(v_small.len(), 64);
+        assert_eq!(v_large.len(), 256);
+        assert_ne!(v_small.len(), v_large.len());
+    }
+
+    #[test]
+    fn create_provider_custom_dimension() {
+        let config = EmbeddingConfig {
+            provider: "mock".to_owned(),
+            dimension: Some(512),
+            ..EmbeddingConfig::default()
+        };
+        let provider = create_provider(&config).unwrap();
+        assert_eq!(provider.dimension(), 512);
+
+        let vec = provider.embed("custom dim").unwrap();
+        assert_eq!(vec.len(), 512);
+    }
+
+    #[test]
+    fn embedding_batch_empty_list() {
+        let provider = MockEmbeddingProvider::new(64);
+        let result = provider.embed_batch(&[]);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn embedding_dimensions_constant(input in "[a-zA-Z ]{1,100}") {
+                let provider = MockEmbeddingProvider::new(384);
+                let vec = provider.embed(&input).unwrap();
+                prop_assert_eq!(vec.len(), 384);
+                let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+                prop_assert!((norm - 1.0).abs() < 0.01, "norm was {}", norm);
+            }
+        }
+    }
+
     #[cfg(not(feature = "fastembed"))]
     #[test]
     fn fastembed_not_enabled_returns_error() {
