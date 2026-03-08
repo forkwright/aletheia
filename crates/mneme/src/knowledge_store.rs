@@ -1421,7 +1421,10 @@ fn rows_to_facts(
 //          access_count(10), last_accessed_at(11), stability_hours(12), fact_type(13),
 //          is_forgotten(14), forgotten_at(15), forget_reason(16).
 #[cfg(feature = "mneme-engine")]
-#[expect(clippy::too_many_lines, reason = "flat row parser — splitting would not improve clarity")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "flat row parser — splitting would not improve clarity"
+)]
 fn rows_to_raw_facts(
     rows: crate::engine::NamedRows,
 ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
