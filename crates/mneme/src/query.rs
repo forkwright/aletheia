@@ -1155,7 +1155,7 @@ mod tests {
             .raw("?[x] := *facts{id: $str_val, content: x}")
             .param("str_val", DataValue::from("hello"))
             .param("int_val", DataValue::from(42_i64))
-            .param("float_val", DataValue::from(3.14_f64))
+            .param("float_val", DataValue::from(2.72_f64))
             .param("bool_val", DataValue::from(true))
             .param("null_val", DataValue::Null)
             .build();
@@ -1242,7 +1242,11 @@ mod tests {
         proptest! {
             #[test]
             fn query_builder_never_produces_raw_user_input(
-                input in "[a-zA-Z0-9 !@#$%^&*()_+=\\[\\]{};':,./<>?]{1,100}"
+                // Minimum 2 chars: single-character strings like `}`, `{`, `*`
+                // naturally appear in Datalog syntax and are false positives.
+                // The real risk is multi-character user content leaking into
+                // the script template instead of being bound as parameters.
+                input in "[a-zA-Z0-9 !@#$%^&*()_+=\\[\\]{};':,./<>?]{2,100}"
             ) {
                 let (script, params) = QueryBuilder::new()
                     .raw("?[x] := *facts{id: $user_input, content: x}")
