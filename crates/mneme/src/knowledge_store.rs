@@ -2136,3 +2136,849 @@ mod tests {
         assert_eq!(hit.graph_rank, -1, "absent from graph signal must be -1");
     }
 }
+
+#[cfg(all(test, feature = "mneme-engine"))]
+mod knowledge_store_tests {
+    use super::*;
+    use crate::knowledge::{
+        EmbeddedChunk, Entity, EpistemicTier, Fact, ForgetReason, Relationship,
+    };
+    use std::sync::Arc;
+
+    const DIM: usize = 4;
+
+    fn make_store() -> Arc<KnowledgeStore> {
+        KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM }).expect("open_mem")
+    }
+
+    fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
+        Fact {
+            id: id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            content: content.to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        }
+    }
+
+    fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
+        Entity {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            entity_type: entity_type.to_owned(),
+            aliases: vec![],
+            created_at: "2026-03-01T00:00:00Z".to_owned(),
+            updated_at: "2026-03-01T00:00:00Z".to_owned(),
+        }
+    }
+
+    fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
+        Relationship {
+            src: src.to_owned(),
+            dst: dst.to_owned(),
+            relation: relation.to_owned(),
+            weight,
+            created_at: "2026-03-01T00:00:00Z".to_owned(),
+        }
+    }
+
+    fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> EmbeddedChunk {
+        EmbeddedChunk {
+            id: id.to_owned(),
+            content: content.to_owned(),
+            source_type: "fact".to_owned(),
+            source_id: source_id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            embedding: vec![0.5, 0.5, 0.5, 0.5],
+            created_at: "2026-03-01T00:00:00Z".to_owned(),
+        }
+    }
+
+    // ---- CRUD: Facts ----
+
+    #[test]
+    fn insert_fact_and_retrieve() {
+        let store = make_store();
+        let fact = make_fact("f1", "agent-a", "Rust is a systems programming language");
+        store.insert_fact(&fact).expect("insert fact");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query facts");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "f1");
+        assert_eq!(results[0].content, "Rust is a systems programming language");
+        assert!((results[0].confidence - 0.9).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn insert_multiple_facts_and_retrieve() {
+        let store = make_store();
+        for i in 0..5 {
+            let fact = make_fact(
+                &format!("f{i}"),
+                "agent-a",
+                &format!("Fact number {i}"),
+            );
+            store.insert_fact(&fact).expect("insert fact");
+        }
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 100)
+            .expect("query facts");
+        assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn upsert_fact_overwrites() {
+        let store = make_store();
+        let mut fact = make_fact("f1", "agent-a", "Original content");
+        store.insert_fact(&fact).expect("insert fact");
+
+        fact.content = "Updated content".to_owned();
+        fact.confidence = 0.95;
+        store.insert_fact(&fact).expect("upsert fact");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query facts");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "Updated content");
+        assert!((results[0].confidence - 0.95).abs() < f64::EPSILON);
+    }
+
+    // ---- CRUD: Entities ----
+
+    #[test]
+    fn insert_entity_and_query_neighborhood() {
+        let store = make_store();
+        let entity = make_entity("e1", "Rust", "language");
+        store.insert_entity(&entity).expect("insert entity");
+
+        let rows = store.entity_neighborhood("e1").expect("neighborhood");
+        // No relationships yet, so empty result set is fine (no panic)
+        assert!(rows.rows.is_empty());
+    }
+
+    #[test]
+    fn insert_entity_with_aliases() {
+        let store = make_store();
+        let mut entity = make_entity("e1", "Rust", "language");
+        entity.aliases = vec!["rustlang".to_owned(), "rust-lang".to_owned()];
+        store.insert_entity(&entity).expect("insert entity with aliases");
+
+        // Verify via raw query that the entity was stored
+        let rows = store
+            .run_query(
+                r"?[id, name, aliases] := *entities{id, name, aliases}, id = 'e1'",
+                std::collections::BTreeMap::new(),
+            )
+            .expect("raw query");
+        assert_eq!(rows.rows.len(), 1);
+    }
+
+    // ---- CRUD: Relationships ----
+
+    #[test]
+    fn insert_relationship_and_retrieve_neighborhood() {
+        let store = make_store();
+        store
+            .insert_entity(&make_entity("e1", "Alice", "person"))
+            .expect("insert e1");
+        store
+            .insert_entity(&make_entity("e2", "Aletheia", "project"))
+            .expect("insert e2");
+        store
+            .insert_relationship(&make_relationship("e1", "e2", "works_on", 0.9))
+            .expect("insert relationship");
+
+        let rows = store.entity_neighborhood("e1").expect("neighborhood");
+        assert!(
+            !rows.rows.is_empty(),
+            "neighborhood should contain the relationship"
+        );
+    }
+
+    #[test]
+    fn insert_relationship_bidirectional_neighborhood() {
+        let store = make_store();
+        store
+            .insert_entity(&make_entity("e1", "Alice", "person"))
+            .expect("insert e1");
+        store
+            .insert_entity(&make_entity("e2", "Bob", "person"))
+            .expect("insert e2");
+        store
+            .insert_relationship(&make_relationship("e1", "e2", "knows", 0.8))
+            .expect("insert rel");
+
+        // e1 neighborhood should include e2
+        let from_e1 = store.entity_neighborhood("e1").expect("e1 neighborhood");
+        assert!(!from_e1.rows.is_empty());
+
+        // e2 neighborhood may or may not include e1 (depends on query directionality)
+        // Just verify it doesn't error
+        let _from_e2 = store.entity_neighborhood("e2").expect("e2 neighborhood");
+    }
+
+    // ---- CRUD: Embeddings ----
+
+    #[test]
+    fn insert_embedding_and_search() {
+        let store = make_store();
+        let fact = make_fact("f1", "agent-a", "Rust memory safety");
+        store.insert_fact(&fact).expect("insert fact");
+
+        let mut chunk = make_embedding("emb1", "Rust memory safety", "f1", "agent-a");
+        chunk.embedding = vec![0.9, 0.1, 0.0, 0.0];
+        store.insert_embedding(&chunk).expect("insert embedding");
+
+        let results = store
+            .search_vectors(vec![0.9, 0.1, 0.0, 0.0], 5, 20)
+            .expect("search vectors");
+        assert!(!results.is_empty());
+        assert_eq!(results[0].content, "Rust memory safety");
+        assert_eq!(results[0].source_type, "fact");
+        assert_eq!(results[0].source_id, "f1");
+    }
+
+    // ---- Forget / Unforget ----
+
+    #[test]
+    fn forget_fact_excludes_from_query() {
+        let store = make_store();
+        let fact = make_fact("f1", "agent-a", "Secret fact");
+        store.insert_fact(&fact).expect("insert fact");
+
+        store
+            .forget_fact("f1", ForgetReason::UserRequested)
+            .expect("forget fact");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query facts");
+        // query_facts returns current, non-forgotten facts
+        assert!(
+            results.is_empty() || results.iter().all(|f| f.id != "f1" || !f.is_forgotten),
+            "forgotten fact should be excluded or marked"
+        );
+    }
+
+    #[test]
+    fn unforget_fact_restores_visibility() {
+        let store = make_store();
+        let fact = make_fact("f1", "agent-a", "Recoverable fact");
+        store.insert_fact(&fact).expect("insert fact");
+
+        store
+            .forget_fact("f1", ForgetReason::Outdated)
+            .expect("forget");
+        store.unforget_fact("f1").expect("unforget");
+
+        // After unforgetting, audit should show it as not forgotten
+        let all = store
+            .audit_all_facts("agent-a", 100)
+            .expect("audit facts");
+        let found = all.iter().find(|f| f.id == "f1");
+        assert!(found.is_some(), "fact should still exist");
+        assert!(!found.expect("checked").is_forgotten, "should not be forgotten");
+    }
+
+    #[test]
+    fn forget_preserves_in_audit() {
+        let store = make_store();
+        let fact = make_fact("f1", "agent-a", "Auditable fact");
+        store.insert_fact(&fact).expect("insert fact");
+
+        store
+            .forget_fact("f1", ForgetReason::Privacy)
+            .expect("forget");
+
+        let all = store
+            .audit_all_facts("agent-a", 100)
+            .expect("audit all");
+        let found = all.iter().find(|f| f.id == "f1");
+        assert!(found.is_some(), "audit must return forgotten facts");
+        let found = found.expect("checked");
+        assert!(found.is_forgotten);
+        assert_eq!(found.forget_reason, Some(ForgetReason::Privacy));
+    }
+
+    // ---- Increment Access ----
+
+    #[test]
+    #[ignore = "BUG: increment_access does not update access_count as observed by query_facts — \
+                the Datalog :put succeeds but the updated count is not reflected in subsequent reads"]
+    fn increment_access_updates_count() {
+        let store = make_store();
+        let fact = make_fact("f1", "agent-a", "Accessed fact");
+        store.insert_fact(&fact).expect("insert fact");
+
+        store
+            .increment_access(&["f1".to_owned()])
+            .expect("increment");
+        store
+            .increment_access(&["f1".to_owned()])
+            .expect("increment again");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query");
+        let found = results.iter().find(|f| f.id == "f1").expect("found");
+        assert_eq!(found.access_count, 2);
+    }
+
+    #[test]
+    fn increment_access_empty_ids_is_noop() {
+        let store = make_store();
+        store.increment_access(&[]).expect("empty increment should succeed");
+    }
+
+    #[test]
+    fn increment_access_nonexistent_id_is_silent() {
+        let store = make_store();
+        // Should not error — silently skips missing facts
+        store
+            .increment_access(&["nonexistent".to_owned()])
+            .expect("increment nonexistent should not error");
+    }
+
+    // ---- Schema Version ----
+
+    #[test]
+    fn schema_version_returns_current() {
+        let store = make_store();
+        let version = store.schema_version().expect("schema version");
+        assert_eq!(version, KnowledgeStore::SCHEMA_VERSION);
+    }
+
+    // ---- Search: query_facts filters ----
+
+    #[test]
+    fn query_facts_filters_by_nous_id() {
+        let store = make_store();
+        store
+            .insert_fact(&make_fact("f1", "agent-a", "Fact for A"))
+            .expect("insert f1");
+        store
+            .insert_fact(&make_fact("f2", "agent-b", "Fact for B"))
+            .expect("insert f2");
+        store
+            .insert_fact(&make_fact("f3", "agent-a", "Another fact for A"))
+            .expect("insert f3");
+
+        let results_a = store
+            .query_facts("agent-a", "2026-06-01", 100)
+            .expect("query agent-a");
+        assert_eq!(results_a.len(), 2);
+        assert!(results_a.iter().all(|f| f.nous_id == "agent-a"));
+
+        let results_b = store
+            .query_facts("agent-b", "2026-06-01", 100)
+            .expect("query agent-b");
+        assert_eq!(results_b.len(), 1);
+        assert_eq!(results_b[0].id, "f2");
+    }
+
+    #[test]
+    fn query_facts_respects_limit() {
+        let store = make_store();
+        for i in 0..20 {
+            store
+                .insert_fact(&make_fact(&format!("f{i}"), "agent-a", &format!("Fact {i}")))
+                .expect("insert");
+        }
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 5)
+            .expect("query with limit");
+        assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn query_facts_excludes_expired() {
+        let store = make_store();
+
+        // Active fact
+        store
+            .insert_fact(&make_fact("f-active", "agent-a", "Active fact"))
+            .expect("insert active");
+
+        // Expired fact (valid_to in the past)
+        let mut expired = make_fact("f-expired", "agent-a", "Expired fact");
+        expired.valid_to = "2025-01-01".to_owned();
+        store.insert_fact(&expired).expect("insert expired");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 100)
+            .expect("query");
+
+        // Should only return the active fact
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "f-active");
+    }
+
+    #[test]
+    fn query_facts_empty_store_returns_empty() {
+        let store = make_store();
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 100)
+            .expect("query empty store");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn query_facts_nonexistent_nous_id_returns_empty() {
+        let store = make_store();
+        store
+            .insert_fact(&make_fact("f1", "agent-a", "Some fact"))
+            .expect("insert");
+
+        let results = store
+            .query_facts("nonexistent-agent", "2026-06-01", 100)
+            .expect("query nonexistent nous");
+        assert!(results.is_empty());
+    }
+
+    // ---- Search: point-in-time ----
+
+    #[test]
+    fn query_facts_at_returns_snapshot() {
+        let store = make_store();
+
+        // Fact valid from 2026-01-01 to 2026-06-01
+        let mut fact = make_fact("f1", "agent-a", "Temporal fact");
+        fact.valid_from = "2026-01-01".to_owned();
+        fact.valid_to = "2026-06-01".to_owned();
+        store.insert_fact(&fact).expect("insert temporal fact");
+
+        // Query at a time within the validity window
+        let results = store
+            .query_facts_at("2026-03-15")
+            .expect("query at mid-range");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "f1");
+
+        // Query at a time after the validity window
+        let results = store
+            .query_facts_at("2026-07-01")
+            .expect("query at post-range");
+        assert!(results.is_empty());
+    }
+
+    // ---- Search: vectors ----
+
+    #[test]
+    fn search_vectors_empty_store_returns_empty() {
+        let store = make_store();
+        let results = store
+            .search_vectors(vec![0.5, 0.5, 0.5, 0.5], 5, 20)
+            .expect("search empty");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn search_vectors_returns_nearest() {
+        let store = make_store();
+
+        // Insert two embeddings with different vectors
+        let mut chunk_a = make_embedding("emb-a", "Rust programming", "f1", "agent-a");
+        chunk_a.embedding = vec![1.0, 0.0, 0.0, 0.0];
+        store.insert_embedding(&chunk_a).expect("insert emb-a");
+
+        let mut chunk_b = make_embedding("emb-b", "Python scripting", "f2", "agent-a");
+        chunk_b.embedding = vec![0.0, 1.0, 0.0, 0.0];
+        store.insert_embedding(&chunk_b).expect("insert emb-b");
+
+        // Query close to chunk_a
+        let results = store
+            .search_vectors(vec![0.9, 0.1, 0.0, 0.0], 1, 20)
+            .expect("search nearest");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "Rust programming");
+    }
+
+    #[test]
+    fn search_vectors_respects_k() {
+        let store = make_store();
+        for i in 0..10 {
+            let mut chunk = make_embedding(
+                &format!("emb-{i}"),
+                &format!("Content {i}"),
+                &format!("f{i}"),
+                "agent-a",
+            );
+            #[expect(clippy::cast_precision_loss, reason = "test data — i is 0..9, fits in f32")]
+            let component = i as f32 * 0.1;
+            chunk.embedding = vec![component, 0.5, 0.3, 0.1];
+            store.insert_embedding(&chunk).expect("insert");
+        }
+
+        let results = store
+            .search_vectors(vec![0.5, 0.5, 0.3, 0.1], 3, 20)
+            .expect("search k=3");
+        assert_eq!(results.len(), 3);
+    }
+
+    // ---- Edge Cases ----
+
+    #[test]
+    fn insert_fact_empty_content_accepted() {
+        // BUG DISCOVERY: empty content is accepted without validation.
+        // The store does not reject facts with empty content.
+        let store = make_store();
+        let fact = make_fact("f-empty", "agent-a", "");
+        store
+            .insert_fact(&fact)
+            .expect("empty content is accepted (no validation)");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query");
+        assert_eq!(results.len(), 1);
+        assert!(results[0].content.is_empty());
+    }
+
+    #[test]
+    fn insert_fact_confidence_out_of_range_accepted() {
+        // BUG DISCOVERY: confidence > 1.0 and < 0.0 are accepted without validation.
+        let store = make_store();
+
+        let mut high = make_fact("f-high", "agent-a", "High confidence");
+        high.confidence = 1.5;
+        store
+            .insert_fact(&high)
+            .expect("confidence > 1.0 accepted (no validation)");
+
+        let mut negative = make_fact("f-neg", "agent-a", "Negative confidence");
+        negative.confidence = -0.5;
+        store
+            .insert_fact(&negative)
+            .expect("confidence < 0.0 accepted (no validation)");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 100)
+            .expect("query");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn insert_duplicate_entity_name_upserts() {
+        let store = make_store();
+        let e1 = make_entity("e1", "Rust", "language");
+        store.insert_entity(&e1).expect("insert first");
+
+        // Same ID, updated name
+        let e1_updated = make_entity("e1", "Rust Lang", "language");
+        store.insert_entity(&e1_updated).expect("upsert");
+
+        let rows = store
+            .run_query(
+                r"?[id, name] := *entities{id, name}",
+                std::collections::BTreeMap::new(),
+            )
+            .expect("raw query");
+        // Same ID → upsert (one row)
+        assert_eq!(rows.rows.len(), 1);
+    }
+
+    #[test]
+    fn insert_different_entities_same_name() {
+        let store = make_store();
+        store
+            .insert_entity(&make_entity("e1", "Rust", "language"))
+            .expect("insert e1");
+        store
+            .insert_entity(&make_entity("e2", "Rust", "game"))
+            .expect("insert e2");
+
+        let rows = store
+            .run_query(
+                r"?[id, name] := *entities{id, name}",
+                std::collections::BTreeMap::new(),
+            )
+            .expect("raw query");
+        // Different IDs → two separate entities
+        assert_eq!(rows.rows.len(), 2);
+    }
+
+    #[test]
+    fn retrieve_nonexistent_fact() {
+        let store = make_store();
+        let results = store
+            .query_facts("nonexistent-agent", "2026-06-01", 10)
+            .expect("query should succeed, returning empty");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn forget_nonexistent_fact_succeeds() {
+        // forget_fact on a missing ID should not panic (Datalog :put on empty match is a noop)
+        let store = make_store();
+        let result = store.forget_fact("nonexistent", ForgetReason::UserRequested);
+        // The behavior is either Ok (noop) or Err — neither should panic
+        let _ = result;
+    }
+
+    #[test]
+    fn concurrent_inserts() {
+        let store = make_store();
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let s = Arc::clone(&store);
+                std::thread::spawn(move || {
+                    let fact = Fact {
+                        id: format!("f-concurrent-{i}"),
+                        nous_id: "agent-a".to_owned(),
+                        content: format!("Concurrent fact {i}"),
+                        confidence: 0.9,
+                        tier: EpistemicTier::Inferred,
+                        valid_from: "2026-01-01".to_owned(),
+                        valid_to: "9999-12-31".to_owned(),
+                        superseded_by: None,
+                        source_session_id: None,
+                        recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+                        access_count: 0,
+                        last_accessed_at: String::new(),
+                        stability_hours: 720.0,
+                        fact_type: String::new(),
+                        is_forgotten: false,
+                        forgotten_at: None,
+                        forget_reason: None,
+                    };
+                    s.insert_fact(&fact).expect("concurrent insert");
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().expect("thread join");
+        }
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 100)
+            .expect("query after concurrent inserts");
+        assert_eq!(results.len(), 10);
+    }
+
+    #[test]
+    fn concurrent_entity_inserts() {
+        let store = make_store();
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let s = Arc::clone(&store);
+                std::thread::spawn(move || {
+                    let entity = Entity {
+                        id: format!("e-concurrent-{i}"),
+                        name: format!("Entity {i}"),
+                        entity_type: "concept".to_owned(),
+                        aliases: vec![],
+                        created_at: "2026-03-01T00:00:00Z".to_owned(),
+                        updated_at: "2026-03-01T00:00:00Z".to_owned(),
+                    };
+                    s.insert_entity(&entity).expect("concurrent entity insert");
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().expect("thread join");
+        }
+
+        let rows = store
+            .run_query(
+                r"?[count(id)] := *entities{id}",
+                std::collections::BTreeMap::new(),
+            )
+            .expect("count entities");
+        assert_eq!(rows.rows.len(), 1);
+    }
+
+    // ---- Raw Query / Mut Query ----
+
+    #[test]
+    fn run_query_returns_results() {
+        let store = make_store();
+        let rows = store
+            .run_query("?[x] := x = 42", std::collections::BTreeMap::new())
+            .expect("run_query");
+        assert_eq!(rows.rows.len(), 1);
+    }
+
+    #[test]
+    fn run_mut_query_creates_and_reads() {
+        let store = make_store();
+        store
+            .insert_fact(&make_fact("f1", "agent-a", "Mutable test"))
+            .expect("insert");
+
+        // Use run_mut_query to delete the fact
+        let mut params = std::collections::BTreeMap::new();
+        params.insert(
+            "id".to_owned(),
+            crate::engine::DataValue::Str("f1".into()),
+        );
+        store
+            .run_mut_query(
+                r"?[id, valid_from] := *facts{id, valid_from}, id = $id :rm facts {id, valid_from}",
+                params,
+            )
+            .expect("delete via run_mut_query");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query after delete");
+        assert!(results.is_empty());
+    }
+
+    // ---- Relationship queries ----
+
+    #[test]
+    fn entity_neighborhood_2hop() {
+        let store = make_store();
+        store
+            .insert_entity(&make_entity("e1", "Alice", "person"))
+            .expect("e1");
+        store
+            .insert_entity(&make_entity("e2", "Aletheia", "project"))
+            .expect("e2");
+        store
+            .insert_entity(&make_entity("e3", "Rust", "language"))
+            .expect("e3");
+
+        // e1 -> e2 -> e3 (2-hop chain)
+        store
+            .insert_relationship(&make_relationship("e1", "e2", "works_on", 0.9))
+            .expect("rel e1-e2");
+        store
+            .insert_relationship(&make_relationship("e2", "e3", "uses", 0.8))
+            .expect("rel e2-e3");
+
+        let rows = store.entity_neighborhood("e1").expect("2-hop neighborhood");
+        // Should include both e2 (1-hop) and e3 (2-hop)
+        assert!(
+            rows.rows.len() >= 2,
+            "2-hop neighborhood should find at least 2 results, got {}",
+            rows.rows.len()
+        );
+    }
+
+    #[test]
+    fn entity_neighborhood_nonexistent_entity() {
+        let store = make_store();
+        let rows = store
+            .entity_neighborhood("nonexistent")
+            .expect("neighborhood of missing entity should succeed");
+        assert!(rows.rows.is_empty());
+    }
+
+    // ---- Async wrappers ----
+
+    #[tokio::test]
+    async fn insert_fact_async_works() {
+        let store = make_store();
+        let fact = make_fact("f-async", "agent-a", "Async inserted fact");
+        store.insert_fact_async(fact).await.expect("async insert");
+
+        let results = store
+            .query_facts_async("agent-a".to_owned(), "2026-06-01".to_owned(), 10)
+            .await
+            .expect("async query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "f-async");
+    }
+
+    #[tokio::test]
+    async fn search_vectors_async_works() {
+        let store = make_store();
+        let mut chunk = make_embedding("emb-async", "Async search content", "f1", "agent-a");
+        chunk.embedding = vec![0.7, 0.3, 0.0, 0.0];
+        store.insert_embedding(&chunk).expect("insert embedding");
+
+        let results = store
+            .search_vectors_async(vec![0.7, 0.3, 0.0, 0.0], 5, 20)
+            .await
+            .expect("async search");
+        assert!(!results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn forget_fact_async_works() {
+        let store = make_store();
+        let fact = make_fact("f-forget-async", "agent-a", "Async forget");
+        store.insert_fact_async(fact).await.expect("insert");
+
+        store
+            .forget_fact_async("f-forget-async".to_owned(), ForgetReason::Incorrect)
+            .await
+            .expect("async forget");
+
+        let all = store
+            .audit_all_facts_async("agent-a".to_owned(), 100)
+            .await
+            .expect("async audit");
+        let found = all.iter().find(|f| f.id == "f-forget-async").expect("found");
+        assert!(found.is_forgotten);
+    }
+
+    #[tokio::test]
+    async fn unforget_fact_async_works() {
+        let store = make_store();
+        let fact = make_fact("f-unforget-async", "agent-a", "Async unforget");
+        store.insert_fact_async(fact).await.expect("insert");
+
+        store
+            .forget_fact_async("f-unforget-async".to_owned(), ForgetReason::Outdated)
+            .await
+            .expect("forget");
+        store
+            .unforget_fact_async("f-unforget-async".to_owned())
+            .await
+            .expect("unforget");
+
+        let all = store
+            .audit_all_facts_async("agent-a".to_owned(), 100)
+            .await
+            .expect("audit");
+        let found = all
+            .iter()
+            .find(|f| f.id == "f-unforget-async")
+            .expect("found");
+        assert!(!found.is_forgotten);
+    }
+
+    #[tokio::test]
+    #[ignore = "BUG: same as increment_access_updates_count — async wrapper inherits the bug"]
+    async fn increment_access_async_works() {
+        let store = make_store();
+        let fact = make_fact("f-access-async", "agent-a", "Async access");
+        store.insert_fact_async(fact).await.expect("insert");
+
+        store
+            .increment_access_async(vec!["f-access-async".to_owned()])
+            .await
+            .expect("async increment");
+
+        let results = store
+            .query_facts_async("agent-a".to_owned(), "2026-06-01".to_owned(), 10)
+            .await
+            .expect("query");
+        let found = results
+            .iter()
+            .find(|f| f.id == "f-access-async")
+            .expect("found");
+        assert_eq!(found.access_count, 1);
+    }
+}

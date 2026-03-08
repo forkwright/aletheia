@@ -15,7 +15,6 @@
     clippy::mutable_key_type,
     clippy::type_complexity,
     clippy::too_many_arguments,
-    clippy::neg_cmp_op_on_partial_ord,
     reason = "absorbed CozoDB engine code — refactoring deferred to Phase E"
 )]
 pub mod engine;
