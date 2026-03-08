@@ -103,6 +103,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         oikos,
         jwt_manager,
         start_time: Instant::now(),
+        auth_mode: aletheia_config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
     });
 

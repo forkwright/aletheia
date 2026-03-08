@@ -373,9 +373,16 @@ pub struct AuthModeResponse {
     pub session_auth: bool,
 }
 
-pub async fn auth_mode(_claims: OptionalClaims) -> Json<AuthModeResponse> {
+pub async fn auth_mode(
+    State(state): State<Arc<AppState>>,
+    _claims: OptionalClaims,
+) -> Json<AuthModeResponse> {
     Json(AuthModeResponse {
-        mode: "token",
+        mode: if state.auth_mode == "none" {
+            "none"
+        } else {
+            "token"
+        },
         session_auth: false,
     })
 }

@@ -31,9 +31,13 @@ const FILE_MTIME_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 // ---------------------------------------------------------------------------
 
 /// On-disk credential file format.
+///
+/// Accepts both `"token"` (native format) and `"accessToken"` (Claude Code OAuth
+/// output) for backward compatibility. Serialization always writes `"token"`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialFile {
     /// Access token (API key or OAuth access token).
+    #[serde(alias = "accessToken")]
     pub token: String,
     /// OAuth refresh token (absent for static API keys).
     #[serde(rename = "refreshToken", skip_serializing_if = "Option::is_none")]

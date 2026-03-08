@@ -62,9 +62,9 @@ struct Cli {
     #[arg(short, long, default_value = "info")]
     log_level: String,
 
-    /// Bind address
-    #[arg(long, default_value = "127.0.0.1")]
-    bind: String,
+    /// Bind address (overrides config gateway.bind when set)
+    #[arg(long)]
+    bind: Option<String>,
 
     /// Port (overrides config gateway.port when set)
     #[arg(short, long)]
@@ -793,6 +793,7 @@ async fn serve(cli: Cli) -> Result<()> {
         oikos: oikos_arc,
         jwt_manager: Arc::new(jwt_manager),
         start_time: Instant::now(),
+        auth_mode: config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
     });
 
@@ -800,7 +801,14 @@ async fn serve(cli: Cli) -> Result<()> {
     let app = build_router(state.clone(), &security);
 
     let port = cli.port.unwrap_or(config.gateway.port);
-    let bind_addr = format!("{}:{}", cli.bind, port);
+    // Resolve bind address: CLI flag > config gateway.bind > default 127.0.0.1.
+    // "lan" is a semantic alias for "0.0.0.0" (listen on all interfaces).
+    let bind_host = cli.bind.as_deref().unwrap_or(&config.gateway.bind);
+    let bind_addr_str = match bind_host {
+        "lan" => "0.0.0.0",
+        other => other,
+    };
+    let bind_addr = format!("{bind_addr_str}:{port}");
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .with_context(|| format!("failed to bind to {bind_addr}"))?;
@@ -1526,7 +1534,7 @@ mod tests {
     fn cli_defaults() {
         let cli = Cli::parse_from(["aletheia"]);
         assert!(cli.port.is_none());
-        assert_eq!(cli.bind, "127.0.0.1");
+        assert!(cli.bind.is_none());
         assert_eq!(cli.log_level, "info");
         assert!(!cli.json_logs);
         assert!(cli.command.is_none());
