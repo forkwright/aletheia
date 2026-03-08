@@ -634,4 +634,288 @@ mod tests {
         let expected = 0.15; // relevance weight
         assert!((score - expected).abs() < 0.01);
     }
+
+    // --- Acceptance criteria tests (prompt 99) ---
+
+    #[test]
+    fn scores_are_bounded_zero_to_one() {
+        let e = engine();
+        let extreme_inputs: Vec<FactorScores> = vec![
+            // All zeros
+            FactorScores::default(),
+            // All ones
+            FactorScores {
+                vector_similarity: 1.0,
+                recency: 1.0,
+                relevance: 1.0,
+                epistemic_tier: 1.0,
+                relationship_proximity: 1.0,
+                access_frequency: 1.0,
+            },
+            // Mixed extremes
+            FactorScores {
+                vector_similarity: 1.0,
+                recency: 0.0,
+                relevance: 1.0,
+                epistemic_tier: 0.0,
+                relationship_proximity: 1.0,
+                access_frequency: 0.0,
+            },
+            // Values at boundary
+            FactorScores {
+                vector_similarity: 0.0,
+                recency: 0.0,
+                relevance: 0.0,
+                epistemic_tier: 0.0,
+                relationship_proximity: 0.0,
+                access_frequency: 1.0,
+            },
+        ];
+
+        for factors in &extreme_inputs {
+            let score = e.compute_score(factors);
+            assert!(
+                (0.0..=1.0).contains(&score),
+                "score {score} out of bounds for factors {factors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn weights_sum_to_approximately_one() {
+        let weights = RecallWeights::default();
+        let total = weights.total();
+        assert!(
+            (total - 1.0).abs() < 0.01,
+            "default weights sum to {total}, expected ~1.0"
+        );
+    }
+
+    #[test]
+    fn higher_epistemic_tier_scores_higher_composite() {
+        let e = engine();
+        let base = FactorScores {
+            vector_similarity: 0.5,
+            recency: 0.5,
+            relevance: 0.5,
+            relationship_proximity: 0.5,
+            access_frequency: 0.5,
+            ..FactorScores::default()
+        };
+
+        let verified = FactorScores {
+            epistemic_tier: 1.0, // verified
+            ..base.clone()
+        };
+        let inferred = FactorScores {
+            epistemic_tier: 0.6, // inferred
+            ..base.clone()
+        };
+        let assumed = FactorScores {
+            epistemic_tier: 0.3, // assumed
+            ..base
+        };
+
+        let score_v = e.compute_score(&verified);
+        let score_i = e.compute_score(&inferred);
+        let score_a = e.compute_score(&assumed);
+
+        assert!(
+            score_v > score_i,
+            "verified ({score_v}) should score higher than inferred ({score_i})"
+        );
+        assert!(
+            score_i > score_a,
+            "inferred ({score_i}) should score higher than assumed ({score_a})"
+        );
+    }
+
+    #[test]
+    fn verified_tier_scores_higher_than_inferred_in_ranking() {
+        let e = engine();
+        let candidates = vec![
+            ScoredResult {
+                content: "inferred fact".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f1".to_owned(),
+                nous_id: "syn".to_owned(),
+                factors: FactorScores {
+                    vector_similarity: 0.8,
+                    recency: 0.7,
+                    relevance: 1.0,
+                    epistemic_tier: 0.6, // inferred
+                    relationship_proximity: 0.5,
+                    access_frequency: 0.3,
+                },
+                score: 0.0,
+            },
+            ScoredResult {
+                content: "verified fact".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f2".to_owned(),
+                nous_id: "syn".to_owned(),
+                factors: FactorScores {
+                    vector_similarity: 0.8,
+                    recency: 0.7,
+                    relevance: 1.0,
+                    epistemic_tier: 1.0, // verified
+                    relationship_proximity: 0.5,
+                    access_frequency: 0.3,
+                },
+                score: 0.0,
+            },
+        ];
+
+        let ranked = e.rank(candidates);
+        assert_eq!(ranked[0].content, "verified fact");
+        assert_eq!(ranked[1].content, "inferred fact");
+    }
+
+    #[test]
+    fn recent_facts_score_higher_composite() {
+        let e = engine();
+        let base = FactorScores {
+            vector_similarity: 0.7,
+            relevance: 0.8,
+            epistemic_tier: 0.6,
+            relationship_proximity: 0.4,
+            access_frequency: 0.3,
+            ..FactorScores::default()
+        };
+
+        let recent = FactorScores {
+            recency: 1.0, // just now
+            ..base.clone()
+        };
+        let old = FactorScores {
+            recency: 0.1, // 6 months ago
+            ..base
+        };
+
+        let score_recent = e.compute_score(&recent);
+        let score_old = e.compute_score(&old);
+
+        assert!(
+            score_recent > score_old,
+            "recent ({score_recent}) should score higher than old ({score_old})"
+        );
+    }
+
+    #[test]
+    fn score_deterministic() {
+        let e = engine();
+        let factors = FactorScores {
+            vector_similarity: 0.75,
+            recency: 0.6,
+            relevance: 0.9,
+            epistemic_tier: 0.8,
+            relationship_proximity: 0.4,
+            access_frequency: 0.2,
+        };
+
+        let score1 = e.compute_score(&factors);
+        let score2 = e.compute_score(&factors);
+
+        assert!(
+            (score1 - score2).abs() < f64::EPSILON,
+            "same inputs produced different scores: {score1} vs {score2}"
+        );
+    }
+
+    #[test]
+    fn rank_deterministic() {
+        let e = engine();
+        let make_candidates = || {
+            vec![
+                ScoredResult {
+                    content: "alpha".to_owned(),
+                    source_type: "fact".to_owned(),
+                    source_id: "f1".to_owned(),
+                    nous_id: "syn".to_owned(),
+                    factors: FactorScores {
+                        vector_similarity: 0.9,
+                        recency: 0.3,
+                        ..FactorScores::default()
+                    },
+                    score: 0.0,
+                },
+                ScoredResult {
+                    content: "beta".to_owned(),
+                    source_type: "fact".to_owned(),
+                    source_id: "f2".to_owned(),
+                    nous_id: "syn".to_owned(),
+                    factors: FactorScores {
+                        vector_similarity: 0.3,
+                        recency: 0.9,
+                        ..FactorScores::default()
+                    },
+                    score: 0.0,
+                },
+            ]
+        };
+
+        let ranked1 = e.rank(make_candidates());
+        let ranked2 = e.rank(make_candidates());
+
+        assert_eq!(ranked1[0].content, ranked2[0].content);
+        assert_eq!(ranked1[1].content, ranked2[1].content);
+        assert!((ranked1[0].score - ranked2[0].score).abs() < f64::EPSILON);
+    }
+}
+
+// Property tests in a separate module to keep organization clean.
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn recall_scores_always_bounded(
+            vec_sim in 0.0_f64..=1.0,
+            recency in 0.0_f64..=1.0,
+            relevance in 0.0_f64..=1.0,
+            tier in 0.0_f64..=1.0,
+            proximity in 0.0_f64..=1.0,
+            freq in 0.0_f64..=1.0,
+        ) {
+            let e = RecallEngine::new();
+            let factors = FactorScores {
+                vector_similarity: vec_sim,
+                recency,
+                relevance,
+                epistemic_tier: tier,
+                relationship_proximity: proximity,
+                access_frequency: freq,
+            };
+            let score = e.compute_score(&factors);
+            prop_assert!(
+                (0.0..=1.0).contains(&score),
+                "score {score} out of [0.0, 1.0] for factors {factors:?}"
+            );
+        }
+
+        #[test]
+        fn individual_scorers_bounded(
+            cosine_dist in 0.0_f64..=2.0,
+            age_hours in 0.0_f64..=100_000.0,
+            access_count in 0_u64..=10_000,
+            hops in proptest::option::of(0_u32..=50),
+        ) {
+            let e = RecallEngine::new();
+
+            let vs = e.score_vector_similarity(cosine_dist);
+            prop_assert!((0.0..=1.0).contains(&vs), "vector_similarity {vs} out of bounds");
+
+            let rs = e.score_recency(age_hours);
+            prop_assert!((0.0..=1.0).contains(&rs), "recency {rs} out of bounds");
+
+            let af = e.score_access_frequency(access_count);
+            prop_assert!(af >= 0.0, "access_frequency {af} below 0");
+            prop_assert!(af.is_finite(), "access_frequency {af} not finite");
+
+            let rp = e.score_relationship_proximity(hops);
+            prop_assert!((0.0..=1.0).contains(&rp), "relationship_proximity {rp} out of bounds");
+        }
+    }
 }
