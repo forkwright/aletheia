@@ -181,10 +181,7 @@ pub async fn archive(
 }
 
 /// Shared archive logic for both DELETE and POST archive routes.
-async fn archive_session_by_id(
-    state: &Arc<AppState>,
-    id: &str,
-) -> Result<StatusCode, ApiError> {
+async fn archive_session_by_id(state: &Arc<AppState>, id: &str) -> Result<StatusCode, ApiError> {
     let _ = find_session(state, id).await?;
 
     let state_clone = Arc::clone(state);
@@ -564,8 +561,7 @@ pub async fn events(
     let (tx, rx) = mpsc::channel::<Event>(8);
 
     // Emit init event with empty active turns.
-    let init_data =
-        serde_json::json!({"activeTurns": [], "pendingDeliveries": 0}).to_string();
+    let init_data = serde_json::json!({"activeTurns": [], "pendingDeliveries": 0}).to_string();
     let _ = tx
         .send(Event::default().event("init").data(init_data))
         .await;
