@@ -47,7 +47,7 @@ impl FixedRule for BetweennessCentrality {
                 let res_for_start =
                     dijkstra_keep_ties(&graph, start, &(), &(), &(), poison.clone())?;
                 let mut ret: BTreeMap<u32, f32> = Default::default();
-                let grouped = res_for_start.into_iter().group_by(|(n, _, _)| *n);
+                let grouped = res_for_start.into_iter().chunk_by(|(n, _, _)| *n);
                 for (_, grp) in grouped.into_iter() {
                     let grp = grp.collect_vec();
                     let l = grp.len() as f32;

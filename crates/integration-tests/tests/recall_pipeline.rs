@@ -45,7 +45,13 @@ fn recall_with_mock_vectors_end_to_end() {
     });
 
     let result = stage
-        .run("What did the researcher publish?", "syn", &embedder, &search, 10000)
+        .run(
+            "What did the researcher publish?",
+            "syn",
+            &embedder,
+            &search,
+            10000,
+        )
         .expect("recall should succeed");
 
     assert!(result.candidates_found >= 1);

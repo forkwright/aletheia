@@ -280,7 +280,11 @@ mod tests {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).unwrap();
             }
-            fs::write(&path, content).unwrap();
+            // Use explicit File to ensure fd is closed before any chmod/exec
+            let file = std::fs::File::create(&path).unwrap();
+            std::io::Write::write_all(&mut &file, content.as_bytes()).unwrap();
+            file.sync_all().unwrap();
+            drop(file);
         }
         dir
     }
