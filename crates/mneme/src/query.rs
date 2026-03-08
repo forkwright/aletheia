@@ -1126,4 +1126,135 @@ mod tests {
         let built = queries::full_current_facts();
         assert_eq!(normalize(&built), normalize(original));
     }
+
+    #[test]
+    fn query_builder_prevents_injection() {
+        let malicious_input = r#"test" :- *drop_all[], panic"#;
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{id: $user_input, content: x}")
+            .param("user_input", DataValue::from(malicious_input))
+            .build();
+
+        assert!(
+            !script.contains(malicious_input),
+            "raw malicious input must not appear in script body"
+        );
+        assert!(
+            script.contains("$user_input"),
+            "script must use parameter binding"
+        );
+        assert!(
+            params.contains_key("user_input"),
+            "malicious input must be in params map"
+        );
+    }
+
+    #[test]
+    fn query_builder_all_field_types() {
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{id: $str_val, content: x}")
+            .param("str_val", DataValue::from("hello"))
+            .param("int_val", DataValue::from(42_i64))
+            .param("float_val", DataValue::from(3.14_f64))
+            .param("bool_val", DataValue::from(true))
+            .param("null_val", DataValue::Null)
+            .build();
+
+        assert!(params.contains_key("str_val"));
+        assert!(params.contains_key("int_val"));
+        assert!(params.contains_key("float_val"));
+        assert!(params.contains_key("bool_val"));
+        assert!(params.contains_key("null_val"));
+        assert_eq!(params.len(), 5);
+
+        assert!(
+            !script.contains("hello"),
+            "string literal must not leak into script"
+        );
+        assert!(
+            !script.contains("42"),
+            "int literal must not leak into script"
+        );
+        assert!(
+            !script.contains("3.14"),
+            "float literal must not leak into script"
+        );
+    }
+
+    #[test]
+    fn query_builder_compound_filters() {
+        use FactsField::*;
+        let script = QueryBuilder::new()
+            .scan(Relation::Facts)
+            .select(&[Id, Content, Confidence])
+            .bind(Id)
+            .bind(Content)
+            .bind(Confidence)
+            .bind(NousId)
+            .bind(Tier)
+            .filter("nous_id = $nous_id")
+            .filter("confidence > 0.5")
+            .filter("tier != \"assumed\"")
+            .done()
+            .build_script();
+
+        assert!(script.contains("nous_id = $nous_id"), "first filter");
+        assert!(script.contains("confidence > 0.5"), "second filter");
+        assert!(
+            script.contains("tier != \"assumed\""),
+            "third filter"
+        );
+
+        let filter_count = script.matches(",\n").count();
+        assert!(
+            filter_count >= 3,
+            "filters must be comma-separated in conjunction (got {filter_count})"
+        );
+    }
+
+    #[test]
+    fn query_builder_empty_filter() {
+        use FactsField::*;
+        let script = QueryBuilder::new()
+            .scan(Relation::Facts)
+            .select(&[Id, Content])
+            .bind(Id)
+            .bind(Content)
+            .done()
+            .build_script();
+
+        assert!(script.contains("?[id, content]"), "select list present");
+        assert!(script.contains("*facts{id, content}"), "scan present");
+        assert!(
+            !script.contains(":order"),
+            "no order when not specified"
+        );
+        assert!(
+            !script.contains(":limit"),
+            "no limit when not specified"
+        );
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn query_builder_never_produces_raw_user_input(
+                input in "[a-zA-Z0-9 !@#$%^&*()_+=\\[\\]{};':,./<>?]{1,100}"
+            ) {
+                let (script, params) = QueryBuilder::new()
+                    .raw("?[x] := *facts{id: $user_input, content: x}")
+                    .param("user_input", DataValue::from(input.as_str()))
+                    .build();
+
+                prop_assert!(
+                    !script.contains(&input),
+                    "raw user input must not appear in script: {input}"
+                );
+                prop_assert!(params.contains_key("user_input"));
+            }
+        }
+    }
 }
