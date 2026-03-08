@@ -63,6 +63,7 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::result_large_err)]
 mod tests {
     use super::*;
 
