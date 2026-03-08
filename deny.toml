@@ -9,6 +9,8 @@ exclude = ["aletheia-mneme-engine", "aletheia-integration-tests"]
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "rsa timing side-channel via jsonwebtoken — no safe upgrade, local-only use" },
     { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained — transitive via graph_builder, no safe upgrade" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained — transitive via tonic/qdrant-client, no safe upgrade" },
+    { id = "RUSTSEC-2024-0320", reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
 ]
 
 [licenses]
