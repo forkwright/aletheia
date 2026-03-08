@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
-use redb::ReadableTable;
+use redb::{ReadableDatabase, ReadableTable};
 
 use crate::bail;
 use crate::engine::DbCore;
