@@ -31,13 +31,19 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     crate::metrics::init();
 
     let v1 = Router::new()
-        .route("/sessions", post(sessions::create))
+        .route(
+            "/sessions",
+            get(sessions::list_sessions).post(sessions::create),
+        )
+        .route("/sessions/stream", post(sessions::stream_turn))
         .route(
             "/sessions/{id}",
             get(sessions::get_session).delete(sessions::close),
         )
+        .route("/sessions/{id}/archive", post(sessions::archive))
         .route("/sessions/{id}/messages", post(sessions::send_message))
         .route("/sessions/{id}/history", get(sessions::history))
+        .route("/events", get(sessions::events))
         .route("/nous", get(nous::list))
         .route("/nous/{id}", get(nous::get_status))
         .route("/nous/{id}/tools", get(nous::tools))
