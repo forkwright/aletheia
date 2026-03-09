@@ -57,6 +57,8 @@ pub mod retention;
 /// `SQLite` schema DDL constants.
 #[cfg(feature = "sqlite")]
 pub mod schema;
+/// Skill storage helpers and SKILL.md parser.
+pub mod skill;
 /// `SQLite` session store (WAL mode, prepared statements, transactional writes).
 #[cfg(feature = "sqlite")]
 pub mod store;
