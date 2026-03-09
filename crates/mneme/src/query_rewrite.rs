@@ -103,7 +103,6 @@ impl QueryRewriter {
             }
         };
 
-        #[expect(clippy::cast_possible_truncation, reason = "latency in ms fits in u64")]
         let latency_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
 
         tracing::debug!(
