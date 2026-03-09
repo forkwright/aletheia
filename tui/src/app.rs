@@ -16,6 +16,7 @@ use crate::update::extract_text_content;
 use crate::view;
 
 use crate::state::SavedScrollState;
+use crate::state::virtual_scroll::VirtualScroll;
 #[expect(
     unused_imports,
     reason = "re-exported for downstream modules that import from crate::app"
@@ -68,6 +69,9 @@ pub struct App {
     pub scroll_offset: usize,
     pub auto_scroll: bool,
     pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
+
+    // Virtual scroll — O(viewport) rendering for large message lists
+    pub(crate) virtual_scroll: VirtualScroll,
 
     // Markdown cache — avoid re-parsing on every frame
     pub cached_markdown_text: String,
@@ -141,6 +145,7 @@ impl App {
             scroll_offset: 0,
             auto_scroll: true,
             scroll_states: HashMap::new(),
+            virtual_scroll: VirtualScroll::new(),
             cached_markdown_text: String::new(),
             cached_markdown_lines: Vec::new(),
             tick_count: 0,
@@ -332,6 +337,7 @@ impl App {
                             })
                         })
                         .collect();
+                    self.rebuild_virtual_scroll();
                     self.scroll_to_bottom();
                 }
                 Err(e) => {
@@ -418,6 +424,7 @@ pub(crate) mod test_helpers {
             scroll_offset: 0,
             auto_scroll: true,
             scroll_states: HashMap::new(),
+            virtual_scroll: VirtualScroll::new(),
             cached_markdown_text: String::new(),
             cached_markdown_lines: Vec::new(),
             tick_count: 0,
