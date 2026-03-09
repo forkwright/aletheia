@@ -1791,7 +1791,7 @@ fn seed_skills_cmd(dir: &Path, nous_id: &str, force: bool, dry_run: bool) -> Res
 /// Generate a deterministic pseudo-embedding for seeding (384-dim).
 ///
 /// Uses a simple hash-based approach. Real embeddings come from the
-/// fastembed provider at runtime.
+/// candle embedding provider at runtime.
 fn generate_simple_embedding(text: &str) -> Vec<f32> {
     use sha2::{Digest, Sha256};
     let dim = 384;
