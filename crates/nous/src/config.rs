@@ -32,6 +32,13 @@ pub struct NousConfig {
     /// Server-side tools to include in API requests (e.g., web search).
     #[serde(default)]
     pub server_tools: Vec<aletheia_hermeneus::types::ServerToolDefinition>,
+    /// Whether prompt caching is enabled for this agent.
+    #[serde(default = "default_cache_enabled")]
+    pub cache_enabled: bool,
+}
+
+fn default_cache_enabled() -> bool {
+    true
 }
 
 impl Default for NousConfig {
@@ -49,6 +56,7 @@ impl Default for NousConfig {
             loop_detection_threshold: 3,
             domains: Vec::new(),
             server_tools: Vec::new(),
+            cache_enabled: true,
         }
     }
 }
@@ -187,10 +195,12 @@ mod tests {
             loop_detection_threshold: 5,
             domains: vec!["medical".to_owned()],
             server_tools: Vec::new(),
+            cache_enabled: false,
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.thinking_enabled);
         assert_eq!(config.domains.len(), 1);
+        assert!(!config.cache_enabled);
     }
 
     #[test]

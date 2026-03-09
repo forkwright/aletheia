@@ -246,6 +246,9 @@ pub async fn execute(
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
+            cache_system: config.cache_enabled,
+            cache_tools: config.cache_enabled,
+            cache_turns: config.cache_enabled,
             ..Default::default()
         };
 
@@ -506,6 +509,9 @@ pub async fn execute_streaming(
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
+            cache_system: config.cache_enabled,
+            cache_tools: config.cache_enabled,
+            cache_turns: config.cache_enabled,
             ..Default::default()
         };
 

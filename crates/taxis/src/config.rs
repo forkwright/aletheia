@@ -97,6 +97,8 @@ pub struct AgentDefaults {
     pub allowed_roots: Vec<String>,
     /// Per-tool execution timeout overrides.
     pub tool_timeouts: ToolTimeouts,
+    /// Prompt caching configuration.
+    pub caching: CachingConfig,
 }
 
 impl Default for AgentDefaults {
@@ -113,6 +115,7 @@ impl Default for AgentDefaults {
             max_tool_iterations: 50,
             allowed_roots: Vec::new(),
             tool_timeouts: ToolTimeouts::default(),
+            caching: CachingConfig::default(),
         }
     }
 }
@@ -153,6 +156,26 @@ impl Default for ToolTimeouts {
         Self {
             default_ms: 120_000,
             overrides: HashMap::new(),
+        }
+    }
+}
+
+/// Prompt caching configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CachingConfig {
+    /// Whether prompt caching is enabled.
+    pub enabled: bool,
+    /// Caching strategy: `"auto"` or `"disabled"`.
+    pub strategy: String,
+}
+
+impl Default for CachingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            strategy: "auto".to_owned(),
         }
     }
 }
@@ -590,6 +613,8 @@ pub struct ResolvedNousConfig {
     pub user_timezone: String,
     /// Per-turn timeout in seconds.
     pub timeout_seconds: u32,
+    /// Whether prompt caching is enabled.
+    pub cache_enabled: bool,
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -646,6 +671,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         domains,
         user_timezone: defaults.user_timezone.clone(),
         timeout_seconds: defaults.timeout_seconds,
+        cache_enabled: defaults.caching.enabled && defaults.caching.strategy != "disabled",
     }
 }
 
