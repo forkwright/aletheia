@@ -452,8 +452,11 @@ pub async fn stream_turn(
     let aid = agent_id;
 
     // Bridge nous stream events to webchat events in real-time.
+    // Returns a JoinHandle so the turn task can wait for all deltas to drain
+    // before emitting turn_complete (prevents the race where turn_complete
+    // arrives at the TUI before the final text_delta events).
     let bridge_tx = webchat_tx.clone();
-    tokio::spawn(async move {
+    let bridge_handle = tokio::spawn(async move {
         while let Some(event) = nous_rx.recv().await {
             let webchat_event = match event {
                 TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
@@ -492,13 +495,18 @@ pub async fn stream_turn(
         }
     });
 
-    // Run the turn and emit completion event.
+    // Run the turn, wait for bridge to drain, then emit completion event.
     tokio::spawn(async move {
         match handle
             .send_turn_streaming(&session_key, &message, nous_tx)
             .await
         {
             Ok(result) => {
+                // Wait for the bridge to finish forwarding all buffered deltas
+                // before sending turn_complete. This prevents the TUI from
+                // seeing turn_complete before the final text_delta events.
+                let _ = bridge_handle.await;
+
                 let token_estimate = i64::try_from(result.usage.output_tokens).unwrap_or(0);
                 let _ = webchat_tx
                     .send(WebchatEvent::TurnComplete {
@@ -526,6 +534,7 @@ pub async fn stream_turn(
             }
             Err(err) => {
                 warn!(error = %err, "streaming turn failed");
+                let _ = bridge_handle.await;
                 let _ = webchat_tx
                     .send(WebchatEvent::Error {
                         message: err.to_string(),
@@ -735,11 +744,12 @@ pub struct SendMessageRequest {
 #[serde(rename_all = "camelCase")]
 pub struct StreamTurnRequest {
     /// Target agent ID.
+    #[serde(alias = "agentId")]
     pub agent_id: String,
     /// User message text.
     pub message: String,
     /// Session key for deduplication (defaults to "main").
-    #[serde(default = "default_session_key")]
+    #[serde(alias = "sessionKey", default = "default_session_key")]
     pub session_key: String,
 }
 

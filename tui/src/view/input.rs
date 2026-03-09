@@ -32,9 +32,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let paragraph = Paragraph::new(line).block(block).wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
 
-    // Calculate cursor position with wrapping
+    // Calculate cursor position with wrapping.
+    // Block has Borders::TOP only — no left/right borders consume width,
+    // so the inner content width equals the full area width.
     let prompt_width = prompt_str.len() as u16;
-    let content_width = area.width.saturating_sub(1); // account for possible border
+    let content_width = area.width.max(1);
     let total_offset = prompt_width + app.input.cursor as u16;
     let cursor_y = area.y + 1 + (total_offset / content_width); // +1 for top border
     let cursor_x = area.x + (total_offset % content_width);
