@@ -183,6 +183,8 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::CostLoaded { daily_total_cents } => api::handle_cost_loaded(app, daily_total_cents),
         Msg::AuthResult(_) | Msg::ApiError(_) => {}
         Msg::NewSession => api::handle_new_session(app).await,
+        Msg::SessionPickerNewSession => api::handle_session_picker_new(app).await,
+        Msg::SessionPickerArchive => api::handle_session_picker_archive(app).await,
         Msg::SettingsLoaded(config) => settings::handle_loaded(app, config),
         Msg::SettingsSaved => settings::handle_saved(app),
         Msg::SettingsSaveError(msg) => settings::handle_save_error(app, msg),

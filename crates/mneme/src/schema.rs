@@ -106,7 +106,7 @@ mod tests {
     fn fresh_database_initializes_via_migration() {
         let conn = Connection::open_in_memory().unwrap();
         let result = migration::run_migrations(&conn).unwrap();
-        assert_eq!(result.current_version, 2);
+        assert_eq!(result.current_version, 3);
     }
 
     #[test]
@@ -116,7 +116,7 @@ mod tests {
         migration::run_migrations(&conn).unwrap();
 
         let version = migration::get_schema_version(&conn);
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]

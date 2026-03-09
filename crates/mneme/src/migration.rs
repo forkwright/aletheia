@@ -47,6 +47,12 @@ CREATE INDEX IF NOT EXISTS idx_blackboard_key ON blackboard(key);
 CREATE INDEX IF NOT EXISTS idx_blackboard_expires ON blackboard(expires_at);",
         down: "DROP TABLE IF EXISTS blackboard;",
     },
+    Migration {
+        version: 3,
+        description: "sessions display_name — user-set friendly name for sessions",
+        up: "ALTER TABLE sessions ADD COLUMN display_name TEXT;",
+        down: "ALTER TABLE sessions DROP COLUMN display_name;",
+    },
 ];
 
 /// Outcome of a migration run.
@@ -215,8 +221,8 @@ mod tests {
         let result = run_migrations(&conn).unwrap();
 
         assert!(result.was_fresh);
-        assert_eq!(result.applied, vec![1, 2]);
-        assert_eq!(result.current_version, 2);
+        assert_eq!(result.applied, vec![1, 2, 3]);
+        assert_eq!(result.current_version, 3);
     }
 
     #[test]
@@ -227,7 +233,7 @@ mod tests {
         let result = run_migrations(&conn).unwrap();
         assert!(!result.was_fresh);
         assert!(result.applied.is_empty());
-        assert_eq!(result.current_version, 2);
+        assert_eq!(result.current_version, 3);
     }
 
     #[test]
@@ -253,7 +259,7 @@ mod tests {
         bootstrap_version_table(&conn).unwrap();
 
         let pending = check_migrations(&conn).unwrap();
-        assert_eq!(pending.len(), 2);
+        assert_eq!(pending.len(), 3);
         assert_eq!(pending[0].version, 1);
 
         // Verify nothing was applied
@@ -357,11 +363,11 @@ mod tests {
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
             .unwrap();
 
-        // Running migrations should detect existing v1 and apply v2
+        // Running migrations should detect existing v1 and apply v2+v3
         let result = run_migrations(&conn).unwrap();
         assert!(!result.was_fresh);
-        assert_eq!(result.applied, vec![2]);
-        assert_eq!(result.current_version, 2);
+        assert_eq!(result.applied, vec![2, 3]);
+        assert_eq!(result.current_version, 3);
 
         // description column should have been added
         assert!(has_description_column(&conn));

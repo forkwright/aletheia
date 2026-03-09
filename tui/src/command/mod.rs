@@ -38,7 +38,7 @@ pub static COMMANDS: &[Command] = &[
         aliases: &["s"],
         description: "List sessions for current agent",
         category: CommandCategory::Navigation,
-        shortcut: None,
+        shortcut: Some("Ctrl+S"),
     },
     Command {
         name: "agents",
@@ -115,6 +115,34 @@ pub static COMMANDS: &[Command] = &[
         aliases: &[],
         description: "Open settings",
         category: CommandCategory::Navigation,
+        shortcut: None,
+    },
+    Command {
+        name: "new",
+        aliases: &[],
+        description: "New conversation",
+        category: CommandCategory::Action,
+        shortcut: Some("Ctrl+N"),
+    },
+    Command {
+        name: "rename",
+        aliases: &[],
+        description: "Rename current session",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
+    Command {
+        name: "archive",
+        aliases: &[],
+        description: "Archive current session",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
+    Command {
+        name: "unarchive",
+        aliases: &[],
+        description: "Restore archived session",
+        category: CommandCategory::Action,
         shortcut: None,
     },
 ];
@@ -302,5 +330,36 @@ mod tests {
         let results = filter_commands("help");
         let help = results.iter().find(|r| r.label == "help").unwrap();
         assert_eq!(help.shortcut, Some("F1"));
+    }
+
+    #[test]
+    fn sessions_command_has_ctrl_s_shortcut() {
+        let results = filter_commands("sessions");
+        let cmd = results.iter().find(|r| r.label == "sessions").unwrap();
+        assert_eq!(cmd.shortcut, Some("Ctrl+S"));
+    }
+
+    #[test]
+    fn new_command_exists() {
+        let results = filter_commands("new");
+        assert!(results.iter().any(|r| r.label == "new"));
+    }
+
+    #[test]
+    fn rename_command_exists() {
+        let results = filter_commands("rename");
+        assert!(results.iter().any(|r| r.label == "rename"));
+    }
+
+    #[test]
+    fn archive_command_exists() {
+        let results = filter_commands("archive");
+        assert!(results.iter().any(|r| r.label == "archive"));
+    }
+
+    #[test]
+    fn unarchive_command_exists() {
+        let results = filter_commands("unarchive");
+        assert!(results.iter().any(|r| r.label == "unarchive"));
     }
 }

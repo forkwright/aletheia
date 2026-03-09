@@ -2,7 +2,7 @@ use crate::app::App;
 use crate::command::build_suggestions;
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
-use crate::state::Overlay;
+use crate::state::{Overlay, SessionPickerOverlay};
 
 #[tracing::instrument(skip_all)]
 pub fn handle_open(app: &mut App) {
@@ -142,8 +142,15 @@ async fn execute_command(app: &mut App) {
         "help" | "?" => {
             app.overlay = Some(Overlay::Help);
         }
-        "agents" | "a" | "sessions" | "s" => {
+        "agents" | "a" => {
             app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+        }
+        "sessions" | "s" => {
+            let show_archived = args == "--all" || args == "-a";
+            app.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
+                cursor: 0,
+                show_archived,
+            }));
         }
         "health" | "h" | "cost" | "$" => {
             app.overlay = Some(Overlay::SystemStatus);
@@ -191,6 +198,22 @@ async fn execute_command(app: &mut App) {
         }
         "model" => {
             execute_model(app);
+        }
+        "new" => {
+            super::api::handle_new_session(app).await;
+        }
+        "rename" => {
+            if args.is_empty() {
+                app.error_toast = Some(ErrorToast::new("Usage: :rename <name>".into()));
+            } else {
+                execute_rename(app, args).await;
+            }
+        }
+        "archive" => {
+            execute_archive(app).await;
+        }
+        "unarchive" => {
+            execute_unarchive(app).await;
         }
         "settings" => {
             super::settings::handle_open(app).await;
@@ -263,6 +286,93 @@ async fn execute_recall(app: &mut App, query: &str) {
         }
         Err(e) => {
             app.error_toast = Some(ErrorToast::new(format!("Recall failed: {e}")));
+        }
+    }
+}
+
+async fn execute_rename(app: &mut App, name: &str) {
+    let session_id = match &app.focused_session_id {
+        Some(id) => id.clone(),
+        None => {
+            app.error_toast = Some(ErrorToast::new("No active session to rename".into()));
+            return;
+        }
+    };
+
+    let client = app.client.clone();
+    let name = sanitize_for_display(name).into_owned();
+    let name_for_update = name.clone();
+    let sid = session_id.clone();
+    match client.rename_session(&sid, &name_for_update).await {
+        Ok(()) => {
+            if let Some(ref agent_id) = app.focused_agent {
+                if let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id) {
+                    if let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id) {
+                        session.display_name = Some(name.clone());
+                    }
+                }
+            }
+            app.error_toast = Some(ErrorToast::new(format!("Renamed to: {name}")));
+        }
+        Err(e) => {
+            app.error_toast = Some(ErrorToast::new(format!("Rename failed: {e}")));
+        }
+    }
+}
+
+async fn execute_archive(app: &mut App) {
+    let session_id = match &app.focused_session_id {
+        Some(id) => id.clone(),
+        None => {
+            app.error_toast = Some(ErrorToast::new("No active session to archive".into()));
+            return;
+        }
+    };
+
+    let client = app.client.clone();
+    match client.archive_session(&session_id).await {
+        Ok(()) => {
+            if let Some(ref agent_id) = app.focused_agent {
+                if let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id) {
+                    if let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id) {
+                        session.status = Some("archived".to_string());
+                    }
+                }
+            }
+            app.messages.clear();
+            app.focused_session_id = None;
+            app.scroll_to_bottom();
+            app.error_toast = Some(ErrorToast::new("Session archived".into()));
+        }
+        Err(e) => {
+            app.error_toast = Some(ErrorToast::new(format!("Archive failed: {e}")));
+        }
+    }
+}
+
+async fn execute_unarchive(app: &mut App) {
+    let session_id = match &app.focused_session_id {
+        Some(id) => id.clone(),
+        None => {
+            app.error_toast = Some(ErrorToast::new("No active session to unarchive".into()));
+            return;
+        }
+    };
+
+    let client = app.client.clone();
+    match client.unarchive_session(&session_id).await {
+        Ok(()) => {
+            if let Some(ref agent_id) = app.focused_agent {
+                if let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id) {
+                    if let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id) {
+                        session.status = Some("active".to_string());
+                    }
+                }
+            }
+            app.error_toast = Some(ErrorToast::new("Session restored".into()));
+        }
+        Err(e) => {
+            app.error_toast = Some(ErrorToast::new(format!("Unarchive failed: {e}")));
         }
     }
 }

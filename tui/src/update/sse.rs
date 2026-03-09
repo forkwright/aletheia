@@ -275,6 +275,7 @@ mod tests {
             message_count: 0,
             session_type: None,
             updated_at: None,
+            display_name: None,
         });
 
         handle_sse_session_archived(&mut app, "syn".into(), "s1".into());

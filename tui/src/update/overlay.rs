@@ -2,7 +2,7 @@ use tracing::Instrument;
 
 use crate::app::App;
 use crate::msg::OverlayKind;
-use crate::state::Overlay;
+use crate::state::{Overlay, SessionPickerOverlay};
 
 pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
     match kind {
@@ -13,6 +13,14 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
             app.overlay = Some(match other {
                 OverlayKind::Help => Overlay::Help,
                 OverlayKind::AgentPicker => Overlay::AgentPicker { cursor: 0 },
+                OverlayKind::SessionPicker => Overlay::SessionPicker(SessionPickerOverlay {
+                    cursor: 0,
+                    show_archived: false,
+                }),
+                OverlayKind::SessionPickerAll => Overlay::SessionPicker(SessionPickerOverlay {
+                    cursor: 0,
+                    show_archived: true,
+                }),
                 OverlayKind::SystemStatus => Overlay::SystemStatus,
                 OverlayKind::Settings => unreachable!(),
             });
@@ -63,6 +71,9 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
         Some(Overlay::AgentPicker { cursor }) => {
             *cursor = cursor.saturating_sub(1);
         }
+        Some(Overlay::SessionPicker(picker)) => {
+            picker.cursor = picker.cursor.saturating_sub(1);
+        }
         Some(Overlay::PlanApproval(plan)) => {
             plan.cursor = plan.cursor.saturating_sub(1);
         }
@@ -81,6 +92,15 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
         Some(Overlay::AgentPicker { cursor }) => {
             let max = app.agents.len().saturating_sub(1);
             *cursor = (*cursor + 1).min(max);
+        }
+        Some(Overlay::SessionPicker(picker)) => {
+            let show_archived = picker.show_archived;
+            let cursor = picker.cursor;
+            let count = visible_session_count(app, show_archived);
+            let max = count.saturating_sub(1);
+            if let Some(Overlay::SessionPicker(picker)) = &mut app.overlay {
+                picker.cursor = (cursor + 1).min(max);
+            }
         }
         Some(Overlay::PlanApproval(plan)) => {
             let max = plan.steps.len().saturating_sub(1);
@@ -106,6 +126,48 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
                 app.focused_agent = Some(id);
                 app.overlay = None;
                 app.load_focused_session().await;
+            }
+        }
+        Some(Overlay::SessionPicker(picker)) => {
+            let cursor = picker.cursor;
+            let show_archived = picker.show_archived;
+            if let Some(session_id) = pick_session_id(app, cursor, show_archived) {
+                app.save_scroll_state();
+                app.focused_session_id = Some(session_id.clone());
+                app.overlay = None;
+                match app.client.history(&session_id).await {
+                    Ok(history) => {
+                        app.messages = history
+                            .into_iter()
+                            .filter_map(|m| {
+                                if m.role != "user" && m.role != "assistant" {
+                                    return None;
+                                }
+                                let text = crate::update::extract_text_content(&m.content)?;
+                                use crate::sanitize::sanitize_for_display;
+                                let text = sanitize_for_display(&text).into_owned();
+                                let text_lower = text.to_lowercase();
+                                Some(crate::state::ChatMessage {
+                                    role: sanitize_for_display(&m.role).into_owned(),
+                                    text,
+                                    text_lower,
+                                    timestamp: m
+                                        .created_at
+                                        .map(|t| sanitize_for_display(&t).into_owned()),
+                                    model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
+                                    is_streaming: false,
+                                    tool_calls: Vec::new(),
+                                })
+                            })
+                            .collect();
+                        app.scroll_to_bottom();
+                    }
+                    Err(e) => {
+                        tracing::error!("failed to load history: {e}");
+                        app.error_toast =
+                            Some(crate::msg::ErrorToast::new(format!("Load failed: {e}")));
+                    }
+                }
             }
         }
         Some(Overlay::ToolApproval(approval)) => {
@@ -151,6 +213,45 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             app.overlay = None;
         }
     }
+}
+
+pub(crate) fn visible_session_count(app: &App, show_archived: bool) -> usize {
+    let agent_id = match &app.focused_agent {
+        Some(id) => id,
+        None => return 0,
+    };
+    let agent = match app.agents.iter().find(|a| &a.id == agent_id) {
+        Some(a) => a,
+        None => return 0,
+    };
+    if show_archived {
+        agent.sessions.len()
+    } else {
+        agent.sessions.iter().filter(|s| s.is_interactive()).count()
+    }
+}
+
+pub(crate) fn pick_session_id_pub(
+    app: &App,
+    cursor: usize,
+    show_archived: bool,
+) -> Option<crate::id::SessionId> {
+    pick_session_id(app, cursor, show_archived)
+}
+
+fn pick_session_id(app: &App, cursor: usize, show_archived: bool) -> Option<crate::id::SessionId> {
+    let agent_id = app.focused_agent.as_ref()?;
+    let agent = app.agents.iter().find(|a| &a.id == agent_id)?;
+    let sessions: Vec<_> = if show_archived {
+        agent.sessions.iter().collect()
+    } else {
+        agent
+            .sessions
+            .iter()
+            .filter(|s| s.is_interactive())
+            .collect()
+    };
+    sessions.get(cursor).map(|s| s.id.clone())
 }
 
 #[cfg(test)]
@@ -262,6 +363,172 @@ mod tests {
         if let Some(Overlay::AgentPicker { cursor }) = &app.overlay {
             assert_eq!(*cursor, 0);
         }
+    }
+
+    fn test_session(id: &str, key: &str) -> crate::api::types::Session {
+        crate::api::types::Session {
+            id: id.into(),
+            nous_id: "syn".into(),
+            key: key.to_string(),
+            status: None,
+            message_count: 0,
+            session_type: None,
+            updated_at: None,
+            display_name: None,
+        }
+    }
+
+    fn test_session_archived(id: &str, key: &str) -> crate::api::types::Session {
+        crate::api::types::Session {
+            status: Some("archived".to_string()),
+            ..test_session(id, key)
+        }
+    }
+
+    #[tokio::test]
+    async fn open_overlay_session_picker() {
+        let mut app = test_app();
+        handle_open_overlay(&mut app, OverlayKind::SessionPicker).await;
+        if let Some(Overlay::SessionPicker(picker)) = &app.overlay {
+            assert_eq!(picker.cursor, 0);
+            assert!(!picker.show_archived);
+        } else {
+            panic!("expected SessionPicker overlay");
+        }
+    }
+
+    #[test]
+    fn session_picker_up_saturates_at_zero() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
+            cursor: 0,
+            show_archived: false,
+        }));
+        handle_overlay_up(&mut app);
+        if let Some(Overlay::SessionPicker(picker)) = &app.overlay {
+            assert_eq!(picker.cursor, 0);
+        }
+    }
+
+    #[test]
+    fn session_picker_up_decrements() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
+            cursor: 2,
+            show_archived: false,
+        }));
+        handle_overlay_up(&mut app);
+        if let Some(Overlay::SessionPicker(picker)) = &app.overlay {
+            assert_eq!(picker.cursor, 1);
+        }
+    }
+
+    #[test]
+    fn session_picker_down_clamps_at_max() {
+        let mut app = test_app();
+        let mut agent = test_agent("syn", "Syn");
+        agent.sessions.push(test_session("s1", "main"));
+        agent.sessions.push(test_session("s2", "debug"));
+        app.agents.push(agent);
+        app.focused_agent = Some("syn".into());
+        app.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
+            cursor: 1,
+            show_archived: false,
+        }));
+        handle_overlay_down(&mut app);
+        if let Some(Overlay::SessionPicker(picker)) = &app.overlay {
+            assert_eq!(picker.cursor, 1);
+        }
+    }
+
+    #[test]
+    fn session_picker_down_increments() {
+        let mut app = test_app();
+        let mut agent = test_agent("syn", "Syn");
+        agent.sessions.push(test_session("s1", "main"));
+        agent.sessions.push(test_session("s2", "debug"));
+        agent.sessions.push(test_session("s3", "test"));
+        app.agents.push(agent);
+        app.focused_agent = Some("syn".into());
+        app.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
+            cursor: 0,
+            show_archived: false,
+        }));
+        handle_overlay_down(&mut app);
+        if let Some(Overlay::SessionPicker(picker)) = &app.overlay {
+            assert_eq!(picker.cursor, 1);
+        }
+    }
+
+    #[test]
+    fn visible_session_count_filters_non_interactive() {
+        let mut app = test_app();
+        let mut agent = test_agent("syn", "Syn");
+        agent.sessions.push(test_session("s1", "main"));
+        agent.sessions.push(test_session("s2", "cron:daily"));
+        agent.sessions.push(test_session("s3", "prosoche-wake"));
+        agent.sessions.push(test_session("s4", "agent:sub"));
+        agent.sessions.push(test_session("s5", "debug"));
+        app.agents.push(agent);
+        app.focused_agent = Some("syn".into());
+
+        assert_eq!(visible_session_count(&app, false), 2);
+        assert_eq!(visible_session_count(&app, true), 5);
+    }
+
+    #[test]
+    fn visible_session_count_no_focused_agent() {
+        let app = test_app();
+        assert_eq!(visible_session_count(&app, false), 0);
+    }
+
+    #[test]
+    fn pick_session_id_returns_correct_session() {
+        let mut app = test_app();
+        let mut agent = test_agent("syn", "Syn");
+        agent.sessions.push(test_session("s1", "main"));
+        agent.sessions.push(test_session("s2", "debug"));
+        app.agents.push(agent);
+        app.focused_agent = Some("syn".into());
+
+        assert_eq!(pick_session_id(&app, 0, false).as_deref(), Some("s1"));
+        assert_eq!(pick_session_id(&app, 1, false).as_deref(), Some("s2"));
+        assert!(pick_session_id(&app, 5, false).is_none());
+    }
+
+    #[test]
+    fn pick_session_id_no_focused_agent_returns_none() {
+        let app = test_app();
+        assert!(pick_session_id(&app, 0, false).is_none());
+    }
+
+    #[test]
+    fn pick_session_id_skips_non_interactive_when_not_showing_archived() {
+        let mut app = test_app();
+        let mut agent = test_agent("syn", "Syn");
+        agent.sessions.push(test_session("s1", "cron:daily"));
+        agent.sessions.push(test_session("s2", "main"));
+        app.agents.push(agent);
+        app.focused_agent = Some("syn".into());
+
+        // cursor 0 should be "main" (only interactive session)
+        assert_eq!(pick_session_id(&app, 0, false).as_deref(), Some("s2"));
+        // with show_archived, cursor 0 is "cron:daily"
+        assert_eq!(pick_session_id(&app, 0, true).as_deref(), Some("s1"));
+    }
+
+    #[test]
+    fn visible_session_count_includes_archived_when_show_all() {
+        let mut app = test_app();
+        let mut agent = test_agent("syn", "Syn");
+        agent.sessions.push(test_session("s1", "main"));
+        agent.sessions.push(test_session_archived("s2", "old"));
+        app.agents.push(agent);
+        app.focused_agent = Some("syn".into());
+
+        // Archived sessions are not interactive
+        assert_eq!(visible_session_count(&app, false), 1);
+        assert_eq!(visible_session_count(&app, true), 2);
     }
 
     #[test]

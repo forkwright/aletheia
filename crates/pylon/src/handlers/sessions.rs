@@ -119,6 +119,7 @@ pub async fn list_sessions(
             status: s.status.as_str().to_owned(),
             message_count: s.message_count,
             updated_at: s.updated_at,
+            display_name: s.display_name,
         })
         .collect();
 
@@ -200,6 +201,71 @@ async fn archive_session_by_id(state: &Arc<AppState>, id: &str) -> Result<Status
     .await??;
 
     info!(session_id = %id, "session archived");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/v1/sessions/{id}/unarchive — reactivate an archived session.
+#[instrument(skip(state, _claims))]
+pub async fn unarchive(
+    State(state): State<Arc<AppState>>,
+    _claims: Claims,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let _ = find_session(&state, &id).await?;
+
+    let state_clone = Arc::clone(&state);
+    let id_clone = id.clone();
+    tokio::task::spawn_blocking(move || {
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .update_session_status(&id_clone, SessionStatus::Active)
+            .map_err(ApiError::from)
+    })
+    .await??;
+
+    info!(session_id = %id, "session unarchived");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// PUT /api/v1/sessions/{id}/name — rename a session.
+#[instrument(skip(state, _claims, body))]
+pub async fn rename(
+    State(state): State<Arc<AppState>>,
+    _claims: Claims,
+    Path(id): Path<String>,
+    Json(body): Json<RenameSessionRequest>,
+) -> Result<StatusCode, ApiError> {
+    let _ = find_session(&state, &id).await?;
+
+    if body.name.is_empty() {
+        return Err(BadRequestSnafu {
+            message: "name must not be empty",
+        }
+        .build());
+    }
+
+    let state_clone = Arc::clone(&state);
+    let id_clone = id.clone();
+    let name = body.name;
+    tokio::task::spawn_blocking(move || {
+        let store = state_clone.session_store.lock().map_err(|_poison| {
+            InternalSnafu {
+                message: "session store lock poisoned",
+            }
+            .build()
+        })?;
+        store
+            .update_display_name(&id_clone, &name)
+            .map_err(ApiError::from)
+    })
+    .await??;
+
+    info!(session_id = %id, "session renamed");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -732,6 +798,12 @@ pub struct CreateSessionRequest {
     pub session_key: String,
 }
 
+/// Body for `PUT /api/v1/sessions/{id}/name`.
+#[derive(Debug, Deserialize)]
+pub struct RenameSessionRequest {
+    pub name: String,
+}
+
 /// Body for `POST /api/v1/sessions/{id}/messages`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SendMessageRequest {
@@ -790,6 +862,8 @@ pub struct SessionListItem {
     pub status: String,
     pub message_count: i64,
     pub updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 /// Session metadata returned by create and get endpoints.

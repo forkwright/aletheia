@@ -146,6 +146,8 @@ pub struct Session {
     pub thread_id: Option<String>,
     /// Transport layer that originated this session.
     pub transport: Option<String>,
+    /// Human-readable display name set by the user.
+    pub display_name: Option<String>,
     /// ISO 8601 timestamp when the session was created.
     pub created_at: String,
     /// ISO 8601 timestamp of the last update.
@@ -305,6 +307,7 @@ mod tests {
             computed_context_tokens: 3000,
             thread_id: None,
             transport: Some("signal".to_owned()),
+            display_name: Some("My Session".to_owned()),
             created_at: "2026-02-28T00:00:00Z".to_owned(),
             updated_at: "2026-02-28T01:00:00Z".to_owned(),
         };
@@ -313,6 +316,7 @@ mod tests {
         assert_eq!(session.id, back.id);
         assert_eq!(session.status, back.status);
         assert_eq!(session.session_type, back.session_type);
+        assert_eq!(session.display_name, back.display_name);
     }
 
     #[test]

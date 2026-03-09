@@ -25,6 +25,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         Overlay::AgentPicker { cursor } => {
             render_agent_picker(app, frame, popup_area, *cursor, theme)
         }
+        Overlay::SessionPicker(picker) => {
+            render_session_picker(app, frame, popup_area, picker, theme)
+        }
         Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval, theme),
         Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
         Overlay::ContextActions(ctx) => {
@@ -155,6 +158,114 @@ fn render_agent_picker(
     ]));
 
     let block = overlay_block("Switch Agent", theme);
+    let paragraph = Paragraph::new(lines).block(block);
+    frame.render_widget(paragraph, area);
+}
+
+fn render_session_picker(
+    app: &App,
+    frame: &mut Frame,
+    area: Rect,
+    picker: &crate::state::SessionPickerOverlay,
+    theme: &ThemePalette,
+) {
+    let agent_id = app.focused_agent.as_ref();
+    let agent = agent_id.and_then(|id| app.agents.iter().find(|a| &a.id == id));
+
+    let sessions: Vec<_> = match agent {
+        Some(a) => {
+            if picker.show_archived {
+                a.sessions.iter().collect()
+            } else {
+                a.sessions.iter().filter(|s| s.is_interactive()).collect()
+            }
+        }
+        None => Vec::new(),
+    };
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::raw(""));
+
+    if sessions.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No sessions found",
+            theme.style_muted(),
+        )));
+    }
+
+    for (i, session) in sessions.iter().enumerate() {
+        let selected = i == picker.cursor;
+        let marker = if selected { "▸" } else { " " };
+        let is_current = app.focused_session_id.as_ref() == Some(&session.id);
+
+        let style = if selected {
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else if is_current {
+            Style::default().fg(theme.accent)
+        } else {
+            theme.style_fg()
+        };
+
+        let label = session.label();
+        let archived_tag = if session.is_archived() {
+            " [archived]"
+        } else {
+            ""
+        };
+
+        lines.push(Line::from(vec![
+            Span::raw(format!("  {} ", marker)),
+            Span::styled(label, style),
+            Span::styled(archived_tag, theme.style_dim()),
+            Span::styled(
+                format!("  ({} msgs)", session.message_count),
+                theme.style_dim(),
+            ),
+        ]));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" switch  ", theme.style_muted()),
+        Span::styled(
+            "n",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("ew  ", theme.style_muted()),
+        Span::styled(
+            "d",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("elete  ", theme.style_muted()),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(theme.fg_dim)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" cancel", theme.style_muted()),
+    ]));
+
+    let agent_name = agent.map(|a| a.name.as_str()).unwrap_or("?");
+    let title = if picker.show_archived {
+        format!("Sessions — {} (all)", agent_name)
+    } else {
+        format!("Sessions — {}", agent_name)
+    };
+    let block = overlay_block(&title, theme);
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 }

@@ -248,6 +248,7 @@ mod tests {
             computed_context_tokens: 0,
             thread_id: None,
             transport: None,
+            display_name: None,
             created_at: String::new(),
             updated_at: String::new(),
         };

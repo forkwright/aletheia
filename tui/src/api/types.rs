@@ -41,6 +41,29 @@ pub struct Session {
     pub session_type: Option<String>,
     #[serde(rename = "updatedAt", default)]
     pub updated_at: Option<String>,
+    #[serde(rename = "displayName", default)]
+    pub display_name: Option<String>,
+}
+
+impl Session {
+    pub fn label(&self) -> &str {
+        self.display_name
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&self.key)
+    }
+
+    pub fn is_archived(&self) -> bool {
+        self.status.as_deref() == Some("archived") || self.key.contains(":archived:")
+    }
+
+    pub fn is_interactive(&self) -> bool {
+        !self.is_archived()
+            && self.session_type.as_deref() != Some("background")
+            && !self.key.starts_with("cron:")
+            && !self.key.starts_with("prosoche")
+            && !self.key.starts_with("agent:")
+    }
 }
 
 // --- History ---
@@ -418,5 +441,96 @@ mod tests {
         let entry: DailyEntry = serde_json::from_str(json).unwrap();
         assert_eq!(entry.date, "2025-01-01");
         assert!((entry.cost - 1.50).abs() < f64::EPSILON);
+    }
+
+    fn make_session(key: &str) -> Session {
+        Session {
+            id: "s1".into(),
+            nous_id: "syn".into(),
+            key: key.to_string(),
+            status: None,
+            message_count: 0,
+            session_type: None,
+            updated_at: None,
+            display_name: None,
+        }
+    }
+
+    #[test]
+    fn session_label_uses_display_name_when_set() {
+        let mut s = make_session("main");
+        s.display_name = Some("My Chat".to_string());
+        assert_eq!(s.label(), "My Chat");
+    }
+
+    #[test]
+    fn session_label_falls_back_to_key() {
+        let s = make_session("debug-session");
+        assert_eq!(s.label(), "debug-session");
+    }
+
+    #[test]
+    fn session_label_ignores_empty_display_name() {
+        let mut s = make_session("main");
+        s.display_name = Some(String::new());
+        assert_eq!(s.label(), "main");
+    }
+
+    #[test]
+    fn session_is_archived_by_status() {
+        let mut s = make_session("main");
+        assert!(!s.is_archived());
+        s.status = Some("archived".to_string());
+        assert!(s.is_archived());
+    }
+
+    #[test]
+    fn session_is_archived_by_key_pattern() {
+        let s = make_session("foo:archived:bar");
+        assert!(s.is_archived());
+    }
+
+    #[test]
+    fn session_is_interactive_normal() {
+        let s = make_session("main");
+        assert!(s.is_interactive());
+    }
+
+    #[test]
+    fn session_is_not_interactive_background() {
+        let mut s = make_session("bg");
+        s.session_type = Some("background".to_string());
+        assert!(!s.is_interactive());
+    }
+
+    #[test]
+    fn session_is_not_interactive_cron() {
+        let s = make_session("cron:daily");
+        assert!(!s.is_interactive());
+    }
+
+    #[test]
+    fn session_is_not_interactive_prosoche() {
+        let s = make_session("prosoche-wake");
+        assert!(!s.is_interactive());
+    }
+
+    #[test]
+    fn session_is_not_interactive_agent_prefix() {
+        let s = make_session("agent:sub-task");
+        assert!(!s.is_interactive());
+    }
+
+    #[test]
+    fn session_deserialization_with_display_name() {
+        let json = r#"{
+            "id": "s1",
+            "nousId": "syn",
+            "sessionKey": "main",
+            "displayName": "My Chat"
+        }"#;
+        let session: Session = serde_json::from_str(json).unwrap();
+        assert_eq!(session.display_name.as_deref(), Some("My Chat"));
+        assert_eq!(session.label(), "My Chat");
     }
 }

@@ -409,6 +409,8 @@ pub struct SessionInfo {
     pub status: String,
     pub message_count: i64,
     pub updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 #[instrument(skip(state, _claims))]
@@ -442,6 +444,7 @@ pub async fn sessions_list(
             status: s.status.as_str().to_owned(),
             message_count: s.message_count,
             updated_at: s.updated_at,
+            display_name: s.display_name,
         })
         .collect();
 
@@ -567,6 +570,7 @@ mod tests {
             status: "active".to_owned(),
             message_count: 5,
             updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            display_name: None,
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert!(json.get("nousId").is_some());

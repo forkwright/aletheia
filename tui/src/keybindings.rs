@@ -351,6 +351,12 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             show_in_status_bar: false,
         },
         Keybinding {
+            keys: "Ctrl+S",
+            description: "Session list",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
             keys: "Ctrl+C/Q",
             description: "Quit",
             contexts: &[KeyContext::Global],
@@ -467,6 +473,7 @@ pub fn context_label(app: &App) -> &'static str {
             }
         }
         Some(Overlay::AgentPicker { .. }) => "Agent Picker",
+        Some(Overlay::SessionPicker(_)) => "Session List",
         Some(Overlay::ToolApproval(_)) => "Tool Approval",
         Some(Overlay::PlanApproval(_)) => "Plan Approval",
         Some(Overlay::SystemStatus) => "System Status",

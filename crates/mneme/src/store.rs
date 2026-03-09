@@ -224,6 +224,18 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Update session display name.
+    #[instrument(skip(self))]
+    pub fn update_display_name(&self, id: &str, display_name: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE sessions SET display_name = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?2",
+                rusqlite::params![display_name, id],
+            )
+            .context(error::DatabaseSnafu)?;
+        Ok(())
+    }
+
     // --- Messages ---
 
     /// Append a message to a session. Returns the sequence number.
@@ -698,6 +710,7 @@ fn map_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
         computed_context_tokens: row.get("computed_context_tokens")?,
         thread_id: row.get("thread_id")?,
         transport: row.get("transport")?,
+        display_name: row.get("display_name")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
@@ -1657,5 +1670,35 @@ mod tests {
         assert_eq!(notes[0].content, "note alpha");
         assert_eq!(notes[1].content, "note beta");
         assert_eq!(notes[2].content, "note gamma");
+    }
+
+    #[test]
+    fn update_display_name_sets_name() {
+        let store = test_store();
+        store
+            .create_session("ses-1", "syn", "main", None, None)
+            .unwrap();
+
+        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        assert!(session.display_name.is_none());
+
+        store.update_display_name("ses-1", "My Chat").unwrap();
+
+        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        assert_eq!(session.display_name.as_deref(), Some("My Chat"));
+    }
+
+    #[test]
+    fn update_display_name_overwrites_previous() {
+        let store = test_store();
+        store
+            .create_session("ses-1", "syn", "main", None, None)
+            .unwrap();
+
+        store.update_display_name("ses-1", "First").unwrap();
+        store.update_display_name("ses-1", "Second").unwrap();
+
+        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        assert_eq!(session.display_name.as_deref(), Some("Second"));
     }
 }

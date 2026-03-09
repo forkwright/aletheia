@@ -194,10 +194,6 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    #[expect(
-        dead_code,
-        reason = "reserved for session archive action in command palette"
-    )]
     #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -210,6 +206,37 @@ impl ApiClient {
         .context("failed to archive session")?
         .error_for_status_ref()
         .context("archive request failed")?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn unarchive_session(&self, session_id: &str) -> Result<()> {
+        let encoded = encode_path(session_id);
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/v1/sessions/{encoded}/unarchive"),
+        )
+        .send()
+        .await
+        .context("failed to unarchive session")?
+        .error_for_status_ref()
+        .context("unarchive request failed")?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn rename_session(&self, session_id: &str, name: &str) -> Result<()> {
+        let encoded = encode_path(session_id);
+        self.request(
+            reqwest::Method::PUT,
+            &format!("/api/v1/sessions/{encoded}/name"),
+        )
+        .json(&serde_json::json!({ "name": name }))
+        .send()
+        .await
+        .context("failed to rename session")?
+        .error_for_status_ref()
+        .context("rename request failed")?;
         Ok(())
     }
 
