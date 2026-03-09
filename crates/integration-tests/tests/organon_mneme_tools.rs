@@ -43,9 +43,11 @@ fn test_store() -> Arc<Mutex<SessionStore>> {
 fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
     let session_id = SessionId::new();
     {
-        let s = store.blocking_lock();
-        s.create_session(&session_id.to_string(), "alice", "test-key", None, None)
-            .expect("create session");
+        tokio::task::block_in_place(|| {
+            let s = tokio::runtime::Handle::current().block_on(store.lock());
+            s.create_session(&session_id.to_string(), "alice", "test-key", None, None)
+                .expect("create session");
+        });
     }
     let note_adapter = Arc::new(SessionNoteAdapter(Arc::clone(store)));
     let bb_adapter = Arc::new(SessionBlackboardAdapter(Arc::clone(store)));

@@ -10,6 +10,7 @@ pub(crate) mod diff;
 pub(crate) mod error;
 mod events;
 mod highlight;
+mod hyperlink;
 mod id;
 mod keybindings;
 mod mapping;
@@ -22,6 +23,10 @@ mod update;
 mod view;
 
 use crossterm::event::EventStream;
+use crossterm::{
+    cursor,
+    style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor},
+};
 use futures_util::StreamExt;
 use ratatui::DefaultTerminal;
 use snafu::prelude::*;
@@ -32,6 +37,7 @@ use crate::app::App;
 use crate::config::Config;
 use crate::error::{IoSnafu, LogDirectiveSnafu};
 use crate::events::Event;
+use crate::hyperlink::OscLink;
 
 /// Entry point for the TUI, callable from the main `aletheia` binary or standalone.
 ///
@@ -103,9 +109,26 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
-        terminal.draw(|frame| app.view(frame)).context(IoSnafu {
-            context: "terminal draw",
-        })?;
+        // Capture OSC 8 link data produced during the render pass.
+        // We use Cell so the draw closure can move data out without needing &mut app.
+        let link_cell: std::cell::Cell<Vec<hyperlink::OscLink>> = std::cell::Cell::new(Vec::new());
+        terminal
+            .draw(|frame| link_cell.set(app.view(frame)))
+            .context(IoSnafu {
+                context: "terminal draw",
+            })?;
+        let osc_links = link_cell.into_inner();
+
+        // Post-render: emit OSC 8 sequences over the already-rendered text.
+        // This works because OSC 8 is independent of visual rendering —
+        // we re-write the link text at its exact screen position wrapped in
+        // OSC 8 open/close sequences, which tells the terminal those cells
+        // are a clickable hyperlink without altering their visual appearance.
+        if !osc_links.is_empty() {
+            emit_osc8_links(terminal.backend_mut(), &osc_links).context(IoSnafu {
+                context: "emit osc8 links",
+            })?;
+        }
 
         let mut sse_rx = app.take_sse();
         let mut stream_rx = app.take_stream();
@@ -142,6 +165,44 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
         }
     }
 
+    Ok(())
+}
+
+/// Write OSC 8 hyperlink sequences to the terminal **after** ratatui has
+/// flushed the frame.
+///
+/// For each [`OscLink`] we:
+/// 1. Save the cursor position.
+/// 2. Move to the link's screen coordinates.
+/// 3. Emit `ESC ] 8 ;; URL BEL` (OSC 8 open).
+/// 4. Re-write the display text with its accent styling.
+/// 5. Emit `ESC ] 8 ;; BEL` (OSC 8 close).
+/// 6. Reset attributes and restore the cursor.
+///
+/// This overwrites the same cells ratatui already rendered (visually
+/// identical content), but the terminal now associates those cells with
+/// the hyperlink, making them clickable in supported terminals.
+fn emit_osc8_links<W: std::io::Write>(writer: &mut W, links: &[OscLink]) -> std::io::Result<()> {
+    for link in links {
+        let (r, g, b) = link.accent;
+        crossterm::queue!(
+            writer,
+            cursor::SavePosition,
+            cursor::MoveTo(link.screen_x, link.screen_y),
+            SetForegroundColor(Color::Rgb { r, g, b }),
+            SetAttribute(Attribute::Underlined),
+            crossterm::style::Print(format!(
+                "{}{}{}", // OSC8_open + text + OSC8_close in one Print
+                crate::hyperlink::osc8_open(&link.url),
+                link.text,
+                crate::hyperlink::osc8_close(),
+            )),
+            SetAttribute(Attribute::Reset),
+            ResetColor,
+            cursor::RestorePosition,
+        )?;
+    }
+    writer.flush()?;
     Ok(())
 }
 

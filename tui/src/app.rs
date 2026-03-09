@@ -8,6 +8,7 @@ use crate::api::sse::SseConnection;
 use crate::config::Config;
 use crate::error::{GatewayUnreachableSnafu, Result, TokenRequiredSnafu};
 use crate::events::StreamEvent;
+use crate::hyperlink::OscLink;
 use crate::id::{NousId, SessionId, TurnId};
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
@@ -383,8 +384,8 @@ impl App {
     // --- View ---
 
     #[tracing::instrument(skip_all)]
-    pub fn view(&self, frame: &mut Frame) {
-        view::render(self, frame);
+    pub fn view(&self, frame: &mut Frame) -> Vec<OscLink> {
+        view::render(self, frame)
     }
 }
 

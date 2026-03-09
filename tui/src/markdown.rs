@@ -3,25 +3,35 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::highlight::Highlighter;
+use crate::hyperlink::{self, MdLink};
 use crate::theme::ThemePalette;
 
-/// Render markdown text into ratatui Lines.
+/// Render markdown text into ratatui Lines, also returning any hyperlinks found.
+///
 /// Supports: bold, italic, code, headings, lists, code blocks (with syntax highlighting),
-/// blockquotes, rules, tables, links, images, and strikethrough.
+/// blockquotes, rules, tables, links, images, strikethrough, and OSC 8 hyperlinks.
 ///
 /// SAFETY: callers must pass sanitized text. All external data is sanitized
 /// at ingestion in update/api.rs, update/streaming.rs, update/sse.rs, and app.rs.
+///
+/// Returns `(lines, links)` where `links` contains [`MdLink`] entries for every
+/// hyperlink found. Column offsets in `MdLink` are **relative** to the returned
+/// `lines` and do **not** include any content-prefix prepended by the caller.
 pub fn render(
     text: &str,
     _width: usize,
     theme: &ThemePalette,
     highlighter: &Highlighter,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, Vec<MdLink>) {
     let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
     let parser = Parser::new_ext(text, options);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
+    // Byte-based column counter for the current (unflushed) line.
+    // Byte length is used intentionally — this matches the scroll calculation in
+    // view/chat.rs which also uses `span.content.len()` for line-width estimation.
+    let mut current_col: u16 = 0;
     let mut style_stack: Vec<Style> = vec![Style::default().fg(theme.fg)];
     let mut in_code_block = false;
     let mut code_block_lines: Vec<String> = Vec::new();
@@ -30,6 +40,9 @@ pub fn render(
 
     // Link state
     let mut link_url: Option<String> = None;
+    let mut link_start_line: usize = 0;
+    let mut link_start_col: u16 = 0;
+    let mut link_text_buf: String = String::new();
 
     // Image state
     let mut in_image = false;
@@ -46,11 +59,14 @@ pub fn render(
     // on the correct line rather than flushing it alone (bug fix: see Tag::BlockQuote below).
     let mut blockquote_depth: usize = 0;
 
+    // Collected hyperlinks (returned alongside lines)
+    let mut md_links: Vec<MdLink> = Vec::new();
+
     for event in parser {
         match event {
             Event::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                     let style = theme.style_accent_bold();
                     style_stack.push(style);
                     let prefix = match level {
@@ -59,7 +75,11 @@ pub fn render(
                         pulldown_cmark::HeadingLevel::H3 => "### ",
                         _ => "#### ",
                     };
-                    current_spans.push(Span::styled(prefix.to_string(), style));
+                    push_span(
+                        &mut current_spans,
+                        &mut current_col,
+                        Span::styled(prefix.to_string(), style),
+                    );
                 }
                 Tag::Strong => {
                     let style = current_style(&style_stack).add_modifier(Modifier::BOLD);
@@ -74,7 +94,7 @@ pub fn render(
                     style_stack.push(style);
                 }
                 Tag::CodeBlock(kind) => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                     in_code_block = true;
                     code_block_lines.clear();
                     code_block_lang = match kind {
@@ -89,35 +109,46 @@ pub fn render(
                     list_depth += 1;
                 }
                 Tag::Item => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                     let indent = "  ".repeat(list_depth.saturating_sub(1));
-                    current_spans.push(Span::styled(format!("{}• ", indent), theme.style_muted()));
+                    let bullet = format!("{indent}• ");
+                    push_span(
+                        &mut current_spans,
+                        &mut current_col,
+                        Span::styled(bullet, theme.style_muted()),
+                    );
                 }
                 Tag::Paragraph => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                     // Bug fix: blockquote border belongs on the same line as content.
                     // Previously the border was pushed in Tag::BlockQuote, which caused
                     // Tag::Paragraph to flush it alone before any text arrived.
                     // Now we emit the │ prefix here, after the flush, so it leads the content.
                     for _ in 0..blockquote_depth {
-                        current_spans.push(Span::styled(
-                            "│ ".to_string(),
-                            Style::default().fg(theme.border),
-                        ));
+                        push_span(
+                            &mut current_spans,
+                            &mut current_col,
+                            Span::styled("│ ".to_string(), Style::default().fg(theme.border)),
+                        );
                     }
                 }
                 Tag::BlockQuote(_) => {
                     // Flush any pending content, then enter blockquote context.
                     // Do NOT push │ to current_spans here — Tag::Paragraph does it so the
                     // border lands on the same line as the paragraph content.
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                     let style = theme.style_muted();
                     style_stack.push(style);
                     blockquote_depth += 1;
                 }
                 Tag::Link { dest_url, .. } => {
                     link_url = Some(dest_url.to_string());
-                    let style = current_style(&style_stack).add_modifier(Modifier::UNDERLINED);
+                    link_start_line = lines.len();
+                    link_start_col = current_col;
+                    link_text_buf.clear();
+                    let style = current_style(&style_stack)
+                        .add_modifier(Modifier::UNDERLINED)
+                        .fg(theme.accent);
                     style_stack.push(style);
                 }
                 Tag::Image { dest_url, .. } => {
@@ -126,7 +157,7 @@ pub fn render(
                     link_url = Some(dest_url.to_string());
                 }
                 Tag::Table(_alignments) => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                     in_table = true;
                     table_rows.clear();
                 }
@@ -145,7 +176,7 @@ pub fn render(
             Event::End(tag_end) => match tag_end {
                 TagEnd::Heading(_) => {
                     style_stack.pop();
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                 }
                 TagEnd::Strong | TagEnd::Emphasis | TagEnd::Strikethrough => {
                     style_stack.pop();
@@ -170,7 +201,7 @@ pub fn render(
                         )));
                     }
 
-                    // Syntax-highlighted code lines
+                    // Syntax-highlighted code lines — URLs inside NOT linkified
                     let highlighted = highlighter.highlight(&full_code, lang_str);
                     for hl_line in highlighted {
                         let mut spans =
@@ -192,20 +223,38 @@ pub fn render(
                     list_depth = list_depth.saturating_sub(1);
                 }
                 TagEnd::Item => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                 }
                 TagEnd::Paragraph => {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                 }
                 TagEnd::BlockQuote(_) => {
                     style_stack.pop();
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                     blockquote_depth = blockquote_depth.saturating_sub(1);
                 }
                 TagEnd::Link => {
                     style_stack.pop();
                     if let Some(url) = link_url.take() {
-                        current_spans.push(Span::styled(format!(" ({url})"), theme.style_dim()));
+                        let display_text = std::mem::take(&mut link_text_buf);
+                        // Record the hyperlink for post-render OSC 8
+                        if !url.is_empty() && !display_text.is_empty() {
+                            md_links.push(MdLink {
+                                line_idx: link_start_line,
+                                col: link_start_col,
+                                text: display_text,
+                                url: url.clone(),
+                            });
+                        }
+                        // In terminals without OSC 8 support, show the URL in parentheses
+                        // so readers know where the link goes.
+                        if !hyperlink::supports_hyperlinks() {
+                            push_span(
+                                &mut current_spans,
+                                &mut current_col,
+                                Span::styled(format!(" ({url})"), theme.style_dim()),
+                            );
+                        }
                     }
                 }
                 TagEnd::Image => {
@@ -215,7 +264,11 @@ pub fn render(
                     } else {
                         format!("[image: {alt}]")
                     };
-                    current_spans.push(Span::styled(display, theme.style_dim()));
+                    push_span(
+                        &mut current_spans,
+                        &mut current_col,
+                        Span::styled(display, theme.style_dim()),
+                    );
                     link_url = None;
                     in_image = false;
                 }
@@ -240,51 +293,139 @@ pub fn render(
                 if in_image {
                     image_alt.push_str(&text);
                 } else if in_code_block {
-                    for line in text.lines() {
-                        code_block_lines.push(line.to_string());
+                    for line_str in text.lines() {
+                        code_block_lines.push(line_str.to_string());
                     }
                 } else if in_table {
                     current_cell.push_str(&text);
-                } else {
+                } else if link_url.is_some() {
+                    // Inside a markdown link — accumulate display text, don't auto-detect URLs
+                    link_text_buf.push_str(&text);
                     let style = current_style(&style_stack);
-                    current_spans.push(Span::styled(text.to_string(), style));
+                    push_span(
+                        &mut current_spans,
+                        &mut current_col,
+                        Span::styled(text.to_string(), style),
+                    );
+                } else {
+                    // Plain paragraph text — detect and linkify embedded URLs
+                    let urls = hyperlink::detect_urls(&text);
+                    if urls.is_empty() {
+                        let style = current_style(&style_stack);
+                        push_span(
+                            &mut current_spans,
+                            &mut current_col,
+                            Span::styled(text.to_string(), style),
+                        );
+                    } else {
+                        linkify_text(
+                            &text,
+                            &urls,
+                            &mut current_spans,
+                            &mut current_col,
+                            &mut md_links,
+                            lines.len(),
+                            current_style(&style_stack),
+                            theme,
+                        );
+                    }
                 }
             }
             Event::Code(code) => {
                 if in_table {
-                    current_cell.push_str(&format!("`{}`", code));
+                    current_cell.push_str(&format!("`{code}`"));
                 } else {
-                    current_spans.push(Span::styled(
-                        format!("`{}`", code),
-                        theme.style_inline_code(),
-                    ));
+                    // Inline code: render with code style, do NOT linkify
+                    let s = format!("`{code}`");
+                    push_span(
+                        &mut current_spans,
+                        &mut current_col,
+                        Span::styled(s, theme.style_inline_code()),
+                    );
                 }
             }
             Event::SoftBreak => {
                 if !in_table {
-                    current_spans.push(Span::raw(" "));
+                    push_span(&mut current_spans, &mut current_col, Span::raw(" "));
                 }
             }
             Event::HardBreak => {
                 if !in_table {
-                    flush_line(&mut lines, &mut current_spans);
+                    flush_line(&mut lines, &mut current_spans, &mut current_col);
                 }
             }
             Event::Rule => {
-                flush_line(&mut lines, &mut current_spans);
+                flush_line(&mut lines, &mut current_spans, &mut current_col);
                 lines.push(Line::from(Span::styled("─".repeat(40), theme.style_dim())));
             }
             _ => {}
         }
     }
 
-    // Flush remaining
-    flush_line(&mut lines, &mut current_spans);
+    // Flush remaining content
+    flush_line(&mut lines, &mut current_spans, &mut current_col);
 
-    // Suppress is_table_head warning — it's used for future header styling
+    // Suppress is_table_head warning — kept for future header-specific styling
     let _ = is_table_head;
 
-    lines
+    (lines, md_links)
+}
+
+/// Push a span and advance the byte-based column counter.
+fn push_span(spans: &mut Vec<Span<'static>>, col: &mut u16, span: Span<'static>) {
+    *col += span.content.len() as u16;
+    spans.push(span);
+}
+
+/// Emit styled spans for a text chunk that contains detected URLs.
+///
+/// Non-URL portions use the base style. URL portions get underline + accent
+/// colour and are recorded in `md_links` for OSC 8 post-processing.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "all args are needed for span building"
+)]
+fn linkify_text(
+    text: &str,
+    urls: &[(usize, usize, &str)],
+    spans: &mut Vec<Span<'static>>,
+    col: &mut u16,
+    md_links: &mut Vec<MdLink>,
+    line_idx: usize,
+    base_style: Style,
+    theme: &ThemePalette,
+) {
+    let link_style = base_style
+        .add_modifier(Modifier::UNDERLINED)
+        .fg(theme.accent);
+
+    let mut last = 0usize;
+    for &(start, end, url) in urls {
+        // Text before this URL (plain style)
+        if start > last {
+            let before = &text[last..start];
+            push_span(spans, col, Span::styled(before.to_string(), base_style));
+        }
+        // The URL itself (link style)
+        let url_text = &text[start..end];
+        let link_col = *col;
+        push_span(spans, col, Span::styled(url_text.to_string(), link_style));
+        md_links.push(MdLink {
+            line_idx,
+            col: link_col,
+            text: url_text.to_string(),
+            url: url.to_string(),
+        });
+        last = end;
+    }
+    // Remaining text after the last URL
+    if last < text.len() {
+        push_span(
+            spans,
+            col,
+            Span::styled(text[last..].to_string(), base_style),
+        );
+    }
 }
 
 /// Render a table with box-drawing characters.
@@ -326,7 +467,7 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
 
     for (row_idx, row) in rows.iter().enumerate() {
         // Row content
-        let mut spans = vec![Span::styled(" │", border_style)];
+        let mut row_spans = vec![Span::styled(" │", border_style)];
         for (i, width) in col_widths.iter().enumerate() {
             let cell = row.get(i).map(|s| s.as_str()).unwrap_or("");
             let padded = format!(" {:width$} ", cell, width = width);
@@ -335,10 +476,10 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
             } else {
                 cell_style
             };
-            spans.push(Span::styled(padded, style));
-            spans.push(Span::styled("│", border_style));
+            row_spans.push(Span::styled(padded, style));
+            row_spans.push(Span::styled("│", border_style));
         }
-        lines.push(Line::from(spans));
+        lines.push(Line::from(row_spans));
 
         // Separator after header
         if row_idx == 0 {
@@ -366,10 +507,11 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
     lines.push(Line::from(Span::styled(bottom, border_style)));
 }
 
-fn flush_line(lines: &mut Vec<Line<'static>>, spans: &mut Vec<Span<'static>>) {
+fn flush_line(lines: &mut Vec<Line<'static>>, spans: &mut Vec<Span<'static>>, col: &mut u16) {
     if !spans.is_empty() {
         lines.push(Line::from(std::mem::take(spans)));
     }
+    *col = 0;
 }
 
 fn current_style(stack: &[Style]) -> Style {
@@ -389,6 +531,13 @@ mod tests {
     fn test_render(md: &str) -> Vec<Line<'static>> {
         let theme = ThemePalette::detect();
         let hl = Highlighter::new();
+        let (lines, _) = render(md, 80, &theme, &hl);
+        lines
+    }
+
+    fn mk_render(md: &str) -> (Vec<Line<'static>>, Vec<MdLink>) {
+        let theme = ThemePalette::detect();
+        let hl = Highlighter::new();
         render(md, 80, &theme, &hl)
     }
 
@@ -397,7 +546,7 @@ mod tests {
     fn test_render_with_theme(md: &str) -> (Vec<Line<'static>>, ThemePalette) {
         let theme = ThemePalette::detect();
         let hl = Highlighter::new();
-        let lines = render(md, 80, &theme, &hl);
+        let (lines, _) = render(md, 80, &theme, &hl);
         (lines, theme)
     }
 
@@ -409,6 +558,14 @@ mod tests {
     /// Concatenate all lines with newlines as a single string.
     fn all_lines_text(lines: &[Line]) -> String {
         lines.iter().map(line_text).collect::<Vec<_>>().join("\n")
+    }
+
+    fn all_text(lines: &[Line]) -> String {
+        lines
+            .iter()
+            .map(|l| line_text(l))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// True if any span in `line` whose content contains `text` also carries `modifier`.
@@ -439,53 +596,106 @@ mod tests {
 
     #[test]
     fn bold_text() {
-        let lines = test_render("**bold**");
+        let (lines, _) = mk_render("**bold**");
         assert!(!lines.is_empty());
-        let text = line_text(&lines[0]);
-        assert!(text.contains("bold"));
+        assert!(line_text(&lines[0]).contains("bold"));
     }
 
     #[test]
     fn code_block() {
-        let lines = test_render("```rust\nlet x = 1;\n```");
-        let all_text: String = lines
-            .iter()
-            .map(|l| line_text(l))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(all_text.contains("let x = 1"));
+        let (lines, _) = mk_render("```rust\nlet x = 1;\n```");
+        assert!(all_text(&lines).contains("let x = 1"));
     }
 
     #[test]
     fn list_items() {
-        let lines = test_render("- one\n- two");
-        let all_text: String = lines
-            .iter()
-            .map(|l| line_text(l))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(all_text.contains("one"));
-        assert!(all_text.contains("two"));
+        let (lines, _) = mk_render("- one\n- two");
+        let text = all_text(&lines);
+        assert!(text.contains("one"));
+        assert!(text.contains("two"));
     }
 
     #[test]
     fn strikethrough_renders() {
-        let lines = test_render("~~deleted~~");
+        let (lines, _) = mk_render("~~deleted~~");
         assert!(!lines.is_empty());
-        let text = line_text(&lines[0]);
-        assert!(text.contains("deleted"));
+        assert!(line_text(&lines[0]).contains("deleted"));
     }
 
     #[test]
-    fn link_renders_with_url() {
-        let lines = test_render("[click](https://example.com)");
-        let all_text: String = lines
-            .iter()
-            .map(|l| line_text(l))
-            .collect::<Vec<_>>()
-            .join(" ");
-        assert!(all_text.contains("click"));
-        assert!(all_text.contains("example.com"));
+    fn markdown_link_produces_md_link() {
+        let (lines, links) = mk_render("[click here](https://example.com)");
+        let text = all_text(&lines);
+        assert!(text.contains("click here"), "link text visible: {text}");
+        assert!(!links.is_empty(), "should produce a MdLink");
+        assert_eq!(links[0].url, "https://example.com");
+        assert_eq!(links[0].text, "click here");
+    }
+
+    #[test]
+    fn markdown_link_url_shown_in_non_osc8_terminal() {
+        let (lines, _) = mk_render("[click](https://example.com)");
+        let text = all_text(&lines);
+        if !crate::hyperlink::supports_hyperlinks() {
+            assert!(
+                text.contains("example.com"),
+                "URL suffix must be shown in non-OSC8 terminals: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn plain_url_in_text_linkified() {
+        let (lines, links) = mk_render("See https://docs.anthropic.com/api for info.");
+        let text = all_text(&lines);
+        assert!(
+            text.contains("https://docs.anthropic.com/api"),
+            "URL in output: {text}"
+        );
+        assert!(!links.is_empty(), "auto-detected URL must produce MdLink");
+        assert_eq!(links[0].url, "https://docs.anthropic.com/api");
+    }
+
+    #[test]
+    fn url_in_code_block_not_linkified() {
+        let (_, links) = mk_render("```\nhttps://example.com\n```");
+        assert!(
+            links.is_empty(),
+            "URLs inside code blocks must NOT produce links"
+        );
+    }
+
+    #[test]
+    fn url_in_inline_code_not_linkified() {
+        let (_, links) = mk_render("Use `https://example.com` in config");
+        assert!(
+            links.is_empty(),
+            "URLs inside inline code must NOT produce links"
+        );
+    }
+
+    #[test]
+    fn link_text_correct() {
+        let (_, links) = mk_render("[API docs](https://docs.anthropic.com)");
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].text, "API docs");
+        assert_eq!(links[0].url, "https://docs.anthropic.com");
+    }
+
+    #[test]
+    fn plain_url_trailing_punctuation_stripped() {
+        let (_, links) = mk_render("Visit https://example.com.");
+        assert!(!links.is_empty());
+        assert_eq!(links[0].url, "https://example.com");
+    }
+
+    #[test]
+    fn link_renders_with_url_visible() {
+        // Regression guard: the original test checked URL visibility in non-OSC8 terminals
+        let (lines, _links) = mk_render("[click](https://example.com)");
+        let text = all_text(&lines);
+        assert!(text.contains("click"));
+        assert!(text.contains("example.com"));
     }
 
     // ── Text formatting ───────────────────────────────────────────────────
