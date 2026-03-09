@@ -78,8 +78,15 @@ pub enum Msg {
     ViewPopBack, // Esc — pop to previous view
 
     // --- Layout ---
-    ToggleSidebar,  // Ctrl+F
-    ToggleThinking, // Ctrl+T
+    ToggleSidebar,   // Ctrl+F
+    ToggleThinking,  // Ctrl+T
+    ToggleOpsPane,   // Ctrl+O or :ops
+    OpsFocusSwitch,  // Tab — switch focus between chat and ops
+    OpsScrollUp,     // k / Up in ops pane
+    OpsScrollDown,   // j / Down in ops pane
+    OpsSelectPrev,   // k in ops pane with selection
+    OpsSelectNext,   // j in ops pane with selection
+    OpsToggleExpand, // Enter in ops pane — expand/collapse selected item
     OpenOverlay(OverlayKind),
     CloseOverlay,
     Resize(u16, u16),

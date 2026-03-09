@@ -2,6 +2,7 @@ mod chat;
 mod command_palette;
 mod filter_bar;
 mod input;
+pub(crate) mod ops;
 mod overlay;
 pub(crate) mod settings;
 mod sidebar;
@@ -17,6 +18,7 @@ use crate::app::App;
 const SIDEBAR_WIDTH: u16 = 22;
 const MIN_CHAT_WIDTH: u16 = 40;
 const MIN_SIDEBAR_TERMINAL_WIDTH: u16 = 60;
+const MIN_OPS_TERMINAL_WIDTH: u16 = 80;
 const MAX_PALETTE_SUGGESTIONS: usize = 12;
 const STATUS_BAR_HEIGHT: u16 = 2;
 
@@ -70,7 +72,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     // Error toast at bottom
     if has_toast && let Some(ref toast) = app.error_toast {
         let toast_line = ratatui::text::Line::from(vec![
-            ratatui::text::Span::styled(" ✗ ", theme.style_error_bold()),
+            ratatui::text::Span::styled(" \u{2717} ", theme.style_error_bold()),
             ratatui::text::Span::styled(&toast.message, theme.style_error()),
         ]);
         let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
@@ -81,23 +83,58 @@ pub fn render(app: &App, frame: &mut Frame) {
     // Responsive: hide sidebar on narrow terminals
     let show_sidebar = app.sidebar_visible && area.width >= MIN_SIDEBAR_TERMINAL_WIDTH;
 
-    // Body: sidebar | main content area (dispatched by current view)
+    // Responsive: show ops pane when visible and terminal wide enough
+    let show_ops = app.ops.visible && area.width >= MIN_OPS_TERMINAL_WIDTH;
+
+    // Body: sidebar | main content area (dispatched by current view, with optional ops pane)
+    let body_area = vertical[1];
+
+
     if show_sidebar {
-        let horizontal = Layout::default()
+        let sidebar_and_rest = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Length(SIDEBAR_WIDTH),
                 Constraint::Min(MIN_CHAT_WIDTH),
             ])
-            .split(vertical[1]);
+            .split(body_area);
 
-        sidebar::render(app, frame, horizontal[0], theme);
-        views::render_for_view(app, frame, horizontal[1], theme);
+        sidebar::render(app, frame, sidebar_and_rest[0], theme);
+        SIDEBAR_RECT.store_rect(sidebar_and_rest[0]);
 
-        SIDEBAR_RECT.store_rect(horizontal[0]);
+        if show_ops {
+            let ops_width = ops::ops_pane_width(sidebar_and_rest[1].width, app.ops.width_pct);
+            let chat_ops = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Min(MIN_CHAT_WIDTH),
+                    Constraint::Length(ops_width),
+                ])
+                .split(sidebar_and_rest[1]);
+
+            views::render_for_view(app, frame, chat_ops[0], theme);
+            ops::render(app, frame, chat_ops[1], theme);
+        } else {
+            views::render_for_view(app, frame, sidebar_and_rest[1], theme);
+        }
     } else {
         SIDEBAR_RECT.store_rect(Rect::ZERO);
-        views::render_for_view(app, frame, vertical[1], theme);
+
+        if show_ops {
+            let ops_width = ops::ops_pane_width(body_area.width, app.ops.width_pct);
+            let chat_ops = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Min(MIN_CHAT_WIDTH),
+                    Constraint::Length(ops_width),
+                ])
+                .split(body_area);
+
+            views::render_for_view(app, frame, chat_ops[0], theme);
+            ops::render(app, frame, chat_ops[1], theme);
+        } else {
+            views::render_for_view(app, frame, body_area, theme);
+        }
     }
 
     // Render overlay on top if present
@@ -190,5 +227,10 @@ mod tests {
         let rect = SidebarRect::new();
         let loaded = rect.load_rect();
         assert_eq!(loaded, Rect::ZERO);
+    }
+
+    #[test]
+    fn min_ops_terminal_width_is_80() {
+        assert_eq!(MIN_OPS_TERMINAL_WIDTH, 80);
     }
 }

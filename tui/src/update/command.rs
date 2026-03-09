@@ -221,6 +221,9 @@ async fn execute_command(app: &mut App) {
         "diff" | "d" => {
             super::diff::handle_diff_open(app).await;
         }
+        "ops" => {
+            app.ops.toggle();
+        }
         _ => {
             app.error_toast = Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
         }
