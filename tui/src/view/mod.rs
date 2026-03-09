@@ -19,6 +19,7 @@ const MIN_SIDEBAR_TERMINAL_WIDTH: u16 = 60;
 const MAX_PALETTE_SUGGESTIONS: usize = 12;
 const STATUS_BAR_HEIGHT: u16 = 2;
 
+#[tracing::instrument(skip_all)]
 pub fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
     let theme = &app.theme;

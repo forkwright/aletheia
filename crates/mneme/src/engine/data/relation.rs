@@ -5,10 +5,10 @@ use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use compact_str::CompactString;
 use itertools::Itertools;
 use jiff::Timestamp;
 use serde_json::json;
-use smartstring::{LazyCompact, SmartString};
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter};
 use std::mem;
@@ -103,7 +103,7 @@ pub enum VecElementType {
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub(crate) struct ColumnDef {
-    pub(crate) name: SmartString<LazyCompact>,
+    pub(crate) name: CompactString,
     pub(crate) typing: NullableColType,
     pub(crate) default_gen: Option<Expr>,
 }

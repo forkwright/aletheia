@@ -4,8 +4,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use itertools::Itertools;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
@@ -100,7 +100,7 @@ impl FixedRule for ShortestPathBFS {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {

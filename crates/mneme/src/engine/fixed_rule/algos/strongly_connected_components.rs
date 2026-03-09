@@ -4,12 +4,12 @@
 #![allow(unused_imports)]
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighbors, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::min;
 use std::collections::BTreeMap;
 
+use compact_str::CompactString;
 use itertools::Itertools;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::program::{MagicFixedRuleApply, MagicSymbol};
@@ -74,7 +74,7 @@ impl FixedRule for StronglyConnectedComponent {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
@@ -83,7 +83,7 @@ impl FixedRule for StronglyConnectedComponent {
 }
 
 pub(crate) struct TarjanSccG {
-    graph: DirectedCsrGraph<u32>,
+    graph: DirectedCsrGraph,
     id: u32,
     ids: Vec<Option<u32>>,
     low: Vec<u32>,
@@ -92,7 +92,7 @@ pub(crate) struct TarjanSccG {
 }
 
 impl TarjanSccG {
-    pub(crate) fn new(graph: DirectedCsrGraph<u32>) -> Self {
+    pub(crate) fn new(graph: DirectedCsrGraph) -> Self {
         let graph_size = graph.node_count();
         Self {
             graph,

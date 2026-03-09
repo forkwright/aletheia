@@ -14,6 +14,7 @@ use crate::msg::Msg;
 
 pub(crate) use api::extract_text_content;
 
+#[tracing::instrument(skip_all)]
 pub(crate) async fn update(app: &mut App, msg: Msg) {
     match msg {
         // --- Message selection ---

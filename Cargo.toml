@@ -64,7 +64,7 @@ unused_self = "warn"
 
 [workspace.dependencies]
 base64 = "0.22"
-rayon = ">= 1, < 1.11"
+rayon = "1"
 
 # Error handling
 snafu = "0.8"

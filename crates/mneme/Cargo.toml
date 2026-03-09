@@ -22,8 +22,8 @@ mneme-engine = [
     "dep:ndarray", "dep:tokio",
     "dep:jiff",
     # Engine dependencies
-    "dep:rayon", "dep:graph", "dep:ordered-float", "dep:priority-queue",
-    "dep:smallvec", "dep:smartstring",
+    "dep:rayon", "dep:ordered-float", "dep:priority-queue",
+    "dep:smallvec", "dep:compact_str",
     "dep:serde_bytes", "dep:rmp-serde",
     "dep:crossbeam", "dep:itertools", "dep:rustc-hash", "dep:twox-hash",
     "dep:regex", "dep:sha2",
@@ -38,7 +38,7 @@ storage-new-rocksdb = ["dep:rocksdb", "mneme-engine"]
 [dependencies]
 fastembed = { version = "5", optional = true }
 jiff = { workspace = true, optional = true }
-ndarray = { version = "0.16.1", features = ["serde"], optional = true }
+ndarray = { version = "0.17", features = ["serde"], optional = true }
 rusqlite = { version = "0.38", features = ["bundled"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -49,11 +49,10 @@ ulid = { workspace = true }
 
 # Engine dependencies — activated by mneme-engine feature
 rayon = { workspace = true, optional = true }
-graph = { version = "0.3.1", optional = true }
 ordered-float = { version = "5.1.0", optional = true }
 priority-queue = { version = "2.7", optional = true }
 smallvec = { version = "1.13.2", features = ["serde", "write", "union", "const_generics", "const_new"], optional = true }
-smartstring = { version = "1.0.1", features = ["serde"], optional = true }
+compact_str = { workspace = true, optional = true }
 serde_bytes = { version = "0.11", optional = true }
 rmp-serde = { version = "1.2", optional = true }
 crossbeam = { version = "0.8.4", optional = true }
@@ -63,11 +62,11 @@ twox-hash = { version = "2.1", optional = true }
 regex = { version = "1", optional = true }
 sha2 = { version = "0.10", optional = true }
 either = { version = "1", optional = true }
-rand = { version = "0.8", optional = true }
+rand = { version = "0.9", optional = true }
 base64 = { version = "0.22", optional = true }
 uuid = { version = "1", features = ["v1", "v4", "serde"], optional = true }
-pest = { version = "2.7.9", optional = true }
-pest_derive = { version = "2.7.9", optional = true }
+pest = { version = "2.8", optional = true }
+pest_derive = { version = "2.8", optional = true }
 unicode-normalization = { version = "0.1", optional = true }
 aho-corasick = { version = "1.1", optional = true }
 rust-stemmers = { version = "1.2", optional = true }

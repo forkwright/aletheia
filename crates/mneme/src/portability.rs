@@ -19,6 +19,9 @@ pub struct AgentFile {
     pub sessions: Vec<ExportedSession>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory: Option<MemoryData>,
+    /// Knowledge graph export (facts, entities, relationships).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub knowledge: Option<KnowledgeExport>,
 }
 
 /// Agent identity and configuration snapshot.
@@ -108,6 +111,18 @@ pub struct GraphData {
     pub edges: Vec<serde_json::Value>,
 }
 
+/// Knowledge graph export for backup, migration, and debugging.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeExport {
+    /// All facts from the knowledge graph.
+    pub facts: Vec<crate::knowledge::Fact>,
+    /// All entities from the knowledge graph.
+    pub entities: Vec<crate::knowledge::Entity>,
+    /// All relationships between entities.
+    pub relationships: Vec<crate::knowledge::Relationship>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +182,7 @@ mod tests {
                 ],
             }],
             memory: None,
+            knowledge: None,
         }
     }
 

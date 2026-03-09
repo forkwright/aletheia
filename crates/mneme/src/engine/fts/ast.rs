@@ -2,12 +2,12 @@
 // Copyright 2023, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::fts::tokenizer::TextAnalyzer;
+use compact_str::CompactString;
 use ordered_float::OrderedFloat;
-use smartstring::{LazyCompact, SmartString};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct FtsLiteral {
-    pub(crate) value: SmartString<LazyCompact>,
+    pub(crate) value: CompactString,
     pub(crate) is_prefix: bool,
     pub(crate) booster: OrderedFloat<f64>,
 }
@@ -22,7 +22,7 @@ impl FtsLiteral {
         let mut tokens = tokenizer.token_stream(&self.value);
         while let Some(t) = tokens.next() {
             coll.push(FtsLiteral {
-                value: SmartString::from(&t.text),
+                value: CompactString::from(&t.text),
                 is_prefix: false,
                 booster: self.booster,
             })

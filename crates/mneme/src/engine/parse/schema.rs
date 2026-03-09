@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use itertools::Itertools;
-use smartstring::SmartString;
 
 use crate::engine::data::relation::{
     ColType, ColumnDef, NullableColType, StoredRelationMetadata, VecElementType,
@@ -59,7 +59,7 @@ pub(crate) fn parse_schema(
 fn parse_col(pair: Pair<'_>) -> Result<(ColumnDef, Symbol)> {
     let mut src = pair.into_inner();
     let name_p = src.next().unwrap();
-    let name = SmartString::from(name_p.as_str());
+    let name = CompactString::from(name_p.as_str());
     let mut typing = NullableColType {
         coltype: ColType::Any,
         nullable: true,

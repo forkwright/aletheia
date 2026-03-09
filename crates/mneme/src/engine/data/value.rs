@@ -12,6 +12,7 @@ use std::ops::Deref;
 
 use crate::engine::data::json::JsonValue;
 use crate::engine::data::relation::VecElementType;
+use compact_str::CompactString;
 use ordered_float::OrderedFloat;
 use regex::Regex;
 use serde::de::{SeqAccess, Visitor};
@@ -19,7 +20,6 @@ use serde::ser::SerializeTuple;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
-use smartstring::{LazyCompact, SmartString};
 use uuid::Uuid;
 
 /// UUID value in the database
@@ -127,7 +127,7 @@ pub enum DataValue {
     /// number, may be int or float
     Num(Num),
     /// string
-    Str(SmartString<LazyCompact>),
+    Str(CompactString),
     /// bytes
     #[serde(with = "serde_bytes")]
     Bytes(Vec<u8>),
@@ -428,13 +428,19 @@ impl From<f64> for DataValue {
 
 impl From<&str> for DataValue {
     fn from(v: &str) -> Self {
-        DataValue::Str(SmartString::from(v))
+        DataValue::Str(CompactString::from(v))
     }
 }
 
 impl From<String> for DataValue {
     fn from(v: String) -> Self {
-        DataValue::Str(SmartString::from(v))
+        DataValue::Str(CompactString::from(v))
+    }
+}
+
+impl From<CompactString> for DataValue {
+    fn from(v: CompactString) -> Self {
+        DataValue::Str(v)
     }
 }
 

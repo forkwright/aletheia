@@ -2,13 +2,13 @@
 // Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
+use compact_str::CompactString;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
@@ -61,7 +61,7 @@ impl FixedRule for MinimumSpanningTreePrim {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
@@ -70,7 +70,7 @@ impl FixedRule for MinimumSpanningTreePrim {
 }
 
 fn prim(
-    graph: &DirectedCsrGraph<u32, (), f32>,
+    graph: &DirectedCsrGraph<f32>,
     starting: u32,
     poison: Poison,
 ) -> Result<Vec<(u32, u32, f32)>> {

@@ -324,30 +324,36 @@ impl App {
 
     // --- Event source management (take/restore pattern for borrow checker) ---
 
+    #[tracing::instrument(skip_all)]
     pub fn take_sse(&mut self) -> Option<SseConnection> {
         self.sse.take()
     }
 
+    #[tracing::instrument(skip_all)]
     pub fn restore_sse(&mut self, sse: Option<SseConnection>) {
         self.sse = sse;
     }
 
+    #[tracing::instrument(skip_all)]
     pub fn take_stream(&mut self) -> Option<mpsc::Receiver<StreamEvent>> {
         self.stream_rx.take()
     }
 
+    #[tracing::instrument(skip_all)]
     pub fn restore_stream(&mut self, rx: Option<mpsc::Receiver<StreamEvent>>) {
         self.stream_rx = rx;
     }
 
     // --- State update ---
 
+    #[tracing::instrument(skip_all)]
     pub async fn update(&mut self, msg: Msg) {
         crate::update::update(self, msg).await;
     }
 
     // --- View ---
 
+    #[tracing::instrument(skip_all)]
     pub fn view(&self, frame: &mut Frame) {
         view::render(self, frame);
     }

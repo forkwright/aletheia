@@ -16,9 +16,9 @@ use itertools::Itertools;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Date;
 
+use compact_str::CompactString;
 use rand::prelude::*;
 use serde_json::{Value, json};
-use smartstring::SmartString;
 use unicode_normalization::UnicodeNormalization;
 use uuid::v1::Timestamp;
 
@@ -1791,7 +1791,7 @@ fn json2val(res: Value) -> DataValue {
                 DataValue::Null
             }
         }
-        Value::String(s) => DataValue::Str(SmartString::from(s)),
+        Value::String(s) => DataValue::Str(CompactString::from(s)),
         Value::Array(arr) => DataValue::Json(JsonData(json!(arr))),
         Value::Object(obj) => DataValue::Json(JsonData(json!(obj))),
     }
@@ -1829,7 +1829,7 @@ pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
             .ok_or_else(|| miette!("'chars' requires strings"))?
             .chars()
             .map(|c| {
-                let mut s = SmartString::new();
+                let mut s = CompactString::default();
                 s.push(c);
                 DataValue::Str(s)
             })
@@ -2142,19 +2142,19 @@ pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
         _ => bail!("'vec' requires a string as second argument"),
     };
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     match t {
         VecElementType::F32 => {
             let mut res_arr = ndarray::Array1::zeros(len);
             for mut row in res_arr.axis_iter_mut(ndarray::Axis(0)) {
-                row.fill(rng.r#gen::<f64>() as f32);
+                row.fill(rng.random::<f64>() as f32);
             }
             Ok(DataValue::Vec(Vector::F32(res_arr)))
         }
         VecElementType::F64 => {
             let mut res_arr = ndarray::Array1::zeros(len);
             for mut row in res_arr.axis_iter_mut(ndarray::Axis(0)) {
-                row.fill(rng.r#gen::<f64>());
+                row.fill(rng.random::<f64>());
             }
             Ok(DataValue::Vec(Vector::F64(res_arr)))
         }
@@ -2300,7 +2300,7 @@ pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_RAND_FLOAT, op_rand_float, 0, false);
 pub(crate) fn op_rand_float(_args: &[DataValue]) -> Result<DataValue> {
-    Ok(thread_rng().r#gen::<f64>().into())
+    Ok(rand::rng().random::<f64>().into())
 }
 
 define_op!(OP_RAND_BERNOULLI, op_rand_bernoulli, 1, false);
@@ -2316,7 +2316,7 @@ pub(crate) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
         }
         _ => bail!("'rand_bernoulli' requires number between 0. and 1."),
     };
-    Ok(DataValue::from(thread_rng().gen_bool(prob)))
+    Ok(DataValue::from(rand::rng().gen_bool(prob)))
 }
 
 define_op!(OP_RAND_INT, op_rand_int, 2, false);
@@ -2327,20 +2327,20 @@ pub(crate) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
     let upper = &args[1]
         .get_int()
         .ok_or_else(|| miette!("'rand_int' requires integers"))?;
-    Ok(thread_rng().gen_range(*lower..=*upper).into())
+    Ok(rand::rng().random_range(*lower..=*upper).into())
 }
 
 define_op!(OP_RAND_CHOOSE, op_rand_choose, 1, false);
 pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::List(l) => Ok(l
-            .choose(&mut thread_rng())
+            .choose(&mut rand::rng())
             .cloned()
             .unwrap_or(DataValue::Null)),
         DataValue::Set(l) => Ok(l
             .iter()
             .collect_vec()
-            .choose(&mut thread_rng())
+            .choose(&mut rand::rng())
             .cloned()
             .cloned()
             .unwrap_or(DataValue::Null)),
@@ -2488,11 +2488,11 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
             let tz = jiff::tz::TimeZone::get(tz_s)
                 .map_err(|_| miette!("bad timezone specification: {}", tz_s))?;
             let zoned = ts.to_zoned(tz);
-            let s = SmartString::from(zoned.to_string());
+            let s = CompactString::from(zoned.to_string());
             Ok(DataValue::Str(s))
         }
         None => {
-            let s = SmartString::from(ts.to_string());
+            let s = CompactString::from(ts.to_string());
             Ok(DataValue::Str(s))
         }
     }
@@ -2516,8 +2516,8 @@ pub(crate) fn str2vld(s: &str) -> Result<ValidityTs> {
 
 define_op!(OP_RAND_UUID_V1, op_rand_uuid_v1, 0, false);
 pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
-    let mut rng = rand::thread_rng();
-    let uuid_ctx = uuid::v1::Context::new(rng.r#gen());
+    let mut rng = rand::rng();
+    let uuid_ctx = uuid::v1::Context::new(rng.random());
     #[cfg(target_arch = "wasm32")]
     let ts = {
         let since_epoch: f64 = Date::now();

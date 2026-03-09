@@ -135,6 +135,7 @@ impl JwtManager {
             nous_id: nous_id.map(str::to_owned),
             iss: self.config.issuer.clone(),
             iat: now,
+            // Saturate to i64::MAX: a TTL exceeding ~292 billion years is effectively infinite
             exp: now + i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX),
             jti: ulid::Ulid::new().to_string(),
             kind,
@@ -157,6 +158,7 @@ fn now_unix() -> i64 {
             })
             .as_secs(),
     )
+    // Saturate: u64 seconds exceeding i64::MAX (~year 292B) clamps to max
     .unwrap_or(i64::MAX)
 }
 

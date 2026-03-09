@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
-use smartstring::{LazyCompact, SmartString};
 use snafu::Snafu;
 
 use crate::engine::data::expr::{Bytecode, Expr};
@@ -42,7 +42,7 @@ impl<'a> SessionTx<'a> {
         meta: &InputRelationHandle,
         headers: &[Symbol],
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
         propagate_triggers: bool,
         force_collect: &str,
@@ -184,7 +184,7 @@ impl<'a> SessionTx<'a> {
         res_iter: impl Iterator<Item = Tuple>,
         headers: &[Symbol],
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
         propagate_triggers: bool,
         to_clear: &mut Vec<(Vec<u8>, Vec<u8>)>,
@@ -341,7 +341,7 @@ impl<'a> SessionTx<'a> {
         &mut self,
         rel_handle: &RelationHandle,
         stack: &mut Vec<DataValue>,
-        processors: &BTreeMap<SmartString<LazyCompact>, (Arc<TextAnalyzer>, Vec<Bytecode>)>,
+        processors: &BTreeMap<CompactString, (Arc<TextAnalyzer>, Vec<Bytecode>)>,
         new_kv: &[DataValue],
     ) -> Result<()> {
         for (k, (idx_handle, _)) in rel_handle.fts_indices.iter() {
@@ -355,7 +355,7 @@ impl<'a> SessionTx<'a> {
         &mut self,
         rel_handle: &RelationHandle,
         stack: &mut Vec<DataValue>,
-        processors: &BTreeMap<SmartString<LazyCompact>, (Arc<TextAnalyzer>, Vec<Bytecode>)>,
+        processors: &BTreeMap<CompactString, (Arc<TextAnalyzer>, Vec<Bytecode>)>,
         old_kv: &[DataValue],
     ) -> Result<()> {
         for (k, (idx_handle, _)) in rel_handle.fts_indices.iter() {
@@ -369,9 +369,9 @@ impl<'a> SessionTx<'a> {
         &mut self,
         rel_handle: &RelationHandle,
         stack: &mut Vec<DataValue>,
-        processors: &BTreeMap<SmartString<LazyCompact>, (Arc<TextAnalyzer>, Vec<Bytecode>)>,
+        processors: &BTreeMap<CompactString, (Arc<TextAnalyzer>, Vec<Bytecode>)>,
         new_kv: &[DataValue],
-        hash_perms_map: &BTreeMap<SmartString<LazyCompact>, HashPermutations>,
+        hash_perms_map: &BTreeMap<CompactString, HashPermutations>,
     ) -> Result<()> {
         for (k, (idx_handle, inv_idx_handle, manifest)) in rel_handle.lsh_indices.iter() {
             let (tokenizer, extractor) = processors.get(k).unwrap();
@@ -401,7 +401,7 @@ impl<'a> SessionTx<'a> {
         &mut self,
         relation_store: &RelationHandle,
         stack: &mut Vec<DataValue>,
-        hnsw_filters: &BTreeMap<SmartString<LazyCompact>, Vec<Bytecode>>,
+        hnsw_filters: &BTreeMap<CompactString, Vec<Bytecode>>,
         new_kv: &[DataValue],
     ) -> Result<()> {
         for (name, (idx_handle, idx_manifest)) in relation_store.hnsw_indices.iter() {
@@ -421,7 +421,7 @@ impl<'a> SessionTx<'a> {
     fn make_lsh_hash_perms(
         &self,
         relation_store: &RelationHandle,
-    ) -> Result<BTreeMap<SmartString<LazyCompact>, HashPermutations>> {
+    ) -> Result<BTreeMap<CompactString, HashPermutations>> {
         let mut perms = BTreeMap::new();
         for (name, (_, _, manifest)) in relation_store.lsh_indices.iter() {
             perms.insert(name.clone(), manifest.get_hash_perms()?);
@@ -432,7 +432,7 @@ impl<'a> SessionTx<'a> {
     fn make_fts_lsh_processors(
         &self,
         relation_store: &RelationHandle,
-    ) -> Result<BTreeMap<SmartString<LazyCompact>, (Arc<TextAnalyzer>, Vec<Bytecode>)>> {
+    ) -> Result<BTreeMap<CompactString, (Arc<TextAnalyzer>, Vec<Bytecode>)>> {
         let mut processors = BTreeMap::new();
         for (name, (_, manifest)) in relation_store.fts_indices.iter() {
             let tokenizer = self
@@ -469,7 +469,7 @@ impl<'a> SessionTx<'a> {
 
     fn make_hnsw_filters(
         relation_store: &RelationHandle,
-    ) -> Result<BTreeMap<SmartString<LazyCompact>, Vec<Bytecode>>> {
+    ) -> Result<BTreeMap<CompactString, Vec<Bytecode>>> {
         let mut hnsw_filters = BTreeMap::new();
         for (name, (_, manifest)) in relation_store.hnsw_indices.iter() {
             if let Some(f_code) = &manifest.index_filter {
@@ -492,7 +492,7 @@ impl<'a> SessionTx<'a> {
         res_iter: impl Iterator<Item = Tuple>,
         headers: &[Symbol],
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
         propagate_triggers: bool,
         to_clear: &mut Vec<(Vec<u8>, Vec<u8>)>,
@@ -636,7 +636,7 @@ impl<'a> SessionTx<'a> {
         &mut self,
         db: &Db<S>,
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
         propagate_triggers: bool,
         to_clear: &mut Vec<(Vec<u8>, Vec<u8>)>,
@@ -867,7 +867,7 @@ impl<'a> SessionTx<'a> {
         res_iter: impl Iterator<Item = Tuple>,
         headers: &[Symbol],
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
         propagate_triggers: bool,
         to_clear: &mut Vec<(Vec<u8>, Vec<u8>)>,
@@ -1149,10 +1149,10 @@ fn make_const_rule(
     bindings: Vec<Symbol>,
     data: Vec<DataValue>,
 ) {
-    let rule_symbol = Symbol::new(SmartString::from(rule_name), Default::default());
+    let rule_symbol = Symbol::new(CompactString::from(rule_name), Default::default());
     let mut options = BTreeMap::new();
     options.insert(
-        SmartString::from("data"),
+        CompactString::from("data"),
         Expr::Const {
             val: DataValue::List(data),
             span: Default::default(),

@@ -5,10 +5,10 @@ use crate::engine::error::DbResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::engine::parse::expr::parse_string;
 use crate::engine::parse::{DatalogParser, Pair, Rule};
+use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
 use pest::pratt_parser::{Op, PrattParser};
-use smartstring::SmartString;
 use std::sync::LazyLock;
 
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
@@ -83,7 +83,7 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
     let mut inner = pair.into_inner();
     let kernel = inner.next().unwrap();
     let core_text = match kernel.as_rule() {
-        Rule::fts_phrase_group => SmartString::from(kernel.as_str().trim()),
+        Rule::fts_phrase_group => CompactString::from(kernel.as_str().trim()),
         Rule::quoted_string | Rule::s_quoted_string | Rule::raw_string => parse_string(kernel)?,
         _ => unreachable!("unexpected rule: {:?}", kernel.as_rule()),
     };

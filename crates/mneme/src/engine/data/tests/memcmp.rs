@@ -33,7 +33,7 @@ fn encode_decode_num() {
     test_num(Num::Float(f64::NEG_INFINITY));
     test_num(Num::Float(f64::NAN));
     for _ in 0..100000 {
-        let f = (thread_rng().r#gen::<f64>() - 0.5) * 2.0;
+        let f = (rand::rng().random::<f64>() - 0.5) * 2.0;
         test_num(Num::Float(f));
         test_num(Num::Float(1. / f));
     }

@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use itertools::Itertools;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::functions::OP_LIST;
@@ -122,7 +122,7 @@ impl FixedRule for ReorderSort {
 
     fn arity(
         &self,
-        opts: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        opts: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {

@@ -8,6 +8,7 @@ use crate::state::{
     ToolCallInfo,
 };
 
+#[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
 pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
     app.active_turn_id = Some(turn_id);
     app.streaming_text.clear();
@@ -20,6 +21,7 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
     }
 }
 
+#[tracing::instrument(skip_all, fields(len = text.len()))]
 // SAFETY: sanitized at ingestion — streaming text from LLM API.
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
@@ -36,12 +38,14 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     }
 }
 
+#[tracing::instrument(skip_all, fields(len = text.len()))]
 // SAFETY: sanitized at ingestion — thinking text from LLM API.
 pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
     app.streaming_thinking.push_str(&clean);
 }
 
+#[tracing::instrument(skip_all, fields(%tool_name))]
 // SAFETY: sanitized at ingestion — tool names from stream API.
 pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
     let clean_name = sanitize_for_display(&tool_name).into_owned();
@@ -58,6 +62,7 @@ pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
     }
 }
 
+#[tracing::instrument(skip_all, fields(%tool_name, is_error, duration_ms))]
 pub(crate) fn handle_stream_tool_result(
     app: &mut App,
     tool_name: String,
@@ -81,6 +86,7 @@ pub(crate) fn handle_stream_tool_result(
     }
 }
 
+#[tracing::instrument(skip_all, fields(%tool_name, %risk))]
 // SAFETY: sanitized at ingestion — tool approval data from stream API.
 pub(crate) fn handle_stream_tool_approval_required(
     app: &mut App,
@@ -101,12 +107,14 @@ pub(crate) fn handle_stream_tool_approval_required(
     }));
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_tool_approval_resolved(app: &mut App) {
     if app.is_tool_approval_overlay() {
         app.overlay = None;
     }
 }
 
+#[tracing::instrument(skip_all)]
 // SAFETY: sanitized at ingestion — plan step labels and roles from stream API.
 pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     app.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
@@ -126,6 +134,7 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     }));
 }
 
+#[tracing::instrument(skip_all)]
 // SAFETY: sanitized at ingestion — streaming_text already sanitized via handle_stream_text_delta,
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
@@ -157,6 +166,7 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     }
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     tracing::info!("turn aborted: {reason}");
     app.streaming_text.clear();
@@ -165,6 +175,7 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     app.stream_rx = None;
 }
 
+#[tracing::instrument(skip_all)]
 // SAFETY: sanitized at ingestion — error messages may contain external data.
 pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");

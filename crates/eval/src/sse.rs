@@ -79,6 +79,7 @@ pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
 }
 
 /// Extract the concatenated text content from a sequence of SSE events.
+#[tracing::instrument(skip_all, fields(event_count = events.len()))]
 pub fn extract_text(events: &[ParsedSseEvent]) -> String {
     events
         .iter()
@@ -88,16 +89,19 @@ pub fn extract_text(events: &[ParsedSseEvent]) -> String {
 }
 
 /// Check whether the stream completed successfully.
+#[tracing::instrument(skip_all, fields(event_count = events.len()))]
 pub fn is_complete(events: &[ParsedSseEvent]) -> bool {
     events.iter().any(|e| e.event_type == "message_complete")
 }
 
 /// Check whether the stream contains an error event.
+#[tracing::instrument(skip_all, fields(event_count = events.len()))]
 pub fn has_error(events: &[ParsedSseEvent]) -> bool {
     events.iter().any(|e| e.event_type == "error")
 }
 
 /// Count `tool_use` events in the stream.
+#[tracing::instrument(skip_all, fields(event_count = events.len()))]
 pub fn tool_call_count(events: &[ParsedSseEvent]) -> usize {
     events.iter().filter(|e| e.event_type == "tool_use").count()
 }
@@ -109,6 +113,7 @@ pub struct UsageData {
     pub output_tokens: u64,
 }
 
+#[tracing::instrument(skip_all, fields(event_count = events.len()))]
 pub fn extract_usage(events: &[ParsedSseEvent]) -> Option<UsageData> {
     events
         .iter()

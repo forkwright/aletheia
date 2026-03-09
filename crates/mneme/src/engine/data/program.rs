@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure, miette};
+use compact_str::CompactString;
 use smallvec::SmallVec;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::aggr::Aggregation;
 use crate::engine::data::expr::Expr;
@@ -247,7 +247,7 @@ impl InputInlineRulesOrFixed {
 pub(crate) struct FixedRuleApply {
     pub(crate) fixed_handle: FixedRuleHandle,
     pub(crate) rule_args: Vec<FixedRuleArg>,
-    pub(crate) options: Arc<BTreeMap<SmartString<LazyCompact>, Expr>>,
+    pub(crate) options: Arc<BTreeMap<CompactString, Expr>>,
     pub(crate) head: Vec<Symbol>,
     pub(crate) arity: usize,
     pub(crate) span: SourceSpan,
@@ -275,7 +275,7 @@ impl Debug for FixedRuleApply {
 pub(crate) struct MagicFixedRuleApply {
     pub(crate) fixed_handle: FixedRuleHandle,
     pub(crate) rule_args: Vec<MagicFixedRuleRuleArg>,
-    pub(crate) options: Arc<BTreeMap<SmartString<LazyCompact>, Expr>>,
+    pub(crate) options: Arc<BTreeMap<CompactString, Expr>>,
     pub(crate) span: SourceSpan,
     pub(crate) arity: usize,
     pub(crate) fixed_impl: Arc<Box<dyn FixedRule>>,
@@ -405,7 +405,7 @@ pub(crate) enum FixedRuleArg {
     },
     NamedStored {
         name: Symbol,
-        bindings: BTreeMap<SmartString<LazyCompact>, Symbol>,
+        bindings: BTreeMap<CompactString, Symbol>,
         valid_at: Option<ValidityTs>,
         span: SourceSpan,
     },
@@ -581,7 +581,7 @@ impl std::fmt::Display for NoEntryError {
 impl std::error::Error for NoEntryError {}
 
 impl InputProgram {
-    pub(crate) fn needs_write_lock(&self) -> Option<SmartString<LazyCompact>> {
+    pub(crate) fn needs_write_lock(&self) -> Option<CompactString> {
         if let Some((h, _, _)) = &self.out_opts.store_relation {
             if !h.name.name.starts_with('_') {
                 Some(h.name.name.clone())
@@ -974,8 +974,8 @@ pub(crate) enum InputAtom {
 pub(crate) struct SearchInput {
     pub(crate) relation: Symbol,
     pub(crate) index: Symbol,
-    pub(crate) bindings: BTreeMap<SmartString<LazyCompact>, Expr>,
-    pub(crate) parameters: BTreeMap<SmartString<LazyCompact>, Expr>,
+    pub(crate) bindings: BTreeMap<CompactString, Expr>,
+    pub(crate) parameters: BTreeMap<CompactString, Expr>,
     pub(crate) span: SourceSpan,
 }
 
@@ -1847,7 +1847,7 @@ pub(crate) struct InputRuleApplyAtom {
 #[derive(Clone, Debug)]
 pub(crate) struct InputNamedFieldRelationApplyAtom {
     pub(crate) name: Symbol,
-    pub(crate) args: BTreeMap<SmartString<LazyCompact>, Expr>,
+    pub(crate) args: BTreeMap<CompactString, Expr>,
     pub(crate) valid_at: Option<ValidityTs>,
     pub(crate) span: SourceSpan,
 }
