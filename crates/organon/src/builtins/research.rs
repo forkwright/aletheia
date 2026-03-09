@@ -56,7 +56,11 @@ impl ToolExecutor for WebFetchExecutor {
                 .get(url)
                 .header(
                     "User-Agent",
-                    "Aletheia/1.0 (Research Agent; +https://github.com/forkwright/aletheia)",
+                    concat!(
+                        "aletheia/",
+                        env!("CARGO_PKG_VERSION"),
+                        " (github.com/forkwright/aletheia)"
+                    ),
                 )
                 .send()
                 .await;

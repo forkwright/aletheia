@@ -69,11 +69,6 @@ research:
     description: "Wikipedia lookup for concept orientation"
     command: "wiki"
     notes: "Grey literature. Use for orientation, not as primary source."
-  ingest_doc:
-    description: "PDF/document extraction to markdown"
-    command: "ingest-doc"
-    notes: "Uses Docling."
-
 browser_automation:
   description: "LLM-driven web browser automation"
   command: "browse"
@@ -85,19 +80,11 @@ memory:
   knowledge_store:
     description: "Long-term extracted memories (embedded CozoDB, cross-agent, cross-session)"
     tool: "memory_search (always available)"
-  knowledge_graph:
-    db: "CozoDB (embedded)"
-    commands:
-      stats: "aletheia-graph stats"
-      query: "aletheia-graph query DATALOG"
-      add: "aletheia-graph add SUBJECT PREDICATE OBJECT"
-      connections: "aletheia-graph connections ENTITY"
-      recent: "aletheia-graph recent [--hours 24] [--nous AGENT]"
 
 # -- System tools --
 
 agents:
-  health: "nous-health"
+  health: "aletheia health"
 
 runtime:
   config:

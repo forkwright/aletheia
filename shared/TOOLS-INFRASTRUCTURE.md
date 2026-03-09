@@ -5,11 +5,8 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 | Tool | Purpose |
 |------|---------|
 | aletheia-backup | Timestamped backup of all Aletheia state (config, sessions, workspaces) |
-| aletheia-graph | Knowledge graph CLI |
-| consolidate-memory | Prune daily memory files older than retention threshold |
 | credential-refresh | Auto-refresh Anthropic OAuth tokens before expiry |
 | gcal | Google Calendar event query |
-| nous-health | Monitor agent ecosystem health via gateway API |
 | pplx | Perplexity pro-search |
 | scholar | Multi-source academic search (OpenAlex + arXiv + Semantic Scholar) |
 | start.sh | Template startup script for ~/.aletheia/start.sh |
