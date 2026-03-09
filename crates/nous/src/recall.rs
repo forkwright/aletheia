@@ -911,13 +911,13 @@ mod tests {
 
         fn make_chunk(id: &str, content: &str, embedding: Vec<f32>) -> EmbeddedChunk {
             EmbeddedChunk {
-                id: id.to_owned(),
+                id: id.into(),
                 content: content.to_owned(),
                 source_type: "fact".to_owned(),
                 source_id: format!("fact-{id}"),
                 nous_id: String::new(),
                 embedding,
-                created_at: "2025-01-01T00:00:00Z".to_owned(),
+                created_at: jiff::Timestamp::from_second(1_735_689_600).expect("valid epoch"),
             }
         }
 

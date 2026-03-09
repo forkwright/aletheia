@@ -186,7 +186,7 @@ pub struct HybridQuery {
     pub embedding: Vec<f32>,
     /// Seed entity IDs for graph neighborhood expansion (graph signal).
     /// Empty slice disables the graph signal.
-    pub seed_entities: Vec<String>,
+    pub seed_entities: Vec<crate::id::EntityId>,
     /// Maximum number of results to return.
     pub limit: usize,
     /// ef parameter for HNSW search (controls recall/speed tradeoff).
@@ -198,7 +198,7 @@ pub struct HybridQuery {
 #[derive(Debug, Clone)]
 pub struct HybridResult {
     /// Document ID (from facts or embeddings relation).
-    pub id: String,
+    pub id: crate::id::FactId,
     /// Fused RRF score (higher = more relevant).
     pub rrf_score: f64,
     /// Rank in BM25 signal (-1 = absent, 1+ = rank where 1 is best).
@@ -212,7 +212,7 @@ pub struct HybridResult {
 #[cfg(feature = "mneme-engine")]
 impl crate::query_rewrite::HasId for HybridResult {
     fn id(&self) -> &str {
-        &self.id
+        self.id.as_str()
     }
 }
 
@@ -418,6 +418,21 @@ impl KnowledgeStore {
     /// Insert or update a fact.
     #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
     pub fn insert_fact(&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()> {
+        use snafu::ensure;
+        ensure!(!fact.content.is_empty(), crate::error::EmptyContentSnafu);
+        ensure!(
+            fact.content.len() <= crate::knowledge::MAX_CONTENT_LENGTH,
+            crate::error::ContentTooLongSnafu {
+                max: crate::knowledge::MAX_CONTENT_LENGTH,
+                actual: fact.content.len()
+            }
+        );
+        ensure!(
+            (0.0..=1.0).contains(&fact.confidence),
+            crate::error::InvalidConfidenceSnafu {
+                value: fact.confidence
+            }
+        );
         let params = fact_to_params(fact);
         self.run_mut(&queries::upsert_fact(), params)
     }
@@ -458,6 +473,8 @@ impl KnowledgeStore {
     /// Insert or update an entity.
     #[instrument(skip(self, entity), fields(entity_id = %entity.id))]
     pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
+        use snafu::ensure;
+        ensure!(!entity.name.is_empty(), crate::error::EmptyEntityNameSnafu);
         let params = entity_to_params(entity);
         self.run_mut(&queries::upsert_entity(), params)
     }
@@ -468,6 +485,11 @@ impl KnowledgeStore {
         &self,
         rel: &crate::knowledge::Relationship,
     ) -> crate::error::Result<()> {
+        use snafu::ensure;
+        ensure!(
+            (0.0..=1.0).contains(&rel.weight),
+            crate::error::InvalidWeightSnafu { value: rel.weight }
+        );
         let params = relationship_to_params(rel);
         self.run_mut(&queries::upsert_relationship(), params)
     }
@@ -477,12 +499,18 @@ impl KnowledgeStore {
     /// Returns a [`QueryResult`] whose rows correspond to the Datalog output of
     /// `ENTITY_NEIGHBORHOOD`. Columns: `id`, `score`, `hops`.
     #[instrument(skip(self))]
-    pub fn entity_neighborhood(&self, entity_id: &str) -> crate::error::Result<QueryResult> {
+    pub fn entity_neighborhood(
+        &self,
+        entity_id: &crate::id::EntityId,
+    ) -> crate::error::Result<QueryResult> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
+        params.insert(
+            "entity_id".to_owned(),
+            DataValue::Str(entity_id.as_str().into()),
+        );
         self.run_read(queries::ENTITY_NEIGHBORHOOD, params)
             .map(QueryResult::from)
     }
@@ -493,6 +521,15 @@ impl KnowledgeStore {
         &self,
         chunk: &crate::knowledge::EmbeddedChunk,
     ) -> crate::error::Result<()> {
+        use snafu::ensure;
+        ensure!(
+            !chunk.content.is_empty(),
+            crate::error::EmptyEmbeddingContentSnafu
+        );
+        ensure!(
+            !chunk.embedding.is_empty(),
+            crate::error::EmptyEmbeddingSnafu
+        );
         let params = embedding_to_params(chunk, self.dim);
         self.run_mut(&queries::upsert_embedding(), params)
     }
@@ -519,10 +556,10 @@ impl KnowledgeStore {
         let rows = self.run_read(queries::SEMANTIC_SEARCH, params)?;
         let results = rows_to_recall_results(rows)?;
 
-        let source_ids: Vec<String> = results
+        let source_ids: Vec<crate::id::FactId> = results
             .iter()
             .filter(|r| r.source_type == "fact")
-            .map(|r| r.source_id.clone())
+            .map(|r| crate::id::FactId::new_unchecked(&r.source_id))
             .collect();
         if let Err(e) = self.increment_access(&source_ids) {
             tracing::warn!(error = %e, "failed to increment access counts");
@@ -754,7 +791,7 @@ impl KnowledgeStore {
         for fact in skills {
             if let Ok(content) = serde_json::from_str::<crate::skill::SkillContent>(&fact.content) {
                 if content.name == skill_name {
-                    return Ok(Some(fact.id));
+                    return Ok(Some(fact.id.to_string()));
                 }
             }
         }
@@ -790,7 +827,7 @@ impl KnowledgeStore {
         let rows = self.run_read(&script, params)?;
         let results = rows_to_hybrid_results(rows)?;
 
-        let fact_ids: Vec<String> = results.iter().map(|r| r.id.clone()).collect();
+        let fact_ids: Vec<crate::id::FactId> = results.iter().map(|r| r.id.clone()).collect();
         if let Err(e) = self.increment_access(&fact_ids) {
             tracing::warn!(error = %e, "failed to increment access counts");
         }
@@ -947,7 +984,8 @@ impl KnowledgeStore {
         for fact_id in &fact_ids {
             // Try to find entity connections for this fact by checking entity neighborhoods
             // Use the fact_id as a potential entity_id (facts often share IDs with their subject entities)
-            if let Ok(neighborhood) = self.entity_neighborhood(fact_id) {
+            let entity_id = crate::id::EntityId::new_unchecked(*fact_id);
+            if let Ok(neighborhood) = self.entity_neighborhood(&entity_id) {
                 for row in &neighborhood.rows {
                     // Extract neighbor entity IDs and find their associated facts
                     if let Some(neighbor_id) = row.first().and_then(|v| v.get_str()) {
@@ -963,7 +1001,7 @@ impl KnowledgeStore {
         let mut graph_results = Vec::new();
         for (rank, id) in expanded_ids.iter().enumerate() {
             graph_results.push(HybridResult {
-                id: id.clone(),
+                id: crate::id::FactId::new_unchecked(id.as_str()),
                 rrf_score: 1.0 / (60.0 + rank as f64 + 1.0),
                 bm25_rank: -1,
                 vec_rank: -1,
@@ -1002,18 +1040,16 @@ impl KnowledgeStore {
 
     /// Increment access count and update last-accessed timestamp for the given fact IDs.
     #[instrument(skip(self), fields(count = fact_ids.len()))]
-    pub fn increment_access(&self, fact_ids: &[String]) -> crate::error::Result<()> {
+    pub fn increment_access(&self, fact_ids: &[crate::id::FactId]) -> crate::error::Result<()> {
         if fact_ids.is_empty() {
             return Ok(());
         }
-        let now = jiff::Zoned::now()
-            .strftime("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
+        let now = jiff::Timestamp::now();
         for id in fact_ids {
             // Read the current fact rows, increment in Rust, then write back.
             // CozoDB in-memory read-modify-write in a single Datalog rule does not
             // reflect the mutation in subsequent reads — avoid that pattern.
-            let facts = match self.read_facts_by_id(id) {
+            let facts = match self.read_facts_by_id(id.as_str()) {
                 Ok(f) => f,
                 Err(e) => {
                     tracing::warn!(error = %e, fact_id = %id, "failed to read fact for access increment");
@@ -1022,7 +1058,7 @@ impl KnowledgeStore {
             };
             for mut fact in facts {
                 fact.access_count = fact.access_count.saturating_add(1);
-                fact.last_accessed_at.clone_from(&now);
+                fact.last_accessed_at = Some(now);
                 if let Err(e) = self.insert_fact(&fact) {
                     tracing::warn!(error = %e, fact_id = %id, "failed to write incremented access count");
                 }
@@ -1035,7 +1071,7 @@ impl KnowledgeStore {
     #[instrument(skip(self), fields(count = fact_ids.len()))]
     pub async fn increment_access_async(
         self: &std::sync::Arc<Self>,
-        fact_ids: Vec<String>,
+        fact_ids: Vec<crate::id::FactId>,
     ) -> crate::error::Result<()> {
         use snafu::ResultExt;
         let this = std::sync::Arc::clone(self);
@@ -1048,12 +1084,10 @@ impl KnowledgeStore {
     #[instrument(skip(self))]
     pub fn forget_fact(
         &self,
-        fact_id: &str,
+        fact_id: &crate::id::FactId,
         reason: crate::knowledge::ForgetReason,
     ) -> crate::error::Result<()> {
-        let now = jiff::Zoned::now()
-            .strftime("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
+        let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
@@ -1074,7 +1108,7 @@ impl KnowledgeStore {
         let mut params = std::collections::BTreeMap::new();
         params.insert(
             "id".to_owned(),
-            crate::engine::DataValue::Str(fact_id.into()),
+            crate::engine::DataValue::Str(fact_id.as_str().into()),
         );
         params.insert("now".to_owned(), crate::engine::DataValue::Str(now.into()));
         params.insert(
@@ -1086,7 +1120,7 @@ impl KnowledgeStore {
 
     /// Reverse a soft-delete: clear `is_forgotten`, `forgotten_at`, `forget_reason`.
     #[instrument(skip(self))]
-    pub fn unforget_fact(&self, fact_id: &str) -> crate::error::Result<()> {
+    pub fn unforget_fact(&self, fact_id: &crate::id::FactId) -> crate::error::Result<()> {
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
@@ -1107,7 +1141,7 @@ impl KnowledgeStore {
         let mut params = std::collections::BTreeMap::new();
         params.insert(
             "id".to_owned(),
-            crate::engine::DataValue::Str(fact_id.into()),
+            crate::engine::DataValue::Str(fact_id.as_str().into()),
         );
         self.run_mut(script, params)
     }
@@ -1284,7 +1318,7 @@ impl KnowledgeStore {
     #[instrument(skip(self))]
     pub async fn forget_fact_async(
         self: &std::sync::Arc<Self>,
-        fact_id: String,
+        fact_id: crate::id::FactId,
         reason: crate::knowledge::ForgetReason,
     ) -> crate::error::Result<()> {
         use snafu::ResultExt;
@@ -1298,7 +1332,7 @@ impl KnowledgeStore {
     #[instrument(skip(self))]
     pub async fn unforget_fact_async(
         self: &std::sync::Arc<Self>,
-        fact_id: String,
+        fact_id: crate::id::FactId,
     ) -> crate::error::Result<()> {
         use snafu::ResultExt;
         let this = std::sync::Arc::clone(self);
@@ -1793,11 +1827,12 @@ fn fact_to_params(
     fact: &crate::knowledge::Fact,
 ) -> std::collections::BTreeMap<String, crate::engine::DataValue> {
     use crate::engine::DataValue;
+    use crate::knowledge::format_timestamp;
     let mut p = std::collections::BTreeMap::new();
     p.insert("id".to_owned(), DataValue::Str(fact.id.as_str().into()));
     p.insert(
         "valid_from".to_owned(),
-        DataValue::Str(fact.valid_from.as_str().into()),
+        DataValue::Str(format_timestamp(&fact.valid_from).into()),
     );
     p.insert(
         "content".to_owned(),
@@ -1811,7 +1846,7 @@ fn fact_to_params(
     p.insert("tier".to_owned(), DataValue::Str(fact.tier.as_str().into()));
     p.insert(
         "valid_to".to_owned(),
-        DataValue::Str(fact.valid_to.as_str().into()),
+        DataValue::Str(format_timestamp(&fact.valid_to).into()),
     );
     p.insert(
         "superseded_by".to_owned(),
@@ -1829,7 +1864,7 @@ fn fact_to_params(
     );
     p.insert(
         "recorded_at".to_owned(),
-        DataValue::Str(fact.recorded_at.as_str().into()),
+        DataValue::Str(format_timestamp(&fact.recorded_at).into()),
     );
     p.insert(
         "access_count".to_owned(),
@@ -1837,7 +1872,10 @@ fn fact_to_params(
     );
     p.insert(
         "last_accessed_at".to_owned(),
-        DataValue::Str(fact.last_accessed_at.as_str().into()),
+        match &fact.last_accessed_at {
+            Some(ts) => DataValue::Str(format_timestamp(ts).into()),
+            None => DataValue::Str("".into()),
+        },
     );
     p.insert(
         "stability_hours".to_owned(),
@@ -1854,7 +1892,7 @@ fn fact_to_params(
     p.insert(
         "forgotten_at".to_owned(),
         match &fact.forgotten_at {
-            Some(s) => DataValue::Str(s.as_str().into()),
+            Some(ts) => DataValue::Str(format_timestamp(ts).into()),
             None => DataValue::Null,
         },
     );
@@ -1889,11 +1927,11 @@ fn entity_to_params(
     );
     p.insert(
         "created_at".to_owned(),
-        DataValue::Str(entity.created_at.as_str().into()),
+        DataValue::Str(crate::knowledge::format_timestamp(&entity.created_at).into()),
     );
     p.insert(
         "updated_at".to_owned(),
-        DataValue::Str(entity.updated_at.as_str().into()),
+        DataValue::Str(crate::knowledge::format_timestamp(&entity.updated_at).into()),
     );
     p
 }
@@ -1913,7 +1951,7 @@ fn relationship_to_params(
     p.insert("weight".to_owned(), DataValue::from(rel.weight));
     p.insert(
         "created_at".to_owned(),
-        DataValue::Str(rel.created_at.as_str().into()),
+        DataValue::Str(crate::knowledge::format_timestamp(&rel.created_at).into()),
     );
     p
 }
@@ -1948,7 +1986,7 @@ fn embedding_to_params(
     );
     p.insert(
         "created_at".to_owned(),
-        DataValue::Str(chunk.created_at.as_str().into()),
+        DataValue::Str(crate::knowledge::format_timestamp(&chunk.created_at).into()),
     );
     p
 }
@@ -2063,7 +2101,7 @@ fn rows_to_facts(
             .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
 
         out.push(Fact {
-            id,
+            id: crate::id::FactId::new_unchecked(id),
             nous_id: if nous_id_col.is_empty() {
                 nous_id.to_owned()
             } else {
@@ -2072,17 +2110,20 @@ fn rows_to_facts(
             content,
             confidence,
             tier,
-            valid_from,
-            valid_to,
-            superseded_by,
+            valid_from: crate::knowledge::parse_timestamp(&valid_from)
+                .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
+            valid_to: crate::knowledge::parse_timestamp(&valid_to)
+                .unwrap_or_else(crate::knowledge::far_future),
+            superseded_by: superseded_by.map(crate::id::FactId::new_unchecked),
             source_session_id,
-            recorded_at,
+            recorded_at: crate::knowledge::parse_timestamp(&recorded_at)
+                .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
             access_count,
-            last_accessed_at,
+            last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
             stability_hours,
             fact_type,
             is_forgotten,
-            forgotten_at,
+            forgotten_at: forgotten_at.and_then(|s| crate::knowledge::parse_timestamp(&s)),
             forget_reason,
         });
     }
@@ -2198,22 +2239,25 @@ fn rows_to_raw_facts(
             .unwrap_or(None)
             .and_then(|s| s.parse::<crate::knowledge::ForgetReason>().ok());
         out.push(Fact {
-            id,
+            id: crate::id::FactId::new_unchecked(id),
             nous_id,
             content,
             confidence,
             tier,
-            valid_from,
-            valid_to,
-            superseded_by,
+            valid_from: crate::knowledge::parse_timestamp(&valid_from)
+                .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
+            valid_to: crate::knowledge::parse_timestamp(&valid_to)
+                .unwrap_or_else(crate::knowledge::far_future),
+            superseded_by: superseded_by.map(crate::id::FactId::new_unchecked),
             source_session_id,
-            recorded_at,
+            recorded_at: crate::knowledge::parse_timestamp(&recorded_at)
+                .unwrap_or(jiff::Timestamp::UNIX_EPOCH),
             access_count,
-            last_accessed_at,
+            last_accessed_at: crate::knowledge::parse_timestamp(&last_accessed_at),
             stability_hours,
             fact_type,
             is_forgotten,
-            forgotten_at,
+            forgotten_at: forgotten_at.and_then(|s| crate::knowledge::parse_timestamp(&s)),
             forget_reason,
         });
     }
@@ -2255,18 +2299,18 @@ fn rows_to_facts_partial(
         let tier = parse_epistemic_tier(&tier_str)?;
 
         out.push(Fact {
-            id,
+            id: crate::id::FactId::new_unchecked(id),
             nous_id: String::new(),
             content,
             confidence,
             tier,
-            valid_from: String::new(),
-            valid_to: String::new(),
+            valid_from: jiff::Timestamp::UNIX_EPOCH,
+            valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: String::new(),
+            recorded_at: jiff::Timestamp::UNIX_EPOCH,
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -2327,38 +2371,21 @@ fn rows_to_recall_results(
     Ok(out)
 }
 
-/// Validate that an entity ID is safe for interpolation into a Datalog script.
-///
-/// Only ASCII alphanumerics, hyphens (`-`), and underscores (`_`) are permitted.
-/// This mirrors the character set produced by [`slugify`], preventing injection
-/// via maliciously crafted entity IDs.
-#[cfg(feature = "mneme-engine")]
-fn validate_entity_id_for_query(id: &str) -> crate::error::Result<()> {
-    if id
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        Ok(())
-    } else {
-        crate::error::InvalidEntityIdSnafu { id: id.to_owned() }.fail()
-    }
-}
-
 // Build the hybrid Datalog query with dynamic graph sub-rules.
 // When seed_entities is empty, graph is an empty relation.
 // When non-empty, seeds are expanded inline (avoids is_in() built-in dependency).
-// All seed entity IDs are validated against [a-zA-Z0-9_-] before interpolation.
+// Double-quote characters are escaped in interpolated entity IDs.
 #[cfg(feature = "mneme-engine")]
 fn build_hybrid_query(q: &HybridQuery) -> crate::error::Result<String> {
     let graph_rules = if q.seed_entities.is_empty() {
         // Empty graph relation — graph signal contributes 0 to RRF
         "graph[id, score] <- []".to_owned()
     } else {
-        let mut seed_data = Vec::with_capacity(q.seed_entities.len());
-        for s in &q.seed_entities {
-            validate_entity_id_for_query(s)?;
-            seed_data.push(format!("[\"{s}\"]"));
-        }
+        let seed_data: Vec<String> = q
+            .seed_entities
+            .iter()
+            .map(|s| format!("[\"{}\"]", s.as_str().replace('"', "\\\"")))
+            .collect();
         let seeds_inline = seed_data.join(", ");
         format!(
             "seed_list[e] <- [{seeds_inline}]\n        \
@@ -2410,7 +2437,7 @@ fn rows_to_hybrid_results(
             .build()
         })?)?;
         out.push(HybridResult {
-            id,
+            id: crate::id::FactId::new_unchecked(id),
             rrf_score,
             bm25_rank,
             vec_rank,
@@ -2633,44 +2660,13 @@ mod tests {
 
     #[cfg(feature = "mneme-engine")]
     #[test]
-    fn build_hybrid_query_rejects_injection_in_seed_id() {
-        // Seeds with characters outside [a-zA-Z0-9_-] must return an error.
-        let dangerous_seeds = [
-            "e-1\"; DROP TABLE facts; --",
-            "id with spaces",
-            "id\nnewline",
-            "id\"quote",
-            "id'apostrophe",
-        ];
-        for seed in dangerous_seeds {
-            let q = HybridQuery {
-                text: "test".into(),
-                embedding: vec![0.0; 4],
-                seed_entities: vec![seed.to_owned()],
-                limit: 5,
-                ef: 20,
-            };
-            let result = build_hybrid_query(&q);
-            assert!(
-                result.is_err(),
-                "seed {seed:?} must be rejected but build_hybrid_query succeeded"
-            );
-            assert!(
-                matches!(result, Err(crate::error::Error::InvalidEntityId { .. })),
-                "seed {seed:?} must produce InvalidEntityId error"
-            );
-        }
-    }
-
-    #[cfg(feature = "mneme-engine")]
-    #[test]
     fn build_hybrid_query_accepts_valid_seed_ids() {
         let valid_seeds = ["e-1", "some_entity", "CamelCase123", "a-b_c"];
         for seed in valid_seeds {
             let q = HybridQuery {
                 text: "test".into(),
                 embedding: vec![0.0; 4],
-                seed_entities: vec![seed.to_owned()],
+                seed_entities: vec![crate::id::EntityId::from(seed)],
                 limit: 5,
                 ef: 20,
             };
@@ -2689,18 +2685,18 @@ mod tests {
             KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
         let fact = Fact {
-            id: "f1".to_owned(),
+            id: crate::id::FactId::new_unchecked("f1"),
             nous_id: "test".to_owned(),
             content: "Rust systems programming".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -2710,13 +2706,13 @@ mod tests {
         store.insert_fact(&fact).expect("insert fact");
 
         let chunk = EmbeddedChunk {
-            id: "f1".to_owned(),
+            id: crate::id::EmbeddingId::new_unchecked("f1"),
             content: "Rust systems programming".to_owned(),
             source_type: "fact".to_owned(),
             source_id: "f1".to_owned(),
             nous_id: "test".to_owned(),
             embedding: vec![0.9, 0.1, 0.1, 0.1],
-            created_at: "2026-03-01T00:00:00Z".to_owned(),
+            created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
         };
         store.insert_embedding(&chunk).expect("insert embedding");
 
@@ -2750,7 +2746,7 @@ mod tests {
     )]
     fn hybrid_search_graph_aggregation() {
         use crate::knowledge::{
-            EmbeddedChunk, Entity, EntityId, EpistemicTier, Fact, Relationship,
+            EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship,
         };
 
         let dim = 4;
@@ -2759,18 +2755,18 @@ mod tests {
 
         // f1: reachable from 3 seed entities
         let f1 = Fact {
-            id: "f1".to_owned(),
+            id: crate::id::FactId::new_unchecked("f1"),
             nous_id: "test".to_owned(),
             content: "Rust systems programming".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -2780,30 +2776,30 @@ mod tests {
         store.insert_fact(&f1).expect("insert f1");
         store
             .insert_embedding(&EmbeddedChunk {
-                id: "f1".to_owned(),
+                id: crate::id::EmbeddingId::new_unchecked("f1"),
                 content: "Rust systems programming".to_owned(),
                 source_type: "fact".to_owned(),
                 source_id: "f1".to_owned(),
                 nous_id: "test".to_owned(),
                 embedding: vec![0.9, 0.1, 0.1, 0.1],
-                created_at: "2026-03-01T00:00:00Z".to_owned(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             })
             .expect("insert f1 embedding");
 
         // f2: reachable from only 1 seed entity
         let f2 = Fact {
-            id: "f2".to_owned(),
+            id: crate::id::FactId::new_unchecked("f2"),
             nous_id: "test".to_owned(),
             content: "Rust memory safety".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -2813,13 +2809,13 @@ mod tests {
         store.insert_fact(&f2).expect("insert f2");
         store
             .insert_embedding(&EmbeddedChunk {
-                id: "f2".to_owned(),
+                id: crate::id::EmbeddingId::new_unchecked("f2"),
                 content: "Rust memory safety".to_owned(),
                 source_type: "fact".to_owned(),
                 source_id: "f2".to_owned(),
                 nous_id: "test".to_owned(),
                 embedding: vec![0.8, 0.2, 0.1, 0.1],
-                created_at: "2026-03-01T00:00:00Z".to_owned(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             })
             .expect("insert f2 embedding");
 
@@ -2827,31 +2823,31 @@ mod tests {
         for (id, name) in [("s1", "Seed1"), ("s2", "Seed2"), ("s3", "Seed3")] {
             store
                 .insert_entity(&Entity {
-                    id: EntityId::from(id),
+                    id: crate::id::EntityId::new_unchecked(id),
                     name: name.to_owned(),
                     entity_type: "concept".to_owned(),
                     aliases: vec![],
-                    created_at: "2026-03-01T00:00:00Z".to_owned(),
-                    updated_at: "2026-03-01T00:00:00Z".to_owned(),
+                    created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                    updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
                 })
                 .expect("insert entity");
             store
                 .insert_relationship(&Relationship {
-                    src: EntityId::from(id),
-                    dst: EntityId::from("f1"),
+                    src: crate::id::EntityId::new_unchecked(id),
+                    dst: crate::id::EntityId::new_unchecked("f1"),
                     relation: "describes".to_owned(),
                     weight: 0.7,
-                    created_at: "2026-03-01T00:00:00Z".to_owned(),
+                    created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
                 })
                 .expect("insert relationship to f1");
         }
         store
             .insert_relationship(&Relationship {
-                src: EntityId::from("s1"),
-                dst: EntityId::from("f2"),
+                src: crate::id::EntityId::new_unchecked("s1"),
+                dst: crate::id::EntityId::new_unchecked("f2"),
                 relation: "describes".to_owned(),
                 weight: 0.7,
-                created_at: "2026-03-01T00:00:00Z".to_owned(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             })
             .expect("insert relationship to f2");
 
@@ -2859,14 +2855,18 @@ mod tests {
             .search_hybrid(&HybridQuery {
                 text: "Rust programming".to_owned(),
                 embedding: vec![0.9, 0.1, 0.1, 0.1],
-                seed_entities: vec!["s1".to_owned(), "s2".to_owned(), "s3".to_owned()],
+                seed_entities: vec![
+                    crate::id::EntityId::new_unchecked("s1"),
+                    crate::id::EntityId::new_unchecked("s2"),
+                    crate::id::EntityId::new_unchecked("s3"),
+                ],
                 limit: 10,
                 ef: 20,
             })
             .expect("hybrid search with three seeds");
 
         // f1 must appear exactly once (aggregated from 3 paths)
-        let f1_hits: Vec<_> = results.iter().filter(|r| r.id == "f1").collect();
+        let f1_hits: Vec<_> = results.iter().filter(|r| r.id.as_str() == "f1").collect();
         assert_eq!(
             f1_hits.len(),
             1,
@@ -2878,7 +2878,7 @@ mod tests {
         );
 
         // f2 must appear exactly once (from 1 path)
-        let f2_hits: Vec<_> = results.iter().filter(|r| r.id == "f2").collect();
+        let f2_hits: Vec<_> = results.iter().filter(|r| r.id.as_str() == "f2").collect();
         assert_eq!(f2_hits.len(), 1, "f2 must appear once");
         assert!(
             f2_hits[0].graph_rank > 0,
@@ -2897,25 +2897,25 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     #[test]
     fn hybrid_search_two_signal_no_graph() {
-        use crate::knowledge::{EmbeddedChunk, Entity, EntityId, EpistemicTier, Fact};
+        use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact};
 
         let dim = 4;
         let store =
             KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
 
         let fact = Fact {
-            id: "f-twosig".to_owned(),
+            id: crate::id::FactId::new_unchecked("f-twosig"),
             nous_id: "test".to_owned(),
             content: "unique harpsichord melody testing".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -2926,13 +2926,13 @@ mod tests {
 
         store
             .insert_embedding(&EmbeddedChunk {
-                id: "f-twosig".to_owned(),
+                id: crate::id::EmbeddingId::new_unchecked("f-twosig"),
                 content: "unique harpsichord melody testing".to_owned(),
                 source_type: "fact".to_owned(),
                 source_id: "f-twosig".to_owned(),
                 nous_id: "test".to_owned(),
                 embedding: vec![0.7, 0.3, 0.2, 0.1],
-                created_at: "2026-03-01T00:00:00Z".to_owned(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             })
             .expect("insert embedding");
 
@@ -2940,12 +2940,12 @@ mod tests {
         // no matches for f-twosig
         store
             .insert_entity(&Entity {
-                id: EntityId::from("e-unrelated"),
+                id: crate::id::EntityId::new_unchecked("e-unrelated"),
                 name: "Unrelated".to_owned(),
                 entity_type: "concept".to_owned(),
                 aliases: vec![],
-                created_at: "2026-03-01T00:00:00Z".to_owned(),
-                updated_at: "2026-03-01T00:00:00Z".to_owned(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             })
             .expect("insert entity");
 
@@ -2953,13 +2953,13 @@ mod tests {
             .search_hybrid(&HybridQuery {
                 text: "harpsichord melody".to_owned(),
                 embedding: vec![0.7, 0.3, 0.2, 0.1],
-                seed_entities: vec!["e-unrelated".to_owned()],
+                seed_entities: vec![crate::id::EntityId::new_unchecked("e-unrelated")],
                 limit: 5,
                 ef: 20,
             })
             .expect("hybrid search two signals");
 
-        let hit = results.iter().find(|r| r.id == "f-twosig");
+        let hit = results.iter().find(|r| r.id.as_str() == "f-twosig");
         assert!(hit.is_some(), "BM25+vector fact must appear in results");
         let hit = hit.unwrap();
         assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
@@ -2982,18 +2982,18 @@ mod tests {
 
         // Insert a fact but no embedding and no graph edges
         let fact = Fact {
-            id: "f-bm25-only".to_owned(),
+            id: crate::id::FactId::new_unchecked("f-bm25-only"),
             nous_id: "test".to_owned(),
             content: "unique xylophone testing keyword".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -3012,7 +3012,7 @@ mod tests {
             })
             .expect("hybrid search bm25-only");
 
-        let hit = results.iter().find(|r| r.id == "f-bm25-only");
+        let hit = results.iter().find(|r| r.id.as_str() == "f-bm25-only");
         assert!(hit.is_some(), "BM25-only fact must appear in results");
         let hit = hit.unwrap();
         assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
@@ -3025,7 +3025,7 @@ mod tests {
 mod knowledge_store_tests {
     use super::*;
     use crate::knowledge::{
-        EmbeddedChunk, Entity, EntityId, EpistemicTier, Fact, ForgetReason, Relationship,
+        EmbeddedChunk, Entity, EpistemicTier, Fact, ForgetReason, Relationship,
     };
     use std::collections::BTreeMap;
     use std::sync::Arc;
@@ -3036,20 +3036,24 @@ mod knowledge_store_tests {
         KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: DIM }).expect("open_mem")
     }
 
+    fn test_ts(s: &str) -> jiff::Timestamp {
+        crate::knowledge::parse_timestamp(s).expect("valid test timestamp")
+    }
+
     fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         Fact {
-            id: id.to_owned(),
+            id: crate::id::FactId::new_unchecked(id),
             nous_id: nous_id.to_owned(),
             content: content.to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -3060,34 +3064,34 @@ mod knowledge_store_tests {
 
     fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
         Entity {
-            id: EntityId::from(id),
+            id: crate::id::EntityId::new_unchecked(id),
             name: name.to_owned(),
             entity_type: entity_type.to_owned(),
             aliases: vec![],
-            created_at: "2026-03-01T00:00:00Z".to_owned(),
-            updated_at: "2026-03-01T00:00:00Z".to_owned(),
+            created_at: test_ts("2026-03-01T00:00:00Z"),
+            updated_at: test_ts("2026-03-01T00:00:00Z"),
         }
     }
 
     fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
         Relationship {
-            src: EntityId::from(src),
-            dst: EntityId::from(dst),
+            src: crate::id::EntityId::new_unchecked(src),
+            dst: crate::id::EntityId::new_unchecked(dst),
             relation: relation.to_owned(),
             weight,
-            created_at: "2026-03-01T00:00:00Z".to_owned(),
+            created_at: test_ts("2026-03-01T00:00:00Z"),
         }
     }
 
     fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> EmbeddedChunk {
         EmbeddedChunk {
-            id: id.to_owned(),
+            id: crate::id::EmbeddingId::new_unchecked(id),
             content: content.to_owned(),
             source_type: "fact".to_owned(),
             source_id: source_id.to_owned(),
             nous_id: nous_id.to_owned(),
             embedding: vec![0.5, 0.5, 0.5, 0.5],
-            created_at: "2026-03-01T00:00:00Z".to_owned(),
+            created_at: test_ts("2026-03-01T00:00:00Z"),
         }
     }
 
@@ -3103,7 +3107,7 @@ mod knowledge_store_tests {
             .query_facts("agent-a", "2026-06-01", 10)
             .expect("query facts");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "f1");
+        assert_eq!(results[0].id.as_str(), "f1");
         assert_eq!(results[0].content, "Rust is a systems programming language");
         assert!((results[0].confidence - 0.9).abs() < f64::EPSILON);
     }
@@ -3148,7 +3152,9 @@ mod knowledge_store_tests {
         let entity = make_entity("e1", "Rust", "language");
         store.insert_entity(&entity).expect("insert entity");
 
-        let rows = store.entity_neighborhood("e1").expect("neighborhood");
+        let rows = store
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
+            .expect("neighborhood");
         // No relationships yet, so empty result set is fine (no panic)
         assert!(rows.rows.is_empty());
     }
@@ -3187,7 +3193,9 @@ mod knowledge_store_tests {
             .insert_relationship(&make_relationship("e1", "e2", "works_on", 0.9))
             .expect("insert relationship");
 
-        let rows = store.entity_neighborhood("e1").expect("neighborhood");
+        let rows = store
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
+            .expect("neighborhood");
         assert!(
             !rows.rows.is_empty(),
             "neighborhood should contain the relationship"
@@ -3208,12 +3216,16 @@ mod knowledge_store_tests {
             .expect("insert rel");
 
         // e1 neighborhood should include e2
-        let from_e1 = store.entity_neighborhood("e1").expect("e1 neighborhood");
+        let from_e1 = store
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
+            .expect("e1 neighborhood");
         assert!(!from_e1.rows.is_empty());
 
         // e2 neighborhood may or may not include e1 (depends on query directionality)
         // Just verify it doesn't error
-        let _from_e2 = store.entity_neighborhood("e2").expect("e2 neighborhood");
+        let _from_e2 = store
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("e2"))
+            .expect("e2 neighborhood");
     }
 
     // ---- CRUD: Embeddings ----
@@ -3246,7 +3258,10 @@ mod knowledge_store_tests {
         store.insert_fact(&fact).expect("insert fact");
 
         store
-            .forget_fact("f1", ForgetReason::UserRequested)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("f1"),
+                ForgetReason::UserRequested,
+            )
             .expect("forget fact");
 
         let results = store
@@ -3254,7 +3269,10 @@ mod knowledge_store_tests {
             .expect("query facts");
         // query_facts returns current, non-forgotten facts
         assert!(
-            results.is_empty() || results.iter().all(|f| f.id != "f1" || !f.is_forgotten),
+            results.is_empty()
+                || results
+                    .iter()
+                    .all(|f| f.id.as_str() != "f1" || !f.is_forgotten),
             "forgotten fact should be excluded or marked"
         );
     }
@@ -3266,13 +3284,18 @@ mod knowledge_store_tests {
         store.insert_fact(&fact).expect("insert fact");
 
         store
-            .forget_fact("f1", ForgetReason::Outdated)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("f1"),
+                ForgetReason::Outdated,
+            )
             .expect("forget");
-        store.unforget_fact("f1").expect("unforget");
+        store
+            .unforget_fact(&crate::id::FactId::new_unchecked("f1"))
+            .expect("unforget");
 
         // After unforgetting, audit should show it as not forgotten
         let all = store.audit_all_facts("agent-a", 100).expect("audit facts");
-        let found = all.iter().find(|f| f.id == "f1");
+        let found = all.iter().find(|f| f.id.as_str() == "f1");
         assert!(found.is_some(), "fact should still exist");
         assert!(
             !found.expect("checked").is_forgotten,
@@ -3287,11 +3310,14 @@ mod knowledge_store_tests {
         store.insert_fact(&fact).expect("insert fact");
 
         store
-            .forget_fact("f1", ForgetReason::Privacy)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("f1"),
+                ForgetReason::Privacy,
+            )
             .expect("forget");
 
         let all = store.audit_all_facts("agent-a", 100).expect("audit all");
-        let found = all.iter().find(|f| f.id == "f1");
+        let found = all.iter().find(|f| f.id.as_str() == "f1");
         assert!(found.is_some(), "audit must return forgotten facts");
         let found = found.expect("checked");
         assert!(found.is_forgotten);
@@ -3307,16 +3333,19 @@ mod knowledge_store_tests {
         store.insert_fact(&fact).expect("insert fact");
 
         store
-            .increment_access(&["f1".to_owned()])
+            .increment_access(&[crate::id::FactId::new_unchecked("f1")])
             .expect("increment");
         store
-            .increment_access(&["f1".to_owned()])
+            .increment_access(&[crate::id::FactId::new_unchecked("f1")])
             .expect("increment again");
 
         let results = store
             .query_facts("agent-a", "2026-06-01", 10)
             .expect("query");
-        let found = results.iter().find(|f| f.id == "f1").expect("found");
+        let found = results
+            .iter()
+            .find(|f| f.id.as_str() == "f1")
+            .expect("found");
         assert_eq!(found.access_count, 2);
     }
 
@@ -3333,7 +3362,7 @@ mod knowledge_store_tests {
         let store = make_store();
         // Should not error — silently skips missing facts
         store
-            .increment_access(&["nonexistent".to_owned()])
+            .increment_access(&[crate::id::FactId::new_unchecked("nonexistent")])
             .expect("increment nonexistent should not error");
     }
 
@@ -3371,7 +3400,7 @@ mod knowledge_store_tests {
             .query_facts("agent-b", "2026-06-01", 100)
             .expect("query agent-b");
         assert_eq!(results_b.len(), 1);
-        assert_eq!(results_b[0].id, "f2");
+        assert_eq!(results_b[0].id.as_str(), "f2");
     }
 
     #[test]
@@ -3404,7 +3433,7 @@ mod knowledge_store_tests {
 
         // Expired fact (valid_to in the past)
         let mut expired = make_fact("f-expired", "agent-a", "Expired fact");
-        expired.valid_to = "2025-01-01".to_owned();
+        expired.valid_to = crate::knowledge::parse_timestamp("2025-01-01").unwrap();
         store.insert_fact(&expired).expect("insert expired");
 
         let results = store
@@ -3413,7 +3442,7 @@ mod knowledge_store_tests {
 
         // Should only return the active fact
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "f-active");
+        assert_eq!(results[0].id.as_str(), "f-active");
     }
 
     #[test]
@@ -3446,8 +3475,8 @@ mod knowledge_store_tests {
 
         // Fact valid from 2026-01-01 to 2026-06-01
         let mut fact = make_fact("f1", "agent-a", "Temporal fact");
-        fact.valid_from = "2026-01-01".to_owned();
-        fact.valid_to = "2026-06-01".to_owned();
+        fact.valid_from = crate::knowledge::parse_timestamp("2026-01-01").unwrap();
+        fact.valid_to = crate::knowledge::parse_timestamp("2026-06-01").unwrap();
         store.insert_fact(&fact).expect("insert temporal fact");
 
         // Query at a time within the validity window
@@ -3455,7 +3484,7 @@ mod knowledge_store_tests {
             .query_facts_at("2026-03-15")
             .expect("query at mid-range");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "f1");
+        assert_eq!(results[0].id.as_str(), "f1");
 
         // Query at a time after the validity window
         let results = store
@@ -3524,43 +3553,38 @@ mod knowledge_store_tests {
     // ---- Edge Cases ----
 
     #[test]
-    fn insert_fact_empty_content_accepted() {
-        // BUG DISCOVERY: empty content is accepted without validation.
-        // The store does not reject facts with empty content.
+    fn insert_fact_empty_content_rejected() {
         let store = make_store();
         let fact = make_fact("f-empty", "agent-a", "");
-        store
-            .insert_fact(&fact)
-            .expect("empty content is accepted (no validation)");
-
-        let results = store
-            .query_facts("agent-a", "2026-06-01", 10)
-            .expect("query");
-        assert_eq!(results.len(), 1);
-        assert!(results[0].content.is_empty());
+        let result = store.insert_fact(&fact);
+        assert!(result.is_err(), "empty content must be rejected");
+        assert!(matches!(
+            result.unwrap_err(),
+            crate::error::Error::EmptyContent { .. }
+        ));
     }
 
     #[test]
-    fn insert_fact_confidence_out_of_range_accepted() {
-        // BUG DISCOVERY: confidence > 1.0 and < 0.0 are accepted without validation.
+    fn insert_fact_confidence_out_of_range_rejected() {
         let store = make_store();
 
         let mut high = make_fact("f-high", "agent-a", "High confidence");
         high.confidence = 1.5;
-        store
-            .insert_fact(&high)
-            .expect("confidence > 1.0 accepted (no validation)");
+        let result = store.insert_fact(&high);
+        assert!(result.is_err(), "confidence > 1.0 must be rejected");
+        assert!(matches!(
+            result.unwrap_err(),
+            crate::error::Error::InvalidConfidence { .. }
+        ));
 
         let mut negative = make_fact("f-neg", "agent-a", "Negative confidence");
         negative.confidence = -0.5;
-        store
-            .insert_fact(&negative)
-            .expect("confidence < 0.0 accepted (no validation)");
-
-        let results = store
-            .query_facts("agent-a", "2026-06-01", 100)
-            .expect("query");
-        assert_eq!(results.len(), 2);
+        let result = store.insert_fact(&negative);
+        assert!(result.is_err(), "confidence < 0.0 must be rejected");
+        assert!(matches!(
+            result.unwrap_err(),
+            crate::error::Error::InvalidConfidence { .. }
+        ));
     }
 
     #[test]
@@ -3616,7 +3640,10 @@ mod knowledge_store_tests {
     fn forget_nonexistent_fact_succeeds() {
         // forget_fact on a missing ID should not panic (Datalog :put on empty match is a noop)
         let store = make_store();
-        let result = store.forget_fact("nonexistent", ForgetReason::UserRequested);
+        let result = store.forget_fact(
+            &crate::id::FactId::new_unchecked("nonexistent"),
+            ForgetReason::UserRequested,
+        );
         // The behavior is either Ok (noop) or Err — neither should panic
         let _ = result;
     }
@@ -3629,18 +3656,19 @@ mod knowledge_store_tests {
                 let s = Arc::clone(&store);
                 std::thread::spawn(move || {
                     let fact = Fact {
-                        id: format!("f-concurrent-{i}"),
+                        id: crate::id::FactId::new_unchecked(format!("f-concurrent-{i}")),
                         nous_id: "agent-a".to_owned(),
                         content: format!("Concurrent fact {i}"),
                         confidence: 0.9,
                         tier: EpistemicTier::Inferred,
-                        valid_from: "2026-01-01".to_owned(),
-                        valid_to: "9999-12-31".to_owned(),
+                        valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+                        valid_to: crate::knowledge::far_future(),
                         superseded_by: None,
                         source_session_id: None,
-                        recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+                        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                            .unwrap(),
                         access_count: 0,
-                        last_accessed_at: String::new(),
+                        last_accessed_at: None,
                         stability_hours: 720.0,
                         fact_type: String::new(),
                         is_forgotten: false,
@@ -3670,12 +3698,14 @@ mod knowledge_store_tests {
                 let s = Arc::clone(&store);
                 std::thread::spawn(move || {
                     let entity = Entity {
-                        id: format!("e-concurrent-{i}").into(),
+                        id: crate::id::EntityId::new_unchecked(format!("e-concurrent-{i}")),
                         name: format!("Entity {i}"),
                         entity_type: "concept".to_owned(),
                         aliases: vec![],
-                        created_at: "2026-03-01T00:00:00Z".to_owned(),
-                        updated_at: "2026-03-01T00:00:00Z".to_owned(),
+                        created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                            .unwrap(),
+                        updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+                            .unwrap(),
                     };
                     s.insert_entity(&entity).expect("concurrent entity insert");
                 })
@@ -3752,7 +3782,9 @@ mod knowledge_store_tests {
             .insert_relationship(&make_relationship("e2", "e3", "uses", 0.8))
             .expect("rel e2-e3");
 
-        let rows = store.entity_neighborhood("e1").expect("2-hop neighborhood");
+        let rows = store
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
+            .expect("2-hop neighborhood");
         // Should include both e2 (1-hop) and e3 (2-hop)
         assert!(
             rows.rows.len() >= 2,
@@ -3765,7 +3797,7 @@ mod knowledge_store_tests {
     fn entity_neighborhood_nonexistent_entity() {
         let store = make_store();
         let rows = store
-            .entity_neighborhood("nonexistent")
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("nonexistent"))
             .expect("neighborhood of missing entity should succeed");
         assert!(rows.rows.is_empty());
     }
@@ -3783,7 +3815,7 @@ mod knowledge_store_tests {
             .await
             .expect("async query");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "f-async");
+        assert_eq!(results[0].id.as_str(), "f-async");
     }
 
     #[tokio::test]
@@ -3807,7 +3839,10 @@ mod knowledge_store_tests {
         store.insert_fact_async(fact).await.expect("insert");
 
         store
-            .forget_fact_async("f-forget-async".to_owned(), ForgetReason::Incorrect)
+            .forget_fact_async(
+                crate::id::FactId::new_unchecked("f-forget-async"),
+                ForgetReason::Incorrect,
+            )
             .await
             .expect("async forget");
 
@@ -3817,7 +3852,7 @@ mod knowledge_store_tests {
             .expect("async audit");
         let found = all
             .iter()
-            .find(|f| f.id == "f-forget-async")
+            .find(|f| f.id.as_str() == "f-forget-async")
             .expect("found");
         assert!(found.is_forgotten);
     }
@@ -3829,11 +3864,14 @@ mod knowledge_store_tests {
         store.insert_fact_async(fact).await.expect("insert");
 
         store
-            .forget_fact_async("f-unforget-async".to_owned(), ForgetReason::Outdated)
+            .forget_fact_async(
+                crate::id::FactId::new_unchecked("f-unforget-async"),
+                ForgetReason::Outdated,
+            )
             .await
             .expect("forget");
         store
-            .unforget_fact_async("f-unforget-async".to_owned())
+            .unforget_fact_async(crate::id::FactId::new_unchecked("f-unforget-async"))
             .await
             .expect("unforget");
 
@@ -3843,7 +3881,7 @@ mod knowledge_store_tests {
             .expect("audit");
         let found = all
             .iter()
-            .find(|f| f.id == "f-unforget-async")
+            .find(|f| f.id.as_str() == "f-unforget-async")
             .expect("found");
         assert!(!found.is_forgotten);
     }
@@ -3855,7 +3893,7 @@ mod knowledge_store_tests {
         store.insert_fact_async(fact).await.expect("insert");
 
         store
-            .increment_access_async(vec!["f-access-async".to_owned()])
+            .increment_access_async(vec![crate::id::FactId::new_unchecked("f-access-async")])
             .await
             .expect("async increment");
 
@@ -3865,7 +3903,7 @@ mod knowledge_store_tests {
             .expect("query");
         let found = results
             .iter()
-            .find(|f| f.id == "f-access-async")
+            .find(|f| f.id.as_str() == "f-access-async")
             .expect("found");
         assert_eq!(found.access_count, 1);
     }
@@ -3880,18 +3918,18 @@ mod knowledge_store_tests {
         valid_to: &str,
     ) -> Fact {
         Fact {
-            id: id.to_owned(),
+            id: crate::id::FactId::new_unchecked(id),
             nous_id: nous_id.to_owned(),
             content: content.to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: valid_from.to_owned(),
-            valid_to: valid_to.to_owned(),
+            valid_from: crate::knowledge::parse_timestamp(valid_from).unwrap(),
+            valid_to: crate::knowledge::parse_timestamp(valid_to).unwrap(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -3927,7 +3965,7 @@ mod knowledge_store_tests {
             .query_facts_temporal("agent", "2026-02-01", None)
             .expect("query feb");
         assert_eq!(at_feb.len(), 1);
-        assert_eq!(at_feb[0].id, "t1");
+        assert_eq!(at_feb[0].id.as_str(), "t1");
 
         let at_apr = store
             .query_facts_temporal("agent", "2026-04-01", None)
@@ -3938,7 +3976,7 @@ mod knowledge_store_tests {
             .query_facts_temporal("agent", "2026-07-01", None)
             .expect("query jul");
         assert_eq!(at_jul.len(), 1);
-        assert_eq!(at_jul[0].id, "t2");
+        assert_eq!(at_jul[0].id.as_str(), "t2");
     }
 
     #[cfg(feature = "mneme-engine")]
@@ -3976,12 +4014,12 @@ mod knowledge_store_tests {
             .expect("insert");
 
         let at_start = store
-            .query_facts_temporal("agent", "2026-03-01", None)
+            .query_facts_temporal("agent", "2026-03-01T00:00:00Z", None)
             .expect("at valid_from");
         assert_eq!(at_start.len(), 1, "valid_from boundary is inclusive");
 
         let at_end = store
-            .query_facts_temporal("agent", "2026-06-01", None)
+            .query_facts_temporal("agent", "2026-06-01T00:00:00Z", None)
             .expect("at valid_to");
         assert!(at_end.is_empty(), "valid_to boundary is exclusive");
     }
@@ -4013,7 +4051,7 @@ mod knowledge_store_tests {
             .query_facts_temporal("agent", "2026-03-01", Some("Rust"))
             .expect("filtered query");
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].id, "t1");
+        assert_eq!(filtered[0].id.as_str(), "t1");
     }
 
     #[cfg(feature = "mneme-engine")]
@@ -4044,9 +4082,9 @@ mod knowledge_store_tests {
             .expect("diff");
 
         assert_eq!(diff.added.len(), 1, "one fact added in interval");
-        assert_eq!(diff.added[0].id, "new");
+        assert_eq!(diff.added[0].id.as_str(), "new");
         assert_eq!(diff.removed.len(), 1, "one fact removed in interval");
-        assert_eq!(diff.removed[0].id, "old");
+        assert_eq!(diff.removed[0].id.as_str(), "old");
     }
 
     #[cfg(feature = "mneme-engine")]
@@ -4054,7 +4092,7 @@ mod knowledge_store_tests {
     fn temporal_diff_supersession_chain() {
         let store = make_store();
         let mut fact_a = make_temporal_fact("a", "agent", "version 1", "2026-01-01", "2026-03-01");
-        fact_a.superseded_by = Some("b".to_owned());
+        fact_a.superseded_by = Some(crate::id::FactId::new_unchecked("b"));
         store.insert_fact(&fact_a).expect("insert a");
 
         store
@@ -4072,8 +4110,8 @@ mod knowledge_store_tests {
             .expect("diff");
 
         assert_eq!(diff.modified.len(), 1, "one modified pair");
-        assert_eq!(diff.modified[0].0.id, "a");
-        assert_eq!(diff.modified[0].1.id, "b");
+        assert_eq!(diff.modified[0].0.id.as_str(), "a");
+        assert_eq!(diff.modified[0].1.id.as_str(), "b");
         assert!(diff.added.is_empty(), "superseded new is not in pure added");
         assert!(
             diff.removed.is_empty(),
@@ -4131,7 +4169,10 @@ mod knowledge_store_tests {
             ))
             .expect("insert");
         store
-            .forget_fact("t1", crate::knowledge::ForgetReason::UserRequested)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("t1"),
+                crate::knowledge::ForgetReason::UserRequested,
+            )
             .expect("forget");
 
         let results = store
@@ -4275,7 +4316,10 @@ mod knowledge_store_tests {
         store.insert_fact(&f1).expect("insert f1");
         store.insert_fact(&f2).expect("insert f2");
         store
-            .forget_fact("f2", ForgetReason::UserRequested)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("f2"),
+                ForgetReason::UserRequested,
+            )
             .expect("forget f2");
 
         let all = store.audit_all_facts("agent-a", 100).expect("audit");
@@ -4297,10 +4341,16 @@ mod knowledge_store_tests {
         let f1 = make_fact("f1", "agent-a", "will be forgotten twice");
         store.insert_fact(&f1).expect("insert f1");
         store
-            .forget_fact("f1", ForgetReason::Outdated)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("f1"),
+                ForgetReason::Outdated,
+            )
             .expect("first forget");
         store
-            .forget_fact("f1", ForgetReason::Outdated)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("f1"),
+                ForgetReason::Outdated,
+            )
             .expect("second forget should not panic");
 
         let all = store.audit_all_facts("agent-a", 100).expect("audit");
@@ -4313,7 +4363,9 @@ mod knowledge_store_tests {
         let store = make_store();
         let f1 = make_fact("f1", "agent-a", "never forgotten");
         store.insert_fact(&f1).expect("insert f1");
-        store.unforget_fact("f1").expect("unforget should succeed");
+        store
+            .unforget_fact(&crate::id::FactId::new_unchecked("f1"))
+            .expect("unforget should succeed");
 
         let results = store
             .query_facts("agent-a", "2026-06-01", 10)
@@ -4325,7 +4377,10 @@ mod knowledge_store_tests {
     #[test]
     fn forget_nonexistent_fact() {
         let store = make_store();
-        let _ = store.forget_fact("nonexistent", ForgetReason::UserRequested);
+        let _ = store.forget_fact(
+            &crate::id::FactId::new_unchecked("nonexistent"),
+            ForgetReason::UserRequested,
+        );
     }
 
     #[test]
@@ -4342,7 +4397,9 @@ mod knowledge_store_tests {
             store.insert_fact(&fact).expect("insert");
         }
         for (id, reason) in &reasons {
-            store.forget_fact(id, *reason).expect("forget");
+            store
+                .forget_fact(&crate::id::FactId::new_unchecked(*id), *reason)
+                .expect("forget");
         }
 
         let all = store.audit_all_facts("agent-a", 100).expect("audit");
@@ -4439,7 +4496,7 @@ mod knowledge_store_tests {
         let entity = make_entity("eu1", "Ελληνικά", "language");
         store.insert_entity(&entity).expect("insert unicode entity");
         let rows = store
-            .entity_neighborhood("eu1")
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("eu1"))
             .expect("neighborhood query");
         assert!(rows.rows.is_empty() || !rows.rows.is_empty());
     }
@@ -4454,7 +4511,10 @@ mod knowledge_store_tests {
         let results = store
             .query_facts("agent-a", "2026-06-01", 10)
             .expect("query");
-        let found = results.iter().find(|f| f.id == "fc0").expect("find fact");
+        let found = results
+            .iter()
+            .find(|f| f.id.as_str() == "fc0")
+            .expect("find fact");
         assert!((found.confidence - 0.0).abs() < f64::EPSILON);
     }
 
@@ -4468,7 +4528,10 @@ mod knowledge_store_tests {
         let results = store
             .query_facts("agent-a", "2026-06-01", 10)
             .expect("query");
-        let found = results.iter().find(|f| f.id == "fc1").expect("find fact");
+        let found = results
+            .iter()
+            .find(|f| f.id.as_str() == "fc1")
+            .expect("find fact");
         assert!((found.confidence - 1.0).abs() < f64::EPSILON);
     }
 
@@ -4499,7 +4562,10 @@ mod knowledge_store_tests {
             .insert_fact(&make_fact("faa2", "agent-a", "audit async two"))
             .expect("insert");
         store
-            .forget_fact("faa2", ForgetReason::Incorrect)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("faa2"),
+                ForgetReason::Incorrect,
+            )
             .expect("forget");
 
         let all = store

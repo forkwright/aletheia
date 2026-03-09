@@ -34,6 +34,8 @@ pub mod extract;
 /// In-memory HNSW vector index backed by `hnsw_rs`.
 #[cfg(feature = "hnsw_rs")]
 pub mod hnsw_index;
+/// Newtype wrappers for mneme-local domain identifiers.
+pub mod id;
 /// Agent import — restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
 pub mod import;

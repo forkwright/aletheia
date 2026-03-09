@@ -8,55 +8,17 @@
 //! Uses `CozoDB` Datalog for graph traversal and HNSW for vector search.
 //! Embedded, no sidecar. Replaced the former Mem0 stack (Qdrant + Neo4j + Ollama).
 
+use crate::id::{EmbeddingId, EntityId, FactId};
 use serde::{Deserialize, Serialize};
 
-/// Typed newtype for entity identifiers in the knowledge graph.
-///
-/// Prevents accidental mixing of entity IDs with other string fields (e.g. `nous_id`,
-/// `source_session_id`). Serializes/deserializes as a plain string for backwards
-/// compatibility with existing storage schemas.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct EntityId(String);
-
-impl EntityId {
-    /// Borrow the inner string slice.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for EntityId {
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl From<&str> for EntityId {
-    fn from(s: &str) -> Self {
-        Self(s.to_owned())
-    }
-}
-
-impl std::fmt::Display for EntityId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::ops::Deref for EntityId {
-    type Target = str;
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
+/// Maximum content length for facts and entities (100 KB).
+pub const MAX_CONTENT_LENGTH: usize = 102_400;
 
 /// A memory fact extracted from conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fact {
     /// Unique identifier.
-    pub id: String,
+    pub id: FactId,
     /// Which nous extracted this fact.
     pub nous_id: String,
     /// The fact content.
@@ -65,28 +27,28 @@ pub struct Fact {
     pub confidence: f64,
     /// Epistemic tier: verified, inferred, or assumed.
     pub tier: EpistemicTier,
-    /// When this fact became true (ISO 8601).
-    pub valid_from: String,
-    /// When this fact stopped being true (ISO 8601, "9999-12-31" = current).
-    pub valid_to: String,
+    /// When this fact became true.
+    pub valid_from: jiff::Timestamp,
+    /// When this fact stopped being true.
+    pub valid_to: jiff::Timestamp,
     /// If superseded, the ID of the replacing fact.
-    pub superseded_by: Option<String>,
+    pub superseded_by: Option<FactId>,
     /// Session where this fact was extracted.
     pub source_session_id: Option<String>,
     /// When this fact was recorded in the system.
-    pub recorded_at: String,
+    pub recorded_at: jiff::Timestamp,
     /// Number of times this fact has been returned in recall/search results.
     pub access_count: u32,
-    /// When this fact was last accessed (ISO 8601, empty = never).
-    pub last_accessed_at: String,
+    /// When this fact was last accessed.
+    pub last_accessed_at: Option<jiff::Timestamp>,
     /// Initial stability for FSRS decay model (hours).
     pub stability_hours: f64,
     /// Fact classification for stability defaults.
     pub fact_type: String,
     /// Whether this fact has been intentionally excluded from recall.
     pub is_forgotten: bool,
-    /// When the fact was forgotten (ISO 8601).
-    pub forgotten_at: Option<String>,
+    /// When the fact was forgotten.
+    pub forgotten_at: Option<jiff::Timestamp>,
     /// Why the fact was forgotten.
     pub forget_reason: Option<ForgetReason>,
 }
@@ -103,9 +65,9 @@ pub struct Entity {
     /// Known aliases.
     pub aliases: Vec<String>,
     /// When first observed.
-    pub created_at: String,
+    pub created_at: jiff::Timestamp,
     /// When last updated.
-    pub updated_at: String,
+    pub updated_at: jiff::Timestamp,
 }
 
 /// A relationship between two entities.
@@ -120,14 +82,14 @@ pub struct Relationship {
     /// Relationship weight/strength (0.0–1.0).
     pub weight: f64,
     /// When first observed.
-    pub created_at: String,
+    pub created_at: jiff::Timestamp,
 }
 
 /// A vector embedding for semantic search.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddedChunk {
     /// Unique identifier.
-    pub id: String,
+    pub id: EmbeddingId,
     /// The text that was embedded.
     pub content: String,
     /// Source type (fact, message, note, document).
@@ -139,7 +101,7 @@ pub struct EmbeddedChunk {
     /// The embedding vector (dimension depends on model).
     pub embedding: Vec<f32>,
     /// When embedded.
-    pub created_at: String,
+    pub created_at: jiff::Timestamp,
 }
 
 /// Epistemic confidence tier.
@@ -230,6 +192,72 @@ pub fn default_stability_hours(fact_type: &str) -> f64 {
     }
 }
 
+/// Sentinel timestamp representing "current / no end date" in bi-temporal facts.
+///
+/// Uses `9999-01-01T00:00:00Z` as the far-future sentinel. The previous string
+/// convention was `"9999-12-31"`, but jiff's `Timestamp` range caps at ~9999-04,
+/// so we use January 1 to stay well within bounds.
+///
+/// The sentinel is stored as the string `"9999-01-01T00:00:00Z"` in Datalog,
+/// so existing data using `"9999-12-31"` must be treated equivalently (any year-9999
+/// timestamp means "no end date").
+#[must_use]
+pub fn far_future() -> jiff::Timestamp {
+    jiff::civil::date(9999, 1, 1)
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .expect("valid far-future date")
+        .timestamp()
+}
+
+/// Check whether a timestamp represents the "no end date" sentinel.
+///
+/// Returns `true` for any timestamp in year 9999, accommodating both the new
+/// `9999-01-01` sentinel and legacy `9999-12-31` strings.
+#[must_use]
+pub fn is_far_future(ts: &jiff::Timestamp) -> bool {
+    let s = format_timestamp(ts);
+    s.starts_with("9999-")
+}
+
+/// Parse an ISO 8601 string into a `jiff::Timestamp`.
+///
+/// Handles both full timestamps (`2026-01-01T00:00:00Z`) and date-only (`2026-01-01`)
+/// by assuming UTC midnight for date-only strings.
+///
+/// Legacy `9999-12-31` sentinels (which overflow jiff's range) are mapped to
+/// [`far_future()`].
+///
+/// Returns `None` for empty or unparseable strings.
+#[must_use]
+pub fn parse_timestamp(s: &str) -> Option<jiff::Timestamp> {
+    if s.is_empty() {
+        return None;
+    }
+    // Legacy far-future sentinel — jiff can't represent 9999-12-31 but can do 9999-01-01
+    if s.starts_with("9999-") {
+        return Some(far_future());
+    }
+    // Try full timestamp first
+    if let Ok(ts) = s.parse::<jiff::Timestamp>() {
+        return Some(ts);
+    }
+    // Try date-only (assume UTC midnight)
+    if let Ok(date) = s.parse::<jiff::civil::Date>() {
+        return Some(
+            date.to_zoned(jiff::tz::TimeZone::UTC)
+                .expect("valid UTC conversion")
+                .timestamp(),
+        );
+    }
+    None
+}
+
+/// Format a `jiff::Timestamp` as an ISO 8601 string for Datalog storage.
+#[must_use]
+pub fn format_timestamp(ts: &jiff::Timestamp) -> String {
+    ts.strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
 /// Diff between two temporal snapshots of the knowledge base.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactDiff {
@@ -258,6 +286,11 @@ pub struct RecallResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::id::FactId;
+
+    fn test_timestamp(s: &str) -> jiff::Timestamp {
+        parse_timestamp(s).expect("valid test timestamp")
+    }
 
     // ---- EntityId ----
 
@@ -326,18 +359,18 @@ mod tests {
     #[test]
     fn fact_serde_roundtrip() {
         let fact = Fact {
-            id: "fact-1".to_owned(),
+            id: FactId::from("fact-1"),
             nous_id: "syn".to_owned(),
             content: "The researcher published findings on memory consolidation".to_owned(),
             confidence: 0.95,
             tier: EpistemicTier::Verified,
-            valid_from: "2026-02-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: test_timestamp("2026-02-01"),
+            valid_to: far_future(),
             superseded_by: None,
             source_session_id: Some("ses-123".to_owned()),
-            recorded_at: "2026-02-28T00:00:00Z".to_owned(),
+            recorded_at: test_timestamp("2026-02-28T00:00:00Z"),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -357,8 +390,8 @@ mod tests {
             name: "Dr. Chen".to_owned(),
             entity_type: "person".to_owned(),
             aliases: vec!["acme_user".to_owned(), "test-user-01".to_owned()],
-            created_at: "2026-01-28T00:00:00Z".to_owned(),
-            updated_at: "2026-02-28T00:00:00Z".to_owned(),
+            created_at: test_timestamp("2026-01-28T00:00:00Z"),
+            updated_at: test_timestamp("2026-02-28T00:00:00Z"),
         };
         let json = serde_json::to_string(&entity).unwrap();
         let back: Entity = serde_json::from_str(&json).unwrap();
@@ -373,7 +406,7 @@ mod tests {
             dst: EntityId::from("e-2"),
             relation: "works_on".to_owned(),
             weight: 0.85,
-            created_at: "2026-02-28T00:00:00Z".to_owned(),
+            created_at: test_timestamp("2026-02-28T00:00:00Z"),
         };
         let json = serde_json::to_string(&rel).unwrap();
         let back: Relationship = serde_json::from_str(&json).unwrap();
@@ -385,13 +418,13 @@ mod tests {
     #[test]
     fn embedded_chunk_serde_roundtrip() {
         let chunk = EmbeddedChunk {
-            id: "emb-1".to_owned(),
+            id: EmbeddingId::from("emb-1"),
             content: "some text".to_owned(),
             source_type: "fact".to_owned(),
             source_id: "fact-1".to_owned(),
             nous_id: "syn".to_owned(),
             embedding: vec![0.1, 0.2, 0.3],
-            created_at: "2026-02-28T00:00:00Z".to_owned(),
+            created_at: test_timestamp("2026-02-28T00:00:00Z"),
         };
         let json = serde_json::to_string(&chunk).unwrap();
         let back: EmbeddedChunk = serde_json::from_str(&json).unwrap();
@@ -416,18 +449,18 @@ mod tests {
     #[test]
     fn fact_with_empty_content() {
         let fact = Fact {
-            id: "f-empty".to_owned(),
+            id: FactId::from("f-empty"),
             nous_id: "syn".to_owned(),
             content: String::new(),
             confidence: 0.5,
             tier: EpistemicTier::Assumed,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: test_timestamp("2026-01-01"),
+            valid_to: far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -442,18 +475,18 @@ mod tests {
     #[test]
     fn fact_with_unicode_content() {
         let fact = Fact {
-            id: "f-uni".to_owned(),
+            id: FactId::from("f-uni"),
             nous_id: "syn".to_owned(),
-            content: "The user writes 日本語 and emoji 🦀".to_owned(),
+            content: "The user writes \u{65E5}\u{672C}\u{8A9E} and emoji \u{1F980}".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Verified,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: test_timestamp("2026-01-01"),
+            valid_to: far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
@@ -472,8 +505,8 @@ mod tests {
             name: "Aletheia".to_owned(),
             entity_type: "project".to_owned(),
             aliases: vec![],
-            created_at: "2026-01-01T00:00:00Z".to_owned(),
-            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+            created_at: test_timestamp("2026-01-01T00:00:00Z"),
+            updated_at: test_timestamp("2026-01-01T00:00:00Z"),
         };
         let json = serde_json::to_string(&entity).unwrap();
         let back: Entity = serde_json::from_str(&json).unwrap();
@@ -628,21 +661,20 @@ mod tests {
     #[test]
     fn embedded_chunk_fields() {
         let chunk = EmbeddedChunk {
-            id: "emb-42".to_owned(),
+            id: EmbeddingId::from("emb-42"),
             content: "test content".to_owned(),
             source_type: "note".to_owned(),
             source_id: "note-7".to_owned(),
             nous_id: "syn".to_owned(),
             embedding: vec![1.0, 2.0, 3.0, 4.0],
-            created_at: "2026-03-01T00:00:00Z".to_owned(),
+            created_at: test_timestamp("2026-03-01T00:00:00Z"),
         };
-        assert_eq!(chunk.id, "emb-42");
+        assert_eq!(chunk.id.as_str(), "emb-42");
         assert_eq!(chunk.content, "test content");
         assert_eq!(chunk.source_type, "note");
         assert_eq!(chunk.source_id, "note-7");
         assert_eq!(chunk.nous_id, "syn");
         assert_eq!(chunk.embedding.len(), 4);
-        assert_eq!(chunk.created_at, "2026-03-01T00:00:00Z");
     }
 
     #[test]
@@ -675,45 +707,51 @@ mod tests {
     #[test]
     fn fact_with_supersession() {
         let fact = Fact {
-            id: "f-old".to_owned(),
+            id: FactId::from("f-old"),
             nous_id: "syn".to_owned(),
             content: "outdated claim".to_owned(),
             confidence: 0.7,
             tier: EpistemicTier::Inferred,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "2026-02-01".to_owned(),
-            superseded_by: Some("f-new".to_owned()),
+            valid_from: test_timestamp("2026-01-01"),
+            valid_to: test_timestamp("2026-02-01"),
+            superseded_by: Some(FactId::from("f-new")),
             source_session_id: None,
-            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 720.0,
             fact_type: String::new(),
             is_forgotten: false,
             forgotten_at: None,
             forget_reason: None,
         };
-        assert_eq!(fact.superseded_by.as_deref(), Some("f-new"));
+        assert_eq!(
+            fact.superseded_by.as_ref().map(FactId::as_str),
+            Some("f-new")
+        );
         let json = serde_json::to_string(&fact).unwrap();
         let back: Fact = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.superseded_by.as_deref(), Some("f-new"));
+        assert_eq!(
+            back.superseded_by.as_ref().map(FactId::as_str),
+            Some("f-new")
+        );
     }
 
     #[test]
     fn fact_with_session_source() {
         let fact = Fact {
-            id: "f-src".to_owned(),
+            id: FactId::from("f-src"),
             nous_id: "syn".to_owned(),
             content: "extracted from conversation".to_owned(),
             confidence: 0.85,
             tier: EpistemicTier::Verified,
-            valid_from: "2026-03-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: test_timestamp("2026-03-01"),
+            valid_to: far_future(),
             superseded_by: None,
             source_session_id: Some("ses-abc-123".to_owned()),
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: test_timestamp("2026-03-01T00:00:00Z"),
             access_count: 3,
-            last_accessed_at: "2026-03-05T12:00:00Z".to_owned(),
+            last_accessed_at: Some(test_timestamp("2026-03-05T12:00:00Z")),
             stability_hours: 4380.0,
             fact_type: "relationship".to_owned(),
             is_forgotten: false,
@@ -724,5 +762,44 @@ mod tests {
         let json = serde_json::to_string(&fact).unwrap();
         let back: Fact = serde_json::from_str(&json).unwrap();
         assert_eq!(back.source_session_id.as_deref(), Some("ses-abc-123"));
+    }
+
+    #[test]
+    fn parse_timestamp_full() {
+        let ts = parse_timestamp("2026-03-01T12:30:00Z");
+        assert!(ts.is_some());
+    }
+
+    #[test]
+    fn parse_timestamp_date_only() {
+        let ts = parse_timestamp("2026-03-01");
+        assert!(ts.is_some());
+    }
+
+    #[test]
+    fn parse_timestamp_empty() {
+        assert!(parse_timestamp("").is_none());
+    }
+
+    #[test]
+    fn parse_timestamp_invalid() {
+        assert!(parse_timestamp("not-a-date").is_none());
+    }
+
+    #[test]
+    fn format_timestamp_roundtrip() {
+        let ts = parse_timestamp("2026-03-01T12:30:00Z").unwrap();
+        let s = format_timestamp(&ts);
+        assert_eq!(s, "2026-03-01T12:30:00Z");
+        let back = parse_timestamp(&s).unwrap();
+        assert_eq!(ts, back);
+    }
+
+    #[test]
+    fn far_future_is_year_9999() {
+        let ts = far_future();
+        let s = format_timestamp(&ts);
+        assert!(s.starts_with("9999-01-01"));
+        assert!(is_far_future(&ts));
     }
 }
