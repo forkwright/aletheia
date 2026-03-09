@@ -566,6 +566,139 @@ impl KnowledgeStore {
             })
     }
 
+    // --- Skill query helpers ---
+
+    /// Find skills by domain tags, ordered by confidence then access count.
+    ///
+    /// Filters facts where `fact_type = "skill"` and whose JSON content
+    /// contains at least one of the given `domain_tags`.
+    #[instrument(skip(self))]
+    pub fn find_skills_by_domain(
+        &self,
+        nous_id: &str,
+        domain_tags: &[&str],
+        limit: usize,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        let all = self.find_skills_for_nous(nous_id, 1000)?;
+        let mut matched: Vec<crate::knowledge::Fact> = all
+            .into_iter()
+            .filter(|fact| {
+                // Parse content JSON and check domain_tags
+                if let Ok(skill) = serde_json::from_str::<crate::skill::SkillContent>(&fact.content)
+                {
+                    domain_tags
+                        .iter()
+                        .any(|tag| skill.domain_tags.iter().any(|dt| dt == tag))
+                } else {
+                    false
+                }
+            })
+            .collect();
+        matched.truncate(limit);
+        Ok(matched)
+    }
+
+    /// Find all skills for a specific nous, ordered by confidence descending
+    /// then access count descending.
+    #[instrument(skip(self))]
+    pub fn find_skills_for_nous(
+        &self,
+        nous_id: &str,
+        limit: usize,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert("limit".to_owned(), DataValue::from(limit_i64));
+
+        let script = r"?[id, content, confidence, tier, recorded_at, nous_id,
+              valid_from, valid_to, superseded_by, source_session_id,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason] :=
+            *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
+                   superseded_by, source_session_id, recorded_at,
+                   access_count, last_accessed_at, stability_hours, fact_type,
+                   is_forgotten, forgotten_at, forget_reason},
+            nous_id = $nous_id,
+            fact_type = 'skill',
+            is_null(superseded_by),
+            is_forgotten == false
+        :order -confidence, -access_count
+        :limit $limit";
+
+        let rows = self.run_read(script, params)?;
+        rows_to_facts(rows, nous_id)
+    }
+
+    /// Semantic search for skills matching a task description.
+    ///
+    /// Uses the existing hybrid search infrastructure but post-filters
+    /// to only return skill-type facts.
+    #[instrument(skip(self))]
+    pub fn search_skills(
+        &self,
+        nous_id: &str,
+        query: &str,
+        limit: usize,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        // BM25 search scoped to skill facts
+        let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
+        let mut params = BTreeMap::new();
+        params.insert("query_text".to_owned(), DataValue::Str(query.into()));
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert("k".to_owned(), DataValue::from(limit_i64 * 3));
+        params.insert("limit".to_owned(), DataValue::from(limit_i64));
+
+        // BM25 search on facts content, then filter to skills for this nous
+        let script = r"candidates[id, score] :=
+                ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
+
+            ?[id, content, confidence, tier, recorded_at, nous_id,
+              valid_from, valid_to, superseded_by, source_session_id,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason] :=
+                candidates[id, _score],
+                *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
+                       superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       is_forgotten, forgotten_at, forget_reason},
+                nous_id = $nous_id,
+                fact_type = 'skill',
+                is_null(superseded_by),
+                is_forgotten == false
+            :order -confidence
+            :limit $limit";
+
+        let rows = self.run_read(script, params)?;
+        rows_to_facts(rows, nous_id)
+    }
+
+    /// Check if a skill with the given name already exists for this nous.
+    ///
+    /// Returns the fact ID if found.
+    #[instrument(skip(self))]
+    pub fn find_skill_by_name(
+        &self,
+        nous_id: &str,
+        skill_name: &str,
+    ) -> crate::error::Result<Option<String>> {
+        let skills = self.find_skills_for_nous(nous_id, 1000)?;
+        for fact in skills {
+            if let Ok(content) = serde_json::from_str::<crate::skill::SkillContent>(&fact.content) {
+                if content.name == skill_name {
+                    return Ok(Some(fact.id));
+                }
+            }
+        }
+        Ok(None)
+    }
+
     /// Hybrid BM25 + HNSW vector + graph retrieval fused via `ReciprocalRankFusion`.
     ///
     /// Runs a single Datalog query combining all three signals in the engine.
@@ -4244,6 +4377,201 @@ mod knowledge_store_tests {
             .await
             .expect("async temporal search");
         assert!(!results.is_empty());
+    }
+
+    // --- Skill query tests ---
+
+    fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&str]) -> Fact {
+        let content = serde_json::to_string(&crate::skill::SkillContent {
+            name: skill_name.to_owned(),
+            description: format!("Skill: {skill_name}"),
+            steps: vec!["step 1".to_owned()],
+            tools_used: vec!["Read".to_owned()],
+            domain_tags: domain_tags.iter().map(|t| (*t).to_owned()).collect(),
+            origin: "seeded".to_owned(),
+        })
+        .unwrap();
+        Fact {
+            id: id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            content,
+            confidence: 0.5,
+            tier: EpistemicTier::Assumed,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 2190.0,
+            fact_type: "skill".to_owned(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        }
+    }
+
+    #[test]
+    fn find_skills_for_nous_returns_only_skills() {
+        let store = make_store();
+
+        // Insert a skill fact and a non-skill fact
+        let skill = make_skill_fact("sk-1", "alice", "rust-errors", &["rust"]);
+        store.insert_fact(&skill).expect("insert skill");
+
+        let non_skill = make_fact("f-1", "alice", "Alice likes cats");
+        store.insert_fact(&non_skill).expect("insert non-skill");
+
+        let results = store.find_skills_for_nous("alice", 100).expect("query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].fact_type, "skill");
+    }
+
+    #[test]
+    fn find_skills_for_nous_ordered_by_confidence() {
+        let store = make_store();
+
+        let mut low = make_skill_fact("sk-low", "alice", "low-conf", &["test"]);
+        low.confidence = 0.3;
+        store.insert_fact(&low).expect("insert low");
+
+        let mut high = make_skill_fact("sk-high", "alice", "high-conf", &["test"]);
+        high.confidence = 0.9;
+        store.insert_fact(&high).expect("insert high");
+
+        let results = store.find_skills_for_nous("alice", 100).expect("query");
+        assert_eq!(results.len(), 2);
+        assert!(
+            results[0].confidence >= results[1].confidence,
+            "skills should be ordered by confidence descending"
+        );
+    }
+
+    #[test]
+    fn find_skills_nous_scoping() {
+        let store = make_store();
+
+        let alice_skill = make_skill_fact("sk-a", "alice", "alice-skill", &["rust"]);
+        store.insert_fact(&alice_skill).expect("insert alice");
+
+        let bob_skill = make_skill_fact("sk-b", "bob", "bob-skill", &["python"]);
+        store.insert_fact(&bob_skill).expect("insert bob");
+
+        let alice_results = store
+            .find_skills_for_nous("alice", 100)
+            .expect("query alice");
+        assert_eq!(alice_results.len(), 1);
+        assert_eq!(alice_results[0].id, "sk-a");
+
+        let bob_results = store.find_skills_for_nous("bob", 100).expect("query bob");
+        assert_eq!(bob_results.len(), 1);
+        assert_eq!(bob_results[0].id, "sk-b");
+    }
+
+    #[test]
+    fn find_skills_by_domain_filters_tags() {
+        let store = make_store();
+
+        let rust_skill = make_skill_fact("sk-r", "alice", "rust-errors", &["rust", "errors"]);
+        store.insert_fact(&rust_skill).expect("insert rust");
+
+        let py_skill = make_skill_fact("sk-p", "alice", "python-web", &["python", "web"]);
+        store.insert_fact(&py_skill).expect("insert python");
+
+        let results = store
+            .find_skills_by_domain("alice", &["rust"], 100)
+            .expect("query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "sk-r");
+
+        let results = store
+            .find_skills_by_domain("alice", &["web"], 100)
+            .expect("query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "sk-p");
+
+        let results = store
+            .find_skills_by_domain("alice", &["rust", "python"], 100)
+            .expect("query");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn find_skills_by_domain_empty_tags() {
+        let store = make_store();
+
+        let skill = make_skill_fact("sk-1", "alice", "some-skill", &["rust"]);
+        store.insert_fact(&skill).expect("insert");
+
+        let results = store
+            .find_skills_by_domain("alice", &[], 100)
+            .expect("query");
+        assert!(results.is_empty(), "empty tags should match nothing");
+    }
+
+    #[test]
+    fn find_skill_by_name_found() {
+        let store = make_store();
+
+        let skill = make_skill_fact("sk-named", "alice", "rust-error-handling", &["rust"]);
+        store.insert_fact(&skill).expect("insert");
+
+        let found = store
+            .find_skill_by_name("alice", "rust-error-handling")
+            .expect("query");
+        assert_eq!(found, Some("sk-named".to_owned()));
+    }
+
+    #[test]
+    fn find_skill_by_name_not_found() {
+        let store = make_store();
+
+        let skill = make_skill_fact("sk-1", "alice", "actual-name", &["test"]);
+        store.insert_fact(&skill).expect("insert");
+
+        let found = store
+            .find_skill_by_name("alice", "nonexistent")
+            .expect("query");
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn find_skills_excludes_forgotten() {
+        let store = make_store();
+
+        let skill = make_skill_fact("sk-forget", "alice", "forgotten-skill", &["test"]);
+        store.insert_fact(&skill).expect("insert");
+
+        // Forget it
+        store
+            .forget_fact("sk-forget", crate::knowledge::ForgetReason::Outdated)
+            .expect("forget");
+
+        let results = store.find_skills_for_nous("alice", 100).expect("query");
+        assert!(
+            results.is_empty(),
+            "forgotten skills should not be returned"
+        );
+    }
+
+    #[test]
+    fn search_skills_bm25() {
+        let store = make_store();
+
+        let skill1 = make_skill_fact("sk-docker", "alice", "docker-deploy", &["docker"]);
+        store.insert_fact(&skill1).expect("insert docker");
+
+        let skill2 = make_skill_fact("sk-k8s", "alice", "kubernetes-deploy", &["k8s"]);
+        store.insert_fact(&skill2).expect("insert k8s");
+
+        // BM25 search for "docker"
+        let results = store.search_skills("alice", "docker", 10).expect("search");
+        // Should find the docker skill (BM25 matches on content which contains "docker")
+        assert!(
+            results.iter().any(|f| f.id == "sk-docker"),
+            "search should find docker skill"
+        );
     }
 
     mod proptests {
