@@ -176,7 +176,10 @@ fn query_all_entities(
         let aliases = if aliases_str.is_empty() {
             vec![]
         } else {
-            aliases_str.split(',').map(|s| s.trim().to_owned()).collect()
+            aliases_str
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .collect()
         };
         let created_at = row[4].get_str().unwrap_or_default().to_owned();
         let updated_at = row[5].get_str().unwrap_or_default().to_owned();

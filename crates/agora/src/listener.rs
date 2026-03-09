@@ -80,6 +80,10 @@ impl ChannelListener {
     /// The background polling handles are kept alive — they stop
     /// naturally when the receiver is dropped (closed channel).
     pub fn into_receiver(mut self) -> mpsc::Receiver<InboundMessage> {
+        #[expect(
+            clippy::expect_used,
+            reason = "rx is None only if into_receiver was already called; calling it twice is a programming error and panic is appropriate"
+        )]
         let rx = self
             .rx
             .take()

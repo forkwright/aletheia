@@ -179,8 +179,8 @@ fn parse_rewrite_response(response: &str) -> Result<Vec<String>, RewriteError> {
     let trimmed = strip_code_fences(response);
 
     // Try parsing as a JSON array of strings
-    let variants: Vec<String> = serde_json::from_str(trimmed)
-        .map_err(|e| RewriteError::ParseResponse(e.to_string()))?;
+    let variants: Vec<String> =
+        serde_json::from_str(trimmed).map_err(|e| RewriteError::ParseResponse(e.to_string()))?;
 
     // Filter out empty strings
     let variants: Vec<String> = variants.into_iter().filter(|v| !v.is_empty()).collect();
@@ -361,7 +361,11 @@ mod tests {
         // Original + 3 variants = 4
         assert_eq!(result.variants.len(), 4);
         assert_eq!(result.variants[0], "What's Cody's truck?");
-        assert!(result.variants.contains(&"Cummins diesel specifications".to_owned()));
+        assert!(
+            result
+                .variants
+                .contains(&"Cummins diesel specifications".to_owned())
+        );
     }
 
     #[test]
@@ -411,9 +415,7 @@ mod tests {
     #[test]
     fn rewrite_with_context() {
         let rewriter = QueryRewriter::with_defaults();
-        let provider = MockProvider::with_response(
-            r#"["Cody truck", "vehicle maintenance"]"#,
-        );
+        let provider = MockProvider::with_response(r#"["Cody truck", "vehicle maintenance"]"#);
 
         let result = rewriter.rewrite(
             "What's the truck?",
@@ -432,9 +434,8 @@ mod tests {
             include_original: true,
         };
         let rewriter = QueryRewriter::new(config);
-        let provider = MockProvider::with_response(
-            r#"["variant 1", "variant 2", "variant 3", "variant 4"]"#,
-        );
+        let provider =
+            MockProvider::with_response(r#"["variant 1", "variant 2", "variant 3", "variant 4"]"#);
 
         let result = rewriter.rewrite("query", None, &provider);
 
@@ -448,9 +449,7 @@ mod tests {
     #[test]
     fn rewrite_strips_code_fences() {
         let rewriter = QueryRewriter::with_defaults();
-        let provider = MockProvider::with_response(
-            "```json\n[\"variant 1\", \"variant 2\"]\n```",
-        );
+        let provider = MockProvider::with_response("```json\n[\"variant 1\", \"variant 2\"]\n```");
 
         let result = rewriter.rewrite("query", None, &provider);
 
@@ -464,9 +463,7 @@ mod tests {
             include_original: false,
         };
         let rewriter = QueryRewriter::new(config);
-        let provider = MockProvider::with_response(
-            r#"["variant 1", "variant 2"]"#,
-        );
+        let provider = MockProvider::with_response(r#"["variant 1", "variant 2"]"#);
 
         let result = rewriter.rewrite("original query", None, &provider);
 
@@ -477,9 +474,7 @@ mod tests {
     #[test]
     fn rewrite_filters_empty_strings() {
         let rewriter = QueryRewriter::with_defaults();
-        let provider = MockProvider::with_response(
-            r#"["", "variant 1", "", "variant 2"]"#,
-        );
+        let provider = MockProvider::with_response(r#"["", "variant 1", "", "variant 2"]"#);
 
         let result = rewriter.rewrite("query", None, &provider);
 
@@ -508,8 +503,7 @@ mod tests {
 
     #[test]
     fn parse_response_with_fences() {
-        let variants =
-            parse_rewrite_response("```json\n[\"a\", \"b\"]\n```").unwrap();
+        let variants = parse_rewrite_response("```json\n[\"a\", \"b\"]\n```").unwrap();
         assert_eq!(variants, vec!["a", "b"]);
     }
 
@@ -557,12 +551,24 @@ mod tests {
     #[test]
     fn rrf_merge_deduplicates_by_id() {
         let q1 = vec![
-            TestResult { doc_id: "f1".to_owned(), score: 0.0 },
-            TestResult { doc_id: "f2".to_owned(), score: 0.0 },
+            TestResult {
+                doc_id: "f1".to_owned(),
+                score: 0.0,
+            },
+            TestResult {
+                doc_id: "f2".to_owned(),
+                score: 0.0,
+            },
         ];
         let q2 = vec![
-            TestResult { doc_id: "f2".to_owned(), score: 0.0 },
-            TestResult { doc_id: "f3".to_owned(), score: 0.0 },
+            TestResult {
+                doc_id: "f2".to_owned(),
+                score: 0.0,
+            },
+            TestResult {
+                doc_id: "f3".to_owned(),
+                score: 0.0,
+            },
         ];
 
         let merged = rrf_merge(&[q1, q2], 60.0);
@@ -578,12 +584,24 @@ mod tests {
     #[test]
     fn rrf_merge_boosts_duplicate_results() {
         let q1 = vec![
-            TestResult { doc_id: "f1".to_owned(), score: 0.0 },
-            TestResult { doc_id: "f2".to_owned(), score: 0.0 },
+            TestResult {
+                doc_id: "f1".to_owned(),
+                score: 0.0,
+            },
+            TestResult {
+                doc_id: "f2".to_owned(),
+                score: 0.0,
+            },
         ];
         let q2 = vec![
-            TestResult { doc_id: "f1".to_owned(), score: 0.0 },
-            TestResult { doc_id: "f3".to_owned(), score: 0.0 },
+            TestResult {
+                doc_id: "f1".to_owned(),
+                score: 0.0,
+            },
+            TestResult {
+                doc_id: "f3".to_owned(),
+                score: 0.0,
+            },
         ];
 
         let merged = rrf_merge(&[q1, q2], 60.0);
@@ -602,8 +620,14 @@ mod tests {
     #[test]
     fn rrf_merge_single_query() {
         let q1 = vec![
-            TestResult { doc_id: "f1".to_owned(), score: 0.0 },
-            TestResult { doc_id: "f2".to_owned(), score: 0.0 },
+            TestResult {
+                doc_id: "f1".to_owned(),
+                score: 0.0,
+            },
+            TestResult {
+                doc_id: "f2".to_owned(),
+                score: 0.0,
+            },
         ];
 
         let merged = rrf_merge(&[q1], 60.0);
@@ -616,13 +640,28 @@ mod tests {
     #[test]
     fn rrf_merge_preserves_order_by_score() {
         let q1 = vec![
-            TestResult { doc_id: "f1".to_owned(), score: 0.0 },
-            TestResult { doc_id: "f2".to_owned(), score: 0.0 },
-            TestResult { doc_id: "f3".to_owned(), score: 0.0 },
+            TestResult {
+                doc_id: "f1".to_owned(),
+                score: 0.0,
+            },
+            TestResult {
+                doc_id: "f2".to_owned(),
+                score: 0.0,
+            },
+            TestResult {
+                doc_id: "f3".to_owned(),
+                score: 0.0,
+            },
         ];
         let q2 = vec![
-            TestResult { doc_id: "f3".to_owned(), score: 0.0 },
-            TestResult { doc_id: "f1".to_owned(), score: 0.0 },
+            TestResult {
+                doc_id: "f3".to_owned(),
+                score: 0.0,
+            },
+            TestResult {
+                doc_id: "f1".to_owned(),
+                score: 0.0,
+            },
         ];
 
         let merged = rrf_merge(&[q1, q2], 60.0);
