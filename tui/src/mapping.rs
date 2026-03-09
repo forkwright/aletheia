@@ -292,9 +292,29 @@ impl App {
         matches!(&self.overlay, Some(Overlay::SessionPicker(_)))
     }
 
+    fn is_diff_view_overlay(&self) -> bool {
+        matches!(&self.overlay, Some(Overlay::DiffView(_)))
+    }
+
     fn map_overlay_key(&self, key: KeyEvent) -> Option<Msg> {
         if matches!(&self.overlay, Some(Overlay::Settings(_))) {
             return self.map_settings_overlay_key(key);
+        }
+
+        // Diff viewer has its own keybindings
+        if self.is_diff_view_overlay() {
+            return match (key.modifiers, key.code) {
+                (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                    Some(Msg::DiffClose)
+                }
+                (_, KeyCode::Char('m')) => Some(Msg::DiffCycleMode),
+                (_, KeyCode::Up) | (_, KeyCode::Char('k')) => Some(Msg::DiffScrollUp),
+                (_, KeyCode::Down) | (_, KeyCode::Char('j')) => Some(Msg::DiffScrollDown),
+                (_, KeyCode::PageUp) => Some(Msg::DiffPageUp),
+                (_, KeyCode::PageDown) => Some(Msg::DiffPageDown),
+                (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
+                _ => None,
+            };
         }
 
         match (key.modifiers, key.code) {

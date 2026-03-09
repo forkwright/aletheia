@@ -218,6 +218,21 @@ pub enum Msg {
     ShowSuccess(String),
     DismissError,
 
+    // --- Diff viewer ---
+    DiffOpen,        // :diff command — show uncommitted changes
+    DiffClose,       // Esc in diff view
+    DiffCycleMode,   // 'm' in diff view
+    DiffScrollUp,    // scroll up in diff view
+    DiffScrollDown,  // scroll down in diff view
+    DiffPageUp,      // page up in diff view
+    DiffPageDown,    // page down in diff view
+    /// Auto-triggered diff from file modification tool result.
+    DiffFromToolResult {
+        path: String,
+        old_content: String,
+        new_content: String,
+    },
+
     // --- Timer ---
     Tick,
 }

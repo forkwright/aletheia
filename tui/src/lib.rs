@@ -6,6 +6,7 @@ mod app;
 mod clipboard;
 mod command;
 mod config;
+pub(crate) mod diff;
 pub(crate) mod error;
 mod events;
 mod highlight;

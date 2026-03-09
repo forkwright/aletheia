@@ -60,6 +60,9 @@ regex = { workspace = true }
 # Fuzzy matching for command palette
 fuzzy-matcher = "0.3"
 
+# Text diffing (patience, LCS, Myers algorithms)
+similar = "2"
+
 # Cross-platform URL/file opening
 open = "5"
 

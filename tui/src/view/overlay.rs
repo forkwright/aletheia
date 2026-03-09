@@ -6,6 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::app::{AgentStatus, App, ContextActionsOverlay, Overlay};
+use crate::diff;
 use crate::keybindings;
 use crate::theme::ThemePalette;
 
@@ -37,6 +38,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         }
         Overlay::SystemStatus => render_system_status(app, frame, popup_area, theme),
         Overlay::Settings(settings) => super::settings::render(settings, frame, area, theme),
+        Overlay::DiffView(diff_state) => {
+            // Diff overlay uses a larger area (80% x 85%)
+            let diff_area = centered_rect(80, 85, area);
+            frame.render_widget(Clear, diff_area);
+            render_diff_view(diff_state, frame, diff_area, theme);
+        }
     }
 }
 
@@ -534,6 +541,29 @@ fn render_context_actions(
 
     let block = overlay_block("Actions", theme);
     let paragraph = Paragraph::new(lines).block(block);
+    frame.render_widget(paragraph, area);
+}
+
+fn render_diff_view(
+    diff_state: &diff::DiffViewState,
+    frame: &mut Frame,
+    area: Rect,
+    theme: &ThemePalette,
+) {
+    // Render diff lines (without mutation — we compute total_lines here for scroll clamping)
+    let inner_area = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
+    let all_lines = diff::render_diff_view_immutable(diff_state, inner_area, theme);
+
+    let total = all_lines.len();
+    let visible_height = inner_area.height as usize;
+
+    // Clamp scroll
+    let scroll = diff_state.scroll_offset.min(total.saturating_sub(visible_height));
+
+    let block = overlay_block(&format!("Diff [{}]", diff_state.mode.label()), theme);
+    let paragraph = Paragraph::new(all_lines)
+        .block(block)
+        .scroll((scroll as u16, 0));
     frame.render_widget(paragraph, area);
 }
 

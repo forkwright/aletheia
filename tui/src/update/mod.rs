@@ -1,5 +1,6 @@
 mod api;
 mod command;
+mod diff;
 mod filter;
 mod input;
 mod navigation;
@@ -194,6 +195,20 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::ShowError(msg) => api::handle_show_error(app, msg),
         Msg::ShowSuccess(msg) => api::handle_show_error(app, msg),
         Msg::DismissError => api::handle_dismiss_error(app),
+        // --- Diff viewer ---
+        Msg::DiffOpen => diff::handle_diff_open(app).await,
+        Msg::DiffClose => diff::handle_diff_close(app),
+        Msg::DiffCycleMode => diff::handle_diff_cycle_mode(app),
+        Msg::DiffScrollUp => diff::handle_diff_scroll_up(app),
+        Msg::DiffScrollDown => diff::handle_diff_scroll_down(app),
+        Msg::DiffPageUp => diff::handle_diff_page_up(app),
+        Msg::DiffPageDown => diff::handle_diff_page_down(app),
+        Msg::DiffFromToolResult {
+            path,
+            old_content,
+            new_content,
+        } => diff::handle_diff_from_tool_result(app, &path, &old_content, &new_content),
+
         Msg::Quit => app.should_quit = true,
         Msg::Tick => api::handle_tick(app),
     }

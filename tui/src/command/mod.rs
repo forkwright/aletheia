@@ -145,10 +145,17 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Action,
         shortcut: None,
     },
+    Command {
+        name: "diff",
+        aliases: &["d"],
+        description: "Show uncommitted changes",
+        category: CommandCategory::Query,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;
-const MAX_SUGGESTIONS_INITIAL: usize = 16;
+const MAX_SUGGESTIONS_INITIAL: usize = 20;
 
 /// Build suggestions from static commands + dynamic agent entries.
 pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> {
