@@ -2671,7 +2671,10 @@ mod tests {
                 ef: 20,
             };
             let script = build_hybrid_query(&q);
-            assert!(!script.is_empty(), "valid seed {seed:?} must produce a non-empty script");
+            assert!(
+                !script.is_empty(),
+                "valid seed {seed:?} must produce a non-empty script"
+            );
         }
     }
 
@@ -4763,7 +4766,10 @@ mod knowledge_store_tests {
 
         // Forget it
         store
-            .forget_fact(&crate::id::FactId::new_unchecked("sk-forget"), crate::knowledge::ForgetReason::Outdated)
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("sk-forget"),
+                crate::knowledge::ForgetReason::Outdated,
+            )
             .expect("forget");
 
         let results = store.find_skills_for_nous("alice", 100).expect("query");
