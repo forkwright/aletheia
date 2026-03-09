@@ -51,6 +51,7 @@ impl Default for RecallWeights {
 impl RecallWeights {
     /// Sum of all weights (for normalization).
     #[must_use]
+    #[instrument(skip(self))]
     pub fn total(&self) -> f64 {
         self.vector_similarity
             + self.recency
@@ -108,6 +109,7 @@ pub struct RecallEngine {
 impl RecallEngine {
     /// Create a new recall engine with default weights.
     #[must_use]
+    #[instrument]
     pub fn new() -> Self {
         Self {
             weights: RecallWeights::default(),
@@ -118,6 +120,7 @@ impl RecallEngine {
 
     /// Create with custom weights.
     #[must_use]
+    #[instrument(skip(weights))]
     pub fn with_weights(weights: RecallWeights) -> Self {
         Self {
             weights,
@@ -127,6 +130,7 @@ impl RecallEngine {
 
     /// Set the recency half-life in hours.
     #[must_use]
+    #[instrument(skip(self))]
     pub fn with_recency_half_life(mut self, hours: f64) -> Self {
         self.recency_half_life_hours = hours;
         self
@@ -134,6 +138,7 @@ impl RecallEngine {
 
     /// Set the max access count for frequency normalization.
     #[must_use]
+    #[instrument(skip(self))]
     pub fn with_max_access_count(mut self, count: f64) -> Self {
         self.max_access_count = count;
         self
@@ -144,6 +149,7 @@ impl RecallEngine {
     /// Cosine distance is in [0.0, 2.0] (0 = identical, 2 = opposite).
     /// We convert to a similarity in [0.0, 1.0].
     #[must_use]
+    #[instrument(skip(self))]
     pub fn score_vector_similarity(&self, cosine_distance: f64) -> f64 {
         (1.0 - cosine_distance / 2.0).clamp(0.0, 1.0)
     }
@@ -152,6 +158,7 @@ impl RecallEngine {
     ///
     /// Exponential decay: `score = 0.5^(age / half_life)`
     #[must_use]
+    #[instrument(skip(self))]
     pub fn score_recency(&self, age_hours: f64) -> f64 {
         if age_hours <= 0.0 {
             return 1.0;
@@ -163,6 +170,7 @@ impl RecallEngine {
     ///
     /// 1.0 if the memory belongs to the querying nous, 0.5 for shared, 0.3 for other.
     #[must_use]
+    #[instrument(skip(self))]
     pub fn score_relevance(&self, memory_nous_id: &str, query_nous_id: &str) -> f64 {
         if memory_nous_id == query_nous_id {
             1.0
@@ -175,6 +183,7 @@ impl RecallEngine {
 
     /// Compute the epistemic tier score.
     #[must_use]
+    #[instrument(skip(self))]
     pub fn score_epistemic_tier(&self, tier: &str) -> f64 {
         match tier {
             "verified" => 1.0,
@@ -189,6 +198,7 @@ impl RecallEngine {
     /// Direct neighbor = 1.0, 2-hop = 0.5, 3-hop = 0.25, etc.
     /// No connection = 0.0.
     #[must_use]
+    #[instrument(skip(self))]
     pub fn score_relationship_proximity(&self, hops: Option<u32>) -> f64 {
         match hops {
             Some(0 | 1) => 1.0, // Same entity or direct neighbor
@@ -203,6 +213,7 @@ impl RecallEngine {
     ///
     /// Logarithmic scaling: `score = log(1 + count) / log(1 + max_count)`
     #[must_use]
+    #[instrument(skip(self))]
     pub fn score_access_frequency(&self, access_count: u64) -> f64 {
         #[expect(clippy::cast_precision_loss, reason = "access count fits in f64")]
         let count = access_count as f64;
@@ -231,6 +242,7 @@ impl RecallEngine {
 
     /// Score and rank a batch of candidates. Returns sorted by score descending.
     #[must_use]
+    #[instrument(skip(self, candidates), fields(count = candidates.len()))]
     pub fn rank(&self, mut candidates: Vec<ScoredResult>) -> Vec<ScoredResult> {
         for candidate in &mut candidates {
             candidate.score = self.compute_score(&candidate.factors);
@@ -245,6 +257,7 @@ impl RecallEngine {
 
     /// Access the current weights.
     #[must_use]
+    #[instrument(skip(self))]
     pub fn weights(&self) -> &RecallWeights {
         &self.weights
     }
