@@ -450,7 +450,8 @@ fn now_iso8601() -> String {
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_lossless,
-    reason = "Hinnant algorithm uses known-range casts"
+    clippy::similar_names,
+    reason = "Hinnant algorithm uses known-range casts; doe/doy are standard names"
 )]
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
