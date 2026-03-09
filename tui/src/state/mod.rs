@@ -6,6 +6,7 @@ mod input;
 pub(crate) mod ops;
 mod overlay;
 pub mod settings;
+pub(crate) mod tab;
 pub(crate) mod view_stack;
 pub(crate) mod virtual_scroll;
 
@@ -20,4 +21,5 @@ pub use overlay::{
     ContextAction, ContextActionsOverlay, Overlay, PlanApprovalOverlay, PlanStepApproval,
     SessionPickerOverlay, ToolApprovalOverlay,
 };
+pub(crate) use tab::TabBar;
 pub use view_stack::{View, ViewStack};

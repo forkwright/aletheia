@@ -224,6 +224,9 @@ async fn execute_command(app: &mut App) {
         "ops" => {
             app.ops.toggle();
         }
+        "tab" => {
+            super::tabs::handle_tab_command(app, args);
+        }
         _ => {
             app.error_toast = Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
         }

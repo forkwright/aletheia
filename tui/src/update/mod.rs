@@ -9,6 +9,7 @@ pub(crate) mod selection;
 pub(crate) mod settings;
 mod sse;
 mod streaming;
+pub(crate) mod tabs;
 pub(crate) mod view_nav;
 
 use crate::app::App;
@@ -18,7 +19,20 @@ pub(crate) use api::extract_text_content;
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn update(app: &mut App, msg: Msg) {
+    // Clear pending_g on any message except GPrefix itself
+    if !matches!(msg, Msg::GPrefix | Msg::Tick) {
+        app.pending_g = false;
+    }
+
     match msg {
+        // --- Tabs ---
+        Msg::TabNew => tabs::handle_tab_new(app),
+        Msg::TabClose => tabs::handle_tab_close(app),
+        Msg::TabNext => tabs::handle_tab_next(app),
+        Msg::TabPrev => tabs::handle_tab_prev(app),
+        Msg::TabJump(n) => tabs::handle_tab_jump(app, n),
+        Msg::GPrefix => tabs::handle_g_prefix(app),
+
         // --- Message selection ---
         Msg::SelectPrev => selection::handle_select_prev(app),
         Msg::SelectNext => selection::handle_select_next(app),

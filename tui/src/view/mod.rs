@@ -7,6 +7,7 @@ mod overlay;
 pub(crate) mod settings;
 mod sidebar;
 mod status_bar;
+pub(crate) mod tab_bar;
 mod title_bar;
 mod views;
 
@@ -30,6 +31,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
 
     let has_toast = app.error_toast.is_some();
     let palette_active = app.command_palette.active;
+    let show_tabs = tab_bar::should_show(app);
 
     // When palette is active, it replaces the status bar with a variable-height area
     let bottom_height = if palette_active {
@@ -43,31 +45,43 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         STATUS_BAR_HEIGHT
     };
 
+    let tab_height: u16 = if show_tabs { 1 } else { 0 };
+
+    let mut constraints = vec![
+        Constraint::Length(1), // title bar
+    ];
+    if show_tabs {
+        constraints.push(Constraint::Length(tab_height)); // tab bar
+    }
+    constraints.push(Constraint::Min(5)); // body
+    constraints.push(Constraint::Length(bottom_height)); // status bar or command palette
+    if has_toast {
+        constraints.push(Constraint::Length(1)); // error toast
+    }
+
     let vertical = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(if has_toast {
-            vec![
-                Constraint::Length(1),             // title bar
-                Constraint::Min(5),                // body
-                Constraint::Length(bottom_height), // status bar or command palette
-                Constraint::Length(1),             // error toast
-            ]
-        } else {
-            vec![
-                Constraint::Length(1),             // title bar
-                Constraint::Min(5),                // body
-                Constraint::Length(bottom_height), // status bar or command palette
-            ]
-        })
+        .constraints(constraints)
         .split(area);
 
-    title_bar::render(app, frame, vertical[0], theme);
+    // Index tracking based on optional tab bar
+    let title_idx = 0;
+    let tab_idx = if show_tabs { 1 } else { 0 };
+    let body_idx = if show_tabs { 2 } else { 1 };
+    let bottom_idx = if show_tabs { 3 } else { 2 };
+    let toast_idx = if show_tabs { 4 } else { 3 };
+
+    title_bar::render(app, frame, vertical[title_idx], theme);
+
+    if show_tabs {
+        tab_bar::render(app, frame, vertical[tab_idx], theme);
+    }
 
     // Bottom area: command palette or status bar
     if palette_active {
-        command_palette::render(app, frame, vertical[2], theme);
+        command_palette::render(app, frame, vertical[bottom_idx], theme);
     } else {
-        status_bar::render(app, frame, vertical[2], theme);
+        status_bar::render(app, frame, vertical[bottom_idx], theme);
     }
 
     // Error toast at bottom
@@ -78,7 +92,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         ]);
         let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
             .style(ratatui::style::Style::default().bg(theme.surface_dim));
-        frame.render_widget(toast_widget, vertical[3]);
+        frame.render_widget(toast_widget, vertical[toast_idx]);
     }
 
     // Responsive: hide sidebar on narrow terminals
@@ -88,8 +102,6 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let show_ops = app.ops.visible && area.width >= MIN_OPS_TERMINAL_WIDTH;
 
     // Body: sidebar | main content area (dispatched by current view, with optional ops pane)
-    let body_area = vertical[1];
-
     let osc_links = if show_sidebar {
         let sidebar_and_rest = Layout::default()
             .direction(Direction::Horizontal)
@@ -97,7 +109,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
                 Constraint::Length(SIDEBAR_WIDTH),
                 Constraint::Min(MIN_CHAT_WIDTH),
             ])
-            .split(body_area);
+            .split(vertical[body_idx]);
 
         sidebar::render(app, frame, sidebar_and_rest[0], theme);
         SIDEBAR_RECT.store_rect(sidebar_and_rest[0]);
@@ -122,20 +134,20 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         SIDEBAR_RECT.store_rect(Rect::ZERO);
 
         if show_ops {
-            let ops_width = ops::ops_pane_width(body_area.width, app.ops.width_pct);
+            let ops_width = ops::ops_pane_width(vertical[body_idx].width, app.ops.width_pct);
             let chat_ops = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
                     Constraint::Min(MIN_CHAT_WIDTH),
                     Constraint::Length(ops_width),
                 ])
-                .split(body_area);
+                .split(vertical[body_idx]);
 
             let links = views::render_for_view(app, frame, chat_ops[0], theme);
             ops::render(app, frame, chat_ops[1], theme);
             links
         } else {
-            views::render_for_view(app, frame, body_area, theme)
+            views::render_for_view(app, frame, vertical[body_idx], theme)
         }
     };
 
