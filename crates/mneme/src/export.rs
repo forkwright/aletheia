@@ -185,7 +185,7 @@ fn query_all_entities(
         let updated_at = row[5].get_str().unwrap_or_default().to_owned();
 
         entities.push(crate::knowledge::Entity {
-            id,
+            id: crate::knowledge::EntityId::from(id),
             name,
             entity_type,
             aliases,
@@ -219,8 +219,8 @@ fn query_all_relationships(
         let created_at = row[4].get_str().unwrap_or_default().to_owned();
 
         relationships.push(crate::knowledge::Relationship {
-            src,
-            dst,
+            src: crate::knowledge::EntityId::from(src),
+            dst: crate::knowledge::EntityId::from(dst),
             relation,
             weight,
             created_at,

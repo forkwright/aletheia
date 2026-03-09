@@ -29,6 +29,13 @@ pub enum EmbeddingError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The embedding model mutex was poisoned by a prior panic.
+    #[snafu(display("embedding model lock poisoned"))]
+    LockPoisoned {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result type for embedding operations.
@@ -205,7 +212,7 @@ impl EmbeddingProvider for FastEmbedProvider {
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
         self.model
             .lock()
-            .expect("fastembed model lock") // INVARIANT: lock held only for embed call, poisoned = prior panic
+            .map_err(|_poison| LockPoisonedSnafu.build())?
             .embed(vec![text], None)
             .map_err(|e| {
                 EmbedFailedSnafu {
@@ -227,7 +234,7 @@ impl EmbeddingProvider for FastEmbedProvider {
     fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
         self.model
             .lock()
-            .expect("fastembed model lock") // INVARIANT: lock held only for embed call, poisoned = prior panic
+            .map_err(|_poison| LockPoisonedSnafu.build())?
             .embed(texts, None)
             .map_err(|e| {
                 EmbedFailedSnafu {
@@ -588,6 +595,39 @@ mod tests {
         assert!(
             msg.contains("not enabled"),
             "expected 'not enabled' in error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn lock_poisoned_error_returns_err_not_panic() {
+        use std::sync::Mutex;
+
+        // Poison a mutex by panicking inside a thread while holding it.
+        let m: Mutex<u32> = Mutex::new(0);
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = m.lock().unwrap();
+            panic!("intentional poison");
+        });
+        assert!(m.is_poisoned(), "mutex must be poisoned after thread panic");
+
+        // Simulate what embed() does: map_err to LockPoisoned.
+        let result: EmbeddingResult<()> = m
+            .lock()
+            .map_err(|_poison| LockPoisonedSnafu.build())
+            .map(|_| ());
+        assert!(
+            matches!(result, Err(EmbeddingError::LockPoisoned { .. })),
+            "poisoned lock must produce EmbeddingError::LockPoisoned"
+        );
+    }
+
+    #[test]
+    fn lock_poisoned_error_formats() {
+        let err = LockPoisonedSnafu.build();
+        assert_eq!(
+            err.to_string(),
+            "embedding model lock poisoned",
+            "LockPoisoned display must match spec"
         );
     }
 

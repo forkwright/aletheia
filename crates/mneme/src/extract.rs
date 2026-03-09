@@ -276,7 +276,7 @@ Rules:
         let mut result = PersistResult::default();
 
         for entity in &extraction.entities {
-            let id = slugify(&entity.name);
+            let id = crate::knowledge::EntityId::from(slugify(&entity.name));
             let aliases = if entity.description.is_empty() {
                 vec![]
             } else {
@@ -324,8 +324,8 @@ Rules:
                 }
             };
             let r = Relationship {
-                src: slugify(&rel.source),
-                dst: slugify(&rel.target),
+                src: crate::knowledge::EntityId::from(slugify(&rel.source)),
+                dst: crate::knowledge::EntityId::from(slugify(&rel.target)),
                 relation: relation_type,
                 weight: rel.confidence,
                 created_at: now.clone(),
@@ -411,10 +411,17 @@ fn strip_code_fences(s: &str) -> &str {
     }
 }
 
-/// Slugify a string: lowercase, spaces to hyphens, keep alphanumeric and hyphens.
+/// Slugify a string: NFC-normalize, lowercase, spaces to hyphens, keep alphanumeric and hyphens.
+///
+/// Unicode Normalization Form C is applied first so that visually identical strings
+/// with different codepoint sequences (e.g. composed vs decomposed "café") produce the
+/// same slug.
 #[cfg(any(feature = "mneme-engine", test))]
 fn slugify(s: &str) -> String {
-    s.to_lowercase()
+    use unicode_normalization::UnicodeNormalization as _;
+    let normalized: String = s.nfc().collect();
+    normalized
+        .to_lowercase()
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '-' })
         .collect::<String>()
@@ -425,46 +432,14 @@ fn slugify(s: &str) -> String {
 }
 
 /// Current time as ISO 8601 string (UTC, second precision).
+///
+/// Uses `jiff` (project standard) rather than `std::time::SystemTime` + manual
+/// epoch-day arithmetic. Format: `YYYY-MM-DDTHH:MM:SSZ`.
 #[cfg(feature = "mneme-engine")]
 fn now_iso8601() -> String {
-    use std::time::SystemTime;
-
-    let dur = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = dur.as_secs();
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
-    let seconds = time_secs % 60;
-
-    // Simple epoch-day to y/m/d (civil calendar from days since 1970-01-01).
-    #[expect(clippy::cast_possible_wrap, reason = "epoch days fits in i64")]
-    let (y, m, d) = epoch_days_to_ymd(days as i64);
-    format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
-}
-
-/// Convert epoch days to (year, month, day). Algorithm from Howard Hinnant.
-#[cfg(feature = "mneme-engine")]
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_lossless,
-    clippy::similar_names,
-    // Hinnant algorithm uses known-range casts; doe/doy are standard names
-)]
-fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097) as u32;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = (yoe as i64) + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
+    jiff::Zoned::now()
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -1250,6 +1225,39 @@ Some text
             result.chars().all(|c| c.is_alphanumeric() || c == '-'),
             "slugify output should only contain alphanumeric or hyphens"
         );
+    }
+
+    #[test]
+    fn slugify_nfc_normalization_composed_vs_decomposed() {
+        // "café" in NFC (composed é = U+00E9) vs NFD (decomposed e + combining accent)
+        let composed = "caf\u{00E9}"; // NFC é
+        let decomposed = "cafe\u{0301}"; // NFD: e + combining acute accent
+        let slug_composed = slugify(composed);
+        let slug_decomposed = slugify(decomposed);
+        assert_eq!(
+            slug_composed, slug_decomposed,
+            "NFC-composed and NFD-decomposed forms must produce the same slug"
+        );
+    }
+
+    #[test]
+    fn slugify_nfc_normalization_preserves_ascii() {
+        // NFC normalization must not alter plain ASCII
+        assert_eq!(slugify("hello-world"), "hello-world");
+        assert_eq!(slugify("Data Processor"), "data-processor");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn now_iso8601_uses_jiff_format() {
+        let ts = now_iso8601();
+        // Must match YYYY-MM-DDTHH:MM:SSZ
+        assert_eq!(ts.len(), 20, "timestamp must be exactly 20 chars: {ts}");
+        assert!(ts.ends_with('Z'), "timestamp must end with Z: {ts}");
+        assert_eq!(&ts[10..11], "T", "timestamp must have T separator: {ts}");
+        // Year must be plausible (>= 2025)
+        let year: u32 = ts[..4].parse().expect("year must be numeric");
+        assert!(year >= 2025, "year must be >= 2025, got {year}");
     }
 
     #[cfg(feature = "mneme-engine")]
