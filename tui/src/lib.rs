@@ -29,6 +29,7 @@ use crate::config::Config;
 use crate::events::Event;
 
 /// Entry point for the TUI, callable from the main `aletheia` binary or standalone.
+#[tracing::instrument(skip_all, fields(url, agent))]
 pub async fn run_tui(
     url: Option<String>,
     token: Option<String>,

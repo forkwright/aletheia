@@ -20,6 +20,7 @@ pub async fn parse_sse_stream(response: reqwest::Response) -> Result<Vec<ParsedS
 }
 
 /// Parse raw SSE text into events. Exposed for testing.
+#[tracing::instrument(skip(text), fields(text_len = text.len()))]
 pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
     let mut events = Vec::new();
     let mut current_event_type = String::new();
