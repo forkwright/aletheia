@@ -11,7 +11,7 @@ use crossbeam::channel::{Receiver, Sender, bounded};
 #[allow(unused_imports)]
 use either::{Left, Right};
 #[cfg(feature = "graph-algo")]
-use graph::prelude::{CsrLayout, DirectedCsrGraph, GraphBuilder};
+use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use itertools::Itertools;
 #[allow(unused_imports)]
 use compact_str::CompactString;
@@ -37,6 +37,8 @@ use crate::engine::runtime::transact::SessionTx;
 
 #[cfg(feature = "graph-algo")]
 pub(crate) mod algos;
+#[cfg(feature = "graph-algo")]
+pub(crate) mod csr;
 pub(crate) mod utilities;
 
 /// Passed into implementation of fixed rule, can be used to obtain relation inputs and options
@@ -133,7 +135,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         &self,
         undirected: bool,
     ) -> Result<(
-        DirectedCsrGraph<u32>,
+        DirectedCsrGraph,
         Vec<DataValue>,
         BTreeMap<DataValue, u32>,
     )> {
@@ -189,8 +191,8 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         } else {
             Left(it)
         };
-        let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
-            .csr_layout(CsrLayout::Sorted)
+        let graph: DirectedCsrGraph = CsrBuilder::new()
+            .sorted()
             .edges(it)
             .build();
         if let Some(err) = error {
@@ -210,7 +212,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         undirected: bool,
         allow_negative_weights: bool,
     ) -> Result<(
-        DirectedCsrGraph<u32, (), f32>,
+        DirectedCsrGraph<f32>,
         Vec<DataValue>,
         BTreeMap<DataValue, u32>,
     )> {
@@ -322,8 +324,8 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         } else {
             Left(it)
         };
-        let graph: DirectedCsrGraph<u32, (), f32> = GraphBuilder::new()
-            .csr_layout(CsrLayout::Sorted)
+        let graph: DirectedCsrGraph<f32> = CsrBuilder::new()
+            .sorted()
             .edges_with_values(it)
             .build();
 

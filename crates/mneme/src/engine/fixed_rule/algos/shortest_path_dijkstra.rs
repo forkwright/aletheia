@@ -2,7 +2,7 @@
 // Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
@@ -267,7 +267,7 @@ impl Goal for BTreeSet<u32> {
 }
 
 pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
-    edges: &DirectedCsrGraph<u32, (), f32>,
+    edges: &DirectedCsrGraph<f32>,
     start: u32,
     goals: &G,
     forbidden_edges: &FE,
@@ -332,7 +332,7 @@ pub(crate) fn dijkstra<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
 }
 
 pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal + Clone>(
-    edges: &DirectedCsrGraph<u32, (), f32>,
+    edges: &DirectedCsrGraph<f32>,
     start: u32,
     goals: &G,
     forbidden_edges: &FE,

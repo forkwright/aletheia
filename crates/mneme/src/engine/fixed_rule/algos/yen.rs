@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use itertools::Itertools;
 use rayon::prelude::*;
 use compact_str::CompactString;
@@ -120,7 +120,7 @@ impl FixedRule for KShortestPathYen {
 
 fn k_shortest_path_yen(
     k: usize,
-    edges: &DirectedCsrGraph<u32, (), f32>,
+    edges: &DirectedCsrGraph<f32>,
     start: u32,
     goal: u32,
     poison: Poison,

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
 use itertools::Itertools;
-use rand::distributions::WeightedIndex;
+use rand::distr::weighted::WeightedIndex;
 use rand::prelude::*;
 use compact_str::CompactString;
 

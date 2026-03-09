@@ -2,7 +2,7 @@
 // Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
@@ -138,7 +138,7 @@ impl FixedRule for ClosenessCentrality {
 }
 
 pub(crate) fn dijkstra_cost_only(
-    edges: &DirectedCsrGraph<u32, (), f32>,
+    edges: &DirectedCsrGraph<f32>,
     start: u32,
     poison: Poison,
 ) -> Result<Vec<f32>> {

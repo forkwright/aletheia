@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use itertools::Itertools;
 use rand::prelude::*;
 use compact_str::CompactString;
@@ -49,7 +49,7 @@ impl FixedRule for LabelPropagation {
 }
 
 fn label_propagation(
-    graph: &DirectedCsrGraph<u32, (), f32>,
+    graph: &DirectedCsrGraph<f32>,
     max_iter: usize,
     poison: Poison,
 ) -> Result<Vec<u32>> {

@@ -2,7 +2,7 @@
 // Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighbors, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::collections::BTreeMap;
 
 use compact_str::CompactString;
@@ -49,7 +49,7 @@ impl FixedRule for TopSort {
     }
 }
 
-pub(crate) fn kahn_g(graph: &DirectedCsrGraph<u32>, poison: Poison) -> Result<Vec<u32>> {
+pub(crate) fn kahn_g(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32>> {
     let graph_size = graph.node_count();
     let mut in_degree = vec![0; graph_size as usize];
     for tos in 0..graph_size {

@@ -2,7 +2,7 @@
 // Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
@@ -70,7 +70,7 @@ impl FixedRule for MinimumSpanningTreePrim {
 }
 
 fn prim(
-    graph: &DirectedCsrGraph<u32, (), f32>,
+    graph: &DirectedCsrGraph<f32>,
     starting: u32,
     poison: Poison,
 ) -> Result<Vec<(u32, u32, f32)>> {

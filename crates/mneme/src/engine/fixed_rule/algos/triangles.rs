@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighbors, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use itertools::Itertools;
 use rayon::prelude::*;
 use compact_str::CompactString;
@@ -52,7 +52,7 @@ impl FixedRule for ClusteringCoefficients {
 }
 
 fn clustering_coefficients(
-    graph: &DirectedCsrGraph<u32>,
+    graph: &DirectedCsrGraph,
     poison: Poison,
 ) -> Result<Vec<(f64, usize, usize)>> {
     let node_size = graph.node_count();

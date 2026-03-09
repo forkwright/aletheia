@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{PageRankConfig, page_rank};
+use crate::engine::fixed_rule::csr::{PageRankConfig, page_rank};
 use compact_str::CompactString;
 
 use crate::engine::data::expr::Expr;
