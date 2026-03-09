@@ -20,6 +20,9 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Streaming;
     }
+    // Operations pane: clear previous turn data and auto-show
+    app.ops.clear_turn();
+    app.ops.auto_show_if_configured();
 }
 
 #[tracing::instrument(skip_all, fields(len = text.len()))]
@@ -44,6 +47,7 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
 pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
     app.streaming_thinking.push_str(&clean);
+    app.ops.push_thinking(&clean);
 }
 
 #[tracing::instrument(skip_all, fields(%tool_name))]
@@ -55,6 +59,8 @@ pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
         duration_ms: None,
         is_error: false,
     });
+    // Operations pane: add tool call entry
+    app.ops.push_tool_start(clean_name.clone(), None);
     if let Some(ref agent_id) = app.focused_agent {
         if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
             agent.active_tool = Some(clean_name);
@@ -79,6 +85,9 @@ pub(crate) fn handle_stream_tool_result(
         tc.duration_ms = Some(duration_ms);
         tc.is_error = is_error;
     }
+    // Operations pane: complete tool call
+    app.ops
+        .complete_tool(&tool_name, is_error, duration_ms, None);
     if let Some(ref agent_id) = app.focused_agent {
         if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
             agent.active_tool = None;
@@ -173,6 +182,8 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
             agent.active_tool = None;
         }
     }
+    // Operations pane: auto-hide when turn completes
+    app.ops.auto_hide_if_configured();
     if let Ok(cents) = app.client.today_cost_cents().await {
         app.daily_cost_cents = cents;
     }

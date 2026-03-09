@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use std::sync::Mutex;
+use tokio::sync::Mutex as TokioMutex;
 
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
@@ -46,7 +47,7 @@ pub struct NousManager {
     oikos: Arc<Oikos>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
-    session_store: Option<Arc<Mutex<SessionStore>>>,
+    session_store: Option<Arc<TokioMutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")]
     knowledge_store: Option<Arc<KnowledgeStore>>,
     packs: Arc<Vec<LoadedPack>>,
@@ -72,7 +73,7 @@ impl NousManager {
         oikos: Arc<Oikos>,
         embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
         vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
-        session_store: Option<Arc<Mutex<SessionStore>>>,
+        session_store: Option<Arc<TokioMutex<SessionStore>>>,
         #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
         packs: Arc<Vec<LoadedPack>>,
         router: Option<Arc<crate::cross::CrossNousRouter>>,

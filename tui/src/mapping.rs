@@ -84,12 +84,18 @@ impl App {
             return self.map_selection_key(key);
         }
 
+        // If ops pane is focused, route keys there
+        if self.ops.visible && self.ops.focused_pane == crate::state::FocusedPane::Operations {
+            return self.map_ops_pane_key(key);
+        }
+
         match (key.modifiers, key.code) {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
 
             (KeyModifiers::CONTROL, KeyCode::Char('f')) => Some(Msg::ToggleSidebar),
             (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::ToggleThinking),
+            (KeyModifiers::CONTROL, KeyCode::Char('o')) => Some(Msg::ToggleOpsPane),
 
             (_, KeyCode::F(1)) => Some(Msg::OpenOverlay(OverlayKind::Help)),
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
@@ -106,6 +112,8 @@ impl App {
             (_, KeyCode::Tab) => {
                 if self.input.text.contains('@') {
                     Some(Msg::CharInput('\t'))
+                } else if self.ops.visible {
+                    Some(Msg::OpsFocusSwitch)
                 } else {
                     None
                 }
@@ -165,6 +173,22 @@ impl App {
         }
     }
 
+    fn map_ops_pane_key(&self, key: KeyEvent) -> Option<Msg> {
+        match (key.modifiers, key.code) {
+            (KeyModifiers::CONTROL, KeyCode::Char('c'))
+            | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
+            (KeyModifiers::CONTROL, KeyCode::Char('o')) => Some(Msg::ToggleOpsPane),
+            (_, KeyCode::Tab) => Some(Msg::OpsFocusSwitch),
+            (_, KeyCode::Esc) => Some(Msg::OpsFocusSwitch),
+            (_, KeyCode::PageUp) => Some(Msg::OpsScrollUp),
+            (_, KeyCode::PageDown) => Some(Msg::OpsScrollDown),
+            (_, KeyCode::Char('j')) | (_, KeyCode::Down) => Some(Msg::OpsSelectNext),
+            (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Some(Msg::OpsSelectPrev),
+            (_, KeyCode::Enter) => Some(Msg::OpsToggleExpand),
+            _ => None,
+        }
+    }
+
     fn map_selection_key(&self, key: KeyEvent) -> Option<Msg> {
         match (key.modifiers, key.code) {
             // Ctrl combos pass through to global handlers
@@ -172,6 +196,7 @@ impl App {
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
             (KeyModifiers::CONTROL, KeyCode::Char('f')) => Some(Msg::ToggleSidebar),
             (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::ToggleThinking),
+            (KeyModifiers::CONTROL, KeyCode::Char('o')) => Some(Msg::ToggleOpsPane),
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
                 Some(Msg::OpenOverlay(OverlayKind::AgentPicker))
             }

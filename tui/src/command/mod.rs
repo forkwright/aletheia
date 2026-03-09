@@ -152,6 +152,13 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Query,
         shortcut: None,
     },
+    Command {
+        name: "ops",
+        aliases: &[],
+        description: "Toggle operations pane",
+        category: CommandCategory::Navigation,
+        shortcut: Some("Ctrl+O"),
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;
