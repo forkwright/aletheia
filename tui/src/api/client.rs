@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
 use reqwest::{Client, Response, StatusCode};
+use snafu::prelude::*;
 
 use super::types::*;
+use crate::error::{AuthSnafu, HttpSnafu, Result};
 
 /// Percent-encode a value for use in a URL path segment.
 fn encode_path(s: &str) -> String {
@@ -43,7 +44,7 @@ impl ApiClient {
             .cookie_store(true)
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .context("failed to create HTTP client")?;
+            .context(HttpSnafu { operation: "build HTTP client" })?;
 
         Ok(Self {
             client,
@@ -87,7 +88,7 @@ impl ApiClient {
             .get(self.url("/api/health"))
             .send()
             .await
-            .context("health check failed")?;
+            .context(HttpSnafu { operation: "health check" })?;
         Ok(resp.status().is_success())
     }
 
@@ -99,8 +100,8 @@ impl ApiClient {
             .request(reqwest::Method::GET, "/api/auth/mode")
             .send()
             .await
-            .context("auth mode check failed")?;
-        Ok(resp.json().await?)
+            .context(HttpSnafu { operation: "auth mode check" })?;
+        resp.json().await.context(HttpSnafu { operation: "auth mode response" })
     }
 
     #[expect(dead_code, reason = "reserved for future interactive login flow")]
@@ -112,15 +113,15 @@ impl ApiClient {
             .json(&serde_json::json!({ "username": username, "password": password }))
             .send()
             .await
-            .context("login failed")?;
+            .context(HttpSnafu { operation: "login" })?;
 
         if resp.status() == StatusCode::UNAUTHORIZED {
-            anyhow::bail!("invalid credentials");
+            return AuthSnafu.fail();
         }
 
         resp.error_for_status_ref()
-            .context("login request failed")?;
-        Ok(resp.json().await?)
+            .context(HttpSnafu { operation: "login request" })?;
+        resp.json().await.context(HttpSnafu { operation: "login response" })
     }
 
     // --- Agents ---
@@ -131,11 +132,12 @@ impl ApiClient {
             .request(reqwest::Method::GET, "/api/v1/nous")
             .send()
             .await
-            .context("failed to load agents")?;
+            .context(HttpSnafu { operation: "load agents" })?;
         Self::check_auth(&resp)?;
         resp.error_for_status_ref()
-            .context("agents request failed")?;
-        let wrapper: AgentsResponse = resp.json().await?;
+            .context(HttpSnafu { operation: "agents request" })?;
+        let wrapper: AgentsResponse =
+            resp.json().await.context(HttpSnafu { operation: "agents response" })?;
         Ok(wrapper.nous)
     }
 
@@ -151,11 +153,12 @@ impl ApiClient {
             )
             .send()
             .await
-            .context("failed to load sessions")?;
+            .context(HttpSnafu { operation: "load sessions" })?;
         Self::check_auth(&resp)?;
         resp.error_for_status_ref()
-            .context("sessions request failed")?;
-        let wrapper: SessionsResponse = resp.json().await?;
+            .context(HttpSnafu { operation: "sessions request" })?;
+        let wrapper: SessionsResponse =
+            resp.json().await.context(HttpSnafu { operation: "sessions response" })?;
         Ok(wrapper.sessions)
     }
 
@@ -169,11 +172,12 @@ impl ApiClient {
             )
             .send()
             .await
-            .context("failed to load history")?;
+            .context(HttpSnafu { operation: "load history" })?;
         Self::check_auth(&resp)?;
         resp.error_for_status_ref()
-            .context("history request failed")?;
-        let wrapper: HistoryResponse = resp.json().await?;
+            .context(HttpSnafu { operation: "history request" })?;
+        let wrapper: HistoryResponse =
+            resp.json().await.context(HttpSnafu { operation: "history response" })?;
         Ok(wrapper.messages)
     }
 
@@ -187,11 +191,11 @@ impl ApiClient {
             }))
             .send()
             .await
-            .context("failed to create session")?;
+            .context(HttpSnafu { operation: "create session" })?;
         Self::check_auth(&resp)?;
         resp.error_for_status_ref()
-            .context("create session request failed")?;
-        Ok(resp.json().await?)
+            .context(HttpSnafu { operation: "create session request" })?;
+        resp.json().await.context(HttpSnafu { operation: "create session response" })
     }
 
     #[tracing::instrument(skip(self))]
@@ -203,9 +207,9 @@ impl ApiClient {
         )
         .send()
         .await
-        .context("failed to archive session")?
+        .context(HttpSnafu { operation: "archive session" })?
         .error_for_status_ref()
-        .context("archive request failed")?;
+        .context(HttpSnafu { operation: "archive request" })?;
         Ok(())
     }
 
@@ -218,9 +222,9 @@ impl ApiClient {
         )
         .send()
         .await
-        .context("failed to unarchive session")?
+        .context(HttpSnafu { operation: "unarchive session" })?
         .error_for_status_ref()
-        .context("unarchive request failed")?;
+        .context(HttpSnafu { operation: "unarchive request" })?;
         Ok(())
     }
 
@@ -234,9 +238,9 @@ impl ApiClient {
         .json(&serde_json::json!({ "name": name }))
         .send()
         .await
-        .context("failed to rename session")?
+        .context(HttpSnafu { operation: "rename session" })?
         .error_for_status_ref()
-        .context("rename request failed")?;
+        .context(HttpSnafu { operation: "rename request" })?;
         Ok(())
     }
 
@@ -252,9 +256,9 @@ impl ApiClient {
         )
         .send()
         .await
-        .context("failed to abort turn")?
+        .context(HttpSnafu { operation: "abort turn" })?
         .error_for_status_ref()
-        .context("abort request failed")?;
+        .context(HttpSnafu { operation: "abort request" })?;
         Ok(())
     }
 
@@ -268,9 +272,9 @@ impl ApiClient {
         )
         .send()
         .await
-        .context("failed to approve tool")?
+        .context(HttpSnafu { operation: "approve tool" })?
         .error_for_status_ref()
-        .context("approve request failed")?;
+        .context(HttpSnafu { operation: "approve request" })?;
         Ok(())
     }
 
@@ -284,9 +288,9 @@ impl ApiClient {
         )
         .send()
         .await
-        .context("failed to deny tool")?
+        .context(HttpSnafu { operation: "deny tool" })?
         .error_for_status_ref()
-        .context("deny request failed")?;
+        .context(HttpSnafu { operation: "deny request" })?;
         Ok(())
     }
 
@@ -301,9 +305,9 @@ impl ApiClient {
         )
         .send()
         .await
-        .context("failed to approve plan")?
+        .context(HttpSnafu { operation: "approve plan" })?
         .error_for_status_ref()
-        .context("plan approve failed")?;
+        .context(HttpSnafu { operation: "plan approve request" })?;
         Ok(())
     }
 
@@ -316,9 +320,9 @@ impl ApiClient {
         )
         .send()
         .await
-        .context("failed to cancel plan")?
+        .context(HttpSnafu { operation: "cancel plan" })?
         .error_for_status_ref()
-        .context("plan cancel failed")?;
+        .context(HttpSnafu { operation: "plan cancel request" })?;
         Ok(())
     }
 
@@ -330,10 +334,11 @@ impl ApiClient {
             .request(reqwest::Method::GET, "/api/v1/costs/daily")
             .send()
             .await
-            .context("failed to load costs")?;
+            .context(HttpSnafu { operation: "load costs" })?;
         resp.error_for_status_ref()
-            .context("costs request failed")?;
-        let daily: DailyResponse = resp.json().await?;
+            .context(HttpSnafu { operation: "costs request" })?;
+        let daily: DailyResponse =
+            resp.json().await.context(HttpSnafu { operation: "costs response" })?;
         // Get today's entry (last in list)
         let today_cost = daily.daily.last().map(|d| d.cost).unwrap_or(0.0);
         // Convert dollars to cents
@@ -351,9 +356,9 @@ impl ApiClient {
         )
         .send()
         .await
-        .context("failed to trigger distillation")?
+        .context(HttpSnafu { operation: "trigger distillation" })?
         .error_for_status_ref()
-        .context("distillation request failed")?;
+        .context(HttpSnafu { operation: "distillation request" })?;
         Ok(())
     }
 
@@ -370,10 +375,10 @@ impl ApiClient {
             .query(&[("q", query)])
             .send()
             .await
-            .context("failed to recall memory")?;
+            .context(HttpSnafu { operation: "recall memory" })?;
         resp.error_for_status_ref()
-            .context("recall request failed")?;
-        Ok(resp.text().await?)
+            .context(HttpSnafu { operation: "recall request" })?;
+        resp.text().await.context(HttpSnafu { operation: "recall response" })
     }
 
     // --- Config ---
@@ -384,11 +389,11 @@ impl ApiClient {
             .request(reqwest::Method::GET, "/api/v1/config")
             .send()
             .await
-            .context("failed to load config")?;
+            .context(HttpSnafu { operation: "load config" })?;
         Self::check_auth(&resp)?;
         resp.error_for_status_ref()
-            .context("config request failed")?;
-        Ok(resp.json().await?)
+            .context(HttpSnafu { operation: "config request" })?;
+        resp.json().await.context(HttpSnafu { operation: "config response" })
     }
 
     #[tracing::instrument(skip(self, data))]
@@ -403,11 +408,11 @@ impl ApiClient {
             .json(data)
             .send()
             .await
-            .context("failed to update config")?;
+            .context(HttpSnafu { operation: "update config" })?;
         Self::check_auth(&resp)?;
         resp.error_for_status_ref()
-            .context("config update failed")?;
-        Ok(resp.json().await?)
+            .context(HttpSnafu { operation: "config update request" })?;
+        resp.json().await.context(HttpSnafu { operation: "config update response" })
     }
 
     // --- Message queue (mid-turn) ---
@@ -422,25 +427,17 @@ impl ApiClient {
         .json(&serde_json::json!({ "text": text }))
         .send()
         .await
-        .context("failed to queue message")?
+        .context(HttpSnafu { operation: "queue message" })?
         .error_for_status_ref()
-        .context("queue request failed")?;
+        .context(HttpSnafu { operation: "queue request" })?;
         Ok(())
     }
 
     fn check_auth(resp: &Response) -> Result<()> {
         if resp.status() == StatusCode::UNAUTHORIZED || resp.status() == StatusCode::FORBIDDEN {
-            return Err(AuthError.into());
+            return AuthSnafu.fail();
         }
         Ok(())
-    }
-
-    #[expect(
-        dead_code,
-        reason = "reserved for auth-aware error display in update handlers"
-    )]
-    pub fn is_auth_error(err: &anyhow::Error) -> bool {
-        err.downcast_ref::<AuthError>().is_some()
     }
 
     #[expect(dead_code, reason = "reserved for future SSE connection management")]
@@ -449,17 +446,6 @@ impl ApiClient {
         &self.client
     }
 }
-
-#[derive(Debug)]
-struct AuthError;
-
-impl std::fmt::Display for AuthError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "authentication failed: token expired or invalid")
-    }
-}
-
-impl std::error::Error for AuthError {}
 
 #[cfg(test)]
 mod tests {
