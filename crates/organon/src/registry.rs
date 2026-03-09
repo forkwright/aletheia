@@ -129,6 +129,7 @@ impl ToolRegistry {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
                 input_schema: t.def.input_schema.to_json_schema(),
+                disable_passthrough: None,
             })
             .collect()
     }
@@ -154,6 +155,7 @@ impl ToolRegistry {
                 name: t.def.name.as_str().to_owned(),
                 description: t.def.description.clone(),
                 input_schema: t.def.input_schema.to_json_schema(),
+                disable_passthrough: None,
             })
             .collect()
     }

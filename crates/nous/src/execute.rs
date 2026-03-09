@@ -38,20 +38,23 @@ fn classify_signals(
     tool_calls: &[ToolCall],
     _content: &str,
     used_server_web_search: bool,
+    used_server_code_execution: bool,
 ) -> Vec<InteractionSignal> {
     let mut signals = Vec::new();
+    let used_any_server_tool = used_server_web_search || used_server_code_execution;
 
-    if tool_calls.is_empty() && !used_server_web_search {
+    if tool_calls.is_empty() && !used_any_server_tool {
         signals.push(InteractionSignal::Conversation);
     } else {
-        if !tool_calls.is_empty() {
+        if !tool_calls.is_empty() || used_any_server_tool {
             signals.push(InteractionSignal::ToolExecution);
         }
 
         let code_tools = ["write", "edit", "exec"];
-        if tool_calls
-            .iter()
-            .any(|tc| code_tools.contains(&tc.name.as_str()))
+        if used_server_code_execution
+            || tool_calls
+                .iter()
+                .any(|tc| code_tools.contains(&tc.name.as_str()))
         {
             signals.push(InteractionSignal::CodeGeneration);
         }
@@ -210,6 +213,7 @@ pub async fn execute(
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
     let mut used_server_web_search = false;
+    let mut used_server_code_execution = false;
 
     let thinking = if config.thinking_enabled {
         Some(ThinkingConfig {
@@ -294,6 +298,18 @@ pub async fn execute(
                 ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
                     used_server_web_search = true;
                 }
+                ContentBlock::ServerToolUse { name, .. } if name == "code_execution" => {
+                    used_server_code_execution = true;
+                }
+                ContentBlock::CodeExecutionResult {
+                    code, return_code, ..
+                } => {
+                    used_server_code_execution = true;
+                    debug!(
+                        code_len = code.len(),
+                        return_code, "server code execution result received"
+                    );
+                }
                 _ => {}
             }
         }
@@ -301,6 +317,8 @@ pub async fn execute(
         final_content = text_parts.join("");
         final_stop_reason = response.stop_reason.to_string();
 
+        // Only break if there are no LOCAL tool uses to dispatch.
+        // Server tool results (web search, code execution) do not require client tool_result.
         if tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
             break;
         }
@@ -334,7 +352,12 @@ pub async fn execute(
         "execute stage complete"
     );
 
-    let signals = classify_signals(&all_tool_calls, &final_content, used_server_web_search);
+    let signals = classify_signals(
+        &all_tool_calls,
+        &final_content,
+        used_server_web_search,
+        used_server_code_execution,
+    );
 
     Ok(TurnResult {
         content: final_content,
@@ -489,6 +512,7 @@ pub async fn execute_streaming(
     let mut final_content = String::new();
     let mut final_stop_reason = String::new();
     let mut used_server_web_search = false;
+    let mut used_server_code_execution = false;
 
     let thinking = if config.thinking_enabled {
         Some(ThinkingConfig {
@@ -574,6 +598,18 @@ pub async fn execute_streaming(
                 ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
                     used_server_web_search = true;
                 }
+                ContentBlock::ServerToolUse { name, .. } if name == "code_execution" => {
+                    used_server_code_execution = true;
+                }
+                ContentBlock::CodeExecutionResult {
+                    code, return_code, ..
+                } => {
+                    used_server_code_execution = true;
+                    debug!(
+                        code_len = code.len(),
+                        return_code, "server code execution result received"
+                    );
+                }
                 _ => {}
             }
         }
@@ -615,7 +651,12 @@ pub async fn execute_streaming(
         "streaming execute stage complete"
     );
 
-    let signals = classify_signals(&all_tool_calls, &final_content, used_server_web_search);
+    let signals = classify_signals(
+        &all_tool_calls,
+        &final_content,
+        used_server_web_search,
+        used_server_code_execution,
+    );
 
     Ok(TurnResult {
         content: final_content,
@@ -1000,7 +1041,7 @@ mod tests {
 
     #[test]
     fn signal_classification_conversation() {
-        let signals = classify_signals(&[], "Hello", false);
+        let signals = classify_signals(&[], "Hello", false, false);
         assert_eq!(signals, vec![InteractionSignal::Conversation]);
     }
 
@@ -1014,7 +1055,7 @@ mod tests {
             is_error: false,
             duration_ms: 10,
         }];
-        let signals = classify_signals(&calls, "", false);
+        let signals = classify_signals(&calls, "", false, false);
         assert!(signals.contains(&InteractionSignal::ToolExecution));
         assert!(signals.contains(&InteractionSignal::CodeGeneration));
     }
@@ -1029,7 +1070,7 @@ mod tests {
             is_error: false,
             duration_ms: 10,
         }];
-        let signals = classify_signals(&calls, "", false);
+        let signals = classify_signals(&calls, "", false, false);
         assert!(signals.contains(&InteractionSignal::ToolExecution));
         assert!(signals.contains(&InteractionSignal::Research));
     }
@@ -1044,7 +1085,7 @@ mod tests {
             is_error: true,
             duration_ms: 10,
         }];
-        let signals = classify_signals(&calls, "", false);
+        let signals = classify_signals(&calls, "", false, false);
         assert!(signals.contains(&InteractionSignal::ToolExecution));
         assert!(signals.contains(&InteractionSignal::ErrorRecovery));
     }
@@ -1160,7 +1201,7 @@ mod tests {
 
     #[test]
     fn classify_signals_conversation_when_no_tools() {
-        let signals = classify_signals(&[], "some text", false);
+        let signals = classify_signals(&[], "some text", false, false);
         assert_eq!(signals, vec![InteractionSignal::Conversation]);
     }
 
@@ -1174,7 +1215,7 @@ mod tests {
             is_error: true,
             duration_ms: 5,
         }];
-        let signals = classify_signals(&calls, "", false);
+        let signals = classify_signals(&calls, "", false, false);
         assert!(
             signals.contains(&InteractionSignal::ToolExecution),
             "should have ToolExecution"
@@ -1187,7 +1228,7 @@ mod tests {
 
     #[test]
     fn classify_signals_server_web_search() {
-        let signals = classify_signals(&[], "", true);
+        let signals = classify_signals(&[], "", true, false);
         assert!(
             signals.contains(&InteractionSignal::Research),
             "should have Research from server web search"
@@ -1196,6 +1237,32 @@ mod tests {
             !signals.contains(&InteractionSignal::Conversation),
             "should not be Conversation when server web search was used"
         );
+    }
+
+    #[test]
+    fn classify_signals_server_code_execution() {
+        let signals = classify_signals(&[], "", false, true);
+        assert!(
+            signals.contains(&InteractionSignal::ToolExecution),
+            "should have ToolExecution from server code execution"
+        );
+        assert!(
+            signals.contains(&InteractionSignal::CodeGeneration),
+            "should have CodeGeneration from server code execution"
+        );
+        assert!(
+            !signals.contains(&InteractionSignal::Conversation),
+            "should not be Conversation when server code execution was used"
+        );
+    }
+
+    #[test]
+    fn classify_signals_both_server_tools() {
+        let signals = classify_signals(&[], "", true, true);
+        assert!(signals.contains(&InteractionSignal::ToolExecution));
+        assert!(signals.contains(&InteractionSignal::Research));
+        assert!(signals.contains(&InteractionSignal::CodeGeneration));
+        assert!(!signals.contains(&InteractionSignal::Conversation));
     }
 
     // --- Streaming Tests ---
@@ -1393,7 +1460,7 @@ mod tests {
             is_error: false,
             duration_ms: 10,
         }];
-        let signals = classify_signals(&calls, "", false);
+        let signals = classify_signals(&calls, "", false, false);
         assert!(signals.contains(&InteractionSignal::CodeGeneration));
     }
 
@@ -1407,7 +1474,7 @@ mod tests {
             is_error: false,
             duration_ms: 10,
         }];
-        let signals = classify_signals(&calls, "", false);
+        let signals = classify_signals(&calls, "", false, false);
         assert!(signals.contains(&InteractionSignal::Research));
     }
 
@@ -1431,7 +1498,7 @@ mod tests {
                 duration_ms: 5,
             },
         ];
-        let signals = classify_signals(&calls, "", false);
+        let signals = classify_signals(&calls, "", false, false);
         assert!(signals.contains(&InteractionSignal::ToolExecution));
         assert!(signals.contains(&InteractionSignal::CodeGeneration));
         assert!(signals.contains(&InteractionSignal::Research));

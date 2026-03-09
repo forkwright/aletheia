@@ -82,6 +82,12 @@ enum BlockBuilder {
         tool_use_id: String,
         content: serde_json::Value,
     },
+    CodeExecutionResult {
+        code: String,
+        stdout: String,
+        stderr: String,
+        return_code: i32,
+    },
 }
 
 impl StreamAccumulator {
@@ -129,6 +135,7 @@ impl StreamAccumulator {
                     WireContentBlockStart::Thinking { .. } => "thinking",
                     WireContentBlockStart::ServerToolUse { .. } => "server_tool_use",
                     WireContentBlockStart::WebSearchToolResult { .. } => "web_search_tool_result",
+                    WireContentBlockStart::CodeExecutionResult { .. } => "code_execution_result",
                 };
                 on_event(StreamEvent::ContentBlockStart {
                     index,
@@ -157,6 +164,14 @@ impl StreamAccumulator {
                         BlockBuilder::WebSearchToolResult {
                             tool_use_id,
                             content: serde_json::Value::Null,
+                        }
+                    }
+                    WireContentBlockStart::CodeExecutionResult {} => {
+                        BlockBuilder::CodeExecutionResult {
+                            code: String::new(),
+                            stdout: String::new(),
+                            stderr: String::new(),
+                            return_code: 0,
                         }
                     }
                 };
@@ -281,6 +296,17 @@ impl StreamAccumulator {
                 } => ContentBlock::WebSearchToolResult {
                     tool_use_id,
                     content,
+                },
+                BlockBuilder::CodeExecutionResult {
+                    code,
+                    stdout,
+                    stderr,
+                    return_code,
+                } => ContentBlock::CodeExecutionResult {
+                    code,
+                    stdout,
+                    stderr,
+                    return_code,
                 },
             })
             .collect();
