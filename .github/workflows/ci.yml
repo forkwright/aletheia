@@ -69,6 +69,8 @@ jobs:
           TYPES="feat|fix|refactor|chore|docs|test|ci|perf|style|build|revert"
           failed=0
           while IFS= read -r msg; do
+            # Skip merge commits (GitHub synthetic merges)
+            echo "$msg" | grep -qE "^Merge " && continue
             if ! echo "$msg" | grep -qE "^($TYPES)(\(.+\))?: .+"; then
               echo "::error::Bad commit message: $msg"
               echo "  Expected: <type>(<scope>): <description>"
