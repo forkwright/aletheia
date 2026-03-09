@@ -59,6 +59,9 @@ pub struct NousActor {
     knowledge_store: Option<Arc<KnowledgeStore>>,
     tool_services: Option<Arc<ToolServices>>,
     extra_bootstrap: Vec<BootstrapSection>,
+    /// Skill loader for per-turn skill injection. None when knowledge-store is disabled.
+    #[cfg(feature = "knowledge-store")]
+    skill_loader: Option<crate::skills::SkillLoader>,
 }
 
 impl NousActor {
@@ -85,6 +88,12 @@ impl NousActor {
         tool_services: Option<Arc<ToolServices>>,
         extra_bootstrap: Vec<BootstrapSection>,
     ) -> Self {
+        // Build the skill loader from the knowledge store when available.
+        #[cfg(feature = "knowledge-store")]
+        let skill_loader = knowledge_store
+            .as_ref()
+            .map(|ks| crate::skills::SkillLoader::new(Arc::clone(ks)));
+
         Self {
             id,
             config,
@@ -105,6 +114,8 @@ impl NousActor {
             knowledge_store,
             tool_services,
             extra_bootstrap,
+            #[cfg(feature = "knowledge-store")]
+            skill_loader,
         }
     }
 
@@ -317,6 +328,10 @@ impl NousActor {
             )),
         };
 
+        // Merge static domain-pack sections with dynamic skill sections.
+        let mut extra_bootstrap = self.extra_bootstrap.clone();
+        extra_bootstrap.extend(self.resolve_skill_sections(content).await);
+
         crate::pipeline::run_pipeline(
             input,
             &self.oikos,
@@ -328,7 +343,7 @@ impl NousActor {
             self.embedding_provider.as_deref(),
             self.vector_search.as_deref(),
             self.session_store.as_deref(),
-            self.extra_bootstrap.clone(),
+            extra_bootstrap,
             None,
         )
         .await
@@ -378,6 +393,10 @@ impl NousActor {
             )),
         };
 
+        // Merge static domain-pack sections with dynamic skill sections.
+        let mut extra_bootstrap = self.extra_bootstrap.clone();
+        extra_bootstrap.extend(self.resolve_skill_sections(content).await);
+
         crate::pipeline::run_pipeline(
             input,
             &self.oikos,
@@ -389,7 +408,7 @@ impl NousActor {
             self.embedding_provider.as_deref(),
             self.vector_search.as_deref(),
             self.session_store.as_deref(),
-            self.extra_bootstrap.clone(),
+            extra_bootstrap,
             Some(stream_tx),
         )
         .await
@@ -487,6 +506,45 @@ impl NousActor {
             run_background_distillation(store, providers, session_id, nous_id, config)
                 .instrument(span),
         );
+    }
+
+    /// Resolve skill sections for the current turn's task context.
+    ///
+    /// Returns bootstrap sections for skills relevant to `content`. Returns an
+    /// empty vec when the knowledge-store feature is disabled, when no
+    /// `KnowledgeStore` is configured, or when no skills match — preserving
+    /// existing behaviour in all degraded cases.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. The inner `resolve_skills` spawns a separate Tokio task for
+    /// the blocking search; cancelling this future at the await point loses the
+    /// skill result but leaves no inconsistent state.
+    // Without the knowledge-store feature the body has no `.await` — that is
+    // intentional; the function stays async so callers can `.await` uniformly.
+    #[cfg_attr(
+        not(feature = "knowledge-store"),
+        expect(clippy::unused_async, reason = "await compiled away without knowledge-store feature")
+    )]
+    async fn resolve_skill_sections(&self, content: &str) -> Vec<BootstrapSection> {
+        #[cfg(feature = "knowledge-store")]
+        {
+            if let Some(ref loader) = self.skill_loader {
+                let task_context = crate::skills::extract_task_context(content);
+                return loader
+                    .resolve_skills(
+                        &self.id,
+                        &task_context,
+                        crate::skills::DEFAULT_MAX_SKILLS,
+                    )
+                    .await;
+            }
+        }
+        // Suppress unused-variable warning when feature is off
+        #[cfg(not(feature = "knowledge-store"))]
+        let _ = content;
+
+        vec![]
     }
 
     fn handle_sleep(&mut self) {
