@@ -1390,3 +1390,1276 @@ async fn cors_rejects_unlisted_origin() {
     let allow_origin = resp.headers().get("access-control-allow-origin");
     assert!(allow_origin.is_none() || allow_origin.unwrap() != "http://evil.example.com");
 }
+
+// --- Auth mode "none" bypasses JWT ---
+
+async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) = test_state().await;
+    let state = Arc::new(AppState {
+        auth_mode: "none".to_owned(),
+        session_store: Arc::clone(&state.session_store),
+        nous_manager: Arc::clone(&state.nous_manager),
+        provider_registry: Arc::clone(&state.provider_registry),
+        tool_registry: Arc::clone(&state.tool_registry),
+        oikos: Arc::clone(&state.oikos),
+        jwt_manager: Arc::clone(&state.jwt_manager),
+        start_time: state.start_time,
+        config: Arc::clone(&state.config),
+    });
+    (build_router(state, &SecurityConfig::default()), dir)
+}
+
+#[tokio::test]
+async fn auth_mode_none_allows_unauthenticated_access() {
+    let (router, _dir) = app_auth_disabled().await;
+    let req = json_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "no-auth-mode"
+        })),
+    );
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn auth_mode_none_injects_anonymous_identity() {
+    let (router, _dir) = app_auth_disabled().await;
+    let resp = router
+        .oneshot(Request::get("/api/v1/nous").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// --- Session list with filter ---
+
+#[tokio::test]
+async fn list_sessions_returns_empty_initially() {
+    let (app, _dir) = app().await;
+    let resp = app.oneshot(authed_get("/api/v1/sessions")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["sessions"].is_array());
+}
+
+#[tokio::test]
+async fn list_sessions_includes_created_session() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+
+    create_test_session(&router).await;
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get("/api/v1/sessions"))
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    let sessions = body["sessions"].as_array().unwrap();
+    assert!(!sessions.is_empty());
+    assert_eq!(sessions[0]["nousId"], "syn");
+}
+
+#[tokio::test]
+async fn list_sessions_filter_by_nous_id() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+
+    create_test_session(&router).await;
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get("/api/v1/sessions?nousId=syn"))
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    let sessions = body["sessions"].as_array().unwrap();
+    assert!(!sessions.is_empty());
+
+    let resp2 = router
+        .clone()
+        .oneshot(authed_get("/api/v1/sessions?nousId=nonexistent"))
+        .await
+        .unwrap();
+
+    let body2 = body_json(resp2).await;
+    let sessions2 = body2["sessions"].as_array().unwrap();
+    assert!(sessions2.is_empty());
+}
+
+// --- POST archive endpoint ---
+
+#[tokio::test]
+async fn archive_via_post_returns_204() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request("POST", &format!("/api/v1/sessions/{id}/archive"), None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "archived");
+}
+
+#[tokio::test]
+async fn archive_unknown_session_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request("POST", "/api/v1/sessions/nonexistent/archive", None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// --- Create session with unknown nous ---
+
+#[tokio::test]
+async fn create_session_unknown_nous_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "nonexistent-agent",
+            "session_key": "test"
+        })),
+    );
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "nous_not_found");
+}
+
+// --- History with before filter ---
+
+#[tokio::test]
+async fn history_before_filter() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    {
+        let store = state.session_store.lock().unwrap();
+        for i in 1..=5 {
+            store
+                .append_message(
+                    id,
+                    aletheia_mneme::types::Role::User,
+                    &format!("message {i}"),
+                    None,
+                    None,
+                    10,
+                )
+                .unwrap();
+        }
+    }
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!(
+            "/api/v1/sessions/{id}/history?before=3"
+        )))
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    let messages = body["messages"].as_array().unwrap();
+    assert!(messages.iter().all(|m| m["seq"].as_i64().unwrap() < 3));
+}
+
+// --- Stream turn (TUI protocol) ---
+
+#[tokio::test]
+async fn stream_turn_returns_sse() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "syn",
+            "message": "Hello from TUI",
+            "sessionKey": "stream-test"
+        })),
+    );
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(ct.contains("text/event-stream"));
+}
+
+#[tokio::test]
+async fn stream_turn_contains_turn_start_event() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "syn",
+            "message": "Hello!",
+            "sessionKey": "stream-events"
+        })),
+    );
+
+    let resp = router.oneshot(req).await.unwrap();
+    let body = body_string(resp).await;
+    assert!(
+        body.contains("event: turn_start"),
+        "should contain turn_start event"
+    );
+}
+
+#[tokio::test]
+async fn stream_turn_empty_message_returns_400() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "syn",
+            "message": "",
+            "sessionKey": "empty-msg"
+        })),
+    );
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn stream_turn_unknown_agent_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "nonexistent",
+            "message": "Hello!",
+            "sessionKey": "test"
+        })),
+    );
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// --- Events SSE ---
+
+#[tokio::test]
+async fn events_endpoint_returns_sse() {
+    let (app, _dir) = app().await;
+    let resp = app.oneshot(authed_get("/api/v1/events")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(ct.contains("text/event-stream"));
+}
+
+#[tokio::test]
+async fn events_stream_contains_init_event() {
+    use http_body_util::BodyExt;
+
+    let (app, _dir) = app().await;
+    let resp = app.oneshot(authed_get("/api/v1/events")).await.unwrap();
+
+    let mut body_text = String::new();
+    let mut body = resp.into_body();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    while let Ok(Some(Ok(frame))) = tokio::time::timeout_at(deadline, body.frame()).await {
+        if let Some(data) = frame.data_ref() {
+            body_text.push_str(&String::from_utf8_lossy(data));
+            if body_text.contains("event: init") {
+                break;
+            }
+        }
+    }
+    assert!(
+        body_text.contains("event: init"),
+        "should contain init event"
+    );
+    assert!(
+        body_text.contains("activeTurns"),
+        "init should contain activeTurns"
+    );
+}
+
+// --- Webchat HTTP-level tests ---
+
+#[tokio::test]
+async fn webchat_branding_returns_aletheia() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/branding").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["name"], "Aletheia");
+}
+
+#[tokio::test]
+async fn webchat_auth_mode_returns_token() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/auth/mode").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["mode"], "token");
+    assert_eq!(body["sessionAuth"], false);
+}
+
+#[tokio::test]
+async fn webchat_auth_mode_none() {
+    let (router, _dir) = app_auth_disabled().await;
+    let resp = router
+        .oneshot(Request::get("/api/auth/mode").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    assert_eq!(body["mode"], "none");
+}
+
+#[tokio::test]
+async fn webchat_agents_list_returns_agents() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/agents").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["agents"].is_array());
+}
+
+#[tokio::test]
+async fn webchat_agent_identity_unknown_returns_404() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(
+            Request::get("/api/agents/nonexistent/identity")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn webchat_events_returns_sse() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(ct.contains("text/event-stream"));
+}
+
+#[tokio::test]
+async fn webchat_events_contains_init() {
+    use http_body_util::BodyExt;
+
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let mut body_text = String::new();
+    let mut body = resp.into_body();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+    while let Ok(Some(Ok(frame))) = tokio::time::timeout_at(deadline, body.frame()).await {
+        if let Some(data) = frame.data_ref() {
+            body_text.push_str(&String::from_utf8_lossy(data));
+            if body_text.contains("event: init") {
+                break;
+            }
+        }
+    }
+    assert!(body_text.contains("event: init"));
+    assert!(body_text.contains("activeTurns"));
+}
+
+#[tokio::test]
+async fn webchat_stream_empty_message_returns_400() {
+    let (app, _dir) = app().await;
+    let req = json_request(
+        "POST",
+        "/api/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "syn",
+            "message": ""
+        })),
+    );
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn webchat_stream_unknown_agent_returns_404() {
+    let (app, _dir) = app().await;
+    let req = json_request(
+        "POST",
+        "/api/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "nonexistent",
+            "message": "Hello!"
+        })),
+    );
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn webchat_sessions_list_no_auth_returns_200() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/sessions").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// --- Config handler tests ---
+
+#[tokio::test]
+async fn config_get_requires_auth() {
+    let (app, _dir) = app().await;
+    let req = Request::get("/api/v1/config").body(Body::empty()).unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn config_get_returns_redacted_config() {
+    let (app, _dir) = app().await;
+    let resp = app.oneshot(authed_get("/api/v1/config")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body.is_object());
+}
+
+#[tokio::test]
+async fn config_get_section_valid() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/config/gateway"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn config_get_section_invalid_returns_404() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/config/nonexistent_section"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn config_update_invalid_section_returns_404() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/config/nonexistent_section",
+        Some(serde_json::json!({"key": "value"})),
+    );
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// --- Nous tools for unknown nous ---
+
+#[tokio::test]
+async fn nous_tools_unknown_returns_404() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/nous/nonexistent/tools"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "nous_not_found");
+}
+
+// --- Nous list auth required ---
+
+#[tokio::test]
+async fn nous_list_requires_auth() {
+    let (app, _dir) = app().await;
+    let req = Request::get("/api/v1/nous").body(Body::empty()).unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn nous_status_requires_auth() {
+    let (app, _dir) = app().await;
+    let req = Request::get("/api/v1/nous/syn")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn nous_tools_requires_auth() {
+    let (app, _dir) = app().await;
+    let req = Request::get("/api/v1/nous/syn/tools")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// --- Config requires auth ---
+
+#[tokio::test]
+async fn config_section_requires_auth() {
+    let (app, _dir) = app().await;
+    let req = Request::get("/api/v1/config/gateway")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// --- Router: Method Not Allowed ---
+
+#[tokio::test]
+async fn put_on_sessions_returns_405() {
+    let (app, _dir) = app().await;
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/v1/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {}", default_token()))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn delete_on_nous_returns_405() {
+    let (app, _dir) = app().await;
+    let req = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/nous")
+        .header("authorization", format!("Bearer {}", default_token()))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn post_on_health_returns_405() {
+    let (app, _dir) = app().await;
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/health")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+// --- Request ID injection ---
+
+#[tokio::test]
+async fn request_id_present_in_error_responses() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/sessions/nonexistent"))
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    let request_id = body["error"]["request_id"].as_str().unwrap();
+    assert!(!request_id.is_empty());
+    assert!(request_id.len() >= 20, "request_id should be a ULID");
+}
+
+// --- SseEvent serialization ---
+
+#[test]
+fn sse_event_type_text_delta() {
+    let event = crate::stream::SseEvent::TextDelta {
+        text: "hello".to_owned(),
+    };
+    assert_eq!(event.event_type(), "text_delta");
+}
+
+#[test]
+fn sse_event_type_thinking_delta() {
+    let event = crate::stream::SseEvent::ThinkingDelta {
+        thinking: "hmm".to_owned(),
+    };
+    assert_eq!(event.event_type(), "thinking_delta");
+}
+
+#[test]
+fn sse_event_type_tool_use() {
+    let event = crate::stream::SseEvent::ToolUse {
+        id: "t1".to_owned(),
+        name: "search".to_owned(),
+        input: serde_json::json!({}),
+    };
+    assert_eq!(event.event_type(), "tool_use");
+}
+
+#[test]
+fn sse_event_type_tool_result() {
+    let event = crate::stream::SseEvent::ToolResult {
+        tool_use_id: "t1".to_owned(),
+        content: "result".to_owned(),
+        is_error: false,
+    };
+    assert_eq!(event.event_type(), "tool_result");
+}
+
+#[test]
+fn sse_event_type_message_complete() {
+    let event = crate::stream::SseEvent::MessageComplete {
+        stop_reason: "end_turn".to_owned(),
+        usage: crate::stream::UsageData {
+            input_tokens: 10,
+            output_tokens: 5,
+        },
+    };
+    assert_eq!(event.event_type(), "message_complete");
+}
+
+#[test]
+fn sse_event_type_error() {
+    let event = crate::stream::SseEvent::Error {
+        code: "test".to_owned(),
+        message: "err".to_owned(),
+    };
+    assert_eq!(event.event_type(), "error");
+}
+
+#[test]
+fn sse_event_serialization_roundtrip() {
+    let event = crate::stream::SseEvent::TextDelta {
+        text: "hello".to_owned(),
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "text_delta");
+    assert_eq!(json["text"], "hello");
+}
+
+#[test]
+fn sse_event_message_complete_serialization() {
+    let event = crate::stream::SseEvent::MessageComplete {
+        stop_reason: "end_turn".to_owned(),
+        usage: crate::stream::UsageData {
+            input_tokens: 100,
+            output_tokens: 50,
+        },
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "message_complete");
+    assert_eq!(json["stop_reason"], "end_turn");
+    assert_eq!(json["usage"]["input_tokens"], 100);
+    assert_eq!(json["usage"]["output_tokens"], 50);
+}
+
+#[test]
+fn sse_event_error_serialization() {
+    let event = crate::stream::SseEvent::Error {
+        code: "turn_failed".to_owned(),
+        message: "provider error".to_owned(),
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "error");
+    assert_eq!(json["code"], "turn_failed");
+    assert_eq!(json["message"], "provider error");
+}
+
+// --- WebchatEvent serialization ---
+
+#[test]
+fn webchat_event_turn_start_type() {
+    let event = crate::stream::WebchatEvent::TurnStart {
+        session_id: "s1".to_owned(),
+        nous_id: "syn".to_owned(),
+        turn_id: "t1".to_owned(),
+    };
+    assert_eq!(event.event_type(), "turn_start");
+}
+
+#[test]
+fn webchat_event_text_delta_type() {
+    let event = crate::stream::WebchatEvent::TextDelta {
+        text: "hello".to_owned(),
+    };
+    assert_eq!(event.event_type(), "text_delta");
+}
+
+#[test]
+fn webchat_event_thinking_delta_type() {
+    let event = crate::stream::WebchatEvent::ThinkingDelta {
+        text: "hmm".to_owned(),
+    };
+    assert_eq!(event.event_type(), "thinking_delta");
+}
+
+#[test]
+fn webchat_event_tool_start_type() {
+    let event = crate::stream::WebchatEvent::ToolStart {
+        tool_name: "search".to_owned(),
+        tool_id: "t1".to_owned(),
+        input: serde_json::json!({}),
+    };
+    assert_eq!(event.event_type(), "tool_start");
+}
+
+#[test]
+fn webchat_event_tool_result_type() {
+    let event = crate::stream::WebchatEvent::ToolResult {
+        tool_name: "search".to_owned(),
+        tool_id: "t1".to_owned(),
+        result: "found".to_owned(),
+        is_error: false,
+        duration_ms: 42,
+    };
+    assert_eq!(event.event_type(), "tool_result");
+}
+
+#[test]
+fn webchat_event_turn_complete_type() {
+    let event = crate::stream::WebchatEvent::TurnComplete {
+        outcome: crate::stream::TurnOutcome {
+            text: "done".to_owned(),
+            nous_id: "syn".to_owned(),
+            session_id: "s1".to_owned(),
+            model: Some("mock".to_owned()),
+            tool_calls: 0,
+            input_tokens: 10,
+            output_tokens: 5,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+        },
+    };
+    assert_eq!(event.event_type(), "turn_complete");
+}
+
+#[test]
+fn webchat_event_error_type() {
+    let event = crate::stream::WebchatEvent::Error {
+        message: "fail".to_owned(),
+    };
+    assert_eq!(event.event_type(), "error");
+}
+
+#[test]
+fn webchat_event_turn_start_serialization() {
+    let event = crate::stream::WebchatEvent::TurnStart {
+        session_id: "s1".to_owned(),
+        nous_id: "syn".to_owned(),
+        turn_id: "t1".to_owned(),
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "turn_start");
+    assert_eq!(json["sessionId"], "s1");
+    assert_eq!(json["nousId"], "syn");
+    assert_eq!(json["turnId"], "t1");
+}
+
+#[test]
+fn webchat_event_turn_complete_serialization() {
+    let event = crate::stream::WebchatEvent::TurnComplete {
+        outcome: crate::stream::TurnOutcome {
+            text: "response".to_owned(),
+            nous_id: "syn".to_owned(),
+            session_id: "s1".to_owned(),
+            model: Some("claude".to_owned()),
+            tool_calls: 2,
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_read_tokens: 10,
+            cache_write_tokens: 20,
+        },
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "turn_complete");
+    let outcome = &json["outcome"];
+    assert_eq!(outcome["text"], "response");
+    assert_eq!(outcome["nousId"], "syn");
+    assert_eq!(outcome["toolCalls"], 2);
+    assert_eq!(outcome["cacheReadTokens"], 10);
+    assert_eq!(outcome["cacheWriteTokens"], 20);
+}
+
+// --- Error type tests ---
+
+#[test]
+fn api_error_session_not_found_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::SessionNotFound {
+        id: "test".to_owned(),
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[test]
+fn api_error_nous_not_found_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::NousNotFound {
+        id: "test".to_owned(),
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[test]
+fn api_error_bad_request_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::BadRequest {
+        message: "test".to_owned(),
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn api_error_internal_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::Internal {
+        message: "test".to_owned(),
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[test]
+fn api_error_unauthorized_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::Unauthorized {
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[test]
+fn api_error_rate_limited_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::RateLimited {
+        retry_after_ms: 1000,
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[test]
+fn api_error_forbidden_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::Forbidden {
+        message: "test".to_owned(),
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[test]
+fn api_error_service_unavailable_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::ServiceUnavailable {
+        message: "test".to_owned(),
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[test]
+fn api_error_validation_failed_status_code() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::ValidationFailed {
+        errors: vec!["field required".to_owned()],
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[test]
+fn api_error_rate_limited_includes_details() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::RateLimited {
+        retry_after_ms: 5000,
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let body = rt.block_on(async {
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+    });
+    assert_eq!(body["error"]["details"]["retry_after_ms"], 5000);
+}
+
+#[test]
+fn api_error_validation_failed_includes_errors() {
+    use crate::error::ApiError;
+    use axum::response::IntoResponse;
+
+    let err = ApiError::ValidationFailed {
+        errors: vec!["field1 required".to_owned(), "field2 invalid".to_owned()],
+        location: snafu::Location::default(),
+    };
+    let response = err.into_response();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let body = rt.block_on(async {
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+    });
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 2);
+}
+
+// --- SecurityConfig tests ---
+
+#[test]
+fn security_config_default_values() {
+    let config = SecurityConfig::default();
+    assert!(config.allowed_origins.is_empty());
+    assert_eq!(config.cors_max_age_secs, 3600);
+    assert_eq!(config.body_limit_bytes, 1_048_576);
+    assert!(!config.csrf_enabled);
+    assert_eq!(config.csrf_header_name, "x-requested-with");
+    assert_eq!(config.csrf_header_value, "aletheia");
+    assert!(!config.tls_enabled);
+    assert!(config.tls_cert_path.is_none());
+    assert!(config.tls_key_path.is_none());
+}
+
+#[test]
+fn security_config_from_gateway() {
+    use aletheia_taxis::config::GatewayConfig;
+
+    let gw = GatewayConfig::default();
+    let config = SecurityConfig::from_gateway(&gw);
+    assert!(!config.tls_enabled);
+    assert!(!config.csrf_enabled);
+    assert_eq!(config.cors_max_age_secs, 3600);
+}
+
+// --- deep_merge tests ---
+
+#[test]
+fn deep_merge_overwrites_scalar() {
+    use crate::handlers::config::deep_merge;
+    let mut base = serde_json::json!({"key": "old"});
+    let patch = serde_json::json!({"key": "new"});
+    deep_merge(&mut base, patch);
+    assert_eq!(base["key"], "new");
+}
+
+#[test]
+fn deep_merge_adds_missing_keys() {
+    use crate::handlers::config::deep_merge;
+    let mut base = serde_json::json!({"existing": 1});
+    let patch = serde_json::json!({"new_key": 2});
+    deep_merge(&mut base, patch);
+    assert_eq!(base["existing"], 1);
+    assert_eq!(base["new_key"], 2);
+}
+
+#[test]
+fn deep_merge_recurses_objects() {
+    use crate::handlers::config::deep_merge;
+    let mut base = serde_json::json!({"nested": {"a": 1, "b": 2}});
+    let patch = serde_json::json!({"nested": {"b": 3, "c": 4}});
+    deep_merge(&mut base, patch);
+    assert_eq!(base["nested"]["a"], 1);
+    assert_eq!(base["nested"]["b"], 3);
+    assert_eq!(base["nested"]["c"], 4);
+}
+
+#[test]
+fn deep_merge_replaces_non_object_with_object() {
+    use crate::handlers::config::deep_merge;
+    let mut base = serde_json::json!({"key": "string"});
+    let patch = serde_json::json!({"key": {"nested": true}});
+    deep_merge(&mut base, patch);
+    assert_eq!(base["key"]["nested"], true);
+}
+
+// --- Webchat stream returns SSE ---
+
+#[tokio::test]
+async fn webchat_stream_returns_sse_content_type() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+
+    let req = json_request(
+        "POST",
+        "/api/sessions/stream",
+        Some(serde_json::json!({
+            "agentId": "syn",
+            "message": "Hello webchat!"
+        })),
+    );
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(ct.contains("text/event-stream"));
+}
+
+// --- Session response fields ---
+
+#[tokio::test]
+async fn session_response_has_all_expected_fields() {
+    let (app, _dir) = app().await;
+    let session = create_test_session(&app).await;
+
+    assert!(session["id"].is_string());
+    assert!(session["nous_id"].is_string());
+    assert!(session["session_key"].is_string());
+    assert!(session["status"].is_string());
+    assert!(session["message_count"].is_number());
+    assert!(session["token_count_estimate"].is_number());
+    assert!(session["created_at"].is_string());
+    assert!(session["updated_at"].is_string());
+}
+
+// --- History response structure ---
+
+#[tokio::test]
+async fn history_messages_have_expected_fields() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    {
+        let store = state.session_store.lock().unwrap();
+        store
+            .append_message(
+                id,
+                aletheia_mneme::types::Role::User,
+                "test message",
+                None,
+                None,
+                10,
+            )
+            .unwrap();
+    }
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}/history")))
+        .await
+        .unwrap();
+
+    let body = body_json(resp).await;
+    let msg = &body["messages"][0];
+    assert!(msg["id"].is_number());
+    assert!(msg["seq"].is_number());
+    assert!(msg["role"].is_string());
+    assert!(msg["content"].is_string());
+    assert!(msg["created_at"].is_string());
+}
+
+// --- Nous status response fields ---
+
+#[tokio::test]
+async fn nous_status_response_has_all_fields() {
+    let (app, _dir) = app().await;
+    let resp = app.oneshot(authed_get("/api/v1/nous/syn")).await.unwrap();
+
+    let body = body_json(resp).await;
+    assert!(body["id"].is_string());
+    assert!(body["model"].is_string());
+    assert!(body["context_window"].is_number());
+    assert!(body["max_output_tokens"].is_number());
+    assert!(body["thinking_enabled"].is_boolean());
+    assert!(body["thinking_budget"].is_number());
+    assert!(body["max_tool_iterations"].is_number());
+    assert!(body["status"].is_string());
+}
+
+// --- CSRF with wrong header value ---
+
+#[tokio::test]
+async fn csrf_rejects_wrong_header_value() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig {
+        csrf_enabled: true,
+        ..SecurityConfig::default()
+    };
+    let router = build_router(state, &security);
+
+    let token = default_token();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-requested-with", "wrong-value")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "nous_id": "syn",
+                "session_key": "csrf-wrong"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+// --- CSRF allows DELETE with correct header ---
+
+#[tokio::test]
+async fn csrf_allows_delete_with_correct_header() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig {
+        csrf_enabled: true,
+        ..SecurityConfig::default()
+    };
+    let router = build_router(Arc::clone(&state), &security);
+
+    let token = default_token();
+
+    let create_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-requested-with", "aletheia")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "nous_id": "syn",
+                "session_key": "csrf-delete"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let resp = router.clone().oneshot(create_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let session = body_json(resp).await;
+    let id = session["id"].as_str().unwrap();
+
+    let delete_req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/api/v1/sessions/{id}"))
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-requested-with", "aletheia")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.clone().oneshot(delete_req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
