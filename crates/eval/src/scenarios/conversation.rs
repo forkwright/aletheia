@@ -6,6 +6,7 @@ use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
 use crate::sse;
 
+#[tracing::instrument(skip_all)]
 pub fn scenarios() -> Vec<Box<dyn Scenario>> {
     vec![
         Box::new(ConversationSendSse),

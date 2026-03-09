@@ -4,6 +4,7 @@ use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
 use crate::state::Overlay;
 
+#[tracing::instrument(skip_all)]
 pub fn handle_open(app: &mut App) {
     app.command_palette.active = true;
     app.command_palette.input.clear();
@@ -12,6 +13,7 @@ pub fn handle_open(app: &mut App) {
     app.command_palette.suggestions = build_suggestions("", &app.agents);
 }
 
+#[tracing::instrument(skip_all)]
 pub fn handle_close(app: &mut App) {
     app.command_palette.active = false;
     app.command_palette.input.clear();
@@ -86,6 +88,7 @@ pub fn handle_tab(app: &mut App) {
     }
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn handle_select(app: &mut App) {
     // Resolve to the selected suggestion before executing
     if let Some(suggestion) = app

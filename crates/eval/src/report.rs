@@ -7,6 +7,7 @@ use crate::runner::RunReport;
 use crate::scenario::ScenarioOutcome;
 
 /// Print a human-readable eval report to stdout.
+#[tracing::instrument(skip_all)]
 pub fn print_report(report: &RunReport, base_url: &str) {
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
 
@@ -92,6 +93,7 @@ pub fn print_report(report: &RunReport, base_url: &str) {
 }
 
 /// Print the report as JSON for machine consumption.
+#[tracing::instrument(skip_all)]
 pub fn print_report_json(report: &RunReport) {
     let json_report = JsonReport {
         passed: report.passed,

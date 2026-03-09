@@ -5,6 +5,7 @@ use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
 use crate::state::{AgentState, AgentStatus, ChatMessage};
 
+#[tracing::instrument(skip_all, fields(count = agents.len()))]
 // SAFETY: sanitized at ingestion — all Agent fields from API are sanitized here.
 pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
     app.agents = agents
@@ -24,6 +25,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
         .collect();
 }
 
+#[tracing::instrument(skip_all, fields(%nous_id, count = sessions.len()))]
 // SAFETY: sanitized at ingestion — session keys and fields from API are sanitized here.
 pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: Vec<Session>) {
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
@@ -31,6 +33,7 @@ pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: V
     }
 }
 
+#[tracing::instrument(skip_all, fields(count = messages.len()))]
 // SAFETY: sanitized at ingestion — all message content from API is sanitized here.
 pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>) {
     app.messages = messages
@@ -53,10 +56,12 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
     app.scroll_to_bottom();
 }
 
+#[tracing::instrument(skip_all, fields(daily_total_cents))]
 pub(crate) fn handle_cost_loaded(app: &mut App, daily_total_cents: u32) {
     app.daily_cost_cents = daily_total_cents;
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) async fn handle_new_session(app: &mut App) {
     if let Some(ref agent_id) = app.focused_agent.clone() {
         app.messages.clear();
@@ -81,15 +86,18 @@ pub(crate) async fn handle_new_session(app: &mut App) {
     }
 }
 
+#[tracing::instrument(skip_all)]
 // SAFETY: sanitized at ingestion — error messages may contain external data.
 pub(crate) fn handle_show_error(app: &mut App, msg: String) {
     app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_dismiss_error(app: &mut App) {
     app.error_toast = None;
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_tick(app: &mut App) {
     app.tick_count = app.tick_count.wrapping_add(1);
     if app.error_toast.as_ref().is_some_and(|t| t.is_expired()) {

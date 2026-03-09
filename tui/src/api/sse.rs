@@ -15,6 +15,7 @@ pub struct SseConnection {
 }
 
 impl SseConnection {
+    #[tracing::instrument(skip_all)]
     pub fn connect(base_url: &str, token: Option<&str>) -> Self {
         let (tx, rx) = mpsc::channel(256);
         let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
@@ -85,6 +86,7 @@ impl SseConnection {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn next(&mut self) -> Option<SseEvent> {
         self.rx.recv().await
     }

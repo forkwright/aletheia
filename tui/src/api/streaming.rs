@@ -8,6 +8,7 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
 /// Streams a turn response from POST /api/sessions/stream.
 /// Returns a channel that yields parsed StreamEvents.
+#[tracing::instrument(skip_all)]
 pub fn stream_message(
     base_url: &str,
     token: Option<&str>,
