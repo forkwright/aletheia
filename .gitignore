@@ -103,3 +103,7 @@ shared/prosoche/activity_model.json
 # === Build artifacts / virtual environments ===
 .venv/
 node_modules/
+__pycache__/
+*.egg-info/
+**/dist/
+!crates/*/dist/
