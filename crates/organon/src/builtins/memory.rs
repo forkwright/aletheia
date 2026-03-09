@@ -876,8 +876,8 @@ mod tests {
 
     use crate::registry::ToolRegistry;
     use crate::types::{
-        BlackboardEntry, BlackboardStore, NoteEntry, NoteStore, ToolContext, ToolInput,
-        ToolServices,
+        BlackboardEntry, BlackboardStore, NoteEntry, NoteStore, ServerToolConfig, ToolContext,
+        ToolInput, ToolServices,
     };
 
     type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -1015,6 +1015,7 @@ mod tests {
                 knowledge: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: vec![],
+                server_tool_config: ServerToolConfig::default(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
         }

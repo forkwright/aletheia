@@ -236,13 +236,23 @@ pub async fn execute(
             .clone();
         let tool_defs = tools.to_hermeneus_tools_filtered(&active);
 
+        // Derive server tools from config + active_tools (enable_tool activations)
+        let server_tools = if let Some(services) = tool_ctx.services.as_deref() {
+            let mut st = services.server_tool_config.active_definitions(&active);
+            // Also include any raw server_tools from NousConfig for backward compat
+            st.extend(config.server_tools.clone());
+            st
+        } else {
+            config.server_tools.clone()
+        };
+
         let request = CompletionRequest {
             model: config.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.max_output_tokens,
             tools: tool_defs,
-            server_tools: config.server_tools.clone(),
+            server_tools,
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],
@@ -499,13 +509,27 @@ pub async fn execute_streaming(
             break;
         }
 
+        // Derive server tools from ServerToolConfig + NousConfig
+        let active = tool_ctx
+            .active_tools
+            .read()
+            .expect("active_tools lock")
+            .clone();
+        let server_tools = if let Some(services) = tool_ctx.services.as_deref() {
+            let mut st = services.server_tool_config.active_definitions(&active);
+            st.extend(config.server_tools.clone());
+            st
+        } else {
+            config.server_tools.clone()
+        };
+
         let request = CompletionRequest {
             model: config.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.max_output_tokens,
             tools: tool_defs.clone(),
-            server_tools: config.server_tools.clone(),
+            server_tools,
             temperature: None,
             thinking: thinking.clone(),
             stop_sequences: vec![],

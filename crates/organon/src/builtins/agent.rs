@@ -290,7 +290,8 @@ mod tests {
 
     use crate::registry::ToolRegistry;
     use crate::types::{
-        SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput, ToolServices,
+        ServerToolConfig, SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput,
+        ToolServices,
     };
 
     fn test_ctx() -> ToolContext {
@@ -319,6 +320,7 @@ mod tests {
                 planning: None,
                 knowledge: None,
                 lazy_tool_catalog: vec![],
+                server_tool_config: ServerToolConfig::default(),
                 http_client: reqwest::Client::new(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),

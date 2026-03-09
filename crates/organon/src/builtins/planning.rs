@@ -831,7 +831,9 @@ mod tests {
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
     use crate::registry::ToolRegistry;
-    use crate::types::{PlanningService, ToolCategory, ToolContext, ToolInput, ToolServices};
+    use crate::types::{
+        PlanningService, ServerToolConfig, ToolCategory, ToolContext, ToolInput, ToolServices,
+    };
 
     fn test_ctx() -> ToolContext {
         ToolContext {
@@ -860,6 +862,7 @@ mod tests {
                 knowledge: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: vec![],
+                server_tool_config: ServerToolConfig::default(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
         }
