@@ -66,6 +66,9 @@ pub(crate) struct WireTool<'a> {
     pub input_schema: &'a serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<CacheControl>,
+    /// When true, the model returns `tool_use` blocks without executing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disable_passthrough: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -151,6 +154,13 @@ pub(crate) enum WireContentBlock {
     WebSearchToolResult {
         tool_use_id: String,
         content: serde_json::Value,
+    },
+    #[serde(rename = "code_execution_result")]
+    CodeExecutionResult {
+        code: String,
+        stdout: String,
+        stderr: String,
+        return_code: i32,
     },
 }
 
@@ -256,6 +266,7 @@ impl<'a> WireRequest<'a> {
                     description: &t.description,
                     input_schema: &t.input_schema,
                     cache_control,
+                    disable_passthrough: t.disable_passthrough,
                 })
             })
             .collect();
@@ -348,6 +359,17 @@ impl WireContentBlock {
             } => ContentBlock::WebSearchToolResult {
                 tool_use_id,
                 content,
+            },
+            Self::CodeExecutionResult {
+                code,
+                stdout,
+                stderr,
+                return_code,
+            } => ContentBlock::CodeExecutionResult {
+                code,
+                stdout,
+                stderr,
+                return_code,
             },
         }
     }
@@ -481,6 +503,8 @@ pub(crate) enum WireContentBlockStart {
     ServerToolUse { id: String, name: String },
     #[serde(rename = "web_search_tool_result")]
     WebSearchToolResult { tool_use_id: String },
+    #[serde(rename = "code_execution_result")]
+    CodeExecutionResult {},
 }
 
 #[derive(Debug, Deserialize)]
@@ -694,6 +718,7 @@ mod tests {
                     },
                     "required": ["command"]
                 }),
+                disable_passthrough: None,
             }],
             temperature: None,
             thinking: None,
@@ -786,11 +811,13 @@ mod tests {
                     name: "a".to_owned(),
                     description: "first".to_owned(),
                     input_schema: serde_json::json!({}),
+                    disable_passthrough: None,
                 },
                 ToolDefinition {
                     name: "b".to_owned(),
                     description: "second".to_owned(),
                     input_schema: serde_json::json!({}),
+                    disable_passthrough: None,
                 },
             ],
             cache_tools: true,
@@ -954,6 +981,7 @@ mod tests {
                 name: "read".to_owned(),
                 description: "Read a file".to_owned(),
                 input_schema: serde_json::json!({"type": "object"}),
+                disable_passthrough: None,
             }],
             server_tools: vec![crate::types::ServerToolDefinition {
                 tool_type: "web_search_20250305".to_owned(),
@@ -1054,6 +1082,7 @@ mod tests {
                 name: "read".to_owned(),
                 description: "Read".to_owned(),
                 input_schema: serde_json::json!({}),
+                disable_passthrough: None,
             }],
             server_tools: vec![crate::types::ServerToolDefinition {
                 tool_type: "web_search_20250305".to_owned(),
@@ -1117,6 +1146,7 @@ mod tests {
             description: "Read a file",
             input_schema: &serde_json::json!({"type": "object"}),
             cache_control: None,
+            disable_passthrough: None,
         });
         let server_tool = WireToolEntry::ServerSide(WireServerTool {
             tool_type: "web_search_20250305",
@@ -1677,6 +1707,7 @@ mod tests {
                 name: "exec".to_owned(),
                 description: "run".to_owned(),
                 input_schema: serde_json::json!({}),
+                disable_passthrough: None,
             }],
             cache_system: true,
             cache_tools: true,
@@ -1695,5 +1726,75 @@ mod tests {
         assert_eq!(msgs[0]["content"][0]["cache_control"]["type"], "ephemeral");
         // Current turn is not cached
         assert!(msgs[2]["content"].is_string());
+    }
+
+    #[test]
+    fn wire_content_block_code_execution_result() {
+        let json = r#"{"type":"code_execution_result","code":"print(42)","stdout":"42\n","stderr":"","return_code":0}"#;
+        let block: WireContentBlock = serde_json::from_str(json).unwrap();
+        let converted = block.into_content_block();
+        match converted {
+            ContentBlock::CodeExecutionResult {
+                code,
+                stdout,
+                stderr,
+                return_code,
+            } => {
+                assert_eq!(code, "print(42)");
+                assert_eq!(stdout, "42\n");
+                assert!(stderr.is_empty());
+                assert_eq!(return_code, 0);
+            }
+            _ => panic!("expected CodeExecutionResult"),
+        }
+    }
+
+    #[test]
+    fn wire_request_disable_passthrough_serialized() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            tools: vec![ToolDefinition {
+                name: "exec".to_owned(),
+                description: "Execute".to_owned(),
+                input_schema: serde_json::json!({"type": "object"}),
+                disable_passthrough: Some(true),
+            }],
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["disable_passthrough"], true);
+    }
+
+    #[test]
+    fn wire_request_disable_passthrough_none_omitted() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hi".to_owned()),
+            }],
+            max_tokens: 1024,
+            tools: vec![ToolDefinition {
+                name: "exec".to_owned(),
+                description: "Execute".to_owned(),
+                input_schema: serde_json::json!({"type": "object"}),
+                disable_passthrough: None,
+            }],
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        assert!(
+            tools[0].get("disable_passthrough").is_none(),
+            "None should be omitted from wire format"
+        );
     }
 }

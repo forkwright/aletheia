@@ -131,6 +131,22 @@ pub enum ContentBlock {
         tool_use_id: String,
         content: serde_json::Value,
     },
+
+    /// Server-side code execution result.
+    ///
+    /// Returned by the `code_execution_20250522` server tool. No client `tool_result`
+    /// is needed — the server executed the code and returns stdout, stderr, and return code.
+    #[serde(rename = "code_execution_result")]
+    CodeExecutionResult {
+        /// The Python code that was executed.
+        code: String,
+        /// Standard output from execution.
+        stdout: String,
+        /// Standard error from execution.
+        stderr: String,
+        /// Process return code (0 = success).
+        return_code: i32,
+    },
 }
 
 /// Tool result content — simple text or rich content blocks.
@@ -251,6 +267,11 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema for the input parameters.
     pub input_schema: serde_json::Value,
+    /// When true, the model returns `tool_use` blocks but does not execute them.
+    /// The client must execute the tool and return a `tool_result`.
+    /// This prevents the model from calling the tool via server-side passthrough.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disable_passthrough: Option<bool>,
 }
 
 /// Cache control directive for prompt caching.
@@ -919,5 +940,96 @@ mod tests {
         assert!(!req.cache_system);
         assert!(!req.cache_tools);
         assert!(!req.cache_turns);
+    }
+
+    #[test]
+    fn code_execution_result_block_serde() {
+        let block = ContentBlock::CodeExecutionResult {
+            code: "print('hello')".to_owned(),
+            stdout: "hello\n".to_owned(),
+            stderr: String::new(),
+            return_code: 0,
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        assert!(json.contains("code_execution_result"));
+        assert!(json.contains("print('hello')"));
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        match back {
+            ContentBlock::CodeExecutionResult {
+                code,
+                stdout,
+                stderr,
+                return_code,
+            } => {
+                assert_eq!(code, "print('hello')");
+                assert_eq!(stdout, "hello\n");
+                assert!(stderr.is_empty());
+                assert_eq!(return_code, 0);
+            }
+            _ => panic!("expected CodeExecutionResult"),
+        }
+    }
+
+    #[test]
+    fn code_execution_result_nonzero_return_code() {
+        let json = r#"{"type":"code_execution_result","code":"exit(1)","stdout":"","stderr":"error","return_code":1}"#;
+        let block: ContentBlock = serde_json::from_str(json).unwrap();
+        match block {
+            ContentBlock::CodeExecutionResult {
+                return_code,
+                stderr,
+                ..
+            } => {
+                assert_eq!(return_code, 1);
+                assert_eq!(stderr, "error");
+            }
+            _ => panic!("expected CodeExecutionResult"),
+        }
+    }
+
+    #[test]
+    fn tool_definition_disable_passthrough_serde() {
+        let def = ToolDefinition {
+            name: "exec".to_owned(),
+            description: "Execute".to_owned(),
+            input_schema: serde_json::json!({"type": "object"}),
+            disable_passthrough: Some(true),
+        };
+        let json = serde_json::to_string(&def).unwrap();
+        assert!(json.contains("\"disable_passthrough\":true"));
+        let back: ToolDefinition = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.disable_passthrough, Some(true));
+    }
+
+    #[test]
+    fn tool_definition_disable_passthrough_none_omitted() {
+        let def = ToolDefinition {
+            name: "exec".to_owned(),
+            description: "Execute".to_owned(),
+            input_schema: serde_json::json!({"type": "object"}),
+            disable_passthrough: None,
+        };
+        let json = serde_json::to_string(&def).unwrap();
+        assert!(
+            !json.contains("disable_passthrough"),
+            "None should be omitted"
+        );
+    }
+
+    #[test]
+    fn code_execution_server_tool_definition_serde() {
+        let def = ServerToolDefinition {
+            tool_type: "code_execution_20250522".to_owned(),
+            name: "code_execution".to_owned(),
+            max_uses: None,
+            allowed_domains: None,
+            blocked_domains: None,
+            user_location: None,
+        };
+        let json = serde_json::to_string(&def).unwrap();
+        assert!(json.contains("code_execution_20250522"));
+        let back: ServerToolDefinition = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.tool_type, "code_execution_20250522");
+        assert_eq!(back.name, "code_execution");
     }
 }
