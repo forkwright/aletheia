@@ -1141,8 +1141,14 @@ mod tests {
         });
 
         let id_gen = counter_id_gen();
-        let result = import_agent(&agent, &store, dir.path(), &*id_gen, &ImportOptions::default())
-            .unwrap();
+        let result = import_agent(
+            &agent,
+            &store,
+            dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
 
         assert_eq!(result.sessions_imported, 2);
         assert_eq!(result.messages_imported, 3);
@@ -1155,8 +1161,14 @@ mod tests {
         let agent = minimal_agent_file();
 
         let id_gen = counter_id_gen();
-        let result = import_agent(&agent, &store, dir.path(), &*id_gen, &ImportOptions::default())
-            .unwrap();
+        let result = import_agent(
+            &agent,
+            &store,
+            dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
 
         // minimal_agent_file has 1 note
         assert_eq!(result.notes_imported, 1);

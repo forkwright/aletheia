@@ -17,8 +17,8 @@ pub mod heuristics;
 pub mod signature;
 
 pub use candidate::{CandidateTracker, SkillCandidate, TrackResult};
-pub use heuristics::{score_sequence, HeuristicScore, PatternType};
-pub use signature::{sequence_signature, signature_similarity, SequenceSignature};
+pub use heuristics::{HeuristicScore, PatternType, score_sequence};
+pub use signature::{SequenceSignature, sequence_signature, signature_similarity};
 
 /// A recorded tool call used as input for skill pattern analysis.
 ///

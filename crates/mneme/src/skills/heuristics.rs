@@ -86,23 +86,29 @@ pub fn score_sequence(tool_calls: &[ToolCallRecord]) -> HeuristicScore {
 
     let distinct = count_distinct_tools(tool_calls);
     if distinct < 3 {
-        score.details.push(format!(
-            "REJECT: too few distinct tools ({distinct} < 3)"
-        ));
+        score
+            .details
+            .push(format!("REJECT: too few distinct tools ({distinct} < 3)"));
         return score;
     }
 
     // Anti-pattern checks
     if is_debugging_spiral(tool_calls) {
-        score.details.push("REJECT: debugging spiral detected".to_owned());
+        score
+            .details
+            .push("REJECT: debugging spiral detected".to_owned());
         return score;
     }
     if is_single_file_edit(tool_calls) {
-        score.details.push("REJECT: single-file edit detected".to_owned());
+        score
+            .details
+            .push("REJECT: single-file edit detected".to_owned());
         return score;
     }
     if is_config_specific(tool_calls) {
-        score.details.push("REJECT: config-specific inspection detected".to_owned());
+        score
+            .details
+            .push("REJECT: config-specific inspection detected".to_owned());
         return score;
     }
 
@@ -250,9 +256,13 @@ fn coherence_score(tool_calls: &[ToolCallRecord]) -> f64 {
         let (prev, next) = (&window[0], &window[1]);
         let is_good = matches!(
             (prev, next),
-            (ToolCategory::Search, ToolCategory::Read | ToolCategory::Write)
-                | (ToolCategory::Read, ToolCategory::Write | ToolCategory::Execute)
-                | (ToolCategory::Write, ToolCategory::Execute)
+            (
+                ToolCategory::Search,
+                ToolCategory::Read | ToolCategory::Write
+            ) | (
+                ToolCategory::Read,
+                ToolCategory::Write | ToolCategory::Execute
+            ) | (ToolCategory::Write, ToolCategory::Execute)
         );
         if is_good {
             good_transitions += 1;
@@ -275,10 +285,7 @@ fn diversity_score(tool_calls: &[ToolCallRecord]) -> f64 {
         // Only count the "meaningful" categories
         if matches!(
             cat,
-            ToolCategory::Read
-                | ToolCategory::Search
-                | ToolCategory::Write
-                | ToolCategory::Execute
+            ToolCategory::Read | ToolCategory::Search | ToolCategory::Write | ToolCategory::Execute
         ) {
             categories.insert(tc.tool_name.as_str());
         }
@@ -338,7 +345,10 @@ fn detect_pattern(tool_calls: &[ToolCallRecord]) -> Option<PatternType> {
         .collect();
 
     let total = tool_calls.len() as f64;
-    let read_count = categories.iter().filter(|c| **c == ToolCategory::Read).count();
+    let read_count = categories
+        .iter()
+        .filter(|c| **c == ToolCategory::Read)
+        .count();
     let search_count = categories
         .iter()
         .filter(|c| **c == ToolCategory::Search)
@@ -392,13 +402,17 @@ fn detect_pattern(tool_calls: &[ToolCallRecord]) -> Option<PatternType> {
 
 fn has_write_exec_cycle(categories: &[ToolCategory]) -> bool {
     // Look for at least one Write→Execute transition
-    categories.windows(2).any(|w| {
-        w[0] == ToolCategory::Write && w[1] == ToolCategory::Execute
-    })
+    categories
+        .windows(2)
+        .any(|w| w[0] == ToolCategory::Write && w[1] == ToolCategory::Execute)
 }
 
 fn ends_with_execute(categories: &[ToolCategory]) -> bool {
-    categories.iter().rev().take(3).any(|c| *c == ToolCategory::Execute)
+    categories
+        .iter()
+        .rev()
+        .take(3)
+        .any(|c| *c == ToolCategory::Execute)
 }
 
 // ---------------------------------------------------------------------------
@@ -472,10 +486,7 @@ mod tests {
         calls.push(tc("Bash")); // 10 total: 8 Bash (80%), 4 errors (40%)
         let score = score_sequence(&calls);
         assert!(!score.passed_gates);
-        assert!(score
-            .details
-            .iter()
-            .any(|d| d.contains("debugging spiral")));
+        assert!(score.details.iter().any(|d| d.contains("debugging spiral")));
     }
 
     #[test]
@@ -485,10 +496,7 @@ mod tests {
         // 7 calls: 4 Bash (57%), 0 errors (0%) — not rejected
         let score = score_sequence(&calls);
         // passes the spiral check (error_ratio = 0)
-        assert!(!score
-            .details
-            .iter()
-            .any(|d| d.contains("debugging spiral")));
+        assert!(!score.details.iter().any(|d| d.contains("debugging spiral")));
     }
 
     // ------------------------------------------------------------------
@@ -501,10 +509,7 @@ mod tests {
         let calls = seq(&["Read", "Read", "Edit", "Read", "Bash", "Read"]);
         let score = score_sequence(&calls);
         assert!(!score.passed_gates);
-        assert!(score
-            .details
-            .iter()
-            .any(|d| d.contains("single-file edit")));
+        assert!(score.details.iter().any(|d| d.contains("single-file edit")));
     }
 
     #[test]
@@ -513,10 +518,7 @@ mod tests {
         let calls = seq(&["Grep", "Read", "Edit", "Read", "Bash", "Bash"]);
         let score = score_sequence(&calls);
         // Should pass the single-file check
-        assert!(!score
-            .details
-            .iter()
-            .any(|d| d.contains("single-file edit")));
+        assert!(!score.details.iter().any(|d| d.contains("single-file edit")));
     }
 
     #[test]
@@ -524,10 +526,7 @@ mod tests {
         // Multiple writes — not a single-file edit
         let calls = seq(&["Read", "Edit", "Edit", "Write", "Bash", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(!score
-            .details
-            .iter()
-            .any(|d| d.contains("single-file edit")));
+        assert!(!score.details.iter().any(|d| d.contains("single-file edit")));
     }
 
     // ------------------------------------------------------------------
@@ -543,20 +542,14 @@ mod tests {
         let calls = seq(&["Read", "Glob", "Bash", "Read", "Bash", "Glob"]);
         let score = score_sequence(&calls);
         assert!(!score.passed_gates);
-        assert!(score
-            .details
-            .iter()
-            .any(|d| d.contains("config-specific")));
+        assert!(score.details.iter().any(|d| d.contains("config-specific")));
     }
 
     #[test]
     fn antipattern_config_specific_not_triggered_with_writes() {
         let calls = seq(&["Read", "Read", "Bash", "Read", "Edit", "Bash"]);
         let score = score_sequence(&calls);
-        assert!(!score
-            .details
-            .iter()
-            .any(|d| d.contains("config-specific")));
+        assert!(!score.details.iter().any(|d| d.contains("config-specific")));
     }
 
     // ------------------------------------------------------------------
@@ -565,7 +558,15 @@ mod tests {
 
     #[test]
     fn pattern_research_detected() {
-        let calls = seq(&["Grep", "WebSearch", "Read", "Read", "WebFetch", "Read", "Read"]);
+        let calls = seq(&[
+            "Grep",
+            "WebSearch",
+            "Read",
+            "Read",
+            "WebFetch",
+            "Read",
+            "Read",
+        ]);
         let score = score_sequence(&calls);
         assert!(score.passed_gates);
         assert_eq!(score.pattern_type, Some(PatternType::Research));
@@ -573,9 +574,7 @@ mod tests {
 
     #[test]
     fn pattern_build_detected() {
-        let calls = seq(&[
-            "Read", "Write", "Bash", "Edit", "Bash", "Edit", "Bash",
-        ]);
+        let calls = seq(&["Read", "Write", "Bash", "Edit", "Bash", "Edit", "Bash"]);
         let score = score_sequence(&calls);
         assert!(score.passed_gates);
         assert_eq!(score.pattern_type, Some(PatternType::Build));
@@ -583,9 +582,7 @@ mod tests {
 
     #[test]
     fn pattern_diagnostic_detected() {
-        let calls = seq(&[
-            "Grep", "Read", "Read", "Read", "Edit", "Bash",
-        ]);
+        let calls = seq(&["Grep", "Read", "Read", "Read", "Edit", "Bash"]);
         let score = score_sequence(&calls);
         assert!(score.passed_gates);
         assert_eq!(score.pattern_type, Some(PatternType::Diagnostic));
@@ -593,9 +590,7 @@ mod tests {
 
     #[test]
     fn pattern_refactor_detected() {
-        let calls = seq(&[
-            "Read", "Read", "Read", "Edit", "Edit", "Write", "Bash",
-        ]);
+        let calls = seq(&["Read", "Read", "Read", "Edit", "Edit", "Write", "Bash"]);
         let score = score_sequence(&calls);
         assert!(score.passed_gates);
         assert_eq!(score.pattern_type, Some(PatternType::Refactor));
@@ -606,9 +601,7 @@ mod tests {
         // Review: heavy read, small write (a note/comment), ends with Write
         // not Execute, so Diagnostic/Refactor don't fire.
         // write_count=1 means Research (write==0) is excluded.
-        let calls = seq(&[
-            "Read", "Read", "Grep", "Read", "Read", "Write",
-        ]);
+        let calls = seq(&["Read", "Read", "Grep", "Read", "Read", "Write"]);
         let score = score_sequence(&calls);
         assert!(score.passed_gates);
         assert_eq!(score.pattern_type, Some(PatternType::Review));
@@ -620,9 +613,7 @@ mod tests {
 
     #[test]
     fn score_total_positive_for_good_sequence() {
-        let calls = seq(&[
-            "Grep", "Read", "Read", "Edit", "Edit", "Bash",
-        ]);
+        let calls = seq(&["Grep", "Read", "Read", "Edit", "Edit", "Bash"]);
         let score = score_sequence(&calls);
         assert!(score.passed_gates);
         assert!(score.total > 0.0);
@@ -631,7 +622,15 @@ mod tests {
     #[test]
     fn score_total_at_most_one() {
         let calls = seq(&[
-            "Grep", "WebSearch", "Read", "Edit", "Bash", "Edit", "Bash", "Write", "Bash",
+            "Grep",
+            "WebSearch",
+            "Read",
+            "Edit",
+            "Bash",
+            "Edit",
+            "Bash",
+            "Write",
+            "Bash",
         ]);
         let score = score_sequence(&calls);
         assert!(score.passed_gates);
