@@ -66,6 +66,9 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
         Some(Overlay::PlanApproval(plan)) => {
             plan.cursor = plan.cursor.saturating_sub(1);
         }
+        Some(Overlay::ContextActions(ctx)) => {
+            ctx.cursor = ctx.cursor.saturating_sub(1);
+        }
         Some(Overlay::Settings(_)) => {
             super::settings::handle_up(app);
         }
@@ -82,6 +85,10 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
         Some(Overlay::PlanApproval(plan)) => {
             let max = plan.steps.len().saturating_sub(1);
             plan.cursor = (plan.cursor + 1).min(max);
+        }
+        Some(Overlay::ContextActions(ctx)) => {
+            let max = ctx.actions.len().saturating_sub(1);
+            ctx.cursor = (ctx.cursor + 1).min(max);
         }
         Some(Overlay::Settings(_)) => {
             super::settings::handle_down(app);
@@ -129,6 +136,13 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
                 .instrument(span),
             );
             app.overlay = None;
+        }
+        Some(Overlay::ContextActions(ctx)) => {
+            if let Some(action) = ctx.selected_action() {
+                let kind = action.kind;
+                app.overlay = None;
+                super::selection::handle_message_action(app, kind);
+            }
         }
         Some(Overlay::Settings(_)) => {
             super::settings::handle_enter(app);
@@ -278,5 +292,76 @@ mod tests {
         if let Some(Overlay::PlanApproval(plan)) = &app.overlay {
             assert_eq!(plan.cursor, 0);
         }
+    }
+
+    // --- Context actions overlay tests ---
+
+    fn make_context_actions_overlay(n: usize) -> Overlay {
+        use crate::msg::MessageActionKind;
+        let actions: Vec<_> = (0..n)
+            .map(|_| crate::state::ContextAction {
+                label: "Copy text",
+                kind: MessageActionKind::Copy,
+            })
+            .collect();
+        Overlay::ContextActions(crate::state::ContextActionsOverlay { actions, cursor: 0 })
+    }
+
+    #[test]
+    fn context_actions_overlay_up_saturates() {
+        let mut app = test_app();
+        app.overlay = Some(make_context_actions_overlay(3));
+        handle_overlay_up(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            assert_eq!(ctx.cursor, 0);
+        }
+    }
+
+    #[test]
+    fn context_actions_overlay_down_increments() {
+        let mut app = test_app();
+        app.overlay = Some(make_context_actions_overlay(3));
+        handle_overlay_down(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            assert_eq!(ctx.cursor, 1);
+        }
+    }
+
+    #[test]
+    fn context_actions_overlay_down_clamps() {
+        let mut app = test_app();
+        app.overlay = Some(make_context_actions_overlay(2));
+        handle_overlay_down(&mut app);
+        handle_overlay_down(&mut app);
+        handle_overlay_down(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            assert_eq!(ctx.cursor, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn context_actions_select_dispatches_action() {
+        let mut app = test_app_with_messages(vec![("user", "hello")]);
+        app.selected_message = Some(0);
+        app.overlay = Some(Overlay::ContextActions(
+            crate::state::ContextActionsOverlay {
+                actions: vec![crate::state::ContextAction {
+                    label: "Quote in reply",
+                    kind: crate::msg::MessageActionKind::QuoteInReply,
+                }],
+                cursor: 0,
+            },
+        ));
+        handle_overlay_select(&mut app).await;
+        assert!(app.overlay.is_none());
+        assert!(app.input.text.contains("> hello"));
+    }
+
+    #[test]
+    fn context_actions_close_clears_overlay() {
+        let mut app = test_app();
+        app.overlay = Some(make_context_actions_overlay(2));
+        handle_close_overlay(&mut app);
+        assert!(app.overlay.is_none());
     }
 }

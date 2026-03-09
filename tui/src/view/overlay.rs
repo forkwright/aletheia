@@ -5,7 +5,7 @@ use ratatui::symbols;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use crate::app::{AgentStatus, App, Overlay};
+use crate::app::{AgentStatus, App, ContextActionsOverlay, Overlay};
 use crate::keybindings;
 use crate::theme::ThemePalette;
 
@@ -27,6 +27,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         }
         Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval, theme),
         Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
+        Overlay::ContextActions(ctx) => {
+            let compact_area = centered_rect(40, 50, area);
+            frame.render_widget(Clear, compact_area);
+            render_context_actions(frame, compact_area, ctx, theme);
+        }
         Overlay::SystemStatus => render_system_status(app, frame, popup_area, theme),
         Overlay::Settings(settings) => super::settings::render(settings, frame, area, theme),
     }
@@ -368,6 +373,56 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &ThemeP
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, area);
+}
+
+fn render_context_actions(
+    frame: &mut Frame,
+    area: Rect,
+    ctx: &ContextActionsOverlay,
+    theme: &ThemePalette,
+) {
+    let mut lines = vec![Line::raw("")];
+
+    for (i, action) in ctx.actions.iter().enumerate() {
+        let selected = i == ctx.cursor;
+        let marker = if selected { "▸" } else { " " };
+
+        let style = if selected {
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            theme.style_fg()
+        };
+
+        lines.push(Line::from(vec![
+            Span::raw(format!("  {} ", marker)),
+            Span::styled(action.label, style),
+        ]));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" select  ", theme.style_muted()),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(theme.fg_dim)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" cancel", theme.style_muted()),
+    ]));
+
+    let block = overlay_block("Actions", theme);
+    let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 }
 

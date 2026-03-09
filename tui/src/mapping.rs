@@ -145,6 +145,12 @@ impl App {
                 Some(Msg::FilterOpen)
             }
 
+            (KeyModifiers::NONE, KeyCode::Char('v'))
+                if self.input.text.is_empty() && !self.messages.is_empty() =>
+            {
+                Some(Msg::SelectPrev)
+            }
+
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
 
             _ => None,
@@ -174,6 +180,7 @@ impl App {
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => Some(Msg::SelectNext),
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Some(Msg::SelectPrev),
             (_, KeyCode::Esc) => Some(Msg::DeselectMessage),
+            (_, KeyCode::Enter) => Some(Msg::OpenContextActions),
             (_, KeyCode::Home) => Some(Msg::SelectFirst),
             (_, KeyCode::End) | (KeyModifiers::SHIFT, KeyCode::Char('G')) => Some(Msg::SelectLast),
 
@@ -266,6 +273,10 @@ impl App {
         }
     }
 
+    fn is_context_actions_overlay(&self) -> bool {
+        matches!(&self.overlay, Some(Overlay::ContextActions(_)))
+    }
+
     fn map_overlay_key(&self, key: KeyEvent) -> Option<Msg> {
         if matches!(&self.overlay, Some(Overlay::Settings(_))) {
             return self.map_settings_overlay_key(key);
@@ -276,6 +287,9 @@ impl App {
             (_, KeyCode::Up) => Some(Msg::OverlayUp),
             (_, KeyCode::Down) => Some(Msg::OverlayDown),
             (_, KeyCode::Enter) => Some(Msg::OverlaySelect),
+
+            (_, KeyCode::Char('j')) if self.is_context_actions_overlay() => Some(Msg::OverlayDown),
+            (_, KeyCode::Char('k')) if self.is_context_actions_overlay() => Some(Msg::OverlayUp),
 
             (_, KeyCode::Char('a' | 'A')) if self.is_tool_approval_overlay() => {
                 Some(Msg::OverlaySelect)
@@ -792,5 +806,80 @@ mod tests {
         let event = Event::Terminal(key(KeyCode::Char('s')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::OverlayFilter('s'))));
+    }
+
+    // --- v key enters selection ---
+
+    #[test]
+    fn v_on_empty_input_with_messages_enters_selection() {
+        let app = test_app_with_messages(vec![("user", "hello")]);
+        let event = Event::Terminal(key(KeyCode::Char('v')));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::SelectPrev)));
+    }
+
+    #[test]
+    fn v_on_empty_input_no_messages_is_char_input() {
+        let app = test_app();
+        let event = Event::Terminal(key(KeyCode::Char('v')));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::CharInput('v'))));
+    }
+
+    #[test]
+    fn v_with_text_is_char_input() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.input.text = "typing".to_string();
+        app.input.cursor = 6;
+        let event = Event::Terminal(key(KeyCode::Char('v')));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::CharInput('v'))));
+    }
+
+    // --- Enter in selection mode opens context actions ---
+
+    #[test]
+    fn selection_mode_enter_opens_context_actions() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.selected_message = Some(0);
+        let event = Event::Terminal(key(KeyCode::Enter));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::OpenContextActions)));
+    }
+
+    // --- Context actions overlay j/k navigation ---
+
+    #[test]
+    fn context_actions_overlay_j_moves_down() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::ContextActions(
+            crate::state::ContextActionsOverlay {
+                actions: vec![crate::state::ContextAction {
+                    label: "Copy",
+                    kind: MessageActionKind::Copy,
+                }],
+                cursor: 0,
+            },
+        ));
+        let event = Event::Terminal(key(KeyCode::Char('j')));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::OverlayDown)));
+    }
+
+    #[test]
+    fn context_actions_overlay_k_moves_up() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::ContextActions(
+            crate::state::ContextActionsOverlay {
+                actions: vec![crate::state::ContextAction {
+                    label: "Copy",
+                    kind: MessageActionKind::Copy,
+                }],
+                cursor: 0,
+            },
+        ));
+        let event = Event::Terminal(key(KeyCode::Char('k')));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::OverlayUp)));
     }
 }
