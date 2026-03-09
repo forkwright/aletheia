@@ -18,7 +18,7 @@ const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
 struct RpcRequest<'a> {
     jsonrpc: &'static str,
     method: &'a str,
-    params: serde_json::Value,
+    params: &'a serde_json::Value,
     id: String,
 }
 
@@ -70,7 +70,7 @@ impl SignalClient {
     pub async fn rpc(
         &self,
         method: &str,
-        params: serde_json::Value,
+        params: &serde_json::Value,
     ) -> Result<Option<serde_json::Value>> {
         let id = Uuid::new_v4().to_string();
         let request = RpcRequest {
@@ -120,7 +120,7 @@ impl SignalClient {
         let mut last_err = None;
 
         for attempt in 0..=backoffs.len() {
-            match self.rpc("send", rpc_params.clone()).await {
+            match self.rpc("send", &rpc_params).await {
                 Ok(result) => return Ok(result),
                 Err(e) => {
                     if matches!(e, super::error::Error::Rpc { .. }) {
@@ -169,10 +169,11 @@ impl SignalClient {
         }
 
         let id = Uuid::new_v4().to_string();
+        let params_value = serde_json::Value::Object(params);
         let request = RpcRequest {
             jsonrpc: "2.0",
             method: "receive",
-            params: serde_json::Value::Object(params),
+            params: &params_value,
             id,
         };
 
