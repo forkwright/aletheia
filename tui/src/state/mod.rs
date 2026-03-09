@@ -3,6 +3,7 @@ mod chat;
 mod command;
 mod filter;
 mod input;
+pub mod memory;
 pub(crate) mod ops;
 mod overlay;
 pub mod settings;
@@ -16,6 +17,7 @@ pub use chat::{ChatMessage, ToolCallInfo};
 pub use command::{CommandPaletteState, SelectionContext};
 pub use filter::{FilterScope, FilterState};
 pub use input::{InputState, TabCompletion};
+pub use memory::MemoryInspectorState;
 pub use ops::{FocusedPane, OpsState};
 pub use overlay::{
     ContextAction, ContextActionsOverlay, Overlay, PlanApprovalOverlay, PlanStepApproval,

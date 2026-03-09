@@ -25,9 +25,9 @@ use crate::state::virtual_scroll::VirtualScroll;
 )]
 pub use crate::state::{
     AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
-    ContextActionsOverlay, FilterState, FocusedPane, InputState, OpsState, Overlay,
-    PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay, TabCompletion,
-    ToolApprovalOverlay, ToolCallInfo, View, ViewStack,
+    ContextActionsOverlay, FilterState, FocusedPane, InputState, MemoryInspectorState, OpsState,
+    Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay,
+    TabCompletion, ToolApprovalOverlay, ToolCallInfo, View, ViewStack,
 };
 
 // --- App ---
@@ -121,6 +121,9 @@ pub struct App {
 
     // Vim `g` prefix pending (for gt/gT two-key sequences)
     pub(crate) pending_g: bool,
+
+    // Memory inspector panel state
+    pub memory: MemoryInspectorState,
 }
 
 impl App {
@@ -176,6 +179,7 @@ impl App {
             ops: OpsState::default(),
             tab_bar: TabBar::new(),
             pending_g: false,
+            memory: MemoryInspectorState::new(),
         };
 
         app.connect().await?;
@@ -550,6 +554,7 @@ pub(crate) mod test_helpers {
             ops: OpsState::default(),
             tab_bar: TabBar::new(),
             pending_g: false,
+            memory: MemoryInspectorState::new(),
         }
     }
 

@@ -104,6 +104,13 @@ pub static COMMANDS: &[Command] = &[
         shortcut: None,
     },
     Command {
+        name: "memory",
+        aliases: &["mem", "m"],
+        description: "Open memory inspector",
+        category: CommandCategory::Navigation,
+        shortcut: Some("Ctrl+M"),
+    },
+    Command {
         name: "model",
         aliases: &[],
         description: "Show current model info",

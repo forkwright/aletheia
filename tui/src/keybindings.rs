@@ -23,6 +23,8 @@ pub enum KeyContext {
     PlanApproval,
     Settings,
     Operations,
+    MemoryInspector,
+    FactDetail,
 }
 
 impl KeyContext {
@@ -40,6 +42,8 @@ impl KeyContext {
             Self::PlanApproval => "Plan Approval",
             Self::Settings => "Settings",
             Self::Operations => "Operations",
+            Self::MemoryInspector => "Memory Inspector",
+            Self::FactDetail => "Fact Detail",
         }
     }
 
@@ -52,7 +56,9 @@ impl KeyContext {
             | Self::CommandPalette
             | Self::SessionList
             | Self::Settings
-            | Self::Operations => 0,
+            | Self::Operations
+            | Self::MemoryInspector
+            | Self::FactDetail => 0,
             Self::Chat => 1,
             Self::Input => 2,
             Self::Overlay => 3,
@@ -483,12 +489,108 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Settings],
             show_in_status_bar: true,
         },
+        // --- Memory Inspector ---
+        Keybinding {
+            keys: "j / \u{2193}",
+            description: "Next fact",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "k / \u{2191}",
+            description: "Previous fact",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Enter",
+            description: "View detail",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "s",
+            description: "Cycle sort",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "f",
+            description: "Filter",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "/",
+            description: "Search",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "d",
+            description: "Forget fact",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Tab",
+            description: "Next tab",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Esc",
+            description: "Close inspector",
+            contexts: &[KeyContext::MemoryInspector],
+            show_in_status_bar: true,
+        },
+        // --- Fact Detail ---
+        Keybinding {
+            keys: "e",
+            description: "Edit confidence",
+            contexts: &[KeyContext::FactDetail],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "d",
+            description: "Forget",
+            contexts: &[KeyContext::FactDetail],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "r",
+            description: "Restore",
+            contexts: &[KeyContext::FactDetail],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Esc",
+            description: "Back",
+            contexts: &[KeyContext::FactDetail],
+            show_in_status_bar: true,
+        },
     ]
 }
 
 /// Determine active contexts. Help overlay is transparent — it shows the underlying context.
 pub fn current_contexts(app: &App) -> Vec<KeyContext> {
     let mut contexts = vec![KeyContext::Global];
+
+    // Memory inspector views take priority
+    if matches!(
+        app.view_stack.current(),
+        crate::state::view_stack::View::FactDetail { .. }
+    ) {
+        contexts.push(KeyContext::FactDetail);
+        return contexts;
+    }
+    if matches!(
+        app.view_stack.current(),
+        crate::state::view_stack::View::MemoryInspector
+    ) {
+        contexts.push(KeyContext::MemoryInspector);
+        return contexts;
+    }
 
     match &app.overlay {
         Some(Overlay::Help) | None => {

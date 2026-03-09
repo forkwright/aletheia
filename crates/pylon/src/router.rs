@@ -17,7 +17,7 @@ use tracing::info_span;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::error::ApiError;
-use crate::handlers::{config, health, metrics, nous, sessions, webchat};
+use crate::handlers::{config, health, knowledge, metrics, nous, sessions, webchat};
 use crate::middleware::{
     CsrfState, RequestId, enrich_error_response, inject_request_id, record_http_metrics,
     require_csrf_header,
@@ -27,6 +27,10 @@ use crate::security::SecurityConfig;
 use crate::state::AppState;
 
 /// Build the Axum router with all routes and middleware.
+#[expect(
+    clippy::too_many_lines,
+    reason = "route registry is inherently verbose"
+)]
 pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     crate::metrics::init();
 
@@ -53,7 +57,26 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         .route(
             "/config/{section}",
             get(config::get_section).put(config::update_section),
-        );
+        )
+        // Knowledge graph
+        .route("/knowledge/facts", get(knowledge::list_facts))
+        .route("/knowledge/facts/{id}", get(knowledge::get_fact))
+        .route("/knowledge/facts/{id}/forget", post(knowledge::forget_fact))
+        .route(
+            "/knowledge/facts/{id}/restore",
+            post(knowledge::restore_fact),
+        )
+        .route(
+            "/knowledge/facts/{id}/confidence",
+            axum::routing::put(knowledge::update_confidence),
+        )
+        .route("/knowledge/entities", get(knowledge::list_entities))
+        .route(
+            "/knowledge/entities/{id}/relationships",
+            get(knowledge::entity_relationships),
+        )
+        .route("/knowledge/search", get(knowledge::search))
+        .route("/knowledge/timeline", get(knowledge::timeline));
 
     let mut router = Router::new()
         .nest("/api/v1", v1)

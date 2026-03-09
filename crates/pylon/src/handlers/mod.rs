@@ -4,6 +4,8 @@
 pub mod config;
 /// System health and readiness check.
 pub mod health;
+/// Knowledge graph browsing and management.
+pub mod knowledge;
 /// Prometheus metrics exposition endpoint.
 pub mod metrics;
 /// Nous agent listing and status inspection.

@@ -253,5 +253,13 @@ pub(crate) fn render_for_view(
             render_message_detail(app, frame, area, theme, *message_index);
             Vec::new()
         }
+        View::MemoryInspector => {
+            super::memory::render_inspector(app, frame, area, theme);
+            Vec::new()
+        }
+        View::FactDetail { .. } => {
+            super::memory::render_fact_detail(app, frame, area, theme);
+            Vec::new()
+        }
     }
 }

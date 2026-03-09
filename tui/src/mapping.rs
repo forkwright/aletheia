@@ -88,6 +88,11 @@ impl App {
             };
         }
 
+        // Memory inspector has its own key handling
+        if self.is_memory_view() {
+            return self.map_memory_key(key);
+        }
+
         // View stack: Esc pops back when not at Home (takes priority over selection deselect)
         if !self.view_stack.is_home() && matches!((key.modifiers, key.code), (_, KeyCode::Esc)) {
             return Some(Msg::ViewPopBack);
@@ -124,6 +129,7 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('i')) => {
                 Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
             }
+            (KeyModifiers::CONTROL, KeyCode::Char('m')) => Some(Msg::MemoryOpen),
             (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
             (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
                 Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
@@ -348,6 +354,102 @@ impl App {
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
                 Some(Msg::CommandPaletteInput(c))
             }
+            _ => None,
+        }
+    }
+
+    fn is_memory_view(&self) -> bool {
+        matches!(
+            self.view_stack.current(),
+            crate::state::view_stack::View::MemoryInspector
+                | crate::state::view_stack::View::FactDetail { .. }
+        )
+    }
+
+    fn map_memory_key(&self, key: KeyEvent) -> Option<Msg> {
+        // Global shortcuts pass through
+        match (key.modifiers, key.code) {
+            (KeyModifiers::CONTROL, KeyCode::Char('c'))
+            | (KeyModifiers::CONTROL, KeyCode::Char('q')) => return Some(Msg::Quit),
+            (KeyModifiers::CONTROL, KeyCode::Char('f')) => return Some(Msg::ToggleSidebar),
+            _ => {}
+        }
+
+        // Confidence editing mode
+        if self.memory.editing_confidence {
+            return match (key.modifiers, key.code) {
+                (_, KeyCode::Enter) => Some(Msg::MemoryConfidenceSubmit),
+                (_, KeyCode::Esc) => Some(Msg::MemoryConfidenceCancel),
+                (_, KeyCode::Backspace) => Some(Msg::MemoryConfidenceBackspace),
+                (KeyModifiers::NONE, KeyCode::Char(c)) => Some(Msg::MemoryConfidenceInput(c)),
+                _ => None,
+            };
+        }
+
+        // Search editing mode
+        if self.memory.search_active {
+            return match (key.modifiers, key.code) {
+                (_, KeyCode::Enter) => Some(Msg::MemorySearchSubmit),
+                (_, KeyCode::Esc) => Some(Msg::MemorySearchClose),
+                (_, KeyCode::Backspace) => Some(Msg::MemorySearchBackspace),
+                (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                    Some(Msg::MemorySearchInput(c))
+                }
+                _ => None,
+            };
+        }
+
+        // Filter editing mode
+        if self.memory.filter_editing {
+            return match (key.modifiers, key.code) {
+                (_, KeyCode::Esc) => Some(Msg::MemoryFilterClose),
+                (_, KeyCode::Enter) => Some(Msg::MemoryFilterClose),
+                (_, KeyCode::Backspace) => Some(Msg::MemoryFilterBackspace),
+                (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                    Some(Msg::MemoryFilterInput(c))
+                }
+                _ => None,
+            };
+        }
+
+        // Fact detail view
+        if matches!(
+            self.view_stack.current(),
+            crate::state::view_stack::View::FactDetail { .. }
+        ) {
+            return match (key.modifiers, key.code) {
+                (_, KeyCode::Esc) => Some(Msg::MemoryPopBack),
+                (KeyModifiers::NONE, KeyCode::Char('e')) => Some(Msg::MemoryEditConfidence),
+                (KeyModifiers::NONE, KeyCode::Char('d')) => Some(Msg::MemoryForget),
+                (KeyModifiers::NONE, KeyCode::Char('r')) => Some(Msg::MemoryRestore),
+                _ => None,
+            };
+        }
+
+        // Memory inspector main view
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Esc) => Some(Msg::MemoryClose),
+            (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+                Some(Msg::MemorySelectUp)
+            }
+            (_, KeyCode::Down) | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+                Some(Msg::MemorySelectDown)
+            }
+            (_, KeyCode::Home) => Some(Msg::MemorySelectFirst),
+            (_, KeyCode::End) | (KeyModifiers::SHIFT, KeyCode::Char('G')) => {
+                Some(Msg::MemorySelectLast)
+            }
+            (_, KeyCode::PageUp) => Some(Msg::MemoryPageUp),
+            (_, KeyCode::PageDown) => Some(Msg::MemoryPageDown),
+            (_, KeyCode::Enter) => Some(Msg::MemoryDrillIn),
+            (KeyModifiers::NONE, KeyCode::Char('s')) => Some(Msg::MemorySortCycle),
+            (KeyModifiers::NONE, KeyCode::Char('f')) => Some(Msg::MemoryFilterOpen),
+            (KeyModifiers::NONE, KeyCode::Char('/')) => Some(Msg::MemorySearchOpen),
+            (KeyModifiers::NONE, KeyCode::Char('d')) => Some(Msg::MemoryForget),
+            (KeyModifiers::NONE, KeyCode::Char('r')) => Some(Msg::MemoryRestore),
+            (KeyModifiers::NONE, KeyCode::Char('e')) => Some(Msg::MemoryEditConfidence),
+            (_, KeyCode::Tab) => Some(Msg::MemoryTabNext),
+            (KeyModifiers::SHIFT, KeyCode::BackTab) => Some(Msg::MemoryTabPrev),
             _ => None,
         }
     }

@@ -20,6 +20,10 @@ pub enum View {
     },
     /// Full message detail (content, tool results, metadata).
     MessageDetail { message_index: usize },
+    /// Memory inspector — browsing the knowledge graph.
+    MemoryInspector,
+    /// Fact detail within the memory inspector.
+    FactDetail { fact_id: String },
 }
 
 impl View {
@@ -30,6 +34,8 @@ impl View {
             Self::Sessions { .. } => "Sessions",
             Self::Conversation { .. } => "Conversation",
             Self::MessageDetail { .. } => "Message",
+            Self::MemoryInspector => "Memory",
+            Self::FactDetail { .. } => "Fact",
         }
     }
 }

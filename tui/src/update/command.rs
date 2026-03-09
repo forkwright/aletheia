@@ -215,6 +215,9 @@ async fn execute_command(app: &mut App) {
         "unarchive" => {
             execute_unarchive(app).await;
         }
+        "memory" | "mem" | "m" => {
+            super::memory::handle_open(app).await;
+        }
         "settings" => {
             super::settings::handle_open(app).await;
         }

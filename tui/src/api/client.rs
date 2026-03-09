@@ -498,6 +498,116 @@ impl ApiClient {
         })
     }
 
+    // --- Knowledge ---
+
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_facts(
+        &self,
+        sort: &str,
+        order: &str,
+        limit: u32,
+    ) -> Result<serde_json::Value> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/facts?sort={sort}&order={order}&limit={limit}"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load facts",
+            })?;
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "facts request",
+        })?;
+        resp.json().await.context(HttpSnafu {
+            operation: "facts response",
+        })
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_fact_detail(&self, fact_id: &str) -> Result<serde_json::Value> {
+        let encoded = encode_path(fact_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/knowledge/facts/{encoded}"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load fact detail",
+            })?;
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "fact detail request",
+        })?;
+        resp.json().await.context(HttpSnafu {
+            operation: "fact detail response",
+        })
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_forget(&self, fact_id: &str) -> Result<()> {
+        let encoded = encode_path(fact_id);
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/v1/knowledge/facts/{encoded}/forget"),
+        )
+        .send()
+        .await
+        .context(HttpSnafu {
+            operation: "forget fact",
+        })?
+        .error_for_status_ref()
+        .context(HttpSnafu {
+            operation: "forget request",
+        })?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_restore(&self, fact_id: &str) -> Result<()> {
+        let encoded = encode_path(fact_id);
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/v1/knowledge/facts/{encoded}/restore"),
+        )
+        .send()
+        .await
+        .context(HttpSnafu {
+            operation: "restore fact",
+        })?
+        .error_for_status_ref()
+        .context(HttpSnafu {
+            operation: "restore request",
+        })?;
+        Ok(())
+    }
+
+    #[expect(
+        dead_code,
+        reason = "will be wired up when confidence editing calls the API"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_update_confidence(&self, fact_id: &str, confidence: f64) -> Result<()> {
+        let encoded = encode_path(fact_id);
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/v1/knowledge/facts/{encoded}/confidence"),
+        )
+        .json(&serde_json::json!({ "confidence": confidence }))
+        .send()
+        .await
+        .context(HttpSnafu {
+            operation: "update confidence",
+        })?
+        .error_for_status_ref()
+        .context(HttpSnafu {
+            operation: "confidence request",
+        })?;
+        Ok(())
+    }
+
     // --- Message queue (mid-turn) ---
 
     #[tracing::instrument(skip(self, text))]
