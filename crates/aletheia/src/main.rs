@@ -696,6 +696,7 @@ async fn serve(cli: Cli) -> Result<()> {
         knowledge: knowledge_search,
         http_client: reqwest::Client::new(),
         lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
+        server_tool_config: aletheia_organon::types::ServerToolConfig::default(),
     });
 
     // Spawn nous actors

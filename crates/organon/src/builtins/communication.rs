@@ -279,7 +279,9 @@ mod tests {
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
     use crate::registry::ToolRegistry;
-    use crate::types::{CrossNousService, MessageService, ToolContext, ToolInput, ToolServices};
+    use crate::types::{
+        CrossNousService, MessageService, ServerToolConfig, ToolContext, ToolInput, ToolServices,
+    };
 
     fn test_ctx() -> ToolContext {
         ToolContext {
@@ -453,6 +455,7 @@ mod tests {
             knowledge: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
             messenger: Some(messenger),
         });
         let mut reg = ToolRegistry::new();
@@ -480,6 +483,7 @@ mod tests {
             knowledge: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
             messenger: Some(messenger),
         });
         let mut reg = ToolRegistry::new();
@@ -514,6 +518,7 @@ mod tests {
             knowledge: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -548,6 +553,7 @@ mod tests {
             knowledge: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -577,6 +583,7 @@ mod tests {
             knowledge: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -604,6 +611,7 @@ mod tests {
             knowledge: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
