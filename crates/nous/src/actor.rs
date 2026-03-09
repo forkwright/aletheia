@@ -296,7 +296,7 @@ impl NousActor {
 
         let tool_ctx = ToolContext {
             nous_id,
-            session_id: SessionId::new(),
+            session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
             workspace: self.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.oikos.root().to_path_buf()],
             services: self.tool_services.clone(),
@@ -357,7 +357,7 @@ impl NousActor {
 
         let tool_ctx = ToolContext {
             nous_id,
-            session_id: SessionId::new(),
+            session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
             workspace: self.oikos.nous_dir(&self.id),
             allowed_roots: vec![self.oikos.root().to_path_buf()],
             services: self.tool_services.clone(),

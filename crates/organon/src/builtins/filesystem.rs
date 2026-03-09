@@ -178,6 +178,11 @@ impl ToolExecutor for FindExecutor {
     }
 }
 
+/// Returns `true` if the pattern contains glob metacharacters (`*`, `?`, `[`, `{`).
+fn is_glob_pattern(pattern: &str) -> bool {
+    pattern.contains('*') || pattern.contains('?') || pattern.contains('[') || pattern.contains('{')
+}
+
 fn try_fd(
     pattern: &str,
     path: &Path,
@@ -186,6 +191,13 @@ fn try_fd(
     max_depth: Option<u64>,
 ) -> std::io::Result<std::process::Output> {
     let mut cmd = Command::new("fd");
+    // --no-ignore: workspace dirs live under gitignored paths (instance/).
+    // --glob: only when the pattern uses glob metacharacters (*, ?, [, {).
+    //         Otherwise fd's default regex mode gives better substring matching.
+    cmd.arg("--no-ignore");
+    if is_glob_pattern(pattern) {
+        cmd.arg("--glob");
+    }
     cmd.arg(pattern)
         .arg(path)
         .arg("--max-results")
