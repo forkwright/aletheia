@@ -10,10 +10,10 @@ The following identities contained PII (real names, work emails, business names)
 
 | Identity | PII Type |
 |----------|----------|
-| `CKickertz <ckickertz@summusglobal.com>` | Real surname + work email |
-| `Cody Kickertz <cody@forkwright.com>` | Real full name |
-| `forkwright <cody.kickertz@pm.me>` | Real name in email |
-| `admin <admin@ardentleatherworks.com>` | Business name in email |
+| `REDACTED <REDACTED@employer.example>` | Real surname + work email |
+| `REDACTED <REDACTED@fork.example>` | Real full name |
+| `REDACTED <REDACTED@personal.example>` | Real name in email |
+| `admin <admin@business.example>` | Business name in email |
 
 Non-PII pseudonymous identities (`Aletheia`, `Syn`, `Demiurge`) were also
 consolidated for consistency.
@@ -24,14 +24,14 @@ and emails. All were removed.
 
 ### Commit Message Bodies
 Some commit messages referenced:
-- `CKickertz/aletheia` (GitHub username with real surname)
-- `/home/ckickertz/` (home directory paths)
-- `summusglobal` / `Summus` (employer name)
-- `ardentleatherworks` (business name)
+- `REDACTED/aletheia` (GitHub username with real surname)
+- `/home/REDACTED/` (home directory paths)
+- `employer.example` (employer name)
+- `business.example` (business name)
 
 ### pii-patterns.txt
-`.github/pii-patterns.txt` contained a regex pattern `[A-Za-z]{3,}ertz\b`
-designed to match the real surname. Genericized to `[A-Za-z]{3,}ample\b`.
+`.github/pii-patterns.txt` contained a regex pattern matching a real surname.
+Genericized to `[A-Za-z]{3,}ample\b`.
 
 ## What Was Changed
 
@@ -50,21 +50,21 @@ Bot identities were preserved:
 | Pattern | Replacement |
 |---------|-------------|
 | `Co-authored-by:` trailers | Removed |
-| `ckickertz@summusglobal.com` | `cody@aletheia.dev` |
-| `cody.kickertz@pm.me` | `cody@aletheia.dev` |
-| `cody@forkwright.com` | `cody@aletheia.dev` |
-| `admin@ardentleatherworks.com` | `cody@aletheia.dev` |
-| `@summusglobal.com` | `@example.corp` |
-| `summusglobal` | `example.corp` |
-| `summus` (word boundary) | `ExampleCo` |
-| `ardentleatherworks` | `example-business` |
-| `CKickertz/` | `forkwright/` |
-| `/home/ckickertz/` | `/home/cody/` |
-| `ckickertz` | `cody` |
-| `kickertz` (word boundary) | `Cody` |
+| `REDACTED@employer.example` | `cody@aletheia.dev` |
+| `REDACTED@personal.example` | `cody@aletheia.dev` |
+| `REDACTED@fork.example` | `cody@aletheia.dev` |
+| `admin@business.example` | `cody@aletheia.dev` |
+| `@employer.example` | `@example.corp` |
+| `employer.example` (word boundary) | `example.corp` |
+| `employer` (word boundary) | `ExampleCo` |
+| `business.example` | `example-business` |
+| `REDACTED/` (GitHub username) | `forkwright/` |
+| `/home/REDACTED/` | `/home/cody/` |
+| `REDACTED` (username) | `cody` |
+| `REDACTED` (surname, word boundary) | `Cody` |
 
 ### File Changes
-- `.github/pii-patterns.txt`: `[A-Za-z]{3,}ertz\b` → `[A-Za-z]{3,}ample\b`
+- `.github/pii-patterns.txt`: surname-specific regex → `[A-Za-z]{3,}ample\b`
 
 ## How to Verify
 
@@ -76,7 +76,7 @@ git log --all --format='%an <%ae> %cn <%ce>' | sort -u
 git log --all --format='%b' | grep -i 'co-authored-by' | sort -u
 
 # No PII in commit messages
-git log --all --format='%B' | grep -iE '(summus|kickertz|ckickertz|ardentleather)' | head -20
+git log --all --format='%B' | grep -iE '(employer\.example|business\.example)' | head -20
 ```
 
 ## Impact
