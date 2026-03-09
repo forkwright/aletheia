@@ -74,6 +74,16 @@ impl App {
             return Some(msg);
         }
 
+        // View stack: Esc pops back when not at Home (takes priority over selection deselect)
+        if !self.view_stack.is_home()
+            && matches!(
+                (key.modifiers, key.code),
+                (_, KeyCode::Esc)
+            )
+        {
+            return Some(Msg::ViewPopBack);
+        }
+
         // Selection mode — single-letter keys become actions
         if self.selected_message.is_some() {
             return self.map_selection_key(key);
@@ -186,7 +196,7 @@ impl App {
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => Some(Msg::SelectNext),
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Some(Msg::SelectPrev),
             (_, KeyCode::Esc) => Some(Msg::DeselectMessage),
-            (_, KeyCode::Enter) => Some(Msg::OpenContextActions),
+            (_, KeyCode::Enter) => Some(Msg::ViewDrillIn),
             (_, KeyCode::Home) => Some(Msg::SelectFirst),
             (_, KeyCode::End) | (KeyModifiers::SHIFT, KeyCode::Char('G')) => Some(Msg::SelectLast),
 
@@ -854,15 +864,15 @@ mod tests {
         assert!(matches!(msg, Some(Msg::CharInput('v'))));
     }
 
-    // --- Enter in selection mode opens context actions ---
+    // --- Enter in selection mode drills into detail view ---
 
     #[test]
-    fn selection_mode_enter_opens_context_actions() {
+    fn selection_mode_enter_drills_in() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
         app.selected_message = Some(0);
         let event = Event::Terminal(key(KeyCode::Enter));
         let msg = app.map_event(event);
-        assert!(matches!(msg, Some(Msg::OpenContextActions)));
+        assert!(matches!(msg, Some(Msg::ViewDrillIn)));
     }
 
     // --- Context actions overlay j/k navigation ---
@@ -899,5 +909,40 @@ mod tests {
         let event = Event::Terminal(key(KeyCode::Char('k')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::OverlayUp)));
+    }
+
+    // --- View stack navigation key tests ---
+
+    #[test]
+    fn esc_at_non_home_view_pops_back() {
+        let mut app = test_app();
+        app.view_stack.push(crate::state::View::Sessions {
+            agent_id: "syn".into(),
+        });
+        let event = Event::Terminal(key(KeyCode::Esc));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::ViewPopBack)));
+    }
+
+    #[test]
+    fn esc_at_home_with_selection_deselects() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.selected_message = Some(0);
+        // view_stack is Home by default
+        let event = Event::Terminal(key(KeyCode::Esc));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::DeselectMessage)));
+    }
+
+    #[test]
+    fn esc_at_non_home_with_selection_still_pops() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.selected_message = Some(0);
+        app.view_stack.push(crate::state::View::MessageDetail {
+            message_index: 0,
+        });
+        let event = Event::Terminal(key(KeyCode::Esc));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::ViewPopBack)));
     }
 }

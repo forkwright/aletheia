@@ -23,7 +23,8 @@ use crate::state::SavedScrollState;
 pub use crate::state::{
     AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
     ContextActionsOverlay, FilterState, InputState, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    SelectionContext, SessionPickerOverlay, TabCompletion, ToolApprovalOverlay, ToolCallInfo,
+    SelectionContext, SessionPickerOverlay, TabCompletion, ToolApprovalOverlay, ToolCallInfo, View,
+    ViewStack,
 };
 
 // --- App ---
@@ -99,6 +100,12 @@ pub struct App {
 
     // Live filter (`/` mode)
     pub filter: FilterState,
+
+    // Stack-based navigation (Enter drills in, Esc pops out)
+    pub view_stack: ViewStack,
+
+    // Per-view scroll state preservation
+    pub(crate) view_scroll_states: HashMap<usize, SavedScrollState>,
 }
 
 impl App {
@@ -148,6 +155,8 @@ impl App {
             selected_message: None,
             tool_expanded: HashSet::new(),
             filter: FilterState::default(),
+            view_stack: ViewStack::new(),
+            view_scroll_states: HashMap::new(),
         };
 
         app.connect().await?;
@@ -421,6 +430,8 @@ pub(crate) mod test_helpers {
             selected_message: None,
             tool_expanded: HashSet::new(),
             filter: FilterState::default(),
+            view_stack: ViewStack::new(),
+            view_scroll_states: HashMap::new(),
         }
     }
 

@@ -7,6 +7,7 @@ pub(crate) mod settings;
 mod sidebar;
 mod status_bar;
 mod title_bar;
+mod views;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -80,7 +81,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     // Responsive: hide sidebar on narrow terminals
     let show_sidebar = app.sidebar_visible && area.width >= MIN_SIDEBAR_TERMINAL_WIDTH;
 
-    // Body: sidebar | chat area
+    // Body: sidebar | main content area (dispatched by current view)
     if show_sidebar {
         let horizontal = Layout::default()
             .direction(Direction::Horizontal)
@@ -91,12 +92,12 @@ pub fn render(app: &App, frame: &mut Frame) {
             .split(vertical[1]);
 
         sidebar::render(app, frame, horizontal[0], theme);
-        render_chat_area(app, frame, horizontal[1], theme);
+        views::render_for_view(app, frame, horizontal[1], theme);
 
         SIDEBAR_RECT.store_rect(horizontal[0]);
     } else {
         SIDEBAR_RECT.store_rect(Rect::ZERO);
-        render_chat_area(app, frame, vertical[1], theme);
+        views::render_for_view(app, frame, vertical[1], theme);
     }
 
     // Render overlay on top if present

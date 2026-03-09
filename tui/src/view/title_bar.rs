@@ -1,5 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -27,15 +28,42 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         Span::styled("○", theme.style_error())
     };
 
-    let title = Line::from(vec![
+    let mut spans = vec![
         Span::styled(" ✦ ", theme.style_accent_bold()),
         Span::styled("aletheia", theme.style_accent()),
-        Span::styled(" │ ", theme.style_dim()),
-        Span::styled(agent_name, theme.style_fg()),
-        Span::raw(" "),
-        sse_indicator,
-    ]);
+    ];
 
+    // Breadcrumbs — show navigation path when not at Home
+    if !app.view_stack.is_home() {
+        let breadcrumbs = app.view_stack.breadcrumbs();
+        let last_idx = breadcrumbs.len() - 1;
+
+        spans.push(Span::styled(" │ ", theme.style_dim()));
+
+        for (i, crumb) in breadcrumbs.iter().enumerate() {
+            if i == last_idx {
+                // Current view — bold
+                spans.push(Span::styled(
+                    crumb.to_string(),
+                    theme
+                        .style_fg()
+                        .add_modifier(Modifier::BOLD),
+                ));
+            } else {
+                // Parent views — dim
+                spans.push(Span::styled(crumb.to_string(), theme.style_dim()));
+                spans.push(Span::styled(" > ", theme.style_dim()));
+            }
+        }
+    } else {
+        spans.push(Span::styled(" │ ", theme.style_dim()));
+        spans.push(Span::styled(agent_name, theme.style_fg()));
+    }
+
+    spans.push(Span::raw(" "));
+    spans.push(sse_indicator);
+
+    let title = Line::from(spans);
     let bar = Paragraph::new(title).style(theme.style_surface());
     frame.render_widget(bar, area);
 }
