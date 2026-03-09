@@ -46,8 +46,8 @@ todo = "deny"
 unimplemented = "deny"
 exit = "deny"
 
-# High-value warnings
-await_holding_lock = "warn"
+# Correctness: holding std::sync::Mutex across .await causes deadlocks
+await_holding_lock = "deny"
 explicit_into_iter_loop = "warn"
 fallible_impl_from = "warn"
 fn_params_excessive_bools = "warn"
