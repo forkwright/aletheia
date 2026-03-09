@@ -145,6 +145,10 @@ impl CrossNousRouter {
     }
 
     /// Register a nous actor's inbox so it can receive cross-nous messages.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Uses a single `RwLock::write` + `insert`.
     #[instrument(skip(self, sender))]
     pub async fn register(
         &self,
@@ -162,6 +166,11 @@ impl CrossNousRouter {
     }
 
     /// Fire-and-forget send. Returns `Delivered` on success.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after `mpsc::send` succeeds, the message
+    /// is delivered but the caller never sees the `Delivered` result.
     #[instrument(skip(self, message), fields(msg_id = %message.id, from = %message.from, to = %message.to))]
     pub async fn send(&self, message: CrossNousMessage) -> error::Result<DeliveryState> {
         let to = message.to.clone();
@@ -201,6 +210,11 @@ impl CrossNousRouter {
     }
 
     /// Send and wait for reply. Returns the reply or a timeout error.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after sending the message, a pending reply
+    /// entry is leaked until timeout cleanup. Do not use in `select!` branches.
     #[instrument(skip(self, message), fields(msg_id = %message.id, from = %message.from, to = %message.to))]
     pub async fn ask(&self, mut message: CrossNousMessage) -> error::Result<CrossNousReply> {
         let to = message.to.clone();
