@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use either::{Either, Left};
 use pest::Parser;
 use pest::error::InputLocation;
-use compact_str::CompactString;
 use snafu::Snafu;
 
 use crate::engine::data::program::InputProgram;

@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use either::{Left, Right};
 use itertools::Itertools;
-use compact_str::CompactString;
 
 use crate::engine::parse::query::parse_query;
 use crate::engine::parse::sys::parse_sys;

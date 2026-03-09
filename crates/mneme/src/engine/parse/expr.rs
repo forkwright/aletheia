@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use itertools::Itertools;
 use pest::pratt_parser::{Op, PrattParser};
-use compact_str::CompactString;
 use std::sync::LazyLock;
 
 use crate::engine::data::expr::{Bytecode, Expr, NoImplementationError, get_op};

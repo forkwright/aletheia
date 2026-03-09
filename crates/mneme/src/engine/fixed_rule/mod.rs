@@ -6,15 +6,15 @@ use std::sync::Arc;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
+#[cfg(feature = "graph-algo")]
+use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use crate::ensure;
+#[allow(unused_imports)]
+use compact_str::CompactString;
 use crossbeam::channel::{Receiver, Sender, bounded};
 #[allow(unused_imports)]
 use either::{Left, Right};
-#[cfg(feature = "graph-algo")]
-use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use itertools::Itertools;
-#[allow(unused_imports)]
-use compact_str::CompactString;
 use snafu::Snafu;
 use std::sync::LazyLock;
 
@@ -134,11 +134,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     pub fn as_directed_graph(
         &self,
         undirected: bool,
-    ) -> Result<(
-        DirectedCsrGraph,
-        Vec<DataValue>,
-        BTreeMap<DataValue, u32>,
-    )> {
+    ) -> Result<(DirectedCsrGraph, Vec<DataValue>, BTreeMap<DataValue, u32>)> {
         let mut indices: Vec<DataValue> = vec![];
         let mut inv_indices: BTreeMap<DataValue, u32> = Default::default();
         let mut error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
@@ -191,10 +187,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         } else {
             Left(it)
         };
-        let graph: DirectedCsrGraph = CsrBuilder::new()
-            .sorted()
-            .edges(it)
-            .build();
+        let graph: DirectedCsrGraph = CsrBuilder::new().sorted().edges(it).build();
         if let Some(err) = error {
             return Err(err);
         }
@@ -324,10 +317,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         } else {
             Left(it)
         };
-        let graph: DirectedCsrGraph<f32> = CsrBuilder::new()
-            .sorted()
-            .edges_with_values(it)
-            .build();
+        let graph: DirectedCsrGraph<f32> = CsrBuilder::new().sorted().edges_with_values(it).build();
 
         if let Some(err) = error {
             return Err(err);
@@ -376,11 +366,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     }
 
     /// Extract a string option
-    pub fn string_option(
-        &self,
-        name: &str,
-        default: Option<&str>,
-    ) -> Result<CompactString> {
+    pub fn string_option(&self, name: &str, default: Option<&str>) -> Result<CompactString> {
         match self.manifest.options.get(name) {
             Some(ex) => match ex.clone().eval_to_const()? {
                 DataValue::Str(s) => Ok(s),

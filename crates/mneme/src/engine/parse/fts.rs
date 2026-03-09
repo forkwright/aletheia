@@ -5,10 +5,10 @@ use crate::engine::error::DbResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::engine::parse::expr::parse_string;
 use crate::engine::parse::{DatalogParser, Pair, Rule};
+use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
 use pest::pratt_parser::{Op, PrattParser};
-use compact_str::CompactString;
 use std::sync::LazyLock;
 
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {

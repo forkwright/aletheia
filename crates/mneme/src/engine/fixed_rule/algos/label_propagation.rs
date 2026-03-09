@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
 use crate::engine::fixed_rule::csr::DirectedCsrGraph;
+use compact_str::CompactString;
 use itertools::Itertools;
 use rand::prelude::*;
-use compact_str::CompactString;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;

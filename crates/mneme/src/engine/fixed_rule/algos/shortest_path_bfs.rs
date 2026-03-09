@@ -4,8 +4,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::engine::error::DbResult as Result;
-use itertools::Itertools;
 use compact_str::CompactString;
+use itertools::Itertools;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;

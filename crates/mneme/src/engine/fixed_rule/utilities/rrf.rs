@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
-use rustc_hash::FxHashMap;
 use compact_str::CompactString;
+use rustc_hash::FxHashMap;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
@@ -103,9 +103,7 @@ fn collect_signal_scores(
     Ok(scores)
 }
 
-fn assign_ranks(
-    scores: &FxHashMap<CompactString, f64>,
-) -> FxHashMap<CompactString, usize> {
+fn assign_ranks(scores: &FxHashMap<CompactString, f64>) -> FxHashMap<CompactString, usize> {
     let mut sorted: Vec<_> = scores.iter().collect();
     sorted.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
     sorted

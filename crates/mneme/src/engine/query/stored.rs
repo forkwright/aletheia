@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
-use compact_str::CompactString;
 use snafu::Snafu;
 
 use crate::engine::data::expr::{Bytecode, Expr};

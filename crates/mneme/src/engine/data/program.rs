@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure, miette};
-use smallvec::SmallVec;
 use compact_str::CompactString;
+use smallvec::SmallVec;
 
 use crate::engine::data::aggr::Aggregation;
 use crate::engine::data::expr::Expr;

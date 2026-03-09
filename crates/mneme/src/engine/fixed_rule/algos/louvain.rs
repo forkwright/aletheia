@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::DbResult as Result;
 use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
-use itertools::Itertools;
 use compact_str::CompactString;
+use itertools::Itertools;
 use tracing::debug;
 
 use crate::engine::data::expr::Expr;

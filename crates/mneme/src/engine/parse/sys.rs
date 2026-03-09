@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-use compact_str::CompactString;
 
 use crate::engine::data::program::InputProgram;
 use crate::engine::data::relation::VecElementType;

@@ -16,9 +16,9 @@ use itertools::Itertools;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Date;
 
+use compact_str::CompactString;
 use rand::prelude::*;
 use serde_json::{Value, json};
-use compact_str::CompactString;
 use unicode_normalization::UnicodeNormalization;
 use uuid::v1::Timestamp;
 

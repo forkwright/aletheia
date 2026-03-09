@@ -12,6 +12,7 @@ use std::ops::Deref;
 
 use crate::engine::data::json::JsonValue;
 use crate::engine::data::relation::VecElementType;
+use compact_str::CompactString;
 use ordered_float::OrderedFloat;
 use regex::Regex;
 use serde::de::{SeqAccess, Visitor};
@@ -19,7 +20,6 @@ use serde::ser::SerializeTuple;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
-use compact_str::CompactString;
 use uuid::Uuid;
 
 /// UUID value in the database

@@ -4,8 +4,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
-use crossbeam::channel::Sender;
 use compact_str::CompactString;
+use crossbeam::channel::Sender;
 
 use crate::engine::{DbCore as Db, NamedRows, Storage};
 

@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use compact_str::CompactString;
 use itertools::Itertools;
 use serde_json::json;
-use compact_str::CompactString;
 use tracing::debug;
 
 use crate::engine::DbInstance;

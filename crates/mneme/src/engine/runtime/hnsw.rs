@@ -12,12 +12,12 @@ use crate::engine::parse::sys::HnswDistance;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, SourceSpan};
+use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rand::Rng;
 use rustc_hash::{FxHashMap, FxHashSet};
-use compact_str::CompactString;
 use std::cmp::{Reverse, max};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -6,11 +6,11 @@ use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
+use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rayon::prelude::*;
-use compact_str::CompactString;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;

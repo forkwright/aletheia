@@ -8,8 +8,8 @@ use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::min;
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
 use compact_str::CompactString;
+use itertools::Itertools;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::program::{MagicFixedRuleApply, MagicSymbol};

@@ -10,9 +10,9 @@ use crate::engine::fts::tokenizer::{
     TextAnalyzer, Tokenizer, WhitespaceTokenizer,
 };
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
-use compact_str::CompactString;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 

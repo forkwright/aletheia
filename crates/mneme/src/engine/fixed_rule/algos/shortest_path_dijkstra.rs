@@ -7,12 +7,12 @@ use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 
+use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rayon::prelude::*;
 use smallvec::{SmallVec, smallvec};
-use compact_str::CompactString;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;

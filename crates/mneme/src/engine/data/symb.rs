@@ -8,8 +8,8 @@ use std::ops::Deref;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
-use serde::{Deserialize, Serialize};
 use compact_str::CompactString;
+use serde::{Deserialize, Serialize};
 
 use crate::engine::parse::SourceSpan;
 

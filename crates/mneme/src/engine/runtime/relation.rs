@@ -7,11 +7,11 @@ use std::sync::atomic::Ordering;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
 use rmp_serde::Serializer;
 use serde::Serialize;
-use compact_str::CompactString;
 use snafu::Snafu;
 use tracing::error;
 
@@ -72,13 +72,10 @@ pub(crate) struct RelationHandle {
     pub(crate) access_level: AccessLevel,
     pub(crate) is_temp: bool,
     pub(crate) indices: BTreeMap<CompactString, (RelationHandle, Vec<usize>)>,
-    pub(crate) hnsw_indices:
-        BTreeMap<CompactString, (RelationHandle, HnswIndexManifest)>,
+    pub(crate) hnsw_indices: BTreeMap<CompactString, (RelationHandle, HnswIndexManifest)>,
     pub(crate) fts_indices: BTreeMap<CompactString, (RelationHandle, FtsIndexManifest)>,
-    pub(crate) lsh_indices: BTreeMap<
-        CompactString,
-        (RelationHandle, RelationHandle, MinHashLshIndexManifest),
-    >,
+    pub(crate) lsh_indices:
+        BTreeMap<CompactString, (RelationHandle, RelationHandle, MinHashLshIndexManifest)>,
     pub(crate) description: CompactString,
 }
 

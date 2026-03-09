@@ -2,8 +2,8 @@
 // Copyright 2023, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::fts::tokenizer::TextAnalyzer;
-use ordered_float::OrderedFloat;
 use compact_str::CompactString;
+use ordered_float::OrderedFloat;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct FtsLiteral {

@@ -6,9 +6,9 @@ use std::sync::atomic::Ordering;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use either::{Either, Left, Right};
 use itertools::Itertools;
-use compact_str::CompactString;
 
 use crate::engine::data::program::RelationOp;
 use crate::engine::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};

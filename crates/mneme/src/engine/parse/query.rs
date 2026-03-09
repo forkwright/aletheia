@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use either::{Left, Right};
 use itertools::Itertools;
 use pest::Parser;
-use compact_str::CompactString;
 
 use crate::engine::FixedRule;
 use crate::engine::data::aggr::{Aggregation, parse_aggr};

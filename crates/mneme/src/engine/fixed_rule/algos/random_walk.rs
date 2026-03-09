@@ -5,10 +5,10 @@ use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use itertools::Itertools;
 use rand::distr::weighted::WeightedIndex;
 use rand::prelude::*;
-use compact_str::CompactString;
 
 use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::symb::Symbol;

@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
-use itertools::Itertools;
 use compact_str::CompactString;
+use itertools::Itertools;
 
 use crate::engine::data::relation::{
     ColType, ColumnDef, NullableColType, StoredRelationMetadata, VecElementType,

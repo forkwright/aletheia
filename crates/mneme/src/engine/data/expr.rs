@@ -8,10 +8,10 @@ use std::mem;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, miette};
+use compact_str::CompactString;
 use itertools::Itertools;
 use serde::de::{Error, Visitor};
 use serde::{Deserializer, Serializer};
-use compact_str::CompactString;
 
 use crate::engine::data::functions::*;
 use crate::engine::data::relation::NullableColType;
