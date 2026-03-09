@@ -16,6 +16,7 @@ use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::oikos::Oikos;
+use tokio_util::sync::CancellationToken;
 
 use crate::router::build_router;
 use crate::security::SecurityConfig;
@@ -152,6 +153,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         config: Arc::new(tokio::sync::RwLock::new(
             aletheia_taxis::config::AletheiaConfig::default(),
         )),
+        shutdown: CancellationToken::new(),
     });
 
     (state, dir)
@@ -1432,6 +1434,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         jwt_manager: Arc::clone(&state.jwt_manager),
         start_time: state.start_time,
         config: Arc::clone(&state.config),
+        shutdown: state.shutdown.clone(),
     });
     (build_router(state, &SecurityConfig::default()), dir)
 }

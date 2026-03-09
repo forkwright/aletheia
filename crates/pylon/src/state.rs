@@ -10,6 +10,7 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_symbolon::jwt::JwtManager;
 use aletheia_taxis::config::AletheiaConfig;
 use aletheia_taxis::oikos::Oikos;
+use tokio_util::sync::CancellationToken;
 
 /// Shared state for all Axum handlers, held behind `Arc` in the router.
 pub struct AppState {
@@ -31,6 +32,8 @@ pub struct AppState {
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
     /// Auth mode from gateway config (`"token"`, `"none"`, etc.).
     pub auth_mode: String,
+    /// Root shutdown token. Cancel to initiate graceful shutdown of all subsystems.
+    pub shutdown: CancellationToken,
 }
 
 #[cfg(test)]

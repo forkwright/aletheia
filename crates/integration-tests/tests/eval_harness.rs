@@ -18,6 +18,7 @@ use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::Role;
+use tokio_util::sync::CancellationToken;
 use aletheia_taxis::oikos::Oikos;
 
 struct MockProvider {
@@ -133,6 +134,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         config: Arc::new(tokio::sync::RwLock::new(
             aletheia_taxis::config::AletheiaConfig::default(),
         )),
+        shutdown: CancellationToken::new(),
     });
 
     let router = build_router(

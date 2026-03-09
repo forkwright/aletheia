@@ -8,6 +8,7 @@ use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, instrument, warn};
 
 use crate::cross::CrossNousEnvelope;
@@ -41,6 +42,8 @@ pub struct NousActor {
     pipeline_config: PipelineConfig,
     inbox: mpsc::Receiver<NousMessage>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
+    /// Token signalling a graceful shutdown request from the manager.
+    cancel: CancellationToken,
     lifecycle: NousLifecycle,
     sessions: HashMap<String, SessionState>,
     active_session: Option<String>,
@@ -69,6 +72,7 @@ impl NousActor {
         pipeline_config: PipelineConfig,
         inbox: mpsc::Receiver<NousMessage>,
         cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
+        cancel: CancellationToken,
         providers: Arc<ProviderRegistry>,
         tools: Arc<ToolRegistry>,
         oikos: Arc<Oikos>,
@@ -85,6 +89,7 @@ impl NousActor {
             pipeline_config,
             inbox,
             cross_rx,
+            cancel,
             lifecycle: NousLifecycle::Idle,
             sessions: HashMap::new(),
             active_session: None,
@@ -105,9 +110,10 @@ impl NousActor {
     ///
     /// # Cancel safety
     ///
-    /// Cancel-safe. The `select!` branches use `inbox.recv()` and
-    /// `cross_rx.recv()`, both of which are cancel-safe. Dropping the
-    /// future exits the loop without leaving inconsistent state.
+    /// Cancel-safe. The `select!` branches use `inbox.recv()`,
+    /// `cross_rx.recv()`, and `cancel.cancelled()`, all of which are
+    /// cancel-safe. Dropping the future exits the loop without leaving
+    /// inconsistent state.
     #[instrument(skip(self), fields(nous.id = %self.id))]
     pub async fn run(mut self) {
         if let Err(e) = validate_workspace(&self.oikos, &self.id) {
@@ -161,6 +167,10 @@ impl NousActor {
                     if let Some(envelope) = envelope {
                         self.handle_cross_message(envelope).await;
                     }
+                }
+                () = self.cancel.cancelled() => {
+                    info!("cancellation token fired, draining and stopping");
+                    break;
                 }
             }
         }
@@ -702,6 +712,10 @@ fn validate_workspace(oikos: &Oikos, nous_id: &str) -> crate::error::Result<()> 
 ///
 /// Creates a bounded channel with [`DEFAULT_INBOX_CAPACITY`], builds the actor,
 /// and starts it on the Tokio runtime.
+///
+/// `cancel` is a child token derived from the manager's root token.
+/// When cancelled, the actor exits its message loop and releases all resources,
+/// ensuring redb WAL and other state are flushed before the task completes.
 #[expect(
     clippy::too_many_arguments,
     reason = "actor spawn requires all runtime dependencies"
@@ -719,6 +733,7 @@ pub fn spawn(
     tool_services: Option<Arc<aletheia_organon::types::ToolServices>>,
     extra_bootstrap: Vec<BootstrapSection>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
+    cancel: CancellationToken,
 ) -> (NousHandle, tokio::task::JoinHandle<()>) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let id = config.id.clone();
@@ -730,6 +745,7 @@ pub fn spawn(
         pipeline_config,
         rx,
         cross_rx,
+        cancel,
         providers,
         tools,
         oikos,
@@ -753,6 +769,7 @@ mod tests {
     use std::sync::Mutex;
 
     use aletheia_hermeneus::provider::LlmProvider;
+    use tokio_util::sync::CancellationToken;
     use aletheia_hermeneus::types::{
         CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
     };
@@ -852,6 +869,7 @@ mod tests {
             None,
             Vec::new(),
             None,
+            CancellationToken::new(),
         );
         (handle, join, dir)
     }

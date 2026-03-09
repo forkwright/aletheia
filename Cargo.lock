@@ -67,6 +67,7 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
  "ulid",
@@ -156,6 +157,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tower 0.5.3",
 ]
 
@@ -252,6 +254,7 @@ dependencies = [
  "static_assertions",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
  "ulid",
 ]
@@ -270,6 +273,7 @@ dependencies = [
  "static_assertions",
  "tempfile",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
@@ -319,6 +323,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-stream",
+ "tokio-util",
  "tower 0.5.3",
  "tower-http",
  "tracing",
@@ -6119,6 +6124,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
