@@ -94,6 +94,9 @@ impl App {
                 Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
             }
             (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
+            (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
+            }
 
             (_, KeyCode::Tab) => {
                 if self.input.text.contains('@') {
@@ -171,6 +174,9 @@ impl App {
                 Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
             }
             (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
+            (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
+            }
 
             // Shift+Up/Down scroll (before bare Up/Down)
             (KeyModifiers::SHIFT, KeyCode::Up) => Some(Msg::ScrollUp),
@@ -277,6 +283,10 @@ impl App {
         matches!(&self.overlay, Some(Overlay::ContextActions(_)))
     }
 
+    fn is_session_picker_overlay(&self) -> bool {
+        matches!(&self.overlay, Some(Overlay::SessionPicker(_)))
+    }
+
     fn map_overlay_key(&self, key: KeyEvent) -> Option<Msg> {
         if matches!(&self.overlay, Some(Overlay::Settings(_))) {
             return self.map_settings_overlay_key(key);
@@ -290,6 +300,13 @@ impl App {
 
             (_, KeyCode::Char('j')) if self.is_context_actions_overlay() => Some(Msg::OverlayDown),
             (_, KeyCode::Char('k')) if self.is_context_actions_overlay() => Some(Msg::OverlayUp),
+
+            (_, KeyCode::Char('n')) if self.is_session_picker_overlay() => {
+                Some(Msg::SessionPickerNewSession)
+            }
+            (_, KeyCode::Char('d')) if self.is_session_picker_overlay() => {
+                Some(Msg::SessionPickerArchive)
+            }
 
             (_, KeyCode::Char('a' | 'A')) if self.is_tool_approval_overlay() => {
                 Some(Msg::OverlaySelect)

@@ -95,6 +95,49 @@ pub(crate) async fn handle_new_session(app: &mut App) {
 }
 
 #[tracing::instrument(skip_all)]
+pub(crate) async fn handle_session_picker_new(app: &mut App) {
+    app.overlay = None;
+    handle_new_session(app).await;
+}
+
+#[tracing::instrument(skip_all)]
+pub(crate) async fn handle_session_picker_archive(app: &mut App) {
+    let (cursor, show_archived) = match &app.overlay {
+        Some(crate::state::Overlay::SessionPicker(picker)) => (picker.cursor, picker.show_archived),
+        _ => return,
+    };
+
+    let session_id = match super::overlay::pick_session_id_pub(app, cursor, show_archived) {
+        Some(id) => id,
+        None => return,
+    };
+
+    let client = app.client.clone();
+    match client.archive_session(&session_id).await {
+        Ok(()) => {
+            if let Some(ref agent_id) = app.focused_agent {
+                if let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id) {
+                    if let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id) {
+                        session.status = Some("archived".to_string());
+                    }
+                }
+            }
+            if app.focused_session_id.as_ref() == Some(&session_id) {
+                app.messages.clear();
+                app.focused_session_id = None;
+                app.scroll_to_bottom();
+            }
+            app.error_toast = Some(ErrorToast::new("Session archived".into()));
+        }
+        Err(e) => {
+            app.error_toast = Some(ErrorToast::new(format!("Archive failed: {e}")));
+        }
+    }
+
+    app.overlay = None;
+}
+
+#[tracing::instrument(skip_all)]
 // SAFETY: sanitized at ingestion — error messages may contain external data.
 pub(crate) fn handle_show_error(app: &mut App, msg: String) {
     app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
@@ -127,6 +170,9 @@ fn sanitize_sessions(sessions: Vec<Session>) -> Vec<Session> {
                 .session_type
                 .map(|t| sanitize_for_display(&t).into_owned()),
             updated_at: s.updated_at,
+            display_name: s
+                .display_name
+                .map(|n| sanitize_for_display(&n).into_owned()),
         })
         .collect()
 }
@@ -276,6 +322,7 @@ mod tests {
             message_count: 5,
             session_type: None,
             updated_at: None,
+            display_name: None,
         }];
         handle_sessions_loaded(&mut app, "syn".into(), sessions);
         assert_eq!(app.agents[0].sessions.len(), 1);
@@ -293,6 +340,7 @@ mod tests {
             message_count: 0,
             session_type: None,
             updated_at: None,
+            display_name: None,
         }];
         handle_sessions_loaded(&mut app, "unknown".into(), sessions);
         // No agents, should not panic

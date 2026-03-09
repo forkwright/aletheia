@@ -8,6 +8,7 @@ use super::settings::SettingsOverlay;
 pub enum Overlay {
     Help,
     AgentPicker { cursor: usize },
+    SessionPicker(SessionPickerOverlay),
     SystemStatus,
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
@@ -31,6 +32,12 @@ impl ContextActionsOverlay {
 pub struct ContextAction {
     pub label: &'static str,
     pub kind: MessageActionKind,
+}
+
+#[derive(Debug)]
+pub struct SessionPickerOverlay {
+    pub cursor: usize,
+    pub show_archived: bool,
 }
 
 #[derive(Debug)]

@@ -14,5 +14,5 @@ pub use filter::{FilterScope, FilterState};
 pub use input::{InputState, TabCompletion};
 pub use overlay::{
     ContextAction, ContextActionsOverlay, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    ToolApprovalOverlay,
+    SessionPickerOverlay, ToolApprovalOverlay,
 };

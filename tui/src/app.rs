@@ -23,7 +23,7 @@ use crate::state::SavedScrollState;
 pub use crate::state::{
     AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
     ContextActionsOverlay, FilterState, InputState, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    SelectionContext, TabCompletion, ToolApprovalOverlay, ToolCallInfo,
+    SelectionContext, SessionPickerOverlay, TabCompletion, ToolApprovalOverlay, ToolCallInfo,
 };
 
 // --- App ---

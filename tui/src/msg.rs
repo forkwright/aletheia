@@ -40,7 +40,9 @@ pub enum Msg {
     CommandPaletteDown,
     CommandPaletteTab,
 
-    NewSession, // Ctrl+N — start new topic
+    NewSession,              // Ctrl+N — start new topic
+    SessionPickerNewSession, // 'n' in session picker — create and switch
+    SessionPickerArchive,    // 'd' in session picker — archive selected
 
     // --- Message selection ---
     SelectPrev,                       // k or Up in selection mode
@@ -235,6 +237,9 @@ pub enum MessageActionKind {
 pub enum OverlayKind {
     Help,
     AgentPicker,
+    SessionPicker,
+    #[expect(dead_code, reason = "opened via command palette :sessions! command")]
+    SessionPickerAll,
     SystemStatus,
     #[expect(dead_code, reason = "opened via command palette")]
     Settings,

@@ -41,6 +41,8 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             get(sessions::get_session).delete(sessions::close),
         )
         .route("/sessions/{id}/archive", post(sessions::archive))
+        .route("/sessions/{id}/unarchive", post(sessions::unarchive))
+        .route("/sessions/{id}/name", axum::routing::put(sessions::rename))
         .route("/sessions/{id}/messages", post(sessions::send_message))
         .route("/sessions/{id}/history", get(sessions::history))
         .route("/events", get(sessions::events))
