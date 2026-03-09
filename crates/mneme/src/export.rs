@@ -169,7 +169,7 @@ fn query_all_entities(
         if row.len() < 6 {
             continue;
         }
-        let id = row[0].get_str().unwrap_or_default().to_owned();
+        let id = crate::id::EntityId::new_unchecked(row[0].get_str().unwrap_or_default());
         let name = row[1].get_str().unwrap_or_default().to_owned();
         let entity_type = row[2].get_str().unwrap_or_default().to_owned();
         let aliases_str = row[3].get_str().unwrap_or_default();
@@ -181,11 +181,13 @@ fn query_all_entities(
                 .map(|s| s.trim().to_owned())
                 .collect()
         };
-        let created_at = row[4].get_str().unwrap_or_default().to_owned();
-        let updated_at = row[5].get_str().unwrap_or_default().to_owned();
+        let created_at = crate::knowledge::parse_timestamp(row[4].get_str().unwrap_or_default())
+            .unwrap_or_else(jiff::Timestamp::now);
+        let updated_at = crate::knowledge::parse_timestamp(row[5].get_str().unwrap_or_default())
+            .unwrap_or_else(jiff::Timestamp::now);
 
         entities.push(crate::knowledge::Entity {
-            id: crate::knowledge::EntityId::from(id),
+            id,
             name,
             entity_type,
             aliases,
@@ -212,15 +214,16 @@ fn query_all_relationships(
         if row.len() < 5 {
             continue;
         }
-        let src = row[0].get_str().unwrap_or_default().to_owned();
-        let dst = row[1].get_str().unwrap_or_default().to_owned();
+        let src = crate::id::EntityId::new_unchecked(row[0].get_str().unwrap_or_default());
+        let dst = crate::id::EntityId::new_unchecked(row[1].get_str().unwrap_or_default());
         let relation = row[2].get_str().unwrap_or_default().to_owned();
         let weight = row[3].get_float().unwrap_or(0.0);
-        let created_at = row[4].get_str().unwrap_or_default().to_owned();
+        let created_at = crate::knowledge::parse_timestamp(row[4].get_str().unwrap_or_default())
+            .unwrap_or_else(jiff::Timestamp::now);
 
         relationships.push(crate::knowledge::Relationship {
-            src: crate::knowledge::EntityId::from(src),
-            dst: crate::knowledge::EntityId::from(dst),
+            src,
+            dst,
             relation,
             weight,
             created_at,

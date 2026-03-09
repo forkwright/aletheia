@@ -270,13 +270,13 @@ Rules:
         source: &str,
         nous_id: &str,
     ) -> Result<PersistResult, ExtractionError> {
-        use crate::knowledge::{Entity, EpistemicTier, Fact, Relationship};
+        use crate::knowledge::{Entity, EpistemicTier, Fact, Relationship, far_future};
 
-        let now = now_iso8601();
+        let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
 
         for entity in &extraction.entities {
-            let id = crate::knowledge::EntityId::from(slugify(&entity.name));
+            let id = crate::id::EntityId::from(slugify(&entity.name));
             let aliases = if entity.description.is_empty() {
                 vec![]
             } else {
@@ -287,8 +287,8 @@ Rules:
                 name: entity.name.clone(),
                 entity_type: entity.entity_type.clone(),
                 aliases,
-                created_at: now.clone(),
-                updated_at: now.clone(),
+                created_at: now,
+                updated_at: now,
             };
             store.insert_entity(&e).map_err(|e| {
                 PersistSnafu {
@@ -324,11 +324,11 @@ Rules:
                 }
             };
             let r = Relationship {
-                src: crate::knowledge::EntityId::from(slugify(&rel.source)),
-                dst: crate::knowledge::EntityId::from(slugify(&rel.target)),
+                src: crate::id::EntityId::from(slugify(&rel.source)),
+                dst: crate::id::EntityId::from(slugify(&rel.target)),
                 relation: relation_type,
                 weight: rel.confidence,
-                created_at: now.clone(),
+                created_at: now,
             };
             store.insert_relationship(&r).map_err(|e| {
                 PersistSnafu {
@@ -341,24 +341,24 @@ Rules:
 
         for (i, fact) in extraction.facts.iter().enumerate() {
             let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
-            let id = format!(
+            let id = crate::id::FactId::from(format!(
                 "{}-{}-{i}",
                 slugify(&fact.subject),
                 slugify(&fact.predicate)
-            );
+            ));
             let f = Fact {
                 id,
                 nous_id: nous_id.to_owned(),
                 content,
                 confidence: fact.confidence,
                 tier: EpistemicTier::Inferred,
-                valid_from: now.clone(),
-                valid_to: "9999-12-31T00:00:00Z".to_owned(),
+                valid_from: now,
+                valid_to: far_future(),
                 superseded_by: None,
                 source_session_id: Some(source.to_owned()),
-                recorded_at: now.clone(),
+                recorded_at: now,
                 access_count: 0,
-                last_accessed_at: String::new(),
+                last_accessed_at: None,
                 stability_hours: crate::knowledge::default_stability_hours("inference"),
                 fact_type: "inference".to_owned(),
                 is_forgotten: false,
@@ -429,17 +429,6 @@ fn slugify(s: &str) -> String {
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("-")
-}
-
-/// Current time as ISO 8601 string (UTC, second precision).
-///
-/// Uses `jiff` (project standard) rather than `std::time::SystemTime` + manual
-/// epoch-day arithmetic. Format: `YYYY-MM-DDTHH:MM:SSZ`.
-#[cfg(feature = "mneme-engine")]
-fn now_iso8601() -> String {
-    jiff::Zoned::now()
-        .strftime("%Y-%m-%dT%H:%M:%SZ")
-        .to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -862,7 +851,9 @@ mod tests {
         assert_eq!(result.facts_inserted, 1);
 
         // Verify entities are queryable via entity_neighborhood.
-        let neighborhood = store.entity_neighborhood("dr-chen").unwrap();
+        let neighborhood = store
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("dr-chen"))
+            .unwrap();
         assert!(
             !neighborhood.rows.is_empty(),
             "dr-chen entity should be reachable in the graph"
@@ -870,8 +861,9 @@ mod tests {
 
         // query_facts filters: valid_from <= now AND valid_to > now
         // Use a future time that's after valid_from but before valid_to.
+        // far_future() is 9999-01-01T00:00:00Z, so query before that.
         let facts = store
-            .query_facts("syn", "9999-01-01T00:00:00Z", 100)
+            .query_facts("syn", "2099-01-01T00:00:00Z", 100)
             .unwrap();
         assert!(
             facts.iter().any(|f| f.content.contains("CozoDB")),
@@ -948,7 +940,9 @@ mod tests {
         assert_eq!(result.relationships_inserted, 1);
         assert_eq!(result.relationships_skipped, 0);
 
-        let neighborhood = store.entity_neighborhood("nyx").unwrap();
+        let neighborhood = store
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("nyx"))
+            .unwrap();
         assert!(
             neighborhood
                 .rows
@@ -1245,19 +1239,6 @@ Some text
         // NFC normalization must not alter plain ASCII
         assert_eq!(slugify("hello-world"), "hello-world");
         assert_eq!(slugify("Data Processor"), "data-processor");
-    }
-
-    #[cfg(feature = "mneme-engine")]
-    #[test]
-    fn now_iso8601_uses_jiff_format() {
-        let ts = now_iso8601();
-        // Must match YYYY-MM-DDTHH:MM:SSZ
-        assert_eq!(ts.len(), 20, "timestamp must be exactly 20 chars: {ts}");
-        assert!(ts.ends_with('Z'), "timestamp must end with Z: {ts}");
-        assert_eq!(&ts[10..11], "T", "timestamp must have T separator: {ts}");
-        // Year must be plausible (>= 2025)
-        let year: u32 = ts[..4].parse().expect("year must be numeric");
-        assert!(year >= 2025, "year must be >= 2025, got {year}");
     }
 
     #[cfg(feature = "mneme-engine")]

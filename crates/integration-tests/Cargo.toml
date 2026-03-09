@@ -25,6 +25,7 @@ aletheia-organon = { path = "../organon" }
 aletheia-thesauros = { path = "../thesauros" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-symbolon = { path = "../symbolon" }
+jiff = { workspace = true }
 axum = { workspace = true }
 reqwest = { workspace = true }
 secrecy = { workspace = true }

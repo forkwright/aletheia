@@ -204,7 +204,10 @@ fn resolve_osc_links(
 }
 
 /// Render only the messages in the virtual scroll viewport + buffer zone.
-#[expect(clippy::too_many_arguments, reason = "render context requires all params; extracting a struct would add boilerplate without clarity gain")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "render context requires all params; extracting a struct would add boilerplate without clarity gain"
+)]
 fn render_virtual_messages(
     app: &App,
     lines: &mut Vec<Line<'static>>,
@@ -259,7 +262,10 @@ fn render_virtual_messages(
 }
 
 /// Render all messages, skipping those that don't match the filter.
-#[expect(clippy::too_many_arguments, reason = "render context requires all params; extracting a struct would add boilerplate without clarity gain")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "render context requires all params; extracting a struct would add boilerplate without clarity gain"
+)]
 fn render_filtered_messages(
     app: &App,
     lines: &mut Vec<Line<'static>>,

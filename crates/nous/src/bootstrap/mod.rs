@@ -169,7 +169,11 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     ///
     /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
     /// missing or unreadable.
-    pub async fn assemble(&self, nous_id: &str, budget: &mut TokenBudget) -> Result<BootstrapResult> {
+    pub async fn assemble(
+        &self,
+        nous_id: &str,
+        budget: &mut TokenBudget,
+    ) -> Result<BootstrapResult> {
         self.assemble_with_extra(nous_id, budget, Vec::new()).await
     }
 

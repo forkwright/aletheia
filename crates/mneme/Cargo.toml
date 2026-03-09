@@ -13,14 +13,13 @@ workspace = true
 [features]
 default = ["sqlite", "fastembed", "graph-algo"]
 graph-algo = []
-sqlite = ["dep:rusqlite", "dep:jiff"]
+sqlite = ["dep:rusqlite"]
 fastembed = ["dep:fastembed"]
 # mneme-engine coexists with sqlite (no link conflict verified).
 # Build with: cargo build -p aletheia-mneme --no-default-features --features mneme-engine
 # In production binary, only one storage backend is active.
 mneme-engine = [
     "dep:ndarray", "dep:tokio",
-    "dep:jiff",
     # Engine dependencies
     "dep:rayon", "dep:ordered-float", "dep:priority-queue",
     "dep:smallvec", "dep:compact_str",
@@ -38,7 +37,7 @@ hnsw_rs = ["dep:hnsw_rs"]
 
 [dependencies]
 fastembed = { version = "5", optional = true }
-jiff = { workspace = true, optional = true }
+jiff = { workspace = true, features = ["serde"] }
 ndarray = { version = "0.17", features = ["serde"], optional = true }
 rusqlite = { version = "0.38", features = ["bundled"], optional = true }
 serde = { workspace = true }

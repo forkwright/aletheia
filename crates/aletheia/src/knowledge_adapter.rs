@@ -71,7 +71,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                     None => format!("[fact {}]", r.id),
                 };
                 out.push(MemoryResult {
-                    id: r.id,
+                    id: r.id.to_string(),
                     content,
                     score: r.rrf_score,
                     source_type: "fact".to_owned(),
@@ -128,19 +128,20 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .map_err(|e| format!("failed to supersede old fact: {e}"))?;
 
             // Insert corrected fact
+            let ts_now = jiff::Timestamp::now();
             let new_fact = Fact {
-                id: new_id.clone(),
+                id: aletheia_mneme::id::FactId::from(new_id.as_str()),
                 nous_id,
                 content: new_content,
                 confidence: 1.0,
                 tier: EpistemicTier::Verified,
-                valid_from: now.clone(),
-                valid_to: "9999-12-31".to_owned(),
+                valid_from: ts_now,
+                valid_to: aletheia_mneme::knowledge::far_future(),
                 superseded_by: None,
                 source_session_id: None,
-                recorded_at: now,
+                recorded_at: ts_now,
                 access_count: 0,
-                last_accessed_at: String::new(),
+                last_accessed_at: None,
                 stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
                 fact_type: String::new(),
                 is_forgotten: false,
@@ -210,18 +211,21 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .await
                 .map_err(|e| format!("failed to query facts: {e}"))?;
 
-            let since_filter = since.as_deref().unwrap_or("1970-01-01");
+            let since_ts = since
+                .as_deref()
+                .and_then(aletheia_mneme::knowledge::parse_timestamp)
+                .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
             let out = facts
                 .into_iter()
-                .filter(|f| f.recorded_at.as_str() >= since_filter)
+                .filter(|f| f.recorded_at >= since_ts)
                 .map(|f| FactSummary {
-                    id: f.id,
+                    id: f.id.to_string(),
                     content: f.content,
                     confidence: f.confidence,
                     tier: f.tier.to_string(),
-                    recorded_at: f.recorded_at,
+                    recorded_at: aletheia_mneme::knowledge::format_timestamp(&f.recorded_at),
                     is_forgotten: f.is_forgotten,
-                    forgotten_at: f.forgotten_at,
+                    forgotten_at: f.forgotten_at.map(|s| s.to_string()),
                     forget_reason: f.forget_reason.map(|r| r.to_string()),
                 })
                 .collect();
@@ -234,7 +238,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         fact_id: &str,
         reason: &str,
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
-        let fact_id = fact_id.to_owned();
+        let fact_id = aletheia_mneme::id::FactId::from(fact_id);
         let reason = reason.to_owned();
         Box::pin(async move {
             let reason: aletheia_mneme::knowledge::ForgetReason =
@@ -250,7 +254,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         &self,
         fact_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
-        let fact_id = fact_id.to_owned();
+        let fact_id = aletheia_mneme::id::FactId::from(fact_id);
         Box::pin(async move {
             self.store
                 .unforget_fact_async(fact_id)
