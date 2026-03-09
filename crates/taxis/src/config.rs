@@ -28,6 +28,17 @@ pub struct AletheiaConfig {
     pub maintenance: MaintenanceSettings,
     /// Per-model pricing for LLM cost metrics. Keyed by model name.
     pub pricing: HashMap<String, ModelPricing>,
+    /// Sandbox configuration for tool execution.
+    pub sandbox: SandboxSettings,
+}
+
+/// Sandbox enforcement level for tool execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum SandboxEnforcementMode {
+    Enforcing,
+    Permissive,
 }
 
 /// Per-model pricing rates for cost estimation in metrics.
@@ -576,6 +587,32 @@ impl Default for DbMonitoringSettings {
 pub struct RetentionSettings {
     /// Whether automatic retention enforcement (session cleanup) runs.
     pub enabled: bool,
+}
+
+/// Sandbox configuration for tool command execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct SandboxSettings {
+    /// Whether sandbox restrictions are applied to tool execution.
+    pub enabled: bool,
+    /// Enforcement level: `enforcing` blocks violations, `permissive` logs them.
+    pub enforcement: SandboxEnforcementMode,
+    /// Additional filesystem paths granted read access.
+    pub extra_read_paths: Vec<PathBuf>,
+    /// Additional filesystem paths granted read+write access.
+    pub extra_write_paths: Vec<PathBuf>,
+}
+
+impl Default for SandboxSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            enforcement: SandboxEnforcementMode::Enforcing,
+            extra_read_paths: Vec::new(),
+            extra_write_paths: Vec::new(),
+        }
+    }
 }
 
 /// Resolved configuration for a specific nous agent.

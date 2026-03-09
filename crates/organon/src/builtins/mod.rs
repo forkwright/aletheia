@@ -21,10 +21,19 @@ pub mod workspace;
 
 use crate::error::Result;
 use crate::registry::ToolRegistry;
+use crate::sandbox::SandboxConfig;
 
-/// Register all built-in tool executors.
+/// Register all built-in tool executors with default sandbox config.
 pub fn register_all(registry: &mut ToolRegistry) -> Result<()> {
-    workspace::register(registry)?;
+    register_all_with_sandbox(registry, SandboxConfig::default())
+}
+
+/// Register all built-in tool executors with custom sandbox config.
+pub fn register_all_with_sandbox(
+    registry: &mut ToolRegistry,
+    sandbox: SandboxConfig,
+) -> Result<()> {
+    workspace::register(registry, sandbox)?;
     memory::register(registry)?;
     communication::register(registry)?;
     filesystem::register(registry)?;
