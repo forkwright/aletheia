@@ -59,17 +59,15 @@ async fn run_tui_inner(
     let log_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("aletheia");
-    std::fs::create_dir_all(&log_dir).context(IoSnafu { context: "create log directory" })?;
+    std::fs::create_dir_all(&log_dir).context(IoSnafu {
+        context: "create log directory",
+    })?;
     let file_appender = rolling::daily(&log_dir, "tui.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
     fmt()
         .with_env_filter(
             EnvFilter::from_default_env()
-                .add_directive(
-                    "aletheia_tui=debug"
-                        .parse()
-                        .context(LogDirectiveSnafu)?,
-                ),
+                .add_directive("aletheia_tui=debug".parse().context(LogDirectiveSnafu)?),
         )
         .with_writer(non_blocking)
         .with_ansi(false)
@@ -104,9 +102,9 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
-        terminal
-            .draw(|frame| app.view(frame))
-            .context(IoSnafu { context: "terminal draw" })?;
+        terminal.draw(|frame| app.view(frame)).context(IoSnafu {
+            context: "terminal draw",
+        })?;
 
         let mut sse_rx = app.take_sse();
         let mut stream_rx = app.take_stream();

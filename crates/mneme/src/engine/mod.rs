@@ -13,9 +13,9 @@ pub use crate::engine::data::value::{DataValue, ValidityTs, Vector};
 pub use crate::engine::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::engine::runtime::callback::CallbackOp;
 pub use crate::engine::runtime::db::{NamedRows, ScriptMutability, TransactionPayload};
+#[cfg(feature = "storage-fjall")]
+pub use crate::engine::storage::fjall_backend::FjallStorage;
 pub use crate::engine::storage::mem::MemStorage;
-#[cfg(feature = "storage-new-rocksdb")]
-pub use crate::engine::storage::newrocks::NewRocksDbStorage;
 #[cfg(feature = "storage-redb")]
 pub use crate::engine::storage::redb::RedbStorage;
 pub use ndarray::Array1;
@@ -61,10 +61,10 @@ fn convert_err(e: crate::engine::error::BoxErr) -> Error {
 /// Public facade replacing DbInstance. Dispatches to concrete storage implementations.
 pub enum Db {
     Mem(crate::engine::runtime::db::Db<MemStorage>),
+    #[cfg(feature = "storage-fjall")]
+    Fjall(crate::engine::runtime::db::Db<FjallStorage>),
     #[cfg(feature = "storage-redb")]
     Redb(crate::engine::runtime::db::Db<RedbStorage>),
-    #[cfg(feature = "storage-new-rocksdb")]
-    RocksDb(crate::engine::runtime::db::Db<NewRocksDbStorage>),
 }
 
 impl Db {
@@ -75,19 +75,22 @@ impl Db {
             .map_err(convert_err)
     }
 
+    /// Open a fjall-backed database at the given path.
+    ///
+    /// Primary production backend: pure Rust, LSM-tree, LZ4 compression,
+    /// native read-your-own-writes.
+    #[cfg(feature = "storage-fjall")]
+    pub fn open_fjall(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
+        crate::engine::storage::fjall_backend::new_cozo_fjall(path)
+            .map(Db::Fjall)
+            .map_err(convert_err)
+    }
+
     /// Open a redb-backed database at the given path.
     #[cfg(feature = "storage-redb")]
     pub fn open_redb(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
         crate::engine::storage::redb::new_cozo_redb(path)
             .map(Db::Redb)
-            .map_err(convert_err)
-    }
-
-    /// Open a RocksDB-backed database at the given path.
-    #[cfg(feature = "storage-new-rocksdb")]
-    pub fn open_rocksdb(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
-        crate::engine::storage::newrocks::new_rocksdb_db(path)
-            .map(Db::RocksDb)
             .map_err(convert_err)
     }
 
@@ -100,10 +103,10 @@ impl Db {
     ) -> crate::engine::Result<NamedRows> {
         let result = match self {
             Db::Mem(db) => db.run_script(script, params, mutability),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => db.run_script(script, params, mutability),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.run_script(script, params, mutability),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => db.run_script(script, params, mutability),
         };
         result.map_err(convert_err)
     }
@@ -124,10 +127,10 @@ impl Db {
         let path = out_file.as_ref();
         let result = match self {
             Db::Mem(db) => db.backup_db(path),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => db.backup_db(path),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.backup_db(path),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => db.backup_db(path),
         };
         result.map_err(convert_err)
     }
@@ -139,10 +142,10 @@ impl Db {
         let path = in_file.as_ref();
         let result = match self {
             Db::Mem(db) => db.restore_backup(path),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => db.restore_backup(path),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.restore_backup(path),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => db.restore_backup(path),
         };
         result.map_err(convert_err)
     }
@@ -158,10 +161,10 @@ impl Db {
         let path = in_file.as_ref();
         let result = match self {
             Db::Mem(db) => db.import_from_backup(path, relations),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => db.import_from_backup(path, relations),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.import_from_backup(path, relations),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => db.import_from_backup(path, relations),
         };
         result.map_err(convert_err)
     }
@@ -177,10 +180,10 @@ impl Db {
     {
         let result = match self {
             Db::Mem(db) => db.export_relations(relations),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => db.export_relations(relations),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.export_relations(relations),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => db.export_relations(relations),
         };
         result.map_err(convert_err)
     }
@@ -189,10 +192,10 @@ impl Db {
     pub fn import_relations(&self, data: BTreeMap<String, NamedRows>) -> crate::engine::Result<()> {
         let result = match self {
             Db::Mem(db) => db.import_relations(data),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => db.import_relations(data),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.import_relations(data),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => db.import_relations(data),
         };
         result.map_err(convert_err)
     }
@@ -205,10 +208,10 @@ impl Db {
     ) -> crate::engine::Result<()> {
         let result = match self {
             Db::Mem(db) => db.register_fixed_rule(name, rule),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => db.register_fixed_rule(name, rule),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.register_fixed_rule(name, rule),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => db.register_fixed_rule(name, rule),
         };
         result.map_err(convert_err)
     }
@@ -225,10 +228,10 @@ impl Db {
     ) {
         match self {
             Db::Mem(db) => db.register_callback(relation, capacity),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => db.register_callback(relation, capacity),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.register_callback(relation, capacity),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => db.register_callback(relation, capacity),
         }
     }
 
@@ -251,10 +254,10 @@ impl Db {
     fn clone_inner(&self) -> DbInner {
         match self {
             Db::Mem(db) => DbInner::Mem(db.clone()),
+            #[cfg(feature = "storage-fjall")]
+            Db::Fjall(db) => DbInner::Fjall(db.clone()),
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => DbInner::Redb(db.clone()),
-            #[cfg(feature = "storage-new-rocksdb")]
-            Db::RocksDb(db) => DbInner::RocksDb(db.clone()),
         }
     }
 }
@@ -262,10 +265,10 @@ impl Db {
 /// Internal enum for owned clones used in spawned tasks.
 enum DbInner {
     Mem(crate::engine::runtime::db::Db<MemStorage>),
+    #[cfg(feature = "storage-fjall")]
+    Fjall(crate::engine::runtime::db::Db<FjallStorage>),
     #[cfg(feature = "storage-redb")]
     Redb(crate::engine::runtime::db::Db<RedbStorage>),
-    #[cfg(feature = "storage-new-rocksdb")]
-    RocksDb(crate::engine::runtime::db::Db<NewRocksDbStorage>),
 }
 
 impl DbInner {
@@ -277,10 +280,10 @@ impl DbInner {
     ) {
         match self {
             DbInner::Mem(db) => db.run_multi_transaction(write, payloads, results),
+            #[cfg(feature = "storage-fjall")]
+            DbInner::Fjall(db) => db.run_multi_transaction(write, payloads, results),
             #[cfg(feature = "storage-redb")]
             DbInner::Redb(db) => db.run_multi_transaction(write, payloads, results),
-            #[cfg(feature = "storage-new-rocksdb")]
-            DbInner::RocksDb(db) => db.run_multi_transaction(write, payloads, results),
         }
     }
 }
@@ -353,8 +356,8 @@ impl TestMultiTx {
 mod safety_assertions {
     use static_assertions::assert_impl_all;
     assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::mem::MemStorage>: Send, Sync);
+    #[cfg(feature = "storage-fjall")]
+    assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::fjall_backend::FjallStorage>: Send, Sync);
     #[cfg(feature = "storage-redb")]
     assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::redb::RedbStorage>: Send, Sync);
-    #[cfg(feature = "storage-new-rocksdb")]
-    assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::newrocks::NewRocksDbStorage>: Send, Sync);
 }

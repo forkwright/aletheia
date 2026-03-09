@@ -74,8 +74,8 @@ pub enum Msg {
     PrevAgent,
 
     // --- View stack navigation ---
-    ViewDrillIn,  // Enter — push detail view based on context
-    ViewPopBack,  // Esc — pop to previous view
+    ViewDrillIn, // Enter — push detail view based on context
+    ViewPopBack, // Esc — pop to previous view
 
     // --- Layout ---
     ToggleSidebar,  // Ctrl+F

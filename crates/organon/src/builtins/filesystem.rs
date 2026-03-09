@@ -38,8 +38,7 @@ fn truncate_output(mut output: String) -> String {
 fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
     // Wrap in ProcessGuard so the child is killed and reaped on any early
     // return (I/O error, panic, etc.) before we reach wait().
-    let mut guard =
-        ProcessGuard::new(cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?);
+    let mut guard = ProcessGuard::new(cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?);
 
     let mut stdout = String::new();
     if let Some(ref mut pipe) = guard.get_mut().stdout {

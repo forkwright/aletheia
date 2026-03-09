@@ -493,7 +493,10 @@ mod tests {
     #[test]
     fn test_bold_text_modifier() {
         let lines = test_render("**bold**");
-        assert!(!lines.is_empty(), "bold text must produce at least one line");
+        assert!(
+            !lines.is_empty(),
+            "bold text must produce at least one line"
+        );
         assert!(
             any_line_has_modifier(&lines, "bold", Modifier::BOLD),
             "bold text must carry BOLD modifier; lines: {lines:?}"
@@ -540,7 +543,10 @@ mod tests {
     fn test_inline_code() {
         let (lines, theme) = test_render_with_theme("use `std::mem::take`");
         let all = all_lines_text(&lines);
-        assert!(all.contains("`std::mem::take`"), "inline code must appear with backticks");
+        assert!(
+            all.contains("`std::mem::take`"),
+            "inline code must appear with backticks"
+        );
         // Inline code uses theme.warning as fg
         assert!(
             any_line_has_fg(&lines, "`std::mem::take`", theme.warning),
@@ -553,7 +559,10 @@ mod tests {
         // Bold wrapping italic
         let lines = test_render("**bold _bold-italic_ bold**");
         let all = all_lines_text(&lines);
-        assert!(all.contains("bold-italic"), "nested text content must appear");
+        assert!(
+            all.contains("bold-italic"),
+            "nested text content must appear"
+        );
         assert!(
             any_line_has_modifier(&lines, "bold-italic", Modifier::ITALIC),
             "nested italic must carry ITALIC modifier"
@@ -571,7 +580,10 @@ mod tests {
         let lines = test_render("# Heading One");
         assert!(!lines.is_empty());
         let text = line_text(&lines[0]);
-        assert!(text.starts_with("# "), "H1 must start with '# ', got: {text:?}");
+        assert!(
+            text.starts_with("# "),
+            "H1 must start with '# ', got: {text:?}"
+        );
         assert!(text.contains("Heading One"));
     }
 
@@ -580,7 +592,10 @@ mod tests {
         let lines = test_render("## Heading Two");
         assert!(!lines.is_empty());
         let text = line_text(&lines[0]);
-        assert!(text.starts_with("## "), "H2 must start with '## ', got: {text:?}");
+        assert!(
+            text.starts_with("## "),
+            "H2 must start with '## ', got: {text:?}"
+        );
         assert!(text.contains("Heading Two"));
     }
 
@@ -589,7 +604,10 @@ mod tests {
         let lines = test_render("### Heading Three");
         assert!(!lines.is_empty());
         let text = line_text(&lines[0]);
-        assert!(text.starts_with("### "), "H3 must start with '### ', got: {text:?}");
+        assert!(
+            text.starts_with("### "),
+            "H3 must start with '### ', got: {text:?}"
+        );
         assert!(text.contains("Heading Three"));
     }
 
@@ -598,7 +616,10 @@ mod tests {
         let lines = test_render("#### Heading Four");
         assert!(!lines.is_empty());
         let text = line_text(&lines[0]);
-        assert!(text.starts_with("#### "), "H4 must start with '#### ', got: {text:?}");
+        assert!(
+            text.starts_with("#### "),
+            "H4 must start with '#### ', got: {text:?}"
+        );
         assert!(text.contains("Heading Four"));
     }
 
@@ -645,8 +666,14 @@ mod tests {
         let lines = test_render("```\nplain code\n```");
         let all = all_lines_text(&lines);
         assert!(all.contains("plain code"));
-        assert!(all.contains('╭'), "unlanguaged block must still have top border ╭");
-        assert!(all.contains('╰'), "unlanguaged block must still have bottom border ╰");
+        assert!(
+            all.contains('╭'),
+            "unlanguaged block must still have top border ╭"
+        );
+        assert!(
+            all.contains('╰'),
+            "unlanguaged block must still have bottom border ╰"
+        );
     }
 
     #[test]
@@ -654,7 +681,10 @@ mod tests {
         // Falls back to plain text highlighting; must not panic
         let lines = test_render("```xyzzy_unknown\nsome code\n```");
         let all = all_lines_text(&lines);
-        assert!(all.contains("some code"), "unknown-language code block must render content");
+        assert!(
+            all.contains("some code"),
+            "unknown-language code block must render content"
+        );
     }
 
     #[test]
@@ -682,8 +712,14 @@ mod tests {
     fn test_code_block_preserves_whitespace() {
         let lines = test_render("```\n    indented\n        double\n```");
         let all = all_lines_text(&lines);
-        assert!(all.contains("    indented"), "leading spaces must be preserved");
-        assert!(all.contains("        double"), "deeper indent must be preserved");
+        assert!(
+            all.contains("    indented"),
+            "leading spaces must be preserved"
+        );
+        assert!(
+            all.contains("        double"),
+            "deeper indent must be preserved"
+        );
     }
 
     #[test]
@@ -691,8 +727,14 @@ mod tests {
         // Must not panic; produces border lines even with no content
         let lines = test_render("```rust\n```");
         let all = all_lines_text(&lines);
-        assert!(all.contains('╭'), "empty code block must still have top border");
-        assert!(all.contains('╰'), "empty code block must still have bottom border");
+        assert!(
+            all.contains('╭'),
+            "empty code block must still have top border"
+        );
+        assert!(
+            all.contains('╰'),
+            "empty code block must still have bottom border"
+        );
     }
 
     // ── Lists ─────────────────────────────────────────────────────────────
@@ -701,7 +743,10 @@ mod tests {
     fn test_unordered_list_bullet() {
         let lines = test_render("- alpha\n- beta");
         let all = all_lines_text(&lines);
-        assert!(all.contains('•'), "unordered list must use bullet character •");
+        assert!(
+            all.contains('•'),
+            "unordered list must use bullet character •"
+        );
         assert!(all.contains("alpha"));
         assert!(all.contains("beta"));
     }
@@ -756,7 +801,10 @@ mod tests {
         assert!(all.contains("hello"), "blockquote content must appear");
 
         let border_line = lines.iter().find(|l| line_text(l).contains('│'));
-        assert!(border_line.is_some(), "blockquote border │ must appear; lines: {lines:?}");
+        assert!(
+            border_line.is_some(),
+            "blockquote border │ must appear; lines: {lines:?}"
+        );
 
         let border_text = line_text(border_line.unwrap());
         assert!(
@@ -796,9 +844,14 @@ mod tests {
         // Two levels of blockquote should produce two │ characters on the content line.
         let lines = test_render("> > deeply nested");
         let all = all_lines_text(&lines);
-        assert!(all.contains("deeply nested"), "nested blockquote content must appear");
+        assert!(
+            all.contains("deeply nested"),
+            "nested blockquote content must appear"
+        );
 
-        let content_line = lines.iter().find(|l| line_text(l).contains("deeply nested"));
+        let content_line = lines
+            .iter()
+            .find(|l| line_text(l).contains("deeply nested"));
         assert!(content_line.is_some(), "content line must exist");
         let text = line_text(content_line.unwrap());
         let border_count = text.matches('│').count();
@@ -915,8 +968,14 @@ mod tests {
         assert!(all.contains('c'));
         // Column separators (┬ in top border, ┼ in header sep, ┴ in bottom)
         assert!(all.contains('┬'), "3-col table must have ┬ in top border");
-        assert!(all.contains('┼'), "3-col table must have ┼ in header separator");
-        assert!(all.contains('┴'), "3-col table must have ┴ in bottom border");
+        assert!(
+            all.contains('┼'),
+            "3-col table must have ┼ in header separator"
+        );
+        assert!(
+            all.contains('┴'),
+            "3-col table must have ┴ in bottom border"
+        );
     }
 
     // ── Structural ────────────────────────────────────────────────────────
@@ -934,7 +993,10 @@ mod tests {
         assert!(rule_line.is_some(), "rule line must exist");
         let rule_text = line_text(rule_line.unwrap());
         let dash_count = rule_text.chars().filter(|&c| c == '─').count();
-        assert!(dash_count >= 10, "horizontal rule must have ≥10 dashes, got {dash_count}");
+        assert!(
+            dash_count >= 10,
+            "horizontal rule must have ≥10 dashes, got {dash_count}"
+        );
     }
 
     #[test]
@@ -957,10 +1019,18 @@ mod tests {
         assert!(all.contains("second paragraph"));
 
         // They must be on different lines
-        let first = lines.iter().position(|l| line_text(l).contains("first paragraph"));
-        let second = lines.iter().position(|l| line_text(l).contains("second paragraph"));
+        let first = lines
+            .iter()
+            .position(|l| line_text(l).contains("first paragraph"));
+        let second = lines
+            .iter()
+            .position(|l| line_text(l).contains("second paragraph"));
         assert!(first.is_some() && second.is_some());
-        assert_ne!(first.unwrap(), second.unwrap(), "two paragraphs must be on different lines");
+        assert_ne!(
+            first.unwrap(),
+            second.unwrap(),
+            "two paragraphs must be on different lines"
+        );
     }
 
     #[test]
@@ -975,7 +1045,11 @@ mod tests {
         let first = lines.iter().position(|l| line_text(l).contains("line one"));
         let second = lines.iter().position(|l| line_text(l).contains("line two"));
         assert!(first.is_some() && second.is_some());
-        assert_ne!(first.unwrap(), second.unwrap(), "hard break must split into separate lines");
+        assert_ne!(
+            first.unwrap(),
+            second.unwrap(),
+            "hard break must split into separate lines"
+        );
     }
 
     #[test]
@@ -1002,7 +1076,10 @@ mod tests {
     #[test]
     fn test_empty_input() {
         let lines = test_render("");
-        assert!(lines.is_empty(), "empty input must produce no lines, got: {lines:?}");
+        assert!(
+            lines.is_empty(),
+            "empty input must produce no lines, got: {lines:?}"
+        );
     }
 
     #[test]
@@ -1037,7 +1114,10 @@ mod tests {
         // A single paragraph line >500 chars must render without panicking
         let long = "word ".repeat(120); // ~600 chars
         let lines = test_render(long.trim());
-        assert!(!lines.is_empty(), "very long line must produce at least one output line");
+        assert!(
+            !lines.is_empty(),
+            "very long line must produce at least one output line"
+        );
     }
 
     #[test]
@@ -1125,7 +1205,15 @@ mod tests {
             .find(|s| s.content.contains("`foo`"));
         assert!(code_span.is_some(), "inline code span must exist");
         let span = code_span.unwrap();
-        assert_eq!(span.style.fg, Some(theme.warning), "inline code fg must be warning color");
-        assert_eq!(span.style.bg, Some(theme.code_bg), "inline code bg must be code_bg color");
+        assert_eq!(
+            span.style.fg,
+            Some(theme.warning),
+            "inline code fg must be warning color"
+        );
+        assert_eq!(
+            span.style.bg,
+            Some(theme.code_bg),
+            "inline code bg must be code_bg color"
+        );
     }
 }

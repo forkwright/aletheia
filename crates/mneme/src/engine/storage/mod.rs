@@ -8,9 +8,9 @@ use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::ValidityTs;
 use crate::engine::runtime::relation::decode_tuple_from_kv;
 
+#[cfg(feature = "storage-fjall")]
+pub(crate) mod fjall_backend;
 pub(crate) mod mem;
-#[cfg(feature = "storage-new-rocksdb")]
-pub(crate) mod newrocks;
 #[cfg(feature = "storage-redb")]
 pub(crate) mod redb;
 pub(crate) mod temp;

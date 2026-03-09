@@ -85,8 +85,9 @@ impl Config {
         file_config.token = Some(token.to_string());
         let yaml_str = serde_yaml::to_string(&file_config).context(YamlSnafu)?;
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .context(IoSnafu { context: "create config directory" })?;
+            std::fs::create_dir_all(parent).context(IoSnafu {
+                context: "create config directory",
+            })?;
         }
         write_config(&path, &yaml_str)?;
         tracing::info!("saved token to {}", path.display());
@@ -137,12 +138,17 @@ impl Config {
 }
 
 fn write_config(path: &Path, content: &str) -> Result<()> {
-    std::fs::write(path, content).context(IoSnafu { context: "write config file" })?;
+    std::fs::write(path, content).context(IoSnafu {
+        context: "write config file",
+    })?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-            .context(IoSnafu { context: "set config file permissions" })?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).context(
+            IoSnafu {
+                context: "set config file permissions",
+            },
+        )?;
     }
     Ok(())
 }

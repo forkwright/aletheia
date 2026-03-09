@@ -154,6 +154,15 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// HNSW vector index operation failed.
+    #[cfg(feature = "hnsw_rs")]
+    #[snafu(display("HNSW index error: {message}"))]
+    HnswIndex {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using mneme's [`Error`] type.

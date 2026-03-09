@@ -44,7 +44,9 @@ impl ApiClient {
             .cookie_store(true)
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .context(HttpSnafu { operation: "build HTTP client" })?;
+            .context(HttpSnafu {
+                operation: "build HTTP client",
+            })?;
 
         Ok(Self {
             client,
@@ -88,7 +90,9 @@ impl ApiClient {
             .get(self.url("/api/health"))
             .send()
             .await
-            .context(HttpSnafu { operation: "health check" })?;
+            .context(HttpSnafu {
+                operation: "health check",
+            })?;
         Ok(resp.status().is_success())
     }
 
@@ -100,8 +104,12 @@ impl ApiClient {
             .request(reqwest::Method::GET, "/api/auth/mode")
             .send()
             .await
-            .context(HttpSnafu { operation: "auth mode check" })?;
-        resp.json().await.context(HttpSnafu { operation: "auth mode response" })
+            .context(HttpSnafu {
+                operation: "auth mode check",
+            })?;
+        resp.json().await.context(HttpSnafu {
+            operation: "auth mode response",
+        })
     }
 
     #[expect(dead_code, reason = "reserved for future interactive login flow")]
@@ -119,9 +127,12 @@ impl ApiClient {
             return AuthSnafu.fail();
         }
 
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "login request" })?;
-        resp.json().await.context(HttpSnafu { operation: "login response" })
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "login request",
+        })?;
+        resp.json().await.context(HttpSnafu {
+            operation: "login response",
+        })
     }
 
     // --- Agents ---
@@ -132,12 +143,16 @@ impl ApiClient {
             .request(reqwest::Method::GET, "/api/v1/nous")
             .send()
             .await
-            .context(HttpSnafu { operation: "load agents" })?;
+            .context(HttpSnafu {
+                operation: "load agents",
+            })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "agents request" })?;
-        let wrapper: AgentsResponse =
-            resp.json().await.context(HttpSnafu { operation: "agents response" })?;
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "agents request",
+        })?;
+        let wrapper: AgentsResponse = resp.json().await.context(HttpSnafu {
+            operation: "agents response",
+        })?;
         Ok(wrapper.nous)
     }
 
@@ -153,12 +168,16 @@ impl ApiClient {
             )
             .send()
             .await
-            .context(HttpSnafu { operation: "load sessions" })?;
+            .context(HttpSnafu {
+                operation: "load sessions",
+            })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "sessions request" })?;
-        let wrapper: SessionsResponse =
-            resp.json().await.context(HttpSnafu { operation: "sessions response" })?;
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "sessions request",
+        })?;
+        let wrapper: SessionsResponse = resp.json().await.context(HttpSnafu {
+            operation: "sessions response",
+        })?;
         Ok(wrapper.sessions)
     }
 
@@ -172,12 +191,16 @@ impl ApiClient {
             )
             .send()
             .await
-            .context(HttpSnafu { operation: "load history" })?;
+            .context(HttpSnafu {
+                operation: "load history",
+            })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "history request" })?;
-        let wrapper: HistoryResponse =
-            resp.json().await.context(HttpSnafu { operation: "history response" })?;
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "history request",
+        })?;
+        let wrapper: HistoryResponse = resp.json().await.context(HttpSnafu {
+            operation: "history response",
+        })?;
         Ok(wrapper.messages)
     }
 
@@ -191,11 +214,16 @@ impl ApiClient {
             }))
             .send()
             .await
-            .context(HttpSnafu { operation: "create session" })?;
+            .context(HttpSnafu {
+                operation: "create session",
+            })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "create session request" })?;
-        resp.json().await.context(HttpSnafu { operation: "create session response" })
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "create session request",
+        })?;
+        resp.json().await.context(HttpSnafu {
+            operation: "create session response",
+        })
     }
 
     #[tracing::instrument(skip(self))]
@@ -207,9 +235,13 @@ impl ApiClient {
         )
         .send()
         .await
-        .context(HttpSnafu { operation: "archive session" })?
+        .context(HttpSnafu {
+            operation: "archive session",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "archive request" })?;
+        .context(HttpSnafu {
+            operation: "archive request",
+        })?;
         Ok(())
     }
 
@@ -222,9 +254,13 @@ impl ApiClient {
         )
         .send()
         .await
-        .context(HttpSnafu { operation: "unarchive session" })?
+        .context(HttpSnafu {
+            operation: "unarchive session",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "unarchive request" })?;
+        .context(HttpSnafu {
+            operation: "unarchive request",
+        })?;
         Ok(())
     }
 
@@ -238,9 +274,13 @@ impl ApiClient {
         .json(&serde_json::json!({ "name": name }))
         .send()
         .await
-        .context(HttpSnafu { operation: "rename session" })?
+        .context(HttpSnafu {
+            operation: "rename session",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "rename request" })?;
+        .context(HttpSnafu {
+            operation: "rename request",
+        })?;
         Ok(())
     }
 
@@ -256,9 +296,13 @@ impl ApiClient {
         )
         .send()
         .await
-        .context(HttpSnafu { operation: "abort turn" })?
+        .context(HttpSnafu {
+            operation: "abort turn",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "abort request" })?;
+        .context(HttpSnafu {
+            operation: "abort request",
+        })?;
         Ok(())
     }
 
@@ -272,9 +316,13 @@ impl ApiClient {
         )
         .send()
         .await
-        .context(HttpSnafu { operation: "approve tool" })?
+        .context(HttpSnafu {
+            operation: "approve tool",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "approve request" })?;
+        .context(HttpSnafu {
+            operation: "approve request",
+        })?;
         Ok(())
     }
 
@@ -288,9 +336,13 @@ impl ApiClient {
         )
         .send()
         .await
-        .context(HttpSnafu { operation: "deny tool" })?
+        .context(HttpSnafu {
+            operation: "deny tool",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "deny request" })?;
+        .context(HttpSnafu {
+            operation: "deny request",
+        })?;
         Ok(())
     }
 
@@ -305,9 +357,13 @@ impl ApiClient {
         )
         .send()
         .await
-        .context(HttpSnafu { operation: "approve plan" })?
+        .context(HttpSnafu {
+            operation: "approve plan",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "plan approve request" })?;
+        .context(HttpSnafu {
+            operation: "plan approve request",
+        })?;
         Ok(())
     }
 
@@ -320,9 +376,13 @@ impl ApiClient {
         )
         .send()
         .await
-        .context(HttpSnafu { operation: "cancel plan" })?
+        .context(HttpSnafu {
+            operation: "cancel plan",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "plan cancel request" })?;
+        .context(HttpSnafu {
+            operation: "plan cancel request",
+        })?;
         Ok(())
     }
 
@@ -334,11 +394,15 @@ impl ApiClient {
             .request(reqwest::Method::GET, "/api/v1/costs/daily")
             .send()
             .await
-            .context(HttpSnafu { operation: "load costs" })?;
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "costs request" })?;
-        let daily: DailyResponse =
-            resp.json().await.context(HttpSnafu { operation: "costs response" })?;
+            .context(HttpSnafu {
+                operation: "load costs",
+            })?;
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "costs request",
+        })?;
+        let daily: DailyResponse = resp.json().await.context(HttpSnafu {
+            operation: "costs response",
+        })?;
         // Get today's entry (last in list)
         let today_cost = daily.daily.last().map(|d| d.cost).unwrap_or(0.0);
         // Convert dollars to cents
@@ -356,9 +420,13 @@ impl ApiClient {
         )
         .send()
         .await
-        .context(HttpSnafu { operation: "trigger distillation" })?
+        .context(HttpSnafu {
+            operation: "trigger distillation",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "distillation request" })?;
+        .context(HttpSnafu {
+            operation: "distillation request",
+        })?;
         Ok(())
     }
 
@@ -375,10 +443,15 @@ impl ApiClient {
             .query(&[("q", query)])
             .send()
             .await
-            .context(HttpSnafu { operation: "recall memory" })?;
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "recall request" })?;
-        resp.text().await.context(HttpSnafu { operation: "recall response" })
+            .context(HttpSnafu {
+                operation: "recall memory",
+            })?;
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "recall request",
+        })?;
+        resp.text().await.context(HttpSnafu {
+            operation: "recall response",
+        })
     }
 
     // --- Config ---
@@ -389,11 +462,16 @@ impl ApiClient {
             .request(reqwest::Method::GET, "/api/v1/config")
             .send()
             .await
-            .context(HttpSnafu { operation: "load config" })?;
+            .context(HttpSnafu {
+                operation: "load config",
+            })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "config request" })?;
-        resp.json().await.context(HttpSnafu { operation: "config response" })
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "config request",
+        })?;
+        resp.json().await.context(HttpSnafu {
+            operation: "config response",
+        })
     }
 
     #[tracing::instrument(skip(self, data))]
@@ -408,11 +486,16 @@ impl ApiClient {
             .json(data)
             .send()
             .await
-            .context(HttpSnafu { operation: "update config" })?;
+            .context(HttpSnafu {
+                operation: "update config",
+            })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref()
-            .context(HttpSnafu { operation: "config update request" })?;
-        resp.json().await.context(HttpSnafu { operation: "config update response" })
+        resp.error_for_status_ref().context(HttpSnafu {
+            operation: "config update request",
+        })?;
+        resp.json().await.context(HttpSnafu {
+            operation: "config update response",
+        })
     }
 
     // --- Message queue (mid-turn) ---
@@ -427,9 +510,13 @@ impl ApiClient {
         .json(&serde_json::json!({ "text": text }))
         .send()
         .await
-        .context(HttpSnafu { operation: "queue message" })?
+        .context(HttpSnafu {
+            operation: "queue message",
+        })?
         .error_for_status_ref()
-        .context(HttpSnafu { operation: "queue request" })?;
+        .context(HttpSnafu {
+            operation: "queue request",
+        })?;
         Ok(())
     }
 

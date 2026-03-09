@@ -45,9 +45,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
                 // Current view — bold
                 spans.push(Span::styled(
                     crumb.to_string(),
-                    theme
-                        .style_fg()
-                        .add_modifier(Modifier::BOLD),
+                    theme.style_fg().add_modifier(Modifier::BOLD),
                 ));
             } else {
                 // Parent views — dim

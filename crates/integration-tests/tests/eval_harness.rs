@@ -18,8 +18,8 @@ use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_symbolon::types::Role;
-use tokio_util::sync::CancellationToken;
 use aletheia_taxis::oikos::Oikos;
+use tokio_util::sync::CancellationToken;
 
 struct MockProvider {
     response: CompletionResponse,

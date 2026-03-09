@@ -167,7 +167,10 @@ impl App {
     #[tracing::instrument(skip(self), fields(url = %self.config.url))]
     async fn connect(&mut self) -> Result<()> {
         if !self.client.health().await.unwrap_or(false) {
-            return GatewayUnreachableSnafu { url: self.config.url.clone() }.fail();
+            return GatewayUnreachableSnafu {
+                url: self.config.url.clone(),
+            }
+            .fail();
         }
 
         match self.client.auth_mode().await {

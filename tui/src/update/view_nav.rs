@@ -1,8 +1,8 @@
 //! View stack navigation handlers — drill-in (Enter) and pop-back (Esc).
 
 use crate::app::App;
-use crate::state::view_stack::View;
 use crate::state::SavedScrollState;
+use crate::state::view_stack::View;
 
 /// Save the current scroll state keyed by the view stack depth before pushing.
 fn save_view_scroll(app: &mut App) {
@@ -42,9 +42,8 @@ pub(crate) fn handle_drill_in(app: &mut App) {
             // If a message is selected, drill into message detail
             if let Some(idx) = app.selected_message {
                 save_view_scroll(app);
-                app.view_stack.push(View::MessageDetail {
-                    message_index: idx,
-                });
+                app.view_stack
+                    .push(View::MessageDetail { message_index: idx });
                 app.scroll_offset = 0;
                 app.auto_scroll = true;
                 return;
@@ -77,9 +76,8 @@ pub(crate) fn handle_drill_in(app: &mut App) {
             // Drill into message detail if a message is selected
             if let Some(idx) = app.selected_message {
                 save_view_scroll(app);
-                app.view_stack.push(View::MessageDetail {
-                    message_index: idx,
-                });
+                app.view_stack
+                    .push(View::MessageDetail { message_index: idx });
                 app.scroll_offset = 0;
                 app.auto_scroll = true;
             }
@@ -189,7 +187,8 @@ mod tests {
     #[test]
     fn drill_in_from_leaf_is_noop() {
         let mut app = test_app();
-        app.view_stack.push(View::MessageDetail { message_index: 0 });
+        app.view_stack
+            .push(View::MessageDetail { message_index: 0 });
         let depth_before = app.view_stack.depth();
 
         handle_drill_in(&mut app);
