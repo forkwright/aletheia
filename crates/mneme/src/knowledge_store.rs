@@ -39,7 +39,7 @@
 //! }
 //! ```
 
-// This module contains the CozoDB store implementation as documentation and
+// This module contains the `CozoDB` store implementation as documentation and
 // reference code. It will be activated when the cozo feature flag is enabled
 // in the production binary.
 //
@@ -823,7 +823,7 @@ impl KnowledgeStore {
         params.insert("ef".to_owned(), DataValue::from(ef_i64));
         params.insert("limit".to_owned(), DataValue::from(limit_i64));
 
-        let script = build_hybrid_query(q)?;
+        let script = build_hybrid_query(q);
         let rows = self.run_read(&script, params)?;
         let results = rows_to_hybrid_results(rows)?;
 
@@ -1047,7 +1047,7 @@ impl KnowledgeStore {
         let now = jiff::Timestamp::now();
         for id in fact_ids {
             // Read the current fact rows, increment in Rust, then write back.
-            // CozoDB in-memory read-modify-write in a single Datalog rule does not
+            // `CozoDB` in-memory read-modify-write in a single Datalog rule does not
             // reflect the mutation in subsequent reads — avoid that pattern.
             let facts = match self.read_facts_by_id(id.as_str()) {
                 Ok(f) => f,
@@ -2376,7 +2376,7 @@ fn rows_to_recall_results(
 // When non-empty, seeds are expanded inline (avoids is_in() built-in dependency).
 // Double-quote characters are escaped in interpolated entity IDs.
 #[cfg(feature = "mneme-engine")]
-fn build_hybrid_query(q: &HybridQuery) -> crate::error::Result<String> {
+fn build_hybrid_query(q: &HybridQuery) -> String {
     let graph_rules = if q.seed_entities.is_empty() {
         // Empty graph relation — graph signal contributes 0 to RRF
         "graph[id, score] <- []".to_owned()
@@ -2395,7 +2395,7 @@ fn build_hybrid_query(q: &HybridQuery) -> crate::error::Result<String> {
              graph[id, sum(score)] := graph_raw[id, score]"
         )
     };
-    Ok(queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules))
+    queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules)
 }
 
 // Parse rows from ReciprocalRankFusion output into Vec<HybridResult>.
@@ -2622,7 +2622,7 @@ mod tests {
             limit: 5,
             ef: 20,
         };
-        let script = build_hybrid_query(&q).expect("valid query");
+        let script = build_hybrid_query(&q);
         assert!(
             script.contains("graph[id, score] <- []"),
             "empty seeds must produce empty graph relation"
@@ -2640,7 +2640,7 @@ mod tests {
             limit: 5,
             ef: 20,
         };
-        let script = build_hybrid_query(&q).expect("valid entity ids");
+        let script = build_hybrid_query(&q);
         assert!(
             script.contains("seed_list"),
             "non-empty seeds must produce seed_list relation"
@@ -2670,8 +2670,8 @@ mod tests {
                 limit: 5,
                 ef: 20,
             };
-            let result = build_hybrid_query(&q);
-            assert!(result.is_ok(), "valid seed {seed:?} must be accepted");
+            let script = build_hybrid_query(&q);
+            assert!(!script.is_empty(), "valid seed {seed:?} must produce a non-empty script");
         }
     }
 
@@ -2745,9 +2745,7 @@ mod tests {
         reason = "integration test with setup/assert phases"
     )]
     fn hybrid_search_graph_aggregation() {
-        use crate::knowledge::{
-            EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship,
-        };
+        use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
 
         let dim = 4;
         let store =
@@ -4612,18 +4610,18 @@ mod knowledge_store_tests {
         })
         .unwrap();
         Fact {
-            id: id.to_owned(),
+            id: crate::id::FactId::new_unchecked(id),
             nous_id: nous_id.to_owned(),
             content,
             confidence: 0.5,
             tier: EpistemicTier::Assumed,
-            valid_from: "2026-01-01".to_owned(),
-            valid_to: "9999-12-31".to_owned(),
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
             access_count: 0,
-            last_accessed_at: String::new(),
+            last_accessed_at: None,
             stability_hours: 2190.0,
             fact_type: "skill".to_owned(),
             is_forgotten: false,
@@ -4682,11 +4680,11 @@ mod knowledge_store_tests {
             .find_skills_for_nous("alice", 100)
             .expect("query alice");
         assert_eq!(alice_results.len(), 1);
-        assert_eq!(alice_results[0].id, "sk-a");
+        assert_eq!(alice_results[0].id.as_str(), "sk-a");
 
         let bob_results = store.find_skills_for_nous("bob", 100).expect("query bob");
         assert_eq!(bob_results.len(), 1);
-        assert_eq!(bob_results[0].id, "sk-b");
+        assert_eq!(bob_results[0].id.as_str(), "sk-b");
     }
 
     #[test]
@@ -4703,13 +4701,13 @@ mod knowledge_store_tests {
             .find_skills_by_domain("alice", &["rust"], 100)
             .expect("query");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "sk-r");
+        assert_eq!(results[0].id.as_str(), "sk-r");
 
         let results = store
             .find_skills_by_domain("alice", &["web"], 100)
             .expect("query");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "sk-p");
+        assert_eq!(results[0].id.as_str(), "sk-p");
 
         let results = store
             .find_skills_by_domain("alice", &["rust", "python"], 100)
@@ -4765,7 +4763,7 @@ mod knowledge_store_tests {
 
         // Forget it
         store
-            .forget_fact("sk-forget", crate::knowledge::ForgetReason::Outdated)
+            .forget_fact(&crate::id::FactId::new_unchecked("sk-forget"), crate::knowledge::ForgetReason::Outdated)
             .expect("forget");
 
         let results = store.find_skills_for_nous("alice", 100).expect("query");
@@ -4789,7 +4787,7 @@ mod knowledge_store_tests {
         let results = store.search_skills("alice", "docker", 10).expect("search");
         // Should find the docker skill (BM25 matches on content which contains "docker")
         assert!(
-            results.iter().any(|f| f.id == "sk-docker"),
+            results.iter().any(|f| f.id.as_str() == "sk-docker"),
             "search should find docker skill"
         );
     }

@@ -1243,19 +1243,6 @@ Some text
 
     #[cfg(feature = "mneme-engine")]
     #[test]
-    fn now_iso8601_uses_jiff_format() {
-        let ts = now_iso8601();
-        // Must match YYYY-MM-DDTHH:MM:SSZ
-        assert_eq!(ts.len(), 20, "timestamp must be exactly 20 chars: {ts}");
-        assert!(ts.ends_with('Z'), "timestamp must end with Z: {ts}");
-        assert_eq!(&ts[10..11], "T", "timestamp must have T separator: {ts}");
-        // Year must be plausible (>= 2025)
-        let year: u32 = ts[..4].parse().expect("year must be numeric");
-        assert!(year >= 2025, "year must be >= 2025, got {year}");
-    }
-
-    #[cfg(feature = "mneme-engine")]
-    #[test]
     fn persist_skips_is_type() {
         let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
         let engine = ExtractionEngine::new(ExtractionConfig::default());

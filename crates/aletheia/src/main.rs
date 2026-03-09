@@ -1695,9 +1695,7 @@ fn seed_skills_cmd(dir: &Path, nous_id: &str, force: bool, dry_run: bool) -> Res
         let store = KnowledgeStore::open_mem()
             .map_err(|e| anyhow::anyhow!("failed to open knowledge store: {e}"))?;
 
-        let now = jiff::Zoned::now()
-            .strftime("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
+        let now = jiff::Timestamp::now();
         let mut seeded = 0u32;
         let mut skipped = 0u32;
         let mut overwritten = 0u32;
@@ -1712,7 +1710,7 @@ fn seed_skills_cmd(dir: &Path, nous_id: &str, force: bool, dry_run: bool) -> Res
                 if force {
                     // Supersede the old fact
                     if let Err(e) = store.forget_fact(
-                        &existing_id,
+                        &aletheia_mneme::id::FactId::from(existing_id),
                         aletheia_mneme::knowledge::ForgetReason::Outdated,
                     ) {
                         eprintln!("  WARN: failed to supersede {slug}: {e}");
@@ -1730,18 +1728,18 @@ fn seed_skills_cmd(dir: &Path, nous_id: &str, force: bool, dry_run: bool) -> Res
 
             let fact_id = ulid::Ulid::new().to_string();
             let fact = Fact {
-                id: fact_id.clone(),
+                id: aletheia_mneme::id::FactId::from(fact_id.clone()),
                 nous_id: nous_id.to_owned(),
                 content: content_json.clone(),
                 confidence: 0.5,
                 tier: EpistemicTier::Assumed,
-                valid_from: now.clone(),
-                valid_to: "9999-12-31".to_owned(),
+                valid_from: now,
+                valid_to: aletheia_mneme::knowledge::far_future(),
                 superseded_by: None,
                 source_session_id: None,
-                recorded_at: now.clone(),
+                recorded_at: now,
                 access_count: 0,
-                last_accessed_at: String::new(),
+                last_accessed_at: None,
                 stability_hours: default_stability_hours("skill"),
                 fact_type: "skill".to_owned(),
                 is_forgotten: false,
@@ -1757,13 +1755,13 @@ fn seed_skills_cmd(dir: &Path, nous_id: &str, force: bool, dry_run: bool) -> Res
             let embedding_text = format!("{}: {}", skill.name, skill.description);
             let emb_id = ulid::Ulid::new().to_string();
             let chunk = aletheia_mneme::knowledge::EmbeddedChunk {
-                id: emb_id,
+                id: aletheia_mneme::id::EmbeddingId::from(emb_id),
                 content: embedding_text,
                 source_type: "fact".to_owned(),
                 source_id: fact_id,
                 nous_id: nous_id.to_owned(),
                 embedding: generate_simple_embedding(&content_json),
-                created_at: now.clone(),
+                created_at: now,
             };
             if let Err(e) = store.insert_embedding(&chunk) {
                 eprintln!("  WARN: failed to insert embedding for {slug}: {e}");

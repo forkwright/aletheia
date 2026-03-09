@@ -187,7 +187,7 @@ fn query_all_entities(
             .unwrap_or_else(jiff::Timestamp::now);
 
         entities.push(crate::knowledge::Entity {
-            id: crate::knowledge::EntityId::from(id),
+            id,
             name,
             entity_type,
             aliases,
@@ -222,8 +222,8 @@ fn query_all_relationships(
             .unwrap_or_else(jiff::Timestamp::now);
 
         relationships.push(crate::knowledge::Relationship {
-            src: crate::knowledge::EntityId::from(src),
-            dst: crate::knowledge::EntityId::from(dst),
+            src,
+            dst,
             relation,
             weight,
             created_at,

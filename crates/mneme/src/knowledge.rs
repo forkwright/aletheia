@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn entity_id_from_string() {
         let id = EntityId::from("bob".to_owned());
-        assert_eq!(&*id, "bob");
+        assert_eq!(id.as_str(), "bob");
     }
 
     #[test]
