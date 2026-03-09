@@ -12,6 +12,7 @@ use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
 
 use crate::error::Result;
+use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, ToolCategory, ToolContext, ToolDef, ToolInput,
@@ -35,18 +36,22 @@ fn truncate_output(mut output: String) -> String {
 }
 
 fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
-    let mut child = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    // Wrap in ProcessGuard so the child is killed and reaped on any early
+    // return (I/O error, panic, etc.) before we reach wait().
+    let mut guard =
+        ProcessGuard::new(cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?);
 
     let mut stdout = String::new();
-    if let Some(ref mut pipe) = child.stdout {
+    if let Some(ref mut pipe) = guard.get_mut().stdout {
         let _ = pipe.read_to_string(&mut stdout);
     }
     let mut stderr = String::new();
-    if let Some(ref mut pipe) = child.stderr {
+    if let Some(ref mut pipe) = guard.get_mut().stderr {
         let _ = pipe.read_to_string(&mut stderr);
     }
 
-    let status = child.wait()?;
+    // Detach the guard (no kill needed) and reap the process.
+    let status = guard.detach().wait()?;
     Ok(std::process::Output {
         status,
         stdout: stdout.into_bytes(),

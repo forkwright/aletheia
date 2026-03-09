@@ -24,6 +24,15 @@ const TABLE: redb::TableDefinition<'_, &[u8], &[u8]> = redb::TableDefinition::ne
 /// Opens or creates a redb-backed database at the given path.
 ///
 /// Pure Rust, zero C dependencies, ACID transactions, single-file database.
+///
+/// # Cleanup contract
+///
+/// - The returned `DbCore` holds an `Arc<redb::Database>`.  All temporary
+///   directories used during testing are managed by `tempfile::TempDir`,
+///   which removes the directory (and its `data.redb` file) on drop — even
+///   on panic.  Production paths live under `instance/` and are not
+///   automatically removed.
+/// - redb flushes its WAL on `Database` drop; no manual flush is needed.
 pub fn new_cozo_redb(path: impl AsRef<Path>) -> Result<DbCore<RedbStorage>> {
     let path = path.as_ref();
     fs::create_dir_all(path).map_err(|e| {
@@ -58,6 +67,17 @@ pub fn new_cozo_redb(path: impl AsRef<Path>) -> Result<DbCore<RedbStorage>> {
 }
 
 /// redb storage engine — pure Rust, zero C deps, single-file ACID database.
+///
+/// # Cleanup and WAL safety
+///
+/// `redb::Database` owns the write-ahead log.  When the last `Arc<Database>`
+/// reference is dropped, redb flushes and closes the WAL automatically —
+/// no explicit flush call is required.  Uncommitted `WriteTransaction`
+/// values roll back when dropped without calling `commit()`.
+///
+/// The `DbCore<RedbStorage>` wrapper holds the `Arc<Database>` and may be
+/// cloned; the underlying file is closed (and flushed) once *all* clones
+/// are dropped.
 #[derive(Clone)]
 pub struct RedbStorage {
     db: Arc<redb::Database>,
@@ -709,6 +729,64 @@ mod tests {
             ScriptMutability::Mutable,
         )?;
         Ok((temp_dir, db))
+    }
+
+    /// Verify that `TempDir` cleans up the database file on drop — including
+    /// when the outer scope exits normally.  This documents the RAII contract
+    /// relied on by all redb tests.
+    #[test]
+    fn temp_dir_raii_removes_database_file_on_drop() {
+        let db_path = {
+            let dir =
+                TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))
+                    .expect("create temp dir");
+            let db_file = dir.path().join("data.redb");
+            let path_copy = db_file.clone();
+
+            // Create the database so the file exists.
+            new_cozo_redb(dir.path()).expect("create db");
+            assert!(db_file.exists(), "data.redb should exist while TempDir is live");
+
+            path_copy
+            // `dir` (TempDir) drops here, removing the directory tree.
+        };
+        assert!(!db_path.exists(), "data.redb should be removed after TempDir drop");
+    }
+
+    /// Verify that data written and committed before dropping the Database
+    /// is readable after reopening — confirming WAL flush on drop.
+    #[test]
+    fn redb_flushes_wal_on_database_drop() -> Result<()> {
+        use crate::engine::runtime::db::ScriptMutability;
+
+        let dir = TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+
+        // Write and commit data, then drop the Database.
+        {
+            let db = new_cozo_redb(dir.path())?;
+            db.run_script(
+                "{:create wal_check {k: Int => v: String}}",
+                Default::default(),
+                ScriptMutability::Mutable,
+            )?;
+            db.run_script(
+                r#"?[k, v] <- [[42, "sentinel"]] :put wal_check {k => v}"#,
+                Default::default(),
+                ScriptMutability::Mutable,
+            )?;
+            // `db` dropped here — redb flushes WAL.
+        }
+
+        // Reopen and confirm the data survived.
+        let db2 = new_cozo_redb(dir.path())?;
+        let result = db2.run_script(
+            "?[v] := *wal_check{k: 42, v}",
+            Default::default(),
+            ScriptMutability::Immutable,
+        )?;
+        assert_eq!(result.rows.len(), 1, "row should survive WAL flush on drop");
+        assert_eq!(result.rows[0][0], DataValue::Str("sentinel".into()));
+        Ok(())
     }
 
     #[test]

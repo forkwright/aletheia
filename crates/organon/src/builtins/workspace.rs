@@ -7,6 +7,8 @@ use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::process_guard::ProcessGuard;
+
 use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
 
@@ -264,8 +266,10 @@ impl ToolExecutor for ExecExecutor {
                 crate::sandbox::apply_sandbox(&mut cmd, policy);
             }
 
-            let mut child = match cmd.spawn() {
-                Ok(c) => c,
+            // Wrap immediately so the child is killed on any early return
+            // (timeout, wait error, or panic).
+            let mut guard = match cmd.spawn() {
+                Ok(c) => ProcessGuard::new(c),
                 Err(e) => {
                     return Ok(err_result(format!("spawn failed: {e}")));
                 }
@@ -273,12 +277,11 @@ impl ToolExecutor for ExecExecutor {
 
             let deadline = Instant::now() + Duration::from_millis(timeout_ms);
             let status = loop {
-                match child.try_wait() {
+                match guard.get_mut().try_wait() {
                     Ok(Some(s)) => break s,
                     Ok(None) => {
                         if Instant::now() >= deadline {
-                            let _ = child.kill();
-                            let _ = child.wait();
+                            // Dropping `guard` kills and reaps the child.
                             return Ok(err_result(format!(
                                 "command timed out after {timeout_ms}ms"
                             )));
@@ -291,12 +294,16 @@ impl ToolExecutor for ExecExecutor {
                 }
             };
 
+            // Process exited normally (`try_wait` already reaped the zombie).
+            // Read captured stdio via the guard. The guard's Drop will call
+            // kill() + wait() on the already-dead process, both of which
+            // safely ignore ESRCH / ECHILD errors.
             let mut stdout = String::new();
-            if let Some(ref mut pipe) = child.stdout {
+            if let Some(ref mut pipe) = guard.get_mut().stdout {
                 let _ = pipe.read_to_string(&mut stdout);
             }
             let mut stderr = String::new();
-            if let Some(ref mut pipe) = child.stderr {
+            if let Some(ref mut pipe) = guard.get_mut().stderr {
                 let _ = pipe.read_to_string(&mut stderr);
             }
 
