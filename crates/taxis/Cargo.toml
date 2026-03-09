@@ -20,4 +20,5 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 figment = { workspace = true, features = ["test"] }
+proptest = { workspace = true }
 tempfile = "3"
