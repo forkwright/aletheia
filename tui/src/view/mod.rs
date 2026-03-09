@@ -89,7 +89,6 @@ pub fn render(app: &App, frame: &mut Frame) {
     // Body: sidebar | main content area (dispatched by current view, with optional ops pane)
     let body_area = vertical[1];
 
-
     if show_sidebar {
         let sidebar_and_rest = Layout::default()
             .direction(Direction::Horizontal)

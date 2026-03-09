@@ -26,7 +26,9 @@ pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let store_ok = state
         .session_store
         .lock()
-        .is_ok_and(|store| store.list_sessions(None).is_ok());
+        .await
+        .list_sessions(None)
+        .is_ok();
     checks.push(HealthCheck {
         name: "session_store",
         status: if store_ok { "pass" } else { "fail" },

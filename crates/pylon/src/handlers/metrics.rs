@@ -16,8 +16,9 @@ pub async fn expose(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let session_count = state
         .session_store
         .lock()
+        .await
+        .list_sessions(None)
         .ok()
-        .and_then(|store| store.list_sessions(None).ok())
         .map_or(0, |sessions| {
             #[expect(clippy::cast_possible_wrap, reason = "session count fits in i64")]
             let count = sessions.len() as i64;

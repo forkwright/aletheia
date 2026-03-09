@@ -2,6 +2,7 @@
 #![cfg(feature = "sqlite-tests")]
 
 use std::sync::{Arc, Mutex};
+use tokio::sync::Mutex as TokioMutex;
 use std::time::{Duration, Instant};
 
 use axum::body::Body;
@@ -167,7 +168,7 @@ impl TestHarness {
         let provider_registry = Arc::new(provider_registry);
         let tool_registry = Arc::new(ToolRegistry::new());
 
-        let session_store = Arc::new(Mutex::new(store));
+        let session_store = Arc::new(TokioMutex::new(store));
 
         let mut nous_manager = NousManager::new(
             Arc::clone(&provider_registry),

@@ -137,7 +137,7 @@ use crate::query::queries;
 /// Typed wrapper for raw Datalog query results.
 ///
 /// Returned by [`KnowledgeStore::run_query`] and related escape-hatch methods.
-/// Hides the `crate::engine::NamedRows` type from callers, keeping CozoDB
+/// Hides the `crate::engine::NamedRows` type from callers, keeping `CozoDB`
 /// internals encapsulated within the knowledge layer.
 ///
 /// Row values are [`crate::engine::DataValue`] — call `.get_str()`, `.get_float()`,
@@ -556,7 +556,7 @@ impl KnowledgeStore {
 
     /// Raw query escape hatch for callers needing custom Datalog.
     ///
-    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep CozoDB
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB`
     /// internals encapsulated. Access row values via `result.rows[i][j]`.
     #[instrument(skip(self, params))]
     pub fn run_query(
@@ -575,7 +575,7 @@ impl KnowledgeStore {
     /// Note: timeout detection relies on the engine error containing "killed before completion"
     /// (from `CozoDB`'s internal `ProcessKilled` error). This is a known fragile dependency.
     ///
-    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep CozoDB internals
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
     #[instrument(skip(self, params))]
     pub fn run_query_with_timeout(
@@ -608,7 +608,7 @@ impl KnowledgeStore {
     /// Raw mutable query escape hatch — runs script with `ScriptMutability::Mutable`.
     /// Required for `:rm` and `:put` operations from caller code.
     ///
-    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep CozoDB internals
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
     #[instrument(skip(self, params))]
     pub fn run_mut_query(
@@ -1688,7 +1688,7 @@ impl KnowledgeStore {
     /// Equivalent to calling `run_query`, but makes the immutability contract explicit
     /// for callers who need a read-only guarantee (e.g., the `datalog_query` tool).
     ///
-    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep CozoDB internals
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals
     /// encapsulated.
     #[instrument(skip(self, params))]
     pub fn run_script_read_only(
@@ -3670,7 +3670,7 @@ mod knowledge_store_tests {
                 let s = Arc::clone(&store);
                 std::thread::spawn(move || {
                     let entity = Entity {
-                        id: format!("e-concurrent-{i}"),
+                        id: format!("e-concurrent-{i}").into(),
                         name: format!("Entity {i}"),
                         entity_type: "concept".to_owned(),
                         aliases: vec![],
