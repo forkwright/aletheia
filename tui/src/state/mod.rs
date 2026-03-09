@@ -5,6 +5,7 @@ mod filter;
 mod input;
 mod overlay;
 pub mod settings;
+pub(crate) mod view_stack;
 
 pub use agent::{AgentState, AgentStatus};
 pub(crate) use chat::SavedScrollState;
@@ -16,3 +17,4 @@ pub use overlay::{
     ContextAction, ContextActionsOverlay, Overlay, PlanApprovalOverlay, PlanStepApproval,
     SessionPickerOverlay, ToolApprovalOverlay,
 };
+pub use view_stack::{View, ViewStack};

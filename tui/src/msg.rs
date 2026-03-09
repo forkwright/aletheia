@@ -73,6 +73,10 @@ pub enum Msg {
     NextAgent, // Ctrl+Tab or similar
     PrevAgent,
 
+    // --- View stack navigation ---
+    ViewDrillIn,  // Enter — push detail view based on context
+    ViewPopBack,  // Esc — pop to previous view
+
     // --- Layout ---
     ToggleSidebar,  // Ctrl+F
     ToggleThinking, // Ctrl+T

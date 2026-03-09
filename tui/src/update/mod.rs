@@ -8,6 +8,7 @@ pub(crate) mod selection;
 pub(crate) mod settings;
 mod sse;
 mod streaming;
+pub(crate) mod view_nav;
 
 use crate::app::App;
 use crate::msg::Msg;
@@ -81,6 +82,8 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::ToggleSidebar => navigation::handle_toggle_sidebar(app),
         Msg::ToggleThinking => navigation::handle_toggle_thinking(app),
         Msg::Resize(w, h) => navigation::handle_resize(app, w, h),
+        Msg::ViewDrillIn => view_nav::handle_drill_in(app),
+        Msg::ViewPopBack => view_nav::handle_pop_back(app),
 
         // --- Overlay ---
         Msg::OpenOverlay(kind) => overlay::handle_open_overlay(app, kind).await,
