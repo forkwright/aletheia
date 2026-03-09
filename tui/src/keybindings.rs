@@ -121,6 +121,12 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Chat],
             show_in_status_bar: true,
         },
+        Keybinding {
+            keys: "v",
+            description: "Enter selection",
+            contexts: &[KeyContext::Chat],
+            show_in_status_bar: true,
+        },
         // --- Selection ---
         Keybinding {
             keys: "j / \u{2193}",
@@ -133,6 +139,12 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             description: "Previous message",
             contexts: &[KeyContext::Selection],
             show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Enter",
+            description: "Context actions",
+            contexts: &[KeyContext::Selection],
+            show_in_status_bar: true,
         },
         Keybinding {
             keys: "c",
@@ -459,6 +471,7 @@ pub fn context_label(app: &App) -> &'static str {
         Some(Overlay::PlanApproval(_)) => "Plan Approval",
         Some(Overlay::SystemStatus) => "System Status",
         Some(Overlay::Settings(_)) => "Settings",
+        Some(Overlay::ContextActions(_)) => "Context Actions",
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::id::{PlanId, ToolId, TurnId};
+use crate::msg::MessageActionKind;
 
 use super::settings::SettingsOverlay;
 
@@ -11,6 +12,25 @@ pub enum Overlay {
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
+    ContextActions(ContextActionsOverlay),
+}
+
+#[derive(Debug)]
+pub struct ContextActionsOverlay {
+    pub actions: Vec<ContextAction>,
+    pub cursor: usize,
+}
+
+impl ContextActionsOverlay {
+    pub fn selected_action(&self) -> Option<&ContextAction> {
+        self.actions.get(self.cursor)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ContextAction {
+    pub label: &'static str,
+    pub kind: MessageActionKind,
 }
 
 #[derive(Debug)]
@@ -90,5 +110,34 @@ mod tests {
         assert_eq!(overlay.steps.len(), 1);
         assert!(overlay.steps[0].checked);
         assert_eq!(overlay.total_cost_cents, 100);
+    }
+
+    #[test]
+    fn context_actions_overlay_selected_action() {
+        let overlay = ContextActionsOverlay {
+            actions: vec![
+                ContextAction {
+                    label: "Copy text",
+                    kind: MessageActionKind::Copy,
+                },
+                ContextAction {
+                    label: "Quote in reply",
+                    kind: MessageActionKind::QuoteInReply,
+                },
+            ],
+            cursor: 1,
+        };
+        let selected = overlay.selected_action().unwrap();
+        assert_eq!(selected.kind, MessageActionKind::QuoteInReply);
+        assert_eq!(selected.label, "Quote in reply");
+    }
+
+    #[test]
+    fn context_actions_overlay_empty_returns_none() {
+        let overlay = ContextActionsOverlay {
+            actions: vec![],
+            cursor: 0,
+        };
+        assert!(overlay.selected_action().is_none());
     }
 }

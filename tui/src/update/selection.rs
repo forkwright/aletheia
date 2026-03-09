@@ -1,7 +1,7 @@
 /// Message selection handlers — navigation, actions, and SelectionContext sync.
 use crate::app::App;
 use crate::msg::{ErrorToast, MessageActionKind};
-use crate::state::SelectionContext;
+use crate::state::{ContextAction, ContextActionsOverlay, Overlay, SelectionContext};
 
 pub(crate) fn handle_select_prev(app: &mut App) {
     let count = app.messages.len();
@@ -69,6 +69,74 @@ pub(crate) fn handle_select_last(app: &mut App) {
     sync_selection_context(app);
 }
 
+pub(crate) fn handle_open_context_actions(app: &mut App) {
+    let idx = match app.selected_message {
+        Some(i) if i < app.messages.len() => i,
+        _ => return,
+    };
+
+    let msg = &app.messages[idx];
+    let mut actions = Vec::new();
+
+    actions.push(ContextAction {
+        label: "Copy text",
+        kind: MessageActionKind::Copy,
+    });
+
+    if msg.text.contains("```") {
+        actions.push(ContextAction {
+            label: "Copy code block",
+            kind: MessageActionKind::YankCodeBlock,
+        });
+    }
+
+    if msg.text.contains("http://") || msg.text.contains("https://") {
+        actions.push(ContextAction {
+            label: "Open URL",
+            kind: MessageActionKind::OpenLinks,
+        });
+    }
+
+    if !msg.tool_calls.is_empty() {
+        actions.push(ContextAction {
+            label: "Inspect tool calls",
+            kind: MessageActionKind::Inspect,
+        });
+    }
+
+    actions.push(ContextAction {
+        label: "Quote in reply",
+        kind: MessageActionKind::QuoteInReply,
+    });
+
+    if msg.role == "user" {
+        actions.push(ContextAction {
+            label: "Edit and resend",
+            kind: MessageActionKind::Edit,
+        });
+        actions.push(ContextAction {
+            label: "Delete message",
+            kind: MessageActionKind::Delete,
+        });
+    }
+
+    if msg.role == "assistant" {
+        actions.push(ContextAction {
+            label: "Rate response",
+            kind: MessageActionKind::RateResponse,
+        });
+        actions.push(ContextAction {
+            label: "Flag for review",
+            kind: MessageActionKind::FlagForReview,
+        });
+    }
+
+    app.overlay = Some(Overlay::ContextActions(ContextActionsOverlay {
+        actions,
+        cursor: 0,
+    }));
+}
+
 pub(crate) fn handle_message_action(app: &mut App, action: MessageActionKind) {
     let idx = match app.selected_message {
         Some(i) if i < app.messages.len() => i,
@@ -82,6 +150,9 @@ pub(crate) fn handle_message_action(app: &mut App, action: MessageActionKind) {
         MessageActionKind::Delete => action_delete(app, idx),
         MessageActionKind::OpenLinks => action_open_links(app, idx),
         MessageActionKind::Inspect => action_inspect(app, idx),
+        MessageActionKind::QuoteInReply => action_quote_in_reply(app, idx),
+        MessageActionKind::RateResponse => show_toast(app, "Response rated — thank you"),
+        MessageActionKind::FlagForReview => show_toast(app, "Flagged for review"),
     }
 }
 
@@ -187,6 +258,19 @@ fn action_inspect(app: &mut App, idx: usize) {
     } else {
         app.tool_expanded.insert(key);
     }
+}
+
+fn action_quote_in_reply(app: &mut App, idx: usize) {
+    let text = &app.messages[idx].text;
+    let quoted: String = text.lines().map(|l| format!("> {l}\n")).collect();
+    if app.input.text.is_empty() {
+        app.input.text = quoted;
+    } else {
+        app.input.text.push('\n');
+        app.input.text.push_str(&quoted);
+    }
+    app.input.cursor = app.input.text.len();
+    show_toast(app, "Quoted in reply");
 }
 
 fn sync_selection_context(app: &mut App) {
@@ -548,5 +632,165 @@ mod tests {
         let mut app = test_app_with_messages(vec![("user", "a")]);
         handle_message_action(&mut app, MessageActionKind::Copy);
         // Should not panic
+    }
+
+    // --- Context actions popup tests ---
+
+    #[test]
+    fn context_actions_user_message_has_copy_quote_edit_delete() {
+        let mut app = test_app_with_messages(vec![("user", "hello world")]);
+        app.selected_message = Some(0);
+        handle_open_context_actions(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
+            assert!(kinds.contains(&MessageActionKind::Copy));
+            assert!(kinds.contains(&MessageActionKind::QuoteInReply));
+            assert!(kinds.contains(&MessageActionKind::Edit));
+            assert!(kinds.contains(&MessageActionKind::Delete));
+            assert!(!kinds.contains(&MessageActionKind::RateResponse));
+        } else {
+            panic!("expected ContextActions overlay");
+        }
+    }
+
+    #[test]
+    fn context_actions_assistant_message_has_rate_and_flag() {
+        let mut app = test_app_with_messages(vec![("assistant", "response text")]);
+        app.selected_message = Some(0);
+        handle_open_context_actions(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
+            assert!(kinds.contains(&MessageActionKind::RateResponse));
+            assert!(kinds.contains(&MessageActionKind::FlagForReview));
+            assert!(!kinds.contains(&MessageActionKind::Edit));
+            assert!(!kinds.contains(&MessageActionKind::Delete));
+        } else {
+            panic!("expected ContextActions overlay");
+        }
+    }
+
+    #[test]
+    fn context_actions_code_block_shows_yank() {
+        let mut app =
+            test_app_with_messages(vec![("assistant", "here:\n```rust\nlet x = 1;\n```")]);
+        app.selected_message = Some(0);
+        handle_open_context_actions(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
+            assert!(kinds.contains(&MessageActionKind::YankCodeBlock));
+        } else {
+            panic!("expected ContextActions overlay");
+        }
+    }
+
+    #[test]
+    fn context_actions_links_shows_open_links() {
+        let mut app =
+            test_app_with_messages(vec![("assistant", "see https://example.com for more")]);
+        app.selected_message = Some(0);
+        handle_open_context_actions(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
+            assert!(kinds.contains(&MessageActionKind::OpenLinks));
+        } else {
+            panic!("expected ContextActions overlay");
+        }
+    }
+
+    #[test]
+    fn context_actions_tool_calls_shows_inspect() {
+        let mut app = test_app_with_messages(vec![("assistant", "ran a tool")]);
+        app.messages[0].tool_calls.push(crate::state::ToolCallInfo {
+            name: "read_file".to_string(),
+            duration_ms: Some(50),
+            is_error: false,
+        });
+        app.selected_message = Some(0);
+        handle_open_context_actions(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
+            assert!(kinds.contains(&MessageActionKind::Inspect));
+        } else {
+            panic!("expected ContextActions overlay");
+        }
+    }
+
+    #[test]
+    fn context_actions_no_code_hides_yank() {
+        let mut app = test_app_with_messages(vec![("assistant", "plain text only")]);
+        app.selected_message = Some(0);
+        handle_open_context_actions(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
+            assert!(!kinds.contains(&MessageActionKind::YankCodeBlock));
+        } else {
+            panic!("expected ContextActions overlay");
+        }
+    }
+
+    #[test]
+    fn context_actions_no_selection_noop() {
+        let mut app = test_app_with_messages(vec![("user", "hello")]);
+        handle_open_context_actions(&mut app);
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn context_actions_out_of_bounds_noop() {
+        let mut app = test_app_with_messages(vec![("user", "hello")]);
+        app.selected_message = Some(99);
+        handle_open_context_actions(&mut app);
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn context_actions_cursor_starts_at_zero() {
+        let mut app = test_app_with_messages(vec![("user", "hello")]);
+        app.selected_message = Some(0);
+        handle_open_context_actions(&mut app);
+        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
+            assert_eq!(ctx.cursor, 0);
+        } else {
+            panic!("expected ContextActions overlay");
+        }
+    }
+
+    #[test]
+    fn quote_in_reply_populates_input() {
+        let mut app = test_app_with_messages(vec![("assistant", "line1\nline2")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::QuoteInReply);
+        assert!(app.input.text.contains("> line1"));
+        assert!(app.input.text.contains("> line2"));
+        assert_eq!(app.input.cursor, app.input.text.len());
+    }
+
+    #[test]
+    fn quote_in_reply_appends_to_existing_input() {
+        let mut app = test_app_with_messages(vec![("assistant", "quoted")]);
+        app.input.text = "existing".to_string();
+        app.input.cursor = 8;
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::QuoteInReply);
+        assert!(app.input.text.starts_with("existing\n"));
+        assert!(app.input.text.contains("> quoted"));
+    }
+
+    #[test]
+    fn rate_response_shows_toast() {
+        let mut app = test_app_with_messages(vec![("assistant", "response")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::RateResponse);
+        assert!(app.error_toast.is_some());
+        assert!(app.error_toast.unwrap().message.contains("rated"));
+    }
+
+    #[test]
+    fn flag_for_review_shows_toast() {
+        let mut app = test_app_with_messages(vec![("assistant", "response")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::FlagForReview);
+        assert!(app.error_toast.is_some());
+        assert!(app.error_toast.unwrap().message.contains("Flagged"));
     }
 }

@@ -12,4 +12,7 @@ pub use chat::{ChatMessage, ToolCallInfo};
 pub use command::{CommandPaletteState, SelectionContext};
 pub use filter::{FilterScope, FilterState};
 pub use input::{InputState, TabCompletion};
-pub use overlay::{Overlay, PlanApprovalOverlay, PlanStepApproval, ToolApprovalOverlay};
+pub use overlay::{
+    ContextAction, ContextActionsOverlay, Overlay, PlanApprovalOverlay, PlanStepApproval,
+    ToolApprovalOverlay,
+};
