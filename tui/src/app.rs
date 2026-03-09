@@ -1,12 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use anyhow::Result;
 use ratatui::Frame;
 use tokio::sync::mpsc;
 
 use crate::api::client::ApiClient;
 use crate::api::sse::SseConnection;
 use crate::config::Config;
+use crate::error::{GatewayUnreachableSnafu, Result, TokenRequiredSnafu};
 use crate::events::StreamEvent;
 use crate::id::{NousId, SessionId, TurnId};
 use crate::msg::{ErrorToast, Msg};
@@ -158,10 +158,7 @@ impl App {
     #[tracing::instrument(skip(self), fields(url = %self.config.url))]
     async fn connect(&mut self) -> Result<()> {
         if !self.client.health().await.unwrap_or(false) {
-            anyhow::bail!(
-                "cannot reach gateway at {}. Is it running?",
-                self.config.url
-            );
+            return GatewayUnreachableSnafu { url: self.config.url.clone() }.fail();
         }
 
         match self.client.auth_mode().await {
@@ -171,16 +168,18 @@ impl App {
                 }
                 "token" => {
                     if self.client.token().is_none() {
-                        anyhow::bail!(
-                            "gateway requires token auth. Pass --token or set ALETHEIA_TOKEN"
-                        );
+                        return TokenRequiredSnafu {
+                            message: "gateway requires token auth. Pass --token or set ALETHEIA_TOKEN",
+                        }
+                        .fail();
                     }
                 }
                 _ => {
                     if self.client.token().is_none() {
-                        anyhow::bail!(
-                            "gateway requires authentication. Pass --token or set ALETHEIA_TOKEN"
-                        );
+                        return TokenRequiredSnafu {
+                            message: "gateway requires authentication. Pass --token or set ALETHEIA_TOKEN",
+                        }
+                        .fail();
                     }
                 }
             },

@@ -1,11 +1,4 @@
 //! TUI entry point for the Aletheia client.
-//!
-//! Error handling uses `anyhow` throughout this crate. The TUI is a thin
-//! terminal UI layer: all errors surface to the user as display text (via
-//! `eprintln!` in `run_tui` or the in-app toast system). No caller outside
-//! this crate needs to match on error variants, so typed snafu errors would
-//! add complexity with no benefit. Internal state errors use the app's own
-//! `Msg::ShowError` path rather than `Result` propagation.
 
 mod actions;
 mod api;
@@ -13,6 +6,7 @@ mod app;
 mod clipboard;
 mod command;
 mod config;
+pub(crate) mod error;
 mod events;
 mod highlight;
 mod id;
@@ -26,18 +20,22 @@ mod theme;
 mod update;
 mod view;
 
-use anyhow::Result;
 use crossterm::event::EventStream;
 use futures_util::StreamExt;
 use ratatui::DefaultTerminal;
+use snafu::prelude::*;
 use tracing_appender::rolling;
 use tracing_subscriber::{EnvFilter, fmt};
 
 use crate::app::App;
 use crate::config::Config;
+use crate::error::{IoSnafu, LogDirectiveSnafu};
 use crate::events::Event;
 
 /// Entry point for the TUI, callable from the main `aletheia` binary or standalone.
+///
+/// Returns `anyhow::Result` as the public boundary so the binary crate can use
+/// anyhow for top-level error reporting. All internal code uses `crate::error::Error`.
 #[tracing::instrument(skip_all, fields(url, agent))]
 pub async fn run_tui(
     url: Option<String>,
@@ -45,15 +43,34 @@ pub async fn run_tui(
     agent: Option<String>,
     session: Option<String>,
     logout: bool,
-) -> Result<()> {
+) -> anyhow::Result<()> {
+    run_tui_inner(url, token, agent, session, logout)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+async fn run_tui_inner(
+    url: Option<String>,
+    token: Option<String>,
+    agent: Option<String>,
+    session: Option<String>,
+    logout: bool,
+) -> error::Result<()> {
     let log_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("aletheia");
-    std::fs::create_dir_all(&log_dir)?;
+    std::fs::create_dir_all(&log_dir).context(IoSnafu { context: "create log directory" })?;
     let file_appender = rolling::daily(&log_dir, "tui.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
     fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("aletheia_tui=debug".parse()?))
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(
+                    "aletheia_tui=debug"
+                        .parse()
+                        .context(LogDirectiveSnafu)?,
+                ),
+        )
         .with_writer(non_blocking)
         .with_ansi(false)
         .init();
@@ -75,19 +92,21 @@ pub async fn run_tui(
     ratatui::restore();
 
     if let Err(ref e) = result {
-        eprintln!("Error: {e:#}");
+        eprintln!("Error: {e}");
     }
 
     result
 }
 
-async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> Result<()> {
+async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result<()> {
     let mut term_events = EventStream::new();
     let mut tick = tokio::time::interval(std::time::Duration::from_millis(33));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
-        terminal.draw(|frame| app.view(frame))?;
+        terminal
+            .draw(|frame| app.view(frame))
+            .context(IoSnafu { context: "terminal draw" })?;
 
         let mut sse_rx = app.take_sse();
         let mut stream_rx = app.take_stream();
