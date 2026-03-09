@@ -25,9 +25,12 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                 .into_iter()
                 .map(|a| {
                     let notif = notifications.get(&a.id).copied().unwrap_or(false);
+                    let name = sanitize_for_display(a.display_name()).into_owned();
+                    let name_lower = name.to_lowercase();
                     AgentState {
                         id: a.id.clone(),
-                        name: sanitize_for_display(a.display_name()).into_owned(),
+                        name,
+                        name_lower,
                         emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                         status: AgentStatus::Idle,
                         active_tool: None,

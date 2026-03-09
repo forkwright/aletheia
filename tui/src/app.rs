@@ -193,17 +193,22 @@ impl App {
         let agents = self.client.agents().await?;
         self.agents = agents
             .into_iter()
-            .map(|a| AgentState {
-                id: a.id.clone(),
-                name: sanitize_for_display(a.display_name()).into_owned(),
-                emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
-                status: AgentStatus::Idle,
-                active_tool: None,
-                tool_started_at: None,
-                sessions: Vec::new(),
-                model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
-                compaction_stage: None,
-                has_notification: false,
+            .map(|a| {
+                let name = sanitize_for_display(a.display_name()).into_owned();
+                let name_lower = name.to_lowercase();
+                AgentState {
+                    id: a.id.clone(),
+                    name,
+                    name_lower,
+                    emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
+                    status: AgentStatus::Idle,
+                    active_tool: None,
+                    tool_started_at: None,
+                    sessions: Vec::new(),
+                    model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
+                    compaction_stage: None,
+                    has_notification: false,
+                }
             })
             .collect();
 
@@ -301,9 +306,12 @@ impl App {
                                 return None;
                             }
                             let text = extract_text_content(&m.content)?;
+                            let text = sanitize_for_display(&text).into_owned();
+                            let text_lower = text.to_lowercase();
                             Some(ChatMessage {
                                 role: sanitize_for_display(&m.role).into_owned(),
-                                text: sanitize_for_display(&text).into_owned(),
+                                text,
+                                text_lower,
                                 timestamp: m
                                     .created_at
                                     .map(|t| sanitize_for_display(&t).into_owned()),
@@ -419,9 +427,12 @@ pub(crate) mod test_helpers {
     pub fn test_app_with_messages(msgs: Vec<(&str, &str)>) -> App {
         let mut app = test_app();
         for (role, text) in msgs {
+            let text = text.to_string();
+            let text_lower = text.to_lowercase();
             app.messages.push(ChatMessage {
                 role: role.to_string(),
-                text: text.to_string(),
+                text,
+                text_lower,
                 timestamp: None,
                 model: None,
                 is_streaming: false,
@@ -432,9 +443,12 @@ pub(crate) mod test_helpers {
     }
 
     pub fn test_agent(id: &str, name: &str) -> AgentState {
+        let name = name.to_string();
+        let name_lower = name.to_lowercase();
         AgentState {
             id: crate::id::NousId::from(id),
-            name: name.to_string(),
+            name,
+            name_lower,
             emoji: None,
             status: AgentStatus::Idle,
             active_tool: None,

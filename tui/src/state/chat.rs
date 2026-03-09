@@ -15,6 +15,8 @@ pub(crate) struct SavedScrollState {
 pub struct ChatMessage {
     pub role: String,
     pub text: String,
+    /// Pre-lowercased `text`, cached at ingestion to avoid per-frame allocation in view code.
+    pub text_lower: String,
     pub timestamp: Option<String>,
     pub model: Option<String>,
     #[expect(dead_code, reason = "set during streaming, used for future rendering")]

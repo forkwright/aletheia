@@ -31,9 +31,12 @@ impl App {
             return;
         }
 
+        let text_owned = text.to_string();
+        let text_lower = text_owned.to_lowercase();
         self.messages.push(ChatMessage {
             role: "user".to_string(),
-            text: text.to_string(),
+            text: text_owned,
+            text_lower,
             timestamp: None,
             model: None,
             is_streaming: false,

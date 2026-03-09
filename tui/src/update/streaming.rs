@@ -139,9 +139,12 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
     if !app.streaming_text.is_empty() {
+        let text = app.streaming_text.clone();
+        let text_lower = text.to_lowercase();
         app.messages.push(ChatMessage {
             role: "assistant".to_string(),
-            text: app.streaming_text.clone(),
+            text,
+            text_lower,
             timestamp: None,
             model: Some(sanitize_for_display(&outcome.model).into_owned()),
             is_streaming: false,

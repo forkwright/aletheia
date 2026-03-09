@@ -571,6 +571,7 @@ mod tests {
         app.messages.push(crate::state::ChatMessage {
             role: "user".to_string(),
             text: "hi".to_string(),
+            text_lower: "hi".to_string(),
             timestamp: None,
             model: None,
             is_streaming: false,

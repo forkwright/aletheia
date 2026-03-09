@@ -30,18 +30,18 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         app.filter.active && app.filter.scope == FilterScope::Chat && !app.filter.text.is_empty();
     let (pattern, inverted) = app.filter.pattern();
 
-    // Compute agent name once per render pass rather than per message.
-    let agent_name_lower: String = app
+    // Borrow the pre-lowercased agent name cached at ingestion; no per-frame allocation.
+    let agent_name_lower: &str = app
         .focused_agent
         .as_ref()
         .and_then(|id| app.agents.iter().find(|a| a.id == *id))
-        .map(|a| a.name.to_lowercase())
-        .unwrap_or_else(|| "assistant".to_string());
+        .map(|a| a.name_lower.as_str())
+        .unwrap_or("assistant");
 
     // Render each message (filtered when active, with selection indicator)
     for (idx, msg) in app.messages.iter().enumerate() {
         if filter_active {
-            let contains = msg.text.to_lowercase().contains(pattern);
+            let contains = msg.text_lower.contains(pattern);
             let show = if inverted { !contains } else { contains };
             if !show {
                 continue;
@@ -52,7 +52,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
             theme,
             selected: app.selected_message == Some(idx),
             highlight: filter_active.then_some(pattern),
-            agent_name: &agent_name_lower,
+            agent_name: agent_name_lower,
         };
         render_message(app, msg, &mut lines, &ctx);
     }
@@ -69,7 +69,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         || !app.streaming_thinking.is_empty()
         || app.active_turn_id.is_some()
     {
-        render_streaming(app, &mut lines, inner_width, theme, &agent_name_lower);
+        render_streaming(app, &mut lines, inner_width, theme, agent_name_lower);
     }
 
     // Calculate scroll — must account for line wrapping.
@@ -195,12 +195,15 @@ fn highlight_span(
     out: &mut Vec<Span<'static>>,
 ) {
     let content = &span.content;
-    let content_lower = content.to_lowercase();
 
-    if content_lower.len() != content.len() || pattern.is_empty() {
+    // Bail early without allocating: non-ASCII content cannot be safely byte-indexed
+    // after lowercasing (byte offsets may shift), and an empty pattern matches nothing.
+    if pattern.is_empty() || !content.is_ascii() {
         out.push(span.clone());
         return;
     }
+
+    let content_lower = content.to_lowercase();
 
     let mut last_end = 0;
     for (start, _) in content_lower.match_indices(pattern) {
