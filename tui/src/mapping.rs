@@ -74,6 +74,20 @@ impl App {
             return Some(msg);
         }
 
+        // Vim g-prefix two-key sequences (gt = next tab, gT = prev tab)
+        if self.pending_g {
+            return match (key.modifiers, key.code) {
+                (KeyModifiers::NONE, KeyCode::Char('t')) => Some(Msg::TabNext),
+                (KeyModifiers::SHIFT, KeyCode::Char('T')) => Some(Msg::TabPrev),
+                // Any other key after g: cancel pending, treat g+key as normal input
+                (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                    // 'g' was consumed; pass the second char as input
+                    Some(Msg::CharInput(c))
+                }
+                _ => None,
+            };
+        }
+
         // View stack: Esc pops back when not at Home (takes priority over selection deselect)
         if !self.view_stack.is_home() && matches!((key.modifiers, key.code), (_, KeyCode::Esc)) {
             return Some(Msg::ViewPopBack);
@@ -94,8 +108,14 @@ impl App {
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
 
             (KeyModifiers::CONTROL, KeyCode::Char('f')) => Some(Msg::ToggleSidebar),
-            (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::ToggleThinking),
+            (KeyModifiers::CONTROL, KeyCode::Char('b')) => Some(Msg::ToggleThinking),
             (KeyModifiers::CONTROL, KeyCode::Char('o')) => Some(Msg::ToggleOpsPane),
+
+            // Tab management
+            (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::TabNew),
+            (KeyModifiers::CONTROL, KeyCode::Char('w')) if self.input.text.is_empty() => {
+                Some(Msg::TabClose)
+            }
 
             (_, KeyCode::F(1)) => Some(Msg::OpenOverlay(OverlayKind::Help)),
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
@@ -107,6 +127,20 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
             (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
                 Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
+            }
+
+            // Tab switching: Ctrl+Tab or gt next, BackTab or gT prev
+            (_, KeyCode::Tab) if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Some(Msg::TabNext)
+            }
+            (_, KeyCode::BackTab) if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Some(Msg::TabPrev)
+            }
+
+            // Alt+1..9 jump to tab
+            (KeyModifiers::ALT, KeyCode::Char(c @ '1'..='9')) => {
+                let n = (c as usize) - ('1' as usize);
+                Some(Msg::TabJump(n))
             }
 
             (_, KeyCode::Tab) => {
@@ -167,6 +201,13 @@ impl App {
                 Some(Msg::SelectPrev)
             }
 
+            // Vim g-prefix: 'g' on empty input starts two-key sequence
+            (KeyModifiers::NONE, KeyCode::Char('g'))
+                if self.input.text.is_empty() && self.tab_bar.len() > 1 =>
+            {
+                Some(Msg::GPrefix)
+            }
+
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
 
             _ => None,
@@ -195,8 +236,10 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
             (KeyModifiers::CONTROL, KeyCode::Char('f')) => Some(Msg::ToggleSidebar),
-            (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::ToggleThinking),
+            (KeyModifiers::CONTROL, KeyCode::Char('b')) => Some(Msg::ToggleThinking),
             (KeyModifiers::CONTROL, KeyCode::Char('o')) => Some(Msg::ToggleOpsPane),
+            (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::TabNew),
+            (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::TabClose),
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
                 Some(Msg::OpenOverlay(OverlayKind::AgentPicker))
             }

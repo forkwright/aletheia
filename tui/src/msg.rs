@@ -44,6 +44,14 @@ pub enum Msg {
     SessionPickerNewSession, // 'n' in session picker — create and switch
     SessionPickerArchive,    // 'd' in session picker — archive selected
 
+    // --- Tabs ---
+    TabNew,         // Ctrl+T — open new tab (session picker)
+    TabClose,       // Ctrl+W — close current tab
+    TabNext,        // Ctrl+Tab or gt — next tab
+    TabPrev,        // Ctrl+Shift+Tab or gT — previous tab
+    TabJump(usize), // Alt+1..9 — jump to tab N (0-indexed)
+    GPrefix,        // 'g' prefix for two-key sequences (gt/gT)
+
     // --- Message selection ---
     SelectPrev,                       // k or Up in selection mode
     SelectNext,                       // j or Down in selection mode

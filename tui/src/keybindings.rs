@@ -337,6 +337,30 @@ pub fn all_keybindings() -> &'static [Keybinding] {
         },
         Keybinding {
             keys: "Ctrl+T",
+            description: "New tab",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+W",
+            description: "Close tab",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "gt / gT",
+            description: "Next / prev tab",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Alt+1..9",
+            description: "Jump to tab",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+B",
             description: "Toggle thinking",
             contexts: &[KeyContext::Global],
             show_in_status_bar: false,

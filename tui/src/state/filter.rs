@@ -9,7 +9,7 @@ pub enum FilterScope {
     Agents,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FilterState {
     /// Whether filter mode is active (editing or applied)
     pub active: bool,
