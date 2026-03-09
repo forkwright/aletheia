@@ -1,7 +1,7 @@
 //! aletheia-mneme — session store and memory engine
 //!
 //! Mneme (Μνήμη) — "memory." Manages sessions, messages, and usage tracking
-//! via embedded `SQLite` (`rusqlite`). Future: `CozoDB` for vectors + graph.
+//! via embedded `SQLite` (`rusqlite`) and the `CozoDB`-backed knowledge graph.
 //!
 //! Depends on `aletheia-koina` for types and errors.
 
@@ -76,4 +76,32 @@ mod assertions {
     use static_assertions::assert_impl_all;
 
     assert_impl_all!(SessionStore: Send);
+}
+
+/// Verify that `mneme-engine` and `sqlite` features coexist without `SQLite`
+/// link conflicts.
+///
+/// The engine's `storage-sqlite` backend was removed; its remaining backends
+/// (mem, redb, rocksdb) have no `SQLite` dependency. `rusqlite` compiles with
+/// `features = ["bundled"]`, so its symbols are isolated. Both features can
+/// be active in the same binary.
+#[cfg(all(test, feature = "sqlite", feature = "mneme-engine"))]
+mod coexistence_tests {
+    use crate::knowledge_store::KnowledgeStore;
+    use crate::store::SessionStore;
+
+    #[test]
+    fn engine_and_sqlite_session_store_coexist() {
+        // Open a KnowledgeStore using the mneme-engine (CozoDB, in-memory)
+        let ks = KnowledgeStore::open_mem()
+            .expect("KnowledgeStore::open_mem should succeed with mneme-engine feature");
+
+        // Open a SessionStore using rusqlite (in-memory)
+        let ss = SessionStore::open_in_memory()
+            .expect("SessionStore::open_in_memory should succeed with sqlite feature");
+
+        // Both instances are live in the same process — no link conflict.
+        drop(ks);
+        drop(ss);
+    }
 }

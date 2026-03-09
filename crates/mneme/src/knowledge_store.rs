@@ -1,13 +1,12 @@
 //! `CozoDB`-backed knowledge store implementation.
 //!
-//! This module is gated behind the `cozo` feature flag due to `sqlite3` link
-//! conflict with `rusqlite`. In the final binary, the session store will migrate
-//! from `rusqlite` to `CozoDB`'s embedded `SQLite` storage, resolving the conflict.
+//! This module requires the `mneme-engine` feature flag.
 //!
-//! Until then, this code compiles and tests only with:
-//! ```sh
-//! cargo test -p aletheia-mneme --no-default-features --features mneme-engine
-//! ```
+//! **Coexistence with `sqlite` feature:** No link conflict. The `mneme-engine`
+//! vendored CozoDB uses only mem/redb/rocksdb storage backends — the
+//! `storage-sqlite` backend was removed. `rusqlite` (used by the `sqlite`
+//! feature) compiles with `features = ["bundled"]`, keeping its symbols
+//! isolated. Both features may be enabled simultaneously.
 //!
 //! # Schema
 //!
