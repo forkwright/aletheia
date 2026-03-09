@@ -9,6 +9,14 @@ use crate::markdown;
 use crate::state::FilterScope;
 use crate::theme::{self, ThemePalette};
 
+struct MessageCtx<'a> {
+    inner_width: usize,
+    theme: &'a ThemePalette,
+    selected: bool,
+    highlight: Option<&'a str>,
+    agent_name: &'a str,
+}
+
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let inner_width = area.width.saturating_sub(2) as usize;
     let mut lines: Vec<Line> = Vec::new();
@@ -37,18 +45,14 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
                 continue;
             }
         }
-        let selected = app.selected_message == Some(idx);
-        let highlight = filter_active.then_some(pattern);
-        render_message(
-            app,
-            msg,
-            &mut lines,
+        let ctx = MessageCtx {
             inner_width,
             theme,
-            selected,
-            highlight,
-            &agent_name_lower,
-        );
+            selected: app.selected_message == Some(idx),
+            highlight: filter_active.then_some(pattern),
+            agent_name: &agent_name_lower,
+        };
+        render_message(app, msg, &mut lines, &ctx);
     }
 
     if filter_active && lines.len() <= 1 {
@@ -101,21 +105,18 @@ fn render_message(
     app: &App,
     msg: &crate::app::ChatMessage,
     lines: &mut Vec<Line<'static>>,
-    inner_width: usize,
-    theme: &ThemePalette,
-    selected: bool,
-    highlight_pattern: Option<&str>,
-    agent_name_lower: &str,
+    ctx: &MessageCtx<'_>,
 ) {
+    let theme = ctx.theme;
     let (role_label, role_style) = match msg.role.as_str() {
         "user" => ("you", theme.style_user()),
-        "assistant" => (agent_name_lower, theme.style_assistant()),
+        "assistant" => (ctx.agent_name, theme.style_assistant()),
         _ => ("system", theme.style_muted()),
     };
 
     // Selection indicator prefix
-    let marker = if selected { "▸" } else { " " };
-    let marker_style = if selected {
+    let marker = if ctx.selected { "▸" } else { " " };
+    let marker_style = if ctx.selected {
         Style::default().fg(theme.selected)
     } else {
         Style::default()
@@ -154,12 +155,12 @@ fn render_message(
     // Message content — markdown parsed with syntax highlighting
     let rendered = markdown::render(
         &msg.text,
-        inner_width.saturating_sub(2),
+        ctx.inner_width.saturating_sub(2),
         theme,
         &app.highlighter,
     );
-    let content_prefix = if selected { "│" } else { " " };
-    let prefix_style = if selected {
+    let content_prefix = if ctx.selected { "│" } else { " " };
+    let prefix_style = if ctx.selected {
         Style::default().fg(theme.selected)
     } else {
         Style::default()
@@ -170,7 +171,7 @@ fn render_message(
     for line in rendered {
         let mut padded_spans = vec![Span::styled(content_prefix, prefix_style)];
 
-        if let Some(pattern) = highlight_pattern {
+        if let Some(pattern) = ctx.highlight {
             for span in &line.spans {
                 highlight_span(span, pattern, highlight_bg, &mut padded_spans);
             }

@@ -37,10 +37,6 @@ impl std::fmt::Debug for ApiClient {
     }
 }
 
-#[expect(
-    dead_code,
-    reason = "API surface for auth, sessions, and admin operations"
-)]
 impl ApiClient {
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
         let client = Client::builder()
@@ -56,10 +52,12 @@ impl ApiClient {
         })
     }
 
+    #[expect(dead_code, reason = "reserved for future login flow")]
     pub fn set_token(&mut self, token: String) {
         self.token = Some(token);
     }
 
+    #[expect(dead_code, reason = "reserved for future diagnostics / display")]
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
@@ -105,6 +103,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
+    #[expect(dead_code, reason = "reserved for future interactive login flow")]
     #[tracing::instrument(skip(self, password))]
     pub async fn login(&self, username: &str, password: &str) -> Result<LoginResponse> {
         let resp = self
@@ -195,6 +194,7 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
+    #[expect(dead_code, reason = "reserved for session archive action in command palette")]
     #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -212,6 +212,7 @@ impl ApiClient {
 
     // --- Turns ---
 
+    #[expect(dead_code, reason = "reserved for turn abort keybinding")]
     #[tracing::instrument(skip(self))]
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
         let encoded = encode_path(turn_id);
@@ -404,10 +405,12 @@ impl ApiClient {
         Ok(())
     }
 
+    #[expect(dead_code, reason = "reserved for auth-aware error display in update handlers")]
     pub fn is_auth_error(err: &anyhow::Error) -> bool {
         err.downcast_ref::<AuthError>().is_some()
     }
 
+    #[expect(dead_code, reason = "reserved for future SSE connection management")]
     /// Get the raw reqwest client for SSE/streaming (they manage their own connections)
     pub fn raw_client(&self) -> &Client {
         &self.client
