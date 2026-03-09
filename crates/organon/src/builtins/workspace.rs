@@ -236,7 +236,9 @@ impl ToolExecutor for EditExecutor {
     }
 }
 
-struct ExecExecutor;
+struct ExecExecutor {
+    sandbox: crate::sandbox::SandboxConfig,
+}
 
 impl ToolExecutor for ExecExecutor {
     fn execute<'a>(
@@ -248,14 +250,21 @@ impl ToolExecutor for ExecExecutor {
             let command = extract_str(&input.arguments, "command", &input.name)?;
             let timeout_ms = extract_opt_u64(&input.arguments, "timeout").unwrap_or(30_000);
 
-            let mut child = match Command::new("sh")
-                .arg("-c")
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c")
                 .arg(command)
                 .current_dir(&ctx.workspace)
                 .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-            {
+                .stderr(Stdio::piped());
+
+            if self.sandbox.enabled {
+                let policy = self
+                    .sandbox
+                    .build_policy(&ctx.workspace, &ctx.allowed_roots);
+                crate::sandbox::apply_sandbox(&mut cmd, policy);
+            }
+
+            let mut child = match cmd.spawn() {
                 Ok(c) => c,
                 Err(e) => {
                     return Ok(err_result(format!("spawn failed: {e}")));
@@ -308,11 +317,11 @@ impl ToolExecutor for ExecExecutor {
 // ---------------------------------------------------------------------------
 
 /// Register workspace tool executors.
-pub fn register(registry: &mut ToolRegistry) -> Result<()> {
+pub fn register(registry: &mut ToolRegistry, sandbox: crate::sandbox::SandboxConfig) -> Result<()> {
     registry.register(read_def(), Box::new(ReadExecutor))?;
     registry.register(write_def(), Box::new(WriteExecutor))?;
     registry.register(edit_def(), Box::new(EditExecutor))?;
-    registry.register(exec_def(), Box::new(ExecExecutor))?;
+    registry.register(exec_def(), Box::new(ExecExecutor { sandbox }))?;
     Ok(())
 }
 
@@ -657,7 +666,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = test_ctx(dir.path());
         let input = tool_input("exec", serde_json::json!({ "command": "echo hello" }));
-        let result = ExecExecutor.execute(&input, &ctx).await.expect("execute");
+        let result = ExecExecutor {
+            sandbox: crate::sandbox::SandboxConfig::disabled(),
+        }
+        .execute(&input, &ctx)
+        .await
+        .expect("execute");
         assert!(!result.is_error);
         assert!(result.content.text_summary().contains("hello"));
         assert!(result.content.text_summary().contains("exit=0"));
@@ -671,7 +685,12 @@ mod tests {
             "exec",
             serde_json::json!({ "command": "sleep 60", "timeout": 200 }),
         );
-        let result = ExecExecutor.execute(&input, &ctx).await.expect("execute");
+        let result = ExecExecutor {
+            sandbox: crate::sandbox::SandboxConfig::disabled(),
+        }
+        .execute(&input, &ctx)
+        .await
+        .expect("execute");
         assert!(result.is_error);
         assert!(result.content.text_summary().contains("timed out"));
     }
@@ -752,10 +771,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = test_ctx(dir.path());
         let input = tool_input("exec", serde_json::json!({}));
-        let err = ExecExecutor
-            .execute(&input, &ctx)
-            .await
-            .expect_err("missing command should error");
+        let err = (ExecExecutor {
+            sandbox: crate::sandbox::SandboxConfig::disabled(),
+        })
+        .execute(&input, &ctx)
+        .await
+        .expect_err("missing command should error");
         assert!(err.to_string().contains("missing or invalid field"));
     }
 
@@ -884,7 +905,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = test_ctx(dir.path());
         let input = tool_input("exec", serde_json::json!({ "command": "exit 42" }));
-        let result = ExecExecutor.execute(&input, &ctx).await.expect("execute");
+        let result = ExecExecutor {
+            sandbox: crate::sandbox::SandboxConfig::disabled(),
+        }
+        .execute(&input, &ctx)
+        .await
+        .expect("execute");
         assert!(!result.is_error);
         assert!(result.content.text_summary().contains("exit=42"));
     }
@@ -894,7 +920,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = test_ctx(dir.path());
         let input = tool_input("exec", serde_json::json!({ "command": "echo errline >&2" }));
-        let result = ExecExecutor.execute(&input, &ctx).await.expect("execute");
+        let result = ExecExecutor {
+            sandbox: crate::sandbox::SandboxConfig::disabled(),
+        }
+        .execute(&input, &ctx)
+        .await
+        .expect("execute");
         assert!(!result.is_error);
         assert!(result.content.text_summary().contains("errline"));
     }
@@ -904,7 +935,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = test_ctx(dir.path());
         let input = tool_input("exec", serde_json::json!({ "command": "pwd" }));
-        let result = ExecExecutor.execute(&input, &ctx).await.expect("execute");
+        let result = ExecExecutor {
+            sandbox: crate::sandbox::SandboxConfig::disabled(),
+        }
+        .execute(&input, &ctx)
+        .await
+        .expect("execute");
         assert!(!result.is_error);
         let text = result.content.text_summary();
         let canonical = dir.path().canonicalize().expect("canon");
@@ -922,7 +958,12 @@ mod tests {
             "exec",
             serde_json::json!({ "command": "printf 'out'; echo err >&2" }),
         );
-        let result = ExecExecutor.execute(&input, &ctx).await.expect("execute");
+        let result = ExecExecutor {
+            sandbox: crate::sandbox::SandboxConfig::disabled(),
+        }
+        .execute(&input, &ctx)
+        .await
+        .expect("execute");
         assert!(!result.is_error);
         let text = result.content.text_summary();
         let exit_pos = text.find("exit=0").expect("exit marker");
@@ -1028,7 +1069,7 @@ mod tests {
     #[tokio::test]
     async fn test_all_workspace_tools_registered() {
         let mut reg = crate::registry::ToolRegistry::new();
-        register(&mut reg).expect("register");
+        register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
         for name in ["read", "write", "edit", "exec"] {
             let tn = aletheia_koina::id::ToolName::new(name).expect("valid");
             assert!(reg.get_def(&tn).is_some(), "{name} should be registered");
@@ -1038,7 +1079,7 @@ mod tests {
     #[test]
     fn test_read_tool_def_has_path_as_required() {
         let mut reg = crate::registry::ToolRegistry::new();
-        register(&mut reg).expect("register");
+        register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
         let tn = aletheia_koina::id::ToolName::new("read").expect("valid");
         let def = reg.get_def(&tn).expect("read registered");
         assert!(def.input_schema.required.contains(&"path".to_owned()));
@@ -1047,7 +1088,7 @@ mod tests {
     #[test]
     fn test_write_tool_def_has_path_and_content_as_required() {
         let mut reg = crate::registry::ToolRegistry::new();
-        register(&mut reg).expect("register");
+        register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
         let tn = aletheia_koina::id::ToolName::new("write").expect("valid");
         let def = reg.get_def(&tn).expect("write registered");
         assert!(def.input_schema.required.contains(&"path".to_owned()));

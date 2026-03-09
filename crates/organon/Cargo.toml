@@ -23,6 +23,11 @@ snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4"
+libc = "0.2"
+seccompiler = "0.5"
+
 [dev-dependencies]
 static_assertions = { workspace = true }
 tempfile = "3"

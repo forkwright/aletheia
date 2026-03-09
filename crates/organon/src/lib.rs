@@ -13,6 +13,8 @@ pub mod error;
 pub mod metrics;
 /// Central tool registry for runtime discovery and dispatch.
 pub mod registry;
+/// Landlock + seccomp sandbox for tool execution.
+pub mod sandbox;
 /// Tool definition, parameter schema, and executor trait.
 pub mod types;
 
