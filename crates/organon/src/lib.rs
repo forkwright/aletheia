@@ -11,6 +11,8 @@ pub mod builtins;
 /// Organon-specific error types and result alias.
 pub mod error;
 pub mod metrics;
+/// RAII guard for subprocess lifecycle — kills and reaps on drop.
+pub(crate) mod process_guard;
 /// Central tool registry for runtime discovery and dispatch.
 pub mod registry;
 /// Landlock + seccomp sandbox for tool execution.
