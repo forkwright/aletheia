@@ -2,7 +2,7 @@
 
 use tracing::Instrument;
 
-use crate::client::EvalClient;
+use crate::client::{EvalClient, MessageRole};
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
 use crate::sse;
 
@@ -14,17 +14,6 @@ pub fn scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(ConversationMultiTurn),
         Box::new(ConversationEmptyRejected),
     ]
-}
-
-fn unique_key(suffix: &str) -> String {
-    format!(
-        "eval-conv-{}-{}",
-        suffix,
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    )
 }
 
 struct ConversationSendSse;
@@ -43,7 +32,7 @@ impl Scenario for ConversationSendSse {
             async move {
                 let nous_list = client.list_nous().await?;
                 let nous_id = &nous_list[0].id;
-                let key = unique_key("sse");
+                let key = super::unique_key("conv", "sse");
                 let session = client.create_session(nous_id, &key).await?;
                 let events = client
                     .send_message(&session.id, "Hello, this is an eval test.")
@@ -82,7 +71,7 @@ impl Scenario for ConversationHistoryReflects {
             async move {
                 let nous_list = client.list_nous().await?;
                 let nous_id = &nous_list[0].id;
-                let key = unique_key("history");
+                let key = super::unique_key("conv", "history");
                 let session = client.create_session(nous_id, &key).await?;
                 let _ = client
                     .send_message(&session.id, "Eval history test message.")
@@ -96,16 +85,16 @@ impl Scenario for ConversationHistoryReflects {
                     ),
                 )?;
                 assert_eval(
-                    history.messages[0].role == "user",
+                    history.messages[0].role == MessageRole::User,
                     format!(
-                        "first message should be user, got {}",
+                        "first message should be user, got {:?}",
                         history.messages[0].role
                     ),
                 )?;
                 assert_eval(
-                    history.messages[1].role == "assistant",
+                    history.messages[1].role == MessageRole::Assistant,
                     format!(
-                        "second message should be assistant, got {}",
+                        "second message should be assistant, got {:?}",
                         history.messages[1].role
                     ),
                 )?;
@@ -136,7 +125,7 @@ impl Scenario for ConversationMultiTurn {
             async move {
                 let nous_list = client.list_nous().await?;
                 let nous_id = &nous_list[0].id;
-                let key = unique_key("multi");
+                let key = super::unique_key("conv", "multi");
                 let session = client.create_session(nous_id, &key).await?;
                 let _ = client
                     .send_message(&session.id, "First eval message.")
@@ -179,7 +168,7 @@ impl Scenario for ConversationEmptyRejected {
             async move {
                 let nous_list = client.list_nous().await?;
                 let nous_id = &nous_list[0].id;
-                let key = unique_key("empty");
+                let key = super::unique_key("conv", "empty");
                 let session = client.create_session(nous_id, &key).await?;
                 match client.send_message(&session.id, "").await {
                     Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
