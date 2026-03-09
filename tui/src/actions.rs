@@ -6,6 +6,7 @@ use crate::app::App;
 use crate::state::{ChatMessage, SavedScrollState, TabCompletion};
 
 impl App {
+    #[tracing::instrument(skip(self, text), fields(agent = ?self.focused_agent))]
     pub(crate) fn send_message(&mut self, text: &str) {
         let agent_id = match &self.focused_agent {
             Some(id) => id.clone(),
