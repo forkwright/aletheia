@@ -10,8 +10,11 @@ use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 use aletheia_thesauros::loader::LoadedPack;
 
+use std::time::Duration;
+
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
@@ -29,7 +32,9 @@ use crate::message::NousStatus;
 
 struct ActorEntry {
     handle: NousHandle,
-    join: JoinHandle<()>,
+    /// Wrapped in `Mutex<Option<_>>` so `shutdown_readonly` can take the handle
+    /// from a shared reference, await it, and confirm the actor has stopped.
+    join: Mutex<Option<JoinHandle<()>>>,
     config: NousConfig,
 }
 
@@ -49,6 +54,9 @@ pub struct NousManager {
     tool_services: Option<Arc<ToolServices>>,
     ready_tx: watch::Sender<bool>,
     ready_rx: watch::Receiver<bool>,
+    /// Root cancellation token. Child tokens are given to each actor.
+    /// Cancelling this stops all actors without needing `&mut self`.
+    cancel: CancellationToken,
 }
 
 impl NousManager {
@@ -86,6 +94,7 @@ impl NousManager {
             tool_services,
             ready_tx,
             ready_rx,
+            cancel: CancellationToken::new(),
         }
     }
 
@@ -126,7 +135,11 @@ impl NousManager {
         if let Some(old) = self.actors.remove(&id) {
             warn!(nous_id = %id, "replacing existing actor");
             let _ = old.handle.shutdown().await;
-            let _ = old.join.await;
+            // Take join handle before awaiting — must not hold MutexGuard across .await.
+            let join_opt = old.join.lock().ok().and_then(|mut g| g.take());
+            if let Some(join) = join_opt {
+                let _ = join.await;
+            }
         }
 
         // Filter and convert domain pack sections for this agent (by ID or domain tags)
@@ -151,6 +164,7 @@ impl NousManager {
             None
         };
 
+        let child_cancel = self.cancel.child_token();
         let (handle, join_handle) = actor::spawn(
             config.clone(),
             pipeline_config,
@@ -165,6 +179,7 @@ impl NousManager {
             self.tool_services.clone(),
             extra_bootstrap,
             cross_rx,
+            child_cancel,
         );
 
         info!(nous_id = %id, "actor spawned");
@@ -172,7 +187,7 @@ impl NousManager {
             id,
             ActorEntry {
                 handle: handle.clone(),
-                join: join_handle,
+                join: Mutex::new(Some(join_handle)),
                 config,
             },
         );
@@ -231,31 +246,110 @@ impl NousManager {
             }
         }
 
-        let entries: Vec<(String, NousHandle, JoinHandle<()>)> = self
+        // Drain actors; collect handles and join handles for two-phase shutdown.
+        let handles: Vec<(String, NousHandle)> = self
             .actors
-            .drain()
-            .map(|(id, e)| (id, e.handle, e.join))
+            .iter()
+            .map(|(id, e)| (id.clone(), e.handle.clone()))
             .collect();
 
-        for (id, handle, _) in &entries {
+        // Take all join handles before any await — must not hold MutexGuard across .await.
+        let joins: Vec<(String, Option<JoinHandle<()>>)> = self
+            .actors
+            .drain()
+            .map(|(id, e)| {
+                let join = e.join.lock().ok().and_then(|mut g| g.take());
+                (id, join)
+            })
+            .collect();
+
+        for (id, handle) in &handles {
             if let Err(e) = handle.shutdown().await {
                 warn!(nous_id = %id, error = %e, "failed to send shutdown");
             }
         }
 
-        for (id, _, join) in entries {
-            if let Err(e) = join.await {
-                warn!(nous_id = %id, error = %e, "actor task panicked");
+        for (id, join_opt) in joins {
+            if let Some(join) = join_opt {
+                if let Err(e) = join.await {
+                    warn!(nous_id = %id, error = %e, "actor task panicked");
+                }
             }
         }
 
         info!("all actors stopped");
     }
 
+    /// Cancel all actors and wait for them to drain, bounded by a timeout.
+    ///
+    /// 1. Cancels the root token — all child actor tokens fire simultaneously.
+    /// 2. Unregisters from the cross-nous router so no new messages arrive.
+    /// 3. Awaits each actor join handle within the provided `timeout`.
+    /// 4. On timeout, logs a warning and returns; Tokio will abort the tasks
+    ///    when the runtime shuts down.
+    ///
+    /// This is the primary shutdown path when the manager is behind `Arc`
+    /// and mutable access is unavailable. Awaiting join handles ensures that
+    /// redb WAL checkpoints and other finalisation complete before exit.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Token cancellation is idempotent; partial completion
+    /// leaves remaining actors running until the runtime exits.
+    pub async fn drain(&self, timeout: Duration) {
+        info!(count = self.actors.len(), "draining all actors");
+
+        // Notify all actors simultaneously via the shared root token.
+        self.cancel.cancel();
+
+        if let Some(ref router) = self.router {
+            for id in self.actors.keys() {
+                router.unregister(id).await;
+            }
+        }
+
+        // Also send explicit Shutdown messages so actors waiting on inbox wake up.
+        for entry in self.actors.values() {
+            if let Err(e) = entry.handle.shutdown().await {
+                warn!(nous_id = entry.handle.id(), error = %e, "failed to send shutdown");
+            }
+        }
+
+        // Await all join handles within the timeout, so callers can guarantee
+        // all Arc<KnowledgeStore> / redb Database references are dropped.
+        // Take handles first to avoid holding MutexGuard across .await points.
+        let mut joins: Vec<(String, JoinHandle<()>)> = self
+            .actors
+            .iter()
+            .filter_map(|(id, entry)| {
+                let join = entry.join.lock().ok()?.take()?;
+                Some((id.clone(), join))
+            })
+            .collect();
+
+        let drain_fut = async move {
+            for (id, join) in joins.drain(..) {
+                if let Err(e) = join.await {
+                    warn!(nous_id = %id, error = %e, "actor task panicked during drain");
+                }
+            }
+        };
+
+        if tokio::time::timeout(timeout, drain_fut).await.is_ok() {
+            info!("all actors drained cleanly");
+        } else {
+            warn!(
+                timeout_secs = timeout.as_secs(),
+                "actor drain timed out — some actors may not have flushed state"
+            );
+        }
+    }
+
     /// Send shutdown to all actors without requiring `&mut self`.
     ///
     /// Used when the manager is behind `Arc` and mutable access is unavailable.
     /// Does not drain the entries — cleanup happens when the `Arc` drops.
+    /// Prefer [`drain`](Self::drain) when clean resource release is needed.
     ///
     /// # Cancel safety
     ///
@@ -269,6 +363,8 @@ impl NousManager {
                 router.unregister(id).await;
             }
         }
+
+        self.cancel.cancel();
 
         for entry in self.actors.values() {
             if let Err(e) = entry.handle.shutdown().await {
@@ -553,5 +649,65 @@ mod tests {
         assert_eq!(result.content, "Hello!");
 
         mgr.shutdown_all().await;
+    }
+
+    /// `drain()` cancels all actors via the root token and awaits their exit.
+    #[tokio::test]
+    async fn drain_stops_all_actors() {
+        let (_dir, oikos) = test_oikos();
+        let mut mgr = test_manager(oikos);
+
+        let handle1 = mgr.spawn(syn_config(), PipelineConfig::default()).await;
+        let handle2 = mgr
+            .spawn(demiurge_config(), PipelineConfig::default())
+            .await;
+
+        // drain() takes &self — no mutable access needed.
+        mgr.drain(Duration::from_secs(5)).await;
+
+        // After drain join handles are taken and tasks have stopped.
+        assert!(handle1.status().await.is_err(), "syn actor should have exited");
+        assert!(
+            handle2.status().await.is_err(),
+            "demiurge actor should have exited"
+        );
+    }
+
+    /// Cancelling the manager's root token reaches all actor child tokens.
+    #[tokio::test]
+    async fn cancel_token_propagates_to_actors() {
+        let (_dir, oikos) = test_oikos();
+        let mut mgr = test_manager(oikos);
+
+        let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
+
+        // Cancel via manager's root token directly (as drain() would do internally).
+        mgr.cancel.cancel();
+
+        // Wait for actor to observe cancellation and exit.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if handle.status().await.is_err() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("actor should stop when cancel token fires");
+    }
+
+    /// `drain()` with a very short timeout should warn and return, not panic.
+    #[tokio::test]
+    async fn drain_timeout_does_not_panic() {
+        let (_dir, oikos) = test_oikos();
+        let mut mgr = test_manager(oikos);
+
+        mgr.spawn(syn_config(), PipelineConfig::default()).await;
+        mgr.spawn(demiurge_config(), PipelineConfig::default())
+            .await;
+
+        // 1-nanosecond timeout: drain will warn but must not panic.
+        mgr.drain(Duration::from_nanos(1)).await;
     }
 }

@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use snafu::{ResultExt, Snafu};
 use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
@@ -106,6 +107,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         start_time: Instant::now(),
         auth_mode: aletheia_config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
+        shutdown: CancellationToken::new(),
     });
 
     let app = build_router(state.clone(), &config.security);
