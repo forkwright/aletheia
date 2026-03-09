@@ -1,6 +1,6 @@
 # PII detection patterns - one extended regex per line
 alice\.johnson
-[A-Za-z]{3,}ertz\b
+[A-Za-z]{3,}ample\b
 acme-corp
 Springfield
 Baby #[0-9]
