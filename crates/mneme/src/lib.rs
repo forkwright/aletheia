@@ -64,6 +64,8 @@ pub mod retention;
 pub mod schema;
 /// Skill storage helpers and SKILL.md parser.
 pub mod skill;
+/// Skill auto-capture — heuristic filter, signature hashing, and candidate tracking.
+pub mod skills;
 /// `SQLite` session store (WAL mode, prepared statements, transactional writes).
 #[cfg(feature = "sqlite")]
 pub mod store;
