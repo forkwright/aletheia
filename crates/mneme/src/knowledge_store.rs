@@ -3912,6 +3912,8 @@ mod knowledge_store_tests {
             .await
             .expect("async diff");
         assert_eq!(diff.added.len(), 1);
+    }
+
     #[test]
     fn backup_db_returns_error_for_mem_backend() {
         let store = make_store();
