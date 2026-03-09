@@ -82,6 +82,7 @@ impl SessionStore {
     }
 
     /// Find a session by ID (any status).
+    #[instrument(skip(self))]
     pub fn find_session_by_id(&self, id: &str) -> Result<Option<Session>> {
         let mut stmt = self
             .conn
@@ -593,6 +594,7 @@ impl SessionStore {
     }
 
     /// Read a blackboard entry by key, filtering expired entries.
+    #[instrument(skip(self))]
     pub fn blackboard_read(&self, key: &str) -> Result<Option<BlackboardRow>> {
         let result = self
             .conn
@@ -618,6 +620,7 @@ impl SessionStore {
     }
 
     /// List all non-expired blackboard entries.
+    #[instrument(skip(self))]
     pub fn blackboard_list(&self) -> Result<Vec<BlackboardRow>> {
         let mut stmt = self
             .conn
@@ -650,6 +653,7 @@ impl SessionStore {
     }
 
     /// Delete a blackboard entry. Only the original author can delete.
+    #[instrument(skip(self))]
     pub fn blackboard_delete(&self, key: &str, author: &str) -> Result<bool> {
         let rows = self
             .conn

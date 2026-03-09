@@ -8,6 +8,7 @@
 //! The trait is `Send + Sync` for use in async contexts.
 
 use snafu::Snafu;
+use tracing::instrument;
 
 /// Errors from embedding operations.
 #[derive(Debug, Snafu)]
@@ -65,12 +66,14 @@ pub struct MockEmbeddingProvider {
 impl MockEmbeddingProvider {
     /// Create a mock provider with the given dimension.
     #[must_use]
+    #[instrument]
     pub fn new(dim: usize) -> Self {
         Self { dim }
     }
 }
 
 impl EmbeddingProvider for MockEmbeddingProvider {
+    #[instrument(skip(self, text))]
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
         // Deterministic pseudo-embedding from text content.
         // Uses a simple multiplicative hash to spread bytes across dimensions.
@@ -100,14 +103,12 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         Ok(vec)
     }
 
+    #[instrument(skip(self))]
     fn dimension(&self) -> usize {
         self.dim
     }
 
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "trait requires &str return"
-    )]
+    #[instrument(skip(self))]
     fn model_name(&self) -> &str {
         "mock-embedding"
     }
@@ -151,6 +152,7 @@ impl FastEmbedProvider {
     /// # Errors
     ///
     /// Returns [`EmbeddingError::InitFailed`] if model lookup or initialization fails.
+    #[instrument]
     pub fn new(model_name: Option<&str>) -> EmbeddingResult<Self> {
         let embedding_model = match model_name {
             Some(name) => Self::resolve_model(name)?,
@@ -199,6 +201,7 @@ impl FastEmbedProvider {
 
 #[cfg(feature = "fastembed")]
 impl EmbeddingProvider for FastEmbedProvider {
+    #[instrument(skip(self, text))]
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
         self.model
             .lock()
@@ -220,6 +223,7 @@ impl EmbeddingProvider for FastEmbedProvider {
             })
     }
 
+    #[instrument(skip(self, texts), fields(batch_size = texts.len()))]
     fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
         self.model
             .lock()
@@ -233,10 +237,12 @@ impl EmbeddingProvider for FastEmbedProvider {
             })
     }
 
+    #[instrument(skip(self))]
     fn dimension(&self) -> usize {
         self.dimension
     }
 
+    #[instrument(skip(self))]
     fn model_name(&self) -> &str {
         &self.model_name
     }
@@ -274,6 +280,7 @@ impl Default for EmbeddingConfig {
 ///
 /// # Errors
 /// Returns an error if the provider cannot be initialized.
+#[instrument(skip(config), fields(provider = %config.provider))]
 pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn EmbeddingProvider>> {
     match config.provider.as_str() {
         "mock" => {

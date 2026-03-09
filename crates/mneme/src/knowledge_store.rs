@@ -46,6 +46,8 @@
 //
 // The Datalog queries are validated by the mneme-bench crate.
 
+use tracing::instrument;
+
 /// Datalog DDL for initializing the knowledge schema.
 pub const KNOWLEDGE_DDL: &[&str] = &[
     // Facts: bi-temporal, epistemic-tiered
@@ -86,6 +88,7 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
 ];
 
 /// Datalog DDL for the embeddings relation. Dimension is parameterized.
+#[instrument]
 pub fn embeddings_ddl(dim: usize) -> String {
     format!(
         r":create embeddings {{
@@ -101,6 +104,7 @@ pub fn embeddings_ddl(dim: usize) -> String {
 }
 
 /// Datalog DDL for the HNSW index on embeddings.
+#[instrument]
 pub fn hnsw_ddl(dim: usize) -> String {
     format!(
         r"::hnsw create embeddings:semantic_idx {{
@@ -115,6 +119,7 @@ pub fn hnsw_ddl(dim: usize) -> String {
 }
 
 /// Datalog DDL for FTS index on facts.content.
+#[instrument]
 pub fn fts_ddl() -> &'static str {
     r"::fts create facts:content_fts {
         extractor: content,
@@ -210,11 +215,13 @@ impl KnowledgeStore {
     const SCHEMA_VERSION: i64 = 3;
 
     /// Open an in-memory knowledge store with default configuration.
+    #[instrument]
     pub fn open_mem() -> crate::error::Result<std::sync::Arc<Self>> {
         Self::open_mem_with_config(KnowledgeConfig::default())
     }
 
     /// Open an in-memory knowledge store with custom configuration.
+    #[instrument]
     pub fn open_mem_with_config(
         config: KnowledgeConfig,
     ) -> crate::error::Result<std::sync::Arc<Self>> {
@@ -234,6 +241,7 @@ impl KnowledgeStore {
 
     /// Open a persistent knowledge store backed by redb at the given path.
     #[cfg(feature = "storage-redb")]
+    #[instrument(skip(path))]
     pub fn open_redb(
         path: impl AsRef<std::path::Path>,
         config: KnowledgeConfig,
@@ -358,12 +366,14 @@ impl KnowledgeStore {
     }
 
     /// Insert or update a fact.
+    #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
     pub fn insert_fact(&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()> {
         let params = fact_to_params(fact);
         self.run_mut(&queries::upsert_fact(), params)
     }
 
     /// Query current facts for a nous at a given time, up to limit results.
+    #[instrument(skip(self))]
     pub fn query_facts(
         &self,
         nous_id: &str,
@@ -383,6 +393,7 @@ impl KnowledgeStore {
     }
 
     /// Point-in-time fact query.
+    #[instrument(skip(self))]
     pub fn query_facts_at(&self, time: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
@@ -395,12 +406,14 @@ impl KnowledgeStore {
     }
 
     /// Insert or update an entity.
+    #[instrument(skip(self, entity), fields(entity_id = %entity.id))]
     pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
         let params = entity_to_params(entity);
         self.run_mut(&queries::upsert_entity(), params)
     }
 
     /// Insert a relationship.
+    #[instrument(skip(self, rel))]
     pub fn insert_relationship(
         &self,
         rel: &crate::knowledge::Relationship,
@@ -410,6 +423,7 @@ impl KnowledgeStore {
     }
 
     /// Query 2-hop entity neighborhood. Returns raw rows for flexible callers.
+    #[instrument(skip(self))]
     pub fn entity_neighborhood(
         &self,
         entity_id: &str,
@@ -423,6 +437,7 @@ impl KnowledgeStore {
     }
 
     /// Insert a vector embedding for semantic search.
+    #[instrument(skip(self, chunk), fields(chunk_id = %chunk.id))]
     pub fn insert_embedding(
         &self,
         chunk: &crate::knowledge::EmbeddedChunk,
@@ -432,6 +447,7 @@ impl KnowledgeStore {
     }
 
     /// kNN semantic vector search.
+    #[instrument(skip(self, query_vec))]
     pub fn search_vectors(
         &self,
         query_vec: Vec<f32>,
@@ -465,6 +481,7 @@ impl KnowledgeStore {
     }
 
     /// Get the current schema version.
+    #[instrument(skip(self))]
     pub fn schema_version(&self) -> crate::error::Result<i64> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
@@ -487,6 +504,7 @@ impl KnowledgeStore {
     }
 
     /// Raw query escape hatch for callers needing custom Datalog.
+    #[instrument(skip(self, params))]
     pub fn run_query(
         &self,
         script: &str,
@@ -502,6 +520,7 @@ impl KnowledgeStore {
     ///
     /// Note: timeout detection relies on the engine error containing "killed before completion"
     /// (from `CozoDB`'s internal `ProcessKilled` error). This is a known fragile dependency.
+    #[instrument(skip(self, params))]
     pub fn run_query_with_timeout(
         &self,
         script: &str,
@@ -530,6 +549,7 @@ impl KnowledgeStore {
 
     /// Raw mutable query escape hatch — runs script with `ScriptMutability::Mutable`.
     /// Required for `:rm` and `:put` operations from caller code.
+    #[instrument(skip(self, params))]
     pub fn run_mut_query(
         &self,
         script: &str,
@@ -550,6 +570,7 @@ impl KnowledgeStore {
     ///
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
+    #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
     pub fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
         use crate::engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;
@@ -583,6 +604,7 @@ impl KnowledgeStore {
     }
 
     /// Async `search_hybrid` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
     pub async fn search_hybrid_async(
         self: &std::sync::Arc<Self>,
         q: HybridQuery,
@@ -778,6 +800,7 @@ impl KnowledgeStore {
     }
 
     /// Increment access count and update last-accessed timestamp for the given fact IDs.
+    #[instrument(skip(self), fields(count = fact_ids.len()))]
     pub fn increment_access(&self, fact_ids: &[String]) -> crate::error::Result<()> {
         if fact_ids.is_empty() {
             return Ok(());
@@ -808,6 +831,7 @@ impl KnowledgeStore {
     }
 
     /// Async `increment_access` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self), fields(count = fact_ids.len()))]
     pub async fn increment_access_async(
         self: &std::sync::Arc<Self>,
         fact_ids: Vec<String>,
@@ -820,6 +844,7 @@ impl KnowledgeStore {
     }
 
     /// Soft-delete a fact: set `is_forgotten = true` with reason and timestamp.
+    #[instrument(skip(self))]
     pub fn forget_fact(
         &self,
         fact_id: &str,
@@ -859,6 +884,7 @@ impl KnowledgeStore {
     }
 
     /// Reverse a soft-delete: clear `is_forgotten`, `forgotten_at`, `forget_reason`.
+    #[instrument(skip(self))]
     pub fn unforget_fact(&self, fact_id: &str) -> crate::error::Result<()> {
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
@@ -1034,6 +1060,7 @@ impl KnowledgeStore {
     }
 
     /// Audit query: returns all facts regardless of forgotten/superseded/temporal state.
+    #[instrument(skip(self))]
     pub fn audit_all_facts(
         &self,
         nous_id: &str,
@@ -1053,6 +1080,7 @@ impl KnowledgeStore {
     // --- Async wrappers ---
 
     /// Async `forget_fact` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
     pub async fn forget_fact_async(
         self: &std::sync::Arc<Self>,
         fact_id: String,
@@ -1066,6 +1094,7 @@ impl KnowledgeStore {
     }
 
     /// Async `unforget_fact` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
     pub async fn unforget_fact_async(
         self: &std::sync::Arc<Self>,
         fact_id: String,
@@ -1078,6 +1107,7 @@ impl KnowledgeStore {
     }
 
     /// Async `audit_all_facts` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
     pub async fn audit_all_facts_async(
         self: &std::sync::Arc<Self>,
         nous_id: String,
@@ -1091,6 +1121,7 @@ impl KnowledgeStore {
     }
 
     /// Async `insert_fact` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
     pub async fn insert_fact_async(
         self: &std::sync::Arc<Self>,
         fact: crate::knowledge::Fact,
@@ -1103,6 +1134,7 @@ impl KnowledgeStore {
     }
 
     /// Async `query_facts` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
     pub async fn query_facts_async(
         self: &std::sync::Arc<Self>,
         nous_id: String,
@@ -1117,6 +1149,7 @@ impl KnowledgeStore {
     }
 
     /// Async `search_vectors` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self, query_vec))]
     pub async fn search_vectors_async(
         self: &std::sync::Arc<Self>,
         query_vec: Vec<f32>,
@@ -1399,6 +1432,67 @@ impl KnowledgeStore {
 
         tracing::info!("knowledge schema migration v2 -> v3 complete");
         Ok(())
+    }
+
+    // --- Db facade methods ---
+
+    /// Backup the knowledge database to a file.
+    ///
+    /// Delegates to the inner engine's `backup_db`. Currently returns an error
+    /// for in-memory and redb backends (`SQLite` storage support was removed).
+    #[instrument(skip(self, out_file))]
+    pub fn backup_db(&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
+        self.db.backup_db(out_file).map_err(|e| {
+            crate::error::EngineQuerySnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })
+    }
+
+    /// Restore the knowledge database from a backup file.
+    ///
+    /// Delegates to the inner engine's `restore_backup`. Currently returns an error
+    /// for in-memory and redb backends (`SQLite` storage support was removed).
+    #[instrument(skip(self, in_file))]
+    pub fn restore_backup(&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
+        self.db.restore_backup(in_file).map_err(|e| {
+            crate::error::EngineQuerySnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })
+    }
+
+    /// Import specific relations from a backup file into the live database.
+    ///
+    /// Delegates to the inner engine's `import_from_backup`. Currently returns an error
+    /// for in-memory and redb backends (`SQLite` storage support was removed).
+    #[instrument(skip(self, in_file))]
+    pub fn import_from_backup(
+        &self,
+        in_file: impl AsRef<std::path::Path>,
+        relations: &[String],
+    ) -> crate::error::Result<()> {
+        self.db.import_from_backup(in_file, relations).map_err(|e| {
+            crate::error::EngineQuerySnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })
+    }
+
+    /// Run a Datalog script in read-only mode. Convenience wrapper around `run_query`.
+    ///
+    /// Equivalent to calling `run_query`, but makes the immutability contract explicit
+    /// for callers who need a read-only guarantee (e.g., the `datalog_query` tool).
+    #[instrument(skip(self, params))]
+    pub fn run_script_read_only(
+        &self,
+        script: &str,
+        params: std::collections::BTreeMap<String, crate::engine::DataValue>,
+    ) -> crate::error::Result<crate::engine::NamedRows> {
+        self.run_read(script, params)
     }
 
     // --- Internal helpers ---
@@ -2661,6 +2755,7 @@ mod knowledge_store_tests {
     use crate::knowledge::{
         EmbeddedChunk, Entity, EpistemicTier, Fact, ForgetReason, Relationship,
     };
+    use std::collections::BTreeMap;
     use std::sync::Arc;
 
     const DIM: usize = 4;
@@ -3817,5 +3912,63 @@ mod knowledge_store_tests {
             .await
             .expect("async diff");
         assert_eq!(diff.added.len(), 1);
+    #[test]
+    fn backup_db_returns_error_for_mem_backend() {
+        let store = make_store();
+        let dir = tempfile::tempdir().unwrap();
+        let backup_path = dir.path().join("backup.db");
+        let result = store.backup_db(&backup_path);
+        assert!(
+            result.is_err(),
+            "backup_db should error on in-memory backend"
+        );
+    }
+
+    #[test]
+    fn restore_backup_returns_error_for_mem_backend() {
+        let store = make_store();
+        let dir = tempfile::tempdir().unwrap();
+        let backup_path = dir.path().join("backup.db");
+        std::fs::write(&backup_path, "fake").unwrap();
+        let result = store.restore_backup(&backup_path);
+        assert!(
+            result.is_err(),
+            "restore_backup should error on in-memory backend"
+        );
+    }
+
+    #[test]
+    fn import_from_backup_returns_error_for_mem_backend() {
+        let store = make_store();
+        let dir = tempfile::tempdir().unwrap();
+        let backup_path = dir.path().join("backup.db");
+        std::fs::write(&backup_path, "fake").unwrap();
+        let result = store.import_from_backup(&backup_path, &["facts".to_owned()]);
+        assert!(
+            result.is_err(),
+            "import_from_backup should error on in-memory backend"
+        );
+    }
+
+    #[test]
+    fn run_script_read_only_basic() {
+        let store = make_store();
+        let result = store
+            .run_script_read_only("?[x] := x = 42", BTreeMap::new())
+            .expect("read-only query should succeed");
+        assert_eq!(result.rows.len(), 1);
+    }
+
+    #[test]
+    fn run_script_read_only_rejects_mutations() {
+        let store = make_store();
+        let result = store.run_script_read_only(
+            r"?[x] <- [[1]] :put facts { id: 'x', valid_from: 'now' => content: 'test', nous_id: 'a', confidence: 1.0, tier: 'verified', valid_to: 'end', recorded_at: 'now', access_count: 0, last_accessed_at: '', stability_hours: 720.0, fact_type: '' }",
+            BTreeMap::new(),
+        );
+        assert!(
+            result.is_err(),
+            "read-only mode should reject :put operations"
+        );
     }
 }
