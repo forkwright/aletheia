@@ -6,6 +6,8 @@
 
 use std::path::{Path, PathBuf};
 
+use snafu::{ResultExt, ensure};
+
 /// The oikos — resolved instance paths.
 ///
 /// All paths are absolute. Construct via [`Oikos::discover`] or [`Oikos::from_root`].
@@ -196,6 +198,92 @@ impl Oikos {
     pub fn signal(&self) -> PathBuf {
         self.root.join("signal")
     }
+
+    // --- Startup validation ---
+
+    /// Validate the instance layout at startup.
+    ///
+    /// Checks that:
+    /// - The root directory exists.
+    /// - `config/` and `data/` subdirectories exist.
+    /// - `data/` is writable.
+    /// - Emits a warning if `nous/` is absent (first-run scenario).
+    ///
+    /// Call this once, immediately after constructing the `Oikos`, before
+    /// starting any actors or loading the session store.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first validation failure encountered.
+    #[expect(
+        clippy::result_large_err,
+        reason = "shared Error enum contains figment::Error; boxing would require a crate-wide change"
+    )]
+    pub fn validate(&self) -> crate::error::Result<()> {
+        use crate::error::{InstanceRootNotFoundSnafu, RequiredDirMissingSnafu};
+
+        ensure!(
+            self.root.exists(),
+            InstanceRootNotFoundSnafu { path: self.root.clone() }
+        );
+
+        for dir in &["config", "data"] {
+            let path = self.root.join(dir);
+            ensure!(path.exists(), RequiredDirMissingSnafu { path });
+        }
+
+        let nous_dir = self.root.join("nous");
+        if !nous_dir.exists() {
+            tracing::warn!(
+                path = %nous_dir.display(),
+                "nous/ directory not found, no agents will load on this path"
+            );
+        }
+
+        Self::check_writable(&self.root.join("data"))?;
+
+        Ok(())
+    }
+
+    /// Validate that a workspace path from agent config resolves to an existing directory.
+    ///
+    /// Relative paths are resolved against the instance root. Absolute paths are
+    /// used as-is.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::WorkspacePathInvalid`] if the path does not
+    /// exist or is not a directory.
+    #[expect(
+        clippy::result_large_err,
+        reason = "shared Error enum contains figment::Error; boxing would require a crate-wide change"
+    )]
+    pub fn validate_workspace_path(&self, workspace: &str) -> crate::error::Result<()> {
+        use crate::error::WorkspacePathInvalidSnafu;
+
+        let path = if Path::new(workspace).is_absolute() {
+            PathBuf::from(workspace)
+        } else {
+            self.root.join(workspace)
+        };
+
+        ensure!(path.is_dir(), WorkspacePathInvalidSnafu { path });
+
+        Ok(())
+    }
+
+    #[expect(
+        clippy::result_large_err,
+        reason = "shared Error enum contains figment::Error; boxing would require a crate-wide change"
+    )]
+    fn check_writable(path: &Path) -> crate::error::Result<()> {
+        use crate::error::NotWritableSnafu;
+
+        let test_file = path.join(".aletheia-write-test");
+        std::fs::write(&test_file, b"ok").context(NotWritableSnafu { path: path.to_path_buf() })?;
+        let _ = std::fs::remove_file(&test_file);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -310,5 +398,168 @@ mod tests {
         let oikos = Oikos::from_root(dir.path());
         let cf = oikos.config_file();
         assert!(cf.to_string_lossy().ends_with("aletheia.yaml"));
+    }
+
+    // --- validate() tests ---
+
+    fn make_valid_instance() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn validate_passes_with_valid_layout() {
+        let dir = make_valid_instance();
+        let oikos = Oikos::from_root(dir.path());
+        assert!(oikos.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_fails_when_root_missing() {
+        let oikos = Oikos::from_root("/tmp/aletheia-nonexistent-root-xyz-12345");
+        let err = oikos.validate().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("instance root not found"),
+            "expected 'instance root not found' in: {msg}"
+        );
+        assert!(
+            msg.contains("aletheia init"),
+            "expected 'aletheia init' hint in: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_fails_when_config_dir_missing() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        // only data/, no config/
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        let err = oikos.validate().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("required directory missing"),
+            "expected 'required directory missing' in: {msg}"
+        );
+        assert!(msg.contains("config"), "expected path to mention 'config': {msg}");
+        assert!(
+            msg.contains("aletheia init"),
+            "expected 'aletheia init' hint in: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_fails_when_data_dir_missing() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        // only config/, no data/
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        let err = oikos.validate().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("required directory missing"),
+            "expected 'required directory missing' in: {msg}"
+        );
+        assert!(msg.contains("data"), "expected path to mention 'data': {msg}");
+    }
+
+    #[test]
+    fn validate_warns_but_passes_without_nous_dir() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        // config/ and data/ present, no nous/
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        // Should succeed — missing nous/ is a warning, not an error
+        assert!(oikos.validate().is_ok());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn validate_fails_when_data_not_writable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+
+        // Remove write permission from data/
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        // Skip if we can still write (running as root)
+        let probe = data.join(".root-probe");
+        let is_root = std::fs::write(&probe, b"x").is_ok();
+        let _ = std::fs::remove_file(&probe);
+        if is_root {
+            std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+
+        let oikos = Oikos::from_root(dir.path());
+        let result = oikos.validate();
+
+        // Restore permissions so tempdir cleanup works
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not writable"),
+            "expected 'not writable' in: {msg}"
+        );
+        assert!(
+            msg.contains("aletheia init"),
+            "expected 'aletheia init' hint in: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_workspace_path_accepts_existing_relative() {
+        let dir = make_valid_instance();
+        // nous/ already created by make_valid_instance
+        let oikos = Oikos::from_root(dir.path());
+        assert!(oikos.validate_workspace_path("nous").is_ok());
+    }
+
+    #[test]
+    fn validate_workspace_path_accepts_existing_absolute() {
+        let dir = make_valid_instance();
+        let oikos = Oikos::from_root(dir.path());
+        let abs = dir.path().join("nous").to_string_lossy().into_owned();
+        assert!(oikos.validate_workspace_path(&abs).is_ok());
+    }
+
+    #[test]
+    fn validate_workspace_path_rejects_missing_path() {
+        let dir = make_valid_instance();
+        let oikos = Oikos::from_root(dir.path());
+        let err = oikos.validate_workspace_path("nous/nonexistent-agent-xyz").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("agent workspace path does not exist"),
+            "expected workspace error in: {msg}"
+        );
+        assert!(
+            msg.contains("aletheia init") || msg.contains("update the workspace path"),
+            "expected help hint in: {msg}"
+        );
+    }
+
+    #[test]
+    fn init_layout_passes_validation() {
+        // Simulate what `aletheia init` should create
+        let dir = tempfile::tempdir().expect("create temp dir");
+        for sub in &["config", "data", "nous", "logs", "shared"] {
+            std::fs::create_dir_all(dir.path().join(sub)).unwrap();
+        }
+        let oikos = Oikos::from_root(dir.path());
+        assert!(
+            oikos.validate().is_ok(),
+            "a freshly-initialised instance layout must pass validation"
+        );
     }
 }
