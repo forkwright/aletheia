@@ -9,7 +9,6 @@ use ratatui::widgets::Paragraph;
 use crate::app::App;
 use crate::theme::ThemePalette;
 
-
 pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     if app.tab_bar.tabs.is_empty() || area.width < 4 {
         return;
@@ -67,10 +66,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePale
         spans.push(Span::styled(" ", style));
 
         if idx < total_tabs - 1 {
-            spans.push(Span::styled(
-                "\u{2502}",
-                Style::default().fg(theme.fg_dim),
-            ));
+            spans.push(Span::styled("\u{2502}", Style::default().fg(theme.fg_dim)));
         }
     }
 

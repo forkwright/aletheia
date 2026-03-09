@@ -48,15 +48,15 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let tab_height: u16 = if show_tabs { 1 } else { 0 };
 
     let mut constraints = vec![
-        Constraint::Length(1),             // title bar
+        Constraint::Length(1), // title bar
     ];
     if show_tabs {
         constraints.push(Constraint::Length(tab_height)); // tab bar
     }
-    constraints.push(Constraint::Min(5));                // body
+    constraints.push(Constraint::Min(5)); // body
     constraints.push(Constraint::Length(bottom_height)); // status bar or command palette
     if has_toast {
-        constraints.push(Constraint::Length(1));          // error toast
+        constraints.push(Constraint::Length(1)); // error toast
     }
 
     let vertical = Layout::default()

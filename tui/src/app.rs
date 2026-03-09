@@ -17,8 +17,8 @@ use crate::update::extract_text_content;
 use crate::view;
 
 use crate::state::SavedScrollState;
-use crate::state::virtual_scroll::VirtualScroll;
 use crate::state::TabBar;
+use crate::state::virtual_scroll::VirtualScroll;
 #[expect(
     unused_imports,
     reason = "re-exported for downstream modules that import from crate::app"
@@ -458,12 +458,10 @@ impl App {
             .and_then(|sid| {
                 self.focused_agent.as_ref().and_then(|aid| {
                     self.agents.iter().find(|a| a.id == *aid).and_then(|a| {
-                        a.sessions.iter().find(|s| s.id == *sid).map(|s| {
-                            s.display_name
-                                .as_deref()
-                                .unwrap_or(&s.key)
-                                .to_string()
-                        })
+                        a.sessions
+                            .iter()
+                            .find(|s| s.id == *sid)
+                            .map(|s| s.display_name.as_deref().unwrap_or(&s.key).to_string())
                     })
                 })
             })
