@@ -254,17 +254,50 @@ pub struct ToolDefinition {
 }
 
 /// Cache control directive for prompt caching.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CacheControl {
     #[serde(rename = "type")]
-    pub control_type: String,
+    pub kind: CacheControlType,
+}
+
+/// The type of cache control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CacheControlType {
+    #[serde(rename = "ephemeral")]
+    Ephemeral,
 }
 
 impl CacheControl {
     #[must_use]
     pub fn ephemeral() -> Self {
         Self {
-            control_type: "ephemeral".to_owned(),
+            kind: CacheControlType::Ephemeral,
+        }
+    }
+}
+
+/// Caching strategy for prompt caching.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CachingStrategy {
+    #[default]
+    Auto,
+    Disabled,
+}
+
+/// Configuration for prompt caching behavior.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachingConfig {
+    pub enabled: bool,
+    #[serde(default)]
+    pub strategy: CachingStrategy,
+}
+
+impl Default for CachingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            strategy: CachingStrategy::Auto,
         }
     }
 }
@@ -352,6 +385,8 @@ pub struct CompletionRequest {
     pub cache_system: bool,
     /// When true, last tool definition gets `cache_control: ephemeral`.
     pub cache_tools: bool,
+    /// When true, recent non-current conversation turns get `cache_control: ephemeral`.
+    pub cache_turns: bool,
     /// Control tool use behavior (auto/any/specific tool).
     pub tool_choice: Option<ToolChoice>,
     /// Request metadata for tracking.
@@ -374,6 +409,7 @@ impl Default for CompletionRequest {
             stop_sequences: Vec::new(),
             cache_system: false,
             cache_tools: false,
+            cache_turns: false,
             tool_choice: None,
             metadata: None,
             citations: None,
@@ -850,5 +886,38 @@ mod tests {
         let back: CompletionResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(back.id, "msg_123");
         assert_eq!(back.stop_reason, StopReason::EndTurn);
+    }
+
+    #[test]
+    fn cache_control_type_serde() {
+        let cc = CacheControl::ephemeral();
+        let json = serde_json::to_string(&cc).unwrap();
+        assert!(json.contains("\"type\":\"ephemeral\""));
+        let back: CacheControl = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.kind, CacheControlType::Ephemeral);
+    }
+
+    #[test]
+    fn caching_config_defaults() {
+        let config = CachingConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.strategy, CachingStrategy::Auto);
+    }
+
+    #[test]
+    fn caching_strategy_serde_roundtrip() {
+        for strategy in [CachingStrategy::Auto, CachingStrategy::Disabled] {
+            let json = serde_json::to_string(&strategy).unwrap();
+            let back: CachingStrategy = serde_json::from_str(&json).unwrap();
+            assert_eq!(strategy, back);
+        }
+    }
+
+    #[test]
+    fn completion_request_cache_defaults() {
+        let req = CompletionRequest::default();
+        assert!(!req.cache_system);
+        assert!(!req.cache_tools);
+        assert!(!req.cache_turns);
     }
 }

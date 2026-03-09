@@ -742,6 +742,7 @@ async fn serve(cli: Cli) -> Result<()> {
                 loop_detection_threshold: 3,
                 domains,
                 server_tools: Vec::new(),
+                cache_enabled: resolved.cache_enabled,
             };
             nous_manager
                 .spawn(

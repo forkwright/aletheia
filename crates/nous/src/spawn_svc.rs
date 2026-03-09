@@ -79,6 +79,7 @@ impl SpawnService for SpawnServiceImpl {
             loop_detection_threshold: 3,
             domains: Vec::new(),
             server_tools: Vec::new(),
+            cache_enabled: true,
         };
 
         let pipeline_config = PipelineConfig {
