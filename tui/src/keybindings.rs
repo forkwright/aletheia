@@ -479,6 +479,7 @@ pub fn context_label(app: &App) -> &'static str {
         Some(Overlay::SystemStatus) => "System Status",
         Some(Overlay::Settings(_)) => "Settings",
         Some(Overlay::ContextActions(_)) => "Context Actions",
+        Some(Overlay::DiffView(_)) => "Diff Viewer",
     }
 }
 

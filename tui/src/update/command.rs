@@ -218,6 +218,9 @@ async fn execute_command(app: &mut App) {
         "settings" => {
             super::settings::handle_open(app).await;
         }
+        "diff" | "d" => {
+            super::diff::handle_diff_open(app).await;
+        }
         _ => {
             app.error_toast = Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
         }

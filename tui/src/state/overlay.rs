@@ -14,6 +14,7 @@ pub enum Overlay {
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
     ContextActions(ContextActionsOverlay),
+    DiffView(crate::diff::DiffViewState),
 }
 
 #[derive(Debug)]
