@@ -1439,7 +1439,7 @@ impl KnowledgeStore {
     /// Backup the knowledge database to a file.
     ///
     /// Delegates to the inner engine's `backup_db`. Currently returns an error
-    /// for in-memory and redb backends (SQLite storage support was removed).
+    /// for in-memory and redb backends (`SQLite` storage support was removed).
     #[instrument(skip(self, out_file))]
     pub fn backup_db(&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.backup_db(out_file).map_err(|e| {
@@ -1453,7 +1453,7 @@ impl KnowledgeStore {
     /// Restore the knowledge database from a backup file.
     ///
     /// Delegates to the inner engine's `restore_backup`. Currently returns an error
-    /// for in-memory and redb backends (SQLite storage support was removed).
+    /// for in-memory and redb backends (`SQLite` storage support was removed).
     #[instrument(skip(self, in_file))]
     pub fn restore_backup(&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.restore_backup(in_file).map_err(|e| {
@@ -1467,7 +1467,7 @@ impl KnowledgeStore {
     /// Import specific relations from a backup file into the live database.
     ///
     /// Delegates to the inner engine's `import_from_backup`. Currently returns an error
-    /// for in-memory and redb backends (SQLite storage support was removed).
+    /// for in-memory and redb backends (`SQLite` storage support was removed).
     #[instrument(skip(self, in_file))]
     pub fn import_from_backup(
         &self,
