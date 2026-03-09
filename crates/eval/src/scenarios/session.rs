@@ -2,7 +2,7 @@
 
 use tracing::Instrument;
 
-use crate::client::EvalClient;
+use crate::client::{EvalClient, SessionStatus};
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval};
 
 #[tracing::instrument(skip_all)]
@@ -12,17 +12,6 @@ pub fn scenarios() -> Vec<Box<dyn Scenario>> {
         Box::new(SessionCloseArchives),
         Box::new(SessionUnknown404),
     ]
-}
-
-fn unique_key(suffix: &str) -> String {
-    format!(
-        "eval-{}-{}",
-        suffix,
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    )
 }
 
 struct SessionCreateAndGet;
@@ -41,14 +30,14 @@ impl Scenario for SessionCreateAndGet {
             async move {
                 let nous_list = client.list_nous().await?;
                 let nous_id = &nous_list[0].id;
-                let key = unique_key("create");
+                let key = super::unique_key("session", "create");
                 let session = client.create_session(nous_id, &key).await?;
                 assert_eval(!session.id.is_empty(), "session id should not be empty")?;
                 assert_eq_eval(&session.nous_id, nous_id, "nous_id should match")?;
                 assert_eq_eval(&session.session_key, &key, "session_key should match")?;
                 assert_eq_eval(
                     &session.status,
-                    &"active".to_owned(),
+                    &SessionStatus::Active,
                     "status should be active",
                 )?;
                 let fetched = client.get_session(&session.id).await?;
@@ -80,13 +69,13 @@ impl Scenario for SessionCloseArchives {
             async move {
                 let nous_list = client.list_nous().await?;
                 let nous_id = &nous_list[0].id;
-                let key = unique_key("close");
+                let key = super::unique_key("session", "close");
                 let session = client.create_session(nous_id, &key).await?;
                 client.close_session(&session.id).await?;
                 let fetched = client.get_session(&session.id).await?;
                 assert_eq_eval(
                     &fetched.status,
-                    &"archived".to_owned(),
+                    &SessionStatus::Archived,
                     "closed session should be archived",
                 )
             }
