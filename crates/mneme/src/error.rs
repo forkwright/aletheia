@@ -143,6 +143,17 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// An entity ID contains characters not permitted in Datalog script interpolation.
+    ///
+    /// Valid entity IDs contain only ASCII alphanumerics, hyphens, and underscores.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("invalid entity id for query interpolation: {id:?}"))]
+    InvalidEntityId {
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using mneme's [`Error`] type.

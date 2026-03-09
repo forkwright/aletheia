@@ -135,6 +135,33 @@ pub fn fts_ddl() -> &'static str {
 #[cfg(feature = "mneme-engine")]
 use crate::query::queries;
 
+/// Typed wrapper for raw Datalog query results.
+///
+/// Returned by [`KnowledgeStore::run_query`] and related escape-hatch methods.
+/// Hides the `crate::engine::NamedRows` type from callers, keeping CozoDB
+/// internals encapsulated within the knowledge layer.
+///
+/// Row values are [`crate::engine::DataValue`] — call `.get_str()`, `.get_float()`,
+/// etc. to extract typed values.
+#[cfg(feature = "mneme-engine")]
+#[derive(Debug, Clone)]
+pub struct QueryResult {
+    /// Column names in the order they appear in each row.
+    pub headers: Vec<String>,
+    /// Result rows. Each row is a flat `Vec` matching `headers` by position.
+    pub rows: Vec<Vec<crate::engine::DataValue>>,
+}
+
+#[cfg(feature = "mneme-engine")]
+impl From<crate::engine::NamedRows> for QueryResult {
+    fn from(nr: crate::engine::NamedRows) -> Self {
+        Self {
+            headers: nr.headers,
+            rows: nr.rows,
+        }
+    }
+}
+
 /// Configuration for `KnowledgeStore` initialization.
 #[cfg(feature = "mneme-engine")]
 #[derive(Clone, Copy, Debug)]
@@ -422,18 +449,19 @@ impl KnowledgeStore {
         self.run_mut(&queries::upsert_relationship(), params)
     }
 
-    /// Query 2-hop entity neighborhood. Returns raw rows for flexible callers.
+    /// Query 2-hop entity neighborhood.
+    ///
+    /// Returns a [`QueryResult`] whose rows correspond to the Datalog output of
+    /// `ENTITY_NEIGHBORHOOD`. Columns: `id`, `score`, `hops`.
     #[instrument(skip(self))]
-    pub fn entity_neighborhood(
-        &self,
-        entity_id: &str,
-    ) -> crate::error::Result<crate::engine::NamedRows> {
+    pub fn entity_neighborhood(&self, entity_id: &str) -> crate::error::Result<QueryResult> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
         params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
         self.run_read(queries::ENTITY_NEIGHBORHOOD, params)
+            .map(QueryResult::from)
     }
 
     /// Insert a vector embedding for semantic search.
@@ -504,13 +532,16 @@ impl KnowledgeStore {
     }
 
     /// Raw query escape hatch for callers needing custom Datalog.
+    ///
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep CozoDB
+    /// internals encapsulated. Access row values via `result.rows[i][j]`.
     #[instrument(skip(self, params))]
     pub fn run_query(
         &self,
         script: &str,
         params: std::collections::BTreeMap<String, crate::engine::DataValue>,
-    ) -> crate::error::Result<crate::engine::NamedRows> {
-        self.run_read(script, params)
+    ) -> crate::error::Result<QueryResult> {
+        self.run_read(script, params).map(QueryResult::from)
     }
 
     /// Run a custom Datalog query with an optional timeout.
@@ -520,13 +551,16 @@ impl KnowledgeStore {
     ///
     /// Note: timeout detection relies on the engine error containing "killed before completion"
     /// (from `CozoDB`'s internal `ProcessKilled` error). This is a known fragile dependency.
+    ///
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep CozoDB internals
+    /// encapsulated.
     #[instrument(skip(self, params))]
     pub fn run_query_with_timeout(
         &self,
         script: &str,
         params: std::collections::BTreeMap<String, crate::engine::DataValue>,
         timeout: Option<std::time::Duration>,
-    ) -> crate::error::Result<crate::engine::NamedRows> {
+    ) -> crate::error::Result<QueryResult> {
         use crate::engine::ScriptMutability;
         let script_with_timeout = match timeout {
             Some(d) => format!("{script}\n:timeout {}", d.as_secs_f64()),
@@ -534,6 +568,7 @@ impl KnowledgeStore {
         };
         self.db
             .run(&script_with_timeout, params, ScriptMutability::Immutable)
+            .map(QueryResult::from)
             .map_err(|e| {
                 let msg = e.to_string();
                 if msg.contains("killed before completion") {
@@ -549,15 +584,19 @@ impl KnowledgeStore {
 
     /// Raw mutable query escape hatch — runs script with `ScriptMutability::Mutable`.
     /// Required for `:rm` and `:put` operations from caller code.
+    ///
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep CozoDB internals
+    /// encapsulated.
     #[instrument(skip(self, params))]
     pub fn run_mut_query(
         &self,
         script: &str,
         params: std::collections::BTreeMap<String, crate::engine::DataValue>,
-    ) -> crate::error::Result<crate::engine::NamedRows> {
+    ) -> crate::error::Result<QueryResult> {
         use crate::engine::ScriptMutability;
         self.db
             .run(script, params, ScriptMutability::Mutable)
+            .map(QueryResult::from)
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
                     message: e.to_string(),
@@ -591,7 +630,7 @@ impl KnowledgeStore {
         params.insert("ef".to_owned(), DataValue::from(ef_i64));
         params.insert("limit".to_owned(), DataValue::from(limit_i64));
 
-        let script = build_hybrid_query(q);
+        let script = build_hybrid_query(q)?;
         let rows = self.run_read(&script, params)?;
         let results = rows_to_hybrid_results(rows)?;
 
@@ -1492,13 +1531,16 @@ impl KnowledgeStore {
     ///
     /// Equivalent to calling `run_query`, but makes the immutability contract explicit
     /// for callers who need a read-only guarantee (e.g., the `datalog_query` tool).
+    ///
+    /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep CozoDB internals
+    /// encapsulated.
     #[instrument(skip(self, params))]
     pub fn run_script_read_only(
         &self,
         script: &str,
         params: std::collections::BTreeMap<String, crate::engine::DataValue>,
-    ) -> crate::error::Result<crate::engine::NamedRows> {
-        self.run_read(script, params)
+    ) -> crate::error::Result<QueryResult> {
+        self.run_read(script, params).map(QueryResult::from)
     }
 
     // --- Internal helpers ---
@@ -2129,20 +2171,38 @@ fn rows_to_recall_results(
     Ok(out)
 }
 
+/// Validate that an entity ID is safe for interpolation into a Datalog script.
+///
+/// Only ASCII alphanumerics, hyphens (`-`), and underscores (`_`) are permitted.
+/// This mirrors the character set produced by [`slugify`], preventing injection
+/// via maliciously crafted entity IDs.
+#[cfg(feature = "mneme-engine")]
+fn validate_entity_id_for_query(id: &str) -> crate::error::Result<()> {
+    if id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        Ok(())
+    } else {
+        crate::error::InvalidEntityIdSnafu { id: id.to_owned() }.fail()
+    }
+}
+
 // Build the hybrid Datalog query with dynamic graph sub-rules.
 // When seed_entities is empty, graph is an empty relation.
 // When non-empty, seeds are expanded inline (avoids is_in() built-in dependency).
+// All seed entity IDs are validated against [a-zA-Z0-9_-] before interpolation.
 #[cfg(feature = "mneme-engine")]
-fn build_hybrid_query(q: &HybridQuery) -> String {
+fn build_hybrid_query(q: &HybridQuery) -> crate::error::Result<String> {
     let graph_rules = if q.seed_entities.is_empty() {
         // Empty graph relation — graph signal contributes 0 to RRF
         "graph[id, score] <- []".to_owned()
     } else {
-        let seed_data: Vec<String> = q
-            .seed_entities
-            .iter()
-            .map(|s| format!("[\"{}\"]", s.replace('"', "\\\"")))
-            .collect();
+        let mut seed_data = Vec::with_capacity(q.seed_entities.len());
+        for s in &q.seed_entities {
+            validate_entity_id_for_query(s)?;
+            seed_data.push(format!("[\"{s}\"]"));
+        }
         let seeds_inline = seed_data.join(", ");
         format!(
             "seed_list[e] <- [{seeds_inline}]\n        \
@@ -2152,7 +2212,7 @@ fn build_hybrid_query(q: &HybridQuery) -> String {
              graph[id, sum(score)] := graph_raw[id, score]"
         )
     };
-    queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules)
+    Ok(queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules))
 }
 
 // Parse rows from ReciprocalRankFusion output into Vec<HybridResult>.
@@ -2379,7 +2439,7 @@ mod tests {
             limit: 5,
             ef: 20,
         };
-        let script = build_hybrid_query(&q);
+        let script = build_hybrid_query(&q).expect("valid query");
         assert!(
             script.contains("graph[id, score] <- []"),
             "empty seeds must produce empty graph relation"
@@ -2397,7 +2457,7 @@ mod tests {
             limit: 5,
             ef: 20,
         };
-        let script = build_hybrid_query(&q);
+        let script = build_hybrid_query(&q).expect("valid entity ids");
         assert!(
             script.contains("seed_list"),
             "non-empty seeds must produce seed_list relation"
@@ -2413,6 +2473,54 @@ mod tests {
             script.contains("sum(score)"),
             "must aggregate scores per entity"
         );
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn build_hybrid_query_rejects_injection_in_seed_id() {
+        // Seeds with characters outside [a-zA-Z0-9_-] must return an error.
+        let dangerous_seeds = [
+            "e-1\"; DROP TABLE facts; --",
+            "id with spaces",
+            "id\nnewline",
+            "id\"quote",
+            "id'apostrophe",
+        ];
+        for seed in dangerous_seeds {
+            let q = HybridQuery {
+                text: "test".into(),
+                embedding: vec![0.0; 4],
+                seed_entities: vec![seed.to_owned()],
+                limit: 5,
+                ef: 20,
+            };
+            let result = build_hybrid_query(&q);
+            assert!(
+                result.is_err(),
+                "seed {seed:?} must be rejected but build_hybrid_query succeeded"
+            );
+            assert!(
+                matches!(result, Err(crate::error::Error::InvalidEntityId { .. })),
+                "seed {seed:?} must produce InvalidEntityId error"
+            );
+        }
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn build_hybrid_query_accepts_valid_seed_ids() {
+        let valid_seeds = ["e-1", "some_entity", "CamelCase123", "a-b_c"];
+        for seed in valid_seeds {
+            let q = HybridQuery {
+                text: "test".into(),
+                embedding: vec![0.0; 4],
+                seed_entities: vec![seed.to_owned()],
+                limit: 5,
+                ef: 20,
+            };
+            let result = build_hybrid_query(&q);
+            assert!(result.is_ok(), "valid seed {seed:?} must be accepted");
+        }
     }
 
     #[cfg(feature = "mneme-engine")]
@@ -2485,7 +2593,9 @@ mod tests {
         reason = "integration test with setup/assert phases"
     )]
     fn hybrid_search_graph_aggregation() {
-        use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, Relationship};
+        use crate::knowledge::{
+            EmbeddedChunk, Entity, EntityId, EpistemicTier, Fact, Relationship,
+        };
 
         let dim = 4;
         let store =
@@ -2561,7 +2671,7 @@ mod tests {
         for (id, name) in [("s1", "Seed1"), ("s2", "Seed2"), ("s3", "Seed3")] {
             store
                 .insert_entity(&Entity {
-                    id: id.to_owned(),
+                    id: EntityId::from(id),
                     name: name.to_owned(),
                     entity_type: "concept".to_owned(),
                     aliases: vec![],
@@ -2571,8 +2681,8 @@ mod tests {
                 .expect("insert entity");
             store
                 .insert_relationship(&Relationship {
-                    src: id.to_owned(),
-                    dst: "f1".to_owned(),
+                    src: EntityId::from(id),
+                    dst: EntityId::from("f1"),
                     relation: "describes".to_owned(),
                     weight: 0.7,
                     created_at: "2026-03-01T00:00:00Z".to_owned(),
@@ -2581,8 +2691,8 @@ mod tests {
         }
         store
             .insert_relationship(&Relationship {
-                src: "s1".to_owned(),
-                dst: "f2".to_owned(),
+                src: EntityId::from("s1"),
+                dst: EntityId::from("f2"),
                 relation: "describes".to_owned(),
                 weight: 0.7,
                 created_at: "2026-03-01T00:00:00Z".to_owned(),
@@ -2631,7 +2741,7 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     #[test]
     fn hybrid_search_two_signal_no_graph() {
-        use crate::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact};
+        use crate::knowledge::{EmbeddedChunk, Entity, EntityId, EpistemicTier, Fact};
 
         let dim = 4;
         let store =
@@ -2674,7 +2784,7 @@ mod tests {
         // no matches for f-twosig
         store
             .insert_entity(&Entity {
-                id: "e-unrelated".to_owned(),
+                id: EntityId::from("e-unrelated"),
                 name: "Unrelated".to_owned(),
                 entity_type: "concept".to_owned(),
                 aliases: vec![],
@@ -2759,7 +2869,7 @@ mod tests {
 mod knowledge_store_tests {
     use super::*;
     use crate::knowledge::{
-        EmbeddedChunk, Entity, EpistemicTier, Fact, ForgetReason, Relationship,
+        EmbeddedChunk, Entity, EntityId, EpistemicTier, Fact, ForgetReason, Relationship,
     };
     use std::collections::BTreeMap;
     use std::sync::Arc;
@@ -2794,7 +2904,7 @@ mod knowledge_store_tests {
 
     fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
         Entity {
-            id: id.to_owned(),
+            id: EntityId::from(id),
             name: name.to_owned(),
             entity_type: entity_type.to_owned(),
             aliases: vec![],
@@ -2805,8 +2915,8 @@ mod knowledge_store_tests {
 
     fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
         Relationship {
-            src: src.to_owned(),
-            dst: dst.to_owned(),
+            src: EntityId::from(src),
+            dst: EntityId::from(dst),
             relation: relation.to_owned(),
             weight,
             created_at: "2026-03-01T00:00:00Z".to_owned(),
@@ -3956,6 +4066,27 @@ mod knowledge_store_tests {
             result.is_err(),
             "import_from_backup should error on in-memory backend"
         );
+    }
+
+    #[test]
+    fn query_result_does_not_expose_named_rows_type() {
+        // run_query must return QueryResult, not crate::engine::NamedRows.
+        // This test validates the type is QueryResult and exposes .headers + .rows.
+        let store = make_store();
+        let result: QueryResult = store
+            .run_query("?[x] := x = 99", BTreeMap::new())
+            .expect("simple query");
+        assert_eq!(result.rows.len(), 1, "one result row expected");
+        assert!(!result.headers.is_empty(), "headers must be populated");
+    }
+
+    #[test]
+    fn query_result_from_run_script_read_only() {
+        let store = make_store();
+        let result: QueryResult = store
+            .run_script_read_only("?[x] := x = 42", BTreeMap::new())
+            .expect("read-only query should succeed");
+        assert_eq!(result.rows.len(), 1);
     }
 
     #[test]

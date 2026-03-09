@@ -10,6 +10,48 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Typed newtype for entity identifiers in the knowledge graph.
+///
+/// Prevents accidental mixing of entity IDs with other string fields (e.g. `nous_id`,
+/// `source_session_id`). Serializes/deserializes as a plain string for backwards
+/// compatibility with existing storage schemas.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EntityId(String);
+
+impl EntityId {
+    /// Borrow the inner string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for EntityId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for EntityId {
+    fn from(s: &str) -> Self {
+        Self(s.to_owned())
+    }
+}
+
+impl std::fmt::Display for EntityId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::ops::Deref for EntityId {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
 /// A memory fact extracted from conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fact {
@@ -53,7 +95,7 @@ pub struct Fact {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entity {
     /// Unique identifier.
-    pub id: String,
+    pub id: EntityId,
     /// Display name.
     pub name: String,
     /// Entity type (person, project, tool, concept, etc.).
@@ -70,9 +112,9 @@ pub struct Entity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Relationship {
     /// Source entity ID.
-    pub src: String,
+    pub src: EntityId,
     /// Target entity ID.
-    pub dst: String,
+    pub dst: EntityId,
     /// Relationship type (e.g. `works_on`, `knows`, `depends_on`).
     pub relation: String,
     /// Relationship weight/strength (0.0–1.0).
@@ -217,6 +259,57 @@ pub struct RecallResult {
 mod tests {
     use super::*;
 
+    // ---- EntityId ----
+
+    #[test]
+    fn entity_id_from_str() {
+        let id = EntityId::from("alice");
+        assert_eq!(id.as_str(), "alice");
+        assert_eq!(id.to_string(), "alice");
+    }
+
+    #[test]
+    fn entity_id_from_string() {
+        let id = EntityId::from("bob".to_owned());
+        assert_eq!(&*id, "bob");
+    }
+
+    #[test]
+    fn entity_id_serde_transparent() {
+        let id = EntityId::from("e-123");
+        let json = serde_json::to_string(&id).unwrap();
+        // Must serialize as a plain JSON string, not {"0":"e-123"}
+        assert_eq!(
+            json, r#""e-123""#,
+            "EntityId must serialize as plain string"
+        );
+        let back: EntityId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, back);
+    }
+
+    #[test]
+    fn entity_id_prevents_mixing_with_plain_string() {
+        // Compile-time: EntityId and String are distinct types.
+        // Runtime: confirm they compare correctly via as_str.
+        let eid = EntityId::from("nous-1");
+        let plain: String = "nous-1".to_owned();
+        assert_eq!(eid.as_str(), plain.as_str());
+    }
+
+    #[test]
+    fn entity_id_display_matches_inner_string() {
+        let id = EntityId::from("project-aletheia");
+        assert_eq!(format!("{id}"), "project-aletheia");
+    }
+
+    #[test]
+    fn entity_id_clone_equality() {
+        let a = EntityId::from("e-42");
+        let b = a.clone();
+        assert_eq!(a, b, "cloned EntityId must equal original");
+        assert_eq!(a.as_str(), b.as_str());
+    }
+
     #[test]
     fn epistemic_tier_serde_roundtrip() {
         for tier in [
@@ -260,7 +353,7 @@ mod tests {
     #[test]
     fn entity_serde_roundtrip() {
         let entity = Entity {
-            id: "e-1".to_owned(),
+            id: EntityId::from("e-1"),
             name: "Dr. Chen".to_owned(),
             entity_type: "person".to_owned(),
             aliases: vec!["acme_user".to_owned(), "test-user-01".to_owned()],
@@ -276,8 +369,8 @@ mod tests {
     #[test]
     fn relationship_serde_roundtrip() {
         let rel = Relationship {
-            src: "e-1".to_owned(),
-            dst: "e-2".to_owned(),
+            src: EntityId::from("e-1"),
+            dst: EntityId::from("e-2"),
             relation: "works_on".to_owned(),
             weight: 0.85,
             created_at: "2026-02-28T00:00:00Z".to_owned(),
@@ -375,7 +468,7 @@ mod tests {
     #[test]
     fn entity_empty_aliases() {
         let entity = Entity {
-            id: "e-2".to_owned(),
+            id: EntityId::from("e-2"),
             name: "Aletheia".to_owned(),
             entity_type: "project".to_owned(),
             aliases: vec![],
