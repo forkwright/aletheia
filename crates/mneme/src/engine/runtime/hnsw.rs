@@ -12,18 +12,18 @@ use crate::engine::parse::sys::HnswDistance;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, SourceSpan};
+use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rand::Rng;
 use rustc_hash::{FxHashMap, FxHashSet};
-use smartstring::{LazyCompact, SmartString};
 use std::cmp::{Reverse, max};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct HnswIndexManifest {
-    pub(crate) base_relation: SmartString<LazyCompact>,
-    pub(crate) index_name: SmartString<LazyCompact>,
+    pub(crate) base_relation: CompactString,
+    pub(crate) index_name: CompactString,
     pub(crate) vec_dim: usize,
     pub(crate) dtype: VecElementType,
     pub(crate) vec_fields: Vec<usize>,
@@ -40,8 +40,8 @@ pub(crate) struct HnswIndexManifest {
 
 impl HnswIndexManifest {
     fn get_random_level(&self) -> i64 {
-        let mut rng = rand::thread_rng();
-        let uniform_num: f64 = rng.gen_range(0.0..1.0);
+        let mut rng = rand::rng();
+        let uniform_num: f64 = rng.random_range(0.0..1.0);
         let r = -uniform_num.ln() * self.level_multiplier;
         // the level is the largest integer smaller than r
         -(r.floor() as i64)
@@ -1048,10 +1048,10 @@ mod tests {
     fn test_random_level() {
         let m = 20;
         let mult = 1. / (m as f64).ln();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut collected = BTreeMap::new();
         for _ in 0..10000 {
-            let uniform_num: f64 = rng.gen_range(0.0..1.0);
+            let uniform_num: f64 = rng.random_range(0.0..1.0);
             let r = -uniform_num.ln() * mult;
             // the level is the largest integer smaller than r
             let level = -(r.floor() as i64);

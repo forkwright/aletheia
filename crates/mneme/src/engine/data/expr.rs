@@ -8,10 +8,10 @@ use std::mem;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, miette};
+use compact_str::CompactString;
 use itertools::Itertools;
 use serde::de::{Error, Visitor};
 use serde::{Deserializer, Serializer};
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::functions::*;
 use crate::engine::data::relation::NullableColType;
@@ -195,7 +195,7 @@ pub enum Expr {
     /// Unbound function application
     UnboundApply {
         /// Op representing the function to apply
-        op: SmartString<LazyCompact>,
+        op: CompactString,
         /// Arguments to the application
         args: Box<[Expr]>,
         /// Source span
@@ -648,7 +648,7 @@ impl Expr {
                                 })?;
                                 let lower = DataValue::from(s);
                                 // let lower = DataValue::Str(s.to_string());
-                                let mut upper = SmartString::from(s);
+                                let mut upper = CompactString::from(s);
                                 // let mut upper = s.to_string();
                                 upper.push(LARGEST_UTF_CHAR);
                                 let upper = DataValue::Str(upper);
@@ -693,7 +693,7 @@ impl Expr {
         }
         Ok(())
     }
-    pub(crate) fn to_var_list(&self) -> Result<Vec<SmartString<LazyCompact>>> {
+    pub(crate) fn to_var_list(&self) -> Result<Vec<CompactString>> {
         match self {
             Expr::Apply { op, args, .. } => {
                 if op.name != "OP_LIST" {

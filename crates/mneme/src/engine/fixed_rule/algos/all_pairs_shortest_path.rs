@@ -2,15 +2,15 @@
 // Copyright 2022, The Cozo Project Authors — see NOTICE for details.
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
+use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rayon::prelude::*;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
@@ -81,7 +81,7 @@ impl FixedRule for BetweennessCentrality {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
@@ -129,7 +129,7 @@ impl FixedRule for ClosenessCentrality {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
@@ -138,7 +138,7 @@ impl FixedRule for ClosenessCentrality {
 }
 
 pub(crate) fn dijkstra_cost_only(
-    edges: &DirectedCsrGraph<u32, (), f32>,
+    edges: &DirectedCsrGraph<f32>,
     start: u32,
     poison: Poison,
 ) -> Result<Vec<f32>> {

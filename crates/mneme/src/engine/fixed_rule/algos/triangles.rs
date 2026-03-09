@@ -4,10 +4,10 @@
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighbors, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
+use compact_str::CompactString;
 use itertools::Itertools;
 use rayon::prelude::*;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
@@ -43,7 +43,7 @@ impl FixedRule for ClusteringCoefficients {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
@@ -52,7 +52,7 @@ impl FixedRule for ClusteringCoefficients {
 }
 
 fn clustering_coefficients(
-    graph: &DirectedCsrGraph<u32>,
+    graph: &DirectedCsrGraph,
     poison: Poison,
 ) -> Result<Vec<(f64, usize, usize)>> {
     let node_size = graph.node_count();

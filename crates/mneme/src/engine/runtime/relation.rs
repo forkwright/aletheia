@@ -7,11 +7,11 @@ use std::sync::atomic::Ordering;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
 use rmp_serde::Serializer;
 use serde::Serialize;
-use smartstring::{LazyCompact, SmartString};
 use snafu::Snafu;
 use tracing::error;
 
@@ -63,7 +63,7 @@ impl RelationId {
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct RelationHandle {
-    pub(crate) name: SmartString<LazyCompact>,
+    pub(crate) name: CompactString,
     pub(crate) id: RelationId,
     pub(crate) metadata: StoredRelationMetadata,
     pub(crate) put_triggers: Vec<String>,
@@ -71,15 +71,12 @@ pub(crate) struct RelationHandle {
     pub(crate) replace_triggers: Vec<String>,
     pub(crate) access_level: AccessLevel,
     pub(crate) is_temp: bool,
-    pub(crate) indices: BTreeMap<SmartString<LazyCompact>, (RelationHandle, Vec<usize>)>,
-    pub(crate) hnsw_indices:
-        BTreeMap<SmartString<LazyCompact>, (RelationHandle, HnswIndexManifest)>,
-    pub(crate) fts_indices: BTreeMap<SmartString<LazyCompact>, (RelationHandle, FtsIndexManifest)>,
-    pub(crate) lsh_indices: BTreeMap<
-        SmartString<LazyCompact>,
-        (RelationHandle, RelationHandle, MinHashLshIndexManifest),
-    >,
-    pub(crate) description: SmartString<LazyCompact>,
+    pub(crate) indices: BTreeMap<CompactString, (RelationHandle, Vec<usize>)>,
+    pub(crate) hnsw_indices: BTreeMap<CompactString, (RelationHandle, HnswIndexManifest)>,
+    pub(crate) fts_indices: BTreeMap<CompactString, (RelationHandle, FtsIndexManifest)>,
+    pub(crate) lsh_indices:
+        BTreeMap<CompactString, (RelationHandle, RelationHandle, MinHashLshIndexManifest)>,
+    pub(crate) description: CompactString,
 }
 
 impl RelationHandle {
@@ -672,7 +669,7 @@ impl<'a> SessionTx<'a> {
     pub(crate) fn describe_relation(&mut self, name: &str, description: &str) -> Result<()> {
         let mut meta = self.get_relation(name, true)?;
 
-        meta.description = SmartString::from(description);
+        meta.description = CompactString::from(description);
         let name_key = vec![DataValue::Str(meta.name.clone())].encode_as_key(RelationId::SYSTEM);
         let mut meta_val = vec![];
         meta.serialize(&mut Serializer::new(&mut meta_val).with_struct_map())
@@ -745,7 +742,7 @@ impl<'a> SessionTx<'a> {
 
         let inv_idx_keys = rel_handle.metadata.keys.clone();
         let inv_idx_vals = vec![ColumnDef {
-            name: SmartString::from("minhash"),
+            name: CompactString::from("minhash"),
             typing: NullableColType {
                 coltype: ColType::Bytes,
                 nullable: false,
@@ -754,7 +751,7 @@ impl<'a> SessionTx<'a> {
         }];
 
         let mut idx_keys = vec![ColumnDef {
-            name: SmartString::from("hash"),
+            name: CompactString::from("hash"),
             typing: NullableColType {
                 coltype: ColType::Bytes,
                 nullable: false,
@@ -872,7 +869,7 @@ impl<'a> SessionTx<'a> {
 
         // Build key columns definitions
         let mut idx_keys: Vec<ColumnDef> = vec![ColumnDef {
-            name: SmartString::from("word"),
+            name: CompactString::from("word"),
             typing: NullableColType {
                 coltype: ColType::String,
                 nullable: false,
@@ -901,22 +898,22 @@ impl<'a> SessionTx<'a> {
 
         let non_idx_keys: Vec<ColumnDef> = vec![
             ColumnDef {
-                name: SmartString::from("offset_from"),
+                name: CompactString::from("offset_from"),
                 typing: col_type.clone(),
                 default_gen: None,
             },
             ColumnDef {
-                name: SmartString::from("offset_to"),
+                name: CompactString::from("offset_to"),
                 typing: col_type.clone(),
                 default_gen: None,
             },
             ColumnDef {
-                name: SmartString::from("position"),
+                name: CompactString::from("position"),
                 typing: col_type,
                 default_gen: None,
             },
             ColumnDef {
-                name: SmartString::from("total_length"),
+                name: CompactString::from("total_length"),
                 typing: NullableColType {
                     coltype: ColType::Int,
                     nullable: false,
@@ -1062,7 +1059,7 @@ impl<'a> SessionTx<'a> {
         // Build key columns definitions
         let mut idx_keys: Vec<ColumnDef> = vec![ColumnDef {
             // layer -1 stores the self-loops
-            name: SmartString::from("layer"),
+            name: CompactString::from("layer"),
             typing: NullableColType {
                 coltype: ColType::Int,
                 nullable: false,
@@ -1073,11 +1070,11 @@ impl<'a> SessionTx<'a> {
         for prefix in ["fr", "to"] {
             for col in rel_handle.metadata.keys.iter() {
                 let mut col = col.clone();
-                col.name = SmartString::from(format!("{}_{}", prefix, col.name));
+                col.name = CompactString::from(format!("{}_{}", prefix, col.name));
                 idx_keys.push(col);
             }
             idx_keys.push(ColumnDef {
-                name: SmartString::from(format!("{}__field", prefix)),
+                name: CompactString::from(format!("{}__field", prefix)),
                 typing: NullableColType {
                     coltype: ColType::Int,
                     nullable: false,
@@ -1085,7 +1082,7 @@ impl<'a> SessionTx<'a> {
                 default_gen: None,
             });
             idx_keys.push(ColumnDef {
-                name: SmartString::from(format!("{}__sub_idx", prefix)),
+                name: CompactString::from(format!("{}__sub_idx", prefix)),
                 typing: NullableColType {
                     coltype: ColType::Int,
                     nullable: false,
@@ -1098,7 +1095,7 @@ impl<'a> SessionTx<'a> {
         let non_idx_keys = vec![
             // For self-loops, stores the number of neighbours
             ColumnDef {
-                name: SmartString::from("dist"),
+                name: CompactString::from("dist"),
                 typing: NullableColType {
                     coltype: ColType::Float,
                     nullable: false,
@@ -1107,7 +1104,7 @@ impl<'a> SessionTx<'a> {
             },
             // For self-loops, stores a hash of the neighbours, for conflict detection
             ColumnDef {
-                name: SmartString::from("hash"),
+                name: CompactString::from("hash"),
                 typing: NullableColType {
                     coltype: ColType::Bytes,
                     nullable: true,
@@ -1115,7 +1112,7 @@ impl<'a> SessionTx<'a> {
                 default_gen: None,
             },
             ColumnDef {
-                name: SmartString::from("ignore_link"),
+                name: CompactString::from("ignore_link"),
                 typing: NullableColType {
                     coltype: ColType::Bool,
                     nullable: false,

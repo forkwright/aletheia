@@ -4,11 +4,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{
-    CsrLayout, DirectedCsrGraph, DirectedNeighborsWithValues, Graph, GraphBuilder,
-};
+use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
+use compact_str::CompactString;
 use itertools::Itertools;
-use smartstring::{LazyCompact, SmartString};
 use tracing::debug;
 
 use crate::engine::data::expr::Expr;
@@ -56,7 +54,7 @@ impl FixedRule for CommunityDetectionLouvain {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
@@ -65,7 +63,7 @@ impl FixedRule for CommunityDetectionLouvain {
 }
 
 fn louvain(
-    graph: &DirectedCsrGraph<u32, (), f32>,
+    graph: &DirectedCsrGraph<f32>,
     delta: f32,
     max_iter: usize,
     poison: Poison,
@@ -91,7 +89,7 @@ fn louvain(
 fn calculate_delta(
     node: u32,
     target_community: u32,
-    graph: &DirectedCsrGraph<u32, (), f32>,
+    graph: &DirectedCsrGraph<f32>,
     comm2nodes: &[BTreeSet<u32>],
     out_weights: &[f32],
     in_weights: &[f32],
@@ -127,11 +125,11 @@ fn calculate_delta(
 }
 
 fn louvain_step(
-    graph: &DirectedCsrGraph<u32, (), f32>,
+    graph: &DirectedCsrGraph<f32>,
     delta: f32,
     max_iter: usize,
     poison: Poison,
-) -> Result<(Vec<u32>, DirectedCsrGraph<u32, (), f32>)> {
+) -> Result<(Vec<u32>, DirectedCsrGraph<f32>)> {
     let n_nodes = graph.node_count();
     let mut total_weight = 0.;
     let mut out_weights = vec![0.; n_nodes as usize];
@@ -256,8 +254,8 @@ fn louvain_step(
         }
     }
 
-    let new_graph: DirectedCsrGraph<u32, (), f32> = GraphBuilder::new()
-        .csr_layout(CsrLayout::Sorted)
+    let new_graph: DirectedCsrGraph<f32> = CsrBuilder::new()
+        .sorted()
         .edges_with_values(
             new_graph_list
                 .into_iter()
@@ -274,7 +272,7 @@ fn louvain_step(
 
 #[cfg(test)]
 mod tests {
-    use graph::prelude::{CsrLayout, GraphBuilder};
+    use crate::engine::fixed_rule::csr::CsrBuilder;
 
     use crate::engine::fixed_rule::algos::louvain::louvain;
     use crate::engine::runtime::db::Poison;
@@ -299,8 +297,8 @@ mod tests {
             vec![8, 9, 10],          // 14
             vec![8],                 // 15
         ];
-        let graph = GraphBuilder::new()
-            .csr_layout(CsrLayout::Sorted)
+        let graph = CsrBuilder::new()
+            .sorted()
             .edges_with_values(
                 graph
                     .into_iter()

@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use rustc_hash::FxHashMap;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
@@ -21,7 +21,7 @@ pub(crate) struct ReciprocalRankFusion;
 impl FixedRule for ReciprocalRankFusion {
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
@@ -46,7 +46,7 @@ impl FixedRule for ReciprocalRankFusion {
         let vec_ranks = assign_ranks(&vec_scores);
         let graph_ranks = assign_ranks(&graph_scores);
 
-        let mut all_ids: FxHashMap<SmartString<LazyCompact>, ()> = FxHashMap::default();
+        let mut all_ids: FxHashMap<CompactString, ()> = FxHashMap::default();
         for id in bm25_scores.keys() {
             all_ids.insert(id.clone(), ());
         }
@@ -89,23 +89,21 @@ fn signal_contribution(rank: usize) -> f64 {
 
 fn collect_signal_scores(
     input: crate::engine::fixed_rule::FixedRuleInputRelation<'_, '_>,
-) -> Result<FxHashMap<SmartString<LazyCompact>, f64>> {
-    let mut scores: FxHashMap<SmartString<LazyCompact>, f64> = FxHashMap::default();
+) -> Result<FxHashMap<CompactString, f64>> {
+    let mut scores: FxHashMap<CompactString, f64> = FxHashMap::default();
     for row in input.iter()? {
         let row = row?;
         if let (Some(id_val), Some(score_val)) = (row.first(), row.get(1)) {
             if let Some(id_str) = id_val.get_str() {
                 let score = score_val.get_float().unwrap_or(0.0);
-                scores.insert(SmartString::from(id_str), score);
+                scores.insert(CompactString::from(id_str), score);
             }
         }
     }
     Ok(scores)
 }
 
-fn assign_ranks(
-    scores: &FxHashMap<SmartString<LazyCompact>, f64>,
-) -> FxHashMap<SmartString<LazyCompact>, usize> {
+fn assign_ranks(scores: &FxHashMap<CompactString, f64>) -> FxHashMap<CompactString, usize> {
     let mut sorted: Vec<_> = scores.iter().collect();
     sorted.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
     sorted
@@ -137,14 +135,14 @@ mod tests {
     #[test]
     fn assign_ranks_sorted_descending() {
         let mut scores = FxHashMap::default();
-        scores.insert(SmartString::from("low"), 1.0);
-        scores.insert(SmartString::from("high"), 9.0);
-        scores.insert(SmartString::from("mid"), 5.0);
+        scores.insert(CompactString::from("low"), 1.0);
+        scores.insert(CompactString::from("high"), 9.0);
+        scores.insert(CompactString::from("mid"), 5.0);
 
         let ranks = assign_ranks(&scores);
-        assert_eq!(ranks[&SmartString::from("high")], 1);
-        assert_eq!(ranks[&SmartString::from("mid")], 2);
-        assert_eq!(ranks[&SmartString::from("low")], 3);
+        assert_eq!(ranks[&CompactString::from("high")], 1);
+        assert_eq!(ranks[&CompactString::from("mid")], 2);
+        assert_eq!(ranks[&CompactString::from("low")], 3);
     }
 
     #[test]

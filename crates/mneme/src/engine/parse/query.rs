@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use either::{Left, Right};
 use itertools::Itertools;
 use pest::Parser;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::FixedRule;
 use crate::engine::data::aggr::{Aggregation, parse_aggr};
@@ -155,7 +155,7 @@ pub(crate) fn parse_query(
                 let data_part_str = data_part.as_str();
                 let data = build_expr(data_part.clone(), param_pool)?;
                 let mut options = BTreeMap::new();
-                options.insert(SmartString::from("data"), data);
+                options.insert(CompactString::from("data"), data);
                 let handle = FixedRuleHandle {
                     name: Symbol::new("Constant", span),
                 };
@@ -679,13 +679,13 @@ fn parse_atom(
             );
             let relation = Symbol::new(name_segs[0], name_p.extract_span());
             let index = Symbol::new(name_segs[1], name_p.extract_span());
-            let bindings: BTreeMap<SmartString<LazyCompact>, Expr> = src
+            let bindings: BTreeMap<CompactString, Expr> = src
                 .next()
                 .unwrap()
                 .into_inner()
                 .map(|arg| extract_named_apply_arg(arg, param_pool))
                 .try_collect()?;
-            let parameters: BTreeMap<SmartString<LazyCompact>, Expr> = src
+            let parameters: BTreeMap<CompactString, Expr> = src
                 .map(|arg| extract_named_apply_arg(arg, param_pool))
                 .try_collect()?;
 
@@ -733,10 +733,10 @@ fn parse_atom(
 fn extract_named_apply_arg(
     pair: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
-) -> Result<(SmartString<LazyCompact>, Expr)> {
+) -> Result<(CompactString, Expr)> {
     let mut inner = pair.into_inner();
     let name_p = inner.next().unwrap();
-    let name = SmartString::from(name_p.as_str());
+    let name = CompactString::from(name_p.as_str());
     let arg = match inner.next() {
         Some(a) => build_expr(a, param_pool)?,
         None => Expr::Binding {
@@ -824,7 +824,7 @@ fn parse_fixed_rule(
     let name_pair = src.next().unwrap();
     let fixed_name = &name_pair.as_str();
     let mut rule_args: Vec<FixedRuleArg> = vec![];
-    let mut options: BTreeMap<SmartString<LazyCompact>, Expr> = Default::default();
+    let mut options: BTreeMap<CompactString, Expr> = Default::default();
     let args_list = src.next().unwrap();
     let args_list_span = args_list.extract_span();
 
@@ -910,7 +910,7 @@ fn parse_fixed_rule(
                                 Rule::fixed_named_relation_arg_pair => {
                                     let mut vs = p.into_inner();
                                     let kp = vs.next().unwrap();
-                                    let k = SmartString::from(kp.as_str());
+                                    let k = CompactString::from(kp.as_str());
                                     let v = match vs.next() {
                                         Some(vp) => {
                                             if !seen_bindings.insert(vp.as_str()) {
@@ -954,7 +954,7 @@ fn parse_fixed_rule(
                 let name = inner.next().unwrap().as_str();
                 let val = inner.next().unwrap();
                 let val = build_expr(val, param_pool)?;
-                options.insert(SmartString::from(name), val);
+                options.insert(CompactString::from(name), val);
             }
             _ => unreachable!(),
         }
@@ -991,7 +991,7 @@ fn make_empty_const_rule(prog: &mut InputProgram, bindings: &[Symbol]) {
     let entry_symbol = Symbol::new(PROG_ENTRY, Default::default());
     let mut options = BTreeMap::new();
     options.insert(
-        SmartString::from("data"),
+        CompactString::from("data"),
         Expr::Const {
             val: DataValue::List(vec![]),
             span: Default::default(),

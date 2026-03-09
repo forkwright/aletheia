@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::program::InputProgram;
 use crate::engine::data::relation::VecElementType;
@@ -41,13 +41,13 @@ pub enum SysOp {
     CreateFtsIndex(FtsIndexConfig),
     CreateMinHashLshIndex(MinHashLshConfig),
     RemoveIndex(Symbol, Symbol),
-    DescribeRelation(Symbol, SmartString<LazyCompact>),
+    DescribeRelation(Symbol, CompactString),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FtsIndexConfig {
-    pub base_relation: SmartString<LazyCompact>,
-    pub index_name: SmartString<LazyCompact>,
+    pub base_relation: CompactString,
+    pub index_name: CompactString,
     pub extractor: String,
     pub tokenizer: TokenizerConfig,
     pub filters: Vec<TokenizerConfig>,
@@ -56,8 +56,8 @@ pub struct FtsIndexConfig {
 #[allow(missing_docs)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MinHashLshConfig {
-    pub base_relation: SmartString<LazyCompact>,
-    pub index_name: SmartString<LazyCompact>,
+    pub base_relation: CompactString,
+    pub index_name: CompactString,
     pub extractor: String,
     pub tokenizer: TokenizerConfig,
     pub filters: Vec<TokenizerConfig>,
@@ -70,11 +70,11 @@ pub struct MinHashLshConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HnswIndexConfig {
-    pub base_relation: SmartString<LazyCompact>,
-    pub index_name: SmartString<LazyCompact>,
+    pub base_relation: CompactString,
+    pub index_name: CompactString,
     pub vec_dim: usize,
     pub dtype: VecElementType,
-    pub vec_fields: Vec<SmartString<LazyCompact>>,
+    pub vec_fields: Vec<CompactString>,
     pub distance: HnswDistance,
     pub ef_construction: usize,
     pub m_neighbours: usize,
@@ -377,8 +377,8 @@ pub(crate) fn parse_sys(
                     }
 
                     let config = MinHashLshConfig {
-                        base_relation: SmartString::from(rel.as_str()),
-                        index_name: SmartString::from(name.as_str()),
+                        base_relation: CompactString::from(rel.as_str()),
+                        index_name: CompactString::from(name.as_str()),
                         extractor,
                         tokenizer,
                         filters,
@@ -496,8 +496,8 @@ pub(crate) fn parse_sys(
                         extractor = format!("if({}, {})", extract_filter, extractor);
                     }
                     let config = FtsIndexConfig {
-                        base_relation: SmartString::from(rel.as_str()),
-                        index_name: SmartString::from(name.as_str()),
+                        base_relation: CompactString::from(rel.as_str()),
+                        index_name: CompactString::from(name.as_str()),
                         extractor,
                         tokenizer,
                         filters,
@@ -630,8 +630,8 @@ pub(crate) fn parse_sys(
                         bail!("m_neighbours must be set");
                     }
                     SysOp::CreateVectorIndex(HnswIndexConfig {
-                        base_relation: SmartString::from(rel.as_str()),
-                        index_name: SmartString::from(name.as_str()),
+                        base_relation: CompactString::from(rel.as_str()),
+                        index_name: CompactString::from(name.as_str()),
                         vec_dim,
                         dtype,
                         vec_fields,

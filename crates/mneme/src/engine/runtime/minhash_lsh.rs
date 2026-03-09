@@ -12,10 +12,10 @@ use crate::engine::fts::tokenizer::TextAnalyzer;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, Expr, SourceSpan, Symbol};
+use compact_str::CompactString;
 use itertools::Itertools;
-use rand::{RngCore, thread_rng};
+use rand::RngCore;
 use rustc_hash::FxHashSet;
-use smartstring::{LazyCompact, SmartString};
 use std::cmp::min;
 use std::hash::{Hash, Hasher};
 use twox_hash::XxHash32;
@@ -220,8 +220,8 @@ pub(crate) struct HashPermutations(pub(crate) Vec<u32>);
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MinHashLshIndexManifest {
-    pub(crate) base_relation: SmartString<LazyCompact>,
-    pub(crate) index_name: SmartString<LazyCompact>,
+    pub(crate) base_relation: CompactString,
+    pub(crate) index_name: CompactString,
     pub(crate) extractor: String,
     pub(crate) n_gram: usize,
     pub(crate) tokenizer: TokenizerConfig,
@@ -296,7 +296,7 @@ impl LshParams {
 
 impl HashPermutations {
     pub(crate) fn new(n_perms: usize) -> Self {
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         let mut perms = Vec::with_capacity(n_perms);
         for _ in 0..n_perms {
             perms.push(rng.next_u32());

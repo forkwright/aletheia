@@ -6,15 +6,15 @@ use std::sync::Arc;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
+#[cfg(feature = "graph-algo")]
+use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use crate::ensure;
+#[allow(unused_imports)]
+use compact_str::CompactString;
 use crossbeam::channel::{Receiver, Sender, bounded};
 #[allow(unused_imports)]
 use either::{Left, Right};
-#[cfg(feature = "graph-algo")]
-use graph::prelude::{CsrLayout, DirectedCsrGraph, GraphBuilder};
 use itertools::Itertools;
-#[allow(unused_imports)]
-use smartstring::{LazyCompact, SmartString};
 use snafu::Snafu;
 use std::sync::LazyLock;
 
@@ -37,6 +37,8 @@ use crate::engine::runtime::transact::SessionTx;
 
 #[cfg(feature = "graph-algo")]
 pub(crate) mod algos;
+#[cfg(feature = "graph-algo")]
+pub(crate) mod csr;
 pub(crate) mod utilities;
 
 /// Passed into implementation of fixed rule, can be used to obtain relation inputs and options
@@ -132,11 +134,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     pub fn as_directed_graph(
         &self,
         undirected: bool,
-    ) -> Result<(
-        DirectedCsrGraph<u32>,
-        Vec<DataValue>,
-        BTreeMap<DataValue, u32>,
-    )> {
+    ) -> Result<(DirectedCsrGraph, Vec<DataValue>, BTreeMap<DataValue, u32>)> {
         let mut indices: Vec<DataValue> = vec![];
         let mut inv_indices: BTreeMap<DataValue, u32> = Default::default();
         let mut error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
@@ -189,10 +187,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         } else {
             Left(it)
         };
-        let graph: DirectedCsrGraph<u32> = GraphBuilder::new()
-            .csr_layout(CsrLayout::Sorted)
-            .edges(it)
-            .build();
+        let graph: DirectedCsrGraph = CsrBuilder::new().sorted().edges(it).build();
         if let Some(err) = error {
             return Err(err);
         }
@@ -210,7 +205,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         undirected: bool,
         allow_negative_weights: bool,
     ) -> Result<(
-        DirectedCsrGraph<u32, (), f32>,
+        DirectedCsrGraph<f32>,
         Vec<DataValue>,
         BTreeMap<DataValue, u32>,
     )> {
@@ -322,10 +317,7 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         } else {
             Left(it)
         };
-        let graph: DirectedCsrGraph<u32, (), f32> = GraphBuilder::new()
-            .csr_layout(CsrLayout::Sorted)
-            .edges_with_values(it)
-            .build();
+        let graph: DirectedCsrGraph<f32> = CsrBuilder::new().sorted().edges_with_values(it).build();
 
         if let Some(err) = error {
             return Err(err);
@@ -374,11 +366,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     }
 
     /// Extract a string option
-    pub fn string_option(
-        &self,
-        name: &str,
-        default: Option<&str>,
-    ) -> Result<SmartString<LazyCompact>> {
+    pub fn string_option(&self, name: &str, default: Option<&str>) -> Result<CompactString> {
         match self.manifest.options.get(name) {
             Some(ex) => match ex.clone().eval_to_const()? {
                 DataValue::Str(s) => Ok(s),
@@ -397,7 +385,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
                     rule_name: self.manifest.fixed_handle.name.to_string(),
                 }
                 .into()),
-                Some(s) => Ok(SmartString::from(s)),
+                Some(s) => Ok(CompactString::from(s)),
             },
         }
     }
@@ -549,7 +537,7 @@ pub trait FixedRule: Send + Sync {
     /// The default implementation does nothing.
     fn init_options(
         &self,
-        _options: &mut BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &mut BTreeMap<CompactString, Expr>,
         _span: SourceSpan,
     ) -> Result<()> {
         Ok(())
@@ -558,7 +546,7 @@ pub trait FixedRule: Send + Sync {
     /// This function may be called multiple times.
     fn arity(
         &self,
-        options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        options: &BTreeMap<CompactString, Expr>,
         rule_head: &[Symbol],
         span: SourceSpan,
     ) -> Result<usize>;
@@ -639,7 +627,7 @@ impl SimpleFixedRule {
 impl FixedRule for SimpleFixedRule {
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {

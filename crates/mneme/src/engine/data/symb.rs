@@ -8,15 +8,15 @@ use std::ops::Deref;
 
 use crate::bail;
 use crate::engine::error::DbResult as Result;
+use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::parse::SourceSpan;
 
 /// Names with associated source span
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Symbol {
-    pub(crate) name: SmartString<LazyCompact>,
+    pub(crate) name: CompactString,
     #[serde(skip)]
     pub(crate) span: SourceSpan,
 }
@@ -68,7 +68,7 @@ impl Debug for Symbol {
 }
 
 impl Symbol {
-    pub(crate) fn new(name: impl Into<SmartString<LazyCompact>>, span: SourceSpan) -> Self {
+    pub(crate) fn new(name: impl Into<CompactString>, span: SourceSpan) -> Self {
         Self {
             name: name.into(),
             span,

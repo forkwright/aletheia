@@ -401,7 +401,7 @@ impl NormalAggrObj for AggrChoiceRand {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         self.count += 1;
         let prob = 1. / (self.count as f64);
-        let rd = thread_rng().r#gen::<f64>();
+        let rd = rand::rng().random::<f64>();
         if rd < prob {
             self.value = value.clone();
         }

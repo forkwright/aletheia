@@ -10,9 +10,9 @@ use crate::engine::fts::tokenizer::{
     TextAnalyzer, Tokenizer, WhitespaceTokenizer,
 };
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
-use smartstring::{LazyCompact, SmartString};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -22,8 +22,8 @@ pub(crate) mod tokenizer;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct FtsIndexManifest {
-    pub(crate) base_relation: SmartString<LazyCompact>,
-    pub(crate) index_name: SmartString<LazyCompact>,
+    pub(crate) base_relation: CompactString,
+    pub(crate) index_name: CompactString,
     pub(crate) extractor: String,
     pub(crate) tokenizer: TokenizerConfig,
     pub(crate) filters: Vec<TokenizerConfig>,
@@ -32,7 +32,7 @@ pub(crate) struct FtsIndexManifest {
 #[allow(missing_docs)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerConfig {
-    pub name: SmartString<LazyCompact>,
+    pub name: CompactString,
     pub args: Vec<DataValue>,
 }
 
@@ -237,16 +237,16 @@ impl TokenizerConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct FtsIndexConfig {
-    base_relation: SmartString<LazyCompact>,
-    index_name: SmartString<LazyCompact>,
-    fts_fields: Vec<SmartString<LazyCompact>>,
+    base_relation: CompactString,
+    index_name: CompactString,
+    fts_fields: Vec<CompactString>,
     tokenizer: TokenizerConfig,
     filters: Vec<TokenizerConfig>,
 }
 
 #[derive(Default)]
 pub(crate) struct TokenizerCache {
-    pub(crate) named_cache: RwLock<HashMap<SmartString<LazyCompact>, Arc<TextAnalyzer>>>,
+    pub(crate) named_cache: RwLock<HashMap<CompactString, Arc<TextAnalyzer>>>,
     pub(crate) hashed_cache: RwLock<HashMap<Vec<u8>, Arc<TextAnalyzer>>>,
 }
 

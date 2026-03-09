@@ -4,10 +4,10 @@
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
-use graph::prelude::{DirectedCsrGraph, DirectedNeighborsWithValues, Graph};
+use crate::engine::fixed_rule::csr::DirectedCsrGraph;
+use compact_str::CompactString;
 use itertools::Itertools;
 use rand::prelude::*;
-use smartstring::{LazyCompact, SmartString};
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
@@ -40,7 +40,7 @@ impl FixedRule for LabelPropagation {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {
@@ -49,13 +49,13 @@ impl FixedRule for LabelPropagation {
 }
 
 fn label_propagation(
-    graph: &DirectedCsrGraph<u32, (), f32>,
+    graph: &DirectedCsrGraph<f32>,
     max_iter: usize,
     poison: Poison,
 ) -> Result<Vec<u32>> {
     let n_nodes = graph.node_count();
     let mut labels = (0..n_nodes).collect_vec();
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let mut iter_order = (0..n_nodes).collect_vec();
     for _ in 0..max_iter {
         iter_order.shuffle(&mut rng);

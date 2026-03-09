@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
+use compact_str::CompactString;
 use itertools::Itertools;
 use pest::pratt_parser::{Op, PrattParser};
-use smartstring::{LazyCompact, SmartString};
 use std::sync::LazyLock;
 
 use crate::engine::data::expr::{Bytecode, Expr, NoImplementationError, get_op};
@@ -384,19 +384,19 @@ pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
     i64::from_str_radix(&s[2..].replace('_', ""), radix).unwrap()
 }
 
-pub(crate) fn parse_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
+pub(crate) fn parse_string(pair: Pair<'_>) -> Result<CompactString> {
     match pair.as_rule() {
         Rule::quoted_string => Ok(parse_quoted_string(pair)?),
         Rule::s_quoted_string => Ok(parse_s_quoted_string(pair)?),
         Rule::raw_string => Ok(parse_raw_string(pair)?),
-        Rule::ident => Ok(SmartString::from(pair.as_str())),
+        Rule::ident => Ok(CompactString::from(pair.as_str())),
         t => unreachable!("{:?}", t),
     }
 }
 
-fn parse_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
+fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
     let pairs = pair.into_inner().next().unwrap().into_inner();
-    let mut ret = SmartString::new();
+    let mut ret = CompactString::default();
     for pair in pairs {
         let s = pair.as_str();
         match s {
@@ -424,9 +424,9 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
     Ok(ret)
 }
 
-fn parse_s_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
+fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
     let pairs = pair.into_inner().next().unwrap().into_inner();
-    let mut ret = SmartString::new();
+    let mut ret = CompactString::default();
     for pair in pairs {
         let s = pair.as_str();
         match s {
@@ -454,8 +454,8 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
     Ok(ret)
 }
 
-fn parse_raw_string(pair: Pair<'_>) -> Result<SmartString<LazyCompact>> {
-    Ok(SmartString::from(
+fn parse_raw_string(pair: Pair<'_>) -> Result<CompactString> {
+    Ok(CompactString::from(
         pair.into_inner().next().unwrap().as_str(),
     ))
 }
