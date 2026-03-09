@@ -349,7 +349,7 @@ impl Default for CsrfConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct EmbeddingSettings {
-    /// Provider type: "mock", "fastembed".
+    /// Provider type: "mock", "candle".
     pub provider: String,
     /// Provider-specific model name.
     pub model: Option<String>,
@@ -909,13 +909,13 @@ mod tests {
     fn embedding_override_from_json() {
         let json = r#"{
             "embedding": {
-                "provider": "fastembed",
+                "provider": "candle",
                 "model": "BAAI/bge-small-en-v1.5",
                 "dimension": 512
             }
         }"#;
         let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
-        assert_eq!(config.embedding.provider, "fastembed");
+        assert_eq!(config.embedding.provider, "candle");
         assert_eq!(
             config.embedding.model,
             Some("BAAI/bge-small-en-v1.5".to_owned())

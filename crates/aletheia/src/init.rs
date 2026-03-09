@@ -274,7 +274,7 @@ agents:
 
 # --- Embedding (for recall/knowledge search) ---
 # embedding:
-#   provider: fastembed    # mock | fastembed
+#   provider: candle       # mock | candle
 #   dimension: 384
 
 # --- Data retention ---

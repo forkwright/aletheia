@@ -1,7 +1,7 @@
 //! Embedding provider trait and implementations.
 //!
 //! Defines the interface for text→vector embedding. Multiple backends:
-//! - `fastembed-rs` (local, no API key, default for development)
+//! - `candle` (local, pure Rust, no C++ deps, default for development)
 //! - Voyage AI (production quality, API key required)
 //! - Future: Ollama local models
 //!
@@ -122,147 +122,288 @@ impl EmbeddingProvider for MockEmbeddingProvider {
 }
 
 // ---------------------------------------------------------------------------
-// FastEmbed provider (local ONNX)
+// Candle provider (pure Rust, no C++ dependencies)
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "fastembed")]
-use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+#[cfg(feature = "embed-candle")]
+mod candle_provider {
+    use super::{
+        EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult, InitFailedSnafu, LockPoisonedSnafu,
+    };
+    use candle_core::{DType, Device, Tensor};
+    use candle_nn::VarBuilder;
+    use candle_transformers::models::bert::{BertModel, Config as BertConfig};
+    use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer};
+    use tracing::instrument;
 
-/// Local embedding provider using fastembed-rs (ONNX Runtime).
-///
-/// Downloads and caches models on first use. Default model is
-/// `BAAI/bge-small-en-v1.5` (384 dimensions). Thread-safe — the inner
-/// `TextEmbedding` is `Send + Sync`.
-#[cfg(feature = "fastembed")]
-pub struct FastEmbedProvider {
-    model: std::sync::Mutex<TextEmbedding>,
-    model_name: String,
-    dimension: usize,
-}
-
-#[cfg(feature = "fastembed")]
-impl std::fmt::Debug for FastEmbedProvider {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FastEmbedProvider")
-            .field("model_name", &self.model_name)
-            .field("dimension", &self.dimension)
-            .finish_non_exhaustive()
-    }
-}
-
-#[cfg(feature = "fastembed")]
-impl FastEmbedProvider {
-    /// Create a provider with the given model name, or the default (`BGE-small-en-v1.5`).
+    /// Local embedding provider using candle (pure Rust).
     ///
-    /// Model files are downloaded to the fastembed cache on first use.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`EmbeddingError::InitFailed`] if model lookup or initialization fails.
-    #[instrument]
-    pub fn new(model_name: Option<&str>) -> EmbeddingResult<Self> {
-        let embedding_model = match model_name {
-            Some(name) => Self::resolve_model(name)?,
-            None => EmbeddingModel::BGESmallENV15,
-        };
-
-        let model_info = TextEmbedding::get_model_info(&embedding_model).map_err(|e| {
-            InitFailedSnafu {
-                message: format!("failed to get model info: {e}"),
-            }
-            .build()
-        })?;
-
-        let dimension = model_info.dim;
-        let code = model_info.model_code.clone();
-
-        let options = InitOptions::new(embedding_model).with_show_download_progress(false);
-
-        let model = TextEmbedding::try_new(options).map_err(|e| {
-            InitFailedSnafu {
-                message: format!("fastembed init failed: {e}"),
-            }
-            .build()
-        })?;
-
-        Ok(Self {
-            model: std::sync::Mutex::new(model),
-            model_name: code,
-            dimension,
-        })
+    /// Downloads and caches models from `HuggingFace` Hub on first use.
+    /// Default model is `BAAI/bge-small-en-v1.5` (384 dimensions).
+    /// Thread-safe via internal mutex.
+    pub struct CandelProvider {
+        model: std::sync::Mutex<BertModel>,
+        tokenizer: std::sync::Mutex<Tokenizer>,
+        model_name: String,
+        dimension: usize,
+        device: Device,
     }
 
-    fn resolve_model(name: &str) -> EmbeddingResult<EmbeddingModel> {
-        TextEmbedding::list_supported_models()
-            .into_iter()
-            .find(|info| info.model_code == name)
-            .map(|info| info.model)
-            .ok_or_else(|| {
+    impl std::fmt::Debug for CandelProvider {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("CandelProvider")
+                .field("model_name", &self.model_name)
+                .field("dimension", &self.dimension)
+                .finish_non_exhaustive()
+        }
+    }
+
+    impl CandelProvider {
+        /// Default `HuggingFace` model repo for `BGE-small-en-v1.5`.
+        const DEFAULT_REPO: &str = "BAAI/bge-small-en-v1.5";
+        /// Create a provider with the given model repo, or the default (`BAAI/bge-small-en-v1.5`).
+        ///
+        /// Model files are downloaded to the `HuggingFace` cache on first use.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`EmbeddingError::InitFailed`] if model download or initialization fails.
+        #[instrument]
+        pub fn new(model_repo: Option<&str>) -> EmbeddingResult<Self> {
+            let repo_id = model_repo.unwrap_or(Self::DEFAULT_REPO);
+            let device = Device::Cpu;
+
+            // Download model files from HuggingFace Hub
+            let api = hf_hub::api::sync::Api::new().map_err(|e| {
                 InitFailedSnafu {
-                    message: format!("unknown fastembed model: {name}"),
+                    message: format!("hf-hub API init failed: {e}"),
+                }
+                .build()
+            })?;
+            let repo = api.model(repo_id.to_owned());
+
+            let config_path = repo.get("config.json").map_err(|e| {
+                InitFailedSnafu {
+                    message: format!("failed to download config.json: {e}"),
+                }
+                .build()
+            })?;
+            let tokenizer_path = repo.get("tokenizer.json").map_err(|e| {
+                InitFailedSnafu {
+                    message: format!("failed to download tokenizer.json: {e}"),
+                }
+                .build()
+            })?;
+            let weights_path = repo.get("model.safetensors").map_err(|e| {
+                InitFailedSnafu {
+                    message: format!("failed to download model.safetensors: {e}"),
+                }
+                .build()
+            })?;
+
+            // Load config
+            let config_str = std::fs::read_to_string(&config_path).map_err(|e| {
+                InitFailedSnafu {
+                    message: format!("failed to read config.json: {e}"),
+                }
+                .build()
+            })?;
+            let config: BertConfig = serde_json::from_str(&config_str).map_err(|e| {
+                InitFailedSnafu {
+                    message: format!("failed to parse config.json: {e}"),
+                }
+                .build()
+            })?;
+            let dimension = config.hidden_size;
+
+            // Load model weights (safe buffered read, no mmap)
+            let weights_data = std::fs::read(&weights_path).map_err(|e| {
+                InitFailedSnafu {
+                    message: format!("failed to read model weights: {e}"),
+                }
+                .build()
+            })?;
+            let vb = VarBuilder::from_buffered_safetensors(weights_data, DType::F32, &device)
+                .map_err(|e| {
+                    InitFailedSnafu {
+                        message: format!("failed to parse model weights: {e}"),
+                    }
+                    .build()
+                })?;
+
+            let model = BertModel::load(vb, &config).map_err(|e| {
+                InitFailedSnafu {
+                    message: format!("failed to load BERT model: {e}"),
+                }
+                .build()
+            })?;
+
+            // Load tokenizer
+            let mut tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| {
+                InitFailedSnafu {
+                    message: format!("failed to load tokenizer: {e}"),
+                }
+                .build()
+            })?;
+            tokenizer.with_padding(Some(PaddingParams {
+                strategy: PaddingStrategy::BatchLongest,
+                ..Default::default()
+            }));
+
+            Ok(Self {
+                model: std::sync::Mutex::new(model),
+                tokenizer: std::sync::Mutex::new(tokenizer),
+                model_name: repo_id.to_owned(),
+                dimension,
+                device,
+            })
+        }
+
+        /// Map a candle error to an [`EmbeddingError`].
+        fn candle_err(msg: &str) -> impl FnOnce(candle_core::Error) -> super::EmbeddingError + '_ {
+            move |e| {
+                EmbedFailedSnafu {
+                    message: format!("{msg}: {e}"),
+                }
+                .build()
+            }
+        }
+
+        /// Tokenize, run model forward pass, and return raw hidden states + attention mask.
+        fn encode_and_forward(&self, texts: &[&str]) -> EmbeddingResult<(Tensor, Tensor)> {
+            let tokenizer = self
+                .tokenizer
+                .lock()
+                .map_err(|_poison| LockPoisonedSnafu.build())?;
+
+            let encodings = tokenizer.encode_batch(texts.to_vec(), true).map_err(|e| {
+                EmbedFailedSnafu {
+                    message: format!("tokenization failed: {e}"),
+                }
+                .build()
+            })?;
+            drop(tokenizer);
+
+            let token_ids: Vec<Tensor> = encodings
+                .iter()
+                .map(|enc| Tensor::new(enc.get_ids(), &self.device))
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(Self::candle_err("tensor creation"))?;
+            let input_ids =
+                Tensor::stack(&token_ids, 0).map_err(Self::candle_err("tensor stack"))?;
+            let token_type_ids = input_ids
+                .zeros_like()
+                .map_err(Self::candle_err("zeros_like"))?;
+
+            let attention_masks: Vec<Tensor> = encodings
+                .iter()
+                .map(|enc| Tensor::new(enc.get_attention_mask(), &self.device))
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(Self::candle_err("attention mask tensor"))?;
+            let attention_mask =
+                Tensor::stack(&attention_masks, 0).map_err(Self::candle_err("mask stack"))?;
+
+            let model = self
+                .model
+                .lock()
+                .map_err(|_poison| LockPoisonedSnafu.build())?;
+            let embeddings = model
+                .forward(&input_ids, &token_type_ids, Some(&attention_mask))
+                .map_err(Self::candle_err("model forward pass"))?;
+            drop(model);
+
+            Ok((embeddings, attention_mask))
+        }
+
+        /// Mean-pool hidden states using attention mask, then L2-normalize.
+        fn pool_and_normalize(
+            embeddings: &Tensor,
+            attention_mask: &Tensor,
+            batch_size: usize,
+        ) -> EmbeddingResult<Vec<Vec<f32>>> {
+            let mask_f32 = attention_mask
+                .unsqueeze(2)
+                .and_then(|t| t.to_dtype(DType::F32))
+                .map_err(Self::candle_err("mask expansion"))?;
+            let summed = embeddings
+                .broadcast_mul(&mask_f32)
+                .and_then(|t| t.sum(1))
+                .map_err(Self::candle_err("masked sum"))?;
+            let mask_sum = mask_f32.sum(1).map_err(Self::candle_err("mask sum"))?;
+            let pooled = summed
+                .broadcast_div(&mask_sum)
+                .map_err(Self::candle_err("pooling div"))?;
+
+            let norm = pooled
+                .sqr()
+                .and_then(|t| t.sum_keepdim(1))
+                .and_then(|t| t.sqrt())
+                .map_err(Self::candle_err("norm computation"))?;
+            let normalized = pooled
+                .broadcast_div(&norm)
+                .map_err(Self::candle_err("normalization"))?;
+
+            let mut results = Vec::with_capacity(batch_size);
+            for i in 0..batch_size {
+                let vec: Vec<f32> = normalized
+                    .get(i)
+                    .and_then(|r| r.to_vec1())
+                    .map_err(Self::candle_err("tensor extraction"))?;
+                results.push(vec);
+            }
+            Ok(results)
+        }
+
+        /// Run forward pass and return mean-pooled, L2-normalized embeddings.
+        fn forward_embed(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
+            if texts.is_empty() {
+                return Ok(vec![]);
+            }
+            let (embeddings, attention_mask) = self.encode_and_forward(texts)?;
+            Self::pool_and_normalize(&embeddings, &attention_mask, texts.len())
+        }
+    }
+
+    impl EmbeddingProvider for CandelProvider {
+        #[instrument(skip(self, text))]
+        fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
+            let mut results = self.forward_embed(&[text])?;
+            results.pop().ok_or_else(|| {
+                EmbedFailedSnafu {
+                    message: "candle returned empty result".to_owned(),
                 }
                 .build()
             })
+        }
+
+        #[instrument(skip(self, texts), fields(batch_size = texts.len()))]
+        fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
+            self.forward_embed(texts)
+        }
+
+        #[instrument(skip(self))]
+        fn dimension(&self) -> usize {
+            self.dimension
+        }
+
+        #[instrument(skip(self))]
+        fn model_name(&self) -> &str {
+            &self.model_name
+        }
     }
 }
 
-#[cfg(feature = "fastembed")]
-impl EmbeddingProvider for FastEmbedProvider {
-    #[instrument(skip(self, text))]
-    fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
-        self.model
-            .lock()
-            .map_err(|_poison| LockPoisonedSnafu.build())?
-            .embed(vec![text], None)
-            .map_err(|e| {
-                EmbedFailedSnafu {
-                    message: format!("{e}"),
-                }
-                .build()
-            })?
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                EmbedFailedSnafu {
-                    message: "fastembed returned empty result".to_owned(),
-                }
-                .build()
-            })
-    }
-
-    #[instrument(skip(self, texts), fields(batch_size = texts.len()))]
-    fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
-        self.model
-            .lock()
-            .map_err(|_poison| LockPoisonedSnafu.build())?
-            .embed(texts, None)
-            .map_err(|e| {
-                EmbedFailedSnafu {
-                    message: format!("{e}"),
-                }
-                .build()
-            })
-    }
-
-    #[instrument(skip(self))]
-    fn dimension(&self) -> usize {
-        self.dimension
-    }
-
-    #[instrument(skip(self))]
-    fn model_name(&self) -> &str {
-        &self.model_name
-    }
-}
+#[cfg(feature = "embed-candle")]
+pub use candle_provider::CandelProvider;
 
 /// Embedding provider configuration.
 ///
 /// Available providers:
 /// - `"mock"` — deterministic hash-based vectors for testing (always available)
-/// - `"fastembed"` — local ONNX-based embeddings via fastembed-rs (requires `fastembed` feature)
+/// - `"candle"` — local pure-Rust embeddings via candle (requires `embed-candle` feature)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EmbeddingConfig {
-    /// Provider type: `mock`, `fastembed`, `voyage`.
+    /// Provider type: `mock`, `candle`, `voyage`.
     pub provider: String,
     /// Model name (provider-specific).
     pub model: Option<String>,
@@ -294,14 +435,15 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
             let dim = config.dimension.unwrap_or(384);
             Ok(Box::new(MockEmbeddingProvider::new(dim)))
         }
-        #[cfg(feature = "fastembed")]
-        "fastembed" => {
+        #[cfg(feature = "embed-candle")]
+        "candle" => {
             let model = config.model.as_deref();
-            Ok(Box::new(FastEmbedProvider::new(model)?))
+            Ok(Box::new(CandelProvider::new(model)?))
         }
-        #[cfg(not(feature = "fastembed"))]
-        "fastembed" => InitFailedSnafu {
-            message: "fastembed feature not enabled — build with --features fastembed".to_owned(),
+        #[cfg(not(feature = "embed-candle"))]
+        "candle" => InitFailedSnafu {
+            message: "embed-candle feature not enabled — build with --features embed-candle"
+                .to_owned(),
         }
         .fail(),
         // "voyage" => { ... }   // M1.3 Phase 3: Voyage AI API
@@ -581,15 +723,15 @@ mod tests {
         }
     }
 
-    #[cfg(not(feature = "fastembed"))]
+    #[cfg(not(feature = "embed-candle"))]
     #[test]
-    fn fastembed_not_enabled_returns_error() {
+    fn candle_not_enabled_returns_error() {
         let config = EmbeddingConfig {
-            provider: "fastembed".to_owned(),
+            provider: "candle".to_owned(),
             ..EmbeddingConfig::default()
         };
         let Err(err) = create_provider(&config) else {
-            panic!("expected error for disabled fastembed feature");
+            panic!("expected error for disabled embed-candle feature");
         };
         let msg = err.to_string();
         assert!(
@@ -631,48 +773,48 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "fastembed")]
-    mod fastembed_tests {
+    #[cfg(feature = "embed-candle")]
+    mod candle_tests {
         use super::*;
         use std::sync::LazyLock;
 
-        static PROVIDER: LazyLock<FastEmbedProvider> =
-            LazyLock::new(|| FastEmbedProvider::new(None).expect("fastembed provider init"));
+        static PROVIDER: LazyLock<CandelProvider> =
+            LazyLock::new(|| CandelProvider::new(None).expect("candle provider init"));
 
         #[test]
-        fn fastembed_provider_initializes() {
+        fn candle_provider_initializes() {
             assert_eq!(PROVIDER.dimension(), 384);
         }
 
         #[test]
-        fn fastembed_embed_produces_correct_dimension() {
+        fn candle_embed_produces_correct_dimension() {
             let vec = PROVIDER.embed("hello world").unwrap();
             assert_eq!(vec.len(), 384);
         }
 
         #[test]
-        fn fastembed_embed_is_normalized() {
+        fn candle_embed_is_normalized() {
             let vec = PROVIDER.embed("normalize me").unwrap();
             let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
             assert!((norm - 1.0).abs() < 0.01, "expected unit norm, got {norm}");
         }
 
         #[test]
-        fn fastembed_embed_deterministic() {
+        fn candle_embed_deterministic() {
             let v1 = PROVIDER.embed("test input").unwrap();
             let v2 = PROVIDER.embed("test input").unwrap();
             assert_eq!(v1, v2);
         }
 
         #[test]
-        fn fastembed_different_texts_differ() {
+        fn candle_different_texts_differ() {
             let v1 = PROVIDER.embed("hello").unwrap();
             let v2 = PROVIDER.embed("world").unwrap();
             assert_ne!(v1, v2);
         }
 
         #[test]
-        fn fastembed_batch_matches_individual() {
+        fn candle_batch_matches_individual() {
             let texts = ["hello", "world", "test"];
             let batch = PROVIDER.embed_batch(&texts).unwrap();
             for (i, text) in texts.iter().enumerate() {
@@ -682,9 +824,9 @@ mod tests {
         }
 
         #[test]
-        fn fastembed_provider_send_sync() {
+        fn candle_provider_send_sync() {
             fn assert_send_sync<T: Send + Sync>() {}
-            assert_send_sync::<FastEmbedProvider>();
+            assert_send_sync::<CandelProvider>();
         }
     }
 }
