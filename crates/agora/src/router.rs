@@ -8,12 +8,12 @@ use crate::types::InboundMessage;
 
 /// A resolved routing decision.
 ///
-/// Owns all fields — cloned from binding/config data during resolution since
-/// decisions outlive the router borrow.
+/// Borrows `nous_id` from the router's binding data. The `session_key` is
+/// always freshly expanded, so it remains owned.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RouteDecision {
+pub struct RouteDecision<'a> {
     /// The nous agent that should handle this message.
-    pub nous_id: String,
+    pub nous_id: &'a str,
     /// Session key derived from template expansion (e.g., `signal:+1234567890`).
     pub session_key: String,
     /// How the routing decision was determined.
@@ -56,7 +56,7 @@ impl MessageRouter {
     }
 
     /// Resolve which nous should handle this message.
-    pub fn resolve(&self, msg: &InboundMessage) -> Option<RouteDecision> {
+    pub fn resolve(&self, msg: &InboundMessage) -> Option<RouteDecision<'_>> {
         let decision = self.match_route(msg);
         if let Some(ref d) = decision {
             debug!(nous_id = %d.nous_id, matched_by = ?d.matched_by, "message routed");
@@ -64,13 +64,13 @@ impl MessageRouter {
         decision
     }
 
-    fn match_route(&self, msg: &InboundMessage) -> Option<RouteDecision> {
+    fn match_route(&self, msg: &InboundMessage) -> Option<RouteDecision<'_>> {
         // Priority 1: exact group match (channel + group_id)
         if let Some(group_id) = &msg.group_id {
             for b in &self.bindings {
                 if b.channel == msg.channel && b.source == *group_id {
                     return Some(RouteDecision {
-                        nous_id: b.nous_id.clone(),
+                        nous_id: &b.nous_id,
                         session_key: expand_session_key(&b.session_key, msg),
                         matched_by: MatchReason::GroupBinding,
                     });
@@ -82,7 +82,7 @@ impl MessageRouter {
         for b in &self.bindings {
             if b.channel == msg.channel && b.source == msg.sender {
                 return Some(RouteDecision {
-                    nous_id: b.nous_id.clone(),
+                    nous_id: &b.nous_id,
                     session_key: expand_session_key(&b.session_key, msg),
                     matched_by: MatchReason::SourceBinding,
                 });
@@ -93,7 +93,7 @@ impl MessageRouter {
         for b in &self.bindings {
             if b.channel == msg.channel && b.source == "*" {
                 return Some(RouteDecision {
-                    nous_id: b.nous_id.clone(),
+                    nous_id: &b.nous_id,
                     session_key: expand_session_key(&b.session_key, msg),
                     matched_by: MatchReason::ChannelDefault,
                 });
@@ -101,8 +101,8 @@ impl MessageRouter {
         }
 
         // Priority 4: global default
-        self.default_nous.as_ref().map(|id| RouteDecision {
-            nous_id: id.clone(),
+        self.default_nous.as_deref().map(|id| RouteDecision {
+            nous_id: id,
             session_key: expand_session_key("{source}", msg),
             matched_by: MatchReason::GlobalDefault,
         })

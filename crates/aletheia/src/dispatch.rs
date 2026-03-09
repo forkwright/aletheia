@@ -64,7 +64,7 @@ async fn dispatch_one(
         return;
     };
 
-    let Some(handle) = nous_manager.get(&decision.nous_id).cloned() else {
+    let Some(handle) = nous_manager.get(decision.nous_id).cloned() else {
         warn!(
             nous_id = %decision.nous_id,
             "routed to unknown nous actor, dropping"
