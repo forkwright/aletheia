@@ -24,7 +24,8 @@ use aletheia_nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
 use aletheia_organon::builtins;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{
-    FactSummary, KnowledgeSearchService, MemoryResult, ToolContext, ToolInput, ToolServices,
+    FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext, ToolInput,
+    ToolServices,
 };
 use std::sync::RwLock;
 
@@ -62,6 +63,7 @@ fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
             knowledge: None,
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
         })),
         active_tools: Arc::new(RwLock::new(HashSet::new())),
     }
@@ -356,6 +358,7 @@ fn ctx_with_knowledge(svc: Arc<StubKnowledgeService>) -> ToolContext {
             knowledge: Some(svc),
             http_client: reqwest::Client::new(),
             lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
         })),
         active_tools: Arc::new(RwLock::new(HashSet::new())),
     }

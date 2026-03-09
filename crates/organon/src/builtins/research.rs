@@ -265,7 +265,7 @@ mod tests {
 
     use aletheia_koina::id::{NousId, SessionId, ToolName};
 
-    use crate::types::{ToolContext, ToolInput, ToolServices};
+    use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
 
     use super::*;
 
@@ -285,6 +285,7 @@ mod tests {
                 knowledge: None,
                 http_client: reqwest::Client::new(),
                 lazy_tool_catalog: vec![],
+                server_tool_config: ServerToolConfig::default(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
         }

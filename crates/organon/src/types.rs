@@ -424,6 +424,76 @@ pub struct DatalogResult {
     pub truncated: bool,
 }
 
+/// Configuration for server-side tools that execute on the API provider's infrastructure.
+///
+/// Controls which server tools are available for per-session activation via `enable_tool`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ServerToolConfig {
+    /// Whether web search is available for activation.
+    #[serde(default)]
+    pub web_search: bool,
+    /// Maximum web search uses per turn (None = provider default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search_max_uses: Option<u32>,
+    /// Whether code execution is available for activation.
+    #[serde(default)]
+    pub code_execution: bool,
+}
+
+impl ServerToolConfig {
+    /// Generate catalog entries for server tools available via `enable_tool`.
+    #[must_use]
+    pub fn catalog_entries(&self) -> Vec<(ToolName, String)> {
+        let mut entries = Vec::new();
+        if self.web_search {
+            entries.push((
+                ToolName::new("web_search").expect("valid tool name"),
+                "Search the web using Anthropic's server-side web search".to_owned(),
+            ));
+        }
+        if self.code_execution {
+            entries.push((
+                ToolName::new("code_execution").expect("valid tool name"),
+                "Execute Python code in a sandboxed server-side environment".to_owned(),
+            ));
+        }
+        entries
+    }
+
+    /// Produce server tool definitions for tools that are currently active.
+    #[must_use]
+    pub fn active_definitions(
+        &self,
+        active: &HashSet<ToolName>,
+    ) -> Vec<aletheia_hermeneus::types::ServerToolDefinition> {
+        let mut defs = Vec::new();
+        let web_search_name = ToolName::new("web_search").expect("valid tool name");
+        let code_exec_name = ToolName::new("code_execution").expect("valid tool name");
+
+        if self.web_search && active.contains(&web_search_name) {
+            defs.push(aletheia_hermeneus::types::ServerToolDefinition {
+                tool_type: "web_search_20250305".to_owned(),
+                name: "web_search".to_owned(),
+                max_uses: self.web_search_max_uses,
+                allowed_domains: None,
+                blocked_domains: None,
+                user_location: None,
+            });
+        }
+        if self.code_execution && active.contains(&code_exec_name) {
+            defs.push(aletheia_hermeneus::types::ServerToolDefinition {
+                tool_type: "code_execution_20250522".to_owned(),
+                name: "code_execution".to_owned(),
+                max_uses: None,
+                allowed_domains: None,
+                blocked_domains: None,
+                user_location: None,
+            });
+        }
+        defs
+    }
+}
+
 /// Service locator for tool executors needing access to runtime services.
 pub struct ToolServices {
     pub cross_nous: Option<Arc<dyn CrossNousService>>,
@@ -436,6 +506,8 @@ pub struct ToolServices {
     pub http_client: reqwest::Client,
     /// Catalog of lazy tools available for activation via `enable_tool`.
     pub lazy_tool_catalog: Vec<(ToolName, String)>,
+    /// Server tool configuration for provider-side tools (web search, code execution).
+    pub server_tool_config: ServerToolConfig,
 }
 
 impl std::fmt::Debug for ToolServices {
@@ -449,6 +521,7 @@ impl std::fmt::Debug for ToolServices {
             .field("planning", &self.planning.is_some())
             .field("knowledge", &self.knowledge.is_some())
             .field("lazy_tool_catalog_len", &self.lazy_tool_catalog.len())
+            .field("server_tool_config", &self.server_tool_config)
             .finish_non_exhaustive()
     }
 }
@@ -849,5 +922,141 @@ mod tests {
         };
         let json = schema.to_json_schema();
         assert_eq!(json["type"], "object");
+    }
+
+    // --- ServerToolConfig tests ---
+
+    #[test]
+    fn server_tool_config_default_disables_all() {
+        let config = ServerToolConfig::default();
+        assert!(!config.web_search);
+        assert!(!config.code_execution);
+        assert!(config.web_search_max_uses.is_none());
+    }
+
+    #[test]
+    fn server_tool_config_serde_roundtrip() {
+        let config = ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: Some(5),
+            code_execution: true,
+        };
+        let json = serde_json::to_string(&config).expect("serialize");
+        let back: ServerToolConfig = serde_json::from_str(&json).expect("deserialize");
+        assert!(back.web_search);
+        assert_eq!(back.web_search_max_uses, Some(5));
+        assert!(back.code_execution);
+    }
+
+    #[test]
+    fn server_tool_config_catalog_entries_empty_when_disabled() {
+        let config = ServerToolConfig::default();
+        assert!(config.catalog_entries().is_empty());
+    }
+
+    #[test]
+    fn server_tool_config_catalog_entries_web_search() {
+        let config = ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: None,
+            code_execution: false,
+        };
+        let entries = config.catalog_entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0.as_str(), "web_search");
+    }
+
+    #[test]
+    fn server_tool_config_catalog_entries_both() {
+        let config = ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: Some(3),
+            code_execution: true,
+        };
+        let entries = config.catalog_entries();
+        assert_eq!(entries.len(), 2);
+        let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"web_search"));
+        assert!(names.contains(&"code_execution"));
+    }
+
+    #[test]
+    fn server_tool_config_active_definitions_empty_when_none_active() {
+        let config = ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: Some(5),
+            code_execution: true,
+        };
+        let active = HashSet::new();
+        let defs = config.active_definitions(&active);
+        assert!(defs.is_empty());
+    }
+
+    #[test]
+    fn server_tool_config_active_definitions_web_search() {
+        let config = ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: Some(5),
+            code_execution: false,
+        };
+        let mut active = HashSet::new();
+        active.insert(ToolName::new("web_search").expect("valid"));
+        let defs = config.active_definitions(&active);
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].tool_type, "web_search_20250305");
+        assert_eq!(defs[0].name, "web_search");
+        assert_eq!(defs[0].max_uses, Some(5));
+    }
+
+    #[test]
+    fn server_tool_config_active_definitions_code_execution() {
+        let config = ServerToolConfig {
+            web_search: false,
+            web_search_max_uses: None,
+            code_execution: true,
+        };
+        let mut active = HashSet::new();
+        active.insert(ToolName::new("code_execution").expect("valid"));
+        let defs = config.active_definitions(&active);
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].tool_type, "code_execution_20250522");
+        assert_eq!(defs[0].name, "code_execution");
+    }
+
+    #[test]
+    fn server_tool_config_active_ignores_disabled_tools() {
+        let config = ServerToolConfig {
+            web_search: false,
+            web_search_max_uses: None,
+            code_execution: false,
+        };
+        let mut active = HashSet::new();
+        active.insert(ToolName::new("web_search").expect("valid"));
+        active.insert(ToolName::new("code_execution").expect("valid"));
+        let defs = config.active_definitions(&active);
+        assert!(defs.is_empty());
+    }
+
+    #[test]
+    fn server_tool_config_active_definitions_both() {
+        let config = ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: None,
+            code_execution: true,
+        };
+        let mut active = HashSet::new();
+        active.insert(ToolName::new("web_search").expect("valid"));
+        active.insert(ToolName::new("code_execution").expect("valid"));
+        let defs = config.active_definitions(&active);
+        assert_eq!(defs.len(), 2);
+    }
+
+    #[test]
+    fn server_tool_config_deserializes_from_partial_json() {
+        let json = r#"{"web_search": true}"#;
+        let config: ServerToolConfig = serde_json::from_str(json).expect("deserialize");
+        assert!(config.web_search);
+        assert!(!config.code_execution);
+        assert!(config.web_search_max_uses.is_none());
     }
 }

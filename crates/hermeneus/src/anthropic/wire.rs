@@ -1076,6 +1076,154 @@ mod tests {
     }
 
     #[test]
+    fn wire_server_tool_serializes_type_field() {
+        let tool = WireServerTool {
+            tool_type: "web_search_20250305",
+            name: "web_search",
+            max_uses: Some(5),
+            allowed_domains: None,
+            blocked_domains: None,
+            user_location: None,
+        };
+        let json = serde_json::to_value(&tool).unwrap();
+        assert_eq!(json["type"], "web_search_20250305");
+        assert_eq!(json["name"], "web_search");
+        assert_eq!(json["max_uses"], 5);
+        assert!(json.get("allowed_domains").is_none());
+    }
+
+    #[test]
+    fn wire_server_tool_with_domain_filters() {
+        let allowed = vec!["example.com".to_owned()];
+        let blocked = vec!["evil.com".to_owned()];
+        let tool = WireServerTool {
+            tool_type: "web_search_20250305",
+            name: "web_search",
+            max_uses: None,
+            allowed_domains: Some(&allowed),
+            blocked_domains: Some(&blocked),
+            user_location: None,
+        };
+        let json = serde_json::to_value(&tool).unwrap();
+        assert_eq!(json["allowed_domains"][0], "example.com");
+        assert_eq!(json["blocked_domains"][0], "evil.com");
+        assert!(json.get("max_uses").is_none());
+    }
+
+    #[test]
+    fn wire_tool_entry_untagged_serialization() {
+        let user_tool = WireToolEntry::UserDefined(WireTool {
+            name: "read",
+            description: "Read a file",
+            input_schema: &serde_json::json!({"type": "object"}),
+            cache_control: None,
+        });
+        let server_tool = WireToolEntry::ServerSide(WireServerTool {
+            tool_type: "web_search_20250305",
+            name: "web_search",
+            max_uses: Some(3),
+            allowed_domains: None,
+            blocked_domains: None,
+            user_location: None,
+        });
+
+        let user_json = serde_json::to_value(&user_tool).unwrap();
+        assert!(user_json.get("type").is_none());
+        assert!(user_json.get("input_schema").is_some());
+
+        let server_json = serde_json::to_value(&server_tool).unwrap();
+        assert_eq!(server_json["type"], "web_search_20250305");
+        assert!(server_json.get("input_schema").is_none());
+    }
+
+    #[test]
+    fn wire_content_block_web_search_result_with_multiple_results() {
+        let json = r#"{"type":"web_search_tool_result","tool_use_id":"srvtoolu_456","content":[
+            {"type":"web_search_result","url":"https://a.com","title":"A","encrypted_content":"enc1"},
+            {"type":"web_search_result","url":"https://b.com","title":"B","encrypted_content":"enc2"},
+            {"type":"web_search_result","url":"https://c.com","title":"C","encrypted_content":"enc3"}
+        ]}"#;
+        let block: WireContentBlock = serde_json::from_str(json).unwrap();
+        let converted = block.into_content_block();
+        match converted {
+            ContentBlock::WebSearchToolResult { content, .. } => {
+                assert_eq!(content.as_array().unwrap().len(), 3);
+            }
+            _ => panic!("expected WebSearchToolResult"),
+        }
+    }
+
+    #[test]
+    fn wire_response_with_citation_web_search_result_location() {
+        let json = r#"{
+            "id": "msg_ws_cit",
+            "type": "message",
+            "role": "assistant",
+            "content": [{
+                "type": "text",
+                "text": "According to...",
+                "citations": [{
+                    "type": "web_search_result_location",
+                    "url": "https://example.com/article",
+                    "title": "Example Article",
+                    "cited_text": "relevant passage"
+                }]
+            }],
+            "model": "claude-opus-4-20250514",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 100, "output_tokens": 50}
+        }"#;
+        let resp: WireResponse = serde_json::from_str(json).unwrap();
+        let converted = resp.into_response().unwrap();
+        match &converted.content[0] {
+            ContentBlock::Text { citations, .. } => {
+                let cits = citations.as_ref().unwrap();
+                assert_eq!(cits.len(), 1);
+                match &cits[0] {
+                    crate::types::Citation::WebSearchResultLocation {
+                        url,
+                        title,
+                        cited_text,
+                    } => {
+                        assert_eq!(url, "https://example.com/article");
+                        assert_eq!(title.as_deref(), Some("Example Article"));
+                        assert_eq!(cited_text, "relevant passage");
+                    }
+                    _ => panic!("expected WebSearchResultLocation"),
+                }
+            }
+            _ => panic!("expected Text"),
+        }
+    }
+
+    #[test]
+    fn wire_request_code_execution_server_tool() {
+        let req = CompletionRequest {
+            model: "claude-opus-4-20250514".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("run python".to_owned()),
+            }],
+            max_tokens: 1024,
+            server_tools: vec![crate::types::ServerToolDefinition {
+                tool_type: "code_execution_20250522".to_owned(),
+                name: "code_execution".to_owned(),
+                max_uses: None,
+                allowed_domains: None,
+                blocked_domains: None,
+                user_location: None,
+            }],
+            ..Default::default()
+        };
+        let wire = WireRequest::from_request(&req, None);
+        let json = serde_json::to_value(&wire).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["type"], "code_execution_20250522");
+        assert_eq!(tools[0]["name"], "code_execution");
+    }
+
+    #[test]
     fn wire_request_no_cache_system_is_string() {
         let req = CompletionRequest {
             model: "claude-opus-4-20250514".to_owned(),
