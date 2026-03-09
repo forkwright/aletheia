@@ -1,8 +1,9 @@
 //! Integration tests: run eval scenarios against a real TCP-bound pylon instance.
 #![cfg(feature = "sqlite-tests")]
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex as TokioMutex;
 
 use secrecy::SecretString;
 use tokio::net::TcpListener;
@@ -86,7 +87,7 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
     provider_registry.register(Box::new(MockProvider::new()));
     let provider_registry = Arc::new(provider_registry);
     let tool_registry = Arc::new(ToolRegistry::new());
-    let session_store = Arc::new(Mutex::new(store));
+    let session_store = Arc::new(TokioMutex::new(store));
 
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),

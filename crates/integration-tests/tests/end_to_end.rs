@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex as TokioMutex;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -167,7 +168,7 @@ impl TestHarness {
         let provider_registry = Arc::new(provider_registry);
         let tool_registry = Arc::new(ToolRegistry::new());
 
-        let session_store = Arc::new(Mutex::new(store));
+        let session_store = Arc::new(TokioMutex::new(store));
 
         let mut nous_manager = NousManager::new(
             Arc::clone(&provider_registry),

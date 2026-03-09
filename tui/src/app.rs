@@ -23,9 +23,9 @@ use crate::state::virtual_scroll::VirtualScroll;
 )]
 pub use crate::state::{
     AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
-    ContextActionsOverlay, FilterState, InputState, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    SelectionContext, SessionPickerOverlay, TabCompletion, ToolApprovalOverlay, ToolCallInfo, View,
-    ViewStack,
+    ContextActionsOverlay, FilterState, FocusedPane, InputState, OpsState, Overlay,
+    PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay, TabCompletion,
+    ToolApprovalOverlay, ToolCallInfo, View, ViewStack,
 };
 
 // --- App ---
@@ -110,6 +110,9 @@ pub struct App {
 
     // Per-view scroll state preservation
     pub(crate) view_scroll_states: HashMap<usize, SavedScrollState>,
+
+    // Operations pane (right-side panel)
+    pub ops: OpsState,
 }
 
 impl App {
@@ -162,6 +165,7 @@ impl App {
             filter: FilterState::default(),
             view_stack: ViewStack::new(),
             view_scroll_states: HashMap::new(),
+            ops: OpsState::default(),
         };
 
         app.connect().await?;
@@ -441,6 +445,7 @@ pub(crate) mod test_helpers {
             filter: FilterState::default(),
             view_stack: ViewStack::new(),
             view_scroll_states: HashMap::new(),
+            ops: OpsState::default(),
         }
     }
 

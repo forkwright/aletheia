@@ -82,6 +82,14 @@ pub(crate) fn handle_toggle_thinking(app: &mut App) {
     app.thinking_expanded = !app.thinking_expanded;
 }
 
+pub(crate) fn handle_toggle_ops_pane(app: &mut App) {
+    app.ops.toggle();
+}
+
+pub(crate) fn handle_ops_focus_switch(app: &mut App) {
+    app.ops.toggle_focus();
+}
+
 pub(crate) fn handle_resize(app: &mut App, w: u16, h: u16) {
     app.terminal_width = w;
     app.terminal_height = h;

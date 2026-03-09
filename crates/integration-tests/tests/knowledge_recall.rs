@@ -85,7 +85,7 @@ fn own_facts_ranked_above_shared() {
 fn knowledge_types_all_serialize() {
     let fact = sample_fact("f-1", "syn", EpistemicTier::Verified);
     let entity = Entity {
-        id: "e-1".to_owned(),
+        id: "e-1".to_owned().into(),
         name: "Dr. Chen".to_owned(),
         entity_type: "person".to_owned(),
         aliases: vec!["A".to_owned()],
@@ -93,8 +93,8 @@ fn knowledge_types_all_serialize() {
         updated_at: "2026-03-01T00:00:00Z".to_owned(),
     };
     let rel = Relationship {
-        src: "e-1".to_owned(),
-        dst: "e-2".to_owned(),
+        src: "e-1".to_owned().into(),
+        dst: "e-2".to_owned().into(),
         relation: "works_on".to_owned(),
         weight: 0.9,
         created_at: "2026-01-01T00:00:00Z".to_owned(),

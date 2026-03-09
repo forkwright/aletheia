@@ -22,6 +22,7 @@ pub enum KeyContext {
     ToolApproval,
     PlanApproval,
     Settings,
+    Operations,
 }
 
 impl KeyContext {
@@ -38,6 +39,7 @@ impl KeyContext {
             Self::ToolApproval => "Tool Approval",
             Self::PlanApproval => "Plan Approval",
             Self::Settings => "Settings",
+            Self::Operations => "Operations",
         }
     }
 
@@ -49,7 +51,8 @@ impl KeyContext {
             | Self::Filter
             | Self::CommandPalette
             | Self::SessionList
-            | Self::Settings => 0,
+            | Self::Settings
+            | Self::Operations => 0,
             Self::Chat => 1,
             Self::Input => 2,
             Self::Overlay => 3,
@@ -357,10 +360,47 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             show_in_status_bar: false,
         },
         Keybinding {
+            keys: "Ctrl+O",
+            description: "Toggle ops pane",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
             keys: "Ctrl+C/Q",
             description: "Quit",
             contexts: &[KeyContext::Global],
             show_in_status_bar: false,
+        },
+        // --- Operations pane ---
+        Keybinding {
+            keys: "j / \u{2193}",
+            description: "Next item",
+            contexts: &[KeyContext::Operations],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "k / \u{2191}",
+            description: "Previous item",
+            contexts: &[KeyContext::Operations],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Enter",
+            description: "Expand / collapse",
+            contexts: &[KeyContext::Operations],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Tab",
+            description: "Switch to chat",
+            contexts: &[KeyContext::Operations],
+            show_in_status_bar: true,
+        },
+        Keybinding {
+            keys: "Esc",
+            description: "Switch to chat",
+            contexts: &[KeyContext::Operations],
+            show_in_status_bar: true,
         },
         // --- Tool Approval ---
         Keybinding {
@@ -434,6 +474,10 @@ pub fn current_contexts(app: &App) -> Vec<KeyContext> {
                 contexts.push(KeyContext::Filter);
             } else if app.selection != SelectionContext::None {
                 contexts.push(KeyContext::Selection);
+            } else if app.ops.visible
+                && app.ops.focused_pane == crate::state::FocusedPane::Operations
+            {
+                contexts.push(KeyContext::Operations);
             } else {
                 contexts.push(KeyContext::Chat);
                 contexts.push(KeyContext::Input);
@@ -468,6 +512,10 @@ pub fn context_label(app: &App) -> &'static str {
                 "Filter"
             } else if app.selection != SelectionContext::None {
                 "Selection"
+            } else if app.ops.visible
+                && app.ops.focused_pane == crate::state::FocusedPane::Operations
+            {
+                "Operations"
             } else {
                 "Chat"
             }
