@@ -86,7 +86,7 @@ mod assertions {
 /// link conflicts.
 ///
 /// The engine's `storage-sqlite` backend was removed; its remaining backends
-/// (mem, redb, rocksdb) have no `SQLite` dependency. `rusqlite` compiles with
+/// (mem, redb, fjall) have no `SQLite` dependency. `rusqlite` compiles with
 /// `features = ["bundled"]`, so its symbols are isolated. Both features can
 /// be active in the same binary.
 #[cfg(all(test, feature = "sqlite", feature = "mneme-engine"))]

@@ -1111,6 +1111,102 @@ mod tests {
         assert_eq!(result.messages_imported, 2);
     }
 
+    #[test]
+    fn import_multiple_sessions_counts_correctly() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let mut agent = minimal_agent_file();
+        // Add a second session
+        agent.sessions.push(ExportedSession {
+            id: "ses-2".to_owned(),
+            session_key: "secondary".to_owned(),
+            status: "active".to_owned(),
+            session_type: "primary".to_owned(),
+            message_count: 1,
+            token_count_estimate: 50,
+            distillation_count: 0,
+            created_at: "2026-03-05T12:00:00Z".to_owned(),
+            updated_at: "2026-03-05T12:00:00Z".to_owned(),
+            working_state: None,
+            distillation_priming: None,
+            notes: vec![],
+            messages: vec![ExportedMessage {
+                role: "user".to_owned(),
+                content: "second session".to_owned(),
+                seq: 1,
+                token_estimate: 50,
+                is_distilled: false,
+                created_at: "2026-03-05T12:00:00Z".to_owned(),
+            }],
+        });
+
+        let id_gen = counter_id_gen();
+        let result = import_agent(&agent, &store, dir.path(), &*id_gen, &ImportOptions::default())
+            .unwrap();
+
+        assert_eq!(result.sessions_imported, 2);
+        assert_eq!(result.messages_imported, 3);
+    }
+
+    #[test]
+    fn import_notes_counted_in_result() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let agent = minimal_agent_file();
+
+        let id_gen = counter_id_gen();
+        let result = import_agent(&agent, &store, dir.path(), &*id_gen, &ImportOptions::default())
+            .unwrap();
+
+        // minimal_agent_file has 1 note
+        assert_eq!(result.notes_imported, 1);
+    }
+
+    #[test]
+    fn validate_relative_path_rejects_windows_drive() {
+        assert!(!validate_relative_path("C:\\windows\\system32"));
+        assert!(!validate_relative_path("D:file.txt"));
+    }
+
+    #[test]
+    fn validate_relative_path_rejects_protocol() {
+        assert!(!validate_relative_path("file:///etc/passwd"));
+        assert!(!validate_relative_path("https://evil.com/payload"));
+    }
+
+    #[test]
+    fn validate_relative_path_accepts_nested_dirs() {
+        assert!(validate_relative_path("a/b/c/d.txt"));
+        assert!(validate_relative_path("memory/2026-03-09.md"));
+        assert!(validate_relative_path("SOUL.md"));
+    }
+
+    #[test]
+    fn import_skip_both_flags_imports_nothing_from_disk_or_sessions() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let agent = minimal_agent_file();
+
+        let id_gen = counter_id_gen();
+        let result = import_agent(
+            &agent,
+            &store,
+            dir.path(),
+            &*id_gen,
+            &ImportOptions {
+                skip_sessions: true,
+                skip_workspace: true,
+                ..ImportOptions::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.files_restored, 0);
+        assert_eq!(result.sessions_imported, 0);
+        assert_eq!(result.messages_imported, 0);
+        assert_eq!(result.notes_imported, 0);
+    }
+
     mod proptests {
         use super::*;
         use proptest::prelude::*;

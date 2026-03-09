@@ -167,7 +167,7 @@ mod candle_provider {
         ///
         /// # Errors
         ///
-        /// Returns [`EmbeddingError::InitFailed`] if model download or initialization fails.
+        /// Returns `EmbeddingError::InitFailed` if model download or initialization fails.
         #[instrument]
         pub fn new(model_repo: Option<&str>) -> EmbeddingResult<Self> {
             let repo_id = model_repo.unwrap_or(Self::DEFAULT_REPO);

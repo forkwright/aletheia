@@ -3,7 +3,7 @@
 //! Skills are facts with `fact_type = "skill"`. This module provides:
 //! - Structured content type for skill JSON
 //! - Parser for SKILL.md markdown files
-//! - Query helpers on [`KnowledgeStore`]
+//! - Query helpers on `KnowledgeStore`
 
 use serde::{Deserialize, Serialize};
 

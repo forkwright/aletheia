@@ -83,11 +83,11 @@ impl<'a> BackupManager<'a> {
     ///
     /// `VACUUM INTO` does not support parameter binding for the target path.
     /// The path is interpolated via `format!` into the SQL string. The sole
-    /// defense against path injection is [`validate_backup_path`], which
+    /// defense against path injection is `validate_backup_path`, which
     /// rejects any path containing characters outside the safe set
     /// (alphanumeric, `-`, `_`, `.`, `/`, `\`, space) and blocks `--` comment
     /// sequences. Any future changes to path construction MUST go through
-    /// `validate_backup_path`.
+    /// `validate_backup_path` (a private helper in this module).
     #[instrument(skip(self))]
     pub fn create_backup(&self) -> Result<BackupResult> {
         std::fs::create_dir_all(&self.backup_dir).context(error::IoSnafu {
