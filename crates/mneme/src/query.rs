@@ -693,6 +693,111 @@ pub mod queries {
         :limit $limit
     ";
 
+    /// Bi-temporal point-in-time query with all fields. Params: `$nous_id`, `$at_time`.
+    /// Returns facts where `valid_from <= at_time` AND `valid_to > at_time` AND not forgotten.
+    pub fn temporal_facts() -> String {
+        use FactsField::*;
+        QueryBuilder::new()
+            .scan(Relation::Facts)
+            .select(&[
+                Id,
+                Content,
+                Confidence,
+                Tier,
+                RecordedAt,
+                NousId,
+                ValidFrom,
+                ValidTo,
+                SupersededBy,
+                SourceSessionId,
+                AccessCount,
+                LastAccessedAt,
+                StabilityHours,
+                FactType,
+                IsForgotten,
+                ForgottenAt,
+                ForgetReason,
+            ])
+            .bind(Id)
+            .bind(ValidFrom)
+            .bind(Content)
+            .bind(NousId)
+            .bind(Confidence)
+            .bind(Tier)
+            .bind(ValidTo)
+            .bind(SupersededBy)
+            .bind(SourceSessionId)
+            .bind(RecordedAt)
+            .bind(AccessCount)
+            .bind(LastAccessedAt)
+            .bind(StabilityHours)
+            .bind(FactType)
+            .bind(IsForgotten)
+            .bind(ForgottenAt)
+            .bind(ForgetReason)
+            .filter("nous_id = $nous_id")
+            .filter("is_forgotten == false")
+            .filter("valid_from <= $at_time")
+            .filter("valid_to > $at_time")
+            .order("-confidence")
+            .done()
+            .build_script()
+    }
+
+    /// Bi-temporal point-in-time query with optional content filter. Params: `$nous_id`, `$at_time`.
+    /// Same as `temporal_facts` but uses a raw script to support an optional `contains()` filter.
+    pub const TEMPORAL_FACTS_FILTERED: &str = r"
+        ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
+          superseded_by, source_session_id,
+          access_count, last_accessed_at, stability_hours, fact_type,
+          is_forgotten, forgotten_at, forget_reason] :=
+            *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
+                   superseded_by, source_session_id, recorded_at,
+                   access_count, last_accessed_at, stability_hours, fact_type,
+                   is_forgotten, forgotten_at, forget_reason},
+            nous_id = $nous_id,
+            is_forgotten == false,
+            valid_from <= $at_time,
+            valid_to > $at_time,
+            str_includes(content, $filter)
+        :order -confidence
+    ";
+
+    /// Facts that changed (became valid or expired) in an interval.
+    /// Params: `$nous_id`, `$from_time`, `$to_time`.
+    /// Returns all facts where `valid_from` is in `(from_time, to_time]` OR
+    /// `valid_to` is in `(from_time, to_time]`.
+    pub const TEMPORAL_DIFF_ADDED: &str = r"
+        ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
+          superseded_by, source_session_id,
+          access_count, last_accessed_at, stability_hours, fact_type,
+          is_forgotten, forgotten_at, forget_reason] :=
+            *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
+                   superseded_by, source_session_id, recorded_at,
+                   access_count, last_accessed_at, stability_hours, fact_type,
+                   is_forgotten, forgotten_at, forget_reason},
+            nous_id = $nous_id,
+            valid_from > $from_time,
+            valid_from <= $to_time
+    ";
+
+    /// Facts that expired (`valid_to` fell) in an interval.
+    /// Params: `$nous_id`, `$from_time`, `$to_time`.
+    pub const TEMPORAL_DIFF_REMOVED: &str = r"
+        ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
+          superseded_by, source_session_id,
+          access_count, last_accessed_at, stability_hours, fact_type,
+          is_forgotten, forgotten_at, forget_reason] :=
+            *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
+                   superseded_by, source_session_id, recorded_at,
+                   access_count, last_accessed_at, stability_hours, fact_type,
+                   is_forgotten, forgotten_at, forget_reason},
+            nous_id = $nous_id,
+            valid_to > $from_time,
+            valid_to <= $to_time,
+            valid_to != '9999-12-31'
+    ";
+
     /// Audit query returning all facts regardless of forgotten/superseded/temporal state.
     /// Params: `$nous_id`, `$limit`.
     pub fn audit_all_facts() -> String {

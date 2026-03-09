@@ -407,6 +407,21 @@ pub trait KnowledgeSearchService: Send + Sync {
         &self,
         fact_id: &str,
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+
+    fn datalog_query(
+        &self,
+        query: &str,
+        params: Option<serde_json::Value>,
+        timeout_secs: Option<f64>,
+        row_limit: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, String>> + Send + '_>>;
+}
+
+/// Result from a read-only Datalog query.
+pub struct DatalogResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub truncated: bool,
 }
 
 /// Service locator for tool executors needing access to runtime services.

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge::{EpistemicTier, Fact};
 use aletheia_mneme::knowledge_store::{HybridQuery, KnowledgeStore};
-use aletheia_organon::types::{FactSummary, KnowledgeSearchService, MemoryResult};
+use aletheia_organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
 
 pub struct KnowledgeSearchAdapter {
     store: Arc<KnowledgeStore>,
@@ -257,5 +257,86 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .await
                 .map_err(|e| format!("failed to unforget fact: {e}"))
         })
+    }
+
+    fn datalog_query(
+        &self,
+        query: &str,
+        params: Option<serde_json::Value>,
+        timeout_secs: Option<f64>,
+        row_limit: Option<usize>,
+    ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, String>> + Send + '_>> {
+        let query = query.to_owned();
+        let row_limit = row_limit.unwrap_or(100);
+        let timeout = timeout_secs.map(std::time::Duration::from_secs_f64);
+        Box::pin(async move {
+            // Convert JSON params to BTreeMap<String, DataValue>
+            let mut cozo_params = std::collections::BTreeMap::new();
+            if let Some(serde_json::Value::Object(map)) = params {
+                for (k, v) in map {
+                    let dv = json_to_datavalue(&v);
+                    cozo_params.insert(k, dv);
+                }
+            }
+
+            let rows = self
+                .store
+                .run_query_with_timeout(&query, cozo_params, timeout)
+                .map_err(|e| e.to_string())?;
+
+            let columns = rows.headers.iter().map(ToString::to_string).collect();
+            let truncated = rows.rows.len() > row_limit;
+            let result_rows: Vec<Vec<serde_json::Value>> = rows
+                .rows
+                .into_iter()
+                .take(row_limit)
+                .map(|row| row.iter().map(datavalue_to_json).collect())
+                .collect();
+
+            Ok(DatalogResult {
+                columns,
+                rows: result_rows,
+                truncated,
+            })
+        })
+    }
+}
+
+fn json_to_datavalue(v: &serde_json::Value) -> aletheia_mneme::engine::DataValue {
+    use aletheia_mneme::engine::DataValue;
+    match v {
+        serde_json::Value::Null => DataValue::Null,
+        serde_json::Value::Bool(b) => DataValue::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                DataValue::from(i)
+            } else if let Some(f) = n.as_f64() {
+                DataValue::from(f)
+            } else {
+                DataValue::Null
+            }
+        }
+        serde_json::Value::String(s) => DataValue::Str(s.as_str().into()),
+        _ => DataValue::Str(v.to_string().into()),
+    }
+}
+
+fn datavalue_to_json(v: &aletheia_mneme::engine::DataValue) -> serde_json::Value {
+    use aletheia_mneme::engine::DataValue;
+    match v {
+        DataValue::Null => serde_json::Value::Null,
+        DataValue::Bool(b) => serde_json::Value::Bool(*b),
+        DataValue::Str(s) => serde_json::Value::String(s.to_string()),
+        dv => {
+            if let Some(i) = dv.get_int() {
+                serde_json::Value::Number(serde_json::Number::from(i))
+            } else if let Some(f) = dv.get_float() {
+                serde_json::Number::from_f64(f)
+                    .map(serde_json::Value::Number)
+                    .unwrap_or(serde_json::Value::String(f.to_string()))
+            } else {
+                serde_json::Value::String(format!("{dv:?}"))
+            }
+        }
     }
 }

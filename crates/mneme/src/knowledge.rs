@@ -188,6 +188,18 @@ pub fn default_stability_hours(fact_type: &str) -> f64 {
     }
 }
 
+/// Diff between two temporal snapshots of the knowledge base.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FactDiff {
+    /// Facts that became valid in the interval.
+    pub added: Vec<Fact>,
+    /// Facts where `valid_from` is before the interval but content or metadata changed.
+    /// Tuple: (old version, new version).
+    pub modified: Vec<(Fact, Fact)>,
+    /// Facts whose `valid_to` fell within the interval.
+    pub removed: Vec<Fact>,
+}
+
 /// Results from a semantic recall query.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallResult {
