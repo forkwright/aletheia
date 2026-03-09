@@ -2,8 +2,8 @@
 #![cfg(feature = "sqlite-tests")]
 
 use std::sync::{Arc, Mutex};
-use tokio::sync::Mutex as TokioMutex;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex as TokioMutex;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};

@@ -2,8 +2,8 @@
 #![cfg(feature = "sqlite-tests")]
 
 use std::sync::Arc;
-use tokio::sync::Mutex as TokioMutex;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex as TokioMutex;
 
 use secrecy::SecretString;
 use tokio::net::TcpListener;
