@@ -42,6 +42,8 @@ pub mod pipeline;
 pub mod recall;
 /// Session state tracking within a nous actor.
 pub mod session;
+/// Skill loading — queries mneme for task-relevant skills and injects them as bootstrap sections.
+pub mod skills;
 /// Ephemeral sub-agent spawning service.
 pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
