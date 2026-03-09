@@ -21,9 +21,9 @@ use crate::state::SavedScrollState;
     reason = "re-exported for downstream modules that import from crate::app"
 )]
 pub use crate::state::{
-    AgentState, AgentStatus, ChatMessage, CommandPaletteState, FilterState, InputState, Overlay,
-    PlanApprovalOverlay, PlanStepApproval, SelectionContext, TabCompletion, ToolApprovalOverlay,
-    ToolCallInfo,
+    AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
+    ContextActionsOverlay, FilterState, InputState, Overlay, PlanApprovalOverlay, PlanStepApproval,
+    SelectionContext, TabCompletion, ToolApprovalOverlay, ToolCallInfo,
 };
 
 // --- App ---

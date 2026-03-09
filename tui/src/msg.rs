@@ -48,6 +48,7 @@ pub enum Msg {
     DeselectMessage,                  // Esc — return to auto-scroll
     SelectFirst,                      // Home in selection mode
     SelectLast,                       // G or End in selection mode
+    OpenContextActions,               // Enter in selection mode — open popup
     MessageAction(MessageActionKind), // Action on selected message
 
     // --- Filter (`/` mode) ---
@@ -224,6 +225,9 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
+    QuoteInReply,
+    RateResponse,
+    FlagForReview,
 }
 
 #[non_exhaustive]
@@ -291,6 +295,9 @@ mod tests {
             MessageActionKind::Delete,
             MessageActionKind::OpenLinks,
             MessageActionKind::Inspect,
+            MessageActionKind::QuoteInReply,
+            MessageActionKind::RateResponse,
+            MessageActionKind::FlagForReview,
         ];
         // Verify Debug trait works and variants are distinct
         let debugs: Vec<String> = kinds.iter().map(|k| format!("{:?}", k)).collect();

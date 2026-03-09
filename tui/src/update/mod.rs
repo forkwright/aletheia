@@ -23,6 +23,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::DeselectMessage => selection::handle_deselect(app),
         Msg::SelectFirst => selection::handle_select_first(app),
         Msg::SelectLast => selection::handle_select_last(app),
+        Msg::OpenContextActions => selection::handle_open_context_actions(app),
         Msg::MessageAction(action) => selection::handle_message_action(app, action),
 
         // --- Input ---

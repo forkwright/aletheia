@@ -42,6 +42,16 @@ fn render_info_bar(app: &App, width: u16, theme: &ThemePalette) -> Line<'static>
     left_spans.push(Span::styled(" │ ", theme.style_dim()));
     left_spans.push(connection_indicator_span(app, theme));
 
+    if let Some(idx) = app.selected_message {
+        left_spans.push(Span::styled(" │ ", theme.style_dim()));
+        left_spans.push(Span::styled("SELECTION", theme.style_accent()));
+        let total = app.messages.len();
+        left_spans.push(Span::styled(
+            format!(" {} of {}", idx + 1, total),
+            theme.style_dim(),
+        ));
+    }
+
     if app.filter.active && !app.filter.editing && !app.filter.text.is_empty() {
         left_spans.push(Span::styled(" │ ", theme.style_dim()));
         left_spans.push(Span::styled(
