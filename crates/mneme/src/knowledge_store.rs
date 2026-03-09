@@ -655,7 +655,7 @@ impl KnowledgeStore {
                 tier: crate::query_rewrite::SearchTier::Fast,
                 results: fast_results,
                 query_variants: None,
-                total_latency_ms: start.elapsed().as_millis() as u64,
+                total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
             });
         }
 
@@ -672,12 +672,12 @@ impl KnowledgeStore {
                 tier: crate::query_rewrite::SearchTier::Enhanced,
                 results: enhanced_results,
                 query_variants: Some(rewrite_result.variants),
-                total_latency_ms: start.elapsed().as_millis() as u64,
+                total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
             });
         }
 
         // Tier 3: Graph-enhanced — expand via entity relationships
-        let graph_results = self.expand_via_graph(&enhanced_results, config)?;
+        let graph_results = self.expand_via_graph(&enhanced_results, config);
         let final_results = if graph_results.is_empty() {
             enhanced_results
         } else {
@@ -690,7 +690,7 @@ impl KnowledgeStore {
             tier: crate::query_rewrite::SearchTier::GraphEnhanced,
             results: final_results,
             query_variants: Some(rewrite_result.variants),
-            total_latency_ms: start.elapsed().as_millis() as u64,
+            total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
         })
     }
 
@@ -698,11 +698,13 @@ impl KnowledgeStore {
     ///
     /// Takes the top entity IDs from existing results, queries their neighborhoods,
     /// and returns related facts as additional results.
+    #[expect(clippy::cast_precision_loss, reason = "rank indices fit in f64 mantissa")]
+    #[expect(clippy::cast_possible_wrap, reason = "rank indices are small positive values")]
     fn expand_via_graph(
         &self,
         existing: &[HybridResult],
         config: &crate::query_rewrite::TieredSearchConfig,
-    ) -> crate::error::Result<Vec<HybridResult>> {
+    ) -> Vec<HybridResult> {
         // Collect unique fact IDs from existing results
         let fact_ids: Vec<&str> = existing
             .iter()
@@ -711,7 +713,7 @@ impl KnowledgeStore {
             .collect();
 
         if fact_ids.is_empty() {
-            return Ok(vec![]);
+            return vec![];
         }
 
         // For each fact ID, look up which entities it references, then get their neighborhoods
@@ -746,7 +748,7 @@ impl KnowledgeStore {
             });
         }
 
-        Ok(graph_results)
+        graph_results
     }
 
     /// Async tiered search — wraps sync call in `spawn_blocking`.
