@@ -399,10 +399,10 @@ impl ScanBuilder {
 // ---------------------------------------------------------------------------
 
 /// Builder-generated query scripts for `KnowledgeStore` operations.
-#[expect(
+#[allow(
     clippy::enum_glob_use,
     clippy::wildcard_imports,
-    reason = "query builders use glob imports for field enum variants"
+    // query builders use glob imports for field enum variants
 )]
 pub mod queries {
     use super::*;
