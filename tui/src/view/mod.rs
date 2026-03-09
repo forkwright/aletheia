@@ -138,7 +138,7 @@ fn render_chat_area(app: &App, frame: &mut Frame, area: Rect, theme: &crate::the
     // Dynamically size input area based on text length (wrapping)
     let prompt_len: u16 = if app.active_turn_id.is_some() { 9 } else { 2 };
     let text_len = app.input.text.len() as u16 + prompt_len;
-    let content_width = area.width.saturating_sub(1).max(1);
+    let content_width = area.width.max(1);
     let wrapped_lines = (text_len / content_width) + 1;
     let input_height = (wrapped_lines + 1).clamp(3, 8); // +1 for border, min 3, max 8
 
