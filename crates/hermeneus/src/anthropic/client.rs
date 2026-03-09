@@ -273,6 +273,11 @@ impl AnthropicProvider {
                         ),
                         true,
                     );
+                    crate::metrics::record_cache_tokens(
+                        "anthropic",
+                        resp.usage.cache_read_tokens,
+                        resp.usage.cache_write_tokens,
+                    );
                     return Ok(resp);
                 }
                 Err(e) => {
@@ -499,6 +504,11 @@ impl AnthropicProvider {
                             resp.usage.output_tokens,
                         ),
                         true,
+                    );
+                    crate::metrics::record_cache_tokens(
+                        "anthropic",
+                        resp.usage.cache_read_tokens,
+                        resp.usage.cache_write_tokens,
                     );
                 }
                 return parsed;
