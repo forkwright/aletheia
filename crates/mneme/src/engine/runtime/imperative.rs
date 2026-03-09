@@ -8,7 +8,7 @@ use crate::bail;
 use crate::engine::error::DbResult as Result;
 use either::{Either, Left, Right};
 use itertools::Itertools;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 
 use crate::engine::data::program::RelationOp;
 use crate::engine::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
@@ -24,8 +24,8 @@ use crate::engine::{DataValue, DbCore as Db, NamedRows, Poison, Storage, Validit
 
 enum ControlCode {
     Termination(NamedRows),
-    Break(Option<SmartString<LazyCompact>>, SourceSpan),
-    Continue(Option<SmartString<LazyCompact>>, SourceSpan),
+    Break(Option<CompactString>, SourceSpan),
+    Continue(Option<CompactString>, SourceSpan),
 }
 
 impl<'s, S: Storage<'s>> Db<S> {
@@ -35,7 +35,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         tx: &mut SessionTx<'_>,
         cleanups: &mut Vec<(Vec<u8>, Vec<u8>)>,
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
     ) -> Result<bool> {
         let res = match p {
@@ -66,7 +66,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         tx: &mut SessionTx<'_>,
         cleanups: &mut Vec<(Vec<u8>, Vec<u8>)>,
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
         poison: &Poison,
         readonly: bool,
@@ -232,14 +232,14 @@ impl<'s, S: Storage<'s>> Db<S> {
                 ImperativeStmt::TempSwap { left, right, .. } => {
                     tx.rename_temp_relation(
                         Symbol::new(left.clone(), Default::default()),
-                        Symbol::new(SmartString::from("_*temp*"), Default::default()),
+                        Symbol::new(CompactString::from("_*temp*"), Default::default()),
                     )?;
                     tx.rename_temp_relation(
                         Symbol::new(right.clone(), Default::default()),
                         Symbol::new(left.clone(), Default::default()),
                     )?;
                     tx.rename_temp_relation(
-                        Symbol::new(SmartString::from("_*temp*"), Default::default()),
+                        Symbol::new(CompactString::from("_*temp*"), Default::default()),
                         Symbol::new(right.clone(), Default::default()),
                     )?;
                     ret = NamedRows::default();

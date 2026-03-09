@@ -17,13 +17,13 @@ use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 use rand::Rng;
 use rustc_hash::{FxHashMap, FxHashSet};
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 use std::cmp::{Reverse, max};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct HnswIndexManifest {
-    pub(crate) base_relation: SmartString<LazyCompact>,
-    pub(crate) index_name: SmartString<LazyCompact>,
+    pub(crate) base_relation: CompactString,
+    pub(crate) index_name: CompactString,
     pub(crate) vec_dim: usize,
     pub(crate) dtype: VecElementType,
     pub(crate) vec_fields: Vec<usize>,

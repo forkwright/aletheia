@@ -23,7 +23,7 @@ use either::{Left, Right};
 use itertools::Itertools;
 #[allow(unused_imports)]
 use serde_json::json;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 #[allow(unused_imports)]
 use snafu::Snafu;
 
@@ -101,7 +101,7 @@ pub struct Db<S> {
     callback_count: Arc<AtomicU32>,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) event_callbacks: Arc<ShardedLock<EventCallbackRegistry>>,
-    relation_locks: Arc<ShardedLock<BTreeMap<SmartString<LazyCompact>, Arc<ShardedLock<()>>>>>,
+    relation_locks: Arc<ShardedLock<BTreeMap<CompactString, Arc<ShardedLock<()>>>>>,
 }
 
 impl<S> Debug for Db<S> {
@@ -485,7 +485,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Note that triggers and callbacks are _not_ run for the relations, if any exists.
     /// If you need to activate triggers or callbacks, use queries with parameters.
     pub fn import_relations(&'s self, data: BTreeMap<String, NamedRows>) -> Result<()> {
-        let rel_names = data.keys().map(SmartString::from).collect_vec();
+        let rel_names = data.keys().map(CompactString::from).collect_vec();
         let locks = self.obtain_relation_locks(rel_names.iter());
         let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
 
@@ -679,7 +679,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             unbounded()
         };
         let cb = CallbackDeclaration {
-            dependent: SmartString::from(relation),
+            dependent: CompactString::from(relation),
             sender,
         };
 
@@ -687,7 +687,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         let new_id = self.callback_count.fetch_add(1, Ordering::SeqCst);
         guard
             .1
-            .entry(SmartString::from(relation))
+            .entry(CompactString::from(relation))
             .or_default()
             .insert(new_id);
 
@@ -710,7 +710,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         ret.is_some()
     }
 
-    pub(crate) fn obtain_relation_locks<'a, T: Iterator<Item = &'a SmartString<LazyCompact>>>(
+    pub(crate) fn obtain_relation_locks<'a, T: Iterator<Item = &'a CompactString>>(
         &'s self,
         rels: T,
     ) -> Vec<Arc<ShardedLock<()>>> {
@@ -778,7 +778,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         tx: &mut SessionTx<'_>,
         cleanups: &mut Vec<(Vec<u8>, Vec<u8>)>,
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
     ) -> Result<NamedRows> {
         #[allow(unused_variables)]
@@ -1345,7 +1345,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         tx: &mut SessionTx<'_>,
         input_program: InputProgram,
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<SmartString<LazyCompact>>,
+        callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
         top_level: bool,
     ) -> Result<(NamedRows, Vec<(Vec<u8>, Vec<u8>)>)> {

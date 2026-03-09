@@ -9,7 +9,7 @@ use crate::bail;
 use crate::engine::error::DbResult as Result;
 use either::{Left, Right};
 use itertools::Itertools;
-use smartstring::SmartString;
+use compact_str::CompactString;
 use tracing::debug;
 
 use crate::engine::data::expr::{
@@ -1004,7 +1004,7 @@ impl FtsSearchRA {
                 let q = match tuple[bind_idx].clone() {
                     DataValue::Str(s) => s,
                     DataValue::List(l) => {
-                        let mut coll = SmartString::new();
+                        let mut coll = CompactString::default();
                         for d in l {
                             match d {
                                 DataValue::Str(s) => {

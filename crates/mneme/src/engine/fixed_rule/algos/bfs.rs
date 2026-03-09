@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::engine::error::DbResult as Result;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 
 use crate::engine::data::expr::{Expr, eval_bytecode_pred};
 use crate::engine::data::symb::Symbol;
@@ -109,7 +109,7 @@ impl FixedRule for Bfs {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {

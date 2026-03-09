@@ -8,7 +8,7 @@ use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
 use itertools::Itertools;
 use smallvec::SmallVec;
-use smartstring::SmartString;
+use compact_str::CompactString;
 
 use crate::engine::data::program::{
     FixedRuleArg, MagicAtom, MagicFixedRuleApply, MagicFixedRuleRuleArg, MagicInlineRule,
@@ -408,7 +408,7 @@ impl NormalFormProgram {
                                                     .enumerate()
                                                     .map(|(i, col)| match bindings.get(&col.name) {
                                                         None => Symbol::new(
-                                                            SmartString::from(format!("{i}")),
+                                                            CompactString::from(format!("{i}")),
                                                             Default::default(),
                                                         ),
                                                         Some(k) => k.clone(),

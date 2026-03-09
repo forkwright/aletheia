@@ -8,7 +8,7 @@ use graph::prelude::{
     CsrLayout, DirectedCsrGraph, DirectedNeighborsWithValues, Graph, GraphBuilder,
 };
 use itertools::Itertools;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 use tracing::debug;
 
 use crate::engine::data::expr::Expr;
@@ -56,7 +56,7 @@ impl FixedRule for CommunityDetectionLouvain {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {

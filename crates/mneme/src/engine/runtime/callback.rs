@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use crossbeam::channel::Sender;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 
 use crate::engine::{DbCore as Db, NamedRows, Storage};
 
@@ -39,21 +39,21 @@ impl CallbackOp {
 
 #[allow(dead_code)]
 pub struct CallbackDeclaration {
-    pub(crate) dependent: SmartString<LazyCompact>,
+    pub(crate) dependent: CompactString,
     pub(crate) sender: Sender<(CallbackOp, NamedRows, NamedRows)>,
 }
 
 pub(crate) type CallbackCollector =
-    BTreeMap<SmartString<LazyCompact>, Vec<(CallbackOp, NamedRows, NamedRows)>>;
+    BTreeMap<CompactString, Vec<(CallbackOp, NamedRows, NamedRows)>>;
 
 #[allow(dead_code)]
 pub(crate) type EventCallbackRegistry = (
     BTreeMap<u32, CallbackDeclaration>,
-    BTreeMap<SmartString<LazyCompact>, BTreeSet<u32>>,
+    BTreeMap<CompactString, BTreeSet<u32>>,
 );
 
 impl<'s, S: Storage<'s>> Db<S> {
-    pub(crate) fn current_callback_targets(&self) -> BTreeSet<SmartString<LazyCompact>> {
+    pub(crate) fn current_callback_targets(&self) -> BTreeSet<CompactString> {
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.event_callbacks

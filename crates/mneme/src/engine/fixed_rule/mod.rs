@@ -14,7 +14,7 @@ use either::{Left, Right};
 use graph::prelude::{CsrLayout, DirectedCsrGraph, GraphBuilder};
 use itertools::Itertools;
 #[allow(unused_imports)]
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 use snafu::Snafu;
 use std::sync::LazyLock;
 
@@ -378,7 +378,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
         &self,
         name: &str,
         default: Option<&str>,
-    ) -> Result<SmartString<LazyCompact>> {
+    ) -> Result<CompactString> {
         match self.manifest.options.get(name) {
             Some(ex) => match ex.clone().eval_to_const()? {
                 DataValue::Str(s) => Ok(s),
@@ -397,7 +397,7 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
                     rule_name: self.manifest.fixed_handle.name.to_string(),
                 }
                 .into()),
-                Some(s) => Ok(SmartString::from(s)),
+                Some(s) => Ok(CompactString::from(s)),
             },
         }
     }
@@ -549,7 +549,7 @@ pub trait FixedRule: Send + Sync {
     /// The default implementation does nothing.
     fn init_options(
         &self,
-        _options: &mut BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &mut BTreeMap<CompactString, Expr>,
         _span: SourceSpan,
     ) -> Result<()> {
         Ok(())
@@ -558,7 +558,7 @@ pub trait FixedRule: Send + Sync {
     /// This function may be called multiple times.
     fn arity(
         &self,
-        options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        options: &BTreeMap<CompactString, Expr>,
         rule_head: &[Symbol],
         span: SourceSpan,
     ) -> Result<usize>;
@@ -639,7 +639,7 @@ impl SimpleFixedRule {
 impl FixedRule for SimpleFixedRule {
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {

@@ -18,7 +18,7 @@ use js_sys::Date;
 
 use rand::prelude::*;
 use serde_json::{Value, json};
-use smartstring::SmartString;
+use compact_str::CompactString;
 use unicode_normalization::UnicodeNormalization;
 use uuid::v1::Timestamp;
 
@@ -1791,7 +1791,7 @@ fn json2val(res: Value) -> DataValue {
                 DataValue::Null
             }
         }
-        Value::String(s) => DataValue::Str(SmartString::from(s)),
+        Value::String(s) => DataValue::Str(CompactString::from(s)),
         Value::Array(arr) => DataValue::Json(JsonData(json!(arr))),
         Value::Object(obj) => DataValue::Json(JsonData(json!(obj))),
     }
@@ -1829,7 +1829,7 @@ pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
             .ok_or_else(|| miette!("'chars' requires strings"))?
             .chars()
             .map(|c| {
-                let mut s = SmartString::new();
+                let mut s = CompactString::default();
                 s.push(c);
                 DataValue::Str(s)
             })
@@ -2488,11 +2488,11 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
             let tz = jiff::tz::TimeZone::get(tz_s)
                 .map_err(|_| miette!("bad timezone specification: {}", tz_s))?;
             let zoned = ts.to_zoned(tz);
-            let s = SmartString::from(zoned.to_string());
+            let s = CompactString::from(zoned.to_string());
             Ok(DataValue::Str(s))
         }
         None => {
-            let s = SmartString::from(ts.to_string());
+            let s = CompactString::from(ts.to_string());
             Ok(DataValue::Str(s))
         }
     }

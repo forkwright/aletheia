@@ -16,15 +16,15 @@ use crate::engine::{DataValue, SourceSpan};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use rustc_hash::{FxHashMap, FxHashSet};
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 #[derive(Default)]
 pub(crate) struct FtsCache {
-    total_n_cache: FxHashMap<SmartString<LazyCompact>, usize>,
-    avg_dl_cache: FxHashMap<SmartString<LazyCompact>, f64>,
+    total_n_cache: FxHashMap<CompactString, usize>,
+    avg_dl_cache: FxHashMap<CompactString, f64>,
 }
 
 impl FtsCache {
@@ -117,7 +117,7 @@ impl<'a> SessionTx<'a> {
         idx_handle: &RelationHandle,
     ) -> Result<Vec<LiteralStats>> {
         let start_key_str = &literal.value as &str;
-        let start_key = vec![DataValue::Str(SmartString::from(start_key_str))];
+        let start_key = vec![DataValue::Str(CompactString::from(start_key_str))];
         let mut end_key_str = literal.value.clone();
         end_key_str.push(LARGEST_UTF_CHAR);
         let end_key = vec![DataValue::Str(end_key_str)];
@@ -382,7 +382,7 @@ impl<'a> SessionTx<'a> {
         let mut collector: HashMap<_, (Vec<_>, Vec<_>, Vec<_>), _> = FxHashMap::default();
         let mut count = 0i64;
         while let Some(token) = token_stream.next() {
-            let text = SmartString::<LazyCompact>::from(&token.text);
+            let text = CompactString::from(&token.text);
             let (fr, to, position) = collector.entry(text).or_default();
             fr.push(DataValue::from(token.offset_from as i64));
             to.push(DataValue::from(token.offset_to as i64));
@@ -430,7 +430,7 @@ impl<'a> SessionTx<'a> {
         let mut token_stream = tokenizer.token_stream(&to_index);
         let mut collector = FxHashSet::default();
         while let Some(token) = token_stream.next() {
-            let text = SmartString::<LazyCompact>::from(&token.text);
+            let text = CompactString::from(&token.text);
             collector.insert(text);
         }
         let mut key = Vec::with_capacity(1 + rel_handle.metadata.keys.len());

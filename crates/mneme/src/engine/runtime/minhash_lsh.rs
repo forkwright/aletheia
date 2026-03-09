@@ -15,7 +15,7 @@ use crate::engine::{DataValue, Expr, SourceSpan, Symbol};
 use itertools::Itertools;
 use rand::{RngCore, thread_rng};
 use rustc_hash::FxHashSet;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 use std::cmp::min;
 use std::hash::{Hash, Hasher};
 use twox_hash::XxHash32;
@@ -220,8 +220,8 @@ pub(crate) struct HashPermutations(pub(crate) Vec<u32>);
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct MinHashLshIndexManifest {
-    pub(crate) base_relation: SmartString<LazyCompact>,
-    pub(crate) index_name: SmartString<LazyCompact>,
+    pub(crate) base_relation: CompactString,
+    pub(crate) index_name: CompactString,
     pub(crate) extractor: String,
     pub(crate) n_gram: usize,
     pub(crate) tokenizer: TokenizerConfig,

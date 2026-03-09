@@ -13,7 +13,7 @@ use crate::engine::error::DbResult as Result;
 use either::{Either, Left};
 use pest::Parser;
 use pest::error::InputLocation;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 use snafu::Snafu;
 
 use crate::engine::data::program::InputProgram;
@@ -55,29 +55,29 @@ pub enum DatalogScript {
 #[derive(Debug)]
 pub struct ImperativeStmtClause {
     pub prog: InputProgram,
-    pub store_as: Option<SmartString<LazyCompact>>,
+    pub store_as: Option<CompactString>,
 }
 
 #[allow(missing_docs)]
 #[derive(Debug)]
 pub struct ImperativeSysop {
     pub sysop: SysOp,
-    pub store_as: Option<SmartString<LazyCompact>>,
+    pub store_as: Option<CompactString>,
 }
 
 #[allow(missing_docs)]
 #[derive(Debug)]
 pub enum ImperativeStmt {
     Break {
-        target: Option<SmartString<LazyCompact>>,
+        target: Option<CompactString>,
         span: SourceSpan,
     },
     Continue {
-        target: Option<SmartString<LazyCompact>>,
+        target: Option<CompactString>,
         span: SourceSpan,
     },
     Return {
-        returns: Vec<Either<ImperativeStmtClause, SmartString<LazyCompact>>>,
+        returns: Vec<Either<ImperativeStmtClause, CompactString>>,
     },
     Program {
         prog: ImperativeStmtClause,
@@ -95,26 +95,26 @@ pub enum ImperativeStmt {
         negated: bool,
     },
     Loop {
-        label: Option<SmartString<LazyCompact>>,
+        label: Option<CompactString>,
         body: ImperativeProgram,
     },
     TempSwap {
-        left: SmartString<LazyCompact>,
-        right: SmartString<LazyCompact>,
+        left: CompactString,
+        right: CompactString,
         // span: SourceSpan,
     },
     TempDebug {
-        temp: SmartString<LazyCompact>,
+        temp: CompactString,
     },
 }
 
-pub(crate) type ImperativeCondition = Either<SmartString<LazyCompact>, ImperativeStmtClause>;
+pub(crate) type ImperativeCondition = Either<CompactString, ImperativeStmtClause>;
 
 /// A series of `{}` queries possibly with imperative directives like `%if` and `%loop`.
 pub type ImperativeProgram = Vec<ImperativeStmt>;
 
 impl ImperativeStmt {
-    pub(crate) fn needs_write_locks(&self, collector: &mut BTreeSet<SmartString<LazyCompact>>) {
+    pub(crate) fn needs_write_locks(&self, collector: &mut BTreeSet<CompactString>) {
         match self {
             ImperativeStmt::Program { prog, .. }
             | ImperativeStmt::IgnoreErrorProgram { prog, .. } => {
@@ -169,31 +169,31 @@ impl ImperativeStmt {
                 }
                 SysOp::CreateIndex(symb, subs, _) => {
                     collector.insert(symb.name.clone());
-                    collector.insert(SmartString::from(format!("{}:{}", symb.name, subs.name)));
+                    collector.insert(CompactString::from(format!("{}:{}", symb.name, subs.name)));
                 }
                 SysOp::CreateVectorIndex(m) => {
                     collector.insert(m.base_relation.clone());
-                    collector.insert(SmartString::from(format!(
+                    collector.insert(CompactString::from(format!(
                         "{}:{}",
                         m.base_relation, m.index_name
                     )));
                 }
                 SysOp::CreateFtsIndex(m) => {
                     collector.insert(m.base_relation.clone());
-                    collector.insert(SmartString::from(format!(
+                    collector.insert(CompactString::from(format!(
                         "{}:{}",
                         m.base_relation, m.index_name
                     )));
                 }
                 SysOp::CreateMinHashLshIndex(m) => {
                     collector.insert(m.base_relation.clone());
-                    collector.insert(SmartString::from(format!(
+                    collector.insert(CompactString::from(format!(
                         "{}:{}",
                         m.base_relation, m.index_name
                     )));
                 }
                 SysOp::RemoveIndex(rel, idx) => {
-                    collector.insert(SmartString::from(format!("{}:{}", rel.name, idx.name)));
+                    collector.insert(CompactString::from(format!("{}:{}", rel.name, idx.name)));
                 }
                 _ => {}
             },

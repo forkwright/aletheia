@@ -8,7 +8,7 @@ use base64::engine::general_purpose::STANDARD;
 use itertools::Itertools;
 use jiff::Timestamp;
 use serde_json::json;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 use std::cmp::Reverse;
 use std::fmt::{Display, Formatter};
 use std::mem;
@@ -103,7 +103,7 @@ pub enum VecElementType {
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub(crate) struct ColumnDef {
-    pub(crate) name: SmartString<LazyCompact>,
+    pub(crate) name: CompactString,
     pub(crate) typing: NullableColType,
     pub(crate) default_gen: Option<Expr>,
 }

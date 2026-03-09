@@ -8,7 +8,7 @@ use crate::engine::error::DbResult as Result;
 use crate::ensure;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 
 use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::symb::Symbol;
@@ -59,7 +59,7 @@ impl FixedRule for ShortestPathAStar {
 
     fn arity(
         &self,
-        _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+        _options: &BTreeMap<CompactString, Expr>,
         _rule_head: &[Symbol],
         _span: SourceSpan,
     ) -> Result<usize> {

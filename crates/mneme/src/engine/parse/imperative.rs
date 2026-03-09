@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::engine::error::DbResult as Result;
 use either::{Left, Right};
 use itertools::Itertools;
-use smartstring::SmartString;
+use compact_str::CompactString;
 
 use crate::engine::parse::query::parse_query;
 use crate::engine::parse::sys::parse_sys;
@@ -52,7 +52,7 @@ fn parse_imperative_stmt(
             let target = pair
                 .into_inner()
                 .next()
-                .map(|p| SmartString::from(p.as_str()));
+                .map(|p| CompactString::from(p.as_str()));
             ImperativeStmt::Break { target, span }
         }
         Rule::continue_stmt => {
@@ -60,7 +60,7 @@ fn parse_imperative_stmt(
             let target = pair
                 .into_inner()
                 .next()
-                .map(|p| SmartString::from(p.as_str()));
+                .map(|p| CompactString::from(p.as_str()));
             ImperativeStmt::Continue { target, span }
         }
         Rule::return_stmt => {
@@ -69,7 +69,7 @@ fn parse_imperative_stmt(
             for p in pair.into_inner() {
                 match p.as_rule() {
                     Rule::ident | Rule::underscore_ident => {
-                        let rel = SmartString::from(p.as_str());
+                        let rel = CompactString::from(p.as_str());
                         rets.push(Right(rel));
                     }
                     Rule::query_script_inner => {
@@ -80,7 +80,7 @@ fn parse_imperative_stmt(
                             fixed_rules,
                             cur_vld,
                         )?;
-                        let store_as = src.next().map(|p| SmartString::from(p.as_str().trim()));
+                        let store_as = src.next().map(|p| CompactString::from(p.as_str().trim()));
                         rets.push(Left(ImperativeStmtClause { prog, store_as }))
                     }
                     _ => unreachable!(),
@@ -93,7 +93,7 @@ fn parse_imperative_stmt(
             let mut inner = pair.into_inner();
             let condition = inner.next().unwrap();
             let cond = match condition.as_rule() {
-                Rule::underscore_ident => Left(SmartString::from(condition.as_str())),
+                Rule::underscore_ident => Left(CompactString::from(condition.as_str())),
                 Rule::imperative_clause => {
                     let mut src = condition.into_inner();
                     let prog = parse_query(
@@ -102,7 +102,7 @@ fn parse_imperative_stmt(
                         fixed_rules,
                         cur_vld,
                     )?;
-                    let store_as = src.next().map(|p| SmartString::from(p.as_str().trim()));
+                    let store_as = src.next().map(|p| CompactString::from(p.as_str().trim()));
                     Right(ImperativeStmtClause { prog, store_as })
                 }
                 _ => unreachable!(),
@@ -132,7 +132,7 @@ fn parse_imperative_stmt(
             let mut mark = None;
             let mut nxt = inner.next().unwrap();
             if nxt.as_rule() == Rule::ident {
-                mark = Some(SmartString::from(nxt.as_str()));
+                mark = Some(CompactString::from(nxt.as_str()));
                 nxt = inner.next().unwrap();
             }
             let body = parse_imperative_block(nxt, param_pool, fixed_rules, cur_vld)?;
@@ -147,8 +147,8 @@ fn parse_imperative_stmt(
             let right_name = right.as_str();
 
             ImperativeStmt::TempSwap {
-                left: SmartString::from(left_name),
-                right: SmartString::from(right_name),
+                left: CompactString::from(left_name),
+                right: CompactString::from(right_name),
             }
         }
         Rule::debug_stmt => {
@@ -157,7 +157,7 @@ fn parse_imperative_stmt(
             let name = name_p.as_str();
 
             ImperativeStmt::TempDebug {
-                temp: SmartString::from(name),
+                temp: CompactString::from(name),
             }
         }
         Rule::imperative_sysop => {
@@ -168,7 +168,7 @@ fn parse_imperative_stmt(
                 fixed_rules,
                 cur_vld,
             )?;
-            let store_as = src.next().map(|p| SmartString::from(p.as_str().trim()));
+            let store_as = src.next().map(|p| CompactString::from(p.as_str().trim()));
             ImperativeStmt::SysOp {
                 sysop: ImperativeSysop { sysop, store_as },
             }
@@ -181,7 +181,7 @@ fn parse_imperative_stmt(
                 fixed_rules,
                 cur_vld,
             )?;
-            let store_as = src.next().map(|p| SmartString::from(p.as_str().trim()));
+            let store_as = src.next().map(|p| CompactString::from(p.as_str().trim()));
             ImperativeStmt::Program {
                 prog: ImperativeStmtClause { prog, store_as },
             }
@@ -195,7 +195,7 @@ fn parse_imperative_stmt(
                 fixed_rules,
                 cur_vld,
             )?;
-            let store_as = src.next().map(|p| SmartString::from(p.as_str().trim()));
+            let store_as = src.next().map(|p| CompactString::from(p.as_str().trim()));
             ImperativeStmt::IgnoreErrorProgram {
                 prog: ImperativeStmtClause { prog, store_as },
             }

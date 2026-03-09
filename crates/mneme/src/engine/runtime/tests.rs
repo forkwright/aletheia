@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use itertools::Itertools;
 use serde_json::json;
-use smartstring::{LazyCompact, SmartString};
+use compact_str::CompactString;
 use tracing::debug;
 
 use crate::engine::DbInstance;
@@ -535,7 +535,7 @@ fn test_custom_rules() {
     impl FixedRule for Custom {
         fn arity(
             &self,
-            _options: &BTreeMap<SmartString<LazyCompact>, Expr>,
+            _options: &BTreeMap<CompactString, Expr>,
             _rule_head: &[Symbol],
             _span: SourceSpan,
         ) -> Result<usize> {
