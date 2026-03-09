@@ -9,6 +9,16 @@ use crate::markdown;
 use crate::state::FilterScope;
 use crate::theme::{self, ThemePalette};
 
+const MS_PER_SECOND: u64 = 1000;
+
+struct MessageCtx<'a> {
+    inner_width: usize,
+    theme: &'a ThemePalette,
+    selected: bool,
+    highlight: Option<&'a str>,
+    agent_name: &'a str,
+}
+
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let inner_width = area.width.saturating_sub(2) as usize;
     let mut lines: Vec<Line> = Vec::new();
@@ -19,28 +29,32 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let filter_active =
         app.filter.active && app.filter.scope == FilterScope::Chat && !app.filter.text.is_empty();
     let (pattern, inverted) = app.filter.pattern();
-    let pattern_lower = pattern.to_lowercase();
+
+    // Compute agent name once per render pass rather than per message.
+    let agent_name_lower: String = app
+        .focused_agent
+        .as_ref()
+        .and_then(|id| app.agents.iter().find(|a| a.id == *id))
+        .map(|a| a.name.to_lowercase())
+        .unwrap_or_else(|| "assistant".to_string());
 
     // Render each message (filtered when active, with selection indicator)
     for (idx, msg) in app.messages.iter().enumerate() {
         if filter_active {
-            let contains = msg.text.to_lowercase().contains(&pattern_lower);
+            let contains = msg.text.to_lowercase().contains(pattern);
             let show = if inverted { !contains } else { contains };
             if !show {
                 continue;
             }
         }
-        let selected = app.selected_message == Some(idx);
-        let highlight = filter_active.then_some(pattern_lower.as_str());
-        render_message(
-            app,
-            msg,
-            &mut lines,
+        let ctx = MessageCtx {
             inner_width,
             theme,
-            selected,
-            highlight,
-        );
+            selected: app.selected_message == Some(idx),
+            highlight: filter_active.then_some(pattern),
+            agent_name: &agent_name_lower,
+        };
+        render_message(app, msg, &mut lines, &ctx);
     }
 
     if filter_active && lines.len() <= 1 {
@@ -55,7 +69,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         || !app.streaming_thinking.is_empty()
         || app.active_turn_id.is_some()
     {
-        render_streaming(app, &mut lines, inner_width, theme);
+        render_streaming(app, &mut lines, inner_width, theme, &agent_name_lower);
     }
 
     // Calculate scroll — must account for line wrapping.
@@ -93,28 +107,18 @@ fn render_message(
     app: &App,
     msg: &crate::app::ChatMessage,
     lines: &mut Vec<Line<'static>>,
-    inner_width: usize,
-    theme: &ThemePalette,
-    selected: bool,
-    highlight_pattern: Option<&str>,
+    ctx: &MessageCtx<'_>,
 ) {
+    let theme = ctx.theme;
     let (role_label, role_style) = match msg.role.as_str() {
-        "user" => ("you".to_string(), theme.style_user()),
-        "assistant" => {
-            let name = app
-                .focused_agent
-                .as_ref()
-                .and_then(|id| app.agents.iter().find(|a| a.id == *id))
-                .map(|a| a.name.to_lowercase())
-                .unwrap_or_else(|| "assistant".to_string());
-            (name, theme.style_assistant())
-        }
-        _ => ("system".to_string(), theme.style_muted()),
+        "user" => ("you", theme.style_user()),
+        "assistant" => (ctx.agent_name, theme.style_assistant()),
+        _ => ("system", theme.style_muted()),
     };
 
     // Selection indicator prefix
-    let marker = if selected { "▸" } else { " " };
-    let marker_style = if selected {
+    let marker = if ctx.selected { "▸" } else { " " };
+    let marker_style = if ctx.selected {
         Style::default().fg(theme.selected)
     } else {
         Style::default()
@@ -153,12 +157,12 @@ fn render_message(
     // Message content — markdown parsed with syntax highlighting
     let rendered = markdown::render(
         &msg.text,
-        inner_width.saturating_sub(2),
+        ctx.inner_width.saturating_sub(2),
         theme,
         &app.highlighter,
     );
-    let content_prefix = if selected { "│" } else { " " };
-    let prefix_style = if selected {
+    let content_prefix = if ctx.selected { "│" } else { " " };
+    let prefix_style = if ctx.selected {
         Style::default().fg(theme.selected)
     } else {
         Style::default()
@@ -169,7 +173,7 @@ fn render_message(
     for line in rendered {
         let mut padded_spans = vec![Span::styled(content_prefix, prefix_style)];
 
-        if let Some(pattern) = highlight_pattern {
+        if let Some(pattern) = ctx.highlight {
             for span in &line.spans {
                 highlight_span(span, pattern, highlight_bg, &mut padded_spans);
             }
@@ -242,8 +246,13 @@ fn render_tool_summary(
         let icon = if tc.is_error { "✗ " } else { "" };
 
         let label = if let Some(ms) = tc.duration_ms {
-            if ms >= 1000 {
-                format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / 1000.0)
+            if ms >= MS_PER_SECOND {
+                format!(
+                    "{}{} ({:.1}s)",
+                    icon,
+                    tc.name,
+                    ms as f64 / MS_PER_SECOND as f64
+                )
             } else {
                 format!("{}{}  ({}ms)", icon, tc.name, ms)
             }
@@ -262,14 +271,8 @@ fn render_streaming(
     lines: &mut Vec<Line<'static>>,
     inner_width: usize,
     theme: &ThemePalette,
+    name: &str,
 ) {
-    let name = app
-        .focused_agent
-        .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| a.id == *id))
-        .map(|a| a.name.to_lowercase())
-        .unwrap_or_else(|| "assistant".to_string());
-
     // Thinking block (if visible)
     if app.thinking_expanded && !app.streaming_thinking.is_empty() {
         lines.push(Line::from(vec![
@@ -314,8 +317,13 @@ fn render_streaming(
                 };
                 let icon = if tc.is_error { "✗ " } else { "" };
                 let label = if let Some(ms) = tc.duration_ms {
-                    if ms >= 1000 {
-                        format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / 1000.0)
+                    if ms >= MS_PER_SECOND {
+                        format!(
+                            "{}{} ({:.1}s)",
+                            icon,
+                            tc.name,
+                            ms as f64 / MS_PER_SECOND as f64
+                        )
                     } else {
                         format!("{}{} ({}ms)", icon, tc.name, ms)
                     }
