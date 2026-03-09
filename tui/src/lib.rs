@@ -114,7 +114,9 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
         let link_cell: std::cell::Cell<Vec<hyperlink::OscLink>> = std::cell::Cell::new(Vec::new());
         terminal
             .draw(|frame| link_cell.set(app.view(frame)))
-            .context(IoSnafu { context: "terminal draw" })?;
+            .context(IoSnafu {
+                context: "terminal draw",
+            })?;
         let osc_links = link_cell.into_inner();
 
         // Post-render: emit OSC 8 sequences over the already-rendered text.
@@ -123,7 +125,9 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
         // OSC 8 open/close sequences, which tells the terminal those cells
         // are a clickable hyperlink without altering their visual appearance.
         if !osc_links.is_empty() {
-            emit_osc8_links(terminal.backend_mut(), &osc_links)?;
+            emit_osc8_links(terminal.backend_mut(), &osc_links).context(IoSnafu {
+                context: "emit osc8 links",
+            })?;
         }
 
         let mut sse_rx = app.take_sse();
@@ -178,7 +182,7 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
 /// This overwrites the same cells ratatui already rendered (visually
 /// identical content), but the terminal now associates those cells with
 /// the hyperlink, making them clickable in supported terminals.
-fn emit_osc8_links<W: std::io::Write>(writer: &mut W, links: &[OscLink]) -> Result<()> {
+fn emit_osc8_links<W: std::io::Write>(writer: &mut W, links: &[OscLink]) -> std::io::Result<()> {
     for link in links {
         let (r, g, b) = link.accent;
         crossterm::queue!(

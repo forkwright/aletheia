@@ -556,7 +556,7 @@ async fn history_with_limit() {
     let id = created["id"].as_str().unwrap();
 
     {
-        let store = state.session_store.blocking_lock();
+        let store = state.session_store.lock().await;
         for i in 1..=5 {
             store
                 .append_message(
@@ -1586,7 +1586,7 @@ async fn history_before_filter() {
     let id = created["id"].as_str().unwrap();
 
     {
-        let store = state.session_store.blocking_lock();
+        let store = state.session_store.lock().await;
         for i in 1..=5 {
             store
                 .append_message(
@@ -2573,7 +2573,7 @@ async fn history_messages_have_expected_fields() {
     let id = created["id"].as_str().unwrap();
 
     {
-        let store = state.session_store.blocking_lock();
+        let store = state.session_store.lock().await;
         store
             .append_message(
                 id,

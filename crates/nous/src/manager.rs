@@ -137,7 +137,7 @@ impl NousManager {
             warn!(nous_id = %id, "replacing existing actor");
             let _ = old.handle.shutdown().await;
             // Take join handle before awaiting — must not hold MutexGuard across .await.
-            let join_opt = old.join.lock().ok().and_then(|mut g| g.take());
+            let join_opt = old.join.lock().expect("join mutex not poisoned").take();
             if let Some(join) = join_opt {
                 let _ = join.await;
             }
@@ -259,7 +259,7 @@ impl NousManager {
             .actors
             .drain()
             .map(|(id, e)| {
-                let join = e.join.lock().ok().and_then(|mut g| g.take());
+                let join = e.join.try_lock().ok().and_then(|mut g| g.take());
                 (id, join)
             })
             .collect();
@@ -323,7 +323,7 @@ impl NousManager {
             .actors
             .iter()
             .filter_map(|(id, entry)| {
-                let join = entry.join.lock().ok()?.take()?;
+                let join = entry.join.try_lock().ok()?.take()?;
                 Some((id.clone(), join))
             })
             .collect();

@@ -58,6 +58,7 @@ pub fn render(
     // Blockquote nesting depth — tracked so paragraph start can prepend the │ prefix
     // on the correct line rather than flushing it alone (bug fix: see Tag::BlockQuote below).
     let mut blockquote_depth: usize = 0;
+
     // Collected hyperlinks (returned alongside lines)
     let mut md_links: Vec<MdLink> = Vec::new();
 
@@ -124,10 +125,11 @@ pub fn render(
                     // Tag::Paragraph to flush it alone before any text arrived.
                     // Now we emit the │ prefix here, after the flush, so it leads the content.
                     for _ in 0..blockquote_depth {
-                        current_spans.push(Span::styled(
-                            "│ ".to_string(),
-                            Style::default().fg(theme.border),
-                        ));
+                        push_span(
+                            &mut current_spans,
+                            &mut current_col,
+                            Span::styled("│ ".to_string(), Style::default().fg(theme.border)),
+                        );
                     }
                 }
                 Tag::BlockQuote(_) => {
@@ -526,15 +528,17 @@ mod tests {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    fn test_render(md: &str) -> Vec<Line<'static>> {
+        let theme = ThemePalette::detect();
+        let hl = Highlighter::new();
+        let (lines, _) = render(md, 80, &theme, &hl);
+        lines
+    }
+
     fn mk_render(md: &str) -> (Vec<Line<'static>>, Vec<MdLink>) {
         let theme = ThemePalette::detect();
         let hl = Highlighter::new();
         render(md, 80, &theme, &hl)
-    }
-
-    fn test_render(md: &str) -> Vec<Line<'static>> {
-        let (lines, _) = mk_render(md);
-        lines
     }
 
     /// Render and return both the lines and the theme so callers can assert
@@ -552,12 +556,16 @@ mod tests {
     }
 
     /// Concatenate all lines with newlines as a single string.
-    fn all_text(lines: &[Line]) -> String {
+    fn all_lines_text(lines: &[Line]) -> String {
         lines.iter().map(line_text).collect::<Vec<_>>().join("\n")
     }
 
-    fn all_lines_text(lines: &[Line]) -> String {
-        all_text(lines)
+    fn all_text(lines: &[Line]) -> String {
+        lines
+            .iter()
+            .map(|l| line_text(l))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// True if any span in `line` whose content contains `text` also carries `modifier`.
@@ -584,6 +592,7 @@ mod tests {
         lines.iter().any(|l| span_has_fg(l, text, color))
     }
 
+    // ── Existing regression tests (kept as-is) ────────────────────────────
 
     #[test]
     fn bold_text() {

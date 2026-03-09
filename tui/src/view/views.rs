@@ -230,9 +230,6 @@ pub(crate) fn render_message_detail(
 }
 
 /// Dispatch rendering to the appropriate view based on the current view stack.
-///
-/// Returns any OSC 8 hyperlinks produced by the view (only chat-based views
-/// produce links; other views return an empty vec).
 pub(crate) fn render_for_view(
     app: &App,
     frame: &mut Frame,
