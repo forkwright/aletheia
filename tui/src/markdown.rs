@@ -3,21 +3,22 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::highlight::Highlighter;
-use crate::sanitize::strip_ansi;
 use crate::theme::ThemePalette;
 
 /// Render markdown text into ratatui Lines.
 /// Supports: bold, italic, code, headings, lists, code blocks (with syntax highlighting),
 /// blockquotes, rules, tables, links, images, and strikethrough.
+///
+/// SAFETY: callers must pass sanitized text. All external data is sanitized
+/// at ingestion in update/api.rs, update/streaming.rs, update/sse.rs, and app.rs.
 pub fn render(
     text: &str,
     _width: usize,
     theme: &ThemePalette,
     highlighter: &Highlighter,
 ) -> Vec<Line<'static>> {
-    let clean = strip_ansi(text);
     let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
-    let parser = Parser::new_ext(&clean, options);
+    let parser = Parser::new_ext(text, options);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();

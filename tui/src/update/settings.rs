@@ -1,12 +1,17 @@
 use crate::app::App;
 use crate::msg::ErrorToast;
+use crate::sanitize::sanitize_for_display;
 use crate::state::Overlay;
 use crate::state::settings::{EditState, FieldType, SaveStatus, SettingsOverlay};
 
+// SAFETY: sanitized at ingestion — config from API is sanitized via sanitize_config_json.
 pub async fn handle_open(app: &mut App) {
     match app.client.config().await {
         Ok(config) => {
-            app.overlay = Some(Overlay::Settings(SettingsOverlay::from_config(&config)));
+            let clean_config = sanitize_config_json(config);
+            app.overlay = Some(Overlay::Settings(SettingsOverlay::from_config(
+                &clean_config,
+            )));
         }
         Err(e) => {
             app.error_toast = Some(ErrorToast::new(format!("Failed to load config: {e}")));
@@ -14,8 +19,13 @@ pub async fn handle_open(app: &mut App) {
     }
 }
 
+// SAFETY: sanitized at ingestion — config values from API are sanitized in SettingsOverlay.
+// Config values are mostly numbers/bools; string values are sanitized by sanitize_config_json.
 pub fn handle_loaded(app: &mut App, config: serde_json::Value) {
-    app.overlay = Some(Overlay::Settings(SettingsOverlay::from_config(&config)));
+    let clean_config = sanitize_config_json(config);
+    app.overlay = Some(Overlay::Settings(SettingsOverlay::from_config(
+        &clean_config,
+    )));
 }
 
 pub fn handle_up(app: &mut App) {
@@ -159,9 +169,35 @@ pub fn handle_saved(app: &mut App) {
     app.overlay = None;
 }
 
+// SAFETY: sanitized at ingestion — error messages may contain external data.
 pub fn handle_save_error(app: &mut App, msg: String) {
     if let Some(Overlay::Settings(s)) = &mut app.overlay {
-        s.save_status = SaveStatus::Error(msg);
+        s.save_status = SaveStatus::Error(sanitize_for_display(&msg).into_owned());
+    }
+}
+
+/// Recursively sanitize string values in a JSON config tree.
+fn sanitize_config_json(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(s) => {
+            serde_json::Value::String(sanitize_for_display(&s).into_owned())
+        }
+        serde_json::Value::Object(map) => {
+            let cleaned: serde_json::Map<String, serde_json::Value> = map
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        sanitize_for_display(&k).into_owned(),
+                        sanitize_config_json(v),
+                    )
+                })
+                .collect();
+            serde_json::Value::Object(cleaned)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(sanitize_config_json).collect())
+        }
+        other => other,
     }
 }
 

@@ -10,6 +10,7 @@ use crate::config::Config;
 use crate::events::StreamEvent;
 use crate::id::{NousId, SessionId, TurnId};
 use crate::msg::{ErrorToast, Msg};
+use crate::sanitize::sanitize_for_display;
 use crate::theme::ThemePalette;
 use crate::update::extract_text_content;
 use crate::view;
@@ -188,18 +189,19 @@ impl App {
             }
         }
 
+        // SAFETY: sanitized at ingestion — all agent fields from API are sanitized here.
         let agents = self.client.agents().await?;
         self.agents = agents
             .into_iter()
             .map(|a| AgentState {
                 id: a.id.clone(),
-                name: a.display_name().to_owned(),
-                emoji: a.emoji,
+                name: sanitize_for_display(a.display_name()).into_owned(),
+                emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                 status: AgentStatus::Idle,
                 active_tool: None,
                 tool_started_at: None,
                 sessions: Vec::new(),
-                model: a.model,
+                model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                 compaction_stage: None,
                 has_notification: false,
             })
@@ -291,6 +293,7 @@ impl App {
 
             match self.client.history(&session_id).await {
                 Ok(history) => {
+                    // SAFETY: sanitized at ingestion — all message fields from API.
                     self.messages = history
                         .into_iter()
                         .filter_map(|m| {
@@ -299,10 +302,12 @@ impl App {
                             }
                             let text = extract_text_content(&m.content)?;
                             Some(ChatMessage {
-                                role: m.role,
-                                text,
-                                timestamp: m.created_at,
-                                model: m.model,
+                                role: sanitize_for_display(&m.role).into_owned(),
+                                text: sanitize_for_display(&text).into_owned(),
+                                timestamp: m
+                                    .created_at
+                                    .map(|t| sanitize_for_display(&t).into_owned()),
+                                model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
                                 is_streaming: false,
                                 tool_calls: Vec::new(),
                             })
