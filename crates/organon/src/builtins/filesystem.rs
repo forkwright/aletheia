@@ -556,6 +556,15 @@ mod tests {
 
     #[tokio::test]
     async fn grep_with_glob_filter() {
+        // Glob filtering requires ripgrep; skip gracefully if unavailable.
+        if std::process::Command::new("rg")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
         let dir = tempfile::tempdir().expect("tmpdir");
         std::fs::write(dir.path().join("code.rs"), "fn rust_func() {}").expect("write");
         std::fs::write(dir.path().join("code.ts"), "function tsFunc() {}").expect("write");
@@ -610,7 +619,8 @@ mod tests {
         std::fs::write(dir.path().join("app.ts"), "").expect("write");
 
         let ctx = test_ctx(dir.path());
-        let input = tool_input("find", serde_json::json!({ "pattern": "app" }));
+        // Use a glob pattern so both fd (--glob mode) and find (-name glob) locate files.
+        let input = tool_input("find", serde_json::json!({ "pattern": "app.*" }));
         let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
         assert!(!result.is_error);
         let text = result.content.text_summary();
@@ -620,15 +630,19 @@ mod tests {
     #[tokio::test]
     async fn find_type_filter() {
         let dir = tempfile::tempdir().expect("tmpdir");
-        std::fs::create_dir(dir.path().join("subdir")).expect("mkdir");
+        std::fs::create_dir(dir.path().join("mysubdir")).expect("mkdir");
         std::fs::write(dir.path().join("file.txt"), "").expect("write");
 
         let ctx = test_ctx(dir.path());
-        let input = tool_input("find", serde_json::json!({ "pattern": ".", "type": "d" }));
+        // Exact directory name works with both fd (regex) and find -name (glob).
+        let input = tool_input(
+            "find",
+            serde_json::json!({ "pattern": "mysubdir", "type": "d" }),
+        );
         let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
         assert!(!result.is_error);
         let text = result.content.text_summary();
-        assert!(text.contains("subdir"));
+        assert!(text.contains("mysubdir"));
     }
 
     #[tokio::test]
@@ -640,9 +654,10 @@ mod tests {
         std::fs::write(dir.path().join("shallow.txt"), "").expect("write");
 
         let ctx = test_ctx(dir.path());
+        // Use a glob-style pattern so both fd (--glob) and find (-name) can match.
         let input = tool_input(
             "find",
-            serde_json::json!({ "pattern": "txt", "maxDepth": 1 }),
+            serde_json::json!({ "pattern": "*.txt", "maxDepth": 1 }),
         );
         let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
         assert!(!result.is_error);
@@ -744,5 +759,177 @@ mod tests {
             let tn = ToolName::new(name).expect("valid");
             assert!(reg.get_def(&tn).is_some(), "{name} should be registered");
         }
+    }
+
+    // -- Schema definitions ------------------------------------------------
+
+    #[test]
+    fn grep_def_requires_pattern() {
+        let mut reg = crate::registry::ToolRegistry::new();
+        register(&mut reg).expect("register");
+        let name = ToolName::new("grep").expect("valid");
+        let def = reg.get_def(&name).expect("registered");
+        assert_eq!(def.input_schema.required, vec!["pattern"]);
+        assert!(def.auto_activate);
+        assert_eq!(def.category, crate::types::ToolCategory::Workspace);
+    }
+
+    #[test]
+    fn find_def_requires_pattern() {
+        let mut reg = crate::registry::ToolRegistry::new();
+        register(&mut reg).expect("register");
+        let name = ToolName::new("find").expect("valid");
+        let def = reg.get_def(&name).expect("registered");
+        assert_eq!(def.input_schema.required, vec!["pattern"]);
+        assert!(def.auto_activate);
+    }
+
+    #[test]
+    fn ls_def_has_no_required_fields() {
+        let mut reg = crate::registry::ToolRegistry::new();
+        register(&mut reg).expect("register");
+        let name = ToolName::new("ls").expect("valid");
+        let def = reg.get_def(&name).expect("registered");
+        assert!(def.input_schema.required.is_empty());
+        assert!(def.auto_activate);
+    }
+
+    // -- is_glob_pattern helper --------------------------------------------
+
+    #[test]
+    fn is_glob_detects_star() {
+        assert!(is_glob_pattern("*.rs"));
+        assert!(is_glob_pattern("app*"));
+    }
+
+    #[test]
+    fn is_glob_detects_question_mark() {
+        assert!(is_glob_pattern("app?.rs"));
+    }
+
+    #[test]
+    fn is_glob_detects_bracket() {
+        assert!(is_glob_pattern("[abc].rs"));
+        assert!(is_glob_pattern("{a,b}.rs"));
+    }
+
+    #[test]
+    fn is_glob_plain_string_returns_false() {
+        assert!(!is_glob_pattern("main"));
+        assert!(!is_glob_pattern("app.rs"));
+        assert!(!is_glob_pattern("my-module"));
+    }
+
+    // -- format_system_time / days_to_ymd ---------------------------------
+
+    #[test]
+    fn days_to_ymd_unix_epoch_is_1970_jan_1() {
+        let (y, m, d) = days_to_ymd(0);
+        assert_eq!(y, 1970);
+        assert_eq!(m, 1);
+        assert_eq!(d, 1);
+    }
+
+    #[test]
+    fn days_to_ymd_known_date() {
+        // 2000-01-01 is day 10957 from Unix epoch; 2000-03-01 is day 11017.
+        let (y, m, d) = days_to_ymd(10957);
+        assert_eq!((y, m, d), (2000, 1, 1));
+
+        let (y2, m2, d2) = days_to_ymd(11017);
+        assert_eq!((y2, m2, d2), (2000, 3, 1));
+    }
+
+    #[test]
+    fn format_system_time_epoch_produces_1970_date() {
+        let result = format_system_time(&std::time::SystemTime::UNIX_EPOCH);
+        assert!(result.starts_with("1970-01-01"), "got: {result}");
+    }
+
+    // -- truncate_output --------------------------------------------------
+
+    #[test]
+    fn truncate_output_short_string_unchanged() {
+        let s = "hello world".to_owned();
+        assert_eq!(truncate_output(s.clone()), s);
+    }
+
+    #[test]
+    fn truncate_output_at_limit_adds_truncation_marker() {
+        let long = "x".repeat(MAX_OUTPUT_BYTES + 100);
+        let result = truncate_output(long);
+        assert!(result.contains("[output truncated]"));
+        assert!(result.len() <= MAX_OUTPUT_BYTES + 50);
+    }
+
+    // -- Missing required params ------------------------------------------
+
+    #[tokio::test]
+    async fn grep_missing_pattern_returns_error() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let ctx = test_ctx(dir.path());
+        let input = tool_input("grep", serde_json::json!({}));
+        let err = GrepExecutor
+            .execute(&input, &ctx)
+            .await
+            .expect_err("missing required field");
+        assert!(err.to_string().contains("pattern"));
+    }
+
+    #[tokio::test]
+    async fn find_missing_pattern_returns_error() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let ctx = test_ctx(dir.path());
+        let input = tool_input("find", serde_json::json!({}));
+        let err = FindExecutor
+            .execute(&input, &ctx)
+            .await
+            .expect_err("missing required field");
+        assert!(err.to_string().contains("pattern"));
+    }
+
+    // -- Ls edge cases ----------------------------------------------------
+
+    #[tokio::test]
+    async fn ls_missing_dir_returns_error_result() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let ctx = test_ctx(dir.path());
+        let input = tool_input("ls", serde_json::json!({ "path": "nonexistent" }));
+        let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
+        assert!(result.is_error);
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("cannot read directory")
+        );
+    }
+
+    #[tokio::test]
+    async fn ls_empty_dir_returns_empty_message() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let empty = dir.path().join("empty_subdir");
+        std::fs::create_dir(&empty).expect("mkdir");
+
+        let ctx = test_ctx(dir.path());
+        let input = tool_input("ls", serde_json::json!({ "path": "empty_subdir" }));
+        let result = LsExecutor.execute(&input, &ctx).await.expect("exec");
+        assert!(!result.is_error);
+        assert_eq!(result.content.text_summary(), "Directory is empty.");
+    }
+
+    // -- Find edge cases --------------------------------------------------
+
+    #[tokio::test]
+    async fn find_no_results_returns_message() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let ctx = test_ctx(dir.path());
+        let input = tool_input(
+            "find",
+            serde_json::json!({ "pattern": "zzz_unlikely_name_xyz.txt" }),
+        );
+        let result = FindExecutor.execute(&input, &ctx).await.expect("exec");
+        assert!(!result.is_error);
+        assert_eq!(result.content.text_summary(), "No files found.");
     }
 }
