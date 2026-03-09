@@ -107,9 +107,9 @@ pub fn print_report_json(report: &RunReport) {
                 id: r.meta.id.to_owned(),
                 category: r.meta.category.to_owned(),
                 outcome: match &r.outcome {
-                    ScenarioOutcome::Passed { .. } => "passed".to_owned(),
-                    ScenarioOutcome::Failed { .. } => "failed".to_owned(),
-                    ScenarioOutcome::Skipped { .. } => "skipped".to_owned(),
+                    ScenarioOutcome::Passed { .. } => OutcomeKind::Passed,
+                    ScenarioOutcome::Failed { .. } => OutcomeKind::Failed,
+                    ScenarioOutcome::Skipped { .. } => OutcomeKind::Skipped,
                 },
                 duration_ms: match &r.outcome {
                     ScenarioOutcome::Passed { duration }
@@ -130,9 +130,19 @@ pub fn print_report_json(report: &RunReport) {
             .collect(),
     };
 
-    if let Ok(json) = serde_json::to_string_pretty(&json_report) {
-        println!("{json}");
+    match serde_json::to_string_pretty(&json_report) {
+        Ok(json) => println!("{json}"),
+        Err(e) => tracing::error!(error = %e, "failed to serialize eval report as JSON"),
     }
+}
+
+/// Typed outcome kind for JSON serialization — avoids bare "passed"/"failed"/"skipped" strings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutcomeKind {
+    Passed,
+    Failed,
+    Skipped,
 }
 
 #[derive(Serialize)]
@@ -148,7 +158,7 @@ struct JsonReport {
 struct JsonScenarioResult {
     id: String,
     category: String,
-    outcome: String,
+    outcome: OutcomeKind,
     duration_ms: Option<u64>,
     error: Option<String>,
     skip_reason: Option<String>,
@@ -227,7 +237,7 @@ mod tests {
             results: vec![JsonScenarioResult {
                 id: "health-ok".to_owned(),
                 category: "health".to_owned(),
-                outcome: "passed".to_owned(),
+                outcome: OutcomeKind::Passed,
                 duration_ms: Some(50),
                 error: None,
                 skip_reason: None,
@@ -240,5 +250,28 @@ mod tests {
         assert!(json.contains("\"total_duration_ms\""));
         assert!(json.contains("\"results\""));
         assert!(json.contains("health-ok"));
+    }
+
+    #[test]
+    fn outcome_kind_serializes_to_lowercase_string() {
+        assert_eq!(
+            serde_json::to_string(&OutcomeKind::Passed).expect("serialize"),
+            "\"passed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OutcomeKind::Failed).expect("serialize"),
+            "\"failed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OutcomeKind::Skipped).expect("serialize"),
+            "\"skipped\""
+        );
+    }
+
+    #[test]
+    fn outcome_kind_equality() {
+        assert_eq!(OutcomeKind::Passed, OutcomeKind::Passed);
+        assert_ne!(OutcomeKind::Passed, OutcomeKind::Failed);
+        assert_ne!(OutcomeKind::Failed, OutcomeKind::Skipped);
     }
 }

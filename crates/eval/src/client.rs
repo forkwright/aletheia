@@ -1,6 +1,6 @@
 //! HTTP client for interacting with a running Aletheia instance.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::instrument;
 
@@ -246,11 +246,50 @@ impl EvalClient {
     }
 }
 
+// --- Typed domain enums ---
+
+/// Status reported by the `/api/health` endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum InstanceStatus {
+    Healthy,
+    Degraded,
+    /// Catch-all for future or unexpected status strings.
+    #[serde(untagged)]
+    Unknown(String),
+}
+
+/// Lifecycle status of a session.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum SessionStatus {
+    Active,
+    Archived,
+    /// Catch-all for future or unexpected status strings.
+    #[serde(untagged)]
+    Unknown(String),
+}
+
+/// Role of a message in conversation history.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum MessageRole {
+    User,
+    Assistant,
+    Tool,
+    /// Catch-all for future or unexpected role strings.
+    #[serde(untagged)]
+    Unknown(String),
+}
+
 // --- Response types (local mirrors, no pylon dependency) ---
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct HealthResponse {
-    pub status: String,
+    pub status: InstanceStatus,
     pub version: String,
     pub uptime_seconds: u64,
     pub checks: Vec<HealthCheck>,
@@ -296,7 +335,7 @@ pub struct SessionResponse {
     pub id: String,
     pub nous_id: String,
     pub session_key: String,
-    pub status: String,
+    pub status: SessionStatus,
     pub model: Option<String>,
     pub message_count: i64,
     pub token_count_estimate: i64,
@@ -313,7 +352,7 @@ pub struct HistoryResponse {
 pub struct HistoryMessage {
     pub id: i64,
     pub seq: i64,
-    pub role: String,
+    pub role: MessageRole,
     pub content: String,
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
@@ -369,5 +408,70 @@ mod tests {
         let client = EvalClient::new("http://localhost", Some("secret-token".to_owned()));
         assert!(client.has_token());
         assert_eq!(client.base_url(), "http://localhost");
+    }
+
+    #[test]
+    fn instance_status_deserializes_healthy() {
+        let status: InstanceStatus = serde_json::from_str("\"healthy\"").expect("deserialize");
+        assert_eq!(status, InstanceStatus::Healthy);
+    }
+
+    #[test]
+    fn instance_status_deserializes_degraded() {
+        let status: InstanceStatus = serde_json::from_str("\"degraded\"").expect("deserialize");
+        assert_eq!(status, InstanceStatus::Degraded);
+    }
+
+    #[test]
+    fn instance_status_deserializes_unknown() {
+        let status: InstanceStatus = serde_json::from_str("\"starting\"").expect("deserialize");
+        assert!(matches!(status, InstanceStatus::Unknown(_)));
+    }
+
+    #[test]
+    fn session_status_roundtrip() {
+        let cases = [
+            (SessionStatus::Active, "\"active\""),
+            (SessionStatus::Archived, "\"archived\""),
+        ];
+        for (variant, expected_json) in &cases {
+            let json = serde_json::to_string(variant).expect("serialize");
+            assert_eq!(json, *expected_json);
+            let back: SessionStatus = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(&back, variant);
+        }
+    }
+
+    #[test]
+    fn session_status_unknown_passthrough() {
+        let status: SessionStatus = serde_json::from_str("\"suspended\"").expect("deserialize");
+        assert!(matches!(status, SessionStatus::Unknown(_)));
+        if let SessionStatus::Unknown(s) = status {
+            assert_eq!(s, "suspended");
+        }
+    }
+
+    #[test]
+    fn message_role_roundtrip() {
+        let cases = [
+            (MessageRole::User, "\"user\""),
+            (MessageRole::Assistant, "\"assistant\""),
+            (MessageRole::Tool, "\"tool\""),
+        ];
+        for (variant, expected_json) in &cases {
+            let json = serde_json::to_string(variant).expect("serialize");
+            assert_eq!(json, *expected_json);
+            let back: MessageRole = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(&back, variant);
+        }
+    }
+
+    #[test]
+    fn message_role_unknown_passthrough() {
+        let role: MessageRole = serde_json::from_str("\"system\"").expect("deserialize");
+        assert!(matches!(role, MessageRole::Unknown(_)));
+        if let MessageRole::Unknown(s) = role {
+            assert_eq!(s, "system");
+        }
     }
 }
