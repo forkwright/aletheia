@@ -247,7 +247,12 @@ fn render_tool_summary(
 
         let label = if let Some(ms) = tc.duration_ms {
             if ms >= MS_PER_SECOND {
-                format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / MS_PER_SECOND as f64)
+                format!(
+                    "{}{} ({:.1}s)",
+                    icon,
+                    tc.name,
+                    ms as f64 / MS_PER_SECOND as f64
+                )
             } else {
                 format!("{}{}  ({}ms)", icon, tc.name, ms)
             }
@@ -268,7 +273,6 @@ fn render_streaming(
     theme: &ThemePalette,
     name: &str,
 ) {
-
     // Thinking block (if visible)
     if app.thinking_expanded && !app.streaming_thinking.is_empty() {
         lines.push(Line::from(vec![
@@ -314,7 +318,12 @@ fn render_streaming(
                 let icon = if tc.is_error { "✗ " } else { "" };
                 let label = if let Some(ms) = tc.duration_ms {
                     if ms >= MS_PER_SECOND {
-                        format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / MS_PER_SECOND as f64)
+                        format!(
+                            "{}{} ({:.1}s)",
+                            icon,
+                            tc.name,
+                            ms as f64 / MS_PER_SECOND as f64
+                        )
                     } else {
                         format!("{}{} ({}ms)", icon, tc.name, ms)
                     }

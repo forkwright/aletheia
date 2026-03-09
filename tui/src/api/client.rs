@@ -194,7 +194,10 @@ impl ApiClient {
         Ok(resp.json().await?)
     }
 
-    #[expect(dead_code, reason = "reserved for session archive action in command palette")]
+    #[expect(
+        dead_code,
+        reason = "reserved for session archive action in command palette"
+    )]
     #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -405,7 +408,10 @@ impl ApiClient {
         Ok(())
     }
 
-    #[expect(dead_code, reason = "reserved for auth-aware error display in update handlers")]
+    #[expect(
+        dead_code,
+        reason = "reserved for auth-aware error display in update handlers"
+    )]
     pub fn is_auth_error(err: &anyhow::Error) -> bool {
         err.downcast_ref::<AuthError>().is_some()
     }

@@ -28,7 +28,11 @@ pub fn render(app: &App, frame: &mut Frame) {
 
     // When palette is active, it replaces the status bar with a variable-height area
     let bottom_height = if palette_active {
-        let suggestion_lines = app.command_palette.suggestions.len().min(MAX_PALETTE_SUGGESTIONS) as u16;
+        let suggestion_lines = app
+            .command_palette
+            .suggestions
+            .len()
+            .min(MAX_PALETTE_SUGGESTIONS) as u16;
         (STATUS_BAR_HEIGHT + suggestion_lines).max(3) // input + border + suggestions, min 3
     } else {
         STATUS_BAR_HEIGHT
