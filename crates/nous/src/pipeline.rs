@@ -263,18 +263,18 @@ impl TurnUsage {
 /// Returns [`crate::error::Error::ContextAssembly`] if required workspace files
 /// (e.g. SOUL.md) are missing.
 #[instrument(skip_all, fields(nous_id = %nous_config.id))]
-pub fn assemble_context(
+pub async fn assemble_context(
     oikos: &Oikos,
     nous_config: &NousConfig,
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
 ) -> crate::error::Result<()> {
-    assemble_context_with_extra(oikos, nous_config, pipeline_config, ctx, Vec::new())
+    assemble_context_with_extra(oikos, nous_config, pipeline_config, ctx, Vec::new()).await
 }
 
 /// Assemble bootstrap context with extra sections from domain packs.
 #[instrument(skip_all, fields(nous_id = %nous_config.id))]
-pub fn assemble_context_with_extra(
+pub async fn assemble_context_with_extra(
     oikos: &Oikos,
     nous_config: &NousConfig,
     pipeline_config: &PipelineConfig,
@@ -289,7 +289,9 @@ pub fn assemble_context_with_extra(
     );
 
     let assembler = BootstrapAssembler::new(oikos);
-    let result = assembler.assemble_with_extra(&nous_config.id, &mut budget, extra_sections)?;
+    let result = assembler
+        .assemble_with_extra(&nous_config.id, &mut budget, extra_sections)
+        .await?;
 
     ctx.system_prompt = Some(result.system_prompt);
     #[expect(
@@ -361,7 +363,8 @@ pub async fn run_pipeline(
         );
         let _guard = span.enter();
         let start = Instant::now();
-        assemble_context_with_extra(oikos, config, pipeline_config, &mut ctx, extra_bootstrap)?;
+        assemble_context_with_extra(oikos, config, pipeline_config, &mut ctx, extra_bootstrap)
+            .await?;
         #[expect(
             clippy::cast_possible_truncation,
             reason = "stage duration fits in u64"
@@ -840,8 +843,8 @@ mod tests {
 
     // --- Context assembly ---
 
-    #[test]
-    fn assemble_context_populates_pipeline() {
+    #[tokio::test]
+    async fn assemble_context_populates_pipeline() {
         use crate::config::{NousConfig, PipelineConfig};
         use aletheia_taxis::oikos::Oikos;
         use std::fs;
@@ -863,7 +866,9 @@ mod tests {
         let pipeline_config = PipelineConfig::default();
         let mut ctx = PipelineContext::default();
 
-        assemble_context(&oikos, &nous_config, &pipeline_config, &mut ctx).unwrap();
+        assemble_context(&oikos, &nous_config, &pipeline_config, &mut ctx)
+            .await
+            .unwrap();
 
         assert!(ctx.system_prompt.is_some());
         let prompt = ctx.system_prompt.unwrap();
@@ -1132,8 +1137,8 @@ mod tests {
         assert_eq!(check_guard(&session, &config), GuardResult::Allow);
     }
 
-    #[test]
-    fn assemble_context_missing_soul_returns_error() {
+    #[tokio::test]
+    async fn assemble_context_missing_soul_returns_error() {
         use aletheia_taxis::oikos::Oikos;
         use tempfile::TempDir;
 
@@ -1152,7 +1157,7 @@ mod tests {
         let pipeline_config = crate::config::PipelineConfig::default();
         let mut ctx = PipelineContext::default();
 
-        let err = assemble_context(&oikos, &config, &pipeline_config, &mut ctx);
+        let err = assemble_context(&oikos, &config, &pipeline_config, &mut ctx).await;
         assert!(err.is_err());
         let msg = err.unwrap_err().to_string();
         assert!(msg.contains("SOUL.md"), "got: {msg}");

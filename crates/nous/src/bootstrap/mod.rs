@@ -169,8 +169,8 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     ///
     /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
     /// missing or unreadable.
-    pub fn assemble(&self, nous_id: &str, budget: &mut TokenBudget) -> Result<BootstrapResult> {
-        self.assemble_with_extra(nous_id, budget, Vec::new())
+    pub async fn assemble(&self, nous_id: &str, budget: &mut TokenBudget) -> Result<BootstrapResult> {
+        self.assemble_with_extra(nous_id, budget, Vec::new()).await
     }
 
     /// Assemble the bootstrap system prompt with additional sections from domain packs.
@@ -183,13 +183,13 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     ///
     /// Returns [`error::Error::ContextAssembly`] if a Required file (SOUL.md) is
     /// missing or unreadable.
-    pub fn assemble_with_extra(
+    pub async fn assemble_with_extra(
         &self,
         nous_id: &str,
         budget: &mut TokenBudget,
         extra_sections: Vec<BootstrapSection>,
     ) -> Result<BootstrapResult> {
-        let mut sections = self.resolve_workspace_files(nous_id)?;
+        let mut sections = self.resolve_workspace_files(nous_id).await?;
         sections.extend(extra_sections);
 
         // Stable sort preserves declaration order within same priority
@@ -261,7 +261,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     }
 
     /// Resolve workspace files through the cascade and read their contents.
-    fn resolve_workspace_files(&self, nous_id: &str) -> Result<Vec<BootstrapSection>> {
+    async fn resolve_workspace_files(&self, nous_id: &str) -> Result<Vec<BootstrapSection>> {
         let mut sections = Vec::new();
 
         for spec in WORKSPACE_FILES {
@@ -276,7 +276,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
                 continue;
             };
 
-            match std::fs::read_to_string(&p) {
+            match tokio::fs::read_to_string(&p).await {
                 Ok(content) => {
                     let content = content.trim().to_owned();
                     if content.is_empty() {
@@ -449,25 +449,25 @@ mod tests {
 
     // --- Assembly tests ---
 
-    #[test]
-    fn assemble_with_required_only() {
+    #[tokio::test]
+    async fn assemble_with_required_only() {
         let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "I am a test agent.")]);
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("test", &mut budget).unwrap();
+        let result = assembler.assemble("test", &mut budget).await.unwrap();
         assert!(result.system_prompt.contains("I am a test agent."));
         assert_eq!(result.sections_included, vec!["SOUL.md"]);
         assert!(result.sections_dropped.is_empty());
     }
 
-    #[test]
-    fn assemble_missing_required_errors() {
+    #[tokio::test]
+    async fn assemble_missing_required_errors() {
         let (_dir, oikos) = setup_oikos("test", &[("USER.md", "some user info")]);
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let err = assembler.assemble("test", &mut budget).unwrap_err();
+        let err = assembler.assemble("test", &mut budget).await.unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("SOUL.md"),
@@ -475,20 +475,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn assemble_missing_optional_skips() {
+    #[tokio::test]
+    async fn assemble_missing_optional_skips() {
         let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "identity")]);
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("test", &mut budget).unwrap();
+        let result = assembler.assemble("test", &mut budget).await.unwrap();
         // Only SOUL.md included, others silently skipped
         assert_eq!(result.sections_included, vec!["SOUL.md"]);
         assert!(result.sections_dropped.is_empty());
     }
 
-    #[test]
-    fn assemble_priority_ordering() {
+    #[tokio::test]
+    async fn assemble_priority_ordering() {
         let (_dir, oikos) = setup_oikos(
             "test",
             &[
@@ -500,7 +500,7 @@ mod tests {
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("test", &mut budget).unwrap();
+        let result = assembler.assemble("test", &mut budget).await.unwrap();
         // Required (SOUL) before Important (GOALS) before Flexible (MEMORY)
         let soul_pos = result
             .sections_included
@@ -521,8 +521,8 @@ mod tests {
         assert!(goals_pos < memory_pos);
     }
 
-    #[test]
-    fn assemble_all_files_present() {
+    #[tokio::test]
+    async fn assemble_all_files_present() {
         let (_dir, oikos) = setup_oikos(
             "test",
             &[
@@ -540,13 +540,13 @@ mod tests {
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("test", &mut budget).unwrap();
+        let result = assembler.assemble("test", &mut budget).await.unwrap();
         assert_eq!(result.sections_included.len(), 9);
         assert!(result.total_tokens > 0);
     }
 
-    #[test]
-    fn assemble_empty_file_skipped() {
+    #[tokio::test]
+    async fn assemble_empty_file_skipped() {
         let (_dir, oikos) = setup_oikos(
             "test",
             &[
@@ -558,12 +558,12 @@ mod tests {
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("test", &mut budget).unwrap();
+        let result = assembler.assemble("test", &mut budget).await.unwrap();
         assert_eq!(result.sections_included, vec!["SOUL.md"]);
     }
 
-    #[test]
-    fn assemble_memory_truncated() {
+    #[tokio::test]
+    async fn assemble_memory_truncated() {
         // Create a large MEMORY.md that exceeds a small budget
         let large_memory = "## Recent\nNew stuff here.\n## Old\nOld stuff here that is much longer and should be truncated when the budget is tight. ".repeat(50);
         let (_dir, oikos) = setup_oikos(
@@ -574,7 +574,7 @@ mod tests {
         // Small budget: enough for SOUL.md but not full MNEME.md
         let mut budget = TokenBudget::new(100_000, 0.0, 0, 500);
 
-        let result = assembler.assemble("test", &mut budget).unwrap();
+        let result = assembler.assemble("test", &mut budget).await.unwrap();
         assert!(result.sections_included.contains(&"MEMORY.md".to_owned()));
         assert!(result.sections_truncated.contains(&"MEMORY.md".to_owned()));
         assert!(
@@ -584,8 +584,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn assemble_optional_dropped() {
+    #[tokio::test]
+    async fn assemble_optional_dropped() {
         // SOUL.md fills the entire budget, MEMORY.md gets dropped
         let large_soul = "x".repeat(2000); // ~500 tokens at 4 chars/token
         let (_dir, oikos) = setup_oikos(
@@ -595,36 +595,36 @@ mod tests {
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = TokenBudget::new(100_000, 0.0, 0, 500);
 
-        let result = assembler.assemble("test", &mut budget).unwrap();
+        let result = assembler.assemble("test", &mut budget).await.unwrap();
         assert!(result.sections_included.contains(&"SOUL.md".to_owned()));
         assert!(result.sections_dropped.contains(&"MEMORY.md".to_owned()));
     }
 
-    #[test]
-    fn assemble_budget_consumed_correctly() {
+    #[tokio::test]
+    async fn assemble_budget_consumed_correctly() {
         let (_dir, oikos) =
             setup_oikos("test", &[("SOUL.md", "identity"), ("USER.md", "user info")]);
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("test", &mut budget).unwrap();
+        let result = assembler.assemble("test", &mut budget).await.unwrap();
         assert_eq!(budget.consumed(), result.total_tokens);
         assert!(result.total_tokens > 0);
     }
 
-    #[test]
-    fn assemble_cascade_nous_tier() {
+    #[tokio::test]
+    async fn assemble_cascade_nous_tier() {
         // File only in nous tier
         let (_dir, oikos) = setup_oikos("syn", &[("SOUL.md", "I am Syn.")]);
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("syn", &mut budget).unwrap();
+        let result = assembler.assemble("syn", &mut budget).await.unwrap();
         assert!(result.system_prompt.contains("I am Syn."));
     }
 
-    #[test]
-    fn assemble_cascade_theke_fallback() {
+    #[tokio::test]
+    async fn assemble_cascade_theke_fallback() {
         // USER.md only in theke (common pattern)
         let (_dir, oikos) = setup_oikos(
             "syn",
@@ -633,13 +633,13 @@ mod tests {
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("syn", &mut budget).unwrap();
+        let result = assembler.assemble("syn", &mut budget).await.unwrap();
         assert!(result.system_prompt.contains("Alice T."));
         assert!(result.sections_included.contains(&"USER.md".to_owned()));
     }
 
-    #[test]
-    fn assemble_nous_overrides_theke() {
+    #[tokio::test]
+    async fn assemble_nous_overrides_theke() {
         // SOUL.md in both tiers — nous wins
         let dir = TempDir::new().unwrap();
         let root = dir.path();
@@ -653,7 +653,7 @@ mod tests {
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
 
-        let result = assembler.assemble("syn", &mut budget).unwrap();
+        let result = assembler.assemble("syn", &mut budget).await.unwrap();
         assert!(result.system_prompt.contains("nous-specific soul"));
         assert!(!result.system_prompt.contains("theke soul"));
     }
@@ -743,8 +743,8 @@ mod tests {
         assert!(result.is_empty());
     }
 
-    #[test]
-    fn assemble_with_extra_includes_pack_sections() {
+    #[tokio::test]
+    async fn assemble_with_extra_includes_pack_sections() {
         let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "I am a test agent.")]);
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
@@ -759,6 +759,7 @@ mod tests {
 
         let result = assembler
             .assemble_with_extra("test", &mut budget, extra)
+            .await
             .unwrap();
         assert!(result.system_prompt.contains("Domain logic from pack."));
         assert!(
@@ -769,8 +770,8 @@ mod tests {
         assert_eq!(result.sections_included.len(), 2);
     }
 
-    #[test]
-    fn assemble_with_extra_respects_priority_ordering() {
+    #[tokio::test]
+    async fn assemble_with_extra_respects_priority_ordering() {
         let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "identity")]);
         let assembler = BootstrapAssembler::new(&oikos);
         let mut budget = default_budget();
@@ -794,6 +795,7 @@ mod tests {
 
         let result = assembler
             .assemble_with_extra("test", &mut budget, extra)
+            .await
             .unwrap();
 
         // SOUL.md (Required) < important-pack (Important) < optional-pack (Optional)
