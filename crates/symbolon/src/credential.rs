@@ -11,6 +11,19 @@ use tracing::{info, warn};
 
 use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
 
+/// Return current time as milliseconds since UNIX epoch, warning if the clock
+/// is before epoch rather than silently returning zero.
+#[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
+fn unix_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_else(|_| {
+            tracing::warn!("system clock before UNIX epoch, using epoch as fallback");
+            Duration::default()
+        })
+        .as_millis() as u64
+}
+
 /// Claude Code production OAuth client ID.
 const OAUTH_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 
@@ -95,14 +108,7 @@ impl CredentialFile {
     )]
     pub fn seconds_remaining(&self) -> Option<i64> {
         let expires_at_ms = self.expires_at?;
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "ms timestamps fit in u64 until year 584M"
-        )]
-        let now_ms = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let now_ms = unix_epoch_ms();
         Some((expires_at_ms as i64 - now_ms as i64) / 1000)
     }
 
@@ -305,7 +311,12 @@ impl RefreshingCredentialProvider {
         let state = Arc::new(RwLock::new(Some(RefreshState {
             current_token: cred.token.clone(),
             refresh_token,
-            expires_at_ms: cred.expires_at.unwrap_or(0),
+            expires_at_ms: cred.expires_at.unwrap_or_else(|| {
+                warn!(
+                    "credential has no expiry, treating as immediately expired to trigger refresh"
+                );
+                0
+            }),
         })));
 
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -394,11 +405,7 @@ async fn refresh_loop(
             let Some(s) = guard.as_ref() else {
                 continue;
             };
-            #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
-            let now_ms = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
+            let now_ms = unix_epoch_ms();
             #[expect(clippy::cast_possible_wrap, reason = "ms timestamps fit in i64")]
             let remaining_secs = (s.expires_at_ms as i64 - now_ms as i64) / 1000;
             #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
@@ -414,11 +421,7 @@ async fn refresh_loop(
 
         match do_refresh(&client, &refresh_token).await {
             Some(resp) => {
-                #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
-                let now_ms = SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
+                let now_ms = unix_epoch_ms();
                 let expires_at_ms = now_ms + resp.expires_in * 1000;
 
                 // Update in-memory state
@@ -508,11 +511,7 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
         .await
         .ok_or("OAuth refresh failed")?;
 
-    #[expect(clippy::cast_possible_truncation, reason = "ms timestamps fit in u64")]
-    let now_ms = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
+    let now_ms = unix_epoch_ms();
     let expires_at_ms = now_ms + resp.expires_in * 1000;
 
     let scopes = resp
@@ -790,5 +789,63 @@ mod tests {
     fn chain_empty_providers_returns_none() {
         let chain = CredentialChain::new(vec![]);
         assert!(chain.get_credential().is_none());
+    }
+
+    // --- unix_epoch_ms ---
+
+    #[test]
+    fn unix_epoch_ms_returns_nonzero() {
+        let ms = unix_epoch_ms();
+        assert!(
+            ms > 1_000_000_000_000,
+            "expected modern timestamp in ms, got {ms}"
+        );
+    }
+
+    // --- seconds_remaining ---
+
+    #[test]
+    fn seconds_remaining_none_when_no_expiry() {
+        let cred = CredentialFile {
+            token: "t".to_owned(),
+            refresh_token: None,
+            expires_at: None,
+            scopes: None,
+            subscription_type: None,
+        };
+        assert!(cred.seconds_remaining().is_none());
+    }
+
+    #[test]
+    fn seconds_remaining_negative_when_expired() {
+        let cred = CredentialFile {
+            token: "t".to_owned(),
+            refresh_token: None,
+            expires_at: Some(1_000_000_000_000),
+            scopes: None,
+            subscription_type: None,
+        };
+        let remaining = cred.seconds_remaining().unwrap();
+        assert!(
+            remaining < 0,
+            "expected negative remaining, got {remaining}"
+        );
+    }
+
+    #[test]
+    fn seconds_remaining_positive_for_future_expiry() {
+        let far_future_ms = unix_epoch_ms() + 3_600_000;
+        let cred = CredentialFile {
+            token: "t".to_owned(),
+            refresh_token: None,
+            expires_at: Some(far_future_ms),
+            scopes: None,
+            subscription_type: None,
+        };
+        let remaining = cred.seconds_remaining().unwrap();
+        assert!(
+            remaining > 0 && remaining <= 3600,
+            "expected ~3600s remaining, got {remaining}"
+        );
     }
 }
