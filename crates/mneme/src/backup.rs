@@ -69,6 +69,7 @@ pub struct BackupInfo {
 
 impl<'a> BackupManager<'a> {
     /// Create a backup manager for the given connection and backup directory.
+    #[instrument(skip(conn, backup_dir))]
     pub fn new(conn: &'a Connection, backup_dir: impl Into<PathBuf>) -> Self {
         Self {
             conn,
@@ -77,6 +78,16 @@ impl<'a> BackupManager<'a> {
     }
 
     /// Create a `SQLite` backup using `VACUUM INTO`.
+    ///
+    /// # SQL injection defense
+    ///
+    /// `VACUUM INTO` does not support parameter binding for the target path.
+    /// The path is interpolated via `format!` into the SQL string. The sole
+    /// defense against path injection is [`validate_backup_path`], which
+    /// rejects any path containing characters outside the safe set
+    /// (alphanumeric, `-`, `_`, `.`, `/`, `\`, space) and blocks `--` comment
+    /// sequences. Any future changes to path construction MUST go through
+    /// `validate_backup_path`.
     #[instrument(skip(self))]
     pub fn create_backup(&self) -> Result<BackupResult> {
         std::fs::create_dir_all(&self.backup_dir).context(error::IoSnafu {
@@ -513,6 +524,139 @@ mod tests {
         assert!(
             validate_backup_path(traversal).is_ok(),
             "traversal passes SQL-injection validation (known gap)"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_null_byte() {
+        let path = Path::new("/tmp/backup\x00.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_parentheses() {
+        let path = Path::new("/tmp/backup(1).db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_dollar_sign() {
+        let path = Path::new("/tmp/$HOME/backup.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_pipe() {
+        let path = Path::new("/tmp/backup|evil.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_angle_brackets() {
+        let path = Path::new("/tmp/backup<script>.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_curly_braces() {
+        let path = Path::new("/tmp/backup{0}.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_at_sign() {
+        let path = Path::new("/tmp/backup@host.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_exclamation() {
+        let path = Path::new("/tmp/backup!.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_hash() {
+        let path = Path::new("/tmp/backup#1.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_percent() {
+        let path = Path::new("/tmp/backup%20.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_double_quote() {
+        let path = Path::new("/tmp/backup\"quoted\".db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_ampersand() {
+        let path = Path::new("/tmp/backup&cmd.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_asterisk() {
+        let path = Path::new("/tmp/backup*.db");
+        assert!(validate_backup_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_all_sqlite_metacharacters() {
+        let metachar_paths = [
+            "backup's.db",
+            "backup;DROP TABLE facts.db",
+            "backup--evil.db",
+            "backup`test`.db",
+            "backup\"quoted\".db",
+            "backup|pipe.db",
+            "backup$var.db",
+            "backup(paren).db",
+            "backup{brace}.db",
+            "backup<angle>.db",
+            "backup&amp.db",
+            "backup*glob.db",
+            "backup?wildcard.db",
+            "backup~tilde.db",
+            "backup^caret.db",
+            "backup[bracket].db",
+        ];
+        for bad in &metachar_paths {
+            let path = Path::new(bad);
+            assert!(
+                validate_backup_path(path).is_err(),
+                "path should be rejected: {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_rejects_unicode_control_chars() {
+        let paths_with_unicode = [
+            "/tmp/backup\u{200B}evil.db", // zero-width space
+            "/tmp/backup\u{202E}cod.db",  // RTL override
+            "/tmp/backup\u{FEFF}bom.db",  // BOM / zero-width no-break space
+            "/tmp/backup\u{200D}zwj.db",  // zero-width joiner
+        ];
+        for bad in &paths_with_unicode {
+            let path = Path::new(bad);
+            assert!(
+                validate_backup_path(path).is_err(),
+                "path with unicode control char should be rejected: {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_accepts_unicode_alphanumeric() {
+        let path = Path::new("/tmp/backup-données.db");
+        assert!(
+            validate_backup_path(path).is_ok(),
+            "unicode alphanumeric chars should be accepted"
         );
     }
 

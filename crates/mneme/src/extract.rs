@@ -171,12 +171,14 @@ pub struct ExtractionEngine {
 impl ExtractionEngine {
     /// Create an extraction engine with the given configuration.
     #[must_use]
+    #[instrument(skip(config))]
     pub fn new(config: ExtractionConfig) -> Self {
         Self { config }
     }
 
     /// Access the extraction configuration.
     #[must_use]
+    #[instrument(skip(self))]
     pub fn config(&self) -> &ExtractionConfig {
         &self.config
     }
@@ -450,7 +452,10 @@ fn now_iso8601() -> String {
     clippy::cast_lossless,
     reason = "Hinnant algorithm uses known-range casts"
 )]
-#[allow(clippy::similar_names)] // doe/doy are standard names in Hinnant's date algorithm
+#[expect(
+    clippy::similar_names,
+    reason = "doe/doy are standard names in Hinnant's date algorithm"
+)]
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
