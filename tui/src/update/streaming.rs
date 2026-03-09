@@ -7,6 +7,7 @@ use crate::state::{
     ToolCallInfo,
 };
 
+#[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
 pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
     app.active_turn_id = Some(turn_id);
     app.streaming_text.clear();
@@ -19,6 +20,7 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
     }
 }
 
+#[tracing::instrument(skip_all, fields(len = text.len()))]
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     app.streaming_text.push_str(&text);
     let delta = app.streaming_text.len() as i64 - app.cached_markdown_text.len() as i64;
@@ -33,10 +35,12 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     }
 }
 
+#[tracing::instrument(skip_all, fields(len = text.len()))]
 pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
     app.streaming_thinking.push_str(&text);
 }
 
+#[tracing::instrument(skip_all, fields(%tool_name))]
 pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
     app.streaming_tool_calls.push(ToolCallInfo {
         name: tool_name.clone(),
@@ -51,6 +55,7 @@ pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
     }
 }
 
+#[tracing::instrument(skip_all, fields(%tool_name, is_error, duration_ms))]
 pub(crate) fn handle_stream_tool_result(
     app: &mut App,
     tool_name: String,
@@ -74,6 +79,7 @@ pub(crate) fn handle_stream_tool_result(
     }
 }
 
+#[tracing::instrument(skip_all, fields(%tool_name, %risk))]
 pub(crate) fn handle_stream_tool_approval_required(
     app: &mut App,
     turn_id: TurnId,
@@ -93,12 +99,14 @@ pub(crate) fn handle_stream_tool_approval_required(
     }));
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_tool_approval_resolved(app: &mut App) {
     if app.is_tool_approval_overlay() {
         app.overlay = None;
     }
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     app.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
         plan_id: plan.id,
@@ -117,6 +125,7 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     }));
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
     if !app.streaming_text.is_empty() {
         app.messages.push(ChatMessage {
@@ -146,6 +155,7 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     }
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     tracing::info!("turn aborted: {reason}");
     app.streaming_text.clear();
@@ -154,6 +164,7 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     app.stream_rx = None;
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");
     app.error_toast = Some(ErrorToast::new(msg));

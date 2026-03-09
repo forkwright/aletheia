@@ -61,6 +61,7 @@ pub trait Scenario: Send + Sync {
 }
 
 /// Assert a condition, returning an assertion error if it fails.
+#[tracing::instrument(skip_all)]
 pub fn assert_eval(condition: bool, message: impl Into<String>) -> Result<()> {
     if condition {
         Ok(())
@@ -73,6 +74,7 @@ pub fn assert_eval(condition: bool, message: impl Into<String>) -> Result<()> {
 }
 
 /// Assert two values are equal.
+#[tracing::instrument(skip_all)]
 pub fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
     left: &T,
     right: &T,

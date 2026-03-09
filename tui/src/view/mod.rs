@@ -13,6 +13,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::app::App;
 
+#[tracing::instrument(skip_all)]
 pub fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
     let theme = &app.theme;
