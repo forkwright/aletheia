@@ -101,6 +101,7 @@ pub struct App {
 }
 
 impl App {
+    #[tracing::instrument(skip_all, fields(url = %config.url))]
     pub async fn init(config: Config) -> Result<Self> {
         let client = ApiClient::new(&config.url, config.token.clone())?;
 
@@ -153,6 +154,7 @@ impl App {
         Ok(app)
     }
 
+    #[tracing::instrument(skip(self), fields(url = %self.config.url))]
     async fn connect(&mut self) -> Result<()> {
         if !self.client.health().await.unwrap_or(false) {
             anyhow::bail!(
@@ -231,6 +233,7 @@ impl App {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), fields(agent = ?self.focused_agent))]
     pub(crate) async fn load_focused_session(&mut self) {
         let agent_id = match &self.focused_agent {
             Some(id) => id.clone(),
