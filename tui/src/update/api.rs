@@ -142,3 +142,198 @@ fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
         Some(texts.join("\n"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_text_content_plain_string() {
+        let content = Some(serde_json::Value::String("hello".to_string()));
+        assert_eq!(extract_text_content(&content).as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn extract_text_content_empty_string() {
+        let content = Some(serde_json::Value::String(String::new()));
+        assert!(extract_text_content(&content).is_none());
+    }
+
+    #[test]
+    fn extract_text_content_none() {
+        assert!(extract_text_content(&None).is_none());
+    }
+
+    #[test]
+    fn extract_text_content_array_with_text_blocks() {
+        let content = Some(serde_json::json!([
+            {"type": "text", "text": "hello"},
+            {"type": "text", "text": "world"}
+        ]));
+        assert_eq!(
+            extract_text_content(&content).as_deref(),
+            Some("hello\nworld")
+        );
+    }
+
+    #[test]
+    fn extract_text_content_array_skips_non_text() {
+        let content = Some(serde_json::json!([
+            {"type": "tool_use", "name": "test"},
+            {"type": "text", "text": "result"}
+        ]));
+        assert_eq!(extract_text_content(&content).as_deref(), Some("result"));
+    }
+
+    #[test]
+    fn extract_text_content_string_containing_json_array() {
+        let content = Some(serde_json::Value::String(
+            r#"[{"type": "text", "text": "parsed"}]"#.to_string(),
+        ));
+        assert_eq!(extract_text_content(&content).as_deref(), Some("parsed"));
+    }
+
+    #[test]
+    fn extract_text_content_empty_array() {
+        let content = Some(serde_json::json!([]));
+        assert!(extract_text_content(&content).is_none());
+    }
+
+    #[test]
+    fn extract_text_content_array_with_empty_texts() {
+        let content = Some(serde_json::json!([
+            {"type": "text", "text": ""},
+            {"type": "text", "text": ""}
+        ]));
+        assert!(extract_text_content(&content).is_none());
+    }
+
+    #[test]
+    fn handle_agents_loaded_populates() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        let agents = vec![Agent {
+            id: "syn".into(),
+            name: Some("Syn".to_string()),
+            model: Some("claude-opus-4-6".to_string()),
+            emoji: Some("\u{1F9E0}".to_string()),
+        }];
+        handle_agents_loaded(&mut app, agents);
+        assert_eq!(app.agents.len(), 1);
+        assert_eq!(app.agents[0].name, "Syn");
+        assert_eq!(app.agents[0].status, AgentStatus::Idle);
+    }
+
+    #[test]
+    fn handle_sessions_loaded_for_agent() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        let sessions = vec![Session {
+            id: "s1".into(),
+            nous_id: "syn".into(),
+            key: "main".to_string(),
+            status: None,
+            message_count: 5,
+            session_type: None,
+            updated_at: None,
+        }];
+        handle_sessions_loaded(&mut app, "syn".into(), sessions);
+        assert_eq!(app.agents[0].sessions.len(), 1);
+    }
+
+    #[test]
+    fn handle_sessions_loaded_unknown_agent_noop() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        let sessions = vec![Session {
+            id: "s1".into(),
+            nous_id: "unknown".into(),
+            key: "main".to_string(),
+            status: None,
+            message_count: 0,
+            session_type: None,
+            updated_at: None,
+        }];
+        handle_sessions_loaded(&mut app, "unknown".into(), sessions);
+        // No agents, should not panic
+    }
+
+    #[test]
+    fn handle_cost_loaded_updates() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        handle_cost_loaded(&mut app, 1234);
+        assert_eq!(app.daily_cost_cents, 1234);
+    }
+
+    #[test]
+    fn handle_show_error_sets_toast() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        handle_show_error(&mut app, "test error".to_string());
+        assert!(app.error_toast.is_some());
+        assert_eq!(app.error_toast.as_ref().unwrap().message, "test error");
+    }
+
+    #[test]
+    fn handle_dismiss_error_clears_toast() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        app.error_toast = Some(ErrorToast::new("error".to_string()));
+        handle_dismiss_error(&mut app);
+        assert!(app.error_toast.is_none());
+    }
+
+    #[test]
+    fn handle_tick_increments_counter() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        handle_tick(&mut app);
+        assert_eq!(app.tick_count, 1);
+        handle_tick(&mut app);
+        assert_eq!(app.tick_count, 2);
+    }
+
+    #[test]
+    fn handle_tick_wraps_at_max() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        app.tick_count = u64::MAX;
+        handle_tick(&mut app);
+        assert_eq!(app.tick_count, 0);
+    }
+
+    #[test]
+    fn handle_history_loaded_filters_roles() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        let messages = vec![
+            HistoryMessage {
+                role: "user".to_string(),
+                content: Some(serde_json::Value::String("hello".to_string())),
+                created_at: None,
+                model: None,
+                tool_name: None,
+            },
+            HistoryMessage {
+                role: "system".to_string(),
+                content: Some(serde_json::Value::String("system prompt".to_string())),
+                created_at: None,
+                model: None,
+                tool_name: None,
+            },
+            HistoryMessage {
+                role: "assistant".to_string(),
+                content: Some(serde_json::Value::String("response".to_string())),
+                created_at: None,
+                model: None,
+                tool_name: None,
+            },
+        ];
+        handle_history_loaded(&mut app, messages);
+        assert_eq!(app.messages.len(), 2);
+        assert_eq!(app.messages[0].role, "user");
+        assert_eq!(app.messages[1].role, "assistant");
+    }
+}

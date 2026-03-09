@@ -523,3 +523,191 @@ pub fn status_bar_hints(app: &App) -> Vec<(&'static str, &'static str)> {
         .take(8)
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn all_keybindings_is_not_empty() {
+        let bindings = all_keybindings();
+        assert!(bindings.len() > 30);
+    }
+
+    #[test]
+    fn every_keybinding_has_context() {
+        for kb in all_keybindings() {
+            assert!(
+                !kb.contexts.is_empty(),
+                "keybinding '{}' has no contexts",
+                kb.keys
+            );
+        }
+    }
+
+    #[test]
+    fn section_label_covers_all_variants() {
+        let contexts = [
+            KeyContext::Global,
+            KeyContext::Chat,
+            KeyContext::Selection,
+            KeyContext::Filter,
+            KeyContext::CommandPalette,
+            KeyContext::SessionList,
+            KeyContext::Input,
+            KeyContext::Overlay,
+            KeyContext::ToolApproval,
+            KeyContext::PlanApproval,
+            KeyContext::Settings,
+        ];
+        for ctx in contexts {
+            let label = ctx.section_label();
+            assert!(!label.is_empty());
+        }
+    }
+
+    #[test]
+    fn display_order_returns_valid_values() {
+        let contexts = [
+            KeyContext::Global,
+            KeyContext::Chat,
+            KeyContext::Input,
+            KeyContext::Overlay,
+            KeyContext::Selection,
+        ];
+        for ctx in contexts {
+            let order = ctx.display_order();
+            assert!(order <= 4);
+        }
+    }
+
+    #[test]
+    fn current_contexts_default_includes_global_chat_input() {
+        let app = test_app();
+        let contexts = current_contexts(&app);
+        assert!(contexts.contains(&KeyContext::Global));
+        assert!(contexts.contains(&KeyContext::Chat));
+        assert!(contexts.contains(&KeyContext::Input));
+    }
+
+    #[test]
+    fn current_contexts_command_palette() {
+        let mut app = test_app();
+        app.command_palette.active = true;
+        let contexts = current_contexts(&app);
+        assert!(contexts.contains(&KeyContext::CommandPalette));
+        assert!(!contexts.contains(&KeyContext::Chat));
+    }
+
+    #[test]
+    fn current_contexts_filter_mode() {
+        let mut app = test_app();
+        app.filter.active = true;
+        app.filter.editing = true;
+        let contexts = current_contexts(&app);
+        assert!(contexts.contains(&KeyContext::Filter));
+        assert!(!contexts.contains(&KeyContext::Chat));
+    }
+
+    #[test]
+    fn current_contexts_selection_mode() {
+        let mut app = test_app();
+        app.selection = SelectionContext::UserMessage { index: 0 };
+        let contexts = current_contexts(&app);
+        assert!(contexts.contains(&KeyContext::Selection));
+        assert!(!contexts.contains(&KeyContext::Chat));
+    }
+
+    #[test]
+    fn current_contexts_tool_approval_overlay() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+            turn_id: "t1".into(),
+            tool_id: "tool1".into(),
+            tool_name: "test_tool".to_string(),
+            input: serde_json::Value::Null,
+            risk: "low".to_string(),
+            reason: "test".to_string(),
+        }));
+        let contexts = current_contexts(&app);
+        assert!(contexts.contains(&KeyContext::ToolApproval));
+        assert!(contexts.contains(&KeyContext::Overlay));
+    }
+
+    #[test]
+    fn current_contexts_settings_overlay() {
+        let mut app = test_app();
+        let settings = crate::state::settings::SettingsOverlay::from_config(&serde_json::json!({}));
+        app.overlay = Some(Overlay::Settings(settings));
+        let contexts = current_contexts(&app);
+        assert!(contexts.contains(&KeyContext::Settings));
+        assert!(!contexts.contains(&KeyContext::Overlay));
+    }
+
+    #[test]
+    fn context_label_default() {
+        let app = test_app();
+        assert_eq!(context_label(&app), "Chat");
+    }
+
+    #[test]
+    fn context_label_command_palette() {
+        let mut app = test_app();
+        app.command_palette.active = true;
+        assert_eq!(context_label(&app), "Command Palette");
+    }
+
+    #[test]
+    fn context_label_overlay_variants() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::Help);
+        // Help overlay is transparent — shows underlying context
+        assert_eq!(context_label(&app), "Chat");
+
+        app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+        assert_eq!(context_label(&app), "Agent Picker");
+
+        app.overlay = Some(Overlay::SystemStatus);
+        assert_eq!(context_label(&app), "System Status");
+    }
+
+    #[test]
+    fn grouped_keybindings_deduplicates_keys() {
+        let contexts = vec![KeyContext::Global, KeyContext::Chat, KeyContext::Input];
+        let groups = grouped_keybindings(&contexts);
+        let mut all_keys: Vec<&str> = Vec::new();
+        for (_, bindings) in &groups {
+            for kb in bindings {
+                assert!(
+                    !all_keys.contains(&kb.keys),
+                    "duplicate key '{}' in grouped_keybindings",
+                    kb.keys
+                );
+                all_keys.push(kb.keys);
+            }
+        }
+    }
+
+    #[test]
+    fn grouped_keybindings_empty_contexts_returns_empty() {
+        let groups = grouped_keybindings(&[]);
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn status_bar_hints_max_eight() {
+        let app = test_app();
+        let hints = status_bar_hints(&app);
+        assert!(hints.len() <= 8);
+    }
+
+    #[test]
+    fn status_bar_hints_includes_chat_bindings() {
+        let app = test_app();
+        let hints = status_bar_hints(&app);
+        let keys: Vec<&str> = hints.iter().map(|(k, _)| *k).collect();
+        assert!(keys.contains(&"?"), "should include ? for help");
+        assert!(keys.contains(&":"), "should include : for command palette");
+    }
+}

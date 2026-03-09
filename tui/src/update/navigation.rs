@@ -86,3 +86,109 @@ pub(crate) fn handle_resize(app: &mut App, w: u16, h: u16) {
     app.terminal_width = w;
     app.terminal_height = h;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn scroll_up_increases_offset() {
+        let mut app = test_app();
+        handle_scroll_up(&mut app);
+        assert_eq!(app.scroll_offset, 3);
+        assert!(!app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_up_accumulates() {
+        let mut app = test_app();
+        handle_scroll_up(&mut app);
+        handle_scroll_up(&mut app);
+        assert_eq!(app.scroll_offset, 6);
+    }
+
+    #[test]
+    fn scroll_down_decreases_offset() {
+        let mut app = test_app();
+        app.scroll_offset = 10;
+        app.auto_scroll = false;
+        handle_scroll_down(&mut app);
+        assert_eq!(app.scroll_offset, 7);
+        assert!(!app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_down_to_zero_enables_auto_scroll() {
+        let mut app = test_app();
+        app.scroll_offset = 2;
+        app.auto_scroll = false;
+        handle_scroll_down(&mut app);
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_page_up_jumps_20() {
+        let mut app = test_app();
+        handle_scroll_page_up(&mut app);
+        assert_eq!(app.scroll_offset, 20);
+        assert!(!app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_page_down_jumps_20() {
+        let mut app = test_app();
+        app.scroll_offset = 30;
+        handle_scroll_page_down(&mut app);
+        assert_eq!(app.scroll_offset, 10);
+    }
+
+    #[test]
+    fn scroll_page_down_to_zero_auto_scrolls() {
+        let mut app = test_app();
+        app.scroll_offset = 15;
+        app.auto_scroll = false;
+        handle_scroll_page_down(&mut app);
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_to_bottom_resets() {
+        let mut app = test_app();
+        app.scroll_offset = 50;
+        app.auto_scroll = false;
+        handle_scroll_to_bottom(&mut app);
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn toggle_sidebar_flips() {
+        let mut app = test_app();
+        assert!(app.sidebar_visible);
+        handle_toggle_sidebar(&mut app);
+        assert!(!app.sidebar_visible);
+        handle_toggle_sidebar(&mut app);
+        assert!(app.sidebar_visible);
+    }
+
+    #[test]
+    fn toggle_thinking_flips() {
+        let mut app = test_app();
+        assert!(!app.thinking_expanded);
+        handle_toggle_thinking(&mut app);
+        assert!(app.thinking_expanded);
+        handle_toggle_thinking(&mut app);
+        assert!(!app.thinking_expanded);
+    }
+
+    #[test]
+    fn resize_updates_dimensions() {
+        let mut app = test_app();
+        handle_resize(&mut app, 200, 50);
+        assert_eq!(app.terminal_width, 200);
+        assert_eq!(app.terminal_height, 50);
+    }
+}

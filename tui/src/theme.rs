@@ -342,3 +342,109 @@ pub const BRAILLE_SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴',
 pub fn spinner_frame(tick: u64) -> char {
     BRAILLE_SPINNER[(tick as usize / 3) % BRAILLE_SPINNER.len()]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truecolor_palette_has_correct_depth() {
+        let theme = ThemePalette::truecolor();
+        assert_eq!(theme.depth, ColorDepth::TrueColor);
+    }
+
+    #[test]
+    fn color256_palette_has_correct_depth() {
+        let theme = ThemePalette::color256();
+        assert_eq!(theme.depth, ColorDepth::Color256);
+    }
+
+    #[test]
+    fn basic_palette_has_correct_depth() {
+        let theme = ThemePalette::basic();
+        assert_eq!(theme.depth, ColorDepth::Basic);
+    }
+
+    #[test]
+    fn style_fg_uses_fg_color() {
+        let theme = ThemePalette::truecolor();
+        let style = theme.style_fg();
+        assert_eq!(style.fg, Some(theme.fg));
+    }
+
+    #[test]
+    fn style_muted_uses_fg_muted_color() {
+        let theme = ThemePalette::truecolor();
+        let style = theme.style_muted();
+        assert_eq!(style.fg, Some(theme.fg_muted));
+    }
+
+    #[test]
+    fn style_accent_bold_has_bold_modifier() {
+        let theme = ThemePalette::truecolor();
+        let style = theme.style_accent_bold();
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(style.fg, Some(theme.accent));
+    }
+
+    #[test]
+    fn style_user_has_bold() {
+        let theme = ThemePalette::basic();
+        let style = theme.style_user();
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn style_surface_sets_bg() {
+        let theme = ThemePalette::truecolor();
+        let style = theme.style_surface();
+        assert_eq!(style.bg, Some(theme.surface));
+    }
+
+    #[test]
+    fn style_inline_code_uses_warning_fg() {
+        let theme = ThemePalette::truecolor();
+        let style = theme.style_inline_code();
+        assert_eq!(style.fg, Some(theme.warning));
+        assert_eq!(style.bg, Some(theme.code_bg));
+    }
+
+    #[test]
+    fn spinner_frame_cycles() {
+        let f0 = spinner_frame(0);
+        let f3 = spinner_frame(3);
+        assert_ne!(f0, f3);
+        // After a full cycle, it wraps
+        let total = BRAILLE_SPINNER.len() * 3;
+        assert_eq!(spinner_frame(0), spinner_frame(total as u64));
+    }
+
+    #[test]
+    fn spinner_frame_all_braille() {
+        for frame in BRAILLE_SPINNER {
+            assert!(
+                ('\u{2800}'..='\u{28FF}').contains(frame),
+                "spinner frame {:?} is not a braille character",
+                frame
+            );
+        }
+    }
+
+    #[test]
+    fn detect_returns_valid_depth() {
+        let theme = ThemePalette::detect();
+        // Just check it doesn't panic and returns a valid depth
+        let _ = theme.depth;
+    }
+
+    #[test]
+    fn all_palettes_have_reset_bg() {
+        for theme in [
+            ThemePalette::truecolor(),
+            ThemePalette::color256(),
+            ThemePalette::basic(),
+        ] {
+            assert_eq!(theme.bg, Color::Reset);
+        }
+    }
+}

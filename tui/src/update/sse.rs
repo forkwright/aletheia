@@ -139,3 +139,161 @@ pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: NousId) {
         app.load_focused_session().await;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn sse_disconnected_sets_flag() {
+        let mut app = test_app();
+        app.sse_connected = true;
+        handle_sse_disconnected(&mut app);
+        assert!(!app.sse_connected);
+    }
+
+    #[test]
+    fn sse_init_marks_active_agents() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.agents.push(test_agent("cody", "Cody"));
+
+        let active_turns = vec![ActiveTurn {
+            nous_id: "syn".into(),
+            session_id: "s1".into(),
+            turn_id: "t1".into(),
+        }];
+
+        handle_sse_init(&mut app, active_turns);
+
+        assert_eq!(app.agents[0].status, AgentStatus::Working);
+        assert_eq!(app.agents[1].status, AgentStatus::Idle);
+    }
+
+    #[test]
+    fn sse_turn_before_sets_working() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_turn_before(&mut app, "syn".into());
+
+        assert_eq!(app.agents[0].status, AgentStatus::Working);
+        assert!(app.agents[0].active_tool.is_none());
+    }
+
+    #[test]
+    fn sse_tool_called_sets_tool() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_tool_called(&mut app, "syn".into(), "read_file".to_string());
+
+        assert_eq!(app.agents[0].active_tool.as_deref(), Some("read_file"));
+        assert!(app.agents[0].tool_started_at.is_some());
+    }
+
+    #[test]
+    fn sse_tool_failed_clears_tool() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.agents[0].active_tool = Some("read_file".to_string());
+        app.agents[0].tool_started_at = Some(std::time::Instant::now());
+
+        handle_sse_tool_failed(&mut app, "syn".into());
+
+        assert!(app.agents[0].active_tool.is_none());
+        assert!(app.agents[0].tool_started_at.is_none());
+    }
+
+    #[test]
+    fn sse_status_update_working() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_status_update(&mut app, "syn".into(), "working".to_string());
+        assert_eq!(app.agents[0].status, AgentStatus::Working);
+    }
+
+    #[test]
+    fn sse_status_update_streaming() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_status_update(&mut app, "syn".into(), "streaming".to_string());
+        assert_eq!(app.agents[0].status, AgentStatus::Streaming);
+    }
+
+    #[test]
+    fn sse_status_update_compacting() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_status_update(&mut app, "syn".into(), "compacting".to_string());
+        assert_eq!(app.agents[0].status, AgentStatus::Compacting);
+    }
+
+    #[test]
+    fn sse_status_update_unknown_defaults_to_idle() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.agents[0].status = AgentStatus::Working;
+
+        handle_sse_status_update(&mut app, "syn".into(), "unknown_status".to_string());
+        assert_eq!(app.agents[0].status, AgentStatus::Idle);
+    }
+
+    #[test]
+    fn sse_session_archived_removes_session() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.agents[0].sessions.push(crate::api::types::Session {
+            id: "s1".into(),
+            nous_id: "syn".into(),
+            key: "main".to_string(),
+            status: None,
+            message_count: 0,
+            session_type: None,
+            updated_at: None,
+        });
+
+        handle_sse_session_archived(&mut app, "syn".into(), "s1".into());
+
+        assert!(app.agents[0].sessions.is_empty());
+    }
+
+    #[test]
+    fn sse_distill_before_sets_compacting() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+
+        handle_sse_distill_before(&mut app, "syn".into());
+
+        assert_eq!(app.agents[0].status, AgentStatus::Compacting);
+        assert_eq!(app.agents[0].compaction_stage.as_deref(), Some("starting"));
+    }
+
+    #[test]
+    fn sse_distill_stage_updates_stage() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.agents[0].status = AgentStatus::Compacting;
+
+        handle_sse_distill_stage(&mut app, "syn".into(), "extracting".to_string());
+
+        assert_eq!(
+            app.agents[0].compaction_stage.as_deref(),
+            Some("extracting")
+        );
+    }
+
+    #[test]
+    fn sse_nonexistent_agent_noop() {
+        let mut app = test_app();
+        // No agents — should not panic
+        handle_sse_turn_before(&mut app, "nonexistent".into());
+        handle_sse_tool_called(&mut app, "nonexistent".into(), "tool".to_string());
+        handle_sse_tool_failed(&mut app, "nonexistent".into());
+        handle_sse_distill_before(&mut app, "nonexistent".into());
+    }
+}

@@ -233,7 +233,19 @@ fn extract_first_code_block(text: &str) -> Option<String> {
 fn extract_urls(text: &str) -> Vec<String> {
     let mut urls = Vec::new();
     for word in text.split_whitespace() {
-        // Handle URLs that may be wrapped in markdown link syntax
+        // Handle markdown link syntax: [text](url)
+        if let Some(paren_start) = word.find("](") {
+            let url_part = &word[paren_start + 2..];
+            let candidate = url_part
+                .trim_end_matches(')')
+                .trim_end_matches(',')
+                .trim_end_matches('.');
+            if candidate.starts_with("http://") || candidate.starts_with("https://") {
+                urls.push(candidate.to_string());
+                continue;
+            }
+        }
+
         let candidate = word
             .trim_start_matches('(')
             .trim_start_matches('[')
@@ -250,4 +262,291 @@ fn extract_urls(text: &str) -> Vec<String> {
 
 fn show_toast(app: &mut App, message: &str) {
     app.error_toast = Some(ErrorToast::new(message.to_string()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn select_prev_enters_selection_on_last() {
+        let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
+        handle_select_prev(&mut app);
+        assert_eq!(app.selected_message, Some(1));
+        assert!(!app.auto_scroll);
+    }
+
+    #[test]
+    fn select_prev_decrements() {
+        let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
+        app.selected_message = Some(1);
+        handle_select_prev(&mut app);
+        assert_eq!(app.selected_message, Some(0));
+    }
+
+    #[test]
+    fn select_prev_stops_at_zero() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.selected_message = Some(0);
+        handle_select_prev(&mut app);
+        assert_eq!(app.selected_message, Some(0));
+    }
+
+    #[test]
+    fn select_prev_empty_messages_noop() {
+        let mut app = test_app();
+        handle_select_prev(&mut app);
+        assert!(app.selected_message.is_none());
+    }
+
+    #[test]
+    fn select_next_enters_selection_on_last() {
+        let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
+        handle_select_next(&mut app);
+        assert_eq!(app.selected_message, Some(1));
+    }
+
+    #[test]
+    fn select_next_increments() {
+        let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
+        app.selected_message = Some(0);
+        handle_select_next(&mut app);
+        assert_eq!(app.selected_message, Some(1));
+    }
+
+    #[test]
+    fn select_next_stops_at_end() {
+        let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
+        app.selected_message = Some(1);
+        handle_select_next(&mut app);
+        assert_eq!(app.selected_message, Some(1));
+    }
+
+    #[test]
+    fn deselect_clears_selection() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.selected_message = Some(0);
+        app.auto_scroll = false;
+        handle_deselect(&mut app);
+        assert!(app.selected_message.is_none());
+        assert!(app.auto_scroll);
+        assert_eq!(app.selection, SelectionContext::None);
+    }
+
+    #[test]
+    fn select_first_goes_to_zero() {
+        let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
+        app.selected_message = Some(1);
+        handle_select_first(&mut app);
+        assert_eq!(app.selected_message, Some(0));
+    }
+
+    #[test]
+    fn select_first_empty_noop() {
+        let mut app = test_app();
+        handle_select_first(&mut app);
+        assert!(app.selected_message.is_none());
+    }
+
+    #[test]
+    fn select_last_goes_to_end() {
+        let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
+        app.selected_message = Some(0);
+        handle_select_last(&mut app);
+        assert_eq!(app.selected_message, Some(1));
+    }
+
+    #[test]
+    fn sync_selection_context_user_message() {
+        let mut app = test_app_with_messages(vec![("user", "hello")]);
+        app.selected_message = Some(0);
+        sync_selection_context(&mut app);
+        assert!(matches!(
+            app.selection,
+            SelectionContext::UserMessage { index: 0 }
+        ));
+    }
+
+    #[test]
+    fn sync_selection_context_agent_response_with_code() {
+        let mut app = test_app_with_messages(vec![("assistant", "here is ```code```")]);
+        app.selected_message = Some(0);
+        sync_selection_context(&mut app);
+        match &app.selection {
+            SelectionContext::AgentResponse {
+                index,
+                has_code,
+                has_links,
+            } => {
+                assert_eq!(*index, 0);
+                assert!(*has_code);
+                assert!(!*has_links);
+            }
+            other => panic!("expected AgentResponse, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn sync_selection_context_agent_response_with_links() {
+        let mut app = test_app_with_messages(vec![("assistant", "see https://example.com")]);
+        app.selected_message = Some(0);
+        sync_selection_context(&mut app);
+        match &app.selection {
+            SelectionContext::AgentResponse { has_links, .. } => {
+                assert!(*has_links);
+            }
+            other => panic!("expected AgentResponse, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn extract_first_code_block_basic() {
+        let text = "Some text\n```rust\nlet x = 1;\n```\nMore text";
+        let code = extract_first_code_block(text);
+        assert_eq!(code.as_deref(), Some("let x = 1;"));
+    }
+
+    #[test]
+    fn extract_first_code_block_multiline() {
+        let text = "```\nline1\nline2\n```";
+        let code = extract_first_code_block(text);
+        assert_eq!(code.as_deref(), Some("line1\nline2"));
+    }
+
+    #[test]
+    fn extract_first_code_block_none_when_no_block() {
+        let text = "no code blocks here";
+        assert!(extract_first_code_block(text).is_none());
+    }
+
+    #[test]
+    fn extract_first_code_block_unclosed() {
+        let text = "```\ncode without closing";
+        assert!(extract_first_code_block(text).is_none());
+    }
+
+    #[test]
+    fn extract_urls_basic() {
+        let text = "Visit https://example.com for more";
+        let urls = extract_urls(text);
+        assert_eq!(urls, vec!["https://example.com"]);
+    }
+
+    #[test]
+    fn extract_urls_multiple() {
+        let text = "See http://a.com and https://b.com";
+        let urls = extract_urls(text);
+        assert_eq!(urls.len(), 2);
+    }
+
+    #[test]
+    fn extract_urls_markdown_syntax() {
+        let text = "[link](https://example.com)";
+        let urls = extract_urls(text);
+        assert_eq!(urls, vec!["https://example.com"]);
+    }
+
+    #[test]
+    fn extract_urls_trailing_punctuation() {
+        let text = "See https://example.com.";
+        let urls = extract_urls(text);
+        assert_eq!(urls, vec!["https://example.com"]);
+    }
+
+    #[test]
+    fn extract_urls_no_urls() {
+        let text = "No links here, just text";
+        let urls = extract_urls(text);
+        assert!(urls.is_empty());
+    }
+
+    #[test]
+    fn action_edit_only_user_messages() {
+        let mut app = test_app_with_messages(vec![("assistant", "can't edit this")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::Edit);
+        // Should show toast, not modify input
+        assert!(app.error_toast.is_some());
+        assert!(app.input.text.is_empty());
+    }
+
+    #[test]
+    fn action_edit_user_message() {
+        let mut app = test_app_with_messages(vec![("user", "edit me")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::Edit);
+        assert_eq!(app.input.text, "edit me");
+        assert_eq!(app.input.cursor, 7);
+        assert!(app.selected_message.is_none());
+        assert!(app.messages.is_empty());
+    }
+
+    #[test]
+    fn action_delete_user_message() {
+        let mut app =
+            test_app_with_messages(vec![("user", "delete me"), ("assistant", "response")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::Delete);
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].role, "assistant");
+    }
+
+    #[test]
+    fn action_delete_non_user_message() {
+        let mut app = test_app_with_messages(vec![("assistant", "can't delete")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::Delete);
+        assert_eq!(app.messages.len(), 1); // unchanged
+        assert!(app.error_toast.is_some());
+    }
+
+    #[test]
+    fn action_delete_last_message_clears_selection() {
+        let mut app = test_app_with_messages(vec![("user", "only one")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::Delete);
+        assert!(app.messages.is_empty());
+        assert!(app.selected_message.is_none());
+        assert_eq!(app.selection, SelectionContext::None);
+    }
+
+    #[test]
+    fn action_inspect_toggles_tool_expanded() {
+        let mut app = test_app_with_messages(vec![("assistant", "response")]);
+        app.messages[0].tool_calls.push(crate::state::ToolCallInfo {
+            name: "test_tool".to_string(),
+            duration_ms: Some(100),
+            is_error: false,
+        });
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::Inspect);
+        assert_eq!(app.tool_expanded.len(), 1);
+        // Toggle off
+        handle_message_action(&mut app, MessageActionKind::Inspect);
+        assert_eq!(app.tool_expanded.len(), 0);
+    }
+
+    #[test]
+    fn action_inspect_no_tool_calls_shows_toast() {
+        let mut app = test_app_with_messages(vec![("assistant", "no tools")]);
+        app.selected_message = Some(0);
+        handle_message_action(&mut app, MessageActionKind::Inspect);
+        assert!(app.error_toast.is_some());
+    }
+
+    #[test]
+    fn handle_message_action_out_of_bounds_noop() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        app.selected_message = Some(5); // out of bounds
+        handle_message_action(&mut app, MessageActionKind::Copy);
+        // Should not panic
+    }
+
+    #[test]
+    fn handle_message_action_no_selection_noop() {
+        let mut app = test_app_with_messages(vec![("user", "a")]);
+        handle_message_action(&mut app, MessageActionKind::Copy);
+        // Should not panic
+    }
 }

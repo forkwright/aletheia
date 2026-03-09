@@ -138,3 +138,145 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+
+    #[tokio::test]
+    async fn open_overlay_help() {
+        let mut app = test_app();
+        handle_open_overlay(&mut app, OverlayKind::Help).await;
+        assert!(matches!(app.overlay, Some(Overlay::Help)));
+    }
+
+    #[tokio::test]
+    async fn open_overlay_agent_picker() {
+        let mut app = test_app();
+        handle_open_overlay(&mut app, OverlayKind::AgentPicker).await;
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::AgentPicker { cursor: 0 })
+        ));
+    }
+
+    #[tokio::test]
+    async fn open_overlay_system_status() {
+        let mut app = test_app();
+        handle_open_overlay(&mut app, OverlayKind::SystemStatus).await;
+        assert!(matches!(app.overlay, Some(Overlay::SystemStatus)));
+    }
+
+    #[test]
+    fn close_overlay_clears() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::Help);
+        handle_close_overlay(&mut app);
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn close_overlay_settings_edit_mode_cancels_edit() {
+        let mut app = test_app();
+        let mut settings = crate::state::settings::SettingsOverlay::from_config(
+            &serde_json::json!({"agents": {"defaults": {"maxToolIterations": 10}}}),
+        );
+        settings.editing = Some(crate::state::settings::EditState {
+            buffer: "123".to_string(),
+            cursor: 3,
+        });
+        app.overlay = Some(Overlay::Settings(settings));
+
+        handle_close_overlay(&mut app);
+        // Should cancel the edit, not close the overlay
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            assert!(s.editing.is_none());
+        } else {
+            panic!("overlay should still be Settings");
+        }
+    }
+
+    #[test]
+    fn overlay_up_agent_picker() {
+        let mut app = test_app();
+        app.agents.push(test_agent("a", "A"));
+        app.agents.push(test_agent("b", "B"));
+        app.overlay = Some(Overlay::AgentPicker { cursor: 1 });
+
+        handle_overlay_up(&mut app);
+
+        if let Some(Overlay::AgentPicker { cursor }) = &app.overlay {
+            assert_eq!(*cursor, 0);
+        }
+    }
+
+    #[test]
+    fn overlay_up_saturates_at_zero() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+
+        handle_overlay_up(&mut app);
+
+        if let Some(Overlay::AgentPicker { cursor }) = &app.overlay {
+            assert_eq!(*cursor, 0);
+        }
+    }
+
+    #[test]
+    fn overlay_down_agent_picker() {
+        let mut app = test_app();
+        app.agents.push(test_agent("a", "A"));
+        app.agents.push(test_agent("b", "B"));
+        app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+
+        handle_overlay_down(&mut app);
+
+        if let Some(Overlay::AgentPicker { cursor }) = &app.overlay {
+            assert_eq!(*cursor, 1);
+        }
+    }
+
+    #[test]
+    fn overlay_down_clamps_at_max() {
+        let mut app = test_app();
+        app.agents.push(test_agent("a", "A"));
+        app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+
+        handle_overlay_down(&mut app);
+
+        if let Some(Overlay::AgentPicker { cursor }) = &app.overlay {
+            assert_eq!(*cursor, 0);
+        }
+    }
+
+    #[test]
+    fn overlay_up_plan_approval() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::PlanApproval(crate::state::PlanApprovalOverlay {
+            plan_id: "p1".into(),
+            steps: vec![
+                crate::state::PlanStepApproval {
+                    id: 1,
+                    label: "S1".to_string(),
+                    role: "r".to_string(),
+                    checked: true,
+                },
+                crate::state::PlanStepApproval {
+                    id: 2,
+                    label: "S2".to_string(),
+                    role: "r".to_string(),
+                    checked: true,
+                },
+            ],
+            total_cost_cents: 100,
+            cursor: 1,
+        }));
+
+        handle_overlay_up(&mut app);
+
+        if let Some(Overlay::PlanApproval(plan)) = &app.overlay {
+            assert_eq!(plan.cursor, 0);
+        }
+    }
+}

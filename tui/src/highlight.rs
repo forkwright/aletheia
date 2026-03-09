@@ -70,3 +70,55 @@ impl Highlighter {
         lines
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn highlight_rust_produces_lines() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight("let x = 42;", "rust");
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn highlight_unknown_language_falls_back() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight("some text", "nonexistent_language_xyz");
+        assert!(!lines.is_empty());
+        let text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(text.contains("some text"));
+    }
+
+    #[test]
+    fn highlight_empty_string() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight("", "rust");
+        // Empty input should produce no lines (or one empty line)
+        assert!(lines.len() <= 1);
+    }
+
+    #[test]
+    fn highlight_multiline_code() {
+        let hl = Highlighter::new();
+        let code = "fn main() {\n    println!(\"hello\");\n}";
+        let lines = hl.highlight(code, "rust");
+        assert!(lines.len() >= 3);
+    }
+
+    #[test]
+    fn highlight_python() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight("def hello():\n    pass", "python");
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn highlight_bold_italic_styles() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight("// comment\nlet x = 1;", "rust");
+        // Just verify it doesn't panic and produces output
+        assert!(lines.len() >= 2);
+    }
+}
