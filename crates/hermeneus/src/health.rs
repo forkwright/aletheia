@@ -100,9 +100,13 @@ impl ProviderHealthTracker {
     /// Current health state.
     #[must_use]
     pub fn health(&self) -> ProviderHealth {
+        #[expect(
+            clippy::expect_used,
+            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
+        )]
         self.inner
             .lock()
-            .expect("health lock poisoned") // INVARIANT: short critical section, poisoned = prior panic
+            .expect("health lock poisoned")
             .health
             .clone()
     }
@@ -113,7 +117,11 @@ impl ProviderHealthTracker {
     /// unless the cooldown has elapsed (auto-transitions to Degraded).
     /// `Down(AuthFailure)` never auto-recovers.
     pub fn check_available(&self) -> Result<(), ProviderHealth> {
-        let mut inner = self.inner.lock().expect("health lock poisoned"); // INVARIANT: short critical section, poisoned = prior panic
+        #[expect(
+            clippy::expect_used,
+            reason = "Mutex poisoning means a thread panicked; error type is ProviderHealth, not suitable for lock errors"
+        )]
+        let mut inner = self.inner.lock().expect("health lock poisoned");
         match &inner.health {
             ProviderHealth::Up | ProviderHealth::Degraded { .. } => Ok(()),
             ProviderHealth::Down { since, reason } => {
@@ -146,7 +154,11 @@ impl ProviderHealthTracker {
 
     /// Record a successful request.
     pub fn record_success(&self) {
-        let mut inner = self.inner.lock().expect("health lock poisoned"); // INVARIANT: short critical section, poisoned = prior panic
+        #[expect(
+            clippy::expect_used,
+            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
+        )]
+        let mut inner = self.inner.lock().expect("health lock poisoned");
         inner.total_requests += 1;
         match inner.health {
             ProviderHealth::Degraded { .. } => {
@@ -162,7 +174,11 @@ impl ProviderHealthTracker {
 
     /// Record a failed request and update health state.
     pub fn record_error(&self, error: &Error) {
-        let mut inner = self.inner.lock().expect("health lock poisoned"); // INVARIANT: short critical section, poisoned = prior panic
+        #[expect(
+            clippy::expect_used,
+            reason = "Mutex poisoning means a thread panicked; no Result return to propagate through"
+        )]
+        let mut inner = self.inner.lock().expect("health lock poisoned");
         inner.total_requests += 1;
         inner.total_errors += 1;
 
