@@ -48,7 +48,9 @@ jobs:
             --include='*.md' --include='*.yaml' --include='*.yml' --include='*.toml' \
             . | grep -v 'scrub-callback' | grep -v 'pii-patterns' | \
             grep -v 'target/' | grep -v '^./docs/' | \
-            grep -v 'instance.example/' || true)
+            grep -v 'instance.example/' | \
+            grep -v 'node_modules/' | \
+            grep -v '\.venv/' || true)
           if [ -n "$HITS" ]; then
             echo "::error::PII patterns detected in tracked files:"
             echo "$HITS"
