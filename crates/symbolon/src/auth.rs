@@ -197,7 +197,10 @@ fn is_authorized(claims: &Claims, action: &Action) -> bool {
 }
 
 fn format_unix_iso(unix_secs: i64) -> String {
-    let secs = u64::try_from(unix_secs).unwrap_or(0);
+    let secs = u64::try_from(unix_secs).unwrap_or_else(|_| {
+        tracing::warn!(unix_secs, "negative unix timestamp, clamping to epoch");
+        0
+    });
     let days = secs / 86400;
     let time_secs = secs % 86400;
     let hours = time_secs / 3600;
@@ -240,6 +243,26 @@ mod tests {
 
     fn secret(s: &str) -> SecretString {
         SecretString::from(s.to_owned())
+    }
+
+    // --- format_unix_iso ---
+
+    #[test]
+    fn format_unix_iso_positive_timestamp() {
+        let result = format_unix_iso(1_700_000_000);
+        assert!(result.contains("2023"), "expected year 2023, got {result}");
+    }
+
+    #[test]
+    fn format_unix_iso_negative_timestamp_clamps_to_epoch() {
+        let result = format_unix_iso(-100);
+        assert_eq!(result, "1970-01-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn format_unix_iso_zero_is_epoch() {
+        let result = format_unix_iso(0);
+        assert_eq!(result, "1970-01-01T00:00:00.000Z");
     }
 
     // --- Login flow ---

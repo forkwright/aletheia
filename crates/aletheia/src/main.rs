@@ -1423,13 +1423,18 @@ fn export_agent_cmd(
 
     let workspace_path = oikos.nous_dir(nous_id);
 
-    let agent_config = config
-        .agents
-        .list
-        .iter()
-        .find(|a| a.id == nous_id)
-        .map(|a| serde_json::to_value(a).unwrap_or_default())
-        .unwrap_or_default();
+    let agent_config =
+        config
+            .agents
+            .list
+            .iter()
+            .find(|a| a.id == nous_id)
+            .map_or(serde_json::Value::Null, |a| {
+                serde_json::to_value(a).unwrap_or_else(|e| {
+                    tracing::warn!(error = %e, "failed to serialize agent config");
+                    serde_json::Value::Null
+                })
+            });
 
     let opts = aletheia_mneme::export::ExportOptions {
         max_messages_per_session: max_messages,

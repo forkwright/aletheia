@@ -105,7 +105,10 @@ pub fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
         sender_name: envelope.source_name.clone(),
         group_id,
         text: text.to_owned(),
-        timestamp: envelope.timestamp.or(data.timestamp).unwrap_or(0),
+        timestamp: envelope.timestamp.or(data.timestamp).unwrap_or_else(|| {
+            tracing::warn!("signal envelope has no timestamp, defaulting to 0");
+            0
+        }),
         attachments,
         raw: raw_value,
     })
@@ -302,6 +305,20 @@ mod tests {
 
         let msg = extract_message(&env).unwrap();
         assert_eq!(msg.text, "hi");
-        assert_eq!(msg.timestamp, 0); // no timestamp available
+        assert_eq!(msg.timestamp, 0); // no timestamp available — warns at runtime
+    }
+
+    #[test]
+    fn extract_uses_data_message_timestamp_as_fallback() {
+        let json = serde_json::json!({
+            "sourceNumber": "+1234567890",
+            "dataMessage": {
+                "timestamp": 1_709_000_000_000_u64,
+                "message": "fallback ts"
+            }
+        });
+        let env: SignalEnvelope = serde_json::from_value(json).unwrap();
+        let msg = extract_message(&env).unwrap();
+        assert_eq!(msg.timestamp, 1_709_000_000_000);
     }
 }

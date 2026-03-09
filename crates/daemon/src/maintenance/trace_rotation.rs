@@ -93,7 +93,10 @@ impl TraceRotator {
         let mut cumulative_freed: u64 = 0;
 
         for entry in &entries {
-            let age = now.duration_since(entry.modified).unwrap_or_default();
+            let age = now.duration_since(entry.modified).unwrap_or_else(|_| {
+                tracing::warn!(path = %entry.path.display(), "file modified time is in the future, treating age as zero");
+                std::time::Duration::default()
+            });
             let over_size = total_size_bytes.saturating_sub(cumulative_freed) > max_bytes;
 
             if age > max_age || over_size {

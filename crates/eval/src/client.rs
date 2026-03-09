@@ -96,7 +96,10 @@ impl EvalClient {
         let resp = self.authed_delete(&url).await?;
         let status = resp.status().as_u16();
         if status != 204 && status != 200 {
-            let body = resp.text().await.unwrap_or_default();
+            let body = resp.text().await.unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "failed to read error response body");
+                String::new()
+            });
             return error::UnexpectedStatusSnafu {
                 endpoint: url,
                 status,
@@ -121,7 +124,10 @@ impl EvalClient {
         let resp = self.authed_post(&url, &body).await?;
         let status = resp.status().as_u16();
         if status != 200 {
-            let body_text = resp.text().await.unwrap_or_default();
+            let body_text = resp.text().await.unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "failed to read error response body");
+                String::new()
+            });
             return error::UnexpectedStatusSnafu {
                 endpoint: url,
                 status,
@@ -225,7 +231,10 @@ impl EvalClient {
     ) -> Result<T> {
         let status = response.status().as_u16();
         if !accepted.contains(&status) {
-            let body = response.text().await.unwrap_or_default();
+            let body = response.text().await.unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "failed to read error response body");
+                String::new()
+            });
             return error::UnexpectedStatusSnafu {
                 endpoint: url.to_owned(),
                 status,

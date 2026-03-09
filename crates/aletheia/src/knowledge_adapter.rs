@@ -57,7 +57,10 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .store
                 .query_facts_async(nous_id, now, i64::try_from(limit).unwrap_or(i64::MAX))
                 .await
-                .unwrap_or_default();
+                .unwrap_or_else(|e| {
+                    tracing::warn!(error = %e, "fact query failed, returning empty results");
+                    Vec::new()
+                });
             let fact_map: std::collections::HashMap<&str, &Fact> =
                 facts.iter().map(|f| (f.id.as_str(), f)).collect();
 

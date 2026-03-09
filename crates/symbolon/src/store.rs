@@ -317,6 +317,7 @@ fn initialize(conn: &Connection) -> Result<()> {
 }
 
 fn get_schema_version(conn: &Connection) -> u32 {
+    // Returns 0 when the table doesn't exist yet — triggers all migrations
     conn.query_row(
         "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
         [],
