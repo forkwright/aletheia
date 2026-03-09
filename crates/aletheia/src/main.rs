@@ -17,6 +17,7 @@ use tokio::sync::Mutex;
 
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
@@ -463,8 +464,8 @@ fn run_maintenance(action: MaintenanceAction, instance_root: Option<&PathBuf>) -
 
     match action {
         MaintenanceAction::Status => {
-            let (_tx, rx) = tokio::sync::watch::channel(false);
-            let mut runner = TaskRunner::new("system", rx).with_maintenance(maint);
+            let token = CancellationToken::new();
+            let mut runner = TaskRunner::new("system", token).with_maintenance(maint);
             runner.register_maintenance_tasks();
             let statuses = runner.status();
             println!("{}", serde_json::to_string_pretty(&statuses)?);
@@ -560,6 +561,10 @@ async fn serve(cli: Cli) -> Result<()> {
     init_tracing(&cli.log_level, cli.json_logs);
 
     info!("aletheia starting");
+
+    // Root cancellation token — cancelled on SIGTERM/SIGINT.
+    // Child tokens are propagated to every actor and daemon task.
+    let shutdown_token = CancellationToken::new();
 
     // Oikos — instance directory resolution
     let oikos = match &cli.instance_root {
@@ -798,10 +803,10 @@ async fn serve(cli: Cli) -> Result<()> {
     }
 
     // Daemon — background maintenance tasks
-    let (_daemon_shutdown_tx, daemon_shutdown_rx) = tokio::sync::watch::channel(false);
     let maintenance_config = build_maintenance_config(&oikos_arc, &config.maintenance);
+    let daemon_token = shutdown_token.child_token();
     let mut daemon_runner =
-        TaskRunner::new("system", daemon_shutdown_rx).with_maintenance(maintenance_config);
+        TaskRunner::new("system", daemon_token).with_maintenance(maintenance_config);
     daemon_runner.register_maintenance_tasks();
     let daemon_handle = tokio::spawn(async move {
         daemon_runner.run().await;
@@ -820,14 +825,14 @@ async fn serve(cli: Cli) -> Result<()> {
         start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref());
 
     // Daemon runners — per-agent background task scheduling
-    let (daemon_shutdown_tx, _) = tokio::sync::watch::channel(false);
     let daemon_bridge = Arc::new(daemon_bridge::NousDaemonBridge::new(Arc::clone(
         &nous_manager,
     )));
     for agent_def in &config.agents.list {
+        let agent_token = shutdown_token.child_token();
         let mut runner = aletheia_oikonomos::runner::TaskRunner::with_bridge(
             agent_def.id.clone(),
-            daemon_shutdown_tx.subscribe(),
+            agent_token,
             daemon_bridge.clone(),
         );
         runner.register(aletheia_oikonomos::schedule::TaskDef {
@@ -870,6 +875,7 @@ async fn serve(cli: Cli) -> Result<()> {
         start_time: Instant::now(),
         auth_mode: config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
+        shutdown: shutdown_token.clone(),
     });
 
     let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
@@ -890,15 +896,48 @@ async fn serve(cli: Cli) -> Result<()> {
 
     info!(addr = %bind_addr, "pylon listening");
 
+    // Axum graceful shutdown: wait for OS signal, then cancel root token so
+    // all subsystems observe shutdown simultaneously.
+    let token_for_signal = shutdown_token.clone();
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            info!("signal received — cancelling shutdown token");
+            token_for_signal.cancel();
+        })
         .await
         .context("server error")?;
 
+    // ── Drain ordering ──────────────────────────────────────────────────────
+    // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
+    // 2. Root token is cancelled — daemon tasks observe it and exit their loops.
+    // 3. Wait for system daemon to finish in-flight maintenance work.
+    // 4. Drain nous actors with a timeout, flushing redb WAL and other state.
+    //    Awaiting join handles ensures Arc<Database> drops, checkpointing the WAL.
+    // 5. Drop AppState (session store, registries).
+    // ────────────────────────────────────────────────────────────────────────
+
     info!("shutting down");
-    let _ = daemon_shutdown_tx.send(true);
-    let _ = daemon_handle.await;
-    state.nous_manager.shutdown_readonly().await;
+
+    let shutdown_timeout = std::time::Duration::from_secs(10);
+
+    // Step 2–3: daemon runners have already observed token cancel via child tokens.
+    // Await system daemon handle to confirm it has exited.
+    match tokio::time::timeout(shutdown_timeout, daemon_handle).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => warn!(error = %e, "system daemon panicked during shutdown"),
+        Err(_) => warn!(
+            timeout_secs = shutdown_timeout.as_secs(),
+            "system daemon did not exit within shutdown timeout"
+        ),
+    }
+
+    // Step 4: drain nous actors — cancel tokens fire, messages drain, WAL flushed.
+    state.nous_manager.drain(shutdown_timeout).await;
+
+    // Step 5: AppState and session store drop here as `state` goes out of scope.
+    drop(state);
+
     info!("shutdown complete");
 
     Ok(())

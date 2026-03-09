@@ -9,6 +9,7 @@ use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{SpawnRequest, SpawnResult, SpawnService};
 use aletheia_taxis::oikos::Oikos;
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, info, warn};
 
 use crate::actor;
@@ -119,6 +120,9 @@ impl SpawnService for SpawnServiceImpl {
                     return Err(format!("failed to write SOUL.md: {e}"));
                 }
 
+                // Ephemeral actors get their own token; they are
+                // short-lived and don't need a shared parent.
+                let ephemeral_cancel = CancellationToken::new();
                 let (handle, join_handle) = actor::spawn(
                     config,
                     pipeline_config,
@@ -133,6 +137,7 @@ impl SpawnService for SpawnServiceImpl {
                     None,
                     Vec::new(),
                     None,
+                    ephemeral_cancel,
                 );
 
                 info!(session_key = %session_key, "ephemeral actor started");

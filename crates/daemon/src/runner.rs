@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use tokio::sync::watch;
+use tokio_util::sync::CancellationToken;
 
 use crate::bridge::DaemonBridge;
 use crate::error::{self, Result};
@@ -18,7 +18,7 @@ use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 pub struct TaskRunner {
     nous_id: String,
     tasks: Vec<RegisteredTask>,
-    shutdown: watch::Receiver<bool>,
+    shutdown: CancellationToken,
     bridge: Option<Arc<dyn DaemonBridge>>,
     maintenance: Option<MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
@@ -42,8 +42,8 @@ pub struct ExecutionResult {
 }
 
 impl TaskRunner {
-    /// Create a runner for the given nous, listening for shutdown on the watch channel.
-    pub fn new(nous_id: impl Into<String>, shutdown: watch::Receiver<bool>) -> Self {
+    /// Create a runner for the given nous, listening for shutdown on the cancellation token.
+    pub fn new(nous_id: impl Into<String>, shutdown: CancellationToken) -> Self {
         Self {
             nous_id: nous_id.into(),
             tasks: Vec::new(),
@@ -57,7 +57,7 @@ impl TaskRunner {
     /// Create a runner with a bridge for nous communication.
     pub fn with_bridge(
         nous_id: impl Into<String>,
-        shutdown: watch::Receiver<bool>,
+        shutdown: CancellationToken,
         bridge: Arc<dyn DaemonBridge>,
     ) -> Self {
         Self {
@@ -166,7 +166,7 @@ impl TaskRunner {
     }
 
     /// Run the event loop. Checks for due tasks every second, executes them.
-    /// Returns when shutdown signal is received.
+    /// Returns when the shutdown token is cancelled.
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
 
@@ -177,11 +177,9 @@ impl TaskRunner {
                 _ = interval.tick() => {
                     self.tick().await;
                 }
-                result = self.shutdown.changed() => {
-                    if result.is_err() || *self.shutdown.borrow() {
-                        tracing::info!(nous_id = %self.nous_id, "daemon shutting down");
-                        break;
-                    }
+                () = self.shutdown.cancelled() => {
+                    tracing::info!(nous_id = %self.nous_id, "daemon shutting down");
+                    break;
                 }
             }
         }
@@ -526,8 +524,8 @@ mod tests {
 
     #[test]
     fn register_shows_in_status() {
-        let (_tx, rx) = watch::channel(false);
-        let mut runner = TaskRunner::new("test-nous", rx);
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
         runner.register(make_echo_task("task-1"));
         runner.register(make_echo_task("task-2"));
 
@@ -540,15 +538,15 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_exits_run_loop() {
-        let (tx, rx) = watch::channel(false);
-        let mut runner = TaskRunner::new("test-nous", rx);
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token.clone());
 
         let handle = tokio::spawn(async move {
             runner.run().await;
         });
 
-        // Signal shutdown
-        tx.send(true).expect("send shutdown");
+        // Signal shutdown via cancellation
+        token.cancel();
 
         // Verify it exits within a reasonable time
         let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
@@ -559,8 +557,8 @@ mod tests {
     async fn task_disabled_after_consecutive_failures() {
         tokio::time::pause();
 
-        let (_tx, rx) = watch::channel(false);
-        let mut runner = TaskRunner::new("test-nous", rx);
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
 
         // Register a task that will fail (nonexistent command)
         let task = TaskDef {
@@ -597,8 +595,8 @@ mod tests {
 
     #[tokio::test]
     async fn successful_command_resets_failures() {
-        let (_tx, rx) = watch::channel(false);
-        let mut runner = TaskRunner::new("test-nous", rx);
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
 
         let task = TaskDef {
             id: "echo-task".to_owned(),
@@ -629,8 +627,8 @@ mod tests {
 
     #[tokio::test]
     async fn builtin_prosoche_executes() {
-        let (_tx, rx) = watch::channel(false);
-        let mut runner = TaskRunner::new("test-nous", rx);
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
 
         let task = TaskDef {
             id: "prosoche".to_owned(),
@@ -658,14 +656,14 @@ mod tests {
 
     #[test]
     fn register_maintenance_tasks_respects_enabled() {
-        let (_tx, rx) = watch::channel(false);
+        let token = CancellationToken::new();
         let mut config = MaintenanceConfig::default();
         config.trace_rotation.enabled = true;
         config.drift_detection.enabled = false;
         config.db_monitoring.enabled = true;
         config.retention.enabled = false;
 
-        let mut runner = TaskRunner::new("system", rx).with_maintenance(config);
+        let mut runner = TaskRunner::new("system", token).with_maintenance(config);
         runner.register_maintenance_tasks();
 
         let statuses = runner.status();
@@ -678,19 +676,19 @@ mod tests {
 
     #[test]
     fn register_maintenance_tasks_skips_without_config() {
-        let (_tx, rx) = watch::channel(false);
-        let mut runner = TaskRunner::new("system", rx);
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("system", token);
         runner.register_maintenance_tasks();
         assert!(runner.status().is_empty());
     }
 
     #[test]
     fn retention_requires_executor() {
-        let (_tx, rx) = watch::channel(false);
+        let token = CancellationToken::new();
         let mut config = MaintenanceConfig::default();
         config.retention.enabled = true;
 
-        let mut runner = TaskRunner::new("system", rx).with_maintenance(config);
+        let mut runner = TaskRunner::new("system", token).with_maintenance(config);
         runner.register_maintenance_tasks();
 
         let statuses = runner.status();
@@ -703,8 +701,8 @@ mod tests {
 
     #[tokio::test]
     async fn retention_without_executor_skips() {
-        let (_tx, rx) = watch::channel(false);
-        let runner = TaskRunner::new("system", rx);
+        let token = CancellationToken::new();
+        let runner = TaskRunner::new("system", token);
 
         let result = runner
             .execute_builtin(&BuiltinTask::RetentionExecution, "system")
@@ -716,8 +714,8 @@ mod tests {
 
     #[test]
     fn status_empty_runner() {
-        let (_tx, rx) = watch::channel(false);
-        let runner = TaskRunner::new("test-nous", rx);
+        let token = CancellationToken::new();
+        let runner = TaskRunner::new("test-nous", token);
         assert!(
             runner.status().is_empty(),
             "new runner should have no tasks"
@@ -726,8 +724,8 @@ mod tests {
 
     #[test]
     fn register_startup_task_immediate() {
-        let (_tx, rx) = watch::channel(false);
-        let mut runner = TaskRunner::new("test-nous", rx);
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
 
         let task = TaskDef {
             id: "startup-task".to_owned(),
@@ -756,27 +754,27 @@ mod tests {
 
     #[test]
     fn with_bridge_stores_bridge() {
-        let (_tx, rx) = watch::channel(false);
+        let token = CancellationToken::new();
         let bridge: Arc<dyn DaemonBridge> = Arc::new(crate::bridge::NoopBridge);
-        let runner = TaskRunner::with_bridge("test-nous", rx, bridge);
+        let runner = TaskRunner::with_bridge("test-nous", token, bridge);
         // Verify runner was created (bridge is private, but we can confirm no panic).
         assert!(runner.status().is_empty());
     }
 
     #[test]
     fn with_maintenance_builder_pattern() {
-        let (_tx, rx) = watch::channel(false);
+        let token = CancellationToken::new();
         let config = MaintenanceConfig::default();
-        let runner = TaskRunner::new("test-nous", rx).with_maintenance(config);
+        let runner = TaskRunner::new("test-nous", token).with_maintenance(config);
         assert!(runner.status().is_empty());
     }
 
     #[test]
     fn with_retention_builder_pattern() {
-        let (_tx, rx) = watch::channel(false);
+        let token = CancellationToken::new();
         let executor: Arc<dyn crate::maintenance::RetentionExecutor> =
             Arc::new(MockRetentionExecutor);
-        let runner = TaskRunner::new("test-nous", rx).with_retention(executor);
+        let runner = TaskRunner::new("test-nous", token).with_retention(executor);
         assert!(runner.status().is_empty());
     }
 
@@ -802,8 +800,8 @@ mod tests {
 
     #[tokio::test]
     async fn disabled_task_not_in_tick() {
-        let (_tx, rx) = watch::channel(false);
-        let mut runner = TaskRunner::new("test-nous", rx);
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
 
         let task = TaskDef {
             id: "disabled-task".to_owned(),
@@ -830,5 +828,93 @@ mod tests {
             statuses[0].run_count, 0,
             "disabled task should not have run"
         );
+    }
+
+    /// Parent token cancellation propagates to child token passed to runner.
+    #[tokio::test]
+    async fn child_token_cancelled_by_parent() {
+        let parent = CancellationToken::new();
+        let child = parent.child_token();
+        let mut runner = TaskRunner::new("test-nous", child);
+
+        let handle = tokio::spawn(async move {
+            runner.run().await;
+        });
+
+        // Cancel parent — child runner must observe this.
+        parent.cancel();
+
+        let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
+        assert!(
+            result.is_ok(),
+            "child runner should exit when parent token is cancelled"
+        );
+    }
+
+    /// Dropping the token (last owner cancels) also stops the runner.
+    #[tokio::test]
+    async fn dropped_token_stops_runner() {
+        let token = CancellationToken::new();
+        let child = token.child_token();
+        let mut runner = TaskRunner::new("test-nous", child);
+
+        let handle = tokio::spawn(async move {
+            runner.run().await;
+        });
+
+        // Cancel the root to signal shutdown and drop it.
+        token.cancel();
+        drop(token);
+
+        let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
+        assert!(result.is_ok(), "runner should exit when token is cancelled");
+    }
+
+    /// Shutdown timeout: a runner that would hang is cancelled by the token within timeout.
+    #[tokio::test]
+    async fn shutdown_completes_within_timeout() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token.clone());
+
+        // Spawn runner in background.
+        let handle = tokio::spawn(async move {
+            runner.run().await;
+        });
+
+        // Cancel and wait with a generous timeout — runner should stop quickly.
+        token.cancel();
+        let timeout = Duration::from_secs(2);
+        let result = tokio::time::timeout(timeout, handle).await;
+        assert!(
+            result.is_ok(),
+            "shutdown should complete well within {timeout:?}"
+        );
+    }
+
+    /// Multiple runners with independent child tokens: cancelling one does not affect others.
+    #[tokio::test]
+    async fn independent_child_tokens_isolated() {
+        let parent = CancellationToken::new();
+        let child_a = parent.child_token();
+        let child_b = parent.child_token();
+
+        let mut runner_a = TaskRunner::new("nous-a", child_a.clone());
+        let mut runner_b = TaskRunner::new("nous-b", child_b);
+
+        let handle_a = tokio::spawn(async move { runner_a.run().await });
+        let handle_b = tokio::spawn(async move { runner_b.run().await });
+
+        // Cancel only child_a — runner_a should stop, runner_b keeps going.
+        child_a.cancel();
+
+        let result_a = tokio::time::timeout(Duration::from_secs(2), handle_a).await;
+        assert!(result_a.is_ok(), "runner_a should stop when its token is cancelled");
+
+        // runner_b is still alive (not cancelled yet).
+        assert!(!handle_b.is_finished(), "runner_b should still be running");
+
+        // Clean up.
+        parent.cancel();
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle_b).await;
     }
 }
