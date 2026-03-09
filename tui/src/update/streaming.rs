@@ -2,6 +2,7 @@ use crate::api::types::{Plan, TurnOutcome};
 use crate::app::App;
 use crate::id::{NousId, ToolId, TurnId};
 use crate::msg::ErrorToast;
+use crate::sanitize::sanitize_for_display;
 use crate::state::{
     AgentStatus, ChatMessage, Overlay, PlanApprovalOverlay, PlanStepApproval, ToolApprovalOverlay,
     ToolCallInfo,
@@ -19,8 +20,10 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
     }
 }
 
+// SAFETY: sanitized at ingestion — streaming text from LLM API.
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
-    app.streaming_text.push_str(&text);
+    let clean = sanitize_for_display(&text);
+    app.streaming_text.push_str(&clean);
     let delta = app.streaming_text.len() as i64 - app.cached_markdown_text.len() as i64;
     if delta >= 64 || text.contains('\n') {
         let width = 120;
@@ -33,19 +36,23 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     }
 }
 
+// SAFETY: sanitized at ingestion — thinking text from LLM API.
 pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
-    app.streaming_thinking.push_str(&text);
+    let clean = sanitize_for_display(&text);
+    app.streaming_thinking.push_str(&clean);
 }
 
+// SAFETY: sanitized at ingestion — tool names from stream API.
 pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
+    let clean_name = sanitize_for_display(&tool_name).into_owned();
     app.streaming_tool_calls.push(ToolCallInfo {
-        name: tool_name.clone(),
+        name: clean_name.clone(),
         duration_ms: None,
         is_error: false,
     });
     if let Some(ref agent_id) = app.focused_agent {
         if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
-            agent.active_tool = Some(tool_name);
+            agent.active_tool = Some(clean_name);
             agent.tool_started_at = Some(std::time::Instant::now());
         }
     }
@@ -74,6 +81,7 @@ pub(crate) fn handle_stream_tool_result(
     }
 }
 
+// SAFETY: sanitized at ingestion — tool approval data from stream API.
 pub(crate) fn handle_stream_tool_approval_required(
     app: &mut App,
     turn_id: TurnId,
@@ -86,10 +94,10 @@ pub(crate) fn handle_stream_tool_approval_required(
     app.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
         turn_id,
         tool_id,
-        tool_name,
+        tool_name: sanitize_for_display(&tool_name).into_owned(),
         input,
-        risk,
-        reason,
+        risk: sanitize_for_display(&risk).into_owned(),
+        reason: sanitize_for_display(&reason).into_owned(),
     }));
 }
 
@@ -99,6 +107,7 @@ pub(crate) fn handle_stream_tool_approval_resolved(app: &mut App) {
     }
 }
 
+// SAFETY: sanitized at ingestion — plan step labels and roles from stream API.
 pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     app.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
         plan_id: plan.id,
@@ -109,21 +118,23 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
             .into_iter()
             .map(|s| PlanStepApproval {
                 id: s.id,
-                label: s.label,
-                role: s.role,
+                label: sanitize_for_display(&s.label).into_owned(),
+                role: sanitize_for_display(&s.role).into_owned(),
                 checked: true,
             })
             .collect(),
     }));
 }
 
+// SAFETY: sanitized at ingestion — streaming_text already sanitized via handle_stream_text_delta,
+// model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
     if !app.streaming_text.is_empty() {
         app.messages.push(ChatMessage {
             role: "assistant".to_string(),
             text: app.streaming_text.clone(),
             timestamp: None,
-            model: Some(outcome.model),
+            model: Some(sanitize_for_display(&outcome.model).into_owned()),
             is_streaming: false,
             tool_calls: std::mem::take(&mut app.streaming_tool_calls),
         });
@@ -154,9 +165,10 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     app.stream_rx = None;
 }
 
+// SAFETY: sanitized at ingestion — error messages may contain external data.
 pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");
-    app.error_toast = Some(ErrorToast::new(msg));
+    app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
     app.active_turn_id = None;
     app.stream_rx = None;
 }
