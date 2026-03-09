@@ -2,6 +2,7 @@
 
 mod daemon_bridge;
 mod dispatch;
+mod init;
 #[cfg(feature = "recall")]
 mod knowledge_adapter;
 #[cfg(feature = "migrate-qdrant")]
@@ -193,6 +194,20 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Initialize a new instance
+    Init {
+        /// Instance root directory
+        #[arg(short = 'r', long, default_value = "./instance")]
+        instance_root: PathBuf,
+
+        /// Accept all defaults (non-interactive)
+        #[arg(short = 'y', long)]
+        yes: bool,
+
+        /// API key (non-interactive mode)
+        #[arg(long, env = "ANTHROPIC_API_KEY")]
+        api_key: Option<String>,
+    },
     /// Import an agent from a portable .agent.json file
     Import {
         /// Path to .agent.json file
@@ -251,10 +266,14 @@ enum MaintenanceAction {
 }
 
 #[tokio::main]
+#[expect(clippy::too_many_lines, reason = "CLI dispatch is inherently verbose")]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
+        Some(Command::Init { instance_root, yes, api_key }) => {
+            return init::run(instance_root.clone(), *yes, api_key.clone());
+        }
         Some(Command::Health { url }) => return health(url).await,
         Some(Command::Backup {
             list,
