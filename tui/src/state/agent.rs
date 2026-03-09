@@ -14,6 +14,8 @@ pub enum AgentStatus {
 pub struct AgentState {
     pub id: NousId,
     pub name: String,
+    /// Pre-lowercased `name`, cached at ingestion to avoid per-frame allocation in view code.
+    pub name_lower: String,
     pub emoji: Option<String>,
     pub status: AgentStatus,
     pub active_tool: Option<String>,

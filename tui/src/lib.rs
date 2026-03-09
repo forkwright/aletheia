@@ -142,3 +142,32 @@ async fn recv_stream(
         None => std::future::pending().await,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn recv_sse_none_never_resolves() {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        tx.send(()).unwrap();
+        let mut opt: Option<api::sse::SseConnection> = None;
+        tokio::select! {
+            biased;
+            _ = rx => {} // ready immediately — proves recv_sse(None) did not resolve first
+            _ = recv_sse(&mut opt) => panic!("recv_sse(None) must not resolve"),
+        }
+    }
+
+    #[tokio::test]
+    async fn recv_stream_none_never_resolves() {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        tx.send(()).unwrap();
+        let mut opt: Option<tokio::sync::mpsc::Receiver<events::StreamEvent>> = None;
+        tokio::select! {
+            biased;
+            _ = rx => {} // ready immediately — proves recv_stream(None) did not resolve first
+            _ = recv_stream(&mut opt) => panic!("recv_stream(None) must not resolve"),
+        }
+    }
+}

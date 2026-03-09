@@ -10,17 +10,22 @@ use crate::state::{AgentState, AgentStatus, ChatMessage};
 pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
     app.agents = agents
         .into_iter()
-        .map(|a| AgentState {
-            id: a.id.clone(),
-            name: sanitize_for_display(a.display_name()).into_owned(),
-            emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
-            status: AgentStatus::Idle,
-            active_tool: None,
-            tool_started_at: None,
-            sessions: sanitize_sessions(Vec::new()),
-            model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
-            compaction_stage: None,
-            has_notification: false,
+        .map(|a| {
+            let name = sanitize_for_display(a.display_name()).into_owned();
+            let name_lower = name.to_lowercase();
+            AgentState {
+                id: a.id.clone(),
+                name,
+                name_lower,
+                emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
+                status: AgentStatus::Idle,
+                active_tool: None,
+                tool_started_at: None,
+                sessions: sanitize_sessions(Vec::new()),
+                model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
+                compaction_stage: None,
+                has_notification: false,
+            }
         })
         .collect();
 }
@@ -43,9 +48,12 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
                 return None;
             }
             let text = extract_text_content(&m.content)?;
+            let text = sanitize_for_display(&text).into_owned();
+            let text_lower = text.to_lowercase();
             Some(ChatMessage {
                 role: sanitize_for_display(&m.role).into_owned(),
-                text: sanitize_for_display(&text).into_owned(),
+                text,
+                text_lower,
                 timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
                 model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
                 is_streaming: false,

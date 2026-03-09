@@ -193,3 +193,51 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::Tick => api::handle_tick(app),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::test_app;
+
+    #[tokio::test]
+    async fn quit_sets_should_quit() {
+        let mut app = test_app();
+        update(&mut app, Msg::Quit).await;
+        assert!(app.should_quit);
+    }
+
+    #[tokio::test]
+    async fn tick_does_not_panic() {
+        let mut app = test_app();
+        update(&mut app, Msg::Tick).await;
+    }
+
+    #[tokio::test]
+    async fn char_input_with_selection_deselects_first() {
+        let mut app = test_app();
+        app.selected_message = Some(0);
+        update(&mut app, Msg::CharInput('a')).await;
+        assert!(app.selected_message.is_none());
+    }
+
+    #[tokio::test]
+    async fn resize_does_not_panic() {
+        let mut app = test_app();
+        update(&mut app, Msg::Resize(120, 40)).await;
+    }
+
+    #[tokio::test]
+    async fn dismiss_error_clears_toast() {
+        let mut app = test_app();
+        app.error_toast = Some(crate::msg::ErrorToast::new("oops".to_string()));
+        update(&mut app, Msg::DismissError).await;
+        assert!(app.error_toast.is_none());
+    }
+
+    #[tokio::test]
+    async fn show_error_sets_toast() {
+        let mut app = test_app();
+        update(&mut app, Msg::ShowError("bad".to_string())).await;
+        assert!(app.error_toast.is_some());
+    }
+}
