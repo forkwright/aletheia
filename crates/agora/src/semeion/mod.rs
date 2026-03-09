@@ -121,6 +121,10 @@ impl SignalProvider {
             let tx = tx.clone();
             let account_id = account_id.clone();
             let signal_client = signal_client.clone();
+            #[expect(
+                clippy::expect_used,
+                reason = "account_states and clients share the same key set; state is always inserted alongside the client in add_account"
+            )]
             let state = self
                 .account_states
                 .get(&account_id)

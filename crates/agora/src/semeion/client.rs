@@ -139,6 +139,10 @@ impl SignalClient {
             }
         }
 
+        #[expect(
+            clippy::expect_used,
+            reason = "loop range 0..=backoffs.len() always executes at least one iteration, so last_err is always Some here"
+        )]
         Err(last_err.expect("at least one attempt was made"))
     }
 

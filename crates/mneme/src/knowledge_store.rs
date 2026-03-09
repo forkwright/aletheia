@@ -720,8 +720,14 @@ impl KnowledgeStore {
     ///
     /// Takes the top entity IDs from existing results, queries their neighborhoods,
     /// and returns related facts as additional results.
-    #[expect(clippy::cast_precision_loss, reason = "rank indices fit in f64 mantissa")]
-    #[expect(clippy::cast_possible_wrap, reason = "rank indices are small positive values")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "rank indices fit in f64 mantissa"
+    )]
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "rank indices are small positive values"
+    )]
     fn expand_via_graph(
         &self,
         existing: &[HybridResult],

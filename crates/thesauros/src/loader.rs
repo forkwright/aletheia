@@ -81,6 +81,13 @@ impl LoadedPack {
 ///
 /// Reads manifests from each path, resolves context files, and returns loaded packs.
 /// Invalid or missing packs emit warnings and are skipped (graceful degradation).
+///
+/// # Blocking I/O
+///
+/// This function performs synchronous file I/O and is intended to be called once
+/// at startup, before the async runtime begins serving requests. If called from
+/// within an async context during normal operation, wrap in
+/// `tokio::task::spawn_blocking`.
 pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
     let mut packs = Vec::with_capacity(paths.len());
 

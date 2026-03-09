@@ -5,6 +5,10 @@ use std::sync::LazyLock;
 use prometheus::{CounterVec, IntCounterVec, Opts, register_counter_vec, register_int_counter_vec};
 
 static LLM_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
+    )]
     register_int_counter_vec!(
         Opts::new("aletheia_llm_tokens_total", "Total LLM tokens consumed"),
         &["provider", "direction"]
@@ -13,6 +17,10 @@ static LLM_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
 });
 
 static LLM_COST_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
+    )]
     register_counter_vec!(
         Opts::new("aletheia_llm_cost_total", "Total LLM cost in USD"),
         &["provider"]
@@ -21,6 +29,10 @@ static LLM_COST_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
 });
 
 static LLM_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
+    )]
     register_int_counter_vec!(
         Opts::new("aletheia_llm_requests_total", "Total LLM API requests"),
         &["provider", "status"]
