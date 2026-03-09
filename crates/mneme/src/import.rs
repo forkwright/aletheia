@@ -93,6 +93,15 @@ pub fn import_agent(
         }
     }
 
+    if let Some(ref knowledge) = agent_file.knowledge {
+        info!(
+            facts = knowledge.facts.len(),
+            entities = knowledge.entities.len(),
+            relationships = knowledge.relationships.len(),
+            "knowledge data present — import requires knowledge store (skipped in session import)"
+        );
+    }
+
     info!(
         nous_id,
         files = result.files_restored,
@@ -259,6 +268,65 @@ fn import_sessions(
     Ok(())
 }
 
+/// Import knowledge graph data from an `AgentFile` into a knowledge store.
+///
+/// # Errors
+///
+/// Returns errors if fact/entity/relationship insertion fails.
+#[cfg(feature = "mneme-engine")]
+#[instrument(skip(knowledge, store))]
+pub fn import_knowledge(
+    knowledge: &crate::portability::KnowledgeExport,
+    store: &crate::knowledge_store::KnowledgeStore,
+) -> Result<KnowledgeImportResult> {
+    let mut result = KnowledgeImportResult::default();
+
+    for entity in &knowledge.entities {
+        if let Err(e) = store.insert_entity(entity) {
+            warn!(entity_id = %entity.id, error = %e, "failed to import entity");
+            continue;
+        }
+        result.entities_imported += 1;
+    }
+
+    for rel in &knowledge.relationships {
+        if let Err(e) = store.insert_relationship(rel) {
+            warn!(src = %rel.src, dst = %rel.dst, error = %e, "failed to import relationship");
+            continue;
+        }
+        result.relationships_imported += 1;
+    }
+
+    for fact in &knowledge.facts {
+        if let Err(e) = store.insert_fact(fact) {
+            warn!(fact_id = %fact.id, error = %e, "failed to import fact");
+            continue;
+        }
+        result.facts_imported += 1;
+    }
+
+    info!(
+        facts = result.facts_imported,
+        entities = result.entities_imported,
+        relationships = result.relationships_imported,
+        "knowledge imported"
+    );
+
+    Ok(result)
+}
+
+/// Summary of knowledge graph import results.
+#[cfg(feature = "mneme-engine")]
+#[derive(Debug, Clone, Default)]
+pub struct KnowledgeImportResult {
+    /// Number of facts successfully imported.
+    pub facts_imported: usize,
+    /// Number of entities successfully imported.
+    pub entities_imported: usize,
+    /// Number of relationships successfully imported.
+    pub relationships_imported: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,6 +400,7 @@ mod tests {
                 ],
             }],
             memory: None,
+            knowledge: None,
         }
     }
 
@@ -673,6 +742,7 @@ mod tests {
             },
             sessions: vec![],
             memory: None,
+            knowledge: None,
         };
 
         let id_gen = counter_id_gen();

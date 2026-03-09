@@ -47,6 +47,8 @@ pub mod portability;
 /// Typed Datalog query builder for compile-time schema validation.
 #[cfg(feature = "mneme-engine")]
 pub mod query;
+/// LLM-powered query rewriting for recall pipeline enhancement.
+pub mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
 /// Session retention policies and automated cleanup of old data.
