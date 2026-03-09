@@ -191,6 +191,7 @@ mod tests {
     use super::*;
 
     struct MockProvider {
+        // std::sync::Mutex is intentional — test mock, never crosses .await
         response: Mutex<CompletionResponse>,
     }
 

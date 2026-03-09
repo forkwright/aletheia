@@ -10,8 +10,9 @@
 //! 6. **Finalize** — persist messages, update counts, extract facts
 
 use std::collections::VecDeque;
-use std::sync::Mutex;
 use std::time::Instant;
+
+use tokio::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info_span, instrument, warn};
@@ -438,12 +439,8 @@ pub async fn run_pipeline(
         let start = Instant::now();
         let history_config = HistoryConfig::default();
         if let Some(store_mutex) = session_store {
-            let store = store_mutex.lock().map_err(|_poison| {
-                crate::error::MutexPoisonedSnafu {
-                    what: "session store",
-                }
-                .build()
-            })?;
+            // Guard is scoped to this block and dropped before the execute .await below
+            let store = store_mutex.lock().await;
             let (messages, hist_result) = history::load_history(
                 &store,
                 &input.session.id,
@@ -576,12 +573,7 @@ pub async fn run_pipeline(
         let _guard = span.enter();
         let start = Instant::now();
         if let Some(store_mutex) = session_store {
-            let store = store_mutex.lock().map_err(|_poison| {
-                crate::error::MutexPoisonedSnafu {
-                    what: "session store",
-                }
-                .build()
-            })?;
+            let store = store_mutex.lock().await;
             let finalize_config = crate::finalize::FinalizeConfig::default();
             match crate::finalize::finalize(
                 &store,

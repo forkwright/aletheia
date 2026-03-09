@@ -1,7 +1,9 @@
 //! Manages all nous actor instances.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
 
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
@@ -295,6 +297,7 @@ mod tests {
     use crate::message::NousLifecycle;
 
     struct MockProvider {
+        // std::sync::Mutex is intentional — test mock, never crosses .await
         response: Mutex<CompletionResponse>,
     }
 
