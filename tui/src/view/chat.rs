@@ -21,16 +21,13 @@ struct MessageCtx<'a> {
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let inner_width = area.width.saturating_sub(2) as usize;
-    let mut lines: Vec<Line> = Vec::new();
-
-    // Small top padding
-    lines.push(Line::raw(""));
+    let wrap_width = area.width.saturating_sub(2).max(1);
+    let visible_height = area.height.saturating_sub(2);
 
     let filter_active =
         app.filter.active && app.filter.scope == FilterScope::Chat && !app.filter.text.is_empty();
     let (pattern, inverted) = app.filter.pattern();
 
-    // Borrow the pre-lowercased agent name cached at ingestion; no per-frame allocation.
     let agent_name_lower: &str = app
         .focused_agent
         .as_ref()
@@ -38,23 +35,39 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         .map(|a| a.name_lower.as_str())
         .unwrap_or("assistant");
 
-    // Render each message (filtered when active, with selection indicator)
-    for (idx, msg) in app.messages.iter().enumerate() {
-        if filter_active {
-            let contains = msg.text_lower.contains(pattern);
-            let show = if inverted { !contains } else { contains };
-            if !show {
-                continue;
-            }
-        }
-        let ctx = MessageCtx {
+    // --- Virtual scroll: determine which messages to render ---
+    //
+    // When filter is active, we fall back to iterating all messages (filter changes
+    // the visible set dynamically). For the non-filtered common path, we use the
+    // VirtualScroll prefix-sum index for O(log n) range lookup.
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::raw("")); // top padding
+
+    if filter_active {
+        // Filtered path: iterate all messages, skip non-matching.
+        // This is acceptable because filtering is interactive and users rarely
+        // have 15K messages with a filter active.
+        render_filtered_messages(
+            app,
+            &mut lines,
             inner_width,
             theme,
-            selected: app.selected_message == Some(idx),
-            highlight: filter_active.then_some(pattern),
-            agent_name: agent_name_lower,
-        };
-        render_message(app, msg, &mut lines, &ctx);
+            agent_name_lower,
+            pattern,
+            inverted,
+        );
+    } else {
+        // Virtual scroll path: only render viewport + buffer items.
+        render_virtual_messages(
+            app,
+            &mut lines,
+            inner_width,
+            wrap_width,
+            visible_height,
+            theme,
+            agent_name_lower,
+        );
     }
 
     if filter_active && lines.len() <= 1 {
@@ -72,26 +85,24 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         render_streaming(app, &mut lines, inner_width, theme, agent_name_lower);
     }
 
-    // Calculate scroll — must account for line wrapping.
-    let visible_height = area.height.saturating_sub(2) as usize;
-    let wrap_width = area.width.saturating_sub(2).max(1) as usize;
-    let total_visual_lines: usize = lines
-        .iter()
-        .map(|line| {
-            let line_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
-            if line_width == 0 {
-                1
-            } else {
-                line_width.div_ceil(wrap_width)
-            }
-        })
-        .sum();
-    let scroll = if app.auto_scroll {
-        total_visual_lines.saturating_sub(visible_height)
+    // For virtual scroll path, the scroll offset is already baked into which items
+    // we rendered and the line_offset. For filtered path, use legacy scroll calc.
+    let scroll = if filter_active {
+        compute_legacy_scroll(
+            &lines,
+            wrap_width,
+            visible_height,
+            app.auto_scroll,
+            app.scroll_offset,
+        )
     } else {
-        total_visual_lines
-            .saturating_sub(visible_height)
-            .saturating_sub(app.scroll_offset)
+        // Virtual scroll: we rendered exactly the right items with correct offset.
+        // The line_offset from visible_slice tells us where to start within the
+        // rendered content.
+        let slice =
+            app.virtual_scroll
+                .visible_slice(app.scroll_offset, app.auto_scroll, visible_height);
+        slice.line_offset as usize
     };
 
     let block = Block::default().borders(Borders::NONE);
@@ -101,6 +112,116 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         .scroll((scroll as u16, 0));
 
     frame.render_widget(paragraph, area);
+}
+
+/// Render only the messages in the virtual scroll viewport + buffer zone.
+fn render_virtual_messages(
+    app: &App,
+    lines: &mut Vec<Line<'static>>,
+    inner_width: usize,
+    wrap_width: u16,
+    visible_height: u16,
+    theme: &ThemePalette,
+    agent_name: &str,
+) {
+    // Ensure the virtual scroll cache is populated and matches current width.
+    // This is a read-only check — cache rebuilds happen in the update layer.
+    // If the cache is stale (width changed or item count mismatch), fall back to
+    // full iteration for this single frame. The next update tick will rebuild.
+    let needs_fallback = app.virtual_scroll.len() != app.messages.len()
+        || (app.virtual_scroll.cached_width() != wrap_width && !app.messages.is_empty());
+
+    if needs_fallback {
+        // Fallback: render all messages this frame. The cache will be rebuilt.
+        for (idx, msg) in app.messages.iter().enumerate() {
+            let ctx = MessageCtx {
+                inner_width,
+                theme,
+                selected: app.selected_message == Some(idx),
+                highlight: None,
+                agent_name,
+            };
+            render_message(app, msg, lines, &ctx);
+        }
+        return;
+    }
+
+    let slice =
+        app.virtual_scroll
+            .visible_slice(app.scroll_offset, app.auto_scroll, visible_height);
+
+    if slice.range.is_empty() {
+        return;
+    }
+
+    for idx in slice.range.clone() {
+        let msg = &app.messages[idx];
+        let ctx = MessageCtx {
+            inner_width,
+            theme,
+            selected: app.selected_message == Some(idx),
+            highlight: None,
+            agent_name,
+        };
+        render_message(app, msg, lines, &ctx);
+    }
+}
+
+/// Render all messages, skipping those that don't match the filter.
+fn render_filtered_messages(
+    app: &App,
+    lines: &mut Vec<Line<'static>>,
+    inner_width: usize,
+    theme: &ThemePalette,
+    agent_name: &str,
+    pattern: &str,
+    inverted: bool,
+) {
+    for (idx, msg) in app.messages.iter().enumerate() {
+        let contains = msg.text_lower.contains(pattern);
+        let show = if inverted { !contains } else { contains };
+        if !show {
+            continue;
+        }
+        let ctx = MessageCtx {
+            inner_width,
+            theme,
+            selected: app.selected_message == Some(idx),
+            highlight: Some(pattern),
+            agent_name,
+        };
+        render_message(app, msg, lines, &ctx);
+    }
+}
+
+/// Legacy scroll calculation for filtered mode (iterates all rendered lines).
+fn compute_legacy_scroll(
+    lines: &[Line<'_>],
+    wrap_width: u16,
+    visible_height: u16,
+    auto_scroll: bool,
+    scroll_offset: usize,
+) -> usize {
+    let w = wrap_width.max(1) as usize;
+    let total_visual_lines: usize = lines
+        .iter()
+        .map(|line| {
+            let line_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
+            if line_width == 0 {
+                1
+            } else {
+                line_width.div_ceil(w)
+            }
+        })
+        .sum();
+    let vh = visible_height as usize;
+    if auto_scroll {
+        total_visual_lines.saturating_sub(vh)
+    } else {
+        total_visual_lines
+            .saturating_sub(vh)
+            .saturating_sub(scroll_offset)
+    }
 }
 
 fn render_message(

@@ -6,6 +6,7 @@ mod input;
 mod overlay;
 pub mod settings;
 pub(crate) mod view_stack;
+pub(crate) mod virtual_scroll;
 
 pub use agent::{AgentState, AgentStatus};
 pub(crate) use chat::SavedScrollState;

@@ -85,6 +85,8 @@ pub(crate) fn handle_toggle_thinking(app: &mut App) {
 pub(crate) fn handle_resize(app: &mut App, w: u16, h: u16) {
     app.terminal_width = w;
     app.terminal_height = h;
+    // Terminal width changed — recalculate message heights for wrapping.
+    app.rebuild_virtual_scroll();
 }
 
 #[cfg(test)]

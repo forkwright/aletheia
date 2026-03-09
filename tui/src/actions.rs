@@ -3,6 +3,7 @@ use tracing::Instrument;
 
 use crate::api::streaming;
 use crate::app::App;
+use crate::state::virtual_scroll::estimate_message_height;
 use crate::state::{ChatMessage, SavedScrollState, TabCompletion};
 
 impl App {
@@ -33,7 +34,7 @@ impl App {
 
         let text_owned = text.to_string();
         let text_lower = text_owned.to_lowercase();
-        self.messages.push(ChatMessage {
+        let msg = ChatMessage {
             role: "user".to_string(),
             text: text_owned,
             text_lower,
@@ -41,7 +42,14 @@ impl App {
             model: None,
             is_streaming: false,
             tool_calls: Vec::new(),
-        });
+        };
+        let width = self
+            .virtual_scroll
+            .cached_width()
+            .max(self.terminal_width.saturating_sub(2).max(1));
+        let h = estimate_message_height(msg.text.len(), !msg.tool_calls.is_empty(), width);
+        self.messages.push(msg);
+        self.virtual_scroll.push_item(h);
         self.scroll_to_bottom();
 
         let session_key = self
@@ -139,6 +147,18 @@ impl App {
                 self.scroll_to_bottom();
             }
         }
+    }
+
+    /// Rebuild the virtual scroll height cache from current messages and terminal width.
+    /// Called on session load, terminal resize, or when the cache becomes stale.
+    pub(crate) fn rebuild_virtual_scroll(&mut self) {
+        let width = self.terminal_width.saturating_sub(2).max(1);
+        let heights: Vec<u16> = self
+            .messages
+            .iter()
+            .map(|msg| estimate_message_height(msg.text.len(), !msg.tool_calls.is_empty(), width))
+            .collect();
+        self.virtual_scroll.rebuild(&heights, width);
     }
 
     pub(crate) fn prev_char_boundary(&self, pos: usize) -> usize {

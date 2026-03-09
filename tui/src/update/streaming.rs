@@ -3,6 +3,7 @@ use crate::app::App;
 use crate::id::{NousId, ToolId, TurnId};
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
+use crate::state::virtual_scroll::estimate_message_height;
 use crate::state::{
     AgentStatus, ChatMessage, Overlay, PlanApprovalOverlay, PlanStepApproval, ToolApprovalOverlay,
     ToolCallInfo,
@@ -141,6 +142,13 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     if !app.streaming_text.is_empty() {
         let text = app.streaming_text.clone();
         let text_lower = text.to_lowercase();
+        let tool_calls = std::mem::take(&mut app.streaming_tool_calls);
+        let has_tools = !tool_calls.is_empty();
+        let width = app
+            .virtual_scroll
+            .cached_width()
+            .max(app.terminal_width.saturating_sub(2).max(1));
+        let h = estimate_message_height(text.len(), has_tools, width);
         app.messages.push(ChatMessage {
             role: "assistant".to_string(),
             text,
@@ -148,8 +156,9 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
             timestamp: None,
             model: Some(sanitize_for_display(&outcome.model).into_owned()),
             is_streaming: false,
-            tool_calls: std::mem::take(&mut app.streaming_tool_calls),
+            tool_calls,
         });
+        app.virtual_scroll.push_item(h);
     }
     app.streaming_text.clear();
     app.streaming_thinking.clear();

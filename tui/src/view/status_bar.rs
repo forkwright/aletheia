@@ -61,6 +61,7 @@ fn render_info_bar(app: &App, width: u16, theme: &ThemePalette) -> Line<'static>
         left_spans.push(Span::styled(" (Esc to clear)", theme.style_dim()));
     }
 
+    right_spans.extend(scroll_position_spans(app, theme));
     right_spans.extend(cost_spans(app, theme));
     right_spans.push(Span::styled(" │ ", theme.style_dim()));
     right_spans.extend(context_gauge_spans(app, theme));
@@ -149,6 +150,23 @@ fn cost_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
 
 fn format_cost(cents: u32) -> String {
     format!("${:.2}", cents as f64 / 100.0)
+}
+
+fn scroll_position_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
+    let viewport = app.terminal_height.saturating_sub(6); // approximate chat area
+    match app
+        .virtual_scroll
+        .scrollbar_position(app.scroll_offset, app.auto_scroll, viewport)
+    {
+        Some((offset, _size)) => {
+            let pct = (offset * 100.0).round() as u16;
+            vec![
+                Span::styled(format!("{pct}%"), theme.style_dim()),
+                Span::styled(" │ ", theme.style_dim()),
+            ]
+        }
+        None => Vec::new(),
+    }
 }
 
 fn context_gauge_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {

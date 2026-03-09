@@ -61,6 +61,7 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
             })
         })
         .collect();
+    app.rebuild_virtual_scroll();
     app.scroll_to_bottom();
 }
 
@@ -73,6 +74,7 @@ pub(crate) fn handle_cost_loaded(app: &mut App, daily_total_cents: u32) {
 pub(crate) async fn handle_new_session(app: &mut App) {
     if let Some(ref agent_id) = app.focused_agent.clone() {
         app.messages.clear();
+        app.virtual_scroll.clear();
         app.scroll_to_bottom();
 
         let session_key = format!("tui-{}", chrono_compact_now());
@@ -124,6 +126,7 @@ pub(crate) async fn handle_session_picker_archive(app: &mut App) {
             }
             if app.focused_session_id.as_ref() == Some(&session_id) {
                 app.messages.clear();
+                app.virtual_scroll.clear();
                 app.focused_session_id = None;
                 app.scroll_to_bottom();
             }
