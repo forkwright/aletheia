@@ -304,6 +304,7 @@ dependencies = [
  "aletheia-taxis",
  "axum 0.8.8",
  "axum-server",
+ "http-body-util",
  "jsonwebtoken",
  "prometheus",
  "reqwest",

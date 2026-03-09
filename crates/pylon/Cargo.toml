@@ -52,6 +52,7 @@ aletheia-nous = { path = "../nous" }
 aletheia-symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
+http-body-util = "0.1"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 reqwest = { workspace = true }
 secrecy = { workspace = true }
