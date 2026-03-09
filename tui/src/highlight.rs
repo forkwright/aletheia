@@ -87,11 +87,7 @@ mod tests {
         let hl = Highlighter::new();
         let lines = hl.highlight("some text", "nonexistent_language_xyz");
         assert!(!lines.is_empty());
-        let text: String = lines[0]
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect();
+        let text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(text.contains("some text"));
     }
 

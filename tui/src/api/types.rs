@@ -297,7 +297,8 @@ mod tests {
 
     #[test]
     fn agent_deserialization_full() {
-        let json = r#"{"id": "syn", "name": "Syn", "model": "claude-opus-4-6", "emoji": "\ud83e\udde0"}"#;
+        let json =
+            r#"{"id": "syn", "name": "Syn", "model": "claude-opus-4-6", "emoji": "\ud83e\udde0"}"#;
         let agent: Agent = serde_json::from_str(json).unwrap();
         assert_eq!(agent.display_name(), "Syn");
         assert_eq!(agent.model.as_deref(), Some("claude-opus-4-6"));

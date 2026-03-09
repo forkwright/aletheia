@@ -393,9 +393,7 @@ mod tests {
         app.selected_message = Some(0);
         sync_selection_context(&mut app);
         match &app.selection {
-            SelectionContext::AgentResponse {
-                has_links, ..
-            } => {
+            SelectionContext::AgentResponse { has_links, .. } => {
                 assert!(*has_links);
             }
             other => panic!("expected AgentResponse, got {:?}", other),
@@ -486,10 +484,8 @@ mod tests {
 
     #[test]
     fn action_delete_user_message() {
-        let mut app = test_app_with_messages(vec![
-            ("user", "delete me"),
-            ("assistant", "response"),
-        ]);
+        let mut app =
+            test_app_with_messages(vec![("user", "delete me"), ("assistant", "response")]);
         app.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Delete);
         assert_eq!(app.messages.len(), 1);

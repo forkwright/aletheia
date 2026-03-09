@@ -155,7 +155,10 @@ mod tests {
     async fn open_overlay_agent_picker() {
         let mut app = test_app();
         handle_open_overlay(&mut app, OverlayKind::AgentPicker).await;
-        assert!(matches!(app.overlay, Some(Overlay::AgentPicker { cursor: 0 })));
+        assert!(matches!(
+            app.overlay,
+            Some(Overlay::AgentPicker { cursor: 0 })
+        ));
     }
 
     #[tokio::test]

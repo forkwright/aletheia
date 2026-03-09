@@ -212,14 +212,12 @@ mod tests {
     fn handle_agents_loaded_populates() {
         use crate::app::test_helpers::*;
         let mut app = test_app();
-        let agents = vec![
-            Agent {
-                id: "syn".into(),
-                name: Some("Syn".to_string()),
-                model: Some("claude-opus-4-6".to_string()),
-                emoji: Some("\u{1F9E0}".to_string()),
-            },
-        ];
+        let agents = vec![Agent {
+            id: "syn".into(),
+            name: Some("Syn".to_string()),
+            model: Some("claude-opus-4-6".to_string()),
+            emoji: Some("\u{1F9E0}".to_string()),
+        }];
         handle_agents_loaded(&mut app, agents);
         assert_eq!(app.agents.len(), 1);
         assert_eq!(app.agents[0].name, "Syn");

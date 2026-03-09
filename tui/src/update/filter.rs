@@ -117,10 +117,7 @@ mod tests {
 
     #[test]
     fn handle_backspace_recounts() {
-        let mut app = test_app_with_messages(vec![
-            ("user", "hello"),
-            ("assistant", "help"),
-        ]);
+        let mut app = test_app_with_messages(vec![("user", "hello"), ("assistant", "help")]);
         handle_open(&mut app);
         handle_input(&mut app, 'h');
         handle_input(&mut app, 'e');
@@ -176,10 +173,7 @@ mod tests {
 
     #[test]
     fn inverted_pattern_counts_non_matches() {
-        let mut app = test_app_with_messages(vec![
-            ("user", "hello"),
-            ("assistant", "world"),
-        ]);
+        let mut app = test_app_with_messages(vec![("user", "hello"), ("assistant", "world")]);
         handle_open(&mut app);
         handle_input(&mut app, '!');
         handle_input(&mut app, 'h');

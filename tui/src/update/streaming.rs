@@ -180,10 +180,7 @@ mod tests {
         assert!(app.streaming_text.is_empty());
         assert!(app.streaming_thinking.is_empty());
         assert!(app.streaming_tool_calls.is_empty());
-        assert_eq!(
-            app.agents[0].status,
-            AgentStatus::Streaming
-        );
+        assert_eq!(app.agents[0].status, AgentStatus::Streaming);
     }
 
     #[test]
@@ -294,16 +291,14 @@ mod tests {
             id: "plan1".into(),
             session_id: "s1".into(),
             nous_id: "syn".into(),
-            steps: vec![
-                PlanStep {
-                    id: 1,
-                    label: "Step 1".to_string(),
-                    role: "analyst".to_string(),
-                    parallel: None,
-                    status: "pending".to_string(),
-                    result: None,
-                },
-            ],
+            steps: vec![PlanStep {
+                id: 1,
+                label: "Step 1".to_string(),
+                role: "analyst".to_string(),
+                parallel: None,
+                status: "pending".to_string(),
+                result: None,
+            }],
             total_estimated_cost_cents: 50,
             status: "proposed".to_string(),
         };

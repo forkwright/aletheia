@@ -372,7 +372,10 @@ mod tests {
         handle_input(&mut app, 'q');
         handle_tab(&mut app);
         // After tab, input should contain the full command name
-        assert!(app.command_palette.input.starts_with("quit") || !app.command_palette.suggestions.is_empty());
+        assert!(
+            app.command_palette.input.starts_with("quit")
+                || !app.command_palette.suggestions.is_empty()
+        );
     }
 
     #[test]

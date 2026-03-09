@@ -457,10 +457,7 @@ mod tests {
 
     #[test]
     fn test_app_with_messages_populates() {
-        let app = test_app_with_messages(vec![
-            ("user", "hello"),
-            ("assistant", "hi there"),
-        ]);
+        let app = test_app_with_messages(vec![("user", "hello"), ("assistant", "hi there")]);
         assert_eq!(app.messages.len(), 2);
         assert_eq!(app.messages[0].role, "user");
         assert_eq!(app.messages[1].text, "hi there");

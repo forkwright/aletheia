@@ -638,9 +638,7 @@ mod tests {
     #[test]
     fn current_contexts_settings_overlay() {
         let mut app = test_app();
-        let settings = crate::state::settings::SettingsOverlay::from_config(
-            &serde_json::json!({}),
-        );
+        let settings = crate::state::settings::SettingsOverlay::from_config(&serde_json::json!({}));
         app.overlay = Some(Overlay::Settings(settings));
         let contexts = current_contexts(&app);
         assert!(contexts.contains(&KeyContext::Settings));

@@ -538,10 +538,7 @@ mod tests {
     #[test]
     fn colon_on_empty_input_opens_command_palette() {
         let app = test_app();
-        let event = Event::Terminal(key_mod(
-            KeyCode::Char(':'),
-            KeyModifiers::SHIFT,
-        ));
+        let event = Event::Terminal(key_mod(KeyCode::Char(':'), KeyModifiers::SHIFT));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CommandPaletteOpen)));
     }
@@ -780,9 +777,7 @@ mod tests {
     #[test]
     fn settings_overlay_up_down() {
         let mut app = test_app();
-        let settings = crate::state::settings::SettingsOverlay::from_config(
-            &serde_json::json!({}),
-        );
+        let settings = crate::state::settings::SettingsOverlay::from_config(&serde_json::json!({}));
         app.overlay = Some(Overlay::Settings(settings));
         let event = Event::Terminal(key(KeyCode::Up));
         let msg = app.map_event(event);
@@ -792,9 +787,7 @@ mod tests {
     #[test]
     fn settings_overlay_s_key_saves() {
         let mut app = test_app();
-        let settings = crate::state::settings::SettingsOverlay::from_config(
-            &serde_json::json!({}),
-        );
+        let settings = crate::state::settings::SettingsOverlay::from_config(&serde_json::json!({}));
         app.overlay = Some(Overlay::Settings(settings));
         let event = Event::Terminal(key(KeyCode::Char('s')));
         let msg = app.map_event(event);

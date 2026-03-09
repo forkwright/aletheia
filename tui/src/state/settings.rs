@@ -523,11 +523,7 @@ mod tests {
     #[test]
     fn set_nested_multi_level() {
         let mut root = serde_json::json!({});
-        set_nested(
-            &mut root,
-            "a.b.c",
-            serde_json::Value::Number(42.into()),
-        );
+        set_nested(&mut root, "a.b.c", serde_json::Value::Number(42.into()));
         assert_eq!(
             root.get("a")
                 .and_then(|v| v.get("b"))
@@ -588,12 +584,7 @@ mod tests {
             }
         });
         let overlay = SettingsOverlay::from_config(&config);
-        assert!(
-            overlay
-                .sections
-                .iter()
-                .any(|s| s.name == "Data Retention")
-        );
+        assert!(overlay.sections.iter().any(|s| s.name == "Data Retention"));
     }
 
     #[test]
