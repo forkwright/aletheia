@@ -110,12 +110,12 @@ fn hnsw_vector_search() {
     );
 }
 
-// INTG-05: Schema version is queryable and returns 1.
+// INTG-05: Schema version is queryable and matches SCHEMA_VERSION constant.
 #[test]
 fn schema_version_queryable() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim: 4 }).expect("open_mem");
     let version = store.schema_version().expect("version");
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
 }
 
 // Verify ordering of multiple facts by confidence (descending).
