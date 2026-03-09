@@ -283,6 +283,7 @@ mod tests {
         let agents = vec![AgentState {
             id: "syn".into(),
             name: "Syn".into(),
+            name_lower: "syn".into(),
             emoji: Some("🧠".into()),
             status: crate::state::AgentStatus::Idle,
             active_tool: None,
