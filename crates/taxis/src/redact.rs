@@ -20,6 +20,7 @@ const SENSITIVE_KEYS: &[&str] = &["token", "secret", "password", "apiKey", "api_
 const SIGNAL_PII_KEYS: &[&str] = &["account"];
 
 /// Serialize config to JSON, then redact sensitive fields.
+#[must_use]
 pub fn redact(config: &AletheiaConfig) -> Value {
     let mut value = serde_json::to_value(config).unwrap_or_else(|e| {
         debug!(error = %e, "failed to serialize config for redaction");

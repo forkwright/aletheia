@@ -12,6 +12,7 @@ const RESTART_PREFIXES: &[&str] = &[
 ];
 
 /// Returns true if changing the given dotted field path requires a restart.
+#[must_use]
 pub fn requires_restart(field_path: &str) -> bool {
     RESTART_PREFIXES
         .iter()
@@ -19,6 +20,7 @@ pub fn requires_restart(field_path: &str) -> bool {
 }
 
 /// Returns the list of field path prefixes that require restart.
+#[must_use]
 pub fn restart_prefixes() -> &'static [&'static str] {
     RESTART_PREFIXES
 }

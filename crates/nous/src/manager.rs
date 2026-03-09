@@ -108,6 +108,12 @@ impl NousManager {
     /// Spawn a new nous actor and return its handle.
     ///
     /// If an actor with the same id already exists, the old actor is shut down first.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after removing an old actor but before
+    /// inserting the new entry, the old actor is lost. Only call during
+    /// sequential startup, never in a `select!`.
     pub async fn spawn(
         &mut self,
         config: NousConfig,
@@ -190,6 +196,11 @@ impl NousManager {
     }
 
     /// Query status from all actors.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Partial results are discarded if cancelled; no state is
+    /// mutated.
     pub async fn list(&self) -> Vec<NousStatus> {
         let mut statuses = Vec::with_capacity(self.actors.len());
         for entry in self.actors.values() {
@@ -204,6 +215,11 @@ impl NousManager {
     }
 
     /// Gracefully shut down all actors.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after draining actors but before joining
+    /// them, actor tasks may be leaked. Only call from shutdown paths.
     pub async fn shutdown_all(&mut self) {
         info!(count = self.actors.len(), "shutting down all actors");
 
@@ -238,6 +254,11 @@ impl NousManager {
     ///
     /// Used when the manager is behind `Arc` and mutable access is unavailable.
     /// Does not drain the entries — cleanup happens when the `Arc` drops.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Each `shutdown` send is independent; partial completion
+    /// leaves remaining actors running (they stop when the `Arc` drops).
     pub async fn shutdown_readonly(&self) {
         info!(count = self.actors.len(), "shutting down all actors");
 
