@@ -9,6 +9,8 @@ use crate::markdown;
 use crate::state::FilterScope;
 use crate::theme::{self, ThemePalette};
 
+const MS_PER_SECOND: u64 = 1000;
+
 struct MessageCtx<'a> {
     inner_width: usize,
     theme: &'a ThemePalette,
@@ -244,8 +246,8 @@ fn render_tool_summary(
         let icon = if tc.is_error { "✗ " } else { "" };
 
         let label = if let Some(ms) = tc.duration_ms {
-            if ms >= 1000 {
-                format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / 1000.0)
+            if ms >= MS_PER_SECOND {
+                format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / MS_PER_SECOND as f64)
             } else {
                 format!("{}{}  ({}ms)", icon, tc.name, ms)
             }
@@ -311,8 +313,8 @@ fn render_streaming(
                 };
                 let icon = if tc.is_error { "✗ " } else { "" };
                 let label = if let Some(ms) = tc.duration_ms {
-                    if ms >= 1000 {
-                        format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / 1000.0)
+                    if ms >= MS_PER_SECOND {
+                        format!("{}{} ({:.1}s)", icon, tc.name, ms as f64 / MS_PER_SECOND as f64)
                     } else {
                         format!("{}{} ({}ms)", icon, tc.name, ms)
                     }

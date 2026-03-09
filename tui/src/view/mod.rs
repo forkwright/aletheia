@@ -13,6 +13,12 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::app::App;
 
+const SIDEBAR_WIDTH: u16 = 22;
+const MIN_CHAT_WIDTH: u16 = 40;
+const MIN_SIDEBAR_TERMINAL_WIDTH: u16 = 60;
+const MAX_PALETTE_SUGGESTIONS: usize = 12;
+const STATUS_BAR_HEIGHT: u16 = 2;
+
 pub fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
     let theme = &app.theme;
@@ -22,10 +28,10 @@ pub fn render(app: &App, frame: &mut Frame) {
 
     // When palette is active, it replaces the status bar with a variable-height area
     let bottom_height = if palette_active {
-        let suggestion_lines = app.command_palette.suggestions.len().min(12) as u16;
-        (2 + suggestion_lines).max(3) // input + border + suggestions, min 3
+        let suggestion_lines = app.command_palette.suggestions.len().min(MAX_PALETTE_SUGGESTIONS) as u16;
+        (STATUS_BAR_HEIGHT + suggestion_lines).max(3) // input + border + suggestions, min 3
     } else {
-        2 // 2-line status bar
+        STATUS_BAR_HEIGHT
     };
 
     let vertical = Layout::default()
@@ -66,16 +72,16 @@ pub fn render(app: &App, frame: &mut Frame) {
         frame.render_widget(toast_widget, vertical[3]);
     }
 
-    // Responsive: hide sidebar on narrow terminals (< 60 cols)
-    let show_sidebar = app.sidebar_visible && area.width >= 60;
+    // Responsive: hide sidebar on narrow terminals
+    let show_sidebar = app.sidebar_visible && area.width >= MIN_SIDEBAR_TERMINAL_WIDTH;
 
     // Body: sidebar | chat area
     if show_sidebar {
         let horizontal = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(22), // sidebar (slightly wider for padding)
-                Constraint::Min(40),    // chat
+                Constraint::Length(SIDEBAR_WIDTH),
+                Constraint::Min(MIN_CHAT_WIDTH),
             ])
             .split(vertical[1]);
 
