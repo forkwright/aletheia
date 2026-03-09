@@ -685,6 +685,154 @@ impl KnowledgeStore {
         self.run_mut(script, params)
     }
 
+    /// Query facts valid at a specific point in time.
+    /// Returns facts where `valid_from <= at_time` AND `valid_to > at_time`.
+    pub fn query_facts_temporal(
+        &self,
+        nous_id: &str,
+        at_time: &str,
+        filter: Option<&str>,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert("at_time".to_owned(), DataValue::Str(at_time.into()));
+
+        let rows = match filter {
+            Some(f) if !f.is_empty() => {
+                params.insert("filter".to_owned(), DataValue::Str(f.into()));
+                self.run_read(queries::TEMPORAL_FACTS_FILTERED, params)?
+            }
+            _ => self.run_read(&queries::temporal_facts(), params)?,
+        };
+        rows_to_facts(rows, nous_id)
+    }
+
+    /// Query facts that changed between two timestamps.
+    /// Returns facts where `valid_from` is in `(from_time, to_time]` OR
+    /// `valid_to` is in `(from_time, to_time]`.
+    pub fn query_facts_diff(
+        &self,
+        nous_id: &str,
+        from_time: &str,
+        to_time: &str,
+    ) -> crate::error::Result<crate::knowledge::FactDiff> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert("from_time".to_owned(), DataValue::Str(from_time.into()));
+        params.insert("to_time".to_owned(), DataValue::Str(to_time.into()));
+
+        let added_rows = self.run_read(queries::TEMPORAL_DIFF_ADDED, params.clone())?;
+        let added = rows_to_facts(added_rows, nous_id)?;
+
+        let removed_rows = self.run_read(queries::TEMPORAL_DIFF_REMOVED, params)?;
+        let removed = rows_to_facts(removed_rows, nous_id)?;
+
+        // Modified facts: those that appear in both added and removed (supersession chain).
+        // A fact ID in removed that has a superseded_by pointing to one in added is a modification.
+        let added_ids: std::collections::HashSet<&str> =
+            added.iter().map(|f| f.id.as_str()).collect();
+        let mut modified = Vec::new();
+        let mut pure_removed = Vec::new();
+
+        for old in &removed {
+            if let Some(ref new_id) = old.superseded_by {
+                if added_ids.contains(new_id.as_str()) {
+                    if let Some(new_fact) = added.iter().find(|f| f.id == *new_id) {
+                        modified.push((old.clone(), new_fact.clone()));
+                        continue;
+                    }
+                }
+            }
+            pure_removed.push(old.clone());
+        }
+
+        // Pure added: those not part of a modification pair
+        let modified_new_ids: std::collections::HashSet<&str> =
+            modified.iter().map(|(_, new)| new.id.as_str()).collect();
+        let pure_added: Vec<_> = added
+            .into_iter()
+            .filter(|f| !modified_new_ids.contains(f.id.as_str()))
+            .collect();
+
+        Ok(crate::knowledge::FactDiff {
+            added: pure_added,
+            modified,
+            removed: pure_removed,
+        })
+    }
+
+    /// Search for facts relevant to a query, as they existed at a specific time.
+    /// Filters hybrid search results through the temporal lens.
+    pub fn search_temporal(
+        &self,
+        q: &HybridQuery,
+        at_time: &str,
+    ) -> crate::error::Result<Vec<HybridResult>> {
+        let all_results = self.search_hybrid(q)?;
+
+        // Get the set of fact IDs valid at the given time
+        // We query with an empty nous_id filter to get all facts across all agents
+        let valid_facts = self.query_facts_at_time_all(at_time)?;
+        let valid_ids: std::collections::HashSet<&str> =
+            valid_facts.iter().map(|f| f.id.as_str()).collect();
+
+        let filtered: Vec<HybridResult> = all_results
+            .into_iter()
+            .filter(|r| valid_ids.contains(r.id.as_str()))
+            .collect();
+
+        Ok(filtered)
+    }
+
+    /// Async `query_facts_temporal` wrapper.
+    pub async fn query_facts_temporal_async(
+        self: &std::sync::Arc<Self>,
+        nous_id: String,
+        at_time: String,
+        filter: Option<String>,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || {
+            this.query_facts_temporal(&nous_id, &at_time, filter.as_deref())
+        })
+        .await
+        .context(crate::error::JoinSnafu)?
+    }
+
+    /// Async `query_facts_diff` wrapper.
+    pub async fn query_facts_diff_async(
+        self: &std::sync::Arc<Self>,
+        nous_id: String,
+        from_time: String,
+        to_time: String,
+    ) -> crate::error::Result<crate::knowledge::FactDiff> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.query_facts_diff(&nous_id, &from_time, &to_time))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
+    /// Async `search_temporal` wrapper.
+    pub async fn search_temporal_async(
+        self: &std::sync::Arc<Self>,
+        q: HybridQuery,
+        at_time: String,
+    ) -> crate::error::Result<Vec<HybridResult>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.search_temporal(&q, &at_time))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
     /// Audit query: returns all facts regardless of forgotten/superseded/temporal state.
     pub fn audit_all_facts(
         &self,
@@ -1054,6 +1202,34 @@ impl KnowledgeStore {
     }
 
     // --- Internal helpers ---
+
+    /// Query all facts valid at a specific time, across all nous IDs.
+    /// Used internally by `search_temporal` for filtering.
+    fn query_facts_at_time_all(
+        &self,
+        at_time: &str,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let script = r"
+            ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
+              superseded_by, source_session_id,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason] :=
+                *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
+                       superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       is_forgotten, forgotten_at, forget_reason},
+                is_forgotten == false,
+                valid_from <= $at_time,
+                valid_to > $at_time
+        ";
+        let mut params = BTreeMap::new();
+        params.insert("at_time".to_owned(), DataValue::Str(at_time.into()));
+        let rows = self.run_read(script, params)?;
+        rows_to_facts(rows, "")
+    }
 
     /// Read a single fact by its ID (all temporal records matching).
     /// Returns all fields; does not apply time/validity filters.
@@ -3125,5 +3301,321 @@ mod knowledge_store_tests {
             .find(|f| f.id == "f-access-async")
             .expect("found");
         assert_eq!(found.access_count, 1);
+    }
+
+    // --- Bi-temporal query tests ---
+
+    fn make_temporal_fact(
+        id: &str,
+        nous_id: &str,
+        content: &str,
+        valid_from: &str,
+        valid_to: &str,
+    ) -> Fact {
+        Fact {
+            id: id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            content: content.to_owned(),
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            valid_from: valid_from.to_owned(),
+            valid_to: valid_to.to_owned(),
+            superseded_by: None,
+            source_session_id: None,
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        }
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn temporal_query_point_in_time() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "t1",
+                "agent",
+                "Rust is fast",
+                "2026-01-01",
+                "2026-06-01",
+            ))
+            .expect("insert t1");
+        store
+            .insert_fact(&make_temporal_fact(
+                "t2",
+                "agent",
+                "Python is dynamic",
+                "2026-03-01",
+                "9999-12-31",
+            ))
+            .expect("insert t2");
+
+        let at_feb = store
+            .query_facts_temporal("agent", "2026-02-01", None)
+            .expect("query feb");
+        assert_eq!(at_feb.len(), 1);
+        assert_eq!(at_feb[0].id, "t1");
+
+        let at_apr = store
+            .query_facts_temporal("agent", "2026-04-01", None)
+            .expect("query apr");
+        assert_eq!(at_apr.len(), 2);
+
+        let at_jul = store
+            .query_facts_temporal("agent", "2026-07-01", None)
+            .expect("query jul");
+        assert_eq!(at_jul.len(), 1);
+        assert_eq!(at_jul[0].id, "t2");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn temporal_query_before_any_facts_returns_empty() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "t1",
+                "agent",
+                "fact",
+                "2026-06-01",
+                "9999-12-31",
+            ))
+            .expect("insert");
+
+        let results = store
+            .query_facts_temporal("agent", "2026-01-01", None)
+            .expect("query");
+        assert!(results.is_empty());
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn temporal_query_boundary_inclusion() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "t1",
+                "agent",
+                "boundary fact",
+                "2026-03-01",
+                "2026-06-01",
+            ))
+            .expect("insert");
+
+        let at_start = store
+            .query_facts_temporal("agent", "2026-03-01", None)
+            .expect("at valid_from");
+        assert_eq!(at_start.len(), 1, "valid_from boundary is inclusive");
+
+        let at_end = store
+            .query_facts_temporal("agent", "2026-06-01", None)
+            .expect("at valid_to");
+        assert!(at_end.is_empty(), "valid_to boundary is exclusive");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn temporal_query_with_content_filter() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "t1",
+                "agent",
+                "Rust is fast",
+                "2026-01-01",
+                "9999-12-31",
+            ))
+            .expect("insert t1");
+        store
+            .insert_fact(&make_temporal_fact(
+                "t2",
+                "agent",
+                "Python is dynamic",
+                "2026-01-01",
+                "9999-12-31",
+            ))
+            .expect("insert t2");
+
+        let filtered = store
+            .query_facts_temporal("agent", "2026-03-01", Some("Rust"))
+            .expect("filtered query");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "t1");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn temporal_diff_added_and_removed() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "old",
+                "agent",
+                "old knowledge",
+                "2026-01-01",
+                "2026-03-01",
+            ))
+            .expect("insert old");
+        store
+            .insert_fact(&make_temporal_fact(
+                "new",
+                "agent",
+                "new knowledge",
+                "2026-02-15",
+                "9999-12-31",
+            ))
+            .expect("insert new");
+
+        let diff = store
+            .query_facts_diff("agent", "2026-02-01", "2026-04-01")
+            .expect("diff");
+
+        assert_eq!(diff.added.len(), 1, "one fact added in interval");
+        assert_eq!(diff.added[0].id, "new");
+        assert_eq!(diff.removed.len(), 1, "one fact removed in interval");
+        assert_eq!(diff.removed[0].id, "old");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn temporal_diff_supersession_chain() {
+        let store = make_store();
+        let mut fact_a = make_temporal_fact("a", "agent", "version 1", "2026-01-01", "2026-03-01");
+        fact_a.superseded_by = Some("b".to_owned());
+        store.insert_fact(&fact_a).expect("insert a");
+
+        store
+            .insert_fact(&make_temporal_fact(
+                "b",
+                "agent",
+                "version 2",
+                "2026-03-01",
+                "9999-12-31",
+            ))
+            .expect("insert b");
+
+        let diff = store
+            .query_facts_diff("agent", "2026-02-01", "2026-04-01")
+            .expect("diff");
+
+        assert_eq!(diff.modified.len(), 1, "one modified pair");
+        assert_eq!(diff.modified[0].0.id, "a");
+        assert_eq!(diff.modified[0].1.id, "b");
+        assert!(diff.added.is_empty(), "superseded new is not in pure added");
+        assert!(
+            diff.removed.is_empty(),
+            "superseding old is not in pure removed"
+        );
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn temporal_query_isolates_nous_ids() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "t1",
+                "alice",
+                "Alice knows Rust",
+                "2026-01-01",
+                "9999-12-31",
+            ))
+            .expect("insert alice");
+        store
+            .insert_fact(&make_temporal_fact(
+                "t2",
+                "bob",
+                "Bob knows Python",
+                "2026-01-01",
+                "9999-12-31",
+            ))
+            .expect("insert bob");
+
+        let alice_facts = store
+            .query_facts_temporal("alice", "2026-03-01", None)
+            .expect("alice query");
+        assert_eq!(alice_facts.len(), 1);
+        assert_eq!(alice_facts[0].content, "Alice knows Rust");
+
+        let bob_facts = store
+            .query_facts_temporal("bob", "2026-03-01", None)
+            .expect("bob query");
+        assert_eq!(bob_facts.len(), 1);
+        assert_eq!(bob_facts[0].content, "Bob knows Python");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn temporal_query_excludes_forgotten_facts() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "t1",
+                "agent",
+                "forgotten fact",
+                "2026-01-01",
+                "9999-12-31",
+            ))
+            .expect("insert");
+        store
+            .forget_fact("t1", crate::knowledge::ForgetReason::UserRequested)
+            .expect("forget");
+
+        let results = store
+            .query_facts_temporal("agent", "2026-03-01", None)
+            .expect("query");
+        assert!(results.is_empty(), "forgotten facts should be excluded");
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[tokio::test]
+    async fn temporal_query_async_works() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "t1",
+                "agent",
+                "async temporal",
+                "2026-01-01",
+                "9999-12-31",
+            ))
+            .expect("insert");
+
+        let results = store
+            .query_facts_temporal_async("agent".to_owned(), "2026-03-01".to_owned(), None)
+            .await
+            .expect("async query");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[tokio::test]
+    async fn temporal_diff_async_works() {
+        let store = make_store();
+        store
+            .insert_fact(&make_temporal_fact(
+                "t1",
+                "agent",
+                "diff async",
+                "2026-02-01",
+                "9999-12-31",
+            ))
+            .expect("insert");
+
+        let diff = store
+            .query_facts_diff_async(
+                "agent".to_owned(),
+                "2026-01-01".to_owned(),
+                "2026-03-01".to_owned(),
+            )
+            .await
+            .expect("async diff");
+        assert_eq!(diff.added.len(), 1);
     }
 }
