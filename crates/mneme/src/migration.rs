@@ -308,6 +308,40 @@ mod tests {
     }
 
     #[test]
+    fn run_migrations_fresh_db_schema_version() {
+        let conn = fresh_conn();
+        let result = run_migrations(&conn).unwrap();
+        assert_eq!(result.current_version, 2);
+        let version = get_schema_version(&conn);
+        assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn run_migrations_idempotent() {
+        let conn = fresh_conn();
+        let first = run_migrations(&conn).unwrap();
+        let second = run_migrations(&conn).unwrap();
+        assert_eq!(first.current_version, second.current_version);
+        assert!(second.applied.is_empty());
+    }
+
+    #[test]
+    fn check_migrations_reports_pending() {
+        let conn = fresh_conn();
+        let pending = check_migrations(&conn).unwrap();
+        assert_eq!(pending.len(), MIGRATIONS.len());
+        assert_eq!(pending[0].version, 1);
+    }
+
+    #[test]
+    fn get_schema_version_fresh_db() {
+        let conn = fresh_conn();
+        bootstrap_version_table(&conn).unwrap();
+        let version = get_schema_version(&conn);
+        assert_eq!(version, 0);
+    }
+
+    #[test]
     fn backward_compat_existing_v1_database() {
         let conn = fresh_conn();
 

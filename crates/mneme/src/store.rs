@@ -1246,6 +1246,142 @@ mod tests {
     }
 
     #[test]
+    fn open_in_memory_creates_tables() {
+        let store = test_store();
+        let sessions = store.list_sessions(None).unwrap();
+        assert!(sessions.is_empty());
+        let session = store
+            .create_session("tbl-check", "syn", "main", None, None)
+            .unwrap();
+        assert_eq!(session.id, "tbl-check");
+        let found = store.find_session_by_id("tbl-check").unwrap();
+        assert!(found.is_some());
+    }
+
+    #[test]
+    fn create_session_duplicate_id_errors() {
+        let store = test_store();
+        store
+            .create_session("ses-dup", "syn", "main", None, None)
+            .unwrap();
+        let result = store.create_session("ses-dup", "syn", "other", None, None);
+        assert!(
+            result.is_err(),
+            "creating a session with a duplicate id should fail"
+        );
+    }
+
+    #[test]
+    fn find_session_nonexistent() {
+        let store = test_store();
+        let found = store.find_session("no-such-nous", "no-such-key").unwrap();
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn find_session_by_id_nonexistent() {
+        let store = test_store();
+        let found = store.find_session_by_id("non-existent-id-999").unwrap();
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn append_message_to_nonexistent_session() {
+        let store = test_store();
+        let result = store.append_message("no-session", Role::User, "hello", None, None, 10);
+        assert!(
+            result.is_err(),
+            "appending to a non-existent session should fail due to foreign key constraint"
+        );
+    }
+
+    #[test]
+    fn get_history_empty_session() {
+        let store = test_store();
+        store
+            .create_session("empty-ses", "syn", "main", None, None)
+            .unwrap();
+        let history = store.get_history("empty-ses", None).unwrap();
+        assert!(history.is_empty());
+        let history_limited = store.get_history("empty-ses", Some(10)).unwrap();
+        assert!(history_limited.is_empty());
+    }
+
+    #[test]
+    fn blackboard_write_read_delete_cycle() {
+        let store = test_store();
+
+        let read_before = store.blackboard_read("cycle-key").unwrap();
+        assert!(read_before.is_none());
+
+        store
+            .blackboard_write("cycle-key", "value-1", "agent-alice", 7200)
+            .unwrap();
+        let entry = store.blackboard_read("cycle-key").unwrap().unwrap();
+        assert_eq!(entry.value, "value-1");
+        assert_eq!(entry.author_nous_id, "agent-alice");
+        assert_eq!(entry.ttl_seconds, 7200);
+
+        store
+            .blackboard_write("cycle-key", "value-2", "agent-alice", 3600)
+            .unwrap();
+        let updated = store.blackboard_read("cycle-key").unwrap().unwrap();
+        assert_eq!(updated.value, "value-2");
+        assert_eq!(updated.ttl_seconds, 3600);
+
+        let deleted = store.blackboard_delete("cycle-key", "agent-alice").unwrap();
+        assert!(deleted);
+
+        let after_delete = store.blackboard_read("cycle-key").unwrap();
+        assert!(after_delete.is_none());
+
+        let list = store.blackboard_list().unwrap();
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn add_note_invalid_category() {
+        let store = test_store();
+        store
+            .create_session("ses-cat", "syn", "main", None, None)
+            .unwrap();
+        let result = store.add_note("ses-cat", "syn", "totally_bogus_category", "some content");
+        assert!(
+            result.is_err(),
+            "invalid category should be rejected by CHECK constraint"
+        );
+    }
+
+    #[test]
+    fn session_status_transitions() {
+        let store = test_store();
+        store
+            .create_session("ses-status", "syn", "main", None, None)
+            .unwrap();
+
+        let session = store.find_session_by_id("ses-status").unwrap().unwrap();
+        assert_eq!(session.status, SessionStatus::Active);
+
+        store
+            .update_session_status("ses-status", SessionStatus::Archived)
+            .unwrap();
+        let session = store.find_session_by_id("ses-status").unwrap().unwrap();
+        assert_eq!(session.status, SessionStatus::Archived);
+
+        store
+            .update_session_status("ses-status", SessionStatus::Distilled)
+            .unwrap();
+        let session = store.find_session_by_id("ses-status").unwrap().unwrap();
+        assert_eq!(session.status, SessionStatus::Distilled);
+
+        store
+            .update_session_status("ses-status", SessionStatus::Active)
+            .unwrap();
+        let session = store.find_session_by_id("ses-status").unwrap().unwrap();
+        assert_eq!(session.status, SessionStatus::Active);
+    }
+
+    #[test]
     fn insert_distillation_summary_and_cleanup() {
         let store = test_store();
         store
@@ -1281,5 +1417,245 @@ mod tests {
         // Session counts should reflect new state
         let session = store.find_session_by_id("ses-1").unwrap().unwrap();
         assert_eq!(session.message_count, 2);
+    }
+
+    #[test]
+    fn update_usage_creates_record() {
+        let store = test_store();
+        store
+            .create_session("ses-usage", "syn", "main", None, None)
+            .unwrap();
+
+        store
+            .record_usage(&UsageRecord {
+                session_id: "ses-usage".to_owned(),
+                turn_seq: 1,
+                input_tokens: 500,
+                output_tokens: 200,
+                cache_read_tokens: 400,
+                cache_write_tokens: 100,
+                model: Some("test-model".to_owned()),
+            })
+            .unwrap();
+
+        store
+            .record_usage(&UsageRecord {
+                session_id: "ses-usage".to_owned(),
+                turn_seq: 2,
+                input_tokens: 600,
+                output_tokens: 300,
+                cache_read_tokens: 500,
+                cache_write_tokens: 150,
+                model: None,
+            })
+            .unwrap();
+
+        let count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage WHERE session_id = ?1",
+                ["ses-usage"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn get_history_with_limit_respected() {
+        let store = test_store();
+        store
+            .create_session("ses-lim", "syn", "main", None, None)
+            .unwrap();
+
+        for i in 1..=10 {
+            store
+                .append_message(
+                    "ses-lim",
+                    Role::User,
+                    &format!("message {i}"),
+                    None,
+                    None,
+                    10,
+                )
+                .unwrap();
+        }
+
+        let history_3 = store.get_history("ses-lim", Some(3)).unwrap();
+        assert_eq!(history_3.len(), 3);
+        assert_eq!(history_3[0].content, "message 8");
+        assert_eq!(history_3[2].content, "message 10");
+
+        let history_all = store.get_history("ses-lim", None).unwrap();
+        assert_eq!(history_all.len(), 10);
+    }
+
+    #[test]
+    fn create_multiple_sessions_same_nous() {
+        let store = test_store();
+        store
+            .create_session("ses-a", "agent-x", "main", None, None)
+            .unwrap();
+        store
+            .create_session("ses-b", "agent-x", "secondary", None, None)
+            .unwrap();
+        store
+            .create_session("ses-c", "agent-x", "prosoche-wake", None, None)
+            .unwrap();
+
+        let sessions = store.list_sessions(Some("agent-x")).unwrap();
+        assert_eq!(sessions.len(), 3);
+
+        let keys: Vec<&str> = sessions.iter().map(|s| s.session_key.as_str()).collect();
+        assert!(keys.contains(&"main"));
+        assert!(keys.contains(&"secondary"));
+        assert!(keys.contains(&"prosoche-wake"));
+    }
+
+    #[test]
+    fn blackboard_read_nonexistent_key() {
+        let store = test_store();
+        let result = store.blackboard_read("does-not-exist-key").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn list_notes_empty() {
+        let store = test_store();
+        store
+            .create_session("ses-no-notes", "syn", "main", None, None)
+            .unwrap();
+
+        let notes = store.get_notes("ses-no-notes").unwrap();
+        assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn message_ordering_preserved() {
+        let store = test_store();
+        store
+            .create_session("ses-ord", "syn", "main", None, None)
+            .unwrap();
+
+        store
+            .append_message("ses-ord", Role::User, "first", None, None, 10)
+            .unwrap();
+        store
+            .append_message("ses-ord", Role::Assistant, "second", None, None, 10)
+            .unwrap();
+        store
+            .append_message("ses-ord", Role::User, "third", None, None, 10)
+            .unwrap();
+
+        let history = store.get_history("ses-ord", None).unwrap();
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[0].content, "first");
+        assert_eq!(history[1].content, "second");
+        assert_eq!(history[2].content, "third");
+        assert!(history[0].seq < history[1].seq);
+        assert!(history[1].seq < history[2].seq);
+    }
+
+    #[test]
+    fn distill_marks_messages() {
+        let store = test_store();
+        store
+            .create_session("ses-dist", "syn", "main", None, None)
+            .unwrap();
+
+        store
+            .append_message("ses-dist", Role::User, "to distill 1", None, None, 50)
+            .unwrap();
+        store
+            .append_message("ses-dist", Role::User, "to distill 2", None, None, 60)
+            .unwrap();
+        store
+            .append_message("ses-dist", Role::User, "keep me", None, None, 30)
+            .unwrap();
+
+        store.mark_messages_distilled("ses-dist", &[1, 2]).unwrap();
+
+        let history = store.get_history("ses-dist", None).unwrap();
+        assert_eq!(history.len(), 1, "distilled messages excluded from history");
+        assert_eq!(history[0].content, "keep me");
+
+        let all_count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE session_id = 'ses-dist'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(all_count, 3, "distilled messages still in DB, just flagged");
+
+        let distilled_count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE session_id = 'ses-dist' AND is_distilled = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(distilled_count, 2);
+    }
+
+    #[test]
+    fn session_timestamps_set() {
+        let store = test_store();
+        let session = store
+            .create_session("ses-ts", "syn", "main", None, None)
+            .unwrap();
+
+        assert!(
+            !session.created_at.is_empty(),
+            "created_at must be set on creation"
+        );
+        assert!(
+            !session.updated_at.is_empty(),
+            "updated_at must be set on creation"
+        );
+    }
+
+    #[test]
+    fn blackboard_overwrite() {
+        let store = test_store();
+        store
+            .blackboard_write("overwrite-key", "value-one", "syn", 3600)
+            .unwrap();
+        store
+            .blackboard_write("overwrite-key", "value-two", "syn", 3600)
+            .unwrap();
+
+        let entry = store.blackboard_read("overwrite-key").unwrap().unwrap();
+        assert_eq!(entry.value, "value-two", "second write must win");
+
+        let list = store.blackboard_list().unwrap();
+        let matching: Vec<_> = list.iter().filter(|e| e.key == "overwrite-key").collect();
+        assert_eq!(matching.len(), 1, "upsert must not create duplicates");
+    }
+
+    #[test]
+    fn note_list_multiple() {
+        let store = test_store();
+        store
+            .create_session("ses-notes", "syn", "main", None, None)
+            .unwrap();
+
+        store
+            .add_note("ses-notes", "syn", "task", "note alpha")
+            .unwrap();
+        store
+            .add_note("ses-notes", "syn", "context", "note beta")
+            .unwrap();
+        store
+            .add_note("ses-notes", "syn", "decision", "note gamma")
+            .unwrap();
+
+        let notes = store.get_notes("ses-notes").unwrap();
+        assert_eq!(notes.len(), 3);
+        assert_eq!(notes[0].content, "note alpha");
+        assert_eq!(notes[1].content, "note beta");
+        assert_eq!(notes[2].content, "note gamma");
     }
 }

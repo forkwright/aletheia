@@ -176,7 +176,10 @@ fn query_all_entities(
         let aliases = if aliases_str.is_empty() {
             vec![]
         } else {
-            aliases_str.split(',').map(|s| s.trim().to_owned()).collect()
+            aliases_str
+                .split(',')
+                .map(|s| s.trim().to_owned())
+                .collect()
         };
         let created_at = row[4].get_str().unwrap_or_default().to_owned();
         let updated_at = row[5].get_str().unwrap_or_default().to_owned();
@@ -796,6 +799,209 @@ mod tests {
         let restored: crate::portability::AgentFile = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.sessions[0].messages[0].content, mixed);
         assert_eq!(restored.sessions[0].notes[0].content, mixed);
+    }
+
+    #[test]
+    fn export_empty_store() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let opts = ExportOptions::default();
+
+        let agent = export_agent(
+            "empty-agent",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &opts,
+        )
+        .unwrap();
+
+        assert_eq!(agent.sessions.len(), 0);
+        assert_eq!(agent.nous.id, "empty-agent");
+
+        let json = serde_json::to_string(&agent).unwrap();
+        let restored: crate::portability::AgentFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.sessions.len(), 0);
+    }
+
+    #[test]
+    fn export_with_message_limit() {
+        let store = test_store();
+        store
+            .create_session("ses-lim", "limiter", "main", None, None)
+            .unwrap();
+        for i in 1..=20 {
+            store
+                .append_message("ses-lim", Role::User, &format!("msg {i}"), None, None, 10)
+                .unwrap();
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+
+        let opts_limited = ExportOptions {
+            max_messages_per_session: 5,
+            include_archived: false,
+        };
+        let agent = export_agent(
+            "limiter",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &opts_limited,
+        )
+        .unwrap();
+        assert_eq!(agent.sessions[0].messages.len(), 5);
+
+        let opts_unlimited = ExportOptions {
+            max_messages_per_session: 0,
+            include_archived: false,
+        };
+        let agent_all = export_agent(
+            "limiter",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &opts_unlimited,
+        )
+        .unwrap();
+        assert_eq!(agent_all.sessions[0].messages.len(), 20);
+    }
+
+    #[test]
+    fn is_binary_file_detects_binary() {
+        let known_binaries = [
+            "image.png",
+            "photo.jpg",
+            "archive.zip",
+            "data.sqlite",
+            "font.woff2",
+            "app.exe",
+            "lib.so",
+            "module.wasm",
+        ];
+        for name in &known_binaries {
+            assert!(
+                is_binary_path(Path::new(name)),
+                "{name} should be detected as binary"
+            );
+        }
+    }
+
+    #[test]
+    fn is_binary_file_allows_text() {
+        let text_files = [
+            "readme.md",
+            "config.yaml",
+            "main.rs",
+            "index.html",
+            "style.css",
+            "data.json",
+            "script.py",
+            "Makefile",
+        ];
+        for name in &text_files {
+            assert!(
+                !is_binary_path(Path::new(name)),
+                "{name} should not be detected as binary"
+            );
+        }
+    }
+
+    #[test]
+    fn export_preserves_session_metadata() {
+        let store = test_store();
+        store
+            .create_session("ses-meta", "meta-agent", "main", None, None)
+            .unwrap();
+        store
+            .append_message("ses-meta", Role::User, "hello", None, None, 42)
+            .unwrap();
+        store
+            .add_note("ses-meta", "meta-agent", "context", "important note")
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let agent = export_agent(
+            "meta-agent",
+            Some("Meta"),
+            Some("test-model"),
+            serde_json::json!({"key": "value"}),
+            &store,
+            dir.path(),
+            &ExportOptions::default(),
+        )
+        .unwrap();
+
+        let session = &agent.sessions[0];
+        assert_eq!(session.id, "ses-meta");
+        assert_eq!(session.session_key, "main");
+        assert_eq!(session.status, "active");
+        assert_eq!(session.message_count, 1);
+        assert!(!session.created_at.is_empty());
+        assert!(!session.updated_at.is_empty());
+        assert_eq!(session.notes.len(), 1);
+        assert_eq!(session.notes[0].category, "context");
+        assert_eq!(session.notes[0].content, "important note");
+    }
+
+    #[test]
+    fn export_filters_archived_sessions() {
+        let store = test_store();
+        store
+            .create_session("ses-a", "filter-agent", "main", None, None)
+            .unwrap();
+        store
+            .create_session("ses-b", "filter-agent", "old", None, None)
+            .unwrap();
+        store
+            .update_session_status("ses-b", SessionStatus::Archived)
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+
+        let opts_default = ExportOptions::default();
+        let agent = export_agent(
+            "filter-agent",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &opts_default,
+        )
+        .unwrap();
+        assert_eq!(
+            agent.sessions.len(),
+            1,
+            "archived sessions excluded by default"
+        );
+        assert_eq!(agent.sessions[0].id, "ses-a");
+
+        let opts_include = ExportOptions {
+            include_archived: true,
+            ..Default::default()
+        };
+        let agent_all = export_agent(
+            "filter-agent",
+            None,
+            None,
+            serde_json::json!({}),
+            &store,
+            dir.path(),
+            &opts_include,
+        )
+        .unwrap();
+        assert_eq!(
+            agent_all.sessions.len(),
+            2,
+            "archived included when opted in"
+        );
     }
 
     #[test]

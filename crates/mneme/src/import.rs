@@ -1024,6 +1024,93 @@ mod tests {
         );
     }
 
+    #[test]
+    fn import_rejects_future_version() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let mut agent = minimal_agent_file();
+        agent.version = AGENT_FILE_VERSION + 1;
+
+        let id_gen = counter_id_gen();
+        let result = import_agent(
+            &agent,
+            &store,
+            dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        );
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains(&format!("{}", AGENT_FILE_VERSION + 1)),
+            "error should mention the unsupported version number"
+        );
+    }
+
+    #[test]
+    fn import_preserves_note_content() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let mut agent = minimal_agent_file();
+        agent.sessions[0].notes = vec![
+            ExportedNote {
+                category: "task".to_owned(),
+                content: "first note content".to_owned(),
+                created_at: "2026-03-05T10:30:00Z".to_owned(),
+            },
+            ExportedNote {
+                category: "decision".to_owned(),
+                content: "second note content".to_owned(),
+                created_at: "2026-03-05T10:31:00Z".to_owned(),
+            },
+        ];
+
+        let id_gen = counter_id_gen();
+        let result = import_agent(
+            &agent,
+            &store,
+            dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(result.notes_imported, 2);
+
+        let sessions = store.list_sessions(Some("alice")).unwrap();
+        let notes = store.get_notes(&sessions[0].id).unwrap();
+        assert_eq!(notes.len(), 2);
+        let contents: Vec<&str> = notes.iter().map(|n| n.content.as_str()).collect();
+        assert!(contents.contains(&"first note content"));
+        assert!(contents.contains(&"second note content"));
+    }
+
+    #[test]
+    fn import_with_empty_facts() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let mut agent = minimal_agent_file();
+        agent.knowledge = Some(crate::portability::KnowledgeExport {
+            facts: vec![],
+            entities: vec![],
+            relationships: vec![],
+        });
+
+        let id_gen = counter_id_gen();
+        let result = import_agent(
+            &agent,
+            &store,
+            dir.path(),
+            &*id_gen,
+            &ImportOptions::default(),
+        )
+        .unwrap();
+
+        assert_eq!(result.sessions_imported, 1);
+        assert_eq!(result.messages_imported, 2);
+    }
+
     mod proptests {
         use super::*;
         use proptest::prelude::*;

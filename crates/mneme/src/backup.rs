@@ -735,6 +735,101 @@ mod tests {
     }
 
     #[test]
+    fn backup_path_with_spaces() {
+        let path = Path::new("/home/my user/backup dir/sessions 2026.db");
+        assert!(
+            validate_backup_path(path).is_ok(),
+            "paths with spaces should be accepted"
+        );
+    }
+
+    #[test]
+    fn backup_path_with_dots() {
+        let traversal = Path::new("../../etc/shadow.db");
+        assert!(
+            validate_backup_path(traversal).is_ok(),
+            ".. components pass SQL-injection validation (path traversal is a separate concern)"
+        );
+
+        let dotted = Path::new("/home/user/.local/share/aletheia/backup.2026.01.01.db");
+        assert!(
+            validate_backup_path(dotted).is_ok(),
+            "dotted paths are safe for SQL"
+        );
+    }
+
+    #[test]
+    fn backup_path_empty_string() {
+        let path = Path::new("");
+        // Empty string passes SQL-injection validation (all chars are vacuously safe).
+        // This documents current behavior — empty paths would fail at the filesystem
+        // level during VACUUM INTO, not at validation time.
+        assert!(
+            validate_backup_path(path).is_ok(),
+            "empty path passes SQL validation (filesystem rejects it later)"
+        );
+    }
+
+    #[test]
+    fn prune_keeps_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let backup_dir = dir.path().join("backups");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+
+        for i in 0..4 {
+            std::fs::write(
+                backup_dir.join(format!("sessions_2026020{i}T120000.db")),
+                "data",
+            )
+            .unwrap();
+        }
+
+        let conn = Connection::open_in_memory().unwrap();
+        let manager = BackupManager::new(&conn, &backup_dir);
+
+        let removed = manager.prune_backups(0).unwrap();
+        assert_eq!(removed, 4);
+
+        let remaining = manager.list_backups().unwrap();
+        assert!(remaining.is_empty(), "keep=0 should remove all backups");
+    }
+
+    #[test]
+    fn list_backups_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let backup_dir = dir.path().join("backups");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+
+        let conn = Connection::open_in_memory().unwrap();
+        let manager = BackupManager::new(&conn, &backup_dir);
+
+        let backups = manager.list_backups().unwrap();
+        assert!(
+            backups.is_empty(),
+            "existing but empty dir should return empty vec"
+        );
+    }
+
+    #[test]
+    fn export_sessions_json_empty_store() {
+        let store = test_store();
+        let dir = tempfile::tempdir().unwrap();
+        let export_dir = dir.path().join("export");
+        let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
+
+        let result = manager.export_sessions_json(&export_dir).unwrap();
+        assert_eq!(result.sessions_exported, 0);
+        assert_eq!(result.files_written, 0);
+        assert!(
+            export_dir.exists(),
+            "output dir should be created even when empty"
+        );
+
+        let entries: Vec<_> = std::fs::read_dir(&export_dir).unwrap().collect();
+        assert!(entries.is_empty(), "no JSON files should be written");
+    }
+
+    #[test]
     fn restore_from_corrupt_file_errors() {
         let dir = tempfile::tempdir().unwrap();
         let corrupt_path = dir.path().join("corrupt.db");
@@ -746,5 +841,41 @@ mod tests {
             });
             assert!(result.is_err(), "querying corrupt DB should fail");
         }
+    }
+
+    #[test]
+    fn validate_path_rejects_semicolons_in_filename() {
+        let path = Path::new("/backups/data;rm -rf.db");
+        assert!(
+            validate_backup_path(path).is_err(),
+            "semicolon in filename must be rejected"
+        );
+    }
+
+    #[test]
+    fn validate_path_rejects_backticks_in_filename() {
+        let path = Path::new("/backups/`whoami`.db");
+        assert!(
+            validate_backup_path(path).is_err(),
+            "backticks in filename must be rejected"
+        );
+    }
+
+    #[test]
+    fn validate_path_rejects_single_quotes_in_dir() {
+        let path = Path::new("/tmp/bob's dir/backup.db");
+        assert!(
+            validate_backup_path(path).is_err(),
+            "single quotes in directory must be rejected"
+        );
+    }
+
+    #[test]
+    fn validate_path_accepts_normal_nested() {
+        let path = Path::new("/var/lib/aletheia/backups/sessions_20260309T120000.db");
+        assert!(
+            validate_backup_path(path).is_ok(),
+            "normal nested path with underscores and digits must be accepted"
+        );
     }
 }

@@ -449,6 +449,115 @@ mod tests {
         assert!(result.unwrap().is_empty());
     }
 
+    #[test]
+    fn mock_provider_consistent_dimension() {
+        let provider = MockEmbeddingProvider::new(256);
+        assert_eq!(provider.dimension(), 256);
+        let vec = provider.embed("consistency check").unwrap();
+        assert_eq!(
+            vec.len(),
+            provider.dimension(),
+            "dimension() must match actual vector length"
+        );
+    }
+
+    #[test]
+    fn mock_provider_batch_empty() {
+        let provider = MockEmbeddingProvider::new(128);
+        let result = provider.embed_batch(&[]).unwrap();
+        assert!(result.is_empty(), "batch of empty slice returns empty vec");
+    }
+
+    #[test]
+    fn mock_provider_different_texts_same_dim() {
+        let provider = MockEmbeddingProvider::new(96);
+        let inputs = ["alpha", "beta", "gamma", "delta", ""];
+        for input in &inputs {
+            let vec = provider.embed(input).unwrap();
+            assert_eq!(
+                vec.len(),
+                96,
+                "all inputs must produce vectors of configured dimension"
+            );
+        }
+    }
+
+    #[test]
+    fn create_provider_mock_config() {
+        let config = EmbeddingConfig {
+            provider: "mock".to_owned(),
+            model: Some("custom-model".to_owned()),
+            dimension: Some(768),
+            api_key: None,
+        };
+        let provider = create_provider(&config).unwrap();
+        assert_eq!(provider.dimension(), 768);
+        assert_eq!(provider.model_name(), "mock-embedding");
+        let vec = provider.embed("test").unwrap();
+        assert_eq!(vec.len(), 768);
+    }
+
+    #[test]
+    fn embed_empty_string() {
+        let provider = MockEmbeddingProvider::new(64);
+        let result = provider.embed("");
+        assert!(result.is_ok(), "embedding empty string must not panic");
+        let vec = result.unwrap();
+        assert_eq!(vec.len(), 64);
+        let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!(
+            norm < 1.1,
+            "empty string embedding should be normalized or zero"
+        );
+    }
+
+    #[test]
+    fn embed_batch_single_item() {
+        let provider = MockEmbeddingProvider::new(64);
+        let single = provider.embed("solo").unwrap();
+        let batch = provider.embed_batch(&["solo"]).unwrap();
+        assert_eq!(batch.len(), 1);
+        assert_eq!(
+            batch[0], single,
+            "batch of one must match single embed result"
+        );
+    }
+
+    #[test]
+    fn mock_embed_normalized() {
+        let provider = MockEmbeddingProvider::new(256);
+        let inputs = ["alpha", "bravo", "charlie delta echo"];
+        for input in &inputs {
+            let vec = provider.embed(input).unwrap();
+            let magnitude: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+            assert!(
+                (magnitude - 1.0).abs() < 0.001,
+                "vector for {input:?} should be L2-normalized, got magnitude {magnitude}"
+            );
+        }
+    }
+
+    #[test]
+    fn mock_embed_batch_matches_single() {
+        let provider = MockEmbeddingProvider::new(128);
+        let texts = ["foo bar", "baz qux", "hello world", "rust lang", ""];
+        let batch = provider.embed_batch(&texts).unwrap();
+        assert_eq!(batch.len(), texts.len());
+        for (i, text) in texts.iter().enumerate() {
+            let single = provider.embed(text).unwrap();
+            assert_eq!(
+                batch[i], single,
+                "batch[{i}] must equal single embed for {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn mock_model_name() {
+        let provider = MockEmbeddingProvider::new(64);
+        assert_eq!(provider.model_name(), "mock-embedding");
+    }
+
     mod proptests {
         use super::*;
         use proptest::prelude::*;

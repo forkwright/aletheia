@@ -720,8 +720,14 @@ impl KnowledgeStore {
     ///
     /// Takes the top entity IDs from existing results, queries their neighborhoods,
     /// and returns related facts as additional results.
-    #[expect(clippy::cast_precision_loss, reason = "rank indices fit in f64 mantissa")]
-    #[expect(clippy::cast_possible_wrap, reason = "rank indices are small positive values")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "rank indices fit in f64 mantissa"
+    )]
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "rank indices are small positive values"
+    )]
     fn expand_via_graph(
         &self,
         existing: &[HybridResult],
@@ -3912,6 +3918,8 @@ mod knowledge_store_tests {
             .await
             .expect("async diff");
         assert_eq!(diff.added.len(), 1);
+    }
+
     #[test]
     fn backup_db_returns_error_for_mem_backend() {
         let store = make_store();
@@ -3970,5 +3978,294 @@ mod knowledge_store_tests {
             result.is_err(),
             "read-only mode should reject :put operations"
         );
+    }
+
+    #[test]
+    fn audit_all_facts_returns_forgotten() {
+        let store = make_store();
+        let f1 = make_fact("f1", "agent-a", "visible fact");
+        let f2 = make_fact("f2", "agent-a", "forgotten fact");
+        store.insert_fact(&f1).expect("insert f1");
+        store.insert_fact(&f2).expect("insert f2");
+        store
+            .forget_fact("f2", ForgetReason::UserRequested)
+            .expect("forget f2");
+
+        let all = store.audit_all_facts("agent-a", 100).expect("audit");
+        assert_eq!(all.len(), 2);
+        let forgotten_count = all.iter().filter(|f| f.is_forgotten).count();
+        assert_eq!(forgotten_count, 1);
+    }
+
+    #[test]
+    fn audit_all_facts_empty_store() {
+        let store = make_store();
+        let all = store.audit_all_facts("agent-a", 100).expect("audit empty");
+        assert!(all.is_empty());
+    }
+
+    #[test]
+    fn forget_already_forgotten_is_idempotent() {
+        let store = make_store();
+        let f1 = make_fact("f1", "agent-a", "will be forgotten twice");
+        store.insert_fact(&f1).expect("insert f1");
+        store
+            .forget_fact("f1", ForgetReason::Outdated)
+            .expect("first forget");
+        store
+            .forget_fact("f1", ForgetReason::Outdated)
+            .expect("second forget should not panic");
+
+        let all = store.audit_all_facts("agent-a", 100).expect("audit");
+        assert_eq!(all.len(), 1);
+        assert!(all[0].is_forgotten);
+    }
+
+    #[test]
+    fn unforget_never_forgotten_is_noop() {
+        let store = make_store();
+        let f1 = make_fact("f1", "agent-a", "never forgotten");
+        store.insert_fact(&f1).expect("insert f1");
+        store.unforget_fact("f1").expect("unforget should succeed");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "never forgotten");
+    }
+
+    #[test]
+    fn forget_nonexistent_fact() {
+        let store = make_store();
+        let _ = store.forget_fact("nonexistent", ForgetReason::UserRequested);
+    }
+
+    #[test]
+    fn forget_with_all_reasons() {
+        let store = make_store();
+        let reasons = [
+            ("f1", ForgetReason::UserRequested),
+            ("f2", ForgetReason::Outdated),
+            ("f3", ForgetReason::Incorrect),
+            ("f4", ForgetReason::Privacy),
+        ];
+        for (id, _) in &reasons {
+            let fact = make_fact(id, "agent-a", &format!("fact {id}"));
+            store.insert_fact(&fact).expect("insert");
+        }
+        for (id, reason) in &reasons {
+            store.forget_fact(id, *reason).expect("forget");
+        }
+
+        let all = store.audit_all_facts("agent-a", 100).expect("audit");
+        assert_eq!(all.len(), 4);
+        for fact in &all {
+            assert!(fact.is_forgotten);
+            assert!(fact.forget_reason.is_some());
+        }
+        let reasons: Vec<ForgetReason> = all.iter().filter_map(|f| f.forget_reason).collect();
+        assert!(reasons.contains(&ForgetReason::UserRequested));
+        assert!(reasons.contains(&ForgetReason::Outdated));
+        assert!(reasons.contains(&ForgetReason::Incorrect));
+        assert!(reasons.contains(&ForgetReason::Privacy));
+    }
+
+    #[test]
+    fn insert_fact_unicode_content() {
+        let store = make_store();
+        let mut fact = make_fact("fu", "agent-a", "placeholder");
+        fact.content = "日本語のファクト 🦀".to_owned();
+        store.insert_fact(&fact).expect("insert unicode fact");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "日本語のファクト 🦀");
+    }
+
+    #[test]
+    fn insert_fact_very_long_content() {
+        let store = make_store();
+        let long_content = "x".repeat(10240);
+        let mut fact = make_fact("fl", "agent-a", "placeholder");
+        fact.content = long_content.clone();
+        store.insert_fact(&fact).expect("insert long fact");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content.len(), 10240);
+    }
+
+    #[test]
+    fn query_facts_limit_zero() {
+        let store = make_store();
+        store
+            .insert_fact(&make_fact("f1", "agent-a", "fact one"))
+            .expect("insert");
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 0)
+            .expect("query with limit 0");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn query_facts_large_limit() {
+        let store = make_store();
+        store
+            .insert_fact(&make_fact("f1", "agent-a", "one"))
+            .expect("insert f1");
+        store
+            .insert_fact(&make_fact("f2", "agent-a", "two"))
+            .expect("insert f2");
+        store
+            .insert_fact(&make_fact("f3", "agent-a", "three"))
+            .expect("insert f3");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 1000)
+            .expect("query large limit");
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn search_vectors_dimension_mismatch_errors() {
+        let store = make_store();
+        let wrong_dim = vec![0.1, 0.2, 0.3, 0.4, 0.5];
+        let result = store.search_vectors(wrong_dim, 5, 16);
+        assert!(result.is_err(), "search with wrong dimension should error");
+    }
+
+    #[test]
+    fn run_query_malformed_datalog_errors() {
+        let store = make_store();
+        let result = store.run_query("this is not valid datalog!!!", BTreeMap::new());
+        assert!(result.is_err(), "malformed datalog should error");
+    }
+
+    #[test]
+    fn insert_entity_unicode() {
+        let store = make_store();
+        let entity = make_entity("eu1", "Ελληνικά", "language");
+        store.insert_entity(&entity).expect("insert unicode entity");
+        let rows = store
+            .entity_neighborhood("eu1")
+            .expect("neighborhood query");
+        assert!(rows.rows.is_empty() || !rows.rows.is_empty());
+    }
+
+    #[test]
+    fn insert_fact_confidence_zero() {
+        let store = make_store();
+        let mut fact = make_fact("fc0", "agent-a", "zero confidence");
+        fact.confidence = 0.0;
+        store.insert_fact(&fact).expect("insert zero confidence");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query");
+        let found = results.iter().find(|f| f.id == "fc0").expect("find fact");
+        assert!((found.confidence - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn insert_fact_confidence_one() {
+        let store = make_store();
+        let mut fact = make_fact("fc1", "agent-a", "full confidence");
+        fact.confidence = 1.0;
+        store.insert_fact(&fact).expect("insert full confidence");
+
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query");
+        let found = results.iter().find(|f| f.id == "fc1").expect("find fact");
+        assert!((found.confidence - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn query_facts_async_works() {
+        let store = make_store();
+        store
+            .insert_fact(&make_fact("fa1", "agent-a", "async fact one"))
+            .expect("insert");
+        store
+            .insert_fact(&make_fact("fa2", "agent-a", "async fact two"))
+            .expect("insert");
+
+        let results = store
+            .query_facts_async("agent-a".to_owned(), "2026-06-01".to_owned(), 10)
+            .await
+            .expect("async query");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn audit_all_facts_async_works() {
+        let store = make_store();
+        store
+            .insert_fact(&make_fact("faa1", "agent-a", "audit async one"))
+            .expect("insert");
+        store
+            .insert_fact(&make_fact("faa2", "agent-a", "audit async two"))
+            .expect("insert");
+        store
+            .forget_fact("faa2", ForgetReason::Incorrect)
+            .expect("forget");
+
+        let all = store
+            .audit_all_facts_async("agent-a".to_owned(), 100)
+            .await
+            .expect("async audit");
+        assert_eq!(all.len(), 2);
+        let forgotten_count = all.iter().filter(|f| f.is_forgotten).count();
+        assert_eq!(forgotten_count, 1);
+    }
+
+    #[tokio::test]
+    async fn search_temporal_async_works() {
+        let store = make_store();
+        let fact = make_fact("fst1", "agent-a", "temporal search target");
+        store.insert_fact(&fact).expect("insert fact");
+        let emb = make_embedding("est1", "temporal search target", "fst1", "agent-a");
+        store.insert_embedding(&emb).expect("insert embedding");
+
+        let q = HybridQuery {
+            text: "temporal".to_owned(),
+            embedding: vec![0.5, 0.5, 0.5, 0.5],
+            seed_entities: vec![],
+            limit: 10,
+            ef: 16,
+        };
+        let results = store
+            .search_temporal_async(q, "2026-06-01".to_owned())
+            .await
+            .expect("async temporal search");
+        assert!(!results.is_empty());
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn fact_roundtrip(
+                content in "[a-zA-Z0-9 ]{1,200}",
+                confidence in 0.0_f64..=1.0,
+            ) {
+                let store = make_store();
+                let mut fact = make_fact("prop-rt", "agent-prop", &content);
+                fact.confidence = confidence;
+                store.insert_fact(&fact).expect("insert");
+                let results = store.query_facts("agent-prop", "2026-06-01", 10).expect("query");
+                prop_assert_eq!(results.len(), 1);
+                prop_assert_eq!(&results[0].content, &content);
+                prop_assert!((results[0].confidence - confidence).abs() < 1e-10);
+                prop_assert_eq!(results[0].tier, crate::knowledge::EpistemicTier::Inferred);
+            }
+        }
     }
 }

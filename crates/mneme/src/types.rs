@@ -334,4 +334,64 @@ mod tests {
         assert_eq!(msg.role, back.role);
         assert_eq!(msg.content, back.content);
     }
+
+    #[test]
+    fn session_status_all_variants() {
+        let all = [
+            SessionStatus::Active,
+            SessionStatus::Archived,
+            SessionStatus::Distilled,
+        ];
+        for status in all {
+            let s = status.as_str();
+            assert!(!s.is_empty(), "as_str() must be non-empty for {status:?}");
+        }
+    }
+
+    #[test]
+    fn session_type_all_variants() {
+        let all = [
+            SessionType::Primary,
+            SessionType::Background,
+            SessionType::Ephemeral,
+        ];
+        for stype in all {
+            let s = stype.as_str();
+            assert!(!s.is_empty(), "as_str() must be non-empty for {stype:?}");
+        }
+    }
+
+    #[test]
+    fn role_all_variants() {
+        let all = [Role::System, Role::User, Role::Assistant, Role::ToolResult];
+        for role in all {
+            let s = role.as_str();
+            assert!(!s.is_empty(), "as_str() must be non-empty for {role:?}");
+        }
+    }
+
+    #[test]
+    fn session_type_from_key_round_trip() {
+        assert_eq!(
+            SessionType::from_key("prosoche-loop"),
+            SessionType::Background
+        );
+        assert_eq!(
+            SessionType::from_key(SessionType::Background.as_str()),
+            SessionType::Primary,
+            "plain 'background' string has no prefix match, defaults to Primary"
+        );
+        for prefix in &["ask:", "spawn:", "dispatch:", "ephemeral:"] {
+            let key = format!("{prefix}test");
+            assert_eq!(
+                SessionType::from_key(&key),
+                SessionType::Ephemeral,
+                "key '{key}' should resolve to Ephemeral"
+            );
+        }
+        assert_eq!(
+            SessionType::from_key("regular-session"),
+            SessionType::Primary
+        );
+    }
 }

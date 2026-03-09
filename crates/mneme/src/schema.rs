@@ -144,6 +144,50 @@ mod tests {
     }
 
     #[test]
+    fn valid_categories_non_empty() {
+        assert!(
+            !VALID_CATEGORIES.is_empty(),
+            "VALID_CATEGORIES must not be empty"
+        );
+    }
+
+    #[test]
+    fn valid_categories_no_duplicates() {
+        let mut seen = std::collections::HashSet::new();
+        for cat in VALID_CATEGORIES {
+            assert!(seen.insert(*cat), "duplicate category: {cat}");
+        }
+    }
+
+    #[test]
+    fn valid_categories_lowercase() {
+        for cat in VALID_CATEGORIES {
+            assert_eq!(
+                *cat,
+                cat.to_lowercase(),
+                "category '{cat}' should be lowercase"
+            );
+        }
+    }
+
+    #[test]
+    fn ddl_contains_all_tables() {
+        let expected_tables = [
+            "sessions",
+            "messages",
+            "usage",
+            "distillations",
+            "agent_notes",
+        ];
+        for table in &expected_tables {
+            assert!(
+                DDL.contains(&format!("CREATE TABLE IF NOT EXISTS {table}")),
+                "DDL should contain CREATE TABLE for {table}"
+            );
+        }
+    }
+
+    #[test]
     fn valid_categories_matches_ddl_check_constraint() {
         let marker = "CHECK(category IN (";
         let start = DDL
