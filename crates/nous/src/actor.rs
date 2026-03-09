@@ -770,7 +770,11 @@ mod tests {
             &self,
             _request: &CompletionRequest,
         ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-            Ok(self.response.lock().expect("lock").clone()) // INVARIANT: test mock, panic = test bug
+            #[expect(
+                clippy::expect_used,
+                reason = "test mock: poisoned lock means a test bug"
+            )]
+            Ok(self.response.lock().expect("lock poisoned").clone())
         }
 
         fn supported_models(&self) -> &[&str] {

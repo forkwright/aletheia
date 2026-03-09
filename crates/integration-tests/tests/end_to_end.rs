@@ -102,7 +102,14 @@ impl LlmProvider for CapturingMockProvider {
         &self,
         request: &CompletionRequest,
     ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-        self.captured.lock().expect("lock").push(request.clone());
+        #[expect(
+            clippy::expect_used,
+            reason = "test mock: poisoned lock means a test bug"
+        )]
+        self.captured
+            .lock()
+            .expect("lock poisoned")
+            .push(request.clone());
         Ok(self.response.clone())
     }
 
@@ -430,7 +437,11 @@ async fn bootstrap_assembles_from_oikos() {
     let resp = router.clone().oneshot(req).await.expect("send message");
     let _ = body_string(resp).await;
 
-    let requests = captured.lock().expect("lock");
+    #[expect(
+        clippy::expect_used,
+        reason = "test assertion: poisoned lock means a test bug"
+    )]
+    let requests = captured.lock().expect("lock poisoned");
     assert!(
         !requests.is_empty(),
         "mock provider should have received at least one request"
