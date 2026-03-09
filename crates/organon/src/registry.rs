@@ -509,6 +509,177 @@ mod tests {
         assert_eq!(tools[0].name, "enable_tool");
     }
 
+    // -- Additional registry tests ------------------------------------------
+
+    #[test]
+    fn test_registry_new_has_no_definitions() {
+        let reg = ToolRegistry::new();
+        assert!(reg.definitions().is_empty());
+    }
+
+    #[test]
+    fn test_registry_default_is_same_as_new() {
+        let reg1 = ToolRegistry::new();
+        let reg2 = ToolRegistry::default();
+        assert_eq!(reg1.definitions().len(), reg2.definitions().len());
+    }
+
+    #[test]
+    fn test_definitions_preserves_insertion_order() {
+        let mut reg = ToolRegistry::new();
+        let (e1, _) = mock_executor("ok");
+        let (e2, _) = mock_executor("ok");
+        let (e3, _) = mock_executor("ok");
+        reg.register(test_def("alpha", ToolCategory::Workspace), e1)
+            .expect("register");
+        reg.register(test_def("beta", ToolCategory::Workspace), e2)
+            .expect("register");
+        reg.register(test_def("gamma", ToolCategory::Workspace), e3)
+            .expect("register");
+
+        let names: Vec<&str> = reg.definitions().iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, ["alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn test_to_hermeneus_tools_schema_includes_required_fields() {
+        let mut reg = ToolRegistry::new();
+        let (exec, _) = mock_executor("ok");
+        let def = ToolDef {
+            name: ToolName::new("read").expect("valid"),
+            description: "Read a file".to_owned(),
+            extended_description: None,
+            input_schema: InputSchema {
+                properties: IndexMap::from([(
+                    "path".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "File path".to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                )]),
+                required: vec!["path".to_owned()],
+            },
+            category: ToolCategory::Workspace,
+            auto_activate: false,
+        };
+        reg.register(def, exec).expect("register");
+        let tools = reg.to_hermeneus_tools();
+        let schema = &tools[0].input_schema;
+        assert_eq!(schema["required"][0], "path");
+    }
+
+    #[test]
+    fn test_to_hermeneus_tools_schema_includes_enum_values() {
+        let mut reg = ToolRegistry::new();
+        let (exec, _) = mock_executor("ok");
+        let def = ToolDef {
+            name: ToolName::new("find").expect("valid"),
+            description: "Find files".to_owned(),
+            extended_description: None,
+            input_schema: InputSchema {
+                properties: IndexMap::from([(
+                    "type".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description: "Type filter".to_owned(),
+                        enum_values: Some(vec!["f".to_owned(), "d".to_owned()]),
+                        default: None,
+                    },
+                )]),
+                required: vec![],
+            },
+            category: ToolCategory::Workspace,
+            auto_activate: false,
+        };
+        reg.register(def, exec).expect("register");
+        let tools = reg.to_hermeneus_tools();
+        let schema = &tools[0].input_schema;
+        let enum_vals = &schema["properties"]["type"]["enum"];
+        assert_eq!(enum_vals[0], "f");
+        assert_eq!(enum_vals[1], "d");
+    }
+
+    #[test]
+    fn test_to_hermeneus_tools_schema_includes_default_values() {
+        let mut reg = ToolRegistry::new();
+        let (exec, _) = mock_executor("ok");
+        let def = ToolDef {
+            name: ToolName::new("grep").expect("valid"),
+            description: "Grep".to_owned(),
+            extended_description: None,
+            input_schema: InputSchema {
+                properties: IndexMap::from([(
+                    "caseSensitive".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::Boolean,
+                        description: "Case sensitive".to_owned(),
+                        enum_values: None,
+                        default: Some(serde_json::json!(true)),
+                    },
+                )]),
+                required: vec![],
+            },
+            category: ToolCategory::Workspace,
+            auto_activate: false,
+        };
+        reg.register(def, exec).expect("register");
+        let tools = reg.to_hermeneus_tools();
+        let schema = &tools[0].input_schema;
+        assert_eq!(schema["properties"]["caseSensitive"]["default"], true);
+    }
+
+    #[test]
+    fn test_lazy_catalog_includes_description() {
+        let mut reg = ToolRegistry::new();
+        let (exec, _) = mock_executor("ok");
+        reg.register(
+            ToolDef {
+                name: ToolName::new("web_search").expect("valid"),
+                description: "Search the web".to_owned(),
+                extended_description: None,
+                input_schema: InputSchema {
+                    properties: IndexMap::new(),
+                    required: vec![],
+                },
+                category: ToolCategory::Research,
+                auto_activate: false,
+            },
+            exec,
+        )
+        .expect("register");
+
+        let catalog = reg.lazy_tool_catalog();
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].1, "Search the web");
+    }
+
+    #[test]
+    fn test_definitions_for_category_returns_empty_when_no_match() {
+        let mut reg = ToolRegistry::new();
+        let (e1, _) = mock_executor("ok");
+        reg.register(test_def("read", ToolCategory::Workspace), e1)
+            .expect("register");
+        let planning = reg.definitions_for_category(ToolCategory::Planning);
+        assert!(planning.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_execute_unknown_tool_returns_tool_not_found_error() {
+        let reg = ToolRegistry::new();
+        let input = ToolInput {
+            name: ToolName::new("ghost").expect("valid"),
+            tool_use_id: "toolu_x".to_owned(),
+            arguments: serde_json::json!({}),
+        };
+        let err = reg
+            .execute(&input, &test_ctx())
+            .await
+            .expect_err("not found");
+        assert!(err.to_string().contains("tool not found: ghost"));
+    }
+
     #[test]
     fn lazy_tool_catalog_excludes_auto_activate_and_enable_tool() {
         let mut reg = ToolRegistry::new();
