@@ -2,21 +2,23 @@ use crate::api::types::{Agent, HistoryMessage, Session};
 use crate::app::App;
 use crate::id::NousId;
 use crate::msg::ErrorToast;
+use crate::sanitize::sanitize_for_display;
 use crate::state::{AgentState, AgentStatus, ChatMessage};
 
 #[tracing::instrument(skip_all, fields(count = agents.len()))]
+// SAFETY: sanitized at ingestion — all Agent fields from API are sanitized here.
 pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
     app.agents = agents
         .into_iter()
         .map(|a| AgentState {
             id: a.id.clone(),
-            name: a.display_name().to_owned(),
-            emoji: a.emoji,
+            name: sanitize_for_display(a.display_name()).into_owned(),
+            emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
             status: AgentStatus::Idle,
             active_tool: None,
             tool_started_at: None,
-            sessions: Vec::new(),
-            model: a.model,
+            sessions: sanitize_sessions(Vec::new()),
+            model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
             compaction_stage: None,
             has_notification: false,
         })
@@ -24,13 +26,15 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, count = sessions.len()))]
+// SAFETY: sanitized at ingestion — session keys and fields from API are sanitized here.
 pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: Vec<Session>) {
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
-        agent.sessions = sessions;
+        agent.sessions = sanitize_sessions(sessions);
     }
 }
 
 #[tracing::instrument(skip_all, fields(count = messages.len()))]
+// SAFETY: sanitized at ingestion — all message content from API is sanitized here.
 pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>) {
     app.messages = messages
         .into_iter()
@@ -40,10 +44,10 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
             }
             let text = extract_text_content(&m.content)?;
             Some(ChatMessage {
-                role: m.role,
-                text,
-                timestamp: m.created_at,
-                model: m.model,
+                role: sanitize_for_display(&m.role).into_owned(),
+                text: sanitize_for_display(&text).into_owned(),
+                timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
+                model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
                 is_streaming: false,
                 tool_calls: Vec::new(),
             })
@@ -83,8 +87,9 @@ pub(crate) async fn handle_new_session(app: &mut App) {
 }
 
 #[tracing::instrument(skip_all)]
+// SAFETY: sanitized at ingestion — error messages may contain external data.
 pub(crate) fn handle_show_error(app: &mut App, msg: String) {
-    app.error_toast = Some(ErrorToast::new(msg));
+    app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
 }
 
 #[tracing::instrument(skip_all)]
@@ -98,6 +103,24 @@ pub(crate) fn handle_tick(app: &mut App) {
     if app.error_toast.as_ref().is_some_and(|t| t.is_expired()) {
         app.error_toast = None;
     }
+}
+
+/// Sanitize session fields that may contain external data.
+fn sanitize_sessions(sessions: Vec<Session>) -> Vec<Session> {
+    sessions
+        .into_iter()
+        .map(|s| Session {
+            id: s.id,
+            nous_id: s.nous_id,
+            key: sanitize_for_display(&s.key).into_owned(),
+            status: s.status.map(|st| sanitize_for_display(&st).into_owned()),
+            message_count: s.message_count,
+            session_type: s
+                .session_type
+                .map(|t| sanitize_for_display(&t).into_owned()),
+            updated_at: s.updated_at,
+        })
+        .collect()
 }
 
 fn chrono_compact_now() -> String {

@@ -3,9 +3,11 @@ use std::collections::HashMap;
 use crate::api::types::ActiveTurn;
 use crate::app::App;
 use crate::id::{NousId, SessionId};
+use crate::sanitize::sanitize_for_display;
 use crate::state::{AgentState, AgentStatus};
 
 #[tracing::instrument(skip_all)]
+// SAFETY: sanitized at ingestion — agent data from API is sanitized here on SSE reconnect.
 pub(crate) async fn handle_sse_connected(app: &mut App) {
     let was_disconnected = !app.sse_connected;
     app.sse_connected = true;
@@ -25,13 +27,13 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                     let notif = notifications.get(&a.id).copied().unwrap_or(false);
                     AgentState {
                         id: a.id.clone(),
-                        name: a.display_name().to_owned(),
-                        emoji: a.emoji,
+                        name: sanitize_for_display(a.display_name()).into_owned(),
+                        emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                         status: AgentStatus::Idle,
                         active_tool: None,
                         tool_started_at: None,
                         sessions: Vec::new(),
-                        model: a.model,
+                        model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                         compaction_stage: None,
                         has_notification: notif,
                     }
@@ -84,9 +86,10 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %tool_name))]
+// SAFETY: sanitized at ingestion — tool name from SSE event.
 pub(crate) fn handle_sse_tool_called(app: &mut App, nous_id: NousId, tool_name: String) {
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
-        agent.active_tool = Some(tool_name);
+        agent.active_tool = Some(sanitize_for_display(&tool_name).into_owned());
         agent.tool_started_at = Some(std::time::Instant::now());
     }
 }
@@ -136,9 +139,10 @@ pub(crate) fn handle_sse_distill_before(app: &mut App, nous_id: NousId) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %stage))]
+// SAFETY: sanitized at ingestion — distill stage from SSE event.
 pub(crate) fn handle_sse_distill_stage(app: &mut App, nous_id: NousId, stage: String) {
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
-        agent.compaction_stage = Some(stage);
+        agent.compaction_stage = Some(sanitize_for_display(&stage).into_owned());
     }
 }
 

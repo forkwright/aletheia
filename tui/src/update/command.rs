@@ -1,6 +1,7 @@
 use crate::app::App;
 use crate::command::build_suggestions;
 use crate::msg::ErrorToast;
+use crate::sanitize::sanitize_for_display;
 use crate::state::Overlay;
 
 #[tracing::instrument(skip_all)]
@@ -251,10 +252,12 @@ async fn execute_recall(app: &mut App, query: &str) {
     let query = query.to_string();
     match client.recall(&nous_id, &query).await {
         Ok(result) => {
-            let display = if result.len() > 200 {
-                format!("{}...", safe_truncate(&result, 200))
+            // SAFETY: sanitized at ingestion — recall results from memory API.
+            let clean = sanitize_for_display(&result).into_owned();
+            let display = if clean.len() > 200 {
+                format!("{}...", safe_truncate(&clean, 200))
             } else {
-                result
+                clean
             };
             app.error_toast = Some(ErrorToast::new(display));
         }

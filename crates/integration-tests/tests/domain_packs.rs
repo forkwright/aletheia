@@ -50,7 +50,14 @@ impl LlmProvider for CapturingMockProvider {
         &self,
         request: &CompletionRequest,
     ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-        self.captured.lock().expect("lock").push(request.clone());
+        #[expect(
+            clippy::expect_used,
+            reason = "test mock: poisoned lock means a test bug"
+        )]
+        self.captured
+            .lock()
+            .expect("lock poisoned")
+            .push(request.clone());
         Ok(self.response.clone())
     }
 
@@ -151,7 +158,11 @@ context:
     handle.send_turn("main", "Hello").await.expect("turn");
 
     {
-        let requests = captured.lock().expect("lock");
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let requests = captured.lock().expect("lock poisoned");
         assert_eq!(requests.len(), 1);
         let system = requests[0].system.as_ref().expect("system prompt");
         assert!(
@@ -323,7 +334,11 @@ overlays:
 
     // Verify chiron gets healthcare content
     {
-        let chiron_reqs = chiron_captured.lock().expect("lock");
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let chiron_reqs = chiron_captured.lock().expect("lock poisoned");
         let chiron_system = chiron_reqs[0].system.as_ref().expect("system");
         assert!(
             chiron_system.contains("HIPAA compliance"),
@@ -337,7 +352,11 @@ overlays:
 
     // Verify hermes does NOT get healthcare content
     {
-        let hermes_reqs = hermes_captured.lock().expect("lock");
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let hermes_reqs = hermes_captured.lock().expect("lock poisoned");
         let hermes_system = hermes_reqs[0].system.as_ref().expect("system");
         assert!(
             !hermes_system.contains("HIPAA compliance"),
