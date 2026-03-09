@@ -53,7 +53,10 @@ mod tests {
     #[test]
     fn all_scenarios_returns_nonempty_list() {
         let scenarios = all_scenarios();
-        assert!(!scenarios.is_empty(), "scenario registry should not be empty");
+        assert!(
+            !scenarios.is_empty(),
+            "scenario registry should not be empty"
+        );
     }
 
     #[test]
@@ -71,8 +74,16 @@ mod tests {
         let scenarios = all_scenarios();
         for s in &scenarios {
             let meta = s.meta();
-            assert!(!meta.description.is_empty(), "scenario {} has empty description", meta.id);
-            assert!(!meta.category.is_empty(), "scenario {} has empty category", meta.id);
+            assert!(
+                !meta.description.is_empty(),
+                "scenario {} has empty description",
+                meta.id
+            );
+            assert!(
+                !meta.category.is_empty(),
+                "scenario {} has empty category",
+                meta.id
+            );
         }
     }
 
@@ -80,17 +91,30 @@ mod tests {
     fn scenario_filter_by_id_substring() {
         let all = all_scenarios();
         let filter = "health";
-        let filtered: Vec<_> = all.into_iter().filter(|s| s.meta().id.contains(filter)).collect();
-        assert!(!filtered.is_empty(), "filter 'health' should match at least one scenario");
+        let filtered: Vec<_> = all
+            .into_iter()
+            .filter(|s| s.meta().id.contains(filter))
+            .collect();
+        assert!(
+            !filtered.is_empty(),
+            "filter 'health' should match at least one scenario"
+        );
         for s in &filtered {
-            assert!(s.meta().id.contains(filter), "scenario {} should contain 'health'", s.meta().id);
+            assert!(
+                s.meta().id.contains(filter),
+                "scenario {} should contain 'health'",
+                s.meta().id
+            );
         }
     }
 
     #[test]
     fn scenario_filter_nonexistent_returns_empty() {
         let all = all_scenarios();
-        let filtered: Vec<_> = all.into_iter().filter(|s| s.meta().id.contains("xyzzy-nonexistent")).collect();
+        let filtered: Vec<_> = all
+            .into_iter()
+            .filter(|s| s.meta().id.contains("xyzzy-nonexistent"))
+            .collect();
         assert!(filtered.is_empty());
     }
 }

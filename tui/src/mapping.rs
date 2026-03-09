@@ -75,12 +75,7 @@ impl App {
         }
 
         // View stack: Esc pops back when not at Home (takes priority over selection deselect)
-        if !self.view_stack.is_home()
-            && matches!(
-                (key.modifiers, key.code),
-                (_, KeyCode::Esc)
-            )
-        {
+        if !self.view_stack.is_home() && matches!((key.modifiers, key.code), (_, KeyCode::Esc)) {
             return Some(Msg::ViewPopBack);
         }
 
@@ -938,9 +933,8 @@ mod tests {
     fn esc_at_non_home_with_selection_still_pops() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
         app.selected_message = Some(0);
-        app.view_stack.push(crate::state::View::MessageDetail {
-            message_index: 0,
-        });
+        app.view_stack
+            .push(crate::state::View::MessageDetail { message_index: 0 });
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::ViewPopBack)));

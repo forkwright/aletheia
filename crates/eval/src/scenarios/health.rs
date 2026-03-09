@@ -30,11 +30,11 @@ impl Scenario for HealthReturnsOk {
             async move {
                 let health = client.health().await?;
                 assert_eval(
-                    matches!(health.status, InstanceStatus::Healthy | InstanceStatus::Degraded),
-                    format!(
-                        "expected healthy or degraded, got {:?}",
-                        health.status
+                    matches!(
+                        health.status,
+                        InstanceStatus::Healthy | InstanceStatus::Degraded
                     ),
+                    format!("expected healthy or degraded, got {:?}", health.status),
                 )
             }
             .instrument(tracing::info_span!("scenario", id = "health-returns-ok")),

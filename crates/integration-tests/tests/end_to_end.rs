@@ -18,9 +18,9 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use tokio_util::sync::CancellationToken;
 use aletheia_symbolon::types::Role;
 use aletheia_taxis::oikos::Oikos;
+use tokio_util::sync::CancellationToken;
 
 // --- Mock Providers ---
 

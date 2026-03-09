@@ -763,10 +763,10 @@ mod tests {
     use std::sync::Mutex;
 
     use aletheia_hermeneus::provider::LlmProvider;
-    use tokio_util::sync::CancellationToken;
     use aletheia_hermeneus::types::{
         CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
     };
+    use tokio_util::sync::CancellationToken;
 
     use super::*;
 

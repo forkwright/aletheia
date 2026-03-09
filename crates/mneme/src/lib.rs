@@ -31,6 +31,9 @@ pub mod error;
 pub mod export;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub mod extract;
+/// In-memory HNSW vector index backed by `hnsw_rs`.
+#[cfg(feature = "hnsw_rs")]
+pub mod hnsw_index;
 /// Agent import — restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
 pub mod import;

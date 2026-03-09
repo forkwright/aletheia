@@ -25,9 +25,7 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
             Span::raw(" "),
             Span::styled(
                 format!("Sessions for {}", agent.name),
-                theme
-                    .style_accent()
-                    .add_modifier(Modifier::BOLD),
+                theme.style_accent().add_modifier(Modifier::BOLD),
             ),
         ]));
         lines.push(Line::raw(""));
@@ -58,9 +56,7 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
                 };
 
                 let name_style = if is_focused {
-                    theme
-                        .style_fg()
-                        .add_modifier(Modifier::BOLD)
+                    theme.style_fg().add_modifier(Modifier::BOLD)
                 } else {
                     theme.style_fg()
                 };
@@ -102,7 +98,9 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
     ]));
 
     let block = Block::default().borders(Borders::NONE);
-    let paragraph = Paragraph::new(lines).block(block).wrap(Wrap { trim: false });
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
 }
 
@@ -128,9 +126,7 @@ pub(crate) fn render_message_detail(
             Span::raw(" "),
             Span::styled(
                 format!("Message #{message_index} — {role_label}"),
-                theme
-                    .style_accent()
-                    .add_modifier(Modifier::BOLD),
+                theme.style_accent().add_modifier(Modifier::BOLD),
             ),
         ]));
 
@@ -157,12 +153,7 @@ pub(crate) fn render_message_detail(
         if !msg.tool_calls.is_empty() {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(
-                    "Tool Calls:",
-                    theme
-                        .style_fg()
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Span::styled("Tool Calls:", theme.style_fg().add_modifier(Modifier::BOLD)),
             ]));
             for tc in &msg.tool_calls {
                 let status = if tc.is_error { "FAILED" } else { "OK" };
@@ -170,10 +161,17 @@ pub(crate) fn render_message_detail(
                     .duration_ms
                     .map(|ms| format!(" ({ms}ms)"))
                     .unwrap_or_default();
-                let color = if tc.is_error { theme.error } else { theme.fg_dim };
+                let color = if tc.is_error {
+                    theme.error
+                } else {
+                    theme.fg_dim
+                };
                 lines.push(Line::from(vec![
                     Span::raw("    "),
-                    Span::styled(format!("{} [{status}]{dur}", tc.name), Style::default().fg(color)),
+                    Span::styled(
+                        format!("{} [{status}]{dur}", tc.name),
+                        Style::default().fg(color),
+                    ),
                 ]));
             }
             lines.push(Line::raw(""));
@@ -182,12 +180,7 @@ pub(crate) fn render_message_detail(
         // Full content
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(
-                "Content:",
-                theme
-                    .style_fg()
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("Content:", theme.style_fg().add_modifier(Modifier::BOLD)),
         ]));
 
         let rendered = crate::markdown::render(

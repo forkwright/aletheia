@@ -737,20 +737,26 @@ mod tests {
     #[test]
     fn temp_dir_raii_removes_database_file_on_drop() {
         let db_path = {
-            let dir =
-                TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))
-                    .expect("create temp dir");
+            let dir = TempDir::new()
+                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
+                .expect("create temp dir");
             let db_file = dir.path().join("data.redb");
             let path_copy = db_file.clone();
 
             // Create the database so the file exists.
             new_cozo_redb(dir.path()).expect("create db");
-            assert!(db_file.exists(), "data.redb should exist while TempDir is live");
+            assert!(
+                db_file.exists(),
+                "data.redb should exist while TempDir is live"
+            );
 
             path_copy
             // `dir` (TempDir) drops here, removing the directory tree.
         };
-        assert!(!db_path.exists(), "data.redb should be removed after TempDir drop");
+        assert!(
+            !db_path.exists(),
+            "data.redb should be removed after TempDir drop"
+        );
     }
 
     /// Verify that data written and committed before dropping the Database

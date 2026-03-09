@@ -224,7 +224,9 @@ impl Oikos {
 
         ensure!(
             self.root.exists(),
-            InstanceRootNotFoundSnafu { path: self.root.clone() }
+            InstanceRootNotFoundSnafu {
+                path: self.root.clone()
+            }
         );
 
         for dir in &["config", "data"] {
@@ -280,7 +282,9 @@ impl Oikos {
         use crate::error::NotWritableSnafu;
 
         let test_file = path.join(".aletheia-write-test");
-        std::fs::write(&test_file, b"ok").context(NotWritableSnafu { path: path.to_path_buf() })?;
+        std::fs::write(&test_file, b"ok").context(NotWritableSnafu {
+            path: path.to_path_buf(),
+        })?;
         let _ = std::fs::remove_file(&test_file);
         Ok(())
     }
@@ -444,7 +448,10 @@ mod tests {
             msg.contains("required directory missing"),
             "expected 'required directory missing' in: {msg}"
         );
-        assert!(msg.contains("config"), "expected path to mention 'config': {msg}");
+        assert!(
+            msg.contains("config"),
+            "expected path to mention 'config': {msg}"
+        );
         assert!(
             msg.contains("aletheia init"),
             "expected 'aletheia init' hint in: {msg}"
@@ -463,7 +470,10 @@ mod tests {
             msg.contains("required directory missing"),
             "expected 'required directory missing' in: {msg}"
         );
-        assert!(msg.contains("data"), "expected path to mention 'data': {msg}");
+        assert!(
+            msg.contains("data"),
+            "expected path to mention 'data': {msg}"
+        );
     }
 
     #[test]
@@ -537,7 +547,9 @@ mod tests {
     fn validate_workspace_path_rejects_missing_path() {
         let dir = make_valid_instance();
         let oikos = Oikos::from_root(dir.path());
-        let err = oikos.validate_workspace_path("nous/nonexistent-agent-xyz").unwrap_err();
+        let err = oikos
+            .validate_workspace_path("nous/nonexistent-agent-xyz")
+            .unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("agent workspace path does not exist"),

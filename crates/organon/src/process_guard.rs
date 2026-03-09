@@ -37,9 +37,7 @@ pub(crate) struct ProcessGuard {
 impl ProcessGuard {
     /// Wrap a spawned child process in a kill-on-drop guard.
     pub(crate) fn new(child: std::process::Child) -> Self {
-        Self {
-            child: Some(child),
-        }
+        Self { child: Some(child) }
     }
 
     /// Borrow the inner [`Child`][std::process::Child] for polling or I/O.
@@ -244,7 +242,10 @@ mod tests {
             .expect("kill -0")
             .status
             .success();
-        assert!(!alive, "process {pid} should have been killed by guard drop on panic");
+        assert!(
+            !alive,
+            "process {pid} should have been killed by guard drop on panic"
+        );
     }
 
     /// Two sequential guards for two different processes both clean up

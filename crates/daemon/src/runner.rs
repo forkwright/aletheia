@@ -908,7 +908,10 @@ mod tests {
         child_a.cancel();
 
         let result_a = tokio::time::timeout(Duration::from_secs(2), handle_a).await;
-        assert!(result_a.is_ok(), "runner_a should stop when its token is cancelled");
+        assert!(
+            result_a.is_ok(),
+            "runner_a should stop when its token is cancelled"
+        );
 
         // runner_b is still alive (not cancelled yet).
         assert!(!handle_b.is_finished(), "runner_b should still be running");

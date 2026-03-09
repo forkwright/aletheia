@@ -666,7 +666,10 @@ mod tests {
         mgr.drain(Duration::from_secs(5)).await;
 
         // After drain join handles are taken and tasks have stopped.
-        assert!(handle1.status().await.is_err(), "syn actor should have exited");
+        assert!(
+            handle1.status().await.is_err(),
+            "syn actor should have exited"
+        );
         assert!(
             handle2.status().await.is_err(),
             "demiurge actor should have exited"

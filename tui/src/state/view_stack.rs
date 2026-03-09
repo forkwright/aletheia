@@ -178,7 +178,10 @@ mod tests {
             agent_id: "syn".into(),
             session_id: "abc123".into(),
         });
-        assert_eq!(stack.breadcrumbs(), vec!["Home", "Sessions", "Conversation"]);
+        assert_eq!(
+            stack.breadcrumbs(),
+            vec!["Home", "Sessions", "Conversation"]
+        );
     }
 
     #[test]
@@ -273,10 +276,7 @@ mod tests {
     fn message_detail_push_pop() {
         let mut stack = ViewStack::new();
         stack.push(View::MessageDetail { message_index: 42 });
-        assert_eq!(
-            stack.current(),
-            &View::MessageDetail { message_index: 42 }
-        );
+        assert_eq!(stack.current(), &View::MessageDetail { message_index: 42 });
         assert_eq!(stack.breadcrumbs(), vec!["Home", "Message"]);
         stack.pop();
         assert!(stack.is_home());
