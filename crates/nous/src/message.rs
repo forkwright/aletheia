@@ -98,4 +98,39 @@ mod tests {
         assert_eq!(status.session_count, 3);
         assert!(status.active_session.is_none());
     }
+
+    #[test]
+    fn status_with_active_session() {
+        let status = NousStatus {
+            id: "syn".to_owned(),
+            lifecycle: NousLifecycle::Active,
+            session_count: 1,
+            active_session: Some("main".to_owned()),
+        };
+        assert_eq!(status.lifecycle, NousLifecycle::Active);
+        assert_eq!(status.active_session.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn lifecycle_copy() {
+        let a = NousLifecycle::Idle;
+        let b = a;
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn lifecycle_all_variants_display() {
+        let variants = [
+            NousLifecycle::Active,
+            NousLifecycle::Idle,
+            NousLifecycle::Dormant,
+        ];
+        let displays: Vec<String> = variants.iter().map(ToString::to_string).collect();
+        assert_eq!(displays.len(), 3);
+        // Ensure no duplicates
+        let mut deduped = displays.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(deduped.len(), 3);
+    }
 }

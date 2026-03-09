@@ -158,3 +158,148 @@ pub enum Error {
 
 /// Convenience alias for results with [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_display_context_assembly() {
+        let err = ContextAssemblySnafu {
+            message: "SOUL.md missing",
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("context assembly failed"));
+        assert!(msg.contains("SOUL.md missing"));
+    }
+
+    #[test]
+    fn error_display_workspace_validation() {
+        let err = WorkspaceValidationSnafu {
+            nous_id: "syn",
+            message: "directory not found",
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("syn"));
+        assert!(msg.contains("directory not found"));
+    }
+
+    #[test]
+    fn error_display_guard_rejected() {
+        let err = GuardRejectedSnafu {
+            reason: "rate limited",
+        }
+        .build();
+        assert!(err.to_string().contains("rate limited"));
+    }
+
+    #[test]
+    fn error_display_loop_detected() {
+        let err = LoopDetectedSnafu {
+            iterations: 5u32,
+            pattern: "exec:abc123",
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("5 iterations"));
+        assert!(msg.contains("exec:abc123"));
+    }
+
+    #[test]
+    fn error_display_actor_send() {
+        let err = ActorSendSnafu {
+            message: "actor 'syn' inbox closed",
+        }
+        .build();
+        assert!(err.to_string().contains("inbox closed"));
+    }
+
+    #[test]
+    fn error_display_actor_recv() {
+        let err = ActorRecvSnafu {
+            message: "actor 'syn' dropped reply",
+        }
+        .build();
+        assert!(err.to_string().contains("dropped reply"));
+    }
+
+    #[test]
+    fn error_display_nous_not_found() {
+        let err = NousNotFoundSnafu { nous_id: "ghost" }.build();
+        assert!(err.to_string().contains("ghost"));
+    }
+
+    #[test]
+    fn error_display_delivery_failed() {
+        let err = DeliveryFailedSnafu { nous_id: "target" }.build();
+        assert!(err.to_string().contains("target"));
+        assert!(err.to_string().contains("channel closed"));
+    }
+
+    #[test]
+    fn error_display_ask_timeout() {
+        let err = AskTimeoutSnafu {
+            nous_id: "target",
+            timeout_secs: 30u64,
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("target"));
+        assert!(msg.contains("30s"));
+    }
+
+    #[test]
+    fn error_display_reply_not_found() {
+        let err = ReplyNotFoundSnafu {
+            message_id: "msg-123",
+        }
+        .build();
+        assert!(err.to_string().contains("msg-123"));
+    }
+
+    #[test]
+    fn error_display_pipeline_stage() {
+        let err = PipelineStageSnafu {
+            stage: "execute",
+            message: "no provider",
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("execute"));
+        assert!(msg.contains("no provider"));
+    }
+
+    #[test]
+    fn error_display_config() {
+        let err = ConfigSnafu {
+            message: "invalid model",
+        }
+        .build();
+        assert!(err.to_string().contains("invalid model"));
+    }
+
+    #[test]
+    fn error_display_recall_embedding() {
+        let err = RecallEmbeddingSnafu {
+            message: "embedding service down",
+        }
+        .build();
+        assert!(err.to_string().contains("embedding service down"));
+    }
+
+    #[test]
+    fn error_display_mutex_poisoned() {
+        let err = MutexPoisonedSnafu {
+            what: "session store",
+        }
+        .build();
+        assert!(err.to_string().contains("session store"));
+    }
+
+    #[test]
+    fn error_is_send_sync() {
+        static_assertions::assert_impl_all!(Error: Send, Sync);
+    }
+}

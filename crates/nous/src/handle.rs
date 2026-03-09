@@ -149,3 +149,98 @@ impl NousHandle {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handle_id_returns_correct_value() {
+        let (tx, _rx) = mpsc::channel(1);
+        let handle = NousHandle::new("syn".to_owned(), tx);
+        assert_eq!(handle.id(), "syn");
+    }
+
+    #[test]
+    fn handle_clone_preserves_id() {
+        let (tx, _rx) = mpsc::channel(1);
+        let handle = NousHandle::new("syn".to_owned(), tx);
+        let cloned = handle.clone();
+        assert_eq!(cloned.id(), "syn");
+    }
+
+    #[tokio::test]
+    async fn send_turn_to_closed_channel_returns_error() {
+        let (tx, rx) = mpsc::channel(1);
+        let handle = NousHandle::new("syn".to_owned(), tx);
+        drop(rx);
+
+        let err = handle.send_turn("main", "Hello").await;
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("inbox closed"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn status_to_closed_channel_returns_error() {
+        let (tx, rx) = mpsc::channel(1);
+        let handle = NousHandle::new("syn".to_owned(), tx);
+        drop(rx);
+
+        let err = handle.status().await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn sleep_to_closed_channel_returns_error() {
+        let (tx, rx) = mpsc::channel(1);
+        let handle = NousHandle::new("syn".to_owned(), tx);
+        drop(rx);
+
+        let err = handle.sleep().await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn wake_to_closed_channel_returns_error() {
+        let (tx, rx) = mpsc::channel(1);
+        let handle = NousHandle::new("syn".to_owned(), tx);
+        drop(rx);
+
+        let err = handle.wake().await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn shutdown_to_closed_channel_returns_error() {
+        let (tx, rx) = mpsc::channel(1);
+        let handle = NousHandle::new("syn".to_owned(), tx);
+        drop(rx);
+
+        let err = handle.shutdown().await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn send_turn_dropped_reply_returns_error() {
+        let (tx, mut rx) = mpsc::channel(1);
+        let handle = NousHandle::new("syn".to_owned(), tx);
+
+        // Spawn a task that receives the message but drops the reply channel
+        tokio::spawn(async move {
+            if let Some(NousMessage::Turn { reply, .. }) = rx.recv().await {
+                drop(reply);
+            }
+        });
+
+        let err = handle.send_turn("main", "Hello").await;
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("dropped reply"), "got: {msg}");
+    }
+
+    #[test]
+    fn handle_send_sync() {
+        static_assertions::assert_impl_all!(NousHandle: Send, Sync, Clone);
+    }
+}

@@ -562,4 +562,114 @@ mod tests {
         }
         assert_eq!(received, 10);
     }
+
+    // --- Edge cases ---
+
+    #[test]
+    fn message_new_defaults() {
+        let msg = CrossNousMessage::new("a", "b", "hello");
+        assert_eq!(msg.from, "a");
+        assert_eq!(msg.to, "b");
+        assert_eq!(msg.content, "hello");
+        assert_eq!(msg.target_session, "main");
+        assert!(!msg.expects_reply);
+        assert!(msg.reply_timeout.is_none());
+        assert_eq!(msg.delivery, DeliveryState::Pending);
+    }
+
+    #[test]
+    fn message_with_target_session() {
+        let msg = CrossNousMessage::new("a", "b", "hello").with_target_session("custom-session");
+        assert_eq!(msg.target_session, "custom-session");
+    }
+
+    #[test]
+    fn message_with_reply() {
+        let msg = CrossNousMessage::new("a", "b", "question").with_reply(Duration::from_secs(10));
+        assert!(msg.expects_reply);
+        assert_eq!(msg.reply_timeout, Some(Duration::from_secs(10)));
+    }
+
+    #[tokio::test]
+    async fn send_to_closed_inbox_fails() {
+        let router = CrossNousRouter::default();
+        let (tx, rx) = mpsc::channel(1);
+        router.register("closed", tx).await;
+        drop(rx); // Close the receiver side
+
+        let msg = CrossNousMessage::new("sender", "closed", "hello");
+        let err = router.send(msg).await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn ask_to_unknown_target_fails() {
+        let router = CrossNousRouter::default();
+        let msg = CrossNousMessage::new("sender", "ghost", "question")
+            .with_reply(Duration::from_millis(10));
+        let err = router.ask(msg).await;
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("ghost"));
+    }
+
+    #[tokio::test]
+    async fn register_overwrites_previous() {
+        let router = CrossNousRouter::default();
+        let (tx1, _rx1) = mpsc::channel(32);
+        let (tx2, _rx2) = mpsc::channel(32);
+        router.register("alpha", tx1).await;
+        router.register("alpha", tx2).await;
+
+        let registered = router.registered().await;
+        assert_eq!(registered.len(), 1);
+    }
+
+    #[test]
+    fn delivery_log_recent_limit() {
+        let mut log = DeliveryLog::new(100);
+        for i in 0..10 {
+            log.record(DeliveryEntry {
+                message_id: Ulid::new(),
+                from: "a".to_owned(),
+                to: format!("b-{i}"),
+                state: DeliveryState::Delivered,
+                timestamp: jiff::Timestamp::now(),
+            });
+        }
+        let recent = log.recent(3);
+        assert_eq!(recent.len(), 3);
+    }
+
+    #[test]
+    fn delivery_log_empty() {
+        let log = DeliveryLog::new(10);
+        assert!(log.recent(10).is_empty());
+        assert!(log.for_nous("a", 10).is_empty());
+    }
+
+    #[test]
+    fn delivery_state_serde_roundtrip() {
+        let states = [
+            DeliveryState::Pending,
+            DeliveryState::Delivered,
+            DeliveryState::Acknowledged,
+            DeliveryState::Replied,
+            DeliveryState::Failed {
+                reason: "test".to_owned(),
+            },
+            DeliveryState::TimedOut,
+        ];
+        for state in &states {
+            let json = serde_json::to_string(state).unwrap();
+            let back: DeliveryState = serde_json::from_str(&json).unwrap();
+            assert_eq!(*state, back);
+        }
+    }
+
+    #[test]
+    fn router_default_creates_with_default_capacity() {
+        let router = CrossNousRouter::default();
+        // Just verify it doesn't panic
+        assert!(router.routes.try_read().is_ok());
+    }
 }

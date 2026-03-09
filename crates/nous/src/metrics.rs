@@ -65,3 +65,38 @@ pub fn record_error(nous_id: &str, stage: &str, error_type: &str) {
         .with_label_values(&[nous_id, stage, error_type])
         .inc();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn init_does_not_panic() {
+        init();
+    }
+
+    #[test]
+    fn record_stage_does_not_panic() {
+        record_stage("test-nous", "context", 0.001);
+        record_stage("test-nous", "execute", 1.5);
+    }
+
+    #[test]
+    fn record_turn_does_not_panic() {
+        record_turn("test-nous");
+    }
+
+    #[test]
+    fn record_error_does_not_panic() {
+        record_error("test-nous", "execute", "provider_unavailable");
+    }
+
+    #[test]
+    fn record_multiple_stages_different_agents() {
+        for agent in ["syn", "demiurge", "chiron"] {
+            record_stage(agent, "context", 0.01);
+            record_stage(agent, "execute", 0.5);
+            record_turn(agent);
+        }
+    }
+}

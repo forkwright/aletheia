@@ -224,4 +224,68 @@ mod tests {
         assert_eq!(state.distillation_count, 0);
         assert!(state.bootstrap_hash.is_none());
     }
+
+    #[test]
+    fn distillation_ratio_one_always_triggers_with_tokens() {
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        state.token_estimate = 200_000;
+        assert!(state.needs_distillation(1.0, 200_000));
+    }
+
+    #[test]
+    fn distillation_zero_tokens_never_triggers() {
+        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        assert!(!state.needs_distillation(0.5, 200_000));
+    }
+
+    #[test]
+    fn distillation_negative_tokens() {
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &test_config());
+        state.token_estimate = -100;
+        assert!(!state.needs_distillation(0.9, 200_000));
+    }
+
+    #[test]
+    fn session_manager_config_accessor() {
+        let config = test_config();
+        let mgr = SessionManager::new(config);
+        assert_eq!(mgr.config().id, "syn");
+    }
+
+    #[test]
+    fn session_state_model_from_config() {
+        let mut config = test_config();
+        config.model = "claude-haiku-4-5-20251001".to_owned();
+        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
+        assert_eq!(state.model, "claude-haiku-4-5-20251001");
+    }
+
+    #[test]
+    fn session_state_thinking_from_config() {
+        let mut config = test_config();
+        config.thinking_enabled = true;
+        config.thinking_budget = 5_000;
+        let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
+        assert!(state.thinking_enabled);
+        assert_eq!(state.thinking_budget, 5_000);
+    }
+
+    #[test]
+    fn ephemeral_case_sensitivity() {
+        // Prefixes are lowercase; uppercase should not match
+        assert!(!SessionManager::is_ephemeral("Ask:something"));
+        assert!(!SessionManager::is_ephemeral("Spawn:worker"));
+    }
+
+    #[test]
+    fn background_empty_string() {
+        assert!(!SessionManager::is_background(""));
+    }
+
+    #[test]
+    fn background_substring_matches() {
+        // "prosoche" can appear anywhere in the key
+        assert!(SessionManager::is_background("custom-prosoche-wake"));
+        assert!(SessionManager::is_background("prefix:prosoche:suffix"));
+    }
 }

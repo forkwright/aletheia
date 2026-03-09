@@ -153,4 +153,49 @@ mod tests {
         assert_eq!(config.id, back.id);
         assert_eq!(config.model, back.model);
     }
+
+    #[test]
+    fn pipeline_config_serde_roundtrip() {
+        let config = PipelineConfig::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let back: PipelineConfig = serde_json::from_str(&json).unwrap();
+        assert!((back.distillation_threshold - 0.9).abs() < f64::EPSILON);
+        assert_eq!(back.max_notes, 50);
+    }
+
+    #[test]
+    fn stage_budget_defaults() {
+        let budget = StageBudget::default();
+        assert_eq!(budget.context_secs, 10);
+        assert_eq!(budget.recall_secs, 15);
+        assert_eq!(budget.execute_secs, 0);
+        assert_eq!(budget.total_secs, 300);
+    }
+
+    #[test]
+    fn nous_config_custom_values() {
+        let config = NousConfig {
+            id: "chiron".to_owned(),
+            name: Some("Chiron".to_owned()),
+            model: "claude-haiku-4-5-20251001".to_owned(),
+            context_window: 100_000,
+            max_output_tokens: 8_192,
+            bootstrap_max_tokens: 20_000,
+            thinking_enabled: true,
+            thinking_budget: 5_000,
+            max_tool_iterations: 10,
+            loop_detection_threshold: 5,
+            domains: vec!["medical".to_owned()],
+            server_tools: Vec::new(),
+        };
+        assert_eq!(config.name.as_deref(), Some("Chiron"));
+        assert!(config.thinking_enabled);
+        assert_eq!(config.domains.len(), 1);
+    }
+
+    #[test]
+    fn pipeline_config_extraction_default_is_none() {
+        let config = PipelineConfig::default();
+        assert!(config.extraction.is_none());
+    }
 }
