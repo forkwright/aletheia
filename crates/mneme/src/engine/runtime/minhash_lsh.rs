@@ -13,7 +13,7 @@ use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, Expr, SourceSpan, Symbol};
 use itertools::Itertools;
-use rand::{RngCore, thread_rng};
+use rand::RngCore;
 use rustc_hash::FxHashSet;
 use compact_str::CompactString;
 use std::cmp::min;
@@ -296,7 +296,7 @@ impl LshParams {
 
 impl HashPermutations {
     pub(crate) fn new(n_perms: usize) -> Self {
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         let mut perms = Vec::with_capacity(n_perms);
         for _ in 0..n_perms {
             perms.push(rng.next_u32());

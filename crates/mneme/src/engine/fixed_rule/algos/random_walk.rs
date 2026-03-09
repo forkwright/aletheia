@@ -50,7 +50,7 @@ impl FixedRule for RandomWalk {
         let mut stack = vec![];
 
         let mut counter = 0i64;
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         for start_node in starting.iter()? {
             let start_node = start_node?;
             let start_node_key = &start_node[0];

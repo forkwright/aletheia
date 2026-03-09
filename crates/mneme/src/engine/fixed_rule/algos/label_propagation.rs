@@ -55,7 +55,7 @@ fn label_propagation(
 ) -> Result<Vec<u32>> {
     let n_nodes = graph.node_count();
     let mut labels = (0..n_nodes).collect_vec();
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let mut iter_order = (0..n_nodes).collect_vec();
     for _ in 0..max_iter {
         iter_order.shuffle(&mut rng);

@@ -63,7 +63,7 @@ twox-hash = { version = "2.1", optional = true }
 regex = { version = "1", optional = true }
 sha2 = { version = "0.10", optional = true }
 either = { version = "1", optional = true }
-rand = { version = "0.8", optional = true }
+rand = { version = "0.9", optional = true }
 base64 = { version = "0.22", optional = true }
 uuid = { version = "1", features = ["v1", "v4", "serde"], optional = true }
 pest = { version = "2.8", optional = true }
