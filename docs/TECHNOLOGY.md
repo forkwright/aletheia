@@ -16,7 +16,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | HTTP client | reqwest | node-fetch | Async, connection pooling, Anthropic + channel calls |
 | Anthropic API | Own client (~600 LOC) | @anthropic-ai/sdk | Stable API, reqwest + SSE, adaptive thinking, Tool Search Tool |
 | Unified store | Vendored Datalog engine (from CozoDB) | Qdrant + Neo4j | Rust-native embedded, Datalog, HNSW vectors + graph + relations in one DB. Zero external services. Vendored into `mneme/src/engine/`, gated behind `mneme-engine` feature. |
-| Embeddings | fastembed-rs + `EmbeddingProvider` trait | Python fastembed | Default: local ONNX (BAAI/bge-small-en-v1.5, 384 dims). Per-instance config. |
+| Embeddings | candle + `EmbeddingProvider` trait | fastembed-rs (ONNX) | Pure Rust, no C++ deps. Default: BAAI/bge-small-en-v1.5 (384 dims). Feature-gated behind `embed-candle`. |
 | Memory | Direct (no abstraction) | KnowledgeStore (embedded CozoDB) | ~50 LOC replaces the library |
 | Sessions | rusqlite + bundled | better-sqlite3 | WAL mode, no native addon |
 | Encryption | XChaCha20Poly1305 | None (plaintext) | Per-message encryption at rest, ~700ns overhead, zero plaintext on disk |
@@ -55,7 +55,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 - **Unstable crates** (pre-1.0, aggressive releases): pin exact version. Wrap in trait.
   - `wasmtime` - monthly major versions. Pin exact.
   - `rmcp` - 5 minor releases in 6 weeks. Pin exact. `McpProvider` trait.
-  - `fastembed` - active development. Pin minor.
+  - `candle-*` - pinned exact (`=0.9.2`). Pure Rust, no C++ deps.
   - `chromiumoxide` - niche. Pin exact.
 - **Stable crates** (1.0+): pin minor (`"1.49"` not `"=1.49.0"`).
 - **Never vendor** unless forced by platform issues. Cargo.lock suffices.
@@ -68,7 +68,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 
 ### Cross-Compilation Notes
 
-- `fastembed` (ONNX): may need special builds for aarch64. Feature-gate behind `fastembed`.
+- `candle`: pure Rust, cross-compiles cleanly. Feature-gated behind `embed-candle`.
 - `sonic-rs` (SIMD): aarch64 NEON supported but verify. Fallback to `serde_json` via feature flag.
 - `chromiumoxide`: requires Chromium on host. Feature-gate behind `browser`.
 - `extrasafe` (seccomp): Linux-only. Feature-gate behind `sandbox-seccomp`.
@@ -81,7 +81,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 |-------|-----------------|
 | **koina** | snafu, tracing, tracing-subscriber, miette |
 | **taxis** | koina, figment, serde, serde_json, snafu, tracing |
-| **mneme** | koina, snafu, serde, tracing, ulid, rusqlite (sqlite), fastembed (fastembed), jiff, ndarray |
+| **mneme** | koina, snafu, serde, tracing, ulid, rusqlite (sqlite), candle-core/nn/transformers (embed-candle), jiff, hnsw_rs, fjall |
 | **hermeneus** | koina, taxis, reqwest, reqwest-eventsource, sonic-rs, tokio, secrecy |
 | **organon** | koina, taxis, hermeneus, tokio, gix, extrasafe, chromiumoxide |
 | **nous** | koina, taxis, mneme, hermeneus, organon, melete, tokio, ulid, compact_str |
