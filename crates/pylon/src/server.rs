@@ -1,8 +1,9 @@
 //! Server entry point with graceful shutdown.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::Mutex;
 
 use snafu::{ResultExt, Snafu};
 use tokio::net::TcpListener;

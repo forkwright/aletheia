@@ -15,7 +15,8 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use aletheia_koina::id::ToolName;
 use aletheia_koina::id::{NousId, SessionId};
@@ -42,7 +43,7 @@ fn test_store() -> Arc<Mutex<SessionStore>> {
 fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
     let session_id = SessionId::new();
     {
-        let s = store.lock().unwrap();
+        let s = store.blocking_lock();
         s.create_session(&session_id.to_string(), "alice", "test-key", None, None)
             .expect("create session");
     }
@@ -87,7 +88,7 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
 // Note tool → real SessionStore
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn note_add_and_list_uses_real_store() {
     let store = test_store();
     let reg = registry();
@@ -113,7 +114,7 @@ async fn note_add_and_list_uses_real_store() {
     assert!(r.content.text_summary().contains("remember the vow"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn note_delete_removes_from_real_store() {
     let store = test_store();
     let reg = registry();
@@ -141,7 +142,7 @@ async fn note_delete_removes_from_real_store() {
 // Blackboard tool → real SessionStore
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn blackboard_write_and_read_uses_real_store() {
     let store = test_store();
     let reg = registry();
@@ -168,7 +169,7 @@ async fn blackboard_write_and_read_uses_real_store() {
     assert!(r.content.text_summary().contains("ready"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn blackboard_delete_uses_real_store() {
     let store = test_store();
     let reg = registry();
@@ -203,21 +204,21 @@ async fn blackboard_delete_uses_real_store() {
 // ---------------------------------------------------------------------------
 
 struct StubKnowledgeService {
-    facts: Mutex<Vec<(String, String)>>, // (id, content)
-    next_id: Mutex<u32>,
-    corrected: Mutex<Vec<(String, String)>>, // (old_id, new_id)
-    retracted: Mutex<Vec<String>>,
-    audited: Mutex<Vec<(String, String)>>, // (id, content) — FactSummary not Clone
+    facts: std::sync::Mutex<Vec<(String, String)>>, // (id, content)
+    next_id: std::sync::Mutex<u32>,
+    corrected: std::sync::Mutex<Vec<(String, String)>>, // (old_id, new_id)
+    retracted: std::sync::Mutex<Vec<String>>,
+    audited: std::sync::Mutex<Vec<(String, String)>>, // (id, content) — FactSummary not Clone
 }
 
 impl StubKnowledgeService {
     fn new() -> Self {
         Self {
-            facts: Mutex::new(Vec::new()),
-            next_id: Mutex::new(1),
-            corrected: Mutex::new(Vec::new()),
-            retracted: Mutex::new(Vec::new()),
-            audited: Mutex::new(Vec::new()),
+            facts: std::sync::Mutex::new(Vec::new()),
+            next_id: std::sync::Mutex::new(1),
+            corrected: std::sync::Mutex::new(Vec::new()),
+            retracted: std::sync::Mutex::new(Vec::new()),
+            audited: std::sync::Mutex::new(Vec::new()),
         }
     }
 

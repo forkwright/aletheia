@@ -652,6 +652,7 @@ mod tests {
     // --- Test Infrastructure ---
 
     struct MockProvider {
+        // std::sync::Mutex is intentional — test mock, never crosses .await
         responses: Mutex<Vec<CompletionResponse>>,
     }
 

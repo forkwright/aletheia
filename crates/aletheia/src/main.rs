@@ -11,8 +11,9 @@ mod planning_adapter;
 mod status;
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::Mutex;
 
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};

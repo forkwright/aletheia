@@ -67,12 +67,7 @@ pub async fn create(
     let skey = session_key.clone();
 
     let session = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .find_or_create_session(&id_clone, &nid, &skey, Some(&model), None)
             .map_err(ApiError::from)
@@ -98,12 +93,7 @@ pub async fn list_sessions(
 
     let state_clone = Arc::clone(&state);
     let sessions = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .list_sessions(nous_id.as_deref())
             .map_err(ApiError::from)
@@ -188,12 +178,7 @@ async fn archive_session_by_id(state: &Arc<AppState>, id: &str) -> Result<Status
     let state_clone = Arc::clone(state);
     let id_clone = id.to_owned();
     tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .update_session_status(&id_clone, SessionStatus::Archived)
             .map_err(ApiError::from)
@@ -216,12 +201,7 @@ pub async fn unarchive(
     let state_clone = Arc::clone(&state);
     let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .update_session_status(&id_clone, SessionStatus::Active)
             .map_err(ApiError::from)
@@ -253,12 +233,7 @@ pub async fn rename(
     let id_clone = id.clone();
     let name = body.name;
     tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .update_display_name(&id_clone, &name)
             .map_err(ApiError::from)
@@ -298,12 +273,7 @@ pub async fn history(
     let id_clone = id.clone();
     let limit = params.limit;
     let messages = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .get_history(&id_clone, limit.map(i64::from))
             .map_err(ApiError::from)
@@ -727,12 +697,7 @@ async fn resolve_session(
     let model_owned = model.map(ToOwned::to_owned);
 
     let session = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None)
             .map_err(ApiError::from)
@@ -753,12 +718,7 @@ async fn store_message(
     let sid = session_id.to_owned();
     let content = content.to_owned();
     tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .append_message(&sid, role, &content, None, None, token_estimate)
             .map_err(ApiError::from)
@@ -774,12 +734,7 @@ async fn find_session(
     let id_owned = id.to_owned();
     let id_for_error = id.to_owned();
     let session = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store.find_session_by_id(&id_owned).map_err(ApiError::from)
     })
     .await??;

@@ -1,7 +1,9 @@
 //! Tokio actor for a single nous agent instance.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
 
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
@@ -215,7 +217,7 @@ impl NousActor {
 
         if let Ok(ref turn_result) = result {
             self.maybe_spawn_extraction(&content, &turn_result.content);
-            self.maybe_spawn_distillation(&session_key);
+            self.maybe_spawn_distillation(&session_key).await;
         }
 
         self.active_session = None;
@@ -251,7 +253,7 @@ impl NousActor {
 
         if let Ok(ref turn_result) = result {
             self.maybe_spawn_extraction(&content, &turn_result.content);
-            self.maybe_spawn_distillation(&session_key);
+            self.maybe_spawn_distillation(&session_key).await;
         }
 
         self.active_session = None;
@@ -431,7 +433,7 @@ impl NousActor {
         );
     }
 
-    fn maybe_spawn_distillation(&self, session_key: &str) {
+    async fn maybe_spawn_distillation(&self, session_key: &str) {
         let Some(ref store_arc) = self.session_store else {
             return;
         };
@@ -440,12 +442,9 @@ impl NousActor {
         };
         let session_id = session_state.id.clone();
 
-        // Quick trigger check under the lock
+        // Quick trigger check under the lock — guard is dropped before any spawn
         let should_distill = {
-            let Ok(store) = store_arc.lock() else {
-                warn!("session store lock poisoned, skipping distillation check");
-                return;
-            };
+            let store = store_arc.lock().await;
             let Ok(Some(session)) = store.find_session_by_id(&session_id) else {
                 return;
             };
@@ -583,12 +582,10 @@ async fn run_background_distillation(
         return;
     };
 
-    // Load history under the lock, then release before async work
+    // Load history under the lock, then release before async work.
+    // Guard is scoped to the block and dropped before the .await below.
     let (history, session) = {
-        let Ok(s) = store.lock() else {
-            warn!("session store lock poisoned, skipping distillation");
-            return;
-        };
+        let s = store.lock().await;
         let Ok(Some(session)) = s.find_session_by_id(&session_id) else {
             return;
         };
@@ -600,7 +597,7 @@ async fn run_background_distillation(
                 return;
             }
         }
-    };
+    }; // guard dropped here — lock released before await
 
     let messages = crate::distillation::convert_to_hermeneus_messages(&history);
     let engine =
@@ -627,11 +624,8 @@ async fn run_background_distillation(
         }
     };
 
-    // Apply results under the lock
-    let Ok(s) = store.lock() else {
-        warn!("session store lock poisoned, skipping distillation apply");
-        return;
-    };
+    // Apply results under the lock — guard is scoped to this block
+    let s = store.lock().await;
     if let Err(e) = crate::distillation::apply_distillation(&s, &session_id, &result, &history) {
         warn!(error = %e, "failed to apply distillation");
         return;
@@ -762,6 +756,7 @@ mod tests {
     // --- Test infrastructure ---
 
     struct MockProvider {
+        // std::sync::Mutex is intentional — test mock, never crosses .await
         response: Mutex<CompletionResponse>,
     }
 

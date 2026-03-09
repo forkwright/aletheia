@@ -16,7 +16,7 @@ use tracing::{instrument, warn};
 use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use aletheia_nous::stream::TurnStreamEvent;
 
-use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
+use crate::error::{ApiError, BadRequestSnafu, NousNotFoundSnafu};
 use crate::extract::OptionalClaims;
 use crate::state::AppState;
 use crate::stream::{TurnOutcome, WebchatEvent};
@@ -50,12 +50,7 @@ async fn resolve_session(
     let model_owned = model.map(ToOwned::to_owned);
 
     let session = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None)
             .map_err(ApiError::from)
@@ -76,12 +71,7 @@ async fn store_message(
     let sid = session_id.to_owned();
     let content = content.to_owned();
     tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .append_message(&sid, role, &content, None, None, token_estimate)
             .map_err(ApiError::from)
@@ -423,12 +413,7 @@ pub async fn sessions_list(
 
     let state_clone = Arc::clone(&state);
     let sessions = tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.lock().map_err(|_poison| {
-            InternalSnafu {
-                message: "session store lock poisoned",
-            }
-            .build()
-        })?;
+        let store = state_clone.session_store.blocking_lock();
         store
             .list_sessions(nous_id.as_deref())
             .map_err(ApiError::from)

@@ -1,7 +1,8 @@
 //! Integration tests for the pylon HTTP gateway.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -553,7 +554,7 @@ async fn history_with_limit() {
     let id = created["id"].as_str().unwrap();
 
     {
-        let store = state.session_store.lock().unwrap();
+        let store = state.session_store.blocking_lock();
         for i in 1..=5 {
             store
                 .append_message(
@@ -1582,7 +1583,7 @@ async fn history_before_filter() {
     let id = created["id"].as_str().unwrap();
 
     {
-        let store = state.session_store.lock().unwrap();
+        let store = state.session_store.blocking_lock();
         for i in 1..=5 {
             store
                 .append_message(
@@ -2569,7 +2570,7 @@ async fn history_messages_have_expected_fields() {
     let id = created["id"].as_str().unwrap();
 
     {
-        let store = state.session_store.lock().unwrap();
+        let store = state.session_store.blocking_lock();
         store
             .append_message(
                 id,

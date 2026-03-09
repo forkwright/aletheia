@@ -1,7 +1,8 @@
 //! Shared application state accessible in all Axum handlers.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::Mutex;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::store::SessionStore;
