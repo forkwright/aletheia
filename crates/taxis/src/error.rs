@@ -78,6 +78,51 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The instance root directory does not exist (startup validation).
+    #[snafu(display(
+        "instance root not found: {}\n  help: set ALETHEIA_ROOT or run `aletheia init`",
+        path.display()
+    ))]
+    InstanceRootNotFound {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A required subdirectory (config/ or data/) is missing from the instance root.
+    #[snafu(display(
+        "required directory missing: {}\n  help: run `aletheia init` to create the instance layout",
+        path.display()
+    ))]
+    RequiredDirMissing {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The data directory is not writable.
+    #[snafu(display(
+        "data directory is not writable: {}\n  help: check permissions or run `aletheia init`",
+        path.display()
+    ))]
+    NotWritable {
+        path: PathBuf,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A workspace path from agent config does not resolve to a directory.
+    #[snafu(display(
+        "agent workspace path does not exist: {}\n  help: create the directory or update the workspace path in config",
+        path.display()
+    ))]
+    WorkspacePathInvalid {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result<T, Error>`.
