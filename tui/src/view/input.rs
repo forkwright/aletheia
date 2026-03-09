@@ -18,11 +18,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     };
 
     let prompt = Span::styled(prompt_str, Style::default().fg(prompt_color));
-    let input_text = &app.input.text;
+    let input_text = app.input.text.as_str();
 
     let line = Line::from(vec![
         prompt,
-        Span::styled(input_text.clone(), theme.style_fg()),
+        Span::styled(input_text, theme.style_fg()),
     ]);
 
     let block = Block::default()

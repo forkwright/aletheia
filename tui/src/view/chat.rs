@@ -19,19 +19,26 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let filter_active =
         app.filter.active && app.filter.scope == FilterScope::Chat && !app.filter.text.is_empty();
     let (pattern, inverted) = app.filter.pattern();
-    let pattern_lower = pattern.to_lowercase();
+
+    // Compute agent name once per render pass rather than per message.
+    let agent_name_lower: String = app
+        .focused_agent
+        .as_ref()
+        .and_then(|id| app.agents.iter().find(|a| a.id == *id))
+        .map(|a| a.name.to_lowercase())
+        .unwrap_or_else(|| "assistant".to_string());
 
     // Render each message (filtered when active, with selection indicator)
     for (idx, msg) in app.messages.iter().enumerate() {
         if filter_active {
-            let contains = msg.text.to_lowercase().contains(&pattern_lower);
+            let contains = msg.text.to_lowercase().contains(pattern);
             let show = if inverted { !contains } else { contains };
             if !show {
                 continue;
             }
         }
         let selected = app.selected_message == Some(idx);
-        let highlight = filter_active.then_some(pattern_lower.as_str());
+        let highlight = filter_active.then_some(pattern);
         render_message(
             app,
             msg,
@@ -40,6 +47,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
             theme,
             selected,
             highlight,
+            &agent_name_lower,
         );
     }
 
@@ -55,7 +63,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         || !app.streaming_thinking.is_empty()
         || app.active_turn_id.is_some()
     {
-        render_streaming(app, &mut lines, inner_width, theme);
+        render_streaming(app, &mut lines, inner_width, theme, &agent_name_lower);
     }
 
     // Calculate scroll — must account for line wrapping.
@@ -97,19 +105,12 @@ fn render_message(
     theme: &ThemePalette,
     selected: bool,
     highlight_pattern: Option<&str>,
+    agent_name_lower: &str,
 ) {
     let (role_label, role_style) = match msg.role.as_str() {
-        "user" => ("you".to_string(), theme.style_user()),
-        "assistant" => {
-            let name = app
-                .focused_agent
-                .as_ref()
-                .and_then(|id| app.agents.iter().find(|a| a.id == *id))
-                .map(|a| a.name.to_lowercase())
-                .unwrap_or_else(|| "assistant".to_string());
-            (name, theme.style_assistant())
-        }
-        _ => ("system".to_string(), theme.style_muted()),
+        "user" => ("you", theme.style_user()),
+        "assistant" => (agent_name_lower, theme.style_assistant()),
+        _ => ("system", theme.style_muted()),
     };
 
     // Selection indicator prefix
@@ -262,13 +263,8 @@ fn render_streaming(
     lines: &mut Vec<Line<'static>>,
     inner_width: usize,
     theme: &ThemePalette,
+    name: &str,
 ) {
-    let name = app
-        .focused_agent
-        .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| a.id == *id))
-        .map(|a| a.name.to_lowercase())
-        .unwrap_or_else(|| "assistant".to_string());
 
     // Thinking block (if visible)
     if app.thinking_expanded && !app.streaming_thinking.is_empty() {
