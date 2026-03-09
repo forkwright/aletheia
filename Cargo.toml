@@ -109,7 +109,7 @@ cron = "0.15"
 jiff = "0.2"
 
 # Async
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "fs"] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["rt"] }
 

@@ -109,14 +109,16 @@ impl SpawnService for SpawnServiceImpl {
             async move {
                 // Create minimal workspace directory for the ephemeral agent
                 let nous_dir = oikos.nous_dir(&spawn_id);
-                if let Err(e) = std::fs::create_dir_all(&nous_dir) {
+                if let Err(e) = tokio::fs::create_dir_all(&nous_dir).await {
                     return Err(format!("failed to create spawn workspace: {e}"));
                 }
                 let soul_path = nous_dir.join("SOUL.md");
-                if let Err(e) = std::fs::write(
+                if let Err(e) = tokio::fs::write(
                     &soul_path,
                     format!("You are an ephemeral {role_desc} sub-agent. Complete the assigned task precisely and concisely."),
-                ) {
+                )
+                .await
+                {
                     return Err(format!("failed to write SOUL.md: {e}"));
                 }
 
@@ -149,7 +151,7 @@ impl SpawnService for SpawnServiceImpl {
                 let _ = join_handle.await;
 
                 // Clean up ephemeral workspace
-                let _ = std::fs::remove_dir_all(&nous_dir);
+                let _ = tokio::fs::remove_dir_all(&nous_dir).await;
 
                 match result {
                     Ok(Ok(turn)) => Ok(SpawnResult {

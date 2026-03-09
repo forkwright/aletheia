@@ -118,7 +118,7 @@ impl NousActor {
     /// inconsistent state.
     #[instrument(skip(self), fields(nous.id = %self.id))]
     pub async fn run(mut self) {
-        if let Err(e) = validate_workspace(&self.oikos, &self.id) {
+        if let Err(e) = validate_workspace(&self.oikos, &self.id).await {
             error!(error = %e, "workspace validation failed, shutting down");
             return;
         }
@@ -653,15 +653,16 @@ async fn run_background_distillation(
 /// Called at actor startup before entering the message loop. Creates the
 /// workspace directory if missing and fails fast if SOUL.md cannot be found
 /// through the cascade.
-fn validate_workspace(oikos: &Oikos, nous_id: &str) -> crate::error::Result<()> {
+async fn validate_workspace(oikos: &Oikos, nous_id: &str) -> crate::error::Result<()> {
     let workspace = oikos.nous_dir(nous_id);
-    if !workspace.exists() {
+    let exists = tokio::fs::try_exists(&workspace).await.unwrap_or(false);
+    if !exists {
         warn!(
             agent = nous_id,
             path = %workspace.display(),
             "workspace directory missing, creating"
         );
-        std::fs::create_dir_all(&workspace).map_err(|e| {
+        tokio::fs::create_dir_all(&workspace).await.map_err(|e| {
             crate::error::WorkspaceValidationSnafu {
                 nous_id: nous_id.to_owned(),
                 message: format!("failed to create workspace directory: {e}"),
@@ -1065,8 +1066,8 @@ mod tests {
         assert_eq!(DEFAULT_INBOX_CAPACITY, 32);
     }
 
-    #[test]
-    fn validate_workspace_creates_missing_dir() {
+    #[tokio::test]
+    async fn validate_workspace_creates_missing_dir() {
         let dir = tempfile::TempDir::new().expect("tmpdir");
         let root = dir.path();
         // Only create shared/ with SOUL.md for cascade fallback
@@ -1075,12 +1076,12 @@ mod tests {
         std::fs::write(root.join("shared/SOUL.md"), "# Test Soul").expect("write");
 
         let oikos = Oikos::from_root(root);
-        super::validate_workspace(&oikos, "test-agent").unwrap();
+        super::validate_workspace(&oikos, "test-agent").await.unwrap();
         assert!(root.join("nous/test-agent").exists());
     }
 
-    #[test]
-    fn validate_workspace_fails_without_soul() {
+    #[tokio::test]
+    async fn validate_workspace_fails_without_soul() {
         let dir = tempfile::TempDir::new().expect("tmpdir");
         let root = dir.path();
         std::fs::create_dir_all(root.join("nous/test-agent")).expect("mkdir");
@@ -1088,7 +1089,7 @@ mod tests {
         std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
 
         let oikos = Oikos::from_root(root);
-        let result = super::validate_workspace(&oikos, "test-agent");
+        let result = super::validate_workspace(&oikos, "test-agent").await;
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
