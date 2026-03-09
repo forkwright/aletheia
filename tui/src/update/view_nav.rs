@@ -82,8 +82,8 @@ pub(crate) fn handle_drill_in(app: &mut App) {
                 app.auto_scroll = true;
             }
         }
-        View::MessageDetail { .. } => {
-            // Leaf view — no further drill-in
+        View::MessageDetail { .. } | View::MemoryInspector | View::FactDetail { .. } => {
+            // Leaf views or views with their own drill-in handling
         }
     }
 }

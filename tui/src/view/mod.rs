@@ -2,6 +2,7 @@ mod chat;
 mod command_palette;
 mod filter_bar;
 mod input;
+mod memory;
 pub(crate) mod ops;
 mod overlay;
 pub(crate) mod settings;

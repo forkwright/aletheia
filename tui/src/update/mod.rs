@@ -3,6 +3,7 @@ mod command;
 mod diff;
 mod filter;
 mod input;
+pub(crate) mod memory;
 mod navigation;
 mod overlay;
 pub(crate) mod selection;
@@ -213,6 +214,44 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::SettingsLoaded(config) => settings::handle_loaded(app, config),
         Msg::SettingsSaved => settings::handle_saved(app),
         Msg::SettingsSaveError(msg) => settings::handle_save_error(app, msg),
+        // --- Memory inspector ---
+        Msg::MemoryOpen => memory::handle_open(app).await,
+        Msg::MemoryClose => memory::handle_close(app),
+        Msg::MemoryTabNext => memory::handle_tab_next(app),
+        Msg::MemoryTabPrev => memory::handle_tab_prev(app),
+        Msg::MemorySelectUp => memory::handle_select_up(app),
+        Msg::MemorySelectDown => memory::handle_select_down(app),
+        Msg::MemorySelectFirst => memory::handle_select_first(app),
+        Msg::MemorySelectLast => memory::handle_select_last(app),
+        Msg::MemorySortCycle => memory::handle_sort_cycle(app),
+        Msg::MemoryFilterOpen => memory::handle_filter_open(app),
+        Msg::MemoryFilterClose => memory::handle_filter_close(app),
+        Msg::MemoryFilterInput(c) => memory::handle_filter_input(app, c),
+        Msg::MemoryFilterBackspace => memory::handle_filter_backspace(app),
+        Msg::MemoryDrillIn => memory::handle_drill_in(app).await,
+        Msg::MemoryPopBack => memory::handle_pop_back(app),
+        Msg::MemoryForget => memory::handle_forget(app).await,
+        Msg::MemoryRestore => memory::handle_restore(app).await,
+        Msg::MemoryEditConfidence => memory::handle_edit_confidence_start(app),
+        Msg::MemoryConfidenceInput(c) => memory::handle_confidence_input(app, c),
+        Msg::MemoryConfidenceBackspace => memory::handle_confidence_backspace(app),
+        Msg::MemoryConfidenceSubmit => memory::handle_confidence_submit(app).await,
+        Msg::MemoryConfidenceCancel => memory::handle_confidence_cancel(app),
+        Msg::MemorySearchOpen => memory::handle_search_open(app),
+        Msg::MemorySearchInput(c) => memory::handle_search_input(app, c),
+        Msg::MemorySearchBackspace => memory::handle_search_backspace(app),
+        Msg::MemorySearchSubmit => memory::handle_search_submit(app).await,
+        Msg::MemorySearchClose => memory::handle_search_close(app),
+        Msg::MemoryPageDown => memory::handle_page_down(app),
+        Msg::MemoryPageUp => memory::handle_page_up(app),
+        Msg::MemoryFactsLoaded { facts, total } => memory::handle_facts_loaded(app, facts, total),
+        Msg::MemoryDetailLoaded(detail) => memory::handle_detail_loaded(app, *detail),
+        Msg::MemoryEntitiesLoaded(_)
+        | Msg::MemoryRelationshipsLoaded(_)
+        | Msg::MemoryTimelineLoaded(_) => {}
+        Msg::MemorySearchResults(_) => {}
+        Msg::MemoryActionResult(msg) => memory::handle_action_result(app, msg),
+
         Msg::ShowError(msg) => api::handle_show_error(app, msg),
         Msg::ShowSuccess(msg) => api::handle_show_error(app, msg),
         Msg::DismissError => api::handle_dismiss_error(app),

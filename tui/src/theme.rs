@@ -245,7 +245,6 @@ impl ThemePalette {
         Style::default().fg(self.success)
     }
 
-    #[expect(dead_code, reason = "part of the complete style API")]
     pub fn style_warning(&self) -> Style {
         Style::default().fg(self.warning)
     }
