@@ -159,3 +159,24 @@ fn render_chat_area(app: &App, frame: &mut Frame, area: Rect, theme: &crate::the
     }
     input::render(app, frame, layout[2], theme);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sidebar_rect_store_load_roundtrip() {
+        let rect = SidebarRect::new();
+        let r = Rect::new(5, 10, 22, 40);
+        rect.store_rect(r);
+        let loaded = rect.load_rect();
+        assert_eq!(loaded, r);
+    }
+
+    #[test]
+    fn sidebar_rect_initial_is_zero() {
+        let rect = SidebarRect::new();
+        let loaded = rect.load_rect();
+        assert_eq!(loaded, Rect::ZERO);
+    }
+}

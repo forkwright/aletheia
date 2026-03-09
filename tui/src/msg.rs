@@ -263,3 +263,68 @@ pub enum AuthOutcome {
     NoAuthRequired,
     Failed(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_toast_is_not_expired_immediately() {
+        let toast = ErrorToast::new("test".to_string());
+        assert!(!toast.is_expired());
+    }
+
+    #[test]
+    fn error_toast_message_stored() {
+        let toast = ErrorToast::new("hello world".to_string());
+        assert_eq!(toast.message, "hello world");
+    }
+
+    #[test]
+    fn message_action_kind_all_variants() {
+        let kinds = [
+            MessageActionKind::Copy,
+            MessageActionKind::YankCodeBlock,
+            MessageActionKind::Edit,
+            MessageActionKind::Delete,
+            MessageActionKind::OpenLinks,
+            MessageActionKind::Inspect,
+        ];
+        // Verify Debug trait works and variants are distinct
+        let debugs: Vec<String> = kinds.iter().map(|k| format!("{:?}", k)).collect();
+        for (i, d) in debugs.iter().enumerate() {
+            for (j, d2) in debugs.iter().enumerate() {
+                if i != j {
+                    assert_ne!(d, d2);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn overlay_kind_debug() {
+        let kinds = [
+            OverlayKind::Help,
+            OverlayKind::AgentPicker,
+            OverlayKind::SystemStatus,
+        ];
+        for kind in &kinds {
+            let debug = format!("{:?}", kind);
+            assert!(!debug.is_empty());
+        }
+    }
+
+    #[test]
+    fn msg_quit_debug() {
+        let msg = Msg::Quit;
+        let debug = format!("{:?}", msg);
+        assert!(debug.contains("Quit"));
+    }
+
+    #[test]
+    fn msg_tick_debug() {
+        let msg = Msg::Tick;
+        let debug = format!("{:?}", msg);
+        assert!(debug.contains("Tick"));
+    }
+}

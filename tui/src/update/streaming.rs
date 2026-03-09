@@ -160,3 +160,189 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     app.active_turn_id = None;
     app.stream_rx = None;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::types::PlanStep;
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn turn_start_sets_state() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+        app.streaming_text = "leftover".to_string();
+
+        handle_stream_turn_start(&mut app, "t1".into(), "syn".into());
+
+        assert!(app.active_turn_id.as_ref().unwrap() == "t1");
+        assert!(app.streaming_text.is_empty());
+        assert!(app.streaming_thinking.is_empty());
+        assert!(app.streaming_tool_calls.is_empty());
+        assert_eq!(app.agents[0].status, AgentStatus::Streaming);
+    }
+
+    #[test]
+    fn text_delta_appends() {
+        let mut app = test_app();
+        handle_stream_text_delta(&mut app, "hello ".to_string());
+        handle_stream_text_delta(&mut app, "world".to_string());
+        assert_eq!(app.streaming_text, "hello world");
+    }
+
+    #[test]
+    fn thinking_delta_appends() {
+        let mut app = test_app();
+        handle_stream_thinking_delta(&mut app, "thinking...".to_string());
+        assert_eq!(app.streaming_thinking, "thinking...");
+    }
+
+    #[test]
+    fn tool_start_adds_tool_call() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+
+        handle_stream_tool_start(&mut app, "read_file".to_string());
+
+        assert_eq!(app.streaming_tool_calls.len(), 1);
+        assert_eq!(app.streaming_tool_calls[0].name, "read_file");
+        assert!(app.streaming_tool_calls[0].duration_ms.is_none());
+        assert_eq!(app.agents[0].active_tool.as_deref(), Some("read_file"));
+    }
+
+    #[test]
+    fn tool_result_updates_tool_call() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+
+        handle_stream_tool_start(&mut app, "read_file".to_string());
+        handle_stream_tool_result(&mut app, "read_file".to_string(), false, 150);
+
+        assert_eq!(app.streaming_tool_calls[0].duration_ms, Some(150));
+        assert!(!app.streaming_tool_calls[0].is_error);
+        assert!(app.agents[0].active_tool.is_none());
+    }
+
+    #[test]
+    fn tool_result_error_flag() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+
+        handle_stream_tool_start(&mut app, "write_file".to_string());
+        handle_stream_tool_result(&mut app, "write_file".to_string(), true, 50);
+
+        assert!(app.streaming_tool_calls[0].is_error);
+    }
+
+    #[test]
+    fn tool_approval_opens_overlay() {
+        let mut app = test_app();
+
+        handle_stream_tool_approval_required(
+            &mut app,
+            "t1".into(),
+            "dangerous_tool".to_string(),
+            "tool1".into(),
+            serde_json::json!({"path": "/etc/passwd"}),
+            "high".to_string(),
+            "writes to system files".to_string(),
+        );
+
+        assert!(matches!(app.overlay, Some(Overlay::ToolApproval(_))));
+        if let Some(Overlay::ToolApproval(ref approval)) = app.overlay {
+            assert_eq!(approval.tool_name, "dangerous_tool");
+            assert_eq!(approval.risk, "high");
+        }
+    }
+
+    #[test]
+    fn tool_approval_resolved_closes_overlay() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
+            turn_id: "t1".into(),
+            tool_id: "tool1".into(),
+            tool_name: "test".to_string(),
+            input: serde_json::Value::Null,
+            risk: "low".to_string(),
+            reason: "test".to_string(),
+        }));
+
+        handle_stream_tool_approval_resolved(&mut app);
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn tool_approval_resolved_ignores_non_approval_overlay() {
+        let mut app = test_app();
+        app.overlay = Some(Overlay::Help);
+
+        handle_stream_tool_approval_resolved(&mut app);
+        assert!(matches!(app.overlay, Some(Overlay::Help)));
+    }
+
+    #[test]
+    fn plan_proposed_opens_overlay() {
+        let mut app = test_app();
+        let plan = Plan {
+            id: "plan1".into(),
+            session_id: "s1".into(),
+            nous_id: "syn".into(),
+            steps: vec![PlanStep {
+                id: 1,
+                label: "Step 1".to_string(),
+                role: "analyst".to_string(),
+                parallel: None,
+                status: "pending".to_string(),
+                result: None,
+            }],
+            total_estimated_cost_cents: 50,
+            status: "proposed".to_string(),
+        };
+
+        handle_stream_plan_proposed(&mut app, plan);
+
+        assert!(matches!(app.overlay, Some(Overlay::PlanApproval(_))));
+        if let Some(Overlay::PlanApproval(ref plan_overlay)) = app.overlay {
+            assert_eq!(plan_overlay.steps.len(), 1);
+            assert!(plan_overlay.steps[0].checked);
+            assert_eq!(plan_overlay.total_cost_cents, 50);
+        }
+    }
+
+    #[test]
+    fn turn_abort_clears_state() {
+        let mut app = test_app();
+        app.active_turn_id = Some("t1".into());
+        app.streaming_text = "partial".to_string();
+
+        handle_stream_turn_abort(&mut app, "user cancelled".to_string());
+
+        assert!(app.active_turn_id.is_none());
+        assert!(app.streaming_text.is_empty());
+        assert!(app.stream_rx.is_none());
+    }
+
+    #[test]
+    fn stream_error_shows_toast() {
+        let mut app = test_app();
+        app.active_turn_id = Some("t1".into());
+
+        handle_stream_error(&mut app, "connection lost".to_string());
+
+        assert!(app.error_toast.is_some());
+        assert_eq!(app.error_toast.as_ref().unwrap().message, "connection lost");
+        assert!(app.active_turn_id.is_none());
+    }
+
+    #[test]
+    fn text_delta_triggers_markdown_cache_on_newline() {
+        let mut app = test_app();
+        handle_stream_text_delta(&mut app, "line1\nline2".to_string());
+        // newline should trigger markdown re-render
+        assert!(!app.cached_markdown_text.is_empty());
+    }
+}

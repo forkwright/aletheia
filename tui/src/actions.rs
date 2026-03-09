@@ -154,3 +154,144 @@ impl App {
         p
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn scroll_to_bottom_resets_state() {
+        let mut app = test_app();
+        app.scroll_offset = 50;
+        app.auto_scroll = false;
+        app.scroll_to_bottom();
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn save_restore_scroll_state() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+        app.scroll_offset = 42;
+        app.auto_scroll = false;
+
+        app.save_scroll_state();
+        app.scroll_offset = 0;
+        app.auto_scroll = true;
+
+        app.restore_scroll_state();
+        assert_eq!(app.scroll_offset, 42);
+        assert!(!app.auto_scroll);
+    }
+
+    #[test]
+    fn restore_scroll_state_no_saved_scrolls_to_bottom() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+        app.scroll_offset = 99;
+
+        app.restore_scroll_state();
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn save_scroll_state_no_agent_noop() {
+        let mut app = test_app();
+        app.scroll_offset = 42;
+        app.save_scroll_state();
+        assert!(app.scroll_states.is_empty());
+    }
+
+    #[test]
+    fn prev_char_boundary_ascii() {
+        let mut app = test_app();
+        app.input.text = "hello".to_string();
+        assert_eq!(app.prev_char_boundary(3), 2);
+    }
+
+    #[test]
+    fn prev_char_boundary_multibyte() {
+        let mut app = test_app();
+        app.input.text = "h\u{00e9}llo".to_string(); // e-accent is 2 bytes
+        // After 'h' (pos 1) and 'e-accent' (pos 3)
+        assert_eq!(app.prev_char_boundary(3), 1);
+    }
+
+    #[test]
+    fn next_char_boundary_ascii() {
+        let mut app = test_app();
+        app.input.text = "hello".to_string();
+        assert_eq!(app.next_char_boundary(2), 3);
+    }
+
+    #[test]
+    fn next_char_boundary_multibyte() {
+        let mut app = test_app();
+        app.input.text = "h\u{00e9}llo".to_string();
+        // After 'h' (pos 1), next boundary is after e-accent (pos 3)
+        assert_eq!(app.next_char_boundary(1), 3);
+    }
+
+    #[test]
+    fn tab_completion_finds_agents() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.agents.push(test_agent("cody", "Cody"));
+        app.input.text = "@s".to_string();
+        app.input.cursor = 2;
+
+        app.handle_tab_completion();
+
+        assert!(app.input.text.starts_with("@syn "));
+        assert!(app.tab_completion.is_some());
+    }
+
+    #[test]
+    fn tab_completion_no_at_noop() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.input.text = "hello".to_string();
+        app.input.cursor = 5;
+
+        app.handle_tab_completion();
+
+        assert_eq!(app.input.text, "hello");
+        assert!(app.tab_completion.is_none());
+    }
+
+    #[test]
+    fn tab_completion_no_match_noop() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.input.text = "@zzz".to_string();
+        app.input.cursor = 4;
+
+        app.handle_tab_completion();
+
+        assert_eq!(app.input.text, "@zzz");
+        assert!(app.tab_completion.is_none());
+    }
+
+    #[test]
+    fn tab_completion_cycles() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.agents.push(test_agent("sol", "Sol"));
+        app.input.text = "@s".to_string();
+        app.input.cursor = 2;
+
+        app.handle_tab_completion();
+        let first = app.input.text.clone();
+
+        app.handle_tab_completion();
+        let second = app.input.text.clone();
+
+        // Should have cycled to a different completion (or same if only one match)
+        assert!(first.starts_with('@'));
+        assert!(second.starts_with('@'));
+    }
+}

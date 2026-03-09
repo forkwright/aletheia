@@ -135,3 +135,221 @@ pub(crate) fn handle_compose_in_editor(app: &mut App) {
     }
     let _ = std::fs::remove_file(&tmpfile);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn char_input_inserts_at_cursor() {
+        let mut app = test_app();
+        handle_char_input(&mut app, 'h');
+        handle_char_input(&mut app, 'i');
+        assert_eq!(app.input.text, "hi");
+        assert_eq!(app.input.cursor, 2);
+    }
+
+    #[test]
+    fn char_input_resets_history_index() {
+        let mut app = test_app();
+        app.input.history_index = Some(0);
+        handle_char_input(&mut app, 'a');
+        assert!(app.input.history_index.is_none());
+    }
+
+    #[test]
+    fn backspace_removes_char() {
+        let mut app = test_app();
+        app.input.text = "ab".to_string();
+        app.input.cursor = 2;
+        handle_backspace(&mut app);
+        assert_eq!(app.input.text, "a");
+        assert_eq!(app.input.cursor, 1);
+    }
+
+    #[test]
+    fn backspace_at_start_noop() {
+        let mut app = test_app();
+        app.input.text = "a".to_string();
+        app.input.cursor = 0;
+        handle_backspace(&mut app);
+        assert_eq!(app.input.text, "a");
+    }
+
+    #[test]
+    fn delete_removes_char_at_cursor() {
+        let mut app = test_app();
+        app.input.text = "abc".to_string();
+        app.input.cursor = 1;
+        handle_delete(&mut app);
+        assert_eq!(app.input.text, "ac");
+        assert_eq!(app.input.cursor, 1);
+    }
+
+    #[test]
+    fn delete_at_end_noop() {
+        let mut app = test_app();
+        app.input.text = "abc".to_string();
+        app.input.cursor = 3;
+        handle_delete(&mut app);
+        assert_eq!(app.input.text, "abc");
+    }
+
+    #[test]
+    fn cursor_left_decrements() {
+        let mut app = test_app();
+        app.input.text = "ab".to_string();
+        app.input.cursor = 2;
+        handle_cursor_left(&mut app);
+        assert_eq!(app.input.cursor, 1);
+    }
+
+    #[test]
+    fn cursor_left_at_start_stays() {
+        let mut app = test_app();
+        app.input.text = "a".to_string();
+        app.input.cursor = 0;
+        handle_cursor_left(&mut app);
+        assert_eq!(app.input.cursor, 0);
+    }
+
+    #[test]
+    fn cursor_right_increments() {
+        let mut app = test_app();
+        app.input.text = "ab".to_string();
+        app.input.cursor = 0;
+        handle_cursor_right(&mut app);
+        assert_eq!(app.input.cursor, 1);
+    }
+
+    #[test]
+    fn cursor_right_at_end_stays() {
+        let mut app = test_app();
+        app.input.text = "ab".to_string();
+        app.input.cursor = 2;
+        handle_cursor_right(&mut app);
+        assert_eq!(app.input.cursor, 2);
+    }
+
+    #[test]
+    fn cursor_home_goes_to_zero() {
+        let mut app = test_app();
+        app.input.text = "hello".to_string();
+        app.input.cursor = 3;
+        handle_cursor_home(&mut app);
+        assert_eq!(app.input.cursor, 0);
+    }
+
+    #[test]
+    fn cursor_end_goes_to_len() {
+        let mut app = test_app();
+        app.input.text = "hello".to_string();
+        app.input.cursor = 0;
+        handle_cursor_end(&mut app);
+        assert_eq!(app.input.cursor, 5);
+    }
+
+    #[test]
+    fn delete_word_removes_word() {
+        let mut app = test_app();
+        app.input.text = "hello world".to_string();
+        app.input.cursor = 11;
+        handle_delete_word(&mut app);
+        assert_eq!(app.input.text, "hello ");
+        assert_eq!(app.input.cursor, 6);
+    }
+
+    #[test]
+    fn delete_word_skips_spaces() {
+        let mut app = test_app();
+        app.input.text = "hello   ".to_string();
+        app.input.cursor = 8;
+        handle_delete_word(&mut app);
+        assert_eq!(app.input.text, "");
+        assert_eq!(app.input.cursor, 0);
+    }
+
+    #[test]
+    fn clear_line_empties_input() {
+        let mut app = test_app();
+        app.input.text = "some text".to_string();
+        app.input.cursor = 5;
+        handle_clear_line(&mut app);
+        assert!(app.input.text.is_empty());
+        assert_eq!(app.input.cursor, 0);
+    }
+
+    #[test]
+    fn history_up_navigates_back() {
+        let mut app = test_app();
+        app.input.history = vec!["first".to_string(), "second".to_string()];
+        handle_history_up(&mut app);
+        assert_eq!(app.input.text, "second");
+        assert_eq!(app.input.history_index, Some(0));
+    }
+
+    #[test]
+    fn history_up_twice() {
+        let mut app = test_app();
+        app.input.history = vec!["first".to_string(), "second".to_string()];
+        handle_history_up(&mut app);
+        handle_history_up(&mut app);
+        assert_eq!(app.input.text, "first");
+        assert_eq!(app.input.history_index, Some(1));
+    }
+
+    #[test]
+    fn history_up_stops_at_oldest() {
+        let mut app = test_app();
+        app.input.history = vec!["only".to_string()];
+        handle_history_up(&mut app);
+        handle_history_up(&mut app);
+        assert_eq!(app.input.text, "only");
+        assert_eq!(app.input.history_index, Some(0));
+    }
+
+    #[test]
+    fn history_up_empty_noop() {
+        let mut app = test_app();
+        handle_history_up(&mut app);
+        assert!(app.input.text.is_empty());
+        assert!(app.input.history_index.is_none());
+    }
+
+    #[test]
+    fn history_down_from_index_zero_clears() {
+        let mut app = test_app();
+        app.input.history = vec!["first".to_string()];
+        app.input.history_index = Some(0);
+        app.input.text = "first".to_string();
+        handle_history_down(&mut app);
+        assert!(app.input.text.is_empty());
+        assert!(app.input.history_index.is_none());
+    }
+
+    #[test]
+    fn history_down_navigates_forward() {
+        let mut app = test_app();
+        app.input.history = vec!["first".to_string(), "second".to_string()];
+        app.input.history_index = Some(1);
+        handle_history_down(&mut app);
+        assert_eq!(app.input.text, "second");
+        assert_eq!(app.input.history_index, Some(0));
+    }
+
+    #[test]
+    fn history_down_no_index_noop() {
+        let mut app = test_app();
+        handle_history_down(&mut app);
+        assert!(app.input.text.is_empty());
+    }
+
+    #[test]
+    fn submit_empty_noop() {
+        let mut app = test_app();
+        app.input.text = "   ".to_string();
+        handle_submit(&mut app);
+        assert!(app.input.history.is_empty());
+    }
+}

@@ -347,3 +347,133 @@ impl App {
         view::render(self, frame);
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_helpers {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+
+    pub fn test_app() -> App {
+        let config = Config {
+            url: "http://localhost:18789".to_string(),
+            token: None,
+            default_agent: None,
+            default_session: None,
+        };
+        let client = ApiClient::new(&config.url, config.token.clone()).unwrap();
+        let theme = ThemePalette::detect();
+
+        App {
+            config,
+            client,
+            theme,
+            highlighter: crate::highlight::Highlighter::new(),
+            should_quit: false,
+            agents: Vec::new(),
+            focused_agent: None,
+            messages: Vec::new(),
+            focused_session_id: None,
+            daily_cost_cents: 0,
+            input: InputState::default(),
+            sidebar_visible: true,
+            thinking_expanded: false,
+            overlay: None,
+            active_turn_id: None,
+            streaming_text: String::new(),
+            streaming_thinking: String::new(),
+            streaming_tool_calls: Vec::new(),
+            stream_rx: None,
+            sse: None,
+            sse_connected: false,
+            scroll_offset: 0,
+            auto_scroll: true,
+            scroll_states: HashMap::new(),
+            cached_markdown_text: String::new(),
+            cached_markdown_lines: Vec::new(),
+            tick_count: 0,
+            error_toast: None,
+            tab_completion: None,
+            terminal_width: 120,
+            terminal_height: 40,
+            command_palette: CommandPaletteState::default(),
+            session_cost_cents: 0,
+            context_usage_pct: None,
+            selection: SelectionContext::default(),
+            selected_message: None,
+            tool_expanded: HashSet::new(),
+            filter: FilterState::default(),
+        }
+    }
+
+    pub fn test_app_with_messages(msgs: Vec<(&str, &str)>) -> App {
+        let mut app = test_app();
+        for (role, text) in msgs {
+            app.messages.push(ChatMessage {
+                role: role.to_string(),
+                text: text.to_string(),
+                timestamp: None,
+                model: None,
+                is_streaming: false,
+                tool_calls: Vec::new(),
+            });
+        }
+        app
+    }
+
+    pub fn test_agent(id: &str, name: &str) -> AgentState {
+        AgentState {
+            id: crate::id::NousId::from(id),
+            name: name.to_string(),
+            emoji: None,
+            status: AgentStatus::Idle,
+            active_tool: None,
+            tool_started_at: None,
+            sessions: Vec::new(),
+            model: Some("test-model".to_string()),
+            compaction_stage: None,
+            has_notification: false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_helpers::*;
+
+    #[test]
+    fn test_app_constructs_with_defaults() {
+        let app = test_app();
+        assert!(!app.should_quit);
+        assert!(app.auto_scroll);
+        assert!(app.sidebar_visible);
+        assert!(!app.thinking_expanded);
+        assert!(app.overlay.is_none());
+        assert!(app.messages.is_empty());
+        assert!(app.agents.is_empty());
+        assert_eq!(app.scroll_offset, 0);
+        assert_eq!(app.terminal_width, 120);
+        assert_eq!(app.terminal_height, 40);
+    }
+
+    #[test]
+    fn test_app_with_messages_populates() {
+        let app = test_app_with_messages(vec![("user", "hello"), ("assistant", "hi there")]);
+        assert_eq!(app.messages.len(), 2);
+        assert_eq!(app.messages[0].role, "user");
+        assert_eq!(app.messages[1].text, "hi there");
+    }
+
+    #[test]
+    fn take_restore_sse_roundtrip() {
+        let mut app = test_app();
+        assert!(app.take_sse().is_none());
+        app.restore_sse(None);
+    }
+
+    #[test]
+    fn take_restore_stream_roundtrip() {
+        let mut app = test_app();
+        assert!(app.take_stream().is_none());
+        app.restore_stream(None);
+    }
+}

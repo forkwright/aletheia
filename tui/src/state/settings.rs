@@ -387,3 +387,210 @@ fn field(
         requires_restart,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_config() -> serde_json::Value {
+        serde_json::json!({
+            "agents": {
+                "defaults": {
+                    "maxToolIterations": 10,
+                    "thinkingEnabled": true,
+                    "thinkingBudget": 2000,
+                    "contextTokens": 8000,
+                    "maxOutputTokens": 4000,
+                    "timeoutSeconds": 60,
+                    "toolTimeouts": {
+                        "defaultMs": 5000
+                    }
+                }
+            },
+            "gateway": {
+                "port": 18789,
+                "bind": "0.0.0.0"
+            },
+            "embedding": {
+                "provider": "openai",
+                "dimension": 1536
+            }
+        })
+    }
+
+    #[test]
+    fn from_config_creates_sections() {
+        let overlay = SettingsOverlay::from_config(&sample_config());
+        assert!(!overlay.sections.is_empty());
+        assert_eq!(overlay.cursor, 0);
+        assert!(overlay.editing.is_none());
+    }
+
+    #[test]
+    fn from_config_pipeline_section_exists() {
+        let overlay = SettingsOverlay::from_config(&sample_config());
+        assert!(overlay.sections.iter().any(|s| s.name == "Pipeline"));
+    }
+
+    #[test]
+    fn from_config_gateway_section_readonly() {
+        let overlay = SettingsOverlay::from_config(&sample_config());
+        let gw = overlay
+            .sections
+            .iter()
+            .find(|s| s.name == "Gateway")
+            .unwrap();
+        for field in &gw.fields {
+            assert!(!field.editable);
+            assert_eq!(field.field_type, FieldType::ReadOnly);
+        }
+    }
+
+    #[test]
+    fn total_fields_sums_correctly() {
+        let overlay = SettingsOverlay::from_config(&sample_config());
+        let expected: usize = overlay.sections.iter().map(|s| s.fields.len()).sum();
+        assert_eq!(overlay.total_fields(), expected);
+        assert!(expected > 0);
+    }
+
+    #[test]
+    fn current_field_at_zero() {
+        let overlay = SettingsOverlay::from_config(&sample_config());
+        let field = overlay.current_field();
+        assert!(field.is_some());
+    }
+
+    #[test]
+    fn current_field_beyond_range() {
+        let mut overlay = SettingsOverlay::from_config(&sample_config());
+        overlay.cursor = 999;
+        assert!(overlay.current_field().is_none());
+    }
+
+    #[test]
+    fn has_changes_false_initially() {
+        let overlay = SettingsOverlay::from_config(&sample_config());
+        assert!(!overlay.has_changes());
+    }
+
+    #[test]
+    fn has_changes_true_after_modification() {
+        let mut overlay = SettingsOverlay::from_config(&sample_config());
+        if let Some(field) = overlay.current_field_mut() {
+            field.value = serde_json::Value::Number(999.into());
+        }
+        assert!(overlay.has_changes());
+    }
+
+    #[test]
+    fn reset_reverts_changes() {
+        let mut overlay = SettingsOverlay::from_config(&sample_config());
+        if let Some(field) = overlay.current_field_mut() {
+            field.value = serde_json::Value::Number(999.into());
+        }
+        assert!(overlay.has_changes());
+        overlay.reset();
+        assert!(!overlay.has_changes());
+    }
+
+    #[test]
+    fn changed_sections_returns_modified() {
+        let mut overlay = SettingsOverlay::from_config(&sample_config());
+        // Modify the first field (maxToolIterations)
+        if let Some(field) = overlay.current_field_mut() {
+            field.value = serde_json::Value::Number(20.into());
+        }
+        let changed = overlay.changed_sections();
+        assert!(!changed.is_empty());
+        assert!(changed.contains_key("agents"));
+    }
+
+    #[test]
+    fn changed_sections_empty_when_no_changes() {
+        let overlay = SettingsOverlay::from_config(&sample_config());
+        let changed = overlay.changed_sections();
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn set_nested_single_level() {
+        let mut root = serde_json::json!({});
+        set_nested(&mut root, "key", serde_json::Value::Bool(true));
+        assert_eq!(root.get("key").and_then(|v| v.as_bool()), Some(true));
+    }
+
+    #[test]
+    fn set_nested_multi_level() {
+        let mut root = serde_json::json!({});
+        set_nested(&mut root, "a.b.c", serde_json::Value::Number(42.into()));
+        assert_eq!(
+            root.get("a")
+                .and_then(|v| v.get("b"))
+                .and_then(|v| v.get("c"))
+                .and_then(|v| v.as_u64()),
+            Some(42)
+        );
+    }
+
+    #[test]
+    fn set_nested_non_object_root_noop() {
+        let mut root = serde_json::Value::String("not an object".to_string());
+        set_nested(&mut root, "key", serde_json::Value::Bool(true));
+        assert!(root.is_string()); // unchanged
+    }
+
+    #[test]
+    fn from_config_empty_json() {
+        let overlay = SettingsOverlay::from_config(&serde_json::json!({}));
+        assert!(overlay.sections.is_empty());
+        assert_eq!(overlay.total_fields(), 0);
+    }
+
+    #[test]
+    fn from_config_with_maintenance() {
+        let config = serde_json::json!({
+            "maintenance": {
+                "traceRotation": {
+                    "enabled": true,
+                    "maxAgeDays": 30
+                },
+                "dbMonitoring": {
+                    "enabled": false,
+                    "warnThresholdMb": 500,
+                    "alertThresholdMb": 1000
+                }
+            }
+        });
+        let overlay = SettingsOverlay::from_config(&config);
+        assert!(overlay.sections.iter().any(|s| s.name == "Maintenance"));
+        let maint = overlay
+            .sections
+            .iter()
+            .find(|s| s.name == "Maintenance")
+            .unwrap();
+        assert_eq!(maint.fields.len(), 5);
+    }
+
+    #[test]
+    fn from_config_with_data_retention() {
+        let config = serde_json::json!({
+            "data": {
+                "retention": {
+                    "sessionMaxAgeDays": 90,
+                    "orphanMessageMaxAgeDays": 30,
+                    "archiveBeforeDelete": true
+                }
+            }
+        });
+        let overlay = SettingsOverlay::from_config(&config);
+        assert!(overlay.sections.iter().any(|s| s.name == "Data Retention"));
+    }
+
+    #[test]
+    fn field_constructor_null_default() {
+        let f = field("test.key", "Test", None, FieldType::Integer, true, false);
+        assert!(f.value.is_null());
+        assert!(f.original_value.is_null());
+    }
+}
