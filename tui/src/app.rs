@@ -18,6 +18,7 @@ use crate::view;
 
 use crate::state::SavedScrollState;
 use crate::state::virtual_scroll::VirtualScroll;
+use crate::state::TabBar;
 #[expect(
     unused_imports,
     reason = "re-exported for downstream modules that import from crate::app"
@@ -114,6 +115,12 @@ pub struct App {
 
     // Operations pane (right-side panel)
     pub ops: OpsState,
+
+    // Multi-session tab bar
+    pub(crate) tab_bar: TabBar,
+
+    // Vim `g` prefix pending (for gt/gT two-key sequences)
+    pub(crate) pending_g: bool,
 }
 
 impl App {
@@ -167,6 +174,8 @@ impl App {
             view_stack: ViewStack::new(),
             view_scroll_states: HashMap::new(),
             ops: OpsState::default(),
+            tab_bar: TabBar::new(),
+            pending_g: false,
         };
 
         app.connect().await?;
@@ -240,13 +249,25 @@ impl App {
             .map(NousId::from)
             .or_else(|| self.agents.first().map(|a| a.id.clone()));
 
-        if let Some(ref agent_id) = self.focused_agent {
-            if let Ok(sessions) = self.client.sessions(agent_id).await {
-                if let Some(agent) = self.agents.iter_mut().find(|a| a.id == *agent_id) {
+        if let Some(agent_id) = self.focused_agent.clone() {
+            if let Ok(sessions) = self.client.sessions(&agent_id).await {
+                if let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id) {
                     agent.sessions = sessions;
                 }
             }
             self.load_focused_session().await;
+
+            // Create initial tab for the default agent/session
+            let agent_name = self
+                .agents
+                .iter()
+                .find(|a| a.id == agent_id)
+                .map(|a| a.name.clone())
+                .unwrap_or_else(|| agent_id.to_string());
+            let title = self.tab_title_for_current(&agent_name);
+            let idx = self.tab_bar.create_tab(agent_id, title);
+            self.tab_bar.active = idx;
+            self.save_to_active_tab();
         }
 
         if let Ok(cents) = self.client.today_cost_cents().await {
@@ -381,6 +402,88 @@ impl App {
         crate::update::update(self, msg).await;
     }
 
+    // --- Tab state management ---
+
+    /// Save current app state into the active tab.
+    pub(crate) fn save_to_active_tab(&mut self) {
+        if let Some(tab) = self.tab_bar.active_tab_mut() {
+            tab.session_id = self.focused_session_id.clone();
+            tab.state.messages = self.messages.clone();
+            tab.state.focused_session_id = self.focused_session_id.clone();
+            tab.state.input = self.input.clone();
+            tab.state.scroll = SavedScrollState {
+                scroll_offset: self.scroll_offset,
+                auto_scroll: self.auto_scroll,
+            };
+            tab.state.selected_message = self.selected_message;
+            tab.state.tool_expanded = self.tool_expanded.clone();
+            tab.state.filter = self.filter.clone();
+            tab.state.view_stack = self.view_stack.clone();
+            tab.state.streaming_text = self.streaming_text.clone();
+            tab.state.streaming_thinking = self.streaming_thinking.clone();
+            tab.state.streaming_tool_calls = self.streaming_tool_calls.clone();
+            tab.state.active_turn_id = self.active_turn_id.clone();
+            tab.state.cached_markdown_text = self.cached_markdown_text.clone();
+            tab.state.cached_markdown_lines = self.cached_markdown_lines.clone();
+        }
+    }
+
+    /// Restore app state from the active tab.
+    pub(crate) fn restore_from_active_tab(&mut self) {
+        if let Some(tab) = self.tab_bar.active_tab() {
+            self.focused_agent = Some(tab.agent_id.clone());
+            self.focused_session_id = tab.state.focused_session_id.clone();
+            self.messages = tab.state.messages.clone();
+            self.input = tab.state.input.clone();
+            self.scroll_offset = tab.state.scroll.scroll_offset;
+            self.auto_scroll = tab.state.scroll.auto_scroll;
+            self.selected_message = tab.state.selected_message;
+            self.tool_expanded = tab.state.tool_expanded.clone();
+            self.filter = tab.state.filter.clone();
+            self.view_stack = tab.state.view_stack.clone();
+            self.streaming_text = tab.state.streaming_text.clone();
+            self.streaming_thinking = tab.state.streaming_thinking.clone();
+            self.streaming_tool_calls = tab.state.streaming_tool_calls.clone();
+            self.active_turn_id = tab.state.active_turn_id.clone();
+            self.cached_markdown_text = tab.state.cached_markdown_text.clone();
+            self.cached_markdown_lines = tab.state.cached_markdown_lines.clone();
+        }
+    }
+
+    /// Build a display title for the current agent+session.
+    pub(crate) fn tab_title_for_current(&self, agent_name: &str) -> String {
+        let session_label = self
+            .focused_session_id
+            .as_ref()
+            .and_then(|sid| {
+                self.focused_agent.as_ref().and_then(|aid| {
+                    self.agents.iter().find(|a| a.id == *aid).and_then(|a| {
+                        a.sessions.iter().find(|s| s.id == *sid).map(|s| {
+                            s.display_name
+                                .as_deref()
+                                .unwrap_or(&s.key)
+                                .to_string()
+                        })
+                    })
+                })
+            })
+            .unwrap_or_else(|| "main".to_string());
+        format!("{agent_name}: {session_label}")
+    }
+
+    /// Switch to a different tab by index, saving current and restoring target.
+    pub(crate) fn switch_to_tab(&mut self, index: usize) {
+        if index == self.tab_bar.active {
+            return;
+        }
+        self.save_to_active_tab();
+        if !self.tab_bar.jump_to(index) {
+            return;
+        }
+        self.tab_bar.clear_active_unread();
+        self.restore_from_active_tab();
+    }
+
     // --- View ---
 
     #[tracing::instrument(skip_all)]
@@ -447,6 +550,8 @@ pub(crate) mod test_helpers {
             view_stack: ViewStack::new(),
             view_scroll_states: HashMap::new(),
             ops: OpsState::default(),
+            tab_bar: TabBar::new(),
+            pending_g: false,
         }
     }
 

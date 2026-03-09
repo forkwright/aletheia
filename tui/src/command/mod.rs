@@ -159,6 +159,13 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Navigation,
         shortcut: Some("Ctrl+O"),
     },
+    Command {
+        name: "tab",
+        aliases: &[],
+        description: "Switch to tab by name",
+        category: CommandCategory::Navigation,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;
