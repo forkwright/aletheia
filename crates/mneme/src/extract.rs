@@ -1018,6 +1018,240 @@ mod tests {
         assert_eq!(result.relationships_skipped, 0);
     }
 
+    #[test]
+    fn config_returns_same_config() {
+        let config = ExtractionConfig {
+            model: "test-model".to_owned(),
+            min_message_length: 99,
+            max_entities: 42,
+            max_relationships: 7,
+            enabled: false,
+        };
+        let engine = ExtractionEngine::new(config);
+        let got = engine.config();
+        assert_eq!(got.model, "test-model");
+        assert_eq!(got.min_message_length, 99);
+        assert_eq!(got.max_entities, 42);
+        assert_eq!(got.max_relationships, 7);
+        assert!(!got.enabled);
+    }
+
+    #[test]
+    fn build_prompt_empty_messages() {
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+        let prompt = engine.build_prompt(&[]);
+        assert!(
+            !prompt.system.is_empty(),
+            "system prompt should be non-empty even with no messages"
+        );
+        assert!(prompt.system.contains("entities"));
+        assert!(
+            prompt.user_message.is_empty(),
+            "no messages means empty user text"
+        );
+    }
+
+    #[test]
+    fn build_prompt_single_message() {
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+        let messages = vec![ConversationMessage {
+            role: "user".to_owned(),
+            content: "Alice builds Aletheia in Rust.".to_owned(),
+        }];
+        let prompt = engine.build_prompt(&messages);
+        assert!(
+            prompt
+                .user_message
+                .contains("Alice builds Aletheia in Rust.")
+        );
+        assert!(prompt.user_message.contains("user:"));
+    }
+
+    #[test]
+    fn parse_response_truncated_json() {
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+        let truncated = r#"{"entities": [{"name": "Alice""#;
+        let result = engine.parse_response(truncated);
+        assert!(result.is_err(), "truncated JSON must return error");
+        assert!(matches!(
+            result.unwrap_err(),
+            ExtractionError::ParseResponse { .. }
+        ));
+    }
+
+    #[test]
+    fn parse_response_wrong_type_for_confidence() {
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+        let json = r#"{
+            "entities": [],
+            "relationships": [
+                {"source": "Alice", "relation": "knows", "target": "Bob", "confidence": "high"}
+            ],
+            "facts": []
+        }"#;
+        let result = engine.parse_response(json);
+        assert!(
+            result.is_err(),
+            "string confidence should cause parse error"
+        );
+    }
+
+    #[test]
+    fn parse_response_extra_fields_ignored() {
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+        let json = r#"{
+            "entities": [
+                {"name": "Alice", "entity_type": "person", "description": "Engineer", "extra_field": true}
+            ],
+            "relationships": [],
+            "facts": [],
+            "metadata": {"version": 2}
+        }"#;
+        let extraction = engine.parse_response(json).unwrap();
+        assert_eq!(extraction.entities.len(), 1);
+        assert_eq!(extraction.entities[0].name, "Alice");
+    }
+
+    #[test]
+    fn parse_response_unicode_entities() {
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+        let json = r#"{
+            "entities": [
+                {"name": "東京", "entity_type": "location", "description": "Capital of Japan"},
+                {"name": "München", "entity_type": "location", "description": "City in Germany"},
+                {"name": "Москва", "entity_type": "location", "description": "Capital of Russia"}
+            ],
+            "relationships": [],
+            "facts": []
+        }"#;
+        let extraction = engine.parse_response(json).unwrap();
+        assert_eq!(extraction.entities.len(), 3);
+        assert_eq!(extraction.entities[0].name, "東京");
+        assert_eq!(extraction.entities[1].name, "München");
+        assert_eq!(extraction.entities[2].name, "Москва");
+    }
+
+    #[test]
+    fn parse_response_empty_entities_array() {
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+        let json = r#"{"entities":[],"relationships":[],"facts":[]}"#;
+        let extraction = engine.parse_response(json).unwrap();
+        assert!(extraction.entities.is_empty());
+        assert!(extraction.relationships.is_empty());
+        assert!(extraction.facts.is_empty());
+    }
+
+    #[test]
+    fn extract_min_length_boundary() {
+        struct EchoProvider;
+        impl ExtractionProvider for EchoProvider {
+            fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
+                Ok(r#"{"entities":[],"relationships":[],"facts":[]}"#.to_owned())
+            }
+        }
+
+        let config = ExtractionConfig {
+            min_message_length: 10,
+            ..ExtractionConfig::default()
+        };
+        let engine = ExtractionEngine::new(config);
+
+        let below = vec![ConversationMessage {
+            role: "user".to_owned(),
+            content: "123456789".to_owned(),
+        }];
+        let result = engine.extract(&below, &EchoProvider).unwrap();
+        assert!(
+            result.entities.is_empty(),
+            "9 chars < 10 threshold, should skip"
+        );
+
+        let exact = vec![ConversationMessage {
+            role: "user".to_owned(),
+            content: "1234567890".to_owned(),
+        }];
+        let result = engine.extract(&exact, &EchoProvider).unwrap();
+        assert!(
+            result.entities.is_empty(),
+            "10 chars == 10 threshold, provider should be called"
+        );
+
+        let above = vec![ConversationMessage {
+            role: "user".to_owned(),
+            content: "12345678901".to_owned(),
+        }];
+        let result = engine.extract(&above, &EchoProvider).unwrap();
+        assert!(
+            result.entities.is_empty(),
+            "11 chars > 10 threshold, provider should be called"
+        );
+    }
+
+    #[test]
+    fn extract_empty_messages() {
+        struct PanicProvider;
+        impl ExtractionProvider for PanicProvider {
+            fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
+                panic!("should not be called for empty messages");
+            }
+        }
+
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+        let result = engine.extract(&[], &PanicProvider).unwrap();
+        assert!(result.entities.is_empty());
+        assert!(result.relationships.is_empty());
+        assert!(result.facts.is_empty());
+    }
+
+    #[test]
+    fn strip_code_fences_multiple_blocks() {
+        let input = r#"```json
+{"entities":[]}
+```
+Some text
+```json
+{"facts":[]}
+```"#;
+        let result = strip_code_fences(input);
+        assert!(
+            !result.starts_with("```"),
+            "leading code fence should be stripped"
+        );
+    }
+
+    #[test]
+    fn strip_code_fences_nested() {
+        let input = "```json\n```inner```\n```";
+        let result = strip_code_fences(input);
+        assert!(!result.is_empty());
+        assert!(!result.starts_with("```json"));
+    }
+
+    #[test]
+    fn slugify_empty_string() {
+        assert_eq!(slugify(""), "");
+    }
+
+    #[test]
+    fn slugify_all_special_chars() {
+        let result = slugify("!@#$%");
+        assert_eq!(
+            result, "",
+            "all special chars should collapse to empty string"
+        );
+    }
+
+    #[test]
+    fn slugify_unicode_mixed() {
+        let result = slugify("Hello 世界 Rust");
+        assert!(result.contains("hello"));
+        assert!(result.contains("rust"));
+        assert!(
+            result.chars().all(|c| c.is_alphanumeric() || c == '-'),
+            "slugify output should only contain alphanumeric or hyphens"
+        );
+    }
+
     #[cfg(feature = "mneme-engine")]
     #[test]
     fn persist_skips_is_type() {
@@ -1071,6 +1305,25 @@ mod proptests {
         fn strip_code_fences_never_panics(input in "\\PC{0,500}") {
             // Must return a string, never panic
             let _ = strip_code_fences(&input);
+        }
+
+        #[test]
+        fn parse_response_valid_json_with_random_entities(
+            name in "\\PC{1,100}",
+            etype in "(person|project|concept|tool|location)",
+            desc in "\\PC{0,100}",
+        ) {
+            let escaped_name = serde_json::to_string(&name).unwrap();
+            let escaped_desc = serde_json::to_string(&desc).unwrap();
+            let json = format!(
+                r#"{{"entities":[{{"name":{escaped_name},"entity_type":"{etype}","description":{escaped_desc}}}],"relationships":[],"facts":[]}}"#,
+            );
+            let engine = ExtractionEngine::new(ExtractionConfig::default());
+            let result = engine.parse_response(&json);
+            assert!(result.is_ok(), "valid JSON with arbitrary strings should parse: {result:?}");
+            let extraction = result.unwrap();
+            assert_eq!(extraction.entities.len(), 1);
+            assert_eq!(extraction.entities[0].name, name);
         }
 
         #[test]

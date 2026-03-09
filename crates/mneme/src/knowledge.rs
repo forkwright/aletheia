@@ -473,4 +473,163 @@ mod tests {
         assert_eq!(ForgetReason::Incorrect.to_string(), "incorrect");
         assert_eq!(ForgetReason::Privacy.to_string(), "privacy");
     }
+
+    #[test]
+    fn epistemic_tier_display_roundtrip() {
+        for tier in [
+            EpistemicTier::Verified,
+            EpistemicTier::Inferred,
+            EpistemicTier::Assumed,
+        ] {
+            let s = tier.as_str();
+            let json_str = format!("\"{s}\"");
+            let parsed: EpistemicTier = serde_json::from_str(&json_str).unwrap();
+            assert_eq!(tier, parsed, "roundtrip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn fact_default_stability_hours_known_types() {
+        assert!((default_stability_hours("identity") - 17520.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("preference") - 8760.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("relationship") - 4380.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("skill") - 2190.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("task") - 168.0).abs() < f64::EPSILON);
+        assert!(
+            (default_stability_hours("completely_unknown_type") - 720.0).abs() < f64::EPSILON,
+            "fallback for unknown fact types should be 720 hours"
+        );
+    }
+
+    #[test]
+    fn forget_reason_all_variants_as_str() {
+        let all = [
+            ForgetReason::UserRequested,
+            ForgetReason::Outdated,
+            ForgetReason::Incorrect,
+            ForgetReason::Privacy,
+        ];
+        for reason in all {
+            let s = reason.as_str();
+            assert!(!s.is_empty(), "as_str() must be non-empty for {reason:?}");
+        }
+    }
+
+    #[test]
+    fn fact_diff_empty() {
+        let diff = FactDiff {
+            added: vec![],
+            modified: vec![],
+            removed: vec![],
+        };
+        assert!(diff.added.is_empty());
+        assert!(diff.modified.is_empty());
+        assert!(diff.removed.is_empty());
+        let json = serde_json::to_string(&diff).unwrap();
+        let back: FactDiff = serde_json::from_str(&json).unwrap();
+        assert!(back.added.is_empty());
+        assert!(back.modified.is_empty());
+        assert!(back.removed.is_empty());
+    }
+
+    #[test]
+    fn embedded_chunk_fields() {
+        let chunk = EmbeddedChunk {
+            id: "emb-42".to_owned(),
+            content: "test content".to_owned(),
+            source_type: "note".to_owned(),
+            source_id: "note-7".to_owned(),
+            nous_id: "syn".to_owned(),
+            embedding: vec![1.0, 2.0, 3.0, 4.0],
+            created_at: "2026-03-01T00:00:00Z".to_owned(),
+        };
+        assert_eq!(chunk.id, "emb-42");
+        assert_eq!(chunk.content, "test content");
+        assert_eq!(chunk.source_type, "note");
+        assert_eq!(chunk.source_id, "note-7");
+        assert_eq!(chunk.nous_id, "syn");
+        assert_eq!(chunk.embedding.len(), 4);
+        assert_eq!(chunk.created_at, "2026-03-01T00:00:00Z");
+    }
+
+    #[test]
+    fn epistemic_tier_ordering() {
+        let verified_score = match EpistemicTier::Verified {
+            EpistemicTier::Verified => 3,
+            EpistemicTier::Inferred => 2,
+            EpistemicTier::Assumed => 1,
+        };
+        let inferred_score = match EpistemicTier::Inferred {
+            EpistemicTier::Verified => 3,
+            EpistemicTier::Inferred => 2,
+            EpistemicTier::Assumed => 1,
+        };
+        let assumed_score = match EpistemicTier::Assumed {
+            EpistemicTier::Verified => 3,
+            EpistemicTier::Inferred => 2,
+            EpistemicTier::Assumed => 1,
+        };
+        assert!(
+            verified_score > inferred_score,
+            "Verified must rank higher than Inferred"
+        );
+        assert!(
+            inferred_score > assumed_score,
+            "Inferred must rank higher than Assumed"
+        );
+    }
+
+    #[test]
+    fn fact_with_supersession() {
+        let fact = Fact {
+            id: "f-old".to_owned(),
+            nous_id: "syn".to_owned(),
+            content: "outdated claim".to_owned(),
+            confidence: 0.7,
+            tier: EpistemicTier::Inferred,
+            valid_from: "2026-01-01".to_owned(),
+            valid_to: "2026-02-01".to_owned(),
+            superseded_by: Some("f-new".to_owned()),
+            source_session_id: None,
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            access_count: 0,
+            last_accessed_at: String::new(),
+            stability_hours: 720.0,
+            fact_type: String::new(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        };
+        assert_eq!(fact.superseded_by.as_deref(), Some("f-new"));
+        let json = serde_json::to_string(&fact).unwrap();
+        let back: Fact = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.superseded_by.as_deref(), Some("f-new"));
+    }
+
+    #[test]
+    fn fact_with_session_source() {
+        let fact = Fact {
+            id: "f-src".to_owned(),
+            nous_id: "syn".to_owned(),
+            content: "extracted from conversation".to_owned(),
+            confidence: 0.85,
+            tier: EpistemicTier::Verified,
+            valid_from: "2026-03-01".to_owned(),
+            valid_to: "9999-12-31".to_owned(),
+            superseded_by: None,
+            source_session_id: Some("ses-abc-123".to_owned()),
+            recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+            access_count: 3,
+            last_accessed_at: "2026-03-05T12:00:00Z".to_owned(),
+            stability_hours: 4380.0,
+            fact_type: "relationship".to_owned(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        };
+        assert_eq!(fact.source_session_id.as_deref(), Some("ses-abc-123"));
+        let json = serde_json::to_string(&fact).unwrap();
+        let back: Fact = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.source_session_id.as_deref(), Some("ses-abc-123"));
+    }
 }

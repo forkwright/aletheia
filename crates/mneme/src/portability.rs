@@ -255,6 +255,50 @@ mod tests {
     }
 
     #[test]
+    fn agent_file_serde_roundtrip() {
+        let original = sample_agent_file();
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.version, original.version);
+        assert_eq!(restored.exported_at, original.exported_at);
+        assert_eq!(restored.generator, original.generator);
+        assert_eq!(restored.nous.id, original.nous.id);
+        assert_eq!(restored.sessions.len(), original.sessions.len());
+        assert_eq!(
+            restored.sessions[0].messages.len(),
+            original.sessions[0].messages.len()
+        );
+    }
+
+    #[test]
+    fn agent_file_empty_sessions() {
+        let mut agent = sample_agent_file();
+        agent.sessions = vec![];
+        let json = serde_json::to_string(&agent).unwrap();
+        let back: AgentFile = serde_json::from_str(&json).unwrap();
+        assert!(back.sessions.is_empty());
+    }
+
+    #[test]
+    fn agent_file_optional_fields_omitted() {
+        let agent = sample_agent_file();
+        let json = serde_json::to_string(&agent).unwrap();
+        assert!(
+            !json.contains("\"memory\""),
+            "memory=None should be omitted"
+        );
+        assert!(
+            !json.contains("\"knowledge\""),
+            "knowledge=None should be omitted"
+        );
+    }
+
+    #[test]
+    fn format_version_constant() {
+        assert_eq!(AGENT_FILE_VERSION, 1);
+    }
+
+    #[test]
     fn memory_included_when_present() {
         let mut agent = sample_agent_file();
         agent.memory = Some(MemoryData {

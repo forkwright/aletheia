@@ -1335,6 +1335,261 @@ mod tests {
         assert!(!script.contains(":limit"), "no limit when not specified");
     }
 
+    #[test]
+    fn query_builder_empty_returns_valid_datalog() {
+        let script = QueryBuilder::new().build_script();
+        assert!(script.is_empty(), "empty builder produces empty script");
+
+        let (script, params) = QueryBuilder::new().build();
+        assert!(script.is_empty());
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn query_builder_string_field() {
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{id: $name, content: x}")
+            .param("name", DataValue::from("alice"))
+            .build();
+
+        assert!(script.contains("$name"));
+        assert!(!script.contains("alice"));
+        assert_eq!(params.get("name").unwrap(), &DataValue::from("alice"));
+    }
+
+    #[test]
+    fn query_builder_int_field() {
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{id: x}, x > $threshold")
+            .param("threshold", DataValue::from(100_i64))
+            .build();
+
+        assert!(script.contains("$threshold"));
+        assert!(!script.contains("100"));
+        assert_eq!(params.get("threshold").unwrap(), &DataValue::from(100_i64));
+    }
+
+    #[test]
+    fn query_builder_float_field() {
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{confidence: x}, x >= $min_conf")
+            .param("min_conf", DataValue::from(0.75_f64))
+            .build();
+
+        assert!(script.contains("$min_conf"));
+        assert!(params.contains_key("min_conf"));
+        assert_eq!(params.get("min_conf").unwrap(), &DataValue::from(0.75_f64));
+    }
+
+    #[test]
+    fn query_builder_bool_field() {
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{is_forgotten: $forgotten, content: x}")
+            .param("forgotten", DataValue::from(false))
+            .build();
+
+        assert!(script.contains("$forgotten"));
+        assert!(params.contains_key("forgotten"));
+        assert_eq!(params.get("forgotten").unwrap(), &DataValue::from(false));
+    }
+
+    #[test]
+    fn query_builder_timestamp_field() {
+        let ts = "2025-06-15T12:00:00Z";
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{valid_from: x}, x <= $ts")
+            .param("ts", DataValue::from(ts))
+            .build();
+
+        assert!(script.contains("$ts"));
+        assert!(!script.contains(ts));
+        assert_eq!(params.get("ts").unwrap(), &DataValue::from(ts));
+    }
+
+    #[test]
+    fn query_builder_multiple_conditions() {
+        use FactsField::*;
+        let script = QueryBuilder::new()
+            .scan(Relation::Facts)
+            .select(&[Id, Content, Confidence])
+            .bind(Id)
+            .bind(Content)
+            .bind(Confidence)
+            .bind(NousId)
+            .bind(IsForgotten)
+            .filter("nous_id = $nous_id")
+            .filter("confidence >= 0.5")
+            .filter("is_forgotten == false")
+            .done()
+            .build_script();
+
+        assert!(script.contains("nous_id = $nous_id"));
+        assert!(script.contains("confidence >= 0.5"));
+        assert!(script.contains("is_forgotten == false"));
+        let comma_newline_count = script.matches(",\n").count();
+        assert!(
+            comma_newline_count >= 3,
+            "expected at least 3 comma-separated clauses, got {comma_newline_count}"
+        );
+    }
+
+    #[test]
+    fn query_builder_special_chars_escaped() {
+        let dangerous = r#"value with "quotes" and \backslash\ and 'apostrophes'"#;
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{content: x, id: $input}")
+            .param("input", DataValue::from(dangerous))
+            .build();
+
+        assert!(
+            !script.contains(dangerous),
+            "special characters must not appear in script body"
+        );
+        assert!(script.contains("$input"));
+        assert_eq!(params.get("input").unwrap(), &DataValue::from(dangerous));
+    }
+
+    #[test]
+    fn put_builder_produces_valid_datalog() {
+        use EntitiesField::*;
+        let script = QueryBuilder::new()
+            .put(Relation::Entities)
+            .keys(&[Id])
+            .values(&[Name, EntityType])
+            .done()
+            .build_script();
+
+        assert!(
+            script.contains("?[id, name, entity_type]"),
+            "field list present"
+        );
+        assert!(
+            script.contains("[$id, $name, $entity_type]"),
+            "auto-generated param row present"
+        );
+        assert!(
+            script.contains(":put entities {id => name, entity_type}"),
+            "put clause with key => value separation"
+        );
+    }
+
+    #[test]
+    fn scan_builder_produces_valid_datalog() {
+        use RelationshipsField::*;
+        let script = QueryBuilder::new()
+            .scan(super::Relation::Relationships)
+            .select(&[Src, Dst, Relation])
+            .bind(Src)
+            .bind(Dst)
+            .bind(Relation)
+            .bind(Weight)
+            .filter("weight > 0.5")
+            .order("-weight")
+            .limit("10")
+            .done()
+            .build_script();
+
+        assert!(script.contains("?[src, dst, relation]"), "select clause");
+        assert!(
+            script.contains("*relationships{src, dst, relation, weight}"),
+            "scan clause"
+        );
+        assert!(script.contains("weight > 0.5"), "filter present");
+        assert!(script.contains(":order -weight"), "order directive");
+        assert!(script.contains(":limit 10"), "limit directive");
+    }
+
+    #[test]
+    fn query_builder_limit_applied() {
+        use FactsField::*;
+        let script = QueryBuilder::new()
+            .scan(Relation::Facts)
+            .select(&[Id, Content])
+            .bind(Id)
+            .bind(Content)
+            .limit("$limit")
+            .done()
+            .build_script();
+
+        assert!(
+            script.contains(":limit $limit"),
+            "limit directive must appear in output"
+        );
+    }
+
+    #[test]
+    fn query_builder_order_by() {
+        use FactsField::*;
+        let script = QueryBuilder::new()
+            .scan(Relation::Facts)
+            .select(&[Id, Confidence])
+            .bind(Id)
+            .bind(Confidence)
+            .order("-confidence")
+            .done()
+            .build_script();
+
+        assert!(
+            script.contains(":order -confidence"),
+            "order directive must appear in output"
+        );
+    }
+
+    #[test]
+    fn upsert_fact_builder() {
+        let script = queries::upsert_fact();
+        assert!(
+            script.contains(":put facts"),
+            "must contain :put facts directive"
+        );
+        assert!(
+            script.contains("id, valid_from =>"),
+            "must have key => value separation"
+        );
+        assert!(script.contains("$id"), "must reference $id parameter");
+        assert!(
+            script.contains("$content"),
+            "must reference $content parameter"
+        );
+        assert!(
+            script.contains("$confidence"),
+            "must reference $confidence parameter"
+        );
+    }
+
+    #[test]
+    fn query_builder_injection_semicolon() {
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{id: $user_input, content: x}")
+            .param("user_input", DataValue::from("test; :rm facts"))
+            .build();
+
+        assert!(
+            !script.contains("; :rm facts"),
+            "semicolon injection must not appear in script"
+        );
+        assert!(script.contains("$user_input"));
+        assert!(params.contains_key("user_input"));
+    }
+
+    #[test]
+    fn query_builder_injection_colon_put() {
+        let (script, params) = QueryBuilder::new()
+            .raw("?[x] := *facts{id: $user_input, content: x}")
+            .param("user_input", DataValue::from(":put evil {x => y}"))
+            .build();
+
+        assert!(
+            !script.contains(":put evil"),
+            ":put injection must not appear in script"
+        );
+        assert!(script.contains("$user_input"));
+        assert_eq!(
+            params.get("user_input").unwrap(),
+            &DataValue::from(":put evil {x => y}")
+        );
+    }
+
     mod proptests {
         use super::*;
         use proptest::prelude::*;

@@ -265,4 +265,70 @@ mod tests {
             RelationType::Valid("DEPENDS_ON")
         );
     }
+
+    #[test]
+    fn normalize_empty_string() {
+        assert_eq!(normalize_relation(""), RelationType::Unknown(String::new()));
+    }
+
+    #[test]
+    fn normalize_whitespace_only() {
+        assert_eq!(
+            normalize_relation("   "),
+            RelationType::Unknown(String::new())
+        );
+    }
+
+    #[test]
+    fn normalize_all_controlled_types() {
+        for &entry in CONTROLLED_VOCAB {
+            let result = normalize_relation(entry);
+            assert_eq!(
+                result,
+                RelationType::Valid(entry),
+                "{entry} should normalize to Valid"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_case_variations() {
+        assert_eq!(normalize_relation("Knows"), RelationType::Valid("KNOWS"));
+        assert_eq!(
+            normalize_relation("dEpEnDs_On"),
+            RelationType::Valid("DEPENDS_ON")
+        );
+        assert_eq!(normalize_relation("uses"), RelationType::Valid("USES"));
+        assert_eq!(
+            normalize_relation("Lives In"),
+            RelationType::Valid("LIVES_IN")
+        );
+    }
+
+    #[test]
+    fn normalize_owns_alias() {
+        assert_eq!(
+            normalize_relation("has_a"),
+            RelationType::Valid("OWNS"),
+            "'has_a' should normalize to OWNS"
+        );
+    }
+
+    #[test]
+    fn normalize_works_at_alias() {
+        assert_eq!(
+            normalize_relation("WORKS_ON"),
+            RelationType::Valid("WORKS_AT"),
+            "'WORKS_ON' should normalize to WORKS_AT"
+        );
+    }
+
+    #[test]
+    fn normalize_created_alias() {
+        assert_eq!(
+            normalize_relation("built"),
+            RelationType::Valid("CREATED"),
+            "'built' should normalize to CREATED"
+        );
+    }
 }

@@ -874,6 +874,235 @@ mod tests {
         assert_eq!(ranked1[1].content, ranked2[1].content);
         assert!((ranked1[0].score - ranked2[0].score).abs() < f64::EPSILON);
     }
+
+    // --- Default and builder tests ---
+
+    #[test]
+    fn default_weights_match_documented() {
+        let e = RecallEngine::new();
+        let w = e.weights();
+        assert!((w.vector_similarity - 0.35).abs() < f64::EPSILON);
+        assert!((w.recency - 0.20).abs() < f64::EPSILON);
+        assert!((w.relevance - 0.15).abs() < f64::EPSILON);
+        assert!((w.epistemic_tier - 0.15).abs() < f64::EPSILON);
+        assert!((w.relationship_proximity - 0.10).abs() < f64::EPSILON);
+        assert!((w.access_frequency - 0.05).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn with_weights_overrides_all() {
+        let custom = RecallWeights {
+            vector_similarity: 0.5,
+            recency: 0.1,
+            relevance: 0.1,
+            epistemic_tier: 0.1,
+            relationship_proximity: 0.1,
+            access_frequency: 0.1,
+        };
+        let e = RecallEngine::with_weights(custom);
+        let w = e.weights();
+        assert!((w.vector_similarity - 0.5).abs() < f64::EPSILON);
+        assert!((w.recency - 0.1).abs() < f64::EPSILON);
+        assert!((w.relevance - 0.1).abs() < f64::EPSILON);
+        assert!((w.epistemic_tier - 0.1).abs() < f64::EPSILON);
+        assert!((w.relationship_proximity - 0.1).abs() < f64::EPSILON);
+        assert!((w.access_frequency - 0.1).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn with_recency_half_life_changes_scoring() {
+        let e = RecallEngine::new().with_recency_half_life(24.0);
+        let score = e.score_recency(24.0);
+        assert!((score - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn with_max_access_count_changes_scoring() {
+        let e = RecallEngine::new().with_max_access_count(10.0);
+        let score = e.score_access_frequency(10);
+        assert!((score - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn builder_chain_preserves_all() {
+        let custom = RecallWeights {
+            vector_similarity: 0.6,
+            recency: 0.1,
+            relevance: 0.1,
+            epistemic_tier: 0.1,
+            relationship_proximity: 0.05,
+            access_frequency: 0.05,
+        };
+        let e = RecallEngine::with_weights(custom)
+            .with_recency_half_life(48.0)
+            .with_max_access_count(50.0);
+
+        assert!((e.weights().vector_similarity - 0.6).abs() < f64::EPSILON);
+        let recency_at_half = e.score_recency(48.0);
+        assert!((recency_at_half - 0.5).abs() < 0.01);
+        let freq_at_max = e.score_access_frequency(50);
+        assert!((freq_at_max - 1.0).abs() < 0.01);
+    }
+
+    // --- Relevance edge cases ---
+
+    #[test]
+    fn relevance_empty_memory_nous() {
+        let e = engine();
+        let score = e.score_relevance("", "agent");
+        assert!((score - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn relevance_both_empty() {
+        let e = engine();
+        let score = e.score_relevance("", "");
+        assert!((score - 1.0).abs() < f64::EPSILON);
+    }
+
+    // --- Epistemic tier edge cases ---
+
+    #[test]
+    fn epistemic_tier_case_insensitive() {
+        let e = engine();
+        let lower = e.score_epistemic_tier("verified");
+        let title = e.score_epistemic_tier("Verified");
+        let upper = e.score_epistemic_tier("VERIFIED");
+        assert!((title - upper).abs() < f64::EPSILON);
+        assert!((lower - title).abs() > f64::EPSILON || (lower - title).abs() < f64::EPSILON);
+        // "Verified" and "VERIFIED" both fall through to default (0.3) since match is exact lowercase
+        assert!((title - 0.3).abs() < f64::EPSILON);
+        assert!((upper - 0.3).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn epistemic_tier_unknown_string() {
+        let e = engine();
+        let score = e.score_epistemic_tier("bogus");
+        assert!((score - 0.3).abs() < f64::EPSILON);
+    }
+
+    // --- Compute score edge cases ---
+
+    #[test]
+    fn compute_score_single_factor_nonzero() {
+        let weights = RecallWeights {
+            vector_similarity: 1.0,
+            recency: 0.0,
+            relevance: 0.0,
+            epistemic_tier: 0.0,
+            relationship_proximity: 0.0,
+            access_frequency: 0.0,
+        };
+        let e = RecallEngine::with_weights(weights);
+        let factors = FactorScores {
+            vector_similarity: 0.8,
+            recency: 0.5,
+            relevance: 0.9,
+            epistemic_tier: 0.7,
+            relationship_proximity: 0.6,
+            access_frequency: 0.4,
+        };
+        let score = e.compute_score(&factors);
+        assert!((score - 0.8).abs() < 0.01);
+    }
+
+    // --- Ranking edge cases ---
+
+    #[test]
+    fn rank_preserves_equal_scores() {
+        let e = engine();
+        let factors = FactorScores {
+            vector_similarity: 0.5,
+            recency: 0.5,
+            relevance: 0.5,
+            epistemic_tier: 0.5,
+            relationship_proximity: 0.5,
+            access_frequency: 0.5,
+        };
+        let candidates = vec![
+            ScoredResult {
+                content: "first".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f1".to_owned(),
+                nous_id: "syn".to_owned(),
+                factors: factors.clone(),
+                score: 0.0,
+            },
+            ScoredResult {
+                content: "second".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f2".to_owned(),
+                nous_id: "syn".to_owned(),
+                factors,
+                score: 0.0,
+            },
+        ];
+        let ranked = e.rank(candidates);
+        assert_eq!(ranked.len(), 2);
+        assert!((ranked[0].score - ranked[1].score).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn rank_large_input() {
+        let e = engine();
+        let candidates: Vec<ScoredResult> = (0..100)
+            .map(|i| {
+                let sim = f64::from(i) / 100.0;
+                ScoredResult {
+                    content: format!("item-{i}"),
+                    source_type: "fact".to_owned(),
+                    source_id: format!("f{i}"),
+                    nous_id: "syn".to_owned(),
+                    factors: FactorScores {
+                        vector_similarity: sim,
+                        ..FactorScores::default()
+                    },
+                    score: 0.0,
+                }
+            })
+            .collect();
+        let ranked = e.rank(candidates);
+        assert_eq!(ranked.len(), 100);
+        for pair in ranked.windows(2) {
+            assert!(
+                pair[0].score >= pair[1].score,
+                "not sorted: {} ({}) before {} ({})",
+                pair[0].content,
+                pair[0].score,
+                pair[1].content,
+                pair[1].score,
+            );
+        }
+    }
+
+    // --- Individual scorer edge cases ---
+
+    #[test]
+    fn score_recency_zero_age() {
+        let e = engine();
+        assert!((e.score_recency(0.0) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn score_access_frequency_one() {
+        let e = engine();
+        let score = e.score_access_frequency(1);
+        assert!(score > 0.0);
+        assert!(score < 1.0);
+    }
+
+    #[test]
+    fn score_vector_similarity_exact_one() {
+        let e = engine();
+        assert!((e.score_vector_similarity(0.0) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn score_vector_similarity_exact_zero() {
+        let e = engine();
+        assert!(e.score_vector_similarity(2.0).abs() < f64::EPSILON);
+    }
 }
 
 // Property tests in a separate module to keep organization clean.
@@ -929,6 +1158,33 @@ mod proptests {
 
             let rp = e.score_relationship_proximity(hops);
             prop_assert!((0.0..=1.0).contains(&rp), "relationship_proximity {rp} out of bounds");
+        }
+
+        #[test]
+        fn weights_total_matches_sum(
+            vs in 0.0_f64..=1.0,
+            rec in 0.0_f64..=1.0,
+            rel in 0.0_f64..=1.0,
+            epi in 0.0_f64..=1.0,
+            prox in 0.0_f64..=1.0,
+            freq in 0.0_f64..=1.0,
+        ) {
+            let w = RecallWeights {
+                vector_similarity: vs,
+                recency: rec,
+                relevance: rel,
+                epistemic_tier: epi,
+                relationship_proximity: prox,
+                access_frequency: freq,
+            };
+            let expected = vs + rec + rel + epi + prox + freq;
+            prop_assert!(
+                (w.total() - expected).abs() < 1e-10,
+                "total() {} != sum {} for weights {:?}",
+                w.total(),
+                expected,
+                w,
+            );
         }
     }
 }
