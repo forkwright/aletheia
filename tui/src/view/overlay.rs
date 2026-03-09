@@ -551,14 +551,21 @@ fn render_diff_view(
     theme: &ThemePalette,
 ) {
     // Render diff lines (without mutation — we compute total_lines here for scroll clamping)
-    let inner_area = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), area.height.saturating_sub(2));
+    let inner_area = Rect::new(
+        area.x + 1,
+        area.y + 1,
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    );
     let all_lines = diff::render_diff_view_immutable(diff_state, inner_area, theme);
 
     let total = all_lines.len();
     let visible_height = inner_area.height as usize;
 
     // Clamp scroll
-    let scroll = diff_state.scroll_offset.min(total.saturating_sub(visible_height));
+    let scroll = diff_state
+        .scroll_offset
+        .min(total.saturating_sub(visible_height));
 
     let block = overlay_block(&format!("Diff [{}]", diff_state.mode.label()), theme);
     let paragraph = Paragraph::new(all_lines)
