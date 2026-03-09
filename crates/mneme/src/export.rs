@@ -109,7 +109,122 @@ pub fn export_agent(
         workspace,
         sessions,
         memory: None,
+        knowledge: None,
     })
+}
+
+/// Build a `KnowledgeExport` from the knowledge store.
+///
+/// Queries all facts, entities, and relationships for the given nous.
+/// Returns `None` if the store is empty or the query fails.
+#[cfg(feature = "mneme-engine")]
+#[instrument(skip(store))]
+pub fn export_knowledge(
+    nous_id: &str,
+    store: &crate::knowledge_store::KnowledgeStore,
+) -> Option<crate::portability::KnowledgeExport> {
+    // Query all current facts (use a far-future timestamp to capture everything)
+    let facts = store
+        .query_facts(nous_id, "9999-01-01T00:00:00Z", 100_000)
+        .ok()
+        .unwrap_or_default();
+
+    // Query all entities via Datalog
+    let entities = query_all_entities(store).unwrap_or_default();
+
+    // Query all relationships via Datalog
+    let relationships = query_all_relationships(store).unwrap_or_default();
+
+    if facts.is_empty() && entities.is_empty() && relationships.is_empty() {
+        return None;
+    }
+
+    info!(
+        nous_id,
+        facts = facts.len(),
+        entities = entities.len(),
+        relationships = relationships.len(),
+        "knowledge exported"
+    );
+
+    Some(crate::portability::KnowledgeExport {
+        facts,
+        entities,
+        relationships,
+    })
+}
+
+/// Query all entities from the knowledge store.
+#[cfg(feature = "mneme-engine")]
+fn query_all_entities(
+    store: &crate::knowledge_store::KnowledgeStore,
+) -> Result<Vec<crate::knowledge::Entity>> {
+    use std::collections::BTreeMap;
+
+    let script = r"?[id, name, entity_type, aliases, created_at, updated_at] := *entities{id, name, entity_type, aliases, created_at, updated_at}";
+    let rows = store.run_query(script, BTreeMap::new())?;
+
+    let mut entities = Vec::new();
+    for row in &rows.rows {
+        if row.len() < 6 {
+            continue;
+        }
+        let id = row[0].get_str().unwrap_or_default().to_owned();
+        let name = row[1].get_str().unwrap_or_default().to_owned();
+        let entity_type = row[2].get_str().unwrap_or_default().to_owned();
+        let aliases_str = row[3].get_str().unwrap_or_default();
+        let aliases = if aliases_str.is_empty() {
+            vec![]
+        } else {
+            aliases_str.split(',').map(|s| s.trim().to_owned()).collect()
+        };
+        let created_at = row[4].get_str().unwrap_or_default().to_owned();
+        let updated_at = row[5].get_str().unwrap_or_default().to_owned();
+
+        entities.push(crate::knowledge::Entity {
+            id,
+            name,
+            entity_type,
+            aliases,
+            created_at,
+            updated_at,
+        });
+    }
+
+    Ok(entities)
+}
+
+/// Query all relationships from the knowledge store.
+#[cfg(feature = "mneme-engine")]
+fn query_all_relationships(
+    store: &crate::knowledge_store::KnowledgeStore,
+) -> Result<Vec<crate::knowledge::Relationship>> {
+    use std::collections::BTreeMap;
+
+    let script = r"?[src, dst, relation, weight, created_at] := *relationships{src, dst, relation, weight, created_at}";
+    let rows = store.run_query(script, BTreeMap::new())?;
+
+    let mut relationships = Vec::new();
+    for row in &rows.rows {
+        if row.len() < 5 {
+            continue;
+        }
+        let src = row[0].get_str().unwrap_or_default().to_owned();
+        let dst = row[1].get_str().unwrap_or_default().to_owned();
+        let relation = row[2].get_str().unwrap_or_default().to_owned();
+        let weight = row[3].get_float().unwrap_or(0.0);
+        let created_at = row[4].get_str().unwrap_or_default().to_owned();
+
+        relationships.push(crate::knowledge::Relationship {
+            src,
+            dst,
+            relation,
+            weight,
+            created_at,
+        });
+    }
+
+    Ok(relationships)
 }
 
 /// Scan a workspace directory, classifying files as text or binary.
