@@ -75,3 +75,116 @@ fn scroll_to_first_match(app: &mut App) {
     app.scroll_offset = 0;
     app.filter.current_match = 0;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn handle_open_activates_filter() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        assert!(app.filter.active);
+        assert!(app.filter.editing);
+    }
+
+    #[test]
+    fn handle_close_deactivates_filter() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_close(&mut app);
+        assert!(!app.filter.active);
+        assert!(!app.filter.editing);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn handle_input_counts_matches() {
+        let mut app = test_app_with_messages(vec![
+            ("user", "hello world"),
+            ("assistant", "hello there"),
+            ("user", "goodbye"),
+        ]);
+        handle_open(&mut app);
+        handle_input(&mut app, 'h');
+        handle_input(&mut app, 'e');
+        handle_input(&mut app, 'l');
+        // "hel" matches "hello world" and "hello there"
+        assert_eq!(app.filter.match_count, 2);
+        assert_eq!(app.filter.total_count, 3);
+    }
+
+    #[test]
+    fn handle_backspace_recounts() {
+        let mut app = test_app_with_messages(vec![
+            ("user", "hello"),
+            ("assistant", "help"),
+        ]);
+        handle_open(&mut app);
+        handle_input(&mut app, 'h');
+        handle_input(&mut app, 'e');
+        handle_input(&mut app, 'l');
+        handle_input(&mut app, 'l');
+        handle_input(&mut app, 'o');
+        // "hello" matches only 1
+        assert_eq!(app.filter.match_count, 1);
+
+        handle_backspace(&mut app);
+        handle_backspace(&mut app);
+        // "hel" matches both
+        assert_eq!(app.filter.match_count, 2);
+    }
+
+    #[test]
+    fn handle_backspace_empty_clears_match_count() {
+        let mut app = test_app_with_messages(vec![("user", "hello")]);
+        handle_open(&mut app);
+        handle_input(&mut app, 'h');
+        handle_backspace(&mut app);
+        assert_eq!(app.filter.match_count, 0);
+        assert_eq!(app.filter.total_count, 1);
+    }
+
+    #[test]
+    fn handle_clear_resets() {
+        let mut app = test_app_with_messages(vec![("user", "hello")]);
+        handle_open(&mut app);
+        handle_input(&mut app, 'h');
+        handle_clear(&mut app);
+        assert!(app.filter.text.is_empty());
+        assert_eq!(app.filter.total_count, 1);
+    }
+
+    #[test]
+    fn handle_confirm_locks_filter() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_input(&mut app, 'x');
+        handle_confirm(&mut app);
+        assert!(app.filter.active);
+        assert!(!app.filter.editing);
+    }
+
+    #[test]
+    fn handle_confirm_empty_closes() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_confirm(&mut app);
+        assert!(!app.filter.active);
+    }
+
+    #[test]
+    fn inverted_pattern_counts_non_matches() {
+        let mut app = test_app_with_messages(vec![
+            ("user", "hello"),
+            ("assistant", "world"),
+        ]);
+        handle_open(&mut app);
+        handle_input(&mut app, '!');
+        handle_input(&mut app, 'h');
+        handle_input(&mut app, 'e');
+        // "!he" inverts: matches messages NOT containing "he"
+        assert_eq!(app.filter.match_count, 1); // "world" matches
+    }
+}

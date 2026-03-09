@@ -177,3 +177,212 @@ pub fn is_editing(app: &App) -> bool {
         Some(Overlay::Settings(s)) if s.editing.is_some()
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+    use crate::state::settings::FieldType;
+
+    fn config_json() -> serde_json::Value {
+        serde_json::json!({
+            "agents": {
+                "defaults": {
+                    "maxToolIterations": 10,
+                    "thinkingEnabled": true,
+                    "thinkingBudget": 2000,
+                    "contextTokens": 8000,
+                    "maxOutputTokens": 4000,
+                    "timeoutSeconds": 60,
+                    "toolTimeouts": {
+                        "defaultMs": 5000
+                    }
+                }
+            },
+            "gateway": {
+                "port": 18789,
+                "bind": "0.0.0.0"
+            }
+        })
+    }
+
+    fn app_with_settings() -> App {
+        let mut app = test_app();
+        let settings = SettingsOverlay::from_config(&config_json());
+        app.overlay = Some(Overlay::Settings(settings));
+        app
+    }
+
+    #[test]
+    fn handle_loaded_sets_overlay() {
+        let mut app = test_app();
+        handle_loaded(&mut app, config_json());
+        assert!(matches!(app.overlay, Some(Overlay::Settings(_))));
+    }
+
+    #[test]
+    fn handle_up_decrements_cursor() {
+        let mut app = app_with_settings();
+        if let Some(Overlay::Settings(s)) = &mut app.overlay {
+            s.cursor = 2;
+        }
+        handle_up(&mut app);
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            assert_eq!(s.cursor, 1);
+        }
+    }
+
+    #[test]
+    fn handle_up_saturates_at_zero() {
+        let mut app = app_with_settings();
+        if let Some(Overlay::Settings(s)) = &mut app.overlay {
+            s.cursor = 0;
+        }
+        handle_up(&mut app);
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            assert_eq!(s.cursor, 0);
+        }
+    }
+
+    #[test]
+    fn handle_down_increments_cursor() {
+        let mut app = app_with_settings();
+        handle_down(&mut app);
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            assert_eq!(s.cursor, 1);
+        }
+    }
+
+    #[test]
+    fn handle_down_clamps_at_max() {
+        let mut app = app_with_settings();
+        if let Some(Overlay::Settings(s)) = &mut app.overlay {
+            s.cursor = s.total_fields().saturating_sub(1);
+        }
+        let prev = if let Some(Overlay::Settings(s)) = &app.overlay {
+            s.cursor
+        } else {
+            0
+        };
+        handle_down(&mut app);
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            assert_eq!(s.cursor, prev);
+        }
+    }
+
+    #[test]
+    fn handle_enter_toggles_bool() {
+        let mut app = app_with_settings();
+        // Find a bool field
+        if let Some(Overlay::Settings(s)) = &mut app.overlay {
+            for (i, section) in s.sections.iter().enumerate() {
+                for (j, field) in section.fields.iter().enumerate() {
+                    if field.field_type == FieldType::Bool && field.editable {
+                        // Calculate flat index
+                        let flat: usize = s.sections[..i]
+                            .iter()
+                            .map(|sec| sec.fields.len())
+                            .sum::<usize>()
+                            + j;
+                        s.cursor = flat;
+                        break;
+                    }
+                }
+            }
+        }
+        let before = if let Some(Overlay::Settings(s)) = &app.overlay {
+            s.current_field()
+                .and_then(|f| f.value.as_bool())
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        handle_enter(&mut app);
+        let after = if let Some(Overlay::Settings(s)) = &app.overlay {
+            s.current_field()
+                .and_then(|f| f.value.as_bool())
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn handle_enter_opens_editor_for_integer() {
+        let mut app = app_with_settings();
+        // cursor 0 should be maxToolIterations (Integer)
+        handle_enter(&mut app);
+        assert!(is_editing(&app));
+    }
+
+    #[test]
+    fn handle_edit_char_appends() {
+        let mut app = app_with_settings();
+        handle_enter(&mut app); // start editing
+        handle_edit_char(&mut app, '5');
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            let edit = s.editing.as_ref().unwrap();
+            assert!(edit.buffer.ends_with('5'));
+        }
+    }
+
+    #[test]
+    fn handle_edit_backspace_removes() {
+        let mut app = app_with_settings();
+        handle_enter(&mut app);
+        handle_edit_char(&mut app, '5');
+        handle_edit_backspace(&mut app);
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            let edit = s.editing.as_ref().unwrap();
+            assert!(!edit.buffer.ends_with('5'));
+        }
+    }
+
+    #[test]
+    fn handle_edit_escape_cancels_edit() {
+        let mut app = app_with_settings();
+        handle_enter(&mut app);
+        assert!(is_editing(&app));
+        handle_edit_escape(&mut app);
+        assert!(!is_editing(&app));
+    }
+
+    #[test]
+    fn handle_reset_restores_original() {
+        let mut app = app_with_settings();
+        // Modify a field
+        if let Some(Overlay::Settings(s)) = &mut app.overlay {
+            if let Some(field) = s.current_field_mut() {
+                field.value = serde_json::Value::Number(999.into());
+            }
+        }
+        handle_reset(&mut app);
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            assert!(!s.has_changes());
+        }
+    }
+
+    #[test]
+    fn handle_saved_closes_overlay() {
+        let mut app = app_with_settings();
+        handle_saved(&mut app);
+        assert!(app.overlay.is_none());
+        assert!(app.error_toast.is_some());
+    }
+
+    #[test]
+    fn handle_save_error_sets_status() {
+        let mut app = app_with_settings();
+        handle_save_error(&mut app, "network error".to_string());
+        if let Some(Overlay::Settings(s)) = &app.overlay {
+            assert!(matches!(s.save_status, SaveStatus::Error(_)));
+        }
+    }
+
+    #[test]
+    fn is_editing_false_by_default() {
+        let app = app_with_settings();
+        assert!(!is_editing(&app));
+    }
+}

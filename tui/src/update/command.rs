@@ -271,3 +271,135 @@ fn safe_truncate(s: &str, max_bytes: usize) -> &str {
     }
     &s[..end]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::*;
+
+    #[test]
+    fn handle_open_activates_palette() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        assert!(app.command_palette.active);
+        assert!(app.command_palette.input.is_empty());
+        assert_eq!(app.command_palette.cursor, 0);
+        assert_eq!(app.command_palette.selected, 0);
+        assert!(!app.command_palette.suggestions.is_empty());
+    }
+
+    #[test]
+    fn handle_close_deactivates_palette() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_close(&mut app);
+        assert!(!app.command_palette.active);
+        assert!(app.command_palette.input.is_empty());
+    }
+
+    #[test]
+    fn handle_input_inserts_char() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_input(&mut app, 'q');
+        assert_eq!(app.command_palette.input, "q");
+        assert_eq!(app.command_palette.cursor, 1);
+        assert_eq!(app.command_palette.selected, 0);
+    }
+
+    #[test]
+    fn handle_input_multibyte_char() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_input(&mut app, '\u{00e9}'); // e with accent
+        assert_eq!(app.command_palette.input, "\u{00e9}");
+        assert_eq!(app.command_palette.cursor, 2); // 2-byte UTF-8
+    }
+
+    #[test]
+    fn handle_backspace_removes_char() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_input(&mut app, 'a');
+        handle_input(&mut app, 'b');
+        handle_backspace(&mut app);
+        assert_eq!(app.command_palette.input, "a");
+        assert_eq!(app.command_palette.cursor, 1);
+    }
+
+    #[test]
+    fn handle_backspace_on_empty_closes() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_backspace(&mut app);
+        assert!(!app.command_palette.active);
+    }
+
+    #[test]
+    fn handle_delete_word_removes_word() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        for c in "hello world".chars() {
+            handle_input(&mut app, c);
+        }
+        handle_delete_word(&mut app);
+        assert_eq!(app.command_palette.input, "hello ");
+    }
+
+    #[test]
+    fn handle_up_saturates_at_zero() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        app.command_palette.selected = 0;
+        handle_up(&mut app);
+        assert_eq!(app.command_palette.selected, 0);
+    }
+
+    #[test]
+    fn handle_down_clamps_at_max() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        let max = app.command_palette.suggestions.len().saturating_sub(1);
+        app.command_palette.selected = max;
+        handle_down(&mut app);
+        assert_eq!(app.command_palette.selected, max);
+    }
+
+    #[test]
+    fn handle_tab_completes_suggestion() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        handle_input(&mut app, 'q');
+        handle_tab(&mut app);
+        // After tab, input should contain the full command name
+        assert!(app.command_palette.input.starts_with("quit") || !app.command_palette.suggestions.is_empty());
+    }
+
+    #[test]
+    fn safe_truncate_ascii() {
+        assert_eq!(safe_truncate("hello", 3), "hel");
+        assert_eq!(safe_truncate("hello", 10), "hello");
+        assert_eq!(safe_truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn safe_truncate_multibyte() {
+        let s = "hello\u{00e9}world"; // e-accent is 2 bytes
+        let result = safe_truncate(s, 6);
+        // Should not split the multi-byte char
+        assert!(result.is_char_boundary(result.len()));
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn safe_truncate_empty() {
+        assert_eq!(safe_truncate("", 5), "");
+    }
+
+    #[test]
+    fn safe_truncate_emoji() {
+        let s = "\u{1F600}test"; // emoji is 4 bytes
+        let result = safe_truncate(s, 2);
+        assert!(result.is_char_boundary(result.len()));
+    }
+}

@@ -35,3 +35,37 @@ pub enum SelectionContext {
         index: usize,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_palette_default_inactive() {
+        let state = CommandPaletteState::default();
+        assert!(!state.active);
+        assert!(state.input.is_empty());
+        assert_eq!(state.cursor, 0);
+        assert_eq!(state.selected, 0);
+        assert!(state.suggestions.is_empty());
+    }
+
+    #[test]
+    fn selection_context_default_is_none() {
+        let ctx = SelectionContext::default();
+        assert_eq!(ctx, SelectionContext::None);
+    }
+
+    #[test]
+    fn selection_context_variants_distinct() {
+        let none = SelectionContext::None;
+        let user = SelectionContext::UserMessage { index: 0 };
+        let agent = SelectionContext::AgentResponse {
+            index: 0,
+            has_code: false,
+            has_links: false,
+        };
+        assert_ne!(none, user);
+        assert_ne!(user, agent);
+    }
+}
