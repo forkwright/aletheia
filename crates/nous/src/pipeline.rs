@@ -1059,4 +1059,118 @@ mod tests {
             "should detect loop even after window eviction"
         );
     }
+
+    // --- Additional edge cases ---
+
+    #[test]
+    fn loop_detector_interleaved_not_detected() {
+        let mut det = LoopDetector::new(3);
+        // a, b, a, b, a, b — interleaved, not consecutive
+        for _ in 0..3 {
+            assert!(det.record("exec", "a").is_none());
+            assert!(det.record("exec", "b").is_none());
+        }
+    }
+
+    #[test]
+    fn loop_detector_reset_clears_pattern_count() {
+        let mut det = LoopDetector::new(100);
+        det.record("exec", "same");
+        det.record("exec", "same");
+        assert_eq!(det.pattern_count(), 2);
+        det.reset();
+        assert_eq!(det.pattern_count(), 0);
+        assert_eq!(det.call_count(), 0);
+    }
+
+    #[test]
+    fn pipeline_message_serde_roundtrip() {
+        let msg = PipelineMessage {
+            role: "user".to_owned(),
+            content: "Hello world".to_owned(),
+            token_estimate: 3,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: PipelineMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(msg.role, back.role);
+        assert_eq!(msg.content, back.content);
+        assert_eq!(msg.token_estimate, back.token_estimate);
+    }
+
+    #[test]
+    fn tool_call_serde_roundtrip() {
+        let tc = ToolCall {
+            id: "tc-1".to_owned(),
+            name: "exec".to_owned(),
+            input: serde_json::json!({"cmd": "ls"}),
+            result: Some("output".to_owned()),
+            is_error: false,
+            duration_ms: 42,
+        };
+        let json = serde_json::to_string(&tc).unwrap();
+        let back: ToolCall = serde_json::from_str(&json).unwrap();
+        assert_eq!(tc.id, back.id);
+        assert_eq!(tc.name, back.name);
+        assert_eq!(tc.duration_ms, back.duration_ms);
+    }
+
+    #[test]
+    fn tool_call_with_error() {
+        let tc = ToolCall {
+            id: "tc-1".to_owned(),
+            name: "exec".to_owned(),
+            input: serde_json::json!({}),
+            result: None,
+            is_error: true,
+            duration_ms: 0,
+        };
+        assert!(tc.is_error);
+        assert!(tc.result.is_none());
+    }
+
+    #[test]
+    fn check_guard_always_allows() {
+        let config = crate::config::NousConfig::default();
+        let session =
+            crate::session::SessionState::new("s-1".to_owned(), "main".to_owned(), &config);
+        assert_eq!(check_guard(&session, &config), GuardResult::Allow);
+    }
+
+    #[test]
+    fn assemble_context_missing_soul_returns_error() {
+        use aletheia_taxis::oikos::Oikos;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("nous/test-agent")).unwrap();
+        std::fs::create_dir_all(root.join("shared")).unwrap();
+        std::fs::create_dir_all(root.join("theke")).unwrap();
+        // No SOUL.md anywhere
+
+        let oikos = Oikos::from_root(root);
+        let config = crate::config::NousConfig {
+            id: "test-agent".to_owned(),
+            ..crate::config::NousConfig::default()
+        };
+        let pipeline_config = crate::config::PipelineConfig::default();
+        let mut ctx = PipelineContext::default();
+
+        let err = assemble_context(&oikos, &config, &pipeline_config, &mut ctx);
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("SOUL.md"), "got: {msg}");
+    }
+
+    #[test]
+    fn turn_usage_cache_tokens_not_counted_in_total() {
+        let usage = TurnUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_read_tokens: 80,
+            cache_write_tokens: 20,
+            llm_calls: 1,
+        };
+        assert_eq!(usage.total_tokens(), 150);
+    }
 }

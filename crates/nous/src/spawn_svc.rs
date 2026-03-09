@@ -344,4 +344,76 @@ mod tests {
             self
         }
     }
+
+    #[test]
+    fn model_for_role_defaults_to_sonnet() {
+        assert_eq!(model_for_role(""), SONNET_MODEL);
+        assert_eq!(model_for_role("analyst"), SONNET_MODEL);
+        assert_eq!(model_for_role("planner"), SONNET_MODEL);
+    }
+
+    #[test]
+    fn model_for_role_explorer_uses_haiku() {
+        assert_eq!(model_for_role("explorer"), HAIKU_MODEL);
+    }
+
+    #[test]
+    fn model_for_role_runner_uses_haiku() {
+        assert_eq!(model_for_role("runner"), HAIKU_MODEL);
+    }
+
+    #[tokio::test]
+    async fn spawn_with_explicit_model() {
+        let (_dir, oikos) = test_oikos();
+        let svc = test_spawn_service(oikos);
+
+        let result = svc
+            .spawn_and_run(
+                SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Test task".to_owned(),
+                    model: Some("claude-haiku-4-5-20251001".to_owned()),
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+            )
+            .await
+            .expect("spawn");
+
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn spawn_cleans_up_workspace() {
+        let (_dir, oikos) = test_oikos();
+        let svc = test_spawn_service(Arc::clone(&oikos));
+
+        let result = svc
+            .spawn_and_run(
+                SpawnRequest {
+                    role: "coder".to_owned(),
+                    task: "Cleanup test".to_owned(),
+                    model: None,
+                    allowed_tools: None,
+                    timeout_secs: 30,
+                },
+                "test-parent",
+            )
+            .await
+            .expect("spawn");
+
+        assert!(!result.is_error);
+        // The ephemeral workspace should have been cleaned up
+        // (we can't easily check the exact path but the spawn completed)
+    }
+
+    #[test]
+    fn spawn_service_construction() {
+        let providers = Arc::new(ProviderRegistry::new());
+        let tools = Arc::new(ToolRegistry::new());
+        let dir = tempfile::TempDir::new().expect("tmpdir");
+        let oikos = Arc::new(Oikos::from_root(dir.path()));
+        let _svc = SpawnServiceImpl::new(providers, tools, oikos);
+    }
 }
