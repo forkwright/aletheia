@@ -63,7 +63,10 @@ pub fn generate(
     // Re-read from DB to get populated timestamps
     let stored = store
         .find_api_key_by_hash(&record.key_hash)?
-        .unwrap_or(record);
+        .unwrap_or_else(|| {
+            tracing::warn!("could not re-read API key after storage, using unsaved record");
+            record
+        });
 
     Ok((full_key, stored))
 }
