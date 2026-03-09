@@ -15,9 +15,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 
     let mut left_spans = vec![
         Span::styled("/", theme.style_accent()),
-        Span::styled(before_cursor.to_string(), theme.style_fg()),
+        Span::styled(before_cursor, theme.style_fg()),
         Span::styled(cursor_char, theme.style_accent()),
-        Span::styled(after_cursor.to_string(), theme.style_fg()),
+        Span::styled(after_cursor, theme.style_fg()),
     ];
 
     let right_text = if app.filter.text.is_empty() {

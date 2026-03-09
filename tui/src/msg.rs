@@ -7,7 +7,9 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 #[derive(Debug)]
 #[expect(
     dead_code,
-    reason = "enum variants and fields are reserved for event handling"
+    reason = "variant fields carry event data that update handlers read via destructuring; \
+              the compiler sees struct-style variant fields as unread when match arms \
+              use wildcard or abbreviated patterns"
 )]
 pub enum Msg {
     // --- Terminal input ---

@@ -1,3 +1,12 @@
+//! TUI entry point for the Aletheia client.
+//!
+//! Error handling uses `anyhow` throughout this crate. The TUI is a thin
+//! terminal UI layer: all errors surface to the user as display text (via
+//! `eprintln!` in `run_tui` or the in-app toast system). No caller outside
+//! this crate needs to match on error variants, so typed snafu errors would
+//! add complexity with no benefit. Internal state errors use the app's own
+//! `Msg::ShowError` path rather than `Result` propagation.
+
 mod actions;
 mod api;
 mod app;

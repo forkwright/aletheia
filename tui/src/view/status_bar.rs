@@ -143,15 +143,17 @@ fn format_cost(cents: u32) -> String {
 
 fn context_gauge_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
     const GAUGE_WIDTH: usize = 6;
+    const CONTEXT_WARN_THRESHOLD: u8 = 60;
+    const CONTEXT_CRITICAL_THRESHOLD: u8 = 80;
 
     match app.context_usage_pct {
         Some(pct) => {
             let filled = (pct as usize * GAUGE_WIDTH) / 100;
             let empty = GAUGE_WIDTH.saturating_sub(filled);
 
-            let color = if pct <= 60 {
+            let color = if pct <= CONTEXT_WARN_THRESHOLD {
                 theme.success
-            } else if pct <= 80 {
+            } else if pct <= CONTEXT_CRITICAL_THRESHOLD {
                 theme.warning
             } else {
                 theme.error
