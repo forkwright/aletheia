@@ -153,4 +153,64 @@ mod tests {
         assert!(!dependent.is_ready(&[first.id]));
         assert!(dependent.is_ready(&[first.id, second.id]));
     }
+
+    #[test]
+    fn new_plan_defaults() {
+        let plan = Plan::new("task".into(), "desc".into(), 1);
+        assert_eq!(plan.title, "task");
+        assert_eq!(plan.description, "desc");
+        assert_eq!(plan.wave, 1);
+        assert_eq!(plan.state, PlanState::Pending);
+        assert_eq!(plan.iterations, 0);
+        assert_eq!(plan.max_iterations, 10);
+        assert!(plan.depends_on.is_empty());
+        assert!(plan.blockers.is_empty());
+        assert!(plan.achievements.is_empty());
+    }
+
+    #[test]
+    fn is_ready_no_deps() {
+        let plan = Plan::new("task".into(), "desc".into(), 1);
+        assert!(plan.is_ready(&[]));
+        assert!(plan.is_ready(&[Ulid::new()]));
+    }
+
+    #[test]
+    fn mark_stuck_sets_state_and_blocker() {
+        let mut plan = Plan::new("task".into(), "desc".into(), 1);
+        let blocker = Blocker {
+            description: "blocked on review".into(),
+            plan_id: plan.id,
+            detected_at: jiff::Timestamp::now(),
+        };
+        plan.mark_stuck(blocker);
+        assert_eq!(plan.state, PlanState::Stuck);
+        assert_eq!(plan.blockers.len(), 1);
+        assert_eq!(plan.blockers[0].description, "blocked on review");
+    }
+
+    #[test]
+    fn record_iteration_within_limit() {
+        let mut plan = Plan::new("task".into(), "desc".into(), 1);
+        plan.max_iterations = 5;
+        for _ in 0..5 {
+            assert!(plan.record_iteration().is_ok());
+        }
+        assert_eq!(plan.iterations, 5);
+        assert_eq!(plan.state, PlanState::Pending);
+    }
+
+    #[test]
+    fn blocker_creation() {
+        let plan_id = Ulid::new();
+        let now = jiff::Timestamp::now();
+        let blocker = Blocker {
+            description: "needs API design decision".into(),
+            plan_id,
+            detected_at: now,
+        };
+        assert_eq!(blocker.description, "needs API design decision");
+        assert_eq!(blocker.plan_id, plan_id);
+        assert_eq!(blocker.detected_at, now);
+    }
 }

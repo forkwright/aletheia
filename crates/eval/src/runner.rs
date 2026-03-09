@@ -234,4 +234,63 @@ mod tests {
         assert_eq!(report.failed, 1);
         assert_eq!(report.skipped, 2);
     }
+
+    #[test]
+    fn scenario_outcome_is_passed() {
+        let outcome = ScenarioOutcome::Passed {
+            duration: Duration::from_millis(100),
+        };
+        assert!(outcome.is_passed());
+        assert!(!outcome.is_failed());
+    }
+
+    #[test]
+    fn scenario_outcome_is_failed() {
+        let outcome = ScenarioOutcome::Failed {
+            duration: Duration::from_millis(100),
+            error: crate::error::AssertionSnafu {
+                message: "test failure",
+            }
+            .build(),
+        };
+        assert!(outcome.is_failed());
+        assert!(!outcome.is_passed());
+    }
+
+    #[test]
+    fn scenario_outcome_skipped_not_passed_or_failed() {
+        let outcome = ScenarioOutcome::Skipped {
+            reason: "not applicable".to_owned(),
+        };
+        assert!(!outcome.is_passed());
+        assert!(!outcome.is_failed());
+    }
+
+    #[test]
+    fn run_report_total_count() {
+        let report = RunReport {
+            passed: 5,
+            failed: 2,
+            skipped: 3,
+            total_duration: Duration::from_secs(1),
+            results: vec![],
+        };
+        assert_eq!(report.passed + report.failed + report.skipped, 10);
+    }
+
+    #[test]
+    fn scenario_meta_fields() {
+        let meta = crate::scenario::ScenarioMeta {
+            id: "test-scenario",
+            description: "a test scenario",
+            category: "unit",
+            requires_auth: true,
+            requires_nous: false,
+        };
+        assert_eq!(meta.id, "test-scenario");
+        assert_eq!(meta.description, "a test scenario");
+        assert_eq!(meta.category, "unit");
+        assert!(meta.requires_auth);
+        assert!(!meta.requires_nous);
+    }
 }

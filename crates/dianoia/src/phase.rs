@@ -88,3 +88,98 @@ impl Phase {
         pct
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_phase_defaults() {
+        let phase = Phase::new("Foundation".into(), "Build foundation".into(), 1);
+        assert_eq!(phase.name, "Foundation");
+        assert_eq!(phase.goal, "Build foundation");
+        assert_eq!(phase.order, 1);
+        assert_eq!(phase.state, PhaseState::Pending);
+        assert!(phase.plans.is_empty());
+        assert!(phase.requirements.is_empty());
+    }
+
+    #[test]
+    fn add_plan_to_phase() {
+        let mut phase = Phase::new("P1".into(), "g".into(), 1);
+        let plan = Plan::new("task".into(), "desc".into(), 1);
+        phase.add_plan(plan);
+        assert_eq!(phase.plans.len(), 1);
+    }
+
+    #[test]
+    fn is_complete_when_complete() {
+        let mut phase = Phase::new("P1".into(), "g".into(), 1);
+        phase.state = PhaseState::Complete;
+        assert!(phase.is_complete());
+    }
+
+    #[test]
+    fn is_not_complete_when_pending() {
+        let phase = Phase::new("P1".into(), "g".into(), 1);
+        assert!(!phase.is_complete());
+    }
+
+    #[test]
+    fn completion_percentage_empty_plans() {
+        let phase = Phase::new("P1".into(), "g".into(), 1);
+        assert!((phase.completion_percentage() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn completion_percentage_all_complete() {
+        let mut phase = Phase::new("P1".into(), "g".into(), 1);
+        let mut p1 = Plan::new("t1".into(), "d1".into(), 1);
+        p1.state = PlanState::Complete;
+        let mut p2 = Plan::new("t2".into(), "d2".into(), 1);
+        p2.state = PlanState::Complete;
+        phase.add_plan(p1);
+        phase.add_plan(p2);
+        assert!((phase.completion_percentage() - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn completion_percentage_mixed() {
+        let mut phase = Phase::new("P1".into(), "g".into(), 1);
+        let mut p1 = Plan::new("t1".into(), "d1".into(), 1);
+        p1.state = PlanState::Complete;
+        let p2 = Plan::new("t2".into(), "d2".into(), 1); // Pending
+        let mut p3 = Plan::new("t3".into(), "d3".into(), 1);
+        p3.state = PlanState::Failed;
+        let mut p4 = Plan::new("t4".into(), "d4".into(), 1);
+        p4.state = PlanState::Stuck;
+        phase.add_plan(p1);
+        phase.add_plan(p2);
+        phase.add_plan(p3);
+        phase.add_plan(p4);
+        assert!((phase.completion_percentage() - 75.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn completion_percentage_skipped_counts() {
+        let mut phase = Phase::new("P1".into(), "g".into(), 1);
+        let mut p1 = Plan::new("t1".into(), "d1".into(), 1);
+        p1.state = PlanState::Skipped;
+        phase.add_plan(p1);
+        assert!((phase.completion_percentage() - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn phase_state_variants() {
+        assert_ne!(PhaseState::Pending, PhaseState::Active);
+        assert_ne!(PhaseState::Executing, PhaseState::Verifying);
+        assert_eq!(
+            PhaseState::Failed { can_retry: true },
+            PhaseState::Failed { can_retry: true }
+        );
+        assert_ne!(
+            PhaseState::Failed { can_retry: true },
+            PhaseState::Failed { can_retry: false }
+        );
+    }
+}

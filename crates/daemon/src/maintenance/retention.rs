@@ -82,4 +82,18 @@ mod tests {
         let config = RetentionConfig::default();
         assert!(!config.enabled);
     }
+
+    #[test]
+    fn retention_summary_default() {
+        let summary = RetentionSummary::default();
+        assert_eq!(summary.sessions_cleaned, 0);
+        assert_eq!(summary.messages_cleaned, 0);
+        assert_eq!(summary.bytes_freed, 0);
+    }
+
+    #[test]
+    fn retention_config_enabled() {
+        let config = RetentionConfig { enabled: true };
+        assert!(config.enabled);
+    }
 }

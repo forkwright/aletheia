@@ -358,4 +358,79 @@ mod tests {
             .is_active()
         );
     }
+
+    #[test]
+    fn questioning_skip_research() {
+        let state = ProjectState::Questioning;
+        let state = state.transition(Transition::SkipResearch).unwrap();
+        assert_eq!(state, ProjectState::Scoping);
+    }
+
+    #[test]
+    fn researching_to_scoping() {
+        let state = ProjectState::Researching;
+        let state = state.transition(Transition::StartScoping).unwrap();
+        assert_eq!(state, ProjectState::Scoping);
+    }
+
+    #[test]
+    fn pause_from_each_pausable_state() {
+        for start in [
+            ProjectState::Researching,
+            ProjectState::Scoping,
+            ProjectState::Planning,
+            ProjectState::Discussing,
+            ProjectState::Executing,
+        ] {
+            let paused = start.clone().transition(Transition::Pause).unwrap();
+            assert!(matches!(paused, ProjectState::Paused { .. }));
+            if let ProjectState::Paused { previous } = paused {
+                assert_eq!(*previous, start);
+            }
+        }
+    }
+
+    #[test]
+    fn cannot_pause_from_created() {
+        let result = ProjectState::Created.transition(Transition::Pause);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cannot_pause_from_questioning() {
+        let result = ProjectState::Questioning.transition(Transition::Pause);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn revert_to_invalid_state_rejected() {
+        let state = ProjectState::Verifying;
+        let result = state.transition(Transition::Revert {
+            to: ProjectState::Researching,
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn abandon_from_paused() {
+        let state = ProjectState::Paused {
+            previous: Box::new(ProjectState::Planning),
+        };
+        let state = state.transition(Transition::Abandon).unwrap();
+        assert_eq!(state, ProjectState::Abandoned);
+    }
+
+    #[test]
+    fn double_pause_not_possible() {
+        let state = ProjectState::Paused {
+            previous: Box::new(ProjectState::Executing),
+        };
+        let result = state.transition(Transition::Pause);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn complete_is_not_active() {
+        assert!(!ProjectState::Complete.is_active());
+    }
 }
