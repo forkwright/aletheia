@@ -318,6 +318,26 @@ impl KnowledgeSearchService for StubKnowledgeService {
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
         Box::pin(std::future::ready(Ok(())))
     }
+
+    fn datalog_query(
+        &self,
+        _query: &str,
+        _params: Option<serde_json::Value>,
+        _timeout_secs: Option<f64>,
+        _row_limit: Option<usize>,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<aletheia_organon::types::DatalogResult, String>> + Send + '_,
+        >,
+    > {
+        Box::pin(std::future::ready(Ok(
+            aletheia_organon::types::DatalogResult {
+                columns: vec!["stub".to_owned()],
+                rows: vec![],
+                truncated: false,
+            },
+        )))
+    }
 }
 
 fn ctx_with_knowledge(svc: Arc<StubKnowledgeService>) -> ToolContext {
