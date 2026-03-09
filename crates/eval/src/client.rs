@@ -329,4 +329,36 @@ mod tests {
         let with = EvalClient::new("http://localhost", Some("tok".to_owned()));
         assert!(with.has_token());
     }
+
+    #[test]
+    fn url_construction_no_trailing_slash() {
+        let client = EvalClient::new("http://localhost:8080", None);
+        assert_eq!(client.base_url(), "http://localhost:8080");
+    }
+
+    #[test]
+    fn url_construction_multiple_trailing_slashes() {
+        let client = EvalClient::new("http://localhost:8080///", None);
+        assert_eq!(client.base_url(), "http://localhost:8080");
+    }
+
+    #[test]
+    fn base_url_returns_stored_url() {
+        let client = EvalClient::new("http://192.168.1.100:3000", None);
+        assert_eq!(client.base_url(), "http://192.168.1.100:3000");
+    }
+
+    #[test]
+    fn new_client_without_token() {
+        let client = EvalClient::new("http://localhost", None);
+        assert!(!client.has_token());
+        assert_eq!(client.base_url(), "http://localhost");
+    }
+
+    #[test]
+    fn new_client_with_token() {
+        let client = EvalClient::new("http://localhost", Some("secret-token".to_owned()));
+        assert!(client.has_token());
+        assert_eq!(client.base_url(), "http://localhost");
+    }
 }

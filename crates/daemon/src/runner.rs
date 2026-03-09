@@ -713,4 +713,122 @@ mod tests {
         let output = result.unwrap().output.unwrap_or_default();
         assert!(output.contains("skipped"));
     }
+
+    #[test]
+    fn status_empty_runner() {
+        let (_tx, rx) = watch::channel(false);
+        let runner = TaskRunner::new("test-nous", rx);
+        assert!(
+            runner.status().is_empty(),
+            "new runner should have no tasks"
+        );
+    }
+
+    #[test]
+    fn register_startup_task_immediate() {
+        let (_tx, rx) = watch::channel(false);
+        let mut runner = TaskRunner::new("test-nous", rx);
+
+        let task = TaskDef {
+            id: "startup-task".to_owned(),
+            name: "Startup".to_owned(),
+            nous_id: "test-nous".to_owned(),
+            schedule: Schedule::Startup,
+            action: TaskAction::Command("echo boot".to_owned()),
+            enabled: true,
+            active_window: None,
+        };
+        let before = jiff::Timestamp::now();
+        runner.register(task);
+
+        // Startup tasks should have next_run set to approximately now.
+        let statuses = runner.status();
+        let next_run_str = statuses[0]
+            .next_run
+            .as_ref()
+            .expect("startup should have next_run");
+        let next_run: jiff::Timestamp = next_run_str.parse().expect("valid timestamp");
+        assert!(
+            next_run >= before,
+            "startup task next_run should be >= time before registration"
+        );
+    }
+
+    #[test]
+    fn with_bridge_stores_bridge() {
+        let (_tx, rx) = watch::channel(false);
+        let bridge: Arc<dyn DaemonBridge> = Arc::new(crate::bridge::NoopBridge);
+        let runner = TaskRunner::with_bridge("test-nous", rx, bridge);
+        // Verify runner was created (bridge is private, but we can confirm no panic).
+        assert!(runner.status().is_empty());
+    }
+
+    #[test]
+    fn with_maintenance_builder_pattern() {
+        let (_tx, rx) = watch::channel(false);
+        let config = MaintenanceConfig::default();
+        let runner = TaskRunner::new("test-nous", rx).with_maintenance(config);
+        assert!(runner.status().is_empty());
+    }
+
+    #[test]
+    fn with_retention_builder_pattern() {
+        let (_tx, rx) = watch::channel(false);
+        let executor: Arc<dyn crate::maintenance::RetentionExecutor> =
+            Arc::new(MockRetentionExecutor);
+        let runner = TaskRunner::new("test-nous", rx).with_retention(executor);
+        assert!(runner.status().is_empty());
+    }
+
+    struct MockRetentionExecutor;
+
+    impl crate::maintenance::RetentionExecutor for MockRetentionExecutor {
+        fn execute_retention(&self) -> crate::error::Result<crate::maintenance::RetentionSummary> {
+            Ok(crate::maintenance::RetentionSummary::default())
+        }
+    }
+
+    #[test]
+    fn execution_result_serialization() {
+        let result = ExecutionResult {
+            success: true,
+            output: Some("hello".to_owned()),
+        };
+        let json = serde_json::to_string(&result).expect("serialize");
+        let back: ExecutionResult = serde_json::from_str(&json).expect("deserialize");
+        assert!(back.success);
+        assert_eq!(back.output.as_deref(), Some("hello"));
+    }
+
+    #[tokio::test]
+    async fn disabled_task_not_in_tick() {
+        let (_tx, rx) = watch::channel(false);
+        let mut runner = TaskRunner::new("test-nous", rx);
+
+        let task = TaskDef {
+            id: "disabled-task".to_owned(),
+            name: "Disabled".to_owned(),
+            nous_id: "test-nous".to_owned(),
+            schedule: Schedule::Interval(Duration::from_secs(60)),
+            action: TaskAction::Command("echo should-not-run".to_owned()),
+            enabled: false,
+            active_window: None,
+        };
+        runner.register(task);
+
+        // Force next_run to the past.
+        runner.tasks[0].next_run = Some(
+            jiff::Timestamp::now()
+                .checked_add(jiff::SignedDuration::from_secs(-10))
+                .unwrap(),
+        );
+
+        runner.tick().await;
+
+        let statuses = runner.status();
+        assert_eq!(
+            statuses[0].run_count, 0,
+            "disabled task should not have run"
+        );
+    }
 }

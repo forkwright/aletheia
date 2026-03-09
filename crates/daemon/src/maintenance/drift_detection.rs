@@ -281,4 +281,63 @@ mod tests {
         let report = detector.check().expect("check succeeds");
         assert!(report.missing_files.is_empty());
     }
+
+    #[test]
+    fn default_config_values() {
+        let config = DriftDetectionConfig::default();
+        assert!(config.enabled);
+        assert!(config.alert_on_missing);
+        assert_eq!(config.instance_root, PathBuf::from("instance"));
+        assert_eq!(config.example_root, PathBuf::from("instance.example"));
+        assert!(
+            config.ignore_patterns.contains(&"data/".to_owned()),
+            "default should ignore data/"
+        );
+        assert!(
+            config.ignore_patterns.contains(&"*.db".to_owned()),
+            "default should ignore *.db"
+        );
+    }
+
+    #[test]
+    fn empty_example_and_instance() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+
+        // Both directories exist but are empty.
+        fs::create_dir_all(&config.example_root).unwrap();
+        fs::create_dir_all(&config.instance_root).unwrap();
+
+        let detector = DriftDetector::new(config);
+        let report = detector.check().expect("check succeeds");
+        assert!(report.missing_files.is_empty());
+        assert!(report.extra_files.is_empty());
+    }
+
+    #[test]
+    fn nested_directory_missing_detected() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+
+        // Create a deeply nested structure in the example.
+        fs::create_dir_all(config.example_root.join("level1/level2/level3")).unwrap();
+        fs::write(
+            config.example_root.join("level1/level2/level3/deep.yaml"),
+            "",
+        )
+        .unwrap();
+
+        // Instance has nothing.
+        fs::create_dir_all(&config.instance_root).unwrap();
+
+        let detector = DriftDetector::new(config);
+        let report = detector.check().expect("check succeeds");
+
+        assert!(
+            report
+                .missing_files
+                .contains(&PathBuf::from("level1/level2/level3/deep.yaml")),
+            "should detect deeply nested missing file"
+        );
+    }
 }

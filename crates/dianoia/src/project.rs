@@ -146,4 +146,112 @@ mod tests {
         let active = project.active_phase().unwrap();
         assert_eq!(active.name, "Phase 2");
     }
+
+    #[test]
+    fn quick_mode_project() {
+        let project = Project::new(
+            "quick-task".into(),
+            "a quick task".into(),
+            ProjectMode::Quick {
+                appetite_minutes: 30,
+            },
+            "bob".into(),
+        );
+        assert_eq!(
+            project.mode,
+            ProjectMode::Quick {
+                appetite_minutes: 30
+            }
+        );
+        assert_eq!(project.state, ProjectState::Created);
+    }
+
+    #[test]
+    fn background_mode_project() {
+        let project = Project::new(
+            "bg-task".into(),
+            "background work".into(),
+            ProjectMode::Background,
+            "alice".into(),
+        );
+        assert_eq!(project.mode, ProjectMode::Background);
+        assert_eq!(project.owner, "alice");
+    }
+
+    #[test]
+    fn add_phase_updates_timestamp() {
+        let mut project = Project::new(
+            "test".into(),
+            "desc".into(),
+            ProjectMode::Full,
+            "syn".into(),
+        );
+        let before = project.updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let phase = Phase::new("Phase 1".into(), "First".into(), 1);
+        project.add_phase(phase);
+        assert!(project.updated_at >= before);
+        assert_eq!(project.phases.len(), 1);
+    }
+
+    #[test]
+    fn active_phase_mut_returns_mutable() {
+        let mut project = Project::new(
+            "test".into(),
+            "desc".into(),
+            ProjectMode::Full,
+            "syn".into(),
+        );
+        let phase = Phase::new("Phase 1".into(), "First".into(), 1);
+        project.add_phase(phase);
+
+        let active = project.active_phase_mut().unwrap();
+        active.state = PhaseState::Complete;
+
+        assert!(project.active_phase().is_none());
+    }
+
+    #[test]
+    fn all_phases_complete_returns_none() {
+        let mut project = Project::new(
+            "test".into(),
+            "desc".into(),
+            ProjectMode::Full,
+            "syn".into(),
+        );
+        let mut phase1 = Phase::new("P1".into(), "g1".into(), 1);
+        phase1.state = PhaseState::Complete;
+        let mut phase2 = Phase::new("P2".into(), "g2".into(), 2);
+        phase2.state = PhaseState::Complete;
+        project.add_phase(phase1);
+        project.add_phase(phase2);
+        assert!(project.active_phase().is_none());
+    }
+
+    #[test]
+    fn advance_invalid_transition_fails() {
+        let mut project = Project::new(
+            "test".into(),
+            "desc".into(),
+            ProjectMode::Full,
+            "syn".into(),
+        );
+        // Created -> StartExecution is invalid
+        let result = project.advance(Transition::StartExecution);
+        assert!(result.is_err());
+        assert_eq!(project.state, ProjectState::Created);
+    }
+
+    #[test]
+    fn project_scope_can_be_set() {
+        let mut project = Project::new(
+            "test".into(),
+            "desc".into(),
+            ProjectMode::Full,
+            "syn".into(),
+        );
+        assert!(project.scope.is_none());
+        project.scope = Some("crate dianoia only".into());
+        assert_eq!(project.scope.as_deref(), Some("crate dianoia only"));
+    }
 }
