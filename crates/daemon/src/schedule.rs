@@ -236,4 +236,74 @@ mod tests {
         let expected = (9..17).contains(&now_hour);
         assert_eq!(result, expected);
     }
+
+    #[test]
+    fn interval_short_duration() {
+        let schedule = Schedule::Interval(Duration::from_millis(1));
+        let next = schedule
+            .next_run()
+            .expect("no error")
+            .expect("should have next");
+        // Should be very close to now (within a few seconds).
+        let diff = next
+            .since(jiff::Timestamp::now())
+            .expect("since should work");
+        assert!(diff.get_seconds() < 2, "1ms interval should be near-future");
+    }
+
+    #[test]
+    fn cron_hourly_expression() {
+        let schedule = Schedule::Cron("0 0 * * * *".to_owned());
+        let next = schedule.next_run().expect("no error");
+        assert!(next.is_some(), "hourly cron should produce next_run");
+    }
+
+    #[test]
+    fn cron_complex_expression() {
+        let schedule = Schedule::Cron("0 */15 9-17 * * MON-FRI".to_owned());
+        let next = schedule.next_run().expect("no error");
+        assert!(
+            next.is_some(),
+            "complex cron expression should parse and produce next_run"
+        );
+    }
+
+    #[test]
+    fn in_window_same_start_end() {
+        // (10, 10): start <= end path, hour >= 10 && hour < 10 is always false.
+        assert!(
+            !Schedule::in_window(Some((10, 10))),
+            "same start and end should always be false"
+        );
+    }
+
+    #[test]
+    fn schedule_debug_format() {
+        let schedule = Schedule::Interval(Duration::from_secs(60));
+        let debug_str = format!("{schedule:?}");
+        assert!(
+            debug_str.contains("Interval"),
+            "Debug should contain variant name"
+        );
+    }
+
+    #[test]
+    fn task_status_fields() {
+        let status = TaskStatus {
+            id: "test-id".to_owned(),
+            name: "Test Task".to_owned(),
+            enabled: true,
+            next_run: Some("2026-01-01T00:00:00Z".to_owned()),
+            last_run: None,
+            run_count: 42,
+            consecutive_failures: 0,
+        };
+        assert_eq!(status.id, "test-id");
+        assert_eq!(status.name, "Test Task");
+        assert!(status.enabled);
+        assert!(status.next_run.is_some());
+        assert!(status.last_run.is_none());
+        assert_eq!(status.run_count, 42);
+        assert_eq!(status.consecutive_failures, 0);
+    }
 }

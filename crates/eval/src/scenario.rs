@@ -87,3 +87,34 @@ pub fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
         .fail()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assert_eval_passes_on_true() {
+        let result = assert_eval(true, "ok");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn assert_eval_fails_on_false() {
+        let result = assert_eval(false, "fail");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn assert_eq_eval_equal_values() {
+        let result = assert_eq_eval(&1, &1, "ctx");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn assert_eq_eval_different_values() {
+        let result = assert_eq_eval(&1, &2, "ctx");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("ctx"));
+    }
+}

@@ -201,4 +201,85 @@ mod tests {
         let result = ProjectWorkspace::open("/nonexistent/workspace/path");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn layout_paths_are_correct() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("myproject");
+        let ws = ProjectWorkspace::create(&root).unwrap();
+        let layout = ws.layout();
+        assert_eq!(layout.root, root);
+        assert_eq!(layout.project_file, root.join("PROJECT.json"));
+        assert_eq!(layout.phases_dir, root.join("phases"));
+        assert_eq!(layout.blockers_dir, root.join(".dianoia").join("blockers"));
+        assert_eq!(layout.artifacts_dir, root.join("artifacts"));
+    }
+
+    #[test]
+    fn read_blockers_empty_phase() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+        let blockers = ws.read_blockers("nonexistent-phase").unwrap();
+        assert!(blockers.is_empty());
+    }
+
+    #[test]
+    fn multiple_blockers_for_phase() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+
+        let plan_id_1 = ulid::Ulid::new();
+        let plan_id_2 = ulid::Ulid::new();
+
+        let first_blocker = Blocker {
+            description: "first blocker".into(),
+            plan_id: plan_id_1,
+            detected_at: jiff::Timestamp::now(),
+        };
+        let second_blocker = Blocker {
+            description: "second blocker".into(),
+            plan_id: plan_id_2,
+            detected_at: jiff::Timestamp::now(),
+        };
+
+        ws.write_blocker("phase-a", &first_blocker).unwrap();
+        ws.write_blocker("phase-a", &second_blocker).unwrap();
+
+        let blockers = ws.read_blockers("phase-a").unwrap();
+        assert_eq!(blockers.len(), 2);
+    }
+
+    #[test]
+    fn save_project_with_phases() {
+        use crate::phase::Phase;
+
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+
+        let mut project = Project::new(
+            "phased".into(),
+            "project with phases".into(),
+            ProjectMode::Full,
+            "syn".into(),
+        );
+        project.add_phase(Phase::new("Phase 1".into(), "Foundation".into(), 1));
+        project.add_phase(Phase::new("Phase 2".into(), "Features".into(), 2));
+
+        ws.save_project(&project).unwrap();
+        let loaded = ws.load_project().unwrap();
+        assert_eq!(loaded.phases.len(), 2);
+        assert_eq!(loaded.phases[0].name, "Phase 1");
+        assert_eq!(loaded.phases[1].name, "Phase 2");
+    }
+
+    #[test]
+    fn workspace_layout_contains_expected_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("ws-dirs");
+        let _ws = ProjectWorkspace::create(&root).unwrap();
+
+        assert!(root.join("phases").is_dir());
+        assert!(root.join("artifacts").is_dir());
+        assert!(root.join(".dianoia").join("blockers").is_dir());
+    }
 }

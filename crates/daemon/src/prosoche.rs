@@ -104,4 +104,92 @@ mod tests {
         assert!(result.items.is_empty());
         assert!(!result.checked_at.is_empty());
     }
+
+    #[test]
+    fn prosoche_check_new() {
+        let check = ProsocheCheck::new("alice-nous");
+        // Verify nous_id is stored by running the check (which logs it).
+        // We can also verify via Debug output.
+        let debug = format!("{check:?}");
+        assert!(
+            debug.contains("alice-nous"),
+            "ProsocheCheck should store the nous_id"
+        );
+    }
+
+    #[test]
+    fn attention_item_category_label_calendar() {
+        let item = AttentionItem {
+            category: AttentionCategory::Calendar,
+            summary: "meeting".to_owned(),
+            urgency: Urgency::Medium,
+        };
+        assert_eq!(item.category_label(), "calendar");
+    }
+
+    #[test]
+    fn attention_item_category_label_task() {
+        let item = AttentionItem {
+            category: AttentionCategory::Task,
+            summary: "review PR".to_owned(),
+            urgency: Urgency::Low,
+        };
+        assert_eq!(item.category_label(), "task");
+    }
+
+    #[test]
+    fn attention_item_category_label_health() {
+        let item = AttentionItem {
+            category: AttentionCategory::SystemHealth,
+            summary: "disk full".to_owned(),
+            urgency: Urgency::Critical,
+        };
+        assert_eq!(item.category_label(), "health");
+    }
+
+    #[test]
+    fn attention_item_category_label_custom() {
+        let item = AttentionItem {
+            category: AttentionCategory::Custom("foo".to_owned()),
+            summary: "custom item".to_owned(),
+            urgency: Urgency::Low,
+        };
+        assert_eq!(item.category_label(), "foo");
+    }
+
+    #[test]
+    fn urgency_ordering() {
+        assert!(Urgency::Low < Urgency::Medium);
+        assert!(Urgency::Medium < Urgency::High);
+        assert!(Urgency::High < Urgency::Critical);
+    }
+
+    #[test]
+    fn prosoche_result_serialization() {
+        let result = ProsocheResult {
+            items: vec![AttentionItem {
+                category: AttentionCategory::Task,
+                summary: "test".to_owned(),
+                urgency: Urgency::High,
+            }],
+            checked_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_string(&result).expect("serialize");
+        let back: ProsocheResult = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.items.len(), 1);
+        assert_eq!(back.checked_at, "2026-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn attention_item_serialization() {
+        let item = AttentionItem {
+            category: AttentionCategory::Calendar,
+            summary: "standup".to_owned(),
+            urgency: Urgency::Medium,
+        };
+        let json = serde_json::to_string(&item).expect("serialize");
+        assert!(json.contains("Calendar"));
+        assert!(json.contains("standup"));
+        assert!(json.contains("Medium"));
+    }
 }

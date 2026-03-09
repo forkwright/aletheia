@@ -356,4 +356,72 @@ mod tests {
         assert!(report.databases.is_empty());
         assert_eq!(report.total_size_bytes, 0);
     }
+
+    #[test]
+    fn default_config_values() {
+        let config = DbMonitoringConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.data_dir, PathBuf::from("data"));
+        assert_eq!(config.warn_threshold_mb, 100);
+        assert_eq!(config.alert_threshold_mb, 500);
+    }
+
+    #[test]
+    fn db_status_display() {
+        assert_eq!(DbStatus::Ok.to_string(), "ok");
+        assert_eq!(DbStatus::Warning.to_string(), "warning");
+        assert_eq!(DbStatus::Alert.to_string(), "alert");
+    }
+
+    #[test]
+    fn cozo_directory_tracked() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+        fs::create_dir_all(config.data_dir.join("cozo")).unwrap();
+        fs::write(config.data_dir.join("cozo/shard1.dat"), "aaaa").unwrap();
+        fs::write(config.data_dir.join("cozo/shard2.dat"), "bbbb").unwrap();
+
+        let monitor = DbMonitor::new(config);
+        let report = monitor.check().expect("check succeeds");
+
+        let cozo = report
+            .databases
+            .iter()
+            .find(|d| d.name == "cozo/")
+            .expect("should have cozo/ entry");
+        assert_eq!(cozo.size_bytes, 8, "sum of two 4-byte files");
+    }
+
+    #[test]
+    fn multiple_known_and_extra_dbs() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+        fs::create_dir_all(&config.data_dir).unwrap();
+
+        fs::write(config.data_dir.join("sessions.db"), "s").unwrap();
+        fs::write(config.data_dir.join("planning.db"), "p").unwrap();
+        fs::write(config.data_dir.join("custom.db"), "c").unwrap();
+
+        let monitor = DbMonitor::new(config);
+        let report = monitor.check().expect("check succeeds");
+
+        let names: Vec<&str> = report.databases.iter().map(|d| d.name.as_str()).collect();
+        assert!(names.contains(&"sessions.db"));
+        assert!(names.contains(&"planning.db"));
+        assert!(names.contains(&"custom.db"));
+        assert_eq!(report.databases.len(), 3);
+    }
+
+    #[test]
+    fn empty_data_dir_returns_empty() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+        fs::create_dir_all(&config.data_dir).unwrap();
+        // No files in data dir.
+
+        let monitor = DbMonitor::new(config);
+        let report = monitor.check().expect("check succeeds");
+        assert!(report.databases.is_empty());
+        assert_eq!(report.total_size_bytes, 0);
+    }
 }

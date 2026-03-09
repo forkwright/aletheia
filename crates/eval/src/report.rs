@@ -151,3 +151,92 @@ struct JsonScenarioResult {
     error: Option<String>,
     skip_reason: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::runner::RunReport;
+    use crate::scenario::{ScenarioMeta, ScenarioOutcome, ScenarioResult};
+
+    use super::*;
+
+    fn sample_report() -> RunReport {
+        RunReport {
+            passed: 2,
+            failed: 1,
+            skipped: 1,
+            total_duration: Duration::from_millis(1234),
+            results: vec![
+                ScenarioResult {
+                    meta: ScenarioMeta {
+                        id: "health-ok",
+                        description: "health endpoint returns ok",
+                        category: "health",
+                        requires_auth: false,
+                        requires_nous: false,
+                    },
+                    outcome: ScenarioOutcome::Passed {
+                        duration: Duration::from_millis(50),
+                    },
+                },
+                ScenarioResult {
+                    meta: ScenarioMeta {
+                        id: "session-create",
+                        description: "session creation works",
+                        category: "session",
+                        requires_auth: true,
+                        requires_nous: true,
+                    },
+                    outcome: ScenarioOutcome::Failed {
+                        duration: Duration::from_millis(200),
+                        error: crate::error::AssertionSnafu {
+                            message: "status mismatch",
+                        }
+                        .build(),
+                    },
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn json_report_serializes() {
+        let report = sample_report();
+        let json_report = JsonReport {
+            passed: report.passed,
+            failed: report.failed,
+            skipped: report.skipped,
+            total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
+            results: vec![],
+        };
+        let json = serde_json::to_string(&json_report).expect("serialization should succeed");
+        assert!(!json.is_empty());
+    }
+
+    #[test]
+    fn json_report_contains_expected_fields() {
+        let report = sample_report();
+        let json_report = JsonReport {
+            passed: report.passed,
+            failed: report.failed,
+            skipped: report.skipped,
+            total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
+            results: vec![JsonScenarioResult {
+                id: "health-ok".to_owned(),
+                category: "health".to_owned(),
+                outcome: "passed".to_owned(),
+                duration_ms: Some(50),
+                error: None,
+                skip_reason: None,
+            }],
+        };
+        let json = serde_json::to_string_pretty(&json_report).expect("serialize");
+        assert!(json.contains("\"passed\""));
+        assert!(json.contains("\"failed\""));
+        assert!(json.contains("\"skipped\""));
+        assert!(json.contains("\"total_duration_ms\""));
+        assert!(json.contains("\"results\""));
+        assert!(json.contains("health-ok"));
+    }
+}

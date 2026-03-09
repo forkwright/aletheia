@@ -370,4 +370,63 @@ mod tests {
         assert_eq!(report.files_rotated, 0);
         assert_eq!(report.files_pruned, 0);
     }
+
+    #[test]
+    fn default_config_values() {
+        let config = TraceRotationConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.max_age_days, 14);
+        assert_eq!(config.max_total_size_mb, 500);
+        assert!(config.compress);
+        assert_eq!(config.max_archives, 30);
+        assert_eq!(config.trace_dir, PathBuf::from("logs/traces"));
+        assert_eq!(config.archive_dir, PathBuf::from("logs/traces/archive"));
+    }
+
+    #[test]
+    fn rotation_report_default() {
+        let report = RotationReport::default();
+        assert_eq!(report.files_rotated, 0);
+        assert_eq!(report.files_pruned, 0);
+        assert_eq!(report.bytes_freed, 0);
+    }
+
+    #[test]
+    fn no_files_to_rotate() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = make_config(tmp.path());
+        config.max_age_days = 9999;
+        config.max_total_size_mb = 9999;
+        fs::create_dir_all(&config.trace_dir).unwrap();
+        // Empty trace dir — nothing to rotate.
+
+        let rotator = TraceRotator::new(config);
+        let report = rotator.rotate().expect("rotation succeeds");
+        assert_eq!(report.files_rotated, 0);
+        assert_eq!(report.bytes_freed, 0);
+    }
+
+    #[test]
+    fn multiple_old_files_rotated() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = make_config(tmp.path());
+        config.max_age_days = 0; // treat all files as old
+        config.max_total_size_mb = 9999;
+        fs::create_dir_all(&config.trace_dir).unwrap();
+
+        fs::write(config.trace_dir.join("trace-1.log"), "data one").unwrap();
+        fs::write(config.trace_dir.join("trace-2.log"), "data two").unwrap();
+        fs::write(config.trace_dir.join("trace-3.log"), "data three").unwrap();
+
+        let rotator = TraceRotator::new(config.clone());
+        let report = rotator.rotate().expect("rotation succeeds");
+
+        assert_eq!(report.files_rotated, 3);
+        assert!(report.bytes_freed > 0);
+
+        // All should be in archive.
+        assert!(config.archive_dir.join("trace-1.log").exists());
+        assert!(config.archive_dir.join("trace-2.log").exists());
+        assert!(config.archive_dir.join("trace-3.log").exists());
+    }
 }

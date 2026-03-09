@@ -196,4 +196,114 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "text_delta");
     }
+
+    #[test]
+    fn multiline_data_concatenated() {
+        let input = "event: text_delta\ndata: {\"text\":\ndata: \"hello\"}\n\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "text_delta");
+        // Two data lines should be joined with newline
+        let raw = format!("{}", events[0].data);
+        assert!(raw.contains("hello"));
+    }
+
+    #[test]
+    fn only_comments_returns_empty() {
+        let input = ":ping\n:keepalive\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn event_without_data_ignored() {
+        let input = "event: foo\n\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn data_without_event_ignored() {
+        let input = "data: {\"x\":1}\n\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn extract_text_empty_events() {
+        let events: Vec<ParsedSseEvent> = vec![];
+        assert_eq!(extract_text(&events), "");
+    }
+
+    #[test]
+    fn is_complete_false_without_complete_event() {
+        let input = "event: text_delta\ndata: {\"text\":\"hi\"}\n\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert!(!is_complete(&events));
+    }
+
+    #[test]
+    fn has_error_false_without_error_event() {
+        let input = "event: text_delta\ndata: {\"text\":\"hi\"}\n\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert!(!has_error(&events));
+    }
+
+    #[test]
+    fn tool_call_count_zero() {
+        let input = "event: text_delta\ndata: {\"text\":\"hi\"}\n\nevent: message_complete\ndata: {\"stop_reason\":\"end_turn\"}\n\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert_eq!(tool_call_count(&events), 0);
+    }
+
+    #[test]
+    fn extract_usage_returns_none_without_complete() {
+        let input = "event: text_delta\ndata: {\"text\":\"hi\"}\n\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert!(extract_usage(&events).is_none());
+    }
+
+    #[test]
+    fn multiple_events_mixed_types() {
+        let input = "\
+event: text_delta\n\
+data: {\"text\":\"Hello\"}\n\
+\n\
+event: tool_use\n\
+data: {\"id\":\"t1\",\"name\":\"search\",\"input\":{\"q\":\"test\"}}\n\
+\n\
+event: tool_result\n\
+data: {\"tool_use_id\":\"t1\",\"content\":\"result\",\"is_error\":false}\n\
+\n\
+event: message_complete\n\
+data: {\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":100,\"output_tokens\":50}}\n\
+\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert_eq!(events.len(), 4);
+        assert_eq!(extract_text(&events), "Hello");
+        assert_eq!(tool_call_count(&events), 1);
+        assert!(is_complete(&events));
+        assert!(!has_error(&events));
+        let usage = extract_usage(&events).expect("usage");
+        assert_eq!(usage.input_tokens, 100);
+        assert_eq!(usage.output_tokens, 50);
+    }
+
+    #[test]
+    fn invalid_json_in_data_returns_error() {
+        let input = "event: foo\ndata: not-json\n\n";
+        let result = parse_sse_text(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn whitespace_only_between_events() {
+        // Lines with only whitespace are not "empty" per str::lines, so they don't trigger
+        // event boundaries the same way. This tests that events separated by truly empty
+        // lines still parse correctly even if there's whitespace around them.
+        let input = "event: text_delta\ndata: {\"text\":\"a\"}\n\nevent: text_delta\ndata: {\"text\":\"b\"}\n\n";
+        let events = parse_sse_text(input).expect("parse");
+        assert_eq!(events.len(), 2);
+        assert_eq!(extract_text(&events), "ab");
+    }
 }
