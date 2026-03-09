@@ -67,7 +67,7 @@ Zero-comment default:
 - No inline comments except genuinely non-obvious *why* explanations
 - No creation dates, author info, "upgraded stack" explanations
 - No AI generation indicators
-- File headers: one line describing purpose (Rust: `//!` module doc, TS/Python: single-line comment)
+- File headers: one line describing purpose (`//!` module doc comment)
 
 Doc comments (rustdoc `///`, JSDoc `/** */`) only on:
 - Public API items that cross module boundaries
