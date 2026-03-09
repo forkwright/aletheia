@@ -271,7 +271,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Some(Command::Init { instance_root, yes, api_key }) => {
+        Some(Command::Init {
+            instance_root,
+            yes,
+            api_key,
+        }) => {
             return init::run(instance_root.clone(), *yes, api_key.clone());
         }
         Some(Command::Health { url }) => return health(url).await,

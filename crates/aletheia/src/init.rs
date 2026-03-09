@@ -101,7 +101,10 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers> {
         .validate(|input: &String| {
             if input.is_empty() {
                 Err("Agent ID cannot be empty")
-            } else if !input.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+            } else if !input
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
                 Err("Agent ID must be alphanumeric (hyphens and underscores allowed)")
             } else {
                 Ok(())
@@ -158,8 +161,7 @@ fn collect_credential() -> Result<Option<String>> {
             Ok(Some(key))
         }
         "env" => {
-            let key = std::env::var("ANTHROPIC_API_KEY")
-                .context("ANTHROPIC_API_KEY not set")?;
+            let key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY not set")?;
             Ok(Some(key))
         }
         _ => Ok(None),
@@ -343,8 +345,8 @@ mod tests {
         let answers = Answers::default();
         let yaml = render_config(&answers);
         // Should be valid YAML that can be parsed
-        let value: serde_yaml::Value = serde_yaml::from_str(&yaml)
-            .expect("rendered config should be valid YAML");
+        let value: serde_yaml::Value =
+            serde_yaml::from_str(&yaml).expect("rendered config should be valid YAML");
         let gateway = &value["gateway"];
         assert_eq!(gateway["port"].as_u64(), Some(18789));
         assert_eq!(gateway["bind"].as_str(), Some("localhost"));
@@ -355,7 +357,9 @@ mod tests {
             agents["defaults"]["model"]["primary"].as_str(),
             Some("claude-sonnet-4-6")
         );
-        let list = agents["list"].as_sequence().expect("list should be sequence");
+        let list = agents["list"]
+            .as_sequence()
+            .expect("list should be sequence");
         assert_eq!(list.len(), 1);
         assert_eq!(list[0]["id"].as_str(), Some("main"));
         assert_eq!(list[0]["name"].as_str(), Some("Main"));
@@ -372,7 +376,11 @@ mod tests {
         scaffold(&answers).expect("scaffold should succeed");
 
         assert!(dir.path().join("config/aletheia.yaml").exists());
-        assert!(dir.path().join("config/credentials/anthropic.json").exists());
+        assert!(
+            dir.path()
+                .join("config/credentials/anthropic.json")
+                .exists()
+        );
         assert!(dir.path().join("nous/main/SOUL.md").exists());
         assert!(dir.path().join("data").is_dir());
 
@@ -398,7 +406,11 @@ mod tests {
         scaffold(&answers).expect("scaffold should succeed");
 
         assert!(dir.path().join("config/aletheia.yaml").exists());
-        assert!(!dir.path().join("config/credentials/anthropic.json").exists());
+        assert!(
+            !dir.path()
+                .join("config/credentials/anthropic.json")
+                .exists()
+        );
     }
 
     #[test]
