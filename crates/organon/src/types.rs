@@ -714,4 +714,140 @@ mod tests {
         assert_eq!(r.content.text_summary(), "desc");
         assert!(!r.is_error);
     }
+
+    // -- Additional types tests ---------------------------------------------
+
+    #[test]
+    fn test_input_schema_enum_values_serialized_in_json_schema() {
+        let schema = InputSchema {
+            properties: IndexMap::from([(
+                "type".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::String,
+                    description: "Type".to_owned(),
+                    enum_values: Some(vec!["a".to_owned(), "b".to_owned()]),
+                    default: None,
+                },
+            )]),
+            required: vec![],
+        };
+        let json = schema.to_json_schema();
+        assert_eq!(json["properties"]["type"]["enum"][0], "a");
+        assert_eq!(json["properties"]["type"]["enum"][1], "b");
+    }
+
+    #[test]
+    fn test_input_schema_with_no_required_fields_has_empty_required_array() {
+        let schema = InputSchema {
+            properties: IndexMap::new(),
+            required: vec![],
+        };
+        let json = schema.to_json_schema();
+        let required = json["required"].as_array().expect("array");
+        assert!(required.is_empty());
+    }
+
+    #[test]
+    fn test_property_type_display_all_variants() {
+        assert_eq!(PropertyType::String.to_string(), "string");
+        assert_eq!(PropertyType::Number.to_string(), "number");
+        assert_eq!(PropertyType::Integer.to_string(), "integer");
+        assert_eq!(PropertyType::Boolean.to_string(), "boolean");
+        assert_eq!(PropertyType::Array.to_string(), "array");
+        assert_eq!(PropertyType::Object.to_string(), "object");
+    }
+
+    #[test]
+    fn test_tool_category_all_categories_have_display() {
+        let cases = [
+            (ToolCategory::Workspace, "workspace"),
+            (ToolCategory::Memory, "memory"),
+            (ToolCategory::Communication, "communication"),
+            (ToolCategory::Planning, "planning"),
+            (ToolCategory::System, "system"),
+            (ToolCategory::Agent, "agent"),
+            (ToolCategory::Research, "research"),
+            (ToolCategory::Domain, "domain"),
+        ];
+        for (cat, expected) in cases {
+            assert_eq!(cat.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn test_tool_stats_initial_state_all_zeros() {
+        let stats = ToolStats::default();
+        assert_eq!(stats.total_calls, 0);
+        assert_eq!(stats.total_duration_ms, 0);
+        assert_eq!(stats.error_count, 0);
+        assert!(stats.calls_by_tool.is_empty());
+    }
+
+    #[test]
+    fn test_tool_stats_zero_errors_when_all_calls_succeed() {
+        let mut stats = ToolStats::default();
+        stats.record("read", 10, false);
+        stats.record("write", 20, false);
+        assert_eq!(stats.error_count, 0);
+    }
+
+    #[test]
+    fn test_tool_stats_top_tools_returns_empty_when_no_calls() {
+        let stats = ToolStats::default();
+        assert!(stats.top_tools(5).is_empty());
+    }
+
+    #[test]
+    fn test_tool_stats_top_tools_limited_to_n() {
+        let mut stats = ToolStats::default();
+        for name in ["a", "b", "c", "d", "e"] {
+            stats.record(name, 1, false);
+        }
+        let top = stats.top_tools(3);
+        assert_eq!(top.len(), 3);
+    }
+
+    #[test]
+    fn test_tool_result_text_is_not_error() {
+        let r = ToolResult::text("ok");
+        assert!(!r.is_error);
+    }
+
+    #[test]
+    fn test_tool_result_error_is_error() {
+        let r = ToolResult::error("bad");
+        assert!(r.is_error);
+    }
+
+    #[test]
+    fn test_tool_result_blocks_is_not_error() {
+        let r = ToolResult::blocks(vec![]);
+        assert!(!r.is_error);
+    }
+
+    #[test]
+    fn test_tool_def_auto_activate_stored_correctly() {
+        let def = ToolDef {
+            name: ToolName::new("t").expect("valid"),
+            description: "d".to_owned(),
+            extended_description: None,
+            input_schema: InputSchema {
+                properties: IndexMap::new(),
+                required: vec![],
+            },
+            category: ToolCategory::Workspace,
+            auto_activate: true,
+        };
+        assert!(def.auto_activate);
+    }
+
+    #[test]
+    fn test_input_schema_type_is_object_in_json_schema() {
+        let schema = InputSchema {
+            properties: IndexMap::new(),
+            required: vec![],
+        };
+        let json = schema.to_json_schema();
+        assert_eq!(json["type"], "object");
+    }
 }
