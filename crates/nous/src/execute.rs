@@ -638,7 +638,11 @@ mod tests {
             &self,
             _request: &CompletionRequest,
         ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-            let mut responses = self.responses.lock().expect("lock"); // INVARIANT: test mock, panic = test bug
+            #[expect(
+                clippy::expect_used,
+                reason = "test mock: poisoned lock means a test bug"
+            )]
+            let mut responses = self.responses.lock().expect("lock poisoned");
             if responses.len() > 1 {
                 Ok(responses.remove(0))
             } else {

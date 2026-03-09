@@ -171,7 +171,11 @@ mod tests {
                 .contains("Activated 'web_search'")
         );
 
-        let active = ctx.active_tools.read().expect("lock"); // INVARIANT: test assertion, panic = test bug
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let active = ctx.active_tools.read().expect("lock poisoned");
         assert!(active.contains(&ToolName::new("web_search").expect("valid")));
     }
 

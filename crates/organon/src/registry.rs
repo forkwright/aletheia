@@ -191,7 +191,14 @@ mod tests {
             _ctx: &'a ToolContext,
         ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
             Box::pin(async {
-                self.calls.lock().expect("lock").push(input.name.clone()); // INVARIANT: test mock, panic = test bug
+                #[expect(
+                    clippy::expect_used,
+                    reason = "test mock: poisoned lock means a test bug"
+                )]
+                self.calls
+                    .lock()
+                    .expect("lock poisoned")
+                    .push(input.name.clone());
                 Ok(ToolResult::text(self.response.clone()))
             })
         }
@@ -278,7 +285,12 @@ mod tests {
         let result = reg.execute(&input, &test_ctx()).await.expect("execute");
         assert_eq!(result.content.text_summary(), "hello");
         assert!(!result.is_error);
-        assert_eq!(calls.lock().expect("lock").len(), 1); // INVARIANT: test assertion, panic = test bug
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let call_count = calls.lock().expect("lock poisoned").len();
+        assert_eq!(call_count, 1);
     }
 
     #[tokio::test]
@@ -376,7 +388,13 @@ mod tests {
                 let nous_id = ctx.nous_id.as_str().to_owned();
                 let captured = Arc::clone(&self.captured_nous_id);
                 Box::pin(async move {
-                    *captured.lock().expect("lock") = Some(nous_id); // INVARIANT: test mock, panic = test bug
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "test mock: poisoned lock means a test bug"
+                    )]
+                    {
+                        *captured.lock().expect("lock poisoned") = Some(nous_id);
+                    }
                     Ok(ToolResult::text("ok"))
                 })
             }
@@ -398,7 +416,11 @@ mod tests {
         };
         reg.execute(&input, &test_ctx()).await.expect("execute");
 
-        let id = captured.lock().expect("lock").clone(); // INVARIANT: test assertion, panic = test bug
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let id = captured.lock().expect("lock poisoned").clone();
         assert_eq!(id.as_deref(), Some("test-agent"));
     }
 
