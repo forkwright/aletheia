@@ -395,6 +395,33 @@ async fn health_degraded_without_providers() {
     assert_eq!(body["status"], "degraded");
 }
 
+#[tokio::test]
+async fn health_checks_have_expected_shape() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+
+    let checks = body["checks"].as_array().expect("checks is array");
+    assert!(checks.len() >= 2, "expected at least 2 health checks");
+
+    for check in checks {
+        assert!(check["name"].is_string(), "each check has a name");
+        assert!(check["status"].is_string(), "each check has a status");
+    }
+
+    let names: Vec<&str> = checks.iter().filter_map(|c| c["name"].as_str()).collect();
+    assert!(
+        names.contains(&"session_store"),
+        "missing session_store check"
+    );
+    assert!(names.contains(&"providers"), "missing providers check");
+}
+
 // --- Session CRUD Tests ---
 
 #[tokio::test]

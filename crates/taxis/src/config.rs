@@ -895,4 +895,36 @@ mod tests {
         assert!((sonnet.input_cost_per_mtok - 3.0).abs() < f64::EPSILON);
         assert!((sonnet.output_cost_per_mtok - 15.0).abs() < f64::EPSILON);
     }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn arb_channel_binding() -> impl Strategy<Value = ChannelBinding> {
+            (
+                "[a-z]{3,10}",
+                "[a-zA-Z0-9+*]{1,20}",
+                "[a-z]{2,8}",
+                proptest::option::of("[a-z{}]{1,20}"),
+            )
+                .prop_map(|(channel, source, nous_id, session_key)| ChannelBinding {
+                    channel,
+                    source,
+                    nous_id,
+                    session_key: session_key.unwrap_or_else(default_session_pattern),
+                })
+        }
+
+        proptest! {
+            #[test]
+            fn channel_binding_roundtrip(binding in arb_channel_binding()) {
+                let json = serde_json::to_string(&binding).expect("serialize");
+                let back: ChannelBinding = serde_json::from_str(&json).expect("deserialize");
+                prop_assert_eq!(&binding.channel, &back.channel);
+                prop_assert_eq!(&binding.source, &back.source);
+                prop_assert_eq!(&binding.nous_id, &back.nous_id);
+                prop_assert_eq!(&binding.session_key, &back.session_key);
+            }
+        }
+    }
 }

@@ -67,6 +67,10 @@ cargo build --release
 
 Binary: `target/release/aletheia`
 
+### Shell Completions
+
+See [SHELL-COMPLETIONS.md](SHELL-COMPLETIONS.md) for setting up tab-completion in bash, zsh, and fish.
+
 ---
 
 ## Instance Setup

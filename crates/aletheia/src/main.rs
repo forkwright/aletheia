@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use tracing::{Instrument, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
@@ -228,6 +228,11 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Generate shell completions for bash, zsh, or fish
+    Completions {
+        /// Shell to generate completions for
+        shell: clap_complete::Shell,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -354,6 +359,11 @@ async fn main() -> Result<()> {
                 *force,
                 *dry_run,
             );
+        }
+        Some(Command::Completions { shell }) => {
+            let mut cmd = Cli::command();
+            clap_complete::generate(*shell, &mut cmd, "aletheia", &mut std::io::stdout());
+            return Ok(());
         }
         Some(Command::MigrateMemory {
             qdrant_url,
