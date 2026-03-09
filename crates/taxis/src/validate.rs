@@ -8,6 +8,8 @@ use snafu::Snafu;
 #[snafu(display("config validation failed:\n  - {}", errors.join("\n  - ")))]
 pub struct ValidationError {
     pub errors: Vec<String>,
+    #[snafu(implicit)]
+    pub location: snafu::Location,
 }
 
 /// Validate a config section update. Returns errors for invalid values.
@@ -26,7 +28,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(ValidationError { errors })
+        ValidationSnafu { errors }.fail()
     }
 }
 

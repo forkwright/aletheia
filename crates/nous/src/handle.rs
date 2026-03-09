@@ -30,6 +30,12 @@ impl NousHandle {
     }
 
     /// Send a turn message and await the result.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. If cancelled after `mpsc::send` completes but before
+    /// `oneshot::recv` returns, the message is consumed by the actor but the
+    /// reply is lost. Callers should not use this in `select!` branches.
     pub async fn send_turn(
         &self,
         session_key: impl Into<String>,
@@ -61,6 +67,12 @@ impl NousHandle {
     ///
     /// Events are sent to `stream_tx` as the LLM generates content and tools execute.
     /// The final `TurnResult` is returned when the turn completes.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. Same as [`send_turn`](Self::send_turn) — if cancelled
+    /// between the inbox send and reply receipt, the turn runs but the result
+    /// is discarded.
     pub async fn send_turn_streaming(
         &self,
         session_key: impl Into<String>,
@@ -91,6 +103,11 @@ impl NousHandle {
     }
 
     /// Query the actor's current status.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Both `mpsc::send` and `oneshot::recv` are cancel-safe.
+    /// A lost status query has no side effects.
     pub async fn status(&self) -> error::Result<NousStatus> {
         let (tx, rx) = oneshot::channel();
         self.sender
@@ -111,6 +128,10 @@ impl NousHandle {
     }
 
     /// Transition the actor to dormant state.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Uses a single `mpsc::send` with no follow-up await.
     pub async fn sleep(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Sleep)
@@ -124,6 +145,10 @@ impl NousHandle {
     }
 
     /// Wake the actor from dormant state.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Uses a single `mpsc::send` with no follow-up await.
     pub async fn wake(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Wake)
@@ -137,6 +162,10 @@ impl NousHandle {
     }
 
     /// Request graceful shutdown.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Uses a single `mpsc::send` with no follow-up await.
     pub async fn shutdown(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Shutdown)

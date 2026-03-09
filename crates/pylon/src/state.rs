@@ -32,3 +32,6 @@ pub struct AppState {
     /// Auth mode from gateway config (`"token"`, `"none"`, etc.).
     pub auth_mode: String,
 }
+
+#[cfg(test)]
+static_assertions::assert_impl_all!(AppState: Send, Sync);
