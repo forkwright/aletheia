@@ -317,9 +317,9 @@ mod tests {
     fn run_migrations_fresh_db_schema_version() {
         let conn = fresh_conn();
         let result = run_migrations(&conn).unwrap();
-        assert_eq!(result.current_version, 2);
+        assert_eq!(result.current_version, 3);
         let version = get_schema_version(&conn);
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]
