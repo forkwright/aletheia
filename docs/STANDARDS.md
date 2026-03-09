@@ -175,6 +175,8 @@ Significant design decisions get a document in `docs/`. Include: context, option
 
 ### Error Handling (Rust)
 
+> **Decision record:** [ADR-001: snafu for Error Handling](ADR-001-errors.md) — why snafu over thiserror/anyhow, alternatives considered, crate inventory.
+
 Per-crate error types via `snafu` (GreptimeDB pattern - context wrapping, Location-based virtual stack traces):
 
 ```rust
