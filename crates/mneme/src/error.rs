@@ -144,13 +144,63 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// An entity ID contains characters not permitted in Datalog script interpolation.
-    ///
-    /// Valid entity IDs contain only ASCII alphanumerics, hyphens, and underscores.
-    #[cfg(feature = "mneme-engine")]
-    #[snafu(display("invalid entity id for query interpolation: {id:?}"))]
-    InvalidEntityId {
-        id: String,
+    /// Fact content was empty.
+    #[snafu(display("fact content must not be empty"))]
+    EmptyContent {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Fact content exceeded maximum length.
+    #[snafu(display("fact content too long: {actual} bytes (max {max})"))]
+    ContentTooLong {
+        max: usize,
+        actual: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Confidence score was outside the valid [0.0, 1.0] range.
+    #[snafu(display("confidence must be in [0.0, 1.0], got {value}"))]
+    InvalidConfidence {
+        value: f64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A timestamp string could not be parsed.
+    #[snafu(display("invalid timestamp: {source}"))]
+    InvalidTimestamp {
+        source: jiff::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Entity name was empty.
+    #[snafu(display("entity name must not be empty"))]
+    EmptyEntityName {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Relationship weight was outside the valid [0.0, 1.0] range.
+    #[snafu(display("relationship weight must be in [0.0, 1.0], got {value}"))]
+    InvalidWeight {
+        value: f64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Embedding vector was empty.
+    #[snafu(display("embedding vector must not be empty"))]
+    EmptyEmbedding {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Embedding content was empty.
+    #[snafu(display("embedding content must not be empty"))]
+    EmptyEmbeddingContent {
         #[snafu(implicit)]
         location: snafu::Location,
     },

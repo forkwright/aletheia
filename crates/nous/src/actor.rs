@@ -1076,7 +1076,9 @@ mod tests {
         std::fs::write(root.join("shared/SOUL.md"), "# Test Soul").expect("write");
 
         let oikos = Oikos::from_root(root);
-        super::validate_workspace(&oikos, "test-agent").await.unwrap();
+        super::validate_workspace(&oikos, "test-agent")
+            .await
+            .unwrap();
         assert!(root.join("nous/test-agent").exists());
     }
 

@@ -9,7 +9,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
     ScoredResult {
         content: fact.content.clone(),
         source_type: "fact".to_owned(),
-        source_id: fact.id.clone(),
+        source_id: fact.id.to_string(),
         nous_id: fact.nous_id.clone(),
         factors: FactorScores {
             vector_similarity: 0.8,
@@ -24,19 +24,21 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
 }
 
 fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
+    let ts = jiff::Timestamp::from_second(1_735_689_600).expect("valid epoch");
+    let far = aletheia_mneme::knowledge::far_future();
     Fact {
-        id: id.to_owned(),
+        id: id.into(),
         nous_id: nous_id.to_owned(),
         content: format!("fact from {id}"),
         confidence: 0.9,
         tier,
-        valid_from: "2026-01-01".to_owned(),
-        valid_to: "9999-12-31".to_owned(),
+        valid_from: ts,
+        valid_to: far,
         superseded_by: None,
         source_session_id: None,
-        recorded_at: "2026-03-01T00:00:00Z".to_owned(),
+        recorded_at: ts,
         access_count: 0,
-        last_accessed_at: String::new(),
+        last_accessed_at: None,
         stability_hours: 720.0,
         fact_type: String::new(),
         is_forgotten: false,
@@ -83,30 +85,31 @@ fn own_facts_ranked_above_shared() {
 
 #[test]
 fn knowledge_types_all_serialize() {
+    let ts = jiff::Timestamp::from_second(1_735_689_600).expect("valid epoch");
     let fact = sample_fact("f-1", "syn", EpistemicTier::Verified);
     let entity = Entity {
         id: "e-1".into(),
         name: "Dr. Chen".to_owned(),
         entity_type: "person".to_owned(),
         aliases: vec!["A".to_owned()],
-        created_at: "2026-01-01T00:00:00Z".to_owned(),
-        updated_at: "2026-03-01T00:00:00Z".to_owned(),
+        created_at: ts,
+        updated_at: ts,
     };
     let rel = Relationship {
         src: "e-1".into(),
         dst: "e-2".into(),
         relation: "works_on".to_owned(),
         weight: 0.9,
-        created_at: "2026-01-01T00:00:00Z".to_owned(),
+        created_at: ts,
     };
     let chunk = EmbeddedChunk {
-        id: "emb-1".to_owned(),
+        id: "emb-1".into(),
         content: "some text".to_owned(),
         source_type: "fact".to_owned(),
         source_id: "f-1".to_owned(),
         nous_id: "syn".to_owned(),
         embedding: vec![0.1, 0.2, 0.3],
-        created_at: "2026-01-01T00:00:00Z".to_owned(),
+        created_at: ts,
     };
     let result = RecallResult {
         content: "some text".to_owned(),

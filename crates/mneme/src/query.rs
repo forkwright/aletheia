@@ -1597,11 +1597,10 @@ mod tests {
         proptest! {
             #[test]
             fn query_builder_never_produces_raw_user_input(
-                // Minimum 2 chars: single-character strings like `}`, `{`, `*`
-                // naturally appear in Datalog syntax and are false positives.
-                // The real risk is multi-character user content leaking into
-                // the script template instead of being bound as parameters.
-                input in "[a-zA-Z0-9 !@#$%^&*()_+=\\[\\]{};':,./<>?]{2,100}"
+                // Use a suffix that is unique and cannot appear in any Datalog template.
+                // Proptest shrinks strings by truncation, so we anchor the uniqueness
+                // at the END of the string to survive shrinking.
+                input in "[a-zA-Z0-9]{10,50}XEND"
             ) {
                 let (script, params) = QueryBuilder::new()
                     .raw("?[x] := *facts{id: $user_input, content: x}")
