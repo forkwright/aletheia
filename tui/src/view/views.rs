@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
+use crate::hyperlink::OscLink;
 use crate::state::view_stack::View;
 use crate::theme::ThemePalette;
 
@@ -183,7 +184,7 @@ pub(crate) fn render_message_detail(
             Span::styled("Content:", theme.style_fg().add_modifier(Modifier::BOLD)),
         ]));
 
-        let rendered = crate::markdown::render(
+        let (rendered, _) = crate::markdown::render(
             &msg.text,
             area.width.saturating_sub(4) as usize,
             theme,
@@ -229,21 +230,28 @@ pub(crate) fn render_message_detail(
 }
 
 /// Dispatch rendering to the appropriate view based on the current view stack.
-pub(crate) fn render_for_view(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub(crate) fn render_for_view(
+    app: &App,
+    frame: &mut Frame,
+    area: Rect,
+    theme: &ThemePalette,
+) -> Vec<OscLink> {
     match app.view_stack.current() {
         View::Home => {
             // Home view uses the existing chat area rendering
-            super::render_chat_area(app, frame, area, theme);
+            super::render_chat_area(app, frame, area, theme)
         }
         View::Sessions { .. } => {
             render_sessions(app, frame, area, theme);
+            Vec::new()
         }
         View::Conversation { .. } => {
             // Conversation view reuses the chat area rendering
-            super::render_chat_area(app, frame, area, theme);
+            super::render_chat_area(app, frame, area, theme)
         }
         View::MessageDetail { message_index } => {
             render_message_detail(app, frame, area, theme, *message_index);
+            Vec::new()
         }
     }
 }

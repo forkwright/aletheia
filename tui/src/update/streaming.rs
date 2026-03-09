@@ -34,7 +34,7 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     if delta >= 64 || text.contains('\n') {
         let width = 120;
         app.cached_markdown_lines =
-            crate::markdown::render(&app.streaming_text, width, &app.theme, &app.highlighter);
+            crate::markdown::render(&app.streaming_text, width, &app.theme, &app.highlighter).0;
         app.cached_markdown_text = app.streaming_text.clone();
     }
     if app.auto_scroll {

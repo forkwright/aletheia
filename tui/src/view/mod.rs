@@ -14,6 +14,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::app::App;
+use crate::hyperlink::OscLink;
 
 const SIDEBAR_WIDTH: u16 = 22;
 const MIN_CHAT_WIDTH: u16 = 40;
@@ -23,7 +24,7 @@ const MAX_PALETTE_SUGGESTIONS: usize = 12;
 const STATUS_BAR_HEIGHT: u16 = 2;
 
 #[tracing::instrument(skip_all)]
-pub fn render(app: &App, frame: &mut Frame) {
+pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let area = frame.area();
     let theme = &app.theme;
 
@@ -89,7 +90,7 @@ pub fn render(app: &App, frame: &mut Frame) {
     // Body: sidebar | main content area (dispatched by current view, with optional ops pane)
     let body_area = vertical[1];
 
-    if show_sidebar {
+    let osc_links = if show_sidebar {
         let sidebar_and_rest = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -111,10 +112,11 @@ pub fn render(app: &App, frame: &mut Frame) {
                 ])
                 .split(sidebar_and_rest[1]);
 
-            views::render_for_view(app, frame, chat_ops[0], theme);
+            let links = views::render_for_view(app, frame, chat_ops[0], theme);
             ops::render(app, frame, chat_ops[1], theme);
+            links
         } else {
-            views::render_for_view(app, frame, sidebar_and_rest[1], theme);
+            views::render_for_view(app, frame, sidebar_and_rest[1], theme)
         }
     } else {
         SIDEBAR_RECT.store_rect(Rect::ZERO);
@@ -129,17 +131,20 @@ pub fn render(app: &App, frame: &mut Frame) {
                 ])
                 .split(body_area);
 
-            views::render_for_view(app, frame, chat_ops[0], theme);
+            let links = views::render_for_view(app, frame, chat_ops[0], theme);
             ops::render(app, frame, chat_ops[1], theme);
+            links
         } else {
-            views::render_for_view(app, frame, body_area, theme);
+            views::render_for_view(app, frame, body_area, theme)
         }
-    }
+    };
 
     // Render overlay on top if present
     if app.overlay.is_some() {
         overlay::render(app, frame, area, theme);
     }
+
+    osc_links
 }
 
 /// Thread-safe sidebar rect storage for mouse click detection.
@@ -182,7 +187,12 @@ impl SidebarRect {
 
 pub static SIDEBAR_RECT: SidebarRect = SidebarRect::new();
 
-fn render_chat_area(app: &App, frame: &mut Frame, area: Rect, theme: &crate::theme::ThemePalette) {
+fn render_chat_area(
+    app: &App,
+    frame: &mut Frame,
+    area: Rect,
+    theme: &crate::theme::ThemePalette,
+) -> Vec<OscLink> {
     // Dynamically size input area based on text length (wrapping)
     let prompt_len: u16 = if app.active_turn_id.is_some() { 9 } else { 2 };
     let text_len = app.input.text.len() as u16 + prompt_len;
@@ -201,11 +211,12 @@ fn render_chat_area(app: &App, frame: &mut Frame, area: Rect, theme: &crate::the
         ])
         .split(area);
 
-    chat::render(app, frame, layout[0], theme);
+    let osc_links = chat::render(app, frame, layout[0], theme);
     if app.filter.editing {
         filter_bar::render(app, frame, layout[1], theme);
     }
     input::render(app, frame, layout[2], theme);
+    osc_links
 }
 
 #[cfg(test)]
