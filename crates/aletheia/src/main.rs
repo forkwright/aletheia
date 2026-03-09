@@ -544,6 +544,9 @@ async fn serve(cli: Cli) -> Result<()> {
     };
     info!(root = %oikos.root().display(), "instance discovered");
 
+    // Startup validation — fail fast before any actors or stores initialise
+    oikos.validate().context("instance layout invalid")?;
+
     // Config cascade: defaults → YAML → env
     let config = load_config(&oikos).context("failed to load config")?;
     info!(
@@ -551,6 +554,18 @@ async fn serve(cli: Cli) -> Result<()> {
         agents = config.agents.list.len(),
         "config loaded"
     );
+
+    // Validate per-agent workspace paths declared in config
+    for agent in &config.agents.list {
+        if let Err(e) = oikos.validate_workspace_path(&agent.workspace) {
+            tracing::warn!(
+                agent = %agent.id,
+                workspace = %agent.workspace,
+                error = %e,
+                "agent workspace path invalid — agent may fail to start"
+            );
+        }
+    }
 
     // Domain packs — load external knowledge packs declared in config
     let loaded_packs = aletheia_thesauros::loader::load_packs(&config.packs);
