@@ -692,15 +692,15 @@ fn run_extraction(
         },
     ];
 
-    match engine.extract(&messages, &provider) {
-        Ok(extraction) => {
-            let entities = extraction.entities.len();
-            let relationships = extraction.relationships.len();
-            let facts = extraction.facts.len();
+    match engine.extract_refined(&messages, &provider) {
+        Ok(refined) => {
+            let entities = refined.extraction.entities.len();
+            let relationships = refined.extraction.relationships.len();
+            let facts = refined.extraction.facts.len();
 
             #[cfg(feature = "knowledge-store")]
             if let Some(store) = knowledge_store {
-                match engine.persist(&extraction, store, "background", nous_id) {
+                match engine.persist(&refined.extraction, store, "background", nous_id) {
                     Ok(result) => {
                         info!(
                             nous_id = %nous_id,
@@ -718,10 +718,12 @@ fn run_extraction(
 
             info!(
                 nous_id = %nous_id,
+                turn_type = %refined.turn_type,
                 entities,
                 relationships,
                 facts,
-                "extraction completed"
+                facts_filtered = refined.facts_filtered,
+                "refined extraction completed"
             );
         }
         Err(e) => {
