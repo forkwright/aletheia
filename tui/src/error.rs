@@ -4,16 +4,9 @@ use snafu::prelude::*;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
-    /// HTTP transport or status error from a REST API call.
-    #[snafu(display("{operation}: {source}"))]
-    Http {
-        operation: &'static str,
-        source: reqwest::Error,
-    },
-
-    /// Credentials rejected by the gateway.
-    #[snafu(display("authentication failed: token expired or invalid"))]
-    Auth,
+    /// API transport or authentication error from the HTTP client.
+    #[snafu(context(false))]
+    Api { source: crate::api::error::ApiError },
 
     /// Token is required but was not supplied.
     #[snafu(display("{message}"))]
