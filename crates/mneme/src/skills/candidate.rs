@@ -19,9 +19,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::skills::{
+    SequenceSignature, ToolCallRecord,
     heuristics::score_sequence,
     signature::{sequence_signature, signature_similarity},
-    SequenceSignature, ToolCallRecord,
 };
 
 /// Minimum recurrence count to promote a candidate to a skill.
@@ -153,10 +153,9 @@ impl CandidateTracker {
         let mut candidates = self.candidates.lock().expect("lock not poisoned");
 
         // Find an existing candidate with a similar signature for the same nous
-        if let Some(existing) = candidates
-            .iter_mut()
-            .find(|c| c.nous_id == nous_id && signature_similarity(&c.signature, &sig) >= SIMILARITY_THRESHOLD)
-        {
+        if let Some(existing) = candidates.iter_mut().find(|c| {
+            c.nous_id == nous_id && signature_similarity(&c.signature, &sig) >= SIMILARITY_THRESHOLD
+        }) {
             existing.recurrence_count += 1;
             existing.last_seen = now;
             if !existing.session_refs.contains(&session_id.to_owned()) {
@@ -436,7 +435,9 @@ mod tests {
         let tracker = CandidateTracker::new();
         tracker.track_sequence(&good_seq(), "s1", "nous1");
         let candidates = tracker.candidates_for("nous1");
-        let json = candidates[0].to_json().expect("serialisation should succeed");
+        let json = candidates[0]
+            .to_json()
+            .expect("serialisation should succeed");
         let back = SkillCandidate::from_json(&json).expect("deserialisation should succeed");
         assert_eq!(back.id, candidates[0].id);
         assert_eq!(back.recurrence_count, 1);

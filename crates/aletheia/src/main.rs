@@ -245,6 +245,18 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Export skills to Claude Code format (.claude/skills/<slug>/SKILL.md)
+    ExportSkills {
+        /// Agent (nous) ID whose skills to export
+        #[arg(short, long)]
+        nous_id: String,
+        /// Output directory (default: .claude/skills)
+        #[arg(short, long, default_value = ".claude/skills")]
+        output: PathBuf,
+        /// Filter by domain tags (comma-separated)
+        #[arg(short, long)]
+        domain: Option<String>,
+    },
     /// Generate shell completions for bash, zsh, or fish
     Completions {
         /// Shell to generate completions for
@@ -384,6 +396,13 @@ async fn main() -> Result<()> {
             dry_run,
         }) => {
             return seed_skills_cmd(dir, nous_id, *force, *dry_run);
+        }
+        Some(Command::ExportSkills {
+            nous_id,
+            output,
+            domain,
+        }) => {
+            return export_skills_cmd(&cli, nous_id, output, domain.as_deref());
         }
         Some(Command::Completions { shell }) => {
             let mut cmd = Cli::command();
@@ -1786,6 +1805,90 @@ fn seed_skills_cmd(dir: &Path, nous_id: &str, force: bool, dry_run: bool) -> Res
     }
 
     Ok(())
+}
+
+/// Export skills from the knowledge store to Claude Code's native format.
+///
+/// Reads skill facts from an in-process `KnowledgeStore`, converts them to
+/// `SkillContent`, and writes `.claude/skills/<slug>/SKILL.md` files.
+fn export_skills_cmd(cli: &Cli, nous_id: &str, output: &Path, domain: Option<&str>) -> Result<()> {
+    #[cfg(feature = "recall")]
+    {
+        use aletheia_mneme::knowledge_store::KnowledgeStore;
+        use aletheia_mneme::skill::{SkillContent, export_skills_to_cc};
+
+        let oikos = match &cli.instance_root {
+            Some(root) => Oikos::from_root(root),
+            None => Oikos::discover(),
+        };
+        let knowledge_path = oikos.knowledge_db();
+
+        let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
+        let store = KnowledgeStore::open_redb(&knowledge_path, config).map_err(|e| {
+            anyhow::anyhow!(
+                "failed to open knowledge store at {}: {e}",
+                knowledge_path.display()
+            )
+        })?;
+
+        let facts = store
+            .find_skills_for_nous(nous_id, 500)
+            .map_err(|e| anyhow::anyhow!("failed to query skills: {e}"))?;
+
+        if facts.is_empty() {
+            println!("No skills found for nous '{nous_id}'");
+            return Ok(());
+        }
+
+        // Parse facts into SkillContent
+        let mut skills: Vec<SkillContent> = Vec::new();
+        let mut parse_errors = 0u32;
+        for fact in &facts {
+            match serde_json::from_str::<SkillContent>(&fact.content) {
+                Ok(skill) => skills.push(skill),
+                Err(e) => {
+                    eprintln!("  SKIP {}: failed to parse content: {e}", fact.id);
+                    parse_errors += 1;
+                }
+            }
+        }
+
+        // Apply domain filter
+        let domain_tags: Vec<&str> = domain
+            .map(|d| d.split(',').map(str::trim).collect())
+            .unwrap_or_default();
+        let filter = if domain_tags.is_empty() {
+            None
+        } else {
+            Some(domain_tags.as_slice())
+        };
+
+        let exported = export_skills_to_cc(&skills, output, filter)
+            .with_context(|| format!("failed to export skills to {}", output.display()))?;
+
+        println!(
+            "Exported {} skill(s) to {}",
+            exported.len(),
+            output.display()
+        );
+        for ex in &exported {
+            println!("  {} → {}", ex.name, ex.path.display());
+        }
+        if parse_errors > 0 {
+            println!("\n{parse_errors} skill(s) skipped due to parse errors");
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "recall"))]
+    {
+        let _ = (cli, nous_id, output, domain);
+        anyhow::bail!(
+            "export-skills requires the 'recall' feature (KnowledgeStore). \
+             Build with: cargo build --features recall"
+        );
+    }
 }
 
 /// Generate a deterministic pseudo-embedding for seeding (384-dim).

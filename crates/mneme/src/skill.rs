@@ -1,8 +1,9 @@
-//! Skill storage helpers and SKILL.md parser.
+//! Skill storage helpers, SKILL.md parser, and CC-format exporter.
 //!
 //! Skills are facts with `fact_type = "skill"`. This module provides:
 //! - Structured content type for skill JSON
 //! - Parser for SKILL.md markdown files
+//! - Exporter to Claude Code `.claude/skills/<slug>/SKILL.md` format
 //! - Query helpers on `KnowledgeStore`
 
 use serde::{Deserialize, Serialize};
@@ -260,6 +261,188 @@ pub fn scan_skill_dir(dir: &std::path::Path) -> Result<Vec<(String, String)>, st
     Ok(skills)
 }
 
+// ── CC-format exporter ──────────────────────────────────────────────────────
+
+/// Convert a skill name into a filesystem-safe slug.
+///
+/// Lowercases, replaces whitespace/non-alphanumeric runs with `-`, and trims
+/// leading/trailing dashes.
+pub fn slugify(name: &str) -> String {
+    let slug: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    // Collapse consecutive dashes and trim edges
+    let mut result = String::with_capacity(slug.len());
+    let mut prev_dash = true; // suppress leading dashes
+    for c in slug.chars() {
+        if c == '-' {
+            if !prev_dash {
+                result.push('-');
+            }
+            prev_dash = true;
+        } else {
+            result.push(c);
+            prev_dash = false;
+        }
+    }
+    // Trim trailing dash
+    if result.ends_with('-') {
+        result.pop();
+    }
+    result
+}
+
+/// Format a [`SkillContent`] as a CC-native SKILL.md with YAML frontmatter.
+///
+/// The output matches Claude Code's expected format:
+/// ```text
+/// ---
+/// name: <slug>
+/// description: <description>
+/// allowed-tools: <tool1>, <tool2>
+/// ---
+///
+/// ## When to Use
+/// <description>
+///
+/// ## Steps
+/// 1. <step>
+///
+/// ## Tools Used
+/// - <tool>
+/// ```
+pub fn format_skill_md(skill: &SkillContent) -> String {
+    use std::fmt::Write as _;
+    let mut md = String::with_capacity(512);
+
+    // YAML frontmatter
+    md.push_str("---\n");
+    let _ = writeln!(md, "name: {}", skill.name);
+    // Escape description for YAML (wrap in quotes if it contains colons or special chars)
+    let desc_needs_quoting = skill.description.contains(':')
+        || skill.description.contains('#')
+        || skill.description.contains('"');
+    if desc_needs_quoting {
+        let escaped = skill.description.replace('"', r#"\""#);
+        let _ = writeln!(md, "description: \"{escaped}\"");
+    } else {
+        let _ = writeln!(md, "description: {}", skill.description);
+    }
+    if !skill.tools_used.is_empty() {
+        // Write both CC-native and aletheia-native keys for interop:
+        // `allowed-tools` is what CC reads; `tools` is what parse_skill_md reads.
+        let _ = writeln!(md, "allowed-tools: {}", skill.tools_used.join(", "));
+        let _ = writeln!(md, "tools: [{}]", skill.tools_used.join(", "));
+    }
+    if !skill.domain_tags.is_empty() {
+        let _ = writeln!(md, "domains: [{}]", skill.domain_tags.join(", "));
+    }
+    md.push_str("---\n\n");
+
+    // Title heading (required for parse_skill_md round-trip)
+    let _ = writeln!(md, "# {}\n", skill.name);
+
+    // When to Use
+    md.push_str("## When to Use\n");
+    let _ = writeln!(md, "{}\n", skill.description);
+
+    // Steps
+    if !skill.steps.is_empty() {
+        md.push_str("## Steps\n");
+        for (i, step) in skill.steps.iter().enumerate() {
+            let _ = writeln!(md, "{}. {}", i + 1, step);
+        }
+        md.push('\n');
+    }
+
+    // Tools Used
+    if !skill.tools_used.is_empty() {
+        md.push_str("## Tools Used\n");
+        for tool in &skill.tools_used {
+            let _ = writeln!(md, "- {tool}");
+        }
+        md.push('\n');
+    }
+
+    // Domain Tags (informational, not CC-standard but useful)
+    if !skill.domain_tags.is_empty() {
+        md.push_str("## Tags\n");
+        let _ = writeln!(md, "{}", skill.domain_tags.join(", "));
+    }
+
+    md
+}
+
+/// Export result for a single skill.
+#[derive(Debug)]
+pub struct ExportedSkill {
+    /// Path to the written SKILL.md file.
+    pub path: std::path::PathBuf,
+    /// The slug used for the directory name.
+    pub slug: String,
+    /// The skill name (from content).
+    pub name: String,
+}
+
+/// Export a collection of skills to Claude Code's `.claude/skills/<slug>/SKILL.md` format.
+///
+/// Creates the directory structure and writes each skill as a SKILL.md file
+/// with YAML frontmatter. Existing files are overwritten.
+///
+/// This is a pure library function — no knowledge store dependency. Pass in
+/// already-resolved `SkillContent` values. The CLI and energeia bridge both
+/// use this same function.
+///
+/// # Errors
+///
+/// Returns `std::io::Error` if directory creation or file writing fails.
+pub fn export_skills_to_cc(
+    skills: &[SkillContent],
+    output_dir: &std::path::Path,
+    domain_filter: Option<&[&str]>,
+) -> Result<Vec<ExportedSkill>, std::io::Error> {
+    let mut exported = Vec::new();
+
+    for skill in skills {
+        // Apply domain filter if specified
+        if let Some(filter) = domain_filter {
+            let matches = filter
+                .iter()
+                .any(|tag| skill.domain_tags.iter().any(|dt| dt == tag));
+            if !matches {
+                continue;
+            }
+        }
+
+        let slug = slugify(&skill.name);
+        if slug.is_empty() {
+            continue;
+        }
+        let skill_dir = output_dir.join(&slug);
+        std::fs::create_dir_all(&skill_dir)?;
+
+        let md = format_skill_md(skill);
+        let path = skill_dir.join("SKILL.md");
+        std::fs::write(&path, &md)?;
+
+        exported.push(ExportedSkill {
+            path,
+            slug,
+            name: skill.name.clone(),
+        });
+    }
+
+    Ok(exported)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,5 +627,279 @@ When you need company intelligence.
             err.to_string(),
             "failed to parse test-skill: missing heading"
         );
+    }
+
+    // ── slugify ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn slugify_simple_name() {
+        assert_eq!(slugify("rust-error-handling"), "rust-error-handling");
+    }
+
+    #[test]
+    fn slugify_spaces_to_dashes() {
+        assert_eq!(
+            slugify("Docker Network Diagnostics"),
+            "docker-network-diagnostics"
+        );
+    }
+
+    #[test]
+    fn slugify_special_chars() {
+        assert_eq!(slugify("C++ Template (Meta)"), "c-template-meta");
+    }
+
+    #[test]
+    fn slugify_consecutive_specials_collapsed() {
+        assert_eq!(slugify("test---skill___name"), "test-skill-name");
+    }
+
+    #[test]
+    fn slugify_empty_string() {
+        assert_eq!(slugify(""), "");
+    }
+
+    #[test]
+    fn slugify_all_special() {
+        assert_eq!(slugify("---"), "");
+    }
+
+    // ── format_skill_md ──────────────────────────────────────────────────────
+
+    fn export_skill() -> SkillContent {
+        SkillContent {
+            name: "rust-error-handling".to_owned(),
+            description: "Pattern for converting error types across crate boundaries".to_owned(),
+            steps: vec![
+                "Identify the source error type".to_owned(),
+                "Create a snafu variant with #[snafu(source)]".to_owned(),
+                "Add .context() at the call site".to_owned(),
+            ],
+            tools_used: vec!["Read".to_owned(), "Edit".to_owned(), "Bash".to_owned()],
+            domain_tags: vec!["rust".to_owned(), "errors".to_owned()],
+            origin: "manual".to_owned(),
+        }
+    }
+
+    #[test]
+    fn format_skill_md_has_yaml_frontmatter() {
+        let md = format_skill_md(&export_skill());
+        assert!(
+            md.starts_with("---\n"),
+            "should start with frontmatter delimiter"
+        );
+        // Count frontmatter delimiters
+        let delimiters: Vec<_> = md.match_indices("---").collect();
+        assert!(delimiters.len() >= 2, "should have opening and closing ---");
+    }
+
+    #[test]
+    fn format_skill_md_frontmatter_has_name() {
+        let md = format_skill_md(&export_skill());
+        assert!(md.contains("name: rust-error-handling"));
+    }
+
+    #[test]
+    fn format_skill_md_frontmatter_has_description() {
+        let md = format_skill_md(&export_skill());
+        assert!(md.contains("description: Pattern for converting error types"));
+    }
+
+    #[test]
+    fn format_skill_md_frontmatter_has_allowed_tools() {
+        let md = format_skill_md(&export_skill());
+        assert!(md.contains("allowed-tools: Read, Edit, Bash"));
+    }
+
+    #[test]
+    fn format_skill_md_has_when_to_use_section() {
+        let md = format_skill_md(&export_skill());
+        assert!(md.contains("## When to Use"));
+    }
+
+    #[test]
+    fn format_skill_md_has_steps_section() {
+        let md = format_skill_md(&export_skill());
+        assert!(md.contains("## Steps"));
+        assert!(md.contains("1. Identify the source error type"));
+        assert!(md.contains("2. Create a snafu variant"));
+        assert!(md.contains("3. Add .context() at the call site"));
+    }
+
+    #[test]
+    fn format_skill_md_has_tools_section() {
+        let md = format_skill_md(&export_skill());
+        assert!(md.contains("## Tools Used"));
+        assert!(md.contains("- Read"));
+        assert!(md.contains("- Edit"));
+        assert!(md.contains("- Bash"));
+    }
+
+    #[test]
+    fn format_skill_md_has_tags_section() {
+        let md = format_skill_md(&export_skill());
+        assert!(md.contains("## Tags"));
+        assert!(md.contains("rust, errors"));
+    }
+
+    #[test]
+    fn format_skill_md_no_tools_omits_allowed_tools() {
+        let mut skill = export_skill();
+        skill.tools_used.clear();
+        let md = format_skill_md(&skill);
+        assert!(!md.contains("allowed-tools:"));
+        assert!(!md.contains("## Tools Used"));
+    }
+
+    #[test]
+    fn format_skill_md_no_steps_omits_steps_section() {
+        let mut skill = export_skill();
+        skill.steps.clear();
+        let md = format_skill_md(&skill);
+        assert!(!md.contains("## Steps"));
+    }
+
+    #[test]
+    fn format_skill_md_description_with_colon_is_quoted() {
+        let mut skill = export_skill();
+        skill.description = "Error handling: a deep dive".to_owned();
+        let md = format_skill_md(&skill);
+        assert!(md.contains(r#"description: "Error handling: a deep dive""#));
+    }
+
+    // ── export_skills_to_cc ──────────────────────────────────────────────────
+
+    #[test]
+    fn export_creates_correct_directory_structure() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = vec![export_skill()];
+        let exported = export_skills_to_cc(&skills, dir.path(), None).unwrap();
+
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].slug, "rust-error-handling");
+
+        let skill_md = dir.path().join("rust-error-handling").join("SKILL.md");
+        assert!(
+            skill_md.exists(),
+            "SKILL.md should exist at {}",
+            skill_md.display()
+        );
+    }
+
+    #[test]
+    fn export_skill_md_contains_valid_frontmatter() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = vec![export_skill()];
+        export_skills_to_cc(&skills, dir.path(), None).unwrap();
+
+        let content =
+            std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
+                .unwrap();
+        assert!(content.starts_with("---\n"));
+        assert!(content.contains("name: rust-error-handling"));
+        assert!(content.contains("description:"));
+        assert!(content.contains("allowed-tools:"));
+    }
+
+    #[test]
+    fn export_domain_filtering_excludes_non_matching() {
+        let dir = tempfile::tempdir().unwrap();
+        let rust_skill = export_skill();
+        let mut python_skill = export_skill();
+        python_skill.name = "python-testing".to_owned();
+        python_skill.domain_tags = vec!["python".to_owned(), "testing".to_owned()];
+
+        let skills = vec![rust_skill, python_skill];
+        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["rust"])).unwrap();
+
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].slug, "rust-error-handling");
+    }
+
+    #[test]
+    fn export_no_skills_produces_empty_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let exported = export_skills_to_cc(&[], dir.path(), None).unwrap();
+        assert!(exported.is_empty());
+    }
+
+    #[test]
+    fn export_multiple_skills_creates_separate_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut docker_skill = export_skill();
+        docker_skill.name = "docker-diagnostics".to_owned();
+        docker_skill.domain_tags = vec!["docker".to_owned()];
+
+        let skills = vec![export_skill(), docker_skill];
+        let exported = export_skills_to_cc(&skills, dir.path(), None).unwrap();
+
+        assert_eq!(exported.len(), 2);
+        assert!(
+            dir.path()
+                .join("rust-error-handling")
+                .join("SKILL.md")
+                .exists()
+        );
+        assert!(
+            dir.path()
+                .join("docker-diagnostics")
+                .join("SKILL.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn export_roundtrip_content_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = export_skill();
+        export_skills_to_cc(std::slice::from_ref(&original), dir.path(), None).unwrap();
+
+        // Read back and parse
+        let exported_md =
+            std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
+                .unwrap();
+        let parsed = parse_skill_md(&exported_md, "rust-error-handling").unwrap();
+
+        assert_eq!(parsed.name, original.name);
+        assert_eq!(parsed.description, original.description);
+        assert_eq!(parsed.steps, original.steps);
+        assert_eq!(parsed.tools_used, original.tools_used);
+    }
+
+    #[test]
+    fn export_special_chars_in_name_slugified() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut skill = export_skill();
+        skill.name = "C++ Template (Meta)".to_owned();
+        let exported = export_skills_to_cc(&[skill], dir.path(), None).unwrap();
+
+        assert_eq!(exported[0].slug, "c-template-meta");
+        assert!(dir.path().join("c-template-meta").join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn export_overwrites_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("rust-error-handling");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "old content").unwrap();
+
+        let skills = vec![export_skill()];
+        export_skills_to_cc(&skills, dir.path(), None).unwrap();
+
+        let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+        assert!(
+            content.contains("## When to Use"),
+            "should have new content"
+        );
+        assert!(!content.contains("old content"));
+    }
+
+    #[test]
+    fn export_domain_filter_with_no_matches_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = vec![export_skill()]; // domain_tags: ["rust", "errors"]
+        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["python"])).unwrap();
+        assert!(exported.is_empty());
     }
 }
