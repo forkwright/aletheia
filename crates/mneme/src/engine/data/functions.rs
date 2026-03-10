@@ -75,9 +75,12 @@ pub(crate) fn op_json(args: &[DataValue]) -> Result<DataValue> {
 define_op!(OP_SET_JSON_PATH, op_set_json_path, 3, false);
 pub(crate) fn op_set_json_path(args: &[DataValue]) -> Result<DataValue> {
     let mut result = to_json(&args[0]);
-    let path = args[1]
-        .get_slice()
-        .ok_or_else(|| JsonPathSnafu { message: "json path must be a string" }.build())?;
+    let path = args[1].get_slice().ok_or_else(|| {
+        JsonPathSnafu {
+            message: "json path must be a string",
+        }
+        .build()
+    })?;
     let pointer = get_json_path(&mut result, path)?;
     let new_val = to_json(&args[2]);
     *pointer = new_val;
@@ -92,24 +95,35 @@ fn get_json_path_immutable<'a>(
         match pointer {
             JsonValue::Object(obj) => {
                 let key = val2str(key);
-                let entry = obj
-                    .get(&key)
-                    .ok_or_else(|| JsonPathSnafu { message: "json path does not exist" }.build())?;
+                let entry = obj.get(&key).ok_or_else(|| {
+                    JsonPathSnafu {
+                        message: "json path does not exist",
+                    }
+                    .build()
+                })?;
                 pointer = entry;
             }
             JsonValue::Array(arr) => {
-                let key = key
-                    .get_int()
-                    .ok_or_else(|| JsonPathSnafu { message: "json path must be a string or a number" }.build())?
-                    as usize;
+                let key = key.get_int().ok_or_else(|| {
+                    JsonPathSnafu {
+                        message: "json path must be a string or a number",
+                    }
+                    .build()
+                })? as usize;
 
-                let val = arr
-                    .get(key)
-                    .ok_or_else(|| JsonPathSnafu { message: "json path does not exist" }.build())?;
+                let val = arr.get(key).ok_or_else(|| {
+                    JsonPathSnafu {
+                        message: "json path does not exist",
+                    }
+                    .build()
+                })?;
                 pointer = val;
             }
             _ => {
-                return JsonPathSnafu { message: "json path does not exist" }.fail()
+                return JsonPathSnafu {
+                    message: "json path does not exist",
+                }
+                .fail();
             }
         }
     }
@@ -128,10 +142,12 @@ fn get_json_path<'a>(
                 pointer = entry;
             }
             JsonValue::Array(arr) => {
-                let key = key
-                    .get_int()
-                    .ok_or_else(|| JsonPathSnafu { message: "json path must be a string or a number" }.build())?
-                    as usize;
+                let key = key.get_int().ok_or_else(|| {
+                    JsonPathSnafu {
+                        message: "json path must be a string or a number",
+                    }
+                    .build()
+                })? as usize;
                 if arr.len() <= key + 1 {
                     arr.resize_with(key + 1, || JsonValue::Null);
                 }
@@ -140,7 +156,10 @@ fn get_json_path<'a>(
                 pointer = val;
             }
             _ => {
-                return JsonPathSnafu { message: "json path does not exist" }.fail()
+                return JsonPathSnafu {
+                    message: "json path does not exist",
+                }
+                .fail();
             }
         }
     }
@@ -150,12 +169,18 @@ fn get_json_path<'a>(
 define_op!(OP_REMOVE_JSON_PATH, op_remove_json_path, 2, false);
 pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
     let mut result = to_json(&args[0]);
-    let path = args[1]
-        .get_slice()
-        .ok_or_else(|| JsonPathSnafu { message: "json path must be a string" }.build())?;
-    let (last, path) = path
-        .split_last()
-        .ok_or_else(|| JsonPathSnafu { message: "json path must not be empty" }.build())?;
+    let path = args[1].get_slice().ok_or_else(|| {
+        JsonPathSnafu {
+            message: "json path must be a string",
+        }
+        .build()
+    })?;
+    let (last, path) = path.split_last().ok_or_else(|| {
+        JsonPathSnafu {
+            message: "json path must not be empty",
+        }
+        .build()
+    })?;
     let pointer = get_json_path(&mut result, path)?;
     match pointer {
         JsonValue::Object(obj) => {
@@ -163,14 +188,19 @@ pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
             obj.remove(&key);
         }
         JsonValue::Array(arr) => {
-            let key = last
-                .get_int()
-                .ok_or_else(|| JsonPathSnafu { message: "json path must be a string or a number" }.build())?
-                as usize;
+            let key = last.get_int().ok_or_else(|| {
+                JsonPathSnafu {
+                    message: "json path must be a string or a number",
+                }
+                .build()
+            })? as usize;
             arr.remove(key);
         }
         _ => {
-            return JsonPathSnafu { message: "json path does not exist" }.fail()
+            return JsonPathSnafu {
+                message: "json path does not exist",
+            }
+            .fail();
         }
     }
     Ok(DataValue::Json(JsonData(result)))
@@ -178,7 +208,12 @@ pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_JSON_OBJECT, op_json_object, 0, true);
 pub(crate) fn op_json_object(args: &[DataValue]) -> Result<DataValue> {
-    snafu::ensure!(args.len() % 2 == 0, InvalidValueSnafu { message: "json_object requires an even number of arguments" });
+    snafu::ensure!(
+        args.len() % 2 == 0,
+        InvalidValueSnafu {
+            message: "json_object requires an even number of arguments"
+        }
+    );
     let mut obj = serde_json::Map::with_capacity(args.len() / 2);
     for pair in args.chunks_exact(2) {
         let key = val2str(&pair[0]);
@@ -263,7 +298,11 @@ pub(crate) fn op_parse_json(args: &[DataValue]) -> Result<DataValue> {
             let value: serde_json::Value = serde_json::from_str(s).context(JsonSnafu)?;
             Ok(DataValue::Json(JsonData(value)))
         }
-        None => return TypeMismatchSnafu { op: "parse_json", expected: "a string" }.fail(),
+        None => TypeMismatchSnafu {
+            op: "parse_json",
+            expected: "a string",
+        }
+        .fail(),
     }
 }
 
@@ -271,7 +310,11 @@ define_op!(OP_DUMP_JSON, op_dump_json, 1, false);
 pub(crate) fn op_dump_json(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Json(j) => Ok(DataValue::Str(j.0.to_string().into())),
-        _ => return TypeMismatchSnafu { op: "dump_json", expected: "a json value" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "dump_json",
+            expected: "a json value",
+        }
+        .fail(),
     }
 }
 
@@ -315,9 +358,13 @@ pub(crate) fn op_json_to_scalar(args: &[DataValue]) -> Result<DataValue> {
 define_op!(OP_IS_IN, op_is_in, 2, false);
 pub(crate) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
     let left = &args[0];
-    let right = args[1]
-        .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "is_in", expected: "a list as right hand side" }.build())?;
+    let right = args[1].get_slice().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "is_in",
+            expected: "a list as right hand side",
+        }
+        .build()
+    })?;
     Ok(DataValue::from(right.contains(left)))
 }
 
@@ -379,7 +426,13 @@ pub(crate) fn op_add(args: &[DataValue]) -> Result<DataValue> {
             DataValue::Num(Num::Int(i)) => i_accum += i,
             DataValue::Num(Num::Float(f)) => f_accum += f,
             DataValue::Vec(_) => return add_vecs(args),
-            _ => return TypeMismatchSnafu { op: "add", expected: "numbers" }.fail(),
+            _ => {
+                return TypeMismatchSnafu {
+                    op: "add",
+                    expected: "numbers",
+                }
+                .fail();
+            }
         }
     }
     if f_accum == 0.0f64 {
@@ -414,9 +467,13 @@ fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
             }
         }
         (DataValue::Vec(a), b) => {
-            let f = b
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "add", expected: "numbers to add to vectors" }.build())?;
+            let f = b.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "add",
+                    expected: "numbers to add to vectors",
+                }
+                .build()
+            })?;
             match a {
                 Vector::F32(mut v) => {
                     v += f as f32;
@@ -429,15 +486,23 @@ fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
             }
         }
         (a, DataValue::Vec(b)) => {
-            let f = a
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "add", expected: "numbers to add to vectors" }.build())?;
+            let f = a.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "add",
+                    expected: "numbers to add to vectors",
+                }
+                .build()
+            })?;
             match b {
                 Vector::F32(v) => Ok(DataValue::Vec(Vector::F32(v + f as f32))),
                 Vector::F64(v) => Ok(DataValue::Vec(Vector::F64(v + f))),
             }
         }
-        _ => return TypeMismatchSnafu { op: "add", expected: "numbers" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "add",
+            expected: "numbers",
+        }
+        .fail(),
     }
 }
 
@@ -448,7 +513,11 @@ pub(crate) fn op_max(args: &[DataValue]) -> Result<DataValue> {
         .try_fold(None, |accum, nxt| match (accum, nxt) {
             (None, d @ DataValue::Num(_)) => Ok(Some(d.clone())),
             (Some(DataValue::Num(a)), DataValue::Num(b)) => Ok(Some(DataValue::Num(a.max(*b)))),
-            _ => return TypeMismatchSnafu { op: "max", expected: "numbers" }.fail(),
+            _ => TypeMismatchSnafu {
+                op: "max",
+                expected: "numbers",
+            }
+            .fail(),
         })?;
     match res {
         None => Ok(DataValue::Num(Num::Float(f64::NEG_INFINITY))),
@@ -463,7 +532,11 @@ pub(crate) fn op_min(args: &[DataValue]) -> Result<DataValue> {
         .try_fold(None, |accum, nxt| match (accum, nxt) {
             (None, d @ DataValue::Num(_)) => Ok(Some(d.clone())),
             (Some(DataValue::Num(a)), DataValue::Num(b)) => Ok(Some(DataValue::Num(a.min(*b)))),
-            _ => return TypeMismatchSnafu { op: "min", expected: "numbers" }.fail(),
+            _ => TypeMismatchSnafu {
+                op: "min",
+                expected: "numbers",
+            }
+            .fail(),
         })?;
     match res {
         None => Ok(DataValue::Num(Num::Float(f64::INFINITY))),
@@ -499,9 +572,13 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
             }
         },
         (DataValue::Vec(a), b) => {
-            let b = b
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "sub", expected: "numbers to subtract from vectors" }.build())?;
+            let b = b.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "sub",
+                    expected: "numbers to subtract from vectors",
+                }
+                .build()
+            })?;
             match a.clone() {
                 Vector::F32(mut v) => {
                     v -= b as f32;
@@ -514,9 +591,13 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
             }
         }
         (a, DataValue::Vec(b)) => {
-            let a = a
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "sub", expected: "vectors to subtract from numbers" }.build())?;
+            let a = a.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "sub",
+                    expected: "vectors to subtract from numbers",
+                }
+                .build()
+            })?;
             match b.clone() {
                 Vector::F32(mut v) => {
                     v -= a as f32;
@@ -528,7 +609,13 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
                 }
             }
         }
-        _ => return TypeMismatchSnafu { op: "sub", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "sub",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
@@ -541,7 +628,13 @@ pub(crate) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
             DataValue::Num(Num::Int(i)) => i_accum *= i,
             DataValue::Num(Num::Float(f)) => f_accum *= f,
             DataValue::Vec(_) => return mul_vecs(args),
-            _ => return TypeMismatchSnafu { op: "mul", expected: "numbers" }.fail(),
+            _ => {
+                return TypeMismatchSnafu {
+                    op: "mul",
+                    expected: "numbers",
+                }
+                .fail();
+            }
         }
     }
     if f_accum == 1.0f64 {
@@ -576,9 +669,13 @@ fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
             }
         }
         (DataValue::Vec(a), b) => {
-            let f = b
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "add", expected: "numbers to add to vectors" }.build())?;
+            let f = b.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "add",
+                    expected: "numbers to add to vectors",
+                }
+                .build()
+            })?;
             match a {
                 Vector::F32(mut v) => {
                     v *= f as f32;
@@ -591,15 +688,23 @@ fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
             }
         }
         (a, DataValue::Vec(b)) => {
-            let f = a
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "add", expected: "numbers to add to vectors" }.build())?;
+            let f = a.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "add",
+                    expected: "numbers to add to vectors",
+                }
+                .build()
+            })?;
             match b {
                 Vector::F32(v) => Ok(DataValue::Vec(Vector::F32(v * f as f32))),
                 Vector::F64(v) => Ok(DataValue::Vec(Vector::F64(v * f))),
             }
         }
-        _ => return TypeMismatchSnafu { op: "add", expected: "numbers" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "add",
+            expected: "numbers",
+        }
+        .fail(),
     }
 }
 
@@ -631,9 +736,13 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
             }
         },
         (DataValue::Vec(a), b) => {
-            let b = b
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "sub", expected: "numbers to subtract from vectors" }.build())?;
+            let b = b.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "sub",
+                    expected: "numbers to subtract from vectors",
+                }
+                .build()
+            })?;
             match a.clone() {
                 Vector::F32(mut v) => {
                     v /= b as f32;
@@ -646,15 +755,25 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
             }
         }
         (a, DataValue::Vec(b)) => {
-            let a = a
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "sub", expected: "vectors to subtract from numbers" }.build())?;
+            let a = a.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "sub",
+                    expected: "vectors to subtract from numbers",
+                }
+                .build()
+            })?;
             match b {
                 Vector::F32(v) => DataValue::Vec(Vector::F32(a as f32 / v)),
                 Vector::F64(v) => DataValue::Vec(Vector::F64(a / v)),
             }
         }
-        _ => return TypeMismatchSnafu { op: "div", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "div",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
@@ -665,7 +784,13 @@ pub(crate) fn op_minus(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(-(*f))),
         DataValue::Vec(Vector::F64(v)) => DataValue::Vec(Vector::F64(0. - v)),
         DataValue::Vec(Vector::F32(v)) => DataValue::Vec(Vector::F32(0. - v)),
-        _ => return TypeMismatchSnafu { op: "minus", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "minus",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
@@ -676,7 +801,13 @@ pub(crate) fn op_abs(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.abs())),
         DataValue::Vec(Vector::F64(v)) => DataValue::Vec(Vector::F64(v.mapv(|x| x.abs()))),
         DataValue::Vec(Vector::F32(v)) => DataValue::Vec(Vector::F32(v.mapv(|x| x.abs()))),
-        _ => return TypeMismatchSnafu { op: "abs", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "abs",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
@@ -695,7 +826,13 @@ pub(crate) fn op_signum(args: &[DataValue]) -> Result<DataValue> {
                 DataValue::from(f64::NAN)
             }
         }
-        _ => return TypeMismatchSnafu { op: "signum", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "signum",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
@@ -704,7 +841,13 @@ pub(crate) fn op_floor(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.floor())),
-        _ => return TypeMismatchSnafu { op: "floor", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "floor",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
@@ -713,7 +856,13 @@ pub(crate) fn op_ceil(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.ceil())),
-        _ => return TypeMismatchSnafu { op: "ceil", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "ceil",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
@@ -722,7 +871,13 @@ pub(crate) fn op_round(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.round())),
-        _ => return TypeMismatchSnafu { op: "round", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "round",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
@@ -737,7 +892,13 @@ pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.exp()))));
         }
-        _ => return TypeMismatchSnafu { op: "exp", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "exp",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.exp())))
 }
@@ -753,7 +914,13 @@ pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.exp2()))));
         }
-        _ => return TypeMismatchSnafu { op: "exp2", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "exp2",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.exp2())))
 }
@@ -769,7 +936,13 @@ pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.ln()))));
         }
-        _ => return TypeMismatchSnafu { op: "ln", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "ln",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.ln())))
 }
@@ -785,7 +958,13 @@ pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.log2()))));
         }
-        _ => return TypeMismatchSnafu { op: "log2", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "log2",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.log2())))
 }
@@ -801,7 +980,13 @@ pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.log10()))));
         }
-        _ => return TypeMismatchSnafu { op: "log10", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "log10",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.log10())))
 }
@@ -817,7 +1002,13 @@ pub(crate) fn op_sin(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.sin()))));
         }
-        _ => return TypeMismatchSnafu { op: "sin", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "sin",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.sin())))
 }
@@ -833,7 +1024,13 @@ pub(crate) fn op_cos(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.cos()))));
         }
-        _ => return TypeMismatchSnafu { op: "cos", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "cos",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.cos())))
 }
@@ -849,7 +1046,13 @@ pub(crate) fn op_tan(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.tan()))));
         }
-        _ => return TypeMismatchSnafu { op: "tan", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "tan",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.tan())))
 }
@@ -865,7 +1068,13 @@ pub(crate) fn op_asin(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.asin()))));
         }
-        _ => return TypeMismatchSnafu { op: "asin", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "asin",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.asin())))
 }
@@ -881,7 +1090,13 @@ pub(crate) fn op_acos(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.acos()))));
         }
-        _ => return TypeMismatchSnafu { op: "acos", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "acos",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.acos())))
 }
@@ -897,7 +1112,13 @@ pub(crate) fn op_atan(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.atan()))));
         }
-        _ => return TypeMismatchSnafu { op: "atan", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "atan",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.atan())))
 }
@@ -907,12 +1128,24 @@ pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
     let a = match &args[0] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
-        _ => return TypeMismatchSnafu { op: "atan2", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "atan2",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     let b = match &args[1] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
-        _ => return TypeMismatchSnafu { op: "atan2", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "atan2",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
 
     Ok(DataValue::Num(Num::Float(a.atan2(b))))
@@ -929,7 +1162,13 @@ pub(crate) fn op_sinh(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.sinh()))));
         }
-        _ => return TypeMismatchSnafu { op: "sinh", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "sinh",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.sinh())))
 }
@@ -945,7 +1184,13 @@ pub(crate) fn op_cosh(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.cosh()))));
         }
-        _ => return TypeMismatchSnafu { op: "cosh", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "cosh",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.cosh())))
 }
@@ -961,7 +1206,13 @@ pub(crate) fn op_tanh(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.tanh()))));
         }
-        _ => return TypeMismatchSnafu { op: "tanh", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "tanh",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.tanh())))
 }
@@ -977,7 +1228,13 @@ pub(crate) fn op_asinh(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.asinh()))));
         }
-        _ => return TypeMismatchSnafu { op: "asinh", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "asinh",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.asinh())))
 }
@@ -993,7 +1250,13 @@ pub(crate) fn op_acosh(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.acosh()))));
         }
-        _ => return TypeMismatchSnafu { op: "acosh", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "acosh",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.acosh())))
 }
@@ -1009,7 +1272,13 @@ pub(crate) fn op_atanh(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.atanh()))));
         }
-        _ => return TypeMismatchSnafu { op: "atanh", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "atanh",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.atanh())))
 }
@@ -1025,7 +1294,13 @@ pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Vec(Vector::F64(v)) => {
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.sqrt()))));
         }
-        _ => return TypeMismatchSnafu { op: "sqrt", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "sqrt",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.sqrt())))
 }
@@ -1036,23 +1311,43 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
-            let b = args[1]
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "pow", expected: "numbers" }.build())?;
+            let b = args[1].get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "pow",
+                    expected: "numbers",
+                }
+                .build()
+            })?;
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.powf(b as f32)))));
         }
         DataValue::Vec(Vector::F64(v)) => {
-            let b = args[1]
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "pow", expected: "numbers" }.build())?;
+            let b = args[1].get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "pow",
+                    expected: "numbers",
+                }
+                .build()
+            })?;
             return Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x.powf(b)))));
         }
-        _ => return TypeMismatchSnafu { op: "pow", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "pow",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     let b = match &args[1] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
-        _ => return TypeMismatchSnafu { op: "pow", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "pow",
+                expected: "numbers",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::Num(Num::Float(a.powf(b))))
 }
@@ -1062,7 +1357,11 @@ pub(crate) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
     Ok(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
             if *b == 0 {
-                return TypeMismatchSnafu { op: "mod", expected: "non-zero divisor" }.fail()
+                return TypeMismatchSnafu {
+                    op: "mod",
+                    expected: "non-zero divisor",
+                }
+                .fail();
             }
             DataValue::Num(Num::Int(a.rem(b)))
         }
@@ -1075,17 +1374,26 @@ pub(crate) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
         (DataValue::Num(Num::Float(a)), DataValue::Num(Num::Int(b))) => {
             DataValue::Num(Num::Float(a.rem(*b as f64)))
         }
-        _ => return TypeMismatchSnafu { op: "mod", expected: "numbers" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "mod",
+                expected: "numbers",
+            }
+            .fail();
+        }
     })
 }
 
 define_op!(OP_AND, op_and, 0, true);
 pub(crate) fn op_and(args: &[DataValue]) -> Result<DataValue> {
     for arg in args {
-        if !arg
-            .get_bool()
-            .ok_or_else(|| TypeMismatchSnafu { op: "and", expected: "booleans" }.build())?
-        {
+        if !arg.get_bool().ok_or_else(|| {
+            TypeMismatchSnafu {
+                op: "and",
+                expected: "booleans",
+            }
+            .build()
+        })? {
             return Ok(DataValue::from(false));
         }
     }
@@ -1095,10 +1403,13 @@ pub(crate) fn op_and(args: &[DataValue]) -> Result<DataValue> {
 define_op!(OP_OR, op_or, 0, true);
 pub(crate) fn op_or(args: &[DataValue]) -> Result<DataValue> {
     for arg in args {
-        if arg
-            .get_bool()
-            .ok_or_else(|| TypeMismatchSnafu { op: "or", expected: "booleans" }.build())?
-        {
+        if arg.get_bool().ok_or_else(|| {
+            TypeMismatchSnafu {
+                op: "or",
+                expected: "booleans",
+            }
+            .build()
+        })? {
             return Ok(DataValue::from(true));
         }
     }
@@ -1110,7 +1421,11 @@ pub(crate) fn op_negate(args: &[DataValue]) -> Result<DataValue> {
     if let DataValue::Bool(b) = &args[0] {
         Ok(DataValue::from(!*b))
     } else {
-        return TypeMismatchSnafu { op: "negate", expected: "booleans" }.fail();
+        TypeMismatchSnafu {
+            op: "negate",
+            expected: "booleans",
+        }
+        .fail()
     }
 }
 
@@ -1118,14 +1433,21 @@ define_op!(OP_BIT_AND, op_bit_and, 2, false);
 pub(crate) fn op_bit_and(args: &[DataValue]) -> Result<DataValue> {
     match (&args[0], &args[1]) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
-            snafu::ensure!(left.len() == right.len(), ByteLengthMismatchSnafu { op: "bit_and" });
+            snafu::ensure!(
+                left.len() == right.len(),
+                ByteLengthMismatchSnafu { op: "bit_and" }
+            );
             let mut ret = left.clone();
             for (l, r) in ret.iter_mut().zip(right.iter()) {
                 *l &= *r;
             }
             Ok(DataValue::Bytes(ret))
         }
-        _ => return TypeMismatchSnafu { op: "bit_and", expected: "bytes" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "bit_and",
+            expected: "bytes",
+        }
+        .fail(),
     }
 }
 
@@ -1133,14 +1455,21 @@ define_op!(OP_BIT_OR, op_bit_or, 2, false);
 pub(crate) fn op_bit_or(args: &[DataValue]) -> Result<DataValue> {
     match (&args[0], &args[1]) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
-            snafu::ensure!(left.len() == right.len(), ByteLengthMismatchSnafu { op: "bit_or" });
+            snafu::ensure!(
+                left.len() == right.len(),
+                ByteLengthMismatchSnafu { op: "bit_or" }
+            );
             let mut ret = left.clone();
             for (l, r) in ret.iter_mut().zip(right.iter()) {
                 *l |= *r;
             }
             Ok(DataValue::Bytes(ret))
         }
-        _ => return TypeMismatchSnafu { op: "bit_or", expected: "bytes" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "bit_or",
+            expected: "bytes",
+        }
+        .fail(),
     }
 }
 
@@ -1154,7 +1483,11 @@ pub(crate) fn op_bit_not(args: &[DataValue]) -> Result<DataValue> {
             }
             Ok(DataValue::Bytes(ret))
         }
-        _ => return TypeMismatchSnafu { op: "bit_not", expected: "bytes" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "bit_not",
+            expected: "bytes",
+        }
+        .fail(),
     }
 }
 
@@ -1162,14 +1495,21 @@ define_op!(OP_BIT_XOR, op_bit_xor, 2, false);
 pub(crate) fn op_bit_xor(args: &[DataValue]) -> Result<DataValue> {
     match (&args[0], &args[1]) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
-            snafu::ensure!(left.len() == right.len(), ByteLengthMismatchSnafu { op: "bit_xor" });
+            snafu::ensure!(
+                left.len() == right.len(),
+                ByteLengthMismatchSnafu { op: "bit_xor" }
+            );
             let mut ret = left.clone();
             for (l, r) in ret.iter_mut().zip(right.iter()) {
                 *l ^= *r;
             }
             Ok(DataValue::Bytes(ret))
         }
-        _ => return TypeMismatchSnafu { op: "bit_xor", expected: "bytes" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "bit_xor",
+            expected: "bytes",
+        }
+        .fail(),
     }
 }
 
@@ -1191,7 +1531,11 @@ pub(crate) fn op_unpack_bits(args: &[DataValue]) -> Result<DataValue> {
             ret.into_iter().map(DataValue::Bool).collect_vec(),
         ))
     } else {
-        return TypeMismatchSnafu { op: "unpack_bits", expected: "bytes" }.fail()
+        TypeMismatchSnafu {
+            op: "unpack_bits",
+            expected: "bytes",
+        }
+        .fail()
     }
 }
 
@@ -1220,7 +1564,13 @@ pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
                         }
                     }
                 }
-                _ => return TypeMismatchSnafu { op: "pack_bits", expected: "list of booleans" }.fail(),
+                _ => {
+                    return TypeMismatchSnafu {
+                        op: "pack_bits",
+                        expected: "list of booleans",
+                    }
+                    .fail();
+                }
             }
         }
         Ok(DataValue::Bytes(res))
@@ -1228,7 +1578,11 @@ pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
         let l = v.iter().cloned().collect_vec();
         op_pack_bits(&[DataValue::List(l)])
     } else {
-        return TypeMismatchSnafu { op: "pack_bits", expected: "list of booleans" }.fail()
+        TypeMismatchSnafu {
+            op: "pack_bits",
+            expected: "list of booleans",
+        }
+        .fail()
     }
 }
 
@@ -1241,7 +1595,11 @@ pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
                 if let DataValue::Str(s) = arg {
                     ret += s;
                 } else {
-                    return TypeMismatchSnafu { op: "concat", expected: "strings, or lists" }.fail();
+                    return TypeMismatchSnafu {
+                        op: "concat",
+                        expected: "strings, or lists",
+                    }
+                    .fail();
                 }
             }
             Ok(DataValue::from(ret))
@@ -1254,7 +1612,11 @@ pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
                 } else if let DataValue::Set(s) = arg {
                     ret.extend(s.iter().cloned());
                 } else {
-                    return TypeMismatchSnafu { op: "concat", expected: "strings, or lists" }.fail();
+                    return TypeMismatchSnafu {
+                        op: "concat",
+                        expected: "strings, or lists",
+                    }
+                    .fail();
                 }
             }
             Ok(DataValue::List(ret))
@@ -1265,12 +1627,20 @@ pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
                 if let DataValue::Json(j) = arg {
                     ret = deep_merge_json(ret, j.0.clone());
                 } else {
-                    return TypeMismatchSnafu { op: "concat", expected: "strings, lists, or JSON objects" }.fail();
+                    return TypeMismatchSnafu {
+                        op: "concat",
+                        expected: "strings, lists, or JSON objects",
+                    }
+                    .fail();
                 }
             }
             Ok(DataValue::Json(JsonData(ret)))
         }
-        _ => return TypeMismatchSnafu { op: "concat", expected: "strings, lists, or JSON objects" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "concat",
+            expected: "strings, lists, or JSON objects",
+        }
+        .fail(),
     }
 }
 
@@ -1295,7 +1665,11 @@ define_op!(OP_STR_INCLUDES, op_str_includes, 2, false);
 pub(crate) fn op_str_includes(args: &[DataValue]) -> Result<DataValue> {
     match (&args[0], &args[1]) {
         (DataValue::Str(l), DataValue::Str(r)) => Ok(DataValue::from(l.find(r as &str).is_some())),
-        _ => return TypeMismatchSnafu { op: "str_includes", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "str_includes",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1303,7 +1677,11 @@ define_op!(OP_LOWERCASE, op_lowercase, 1, false);
 pub(crate) fn op_lowercase(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Str(s) => Ok(DataValue::from(s.to_lowercase())),
-        _ => return TypeMismatchSnafu { op: "lowercase", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "lowercase",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1311,7 +1689,11 @@ define_op!(OP_UPPERCASE, op_uppercase, 1, false);
 pub(crate) fn op_uppercase(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Str(s) => Ok(DataValue::from(s.to_uppercase())),
-        _ => return TypeMismatchSnafu { op: "uppercase", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "uppercase",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1319,7 +1701,11 @@ define_op!(OP_TRIM, op_trim, 1, false);
 pub(crate) fn op_trim(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Str(s) => Ok(DataValue::from(s.trim())),
-        _ => return TypeMismatchSnafu { op: "trim", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "trim",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1327,7 +1713,11 @@ define_op!(OP_TRIM_START, op_trim_start, 1, false);
 pub(crate) fn op_trim_start(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Str(s) => Ok(DataValue::from(s.trim_start())),
-        v => return TypeMismatchSnafu { op: "trim_start", expected: format!("strings, got {v}") }.fail(),
+        v => TypeMismatchSnafu {
+            op: "trim_start",
+            expected: format!("strings, got {v}"),
+        }
+        .fail(),
     }
 }
 
@@ -1335,7 +1725,11 @@ define_op!(OP_TRIM_END, op_trim_end, 1, false);
 pub(crate) fn op_trim_end(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Str(s) => Ok(DataValue::from(s.trim_end())),
-        _ => return TypeMismatchSnafu { op: "trim_end", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "trim_end",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1346,7 +1740,11 @@ pub(crate) fn op_starts_with(args: &[DataValue]) -> Result<DataValue> {
         (DataValue::Bytes(l), DataValue::Bytes(r)) => {
             Ok(DataValue::from(l.starts_with(r as &[u8])))
         }
-        _ => return TypeMismatchSnafu { op: "starts_with", expected: "strings or bytes" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "starts_with",
+            expected: "strings or bytes",
+        }
+        .fail(),
     }
 }
 
@@ -1355,7 +1753,11 @@ pub(crate) fn op_ends_with(args: &[DataValue]) -> Result<DataValue> {
     match (&args[0], &args[1]) {
         (DataValue::Str(l), DataValue::Str(r)) => Ok(DataValue::from(l.ends_with(r as &str))),
         (DataValue::Bytes(l), DataValue::Bytes(r)) => Ok(DataValue::from(l.ends_with(r as &[u8]))),
-        _ => return TypeMismatchSnafu { op: "ends_with", expected: "strings or bytes" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "ends_with",
+            expected: "strings or bytes",
+        }
+        .fail(),
     }
 }
 
@@ -1363,10 +1765,16 @@ define_op!(OP_REGEX, op_regex, 1, false);
 pub(crate) fn op_regex(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         r @ DataValue::Regex(_) => r.clone(),
-        DataValue::Str(s) => {
-            DataValue::Regex(RegexWrapper(regex::Regex::new(s).context(InvalidRegexSnafu)?))
+        DataValue::Str(s) => DataValue::Regex(RegexWrapper(
+            regex::Regex::new(s).context(InvalidRegexSnafu)?,
+        )),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "regex",
+                expected: "strings",
+            }
+            .fail();
         }
-        _ => return TypeMismatchSnafu { op: "regex", expected: "strings" }.fail(),
     })
 }
 
@@ -1374,7 +1782,11 @@ define_op!(OP_REGEX_MATCHES, op_regex_matches, 2, false);
 pub(crate) fn op_regex_matches(args: &[DataValue]) -> Result<DataValue> {
     match (&args[0], &args[1]) {
         (DataValue::Str(s), DataValue::Regex(r)) => Ok(DataValue::from(r.0.is_match(s))),
-        _ => return TypeMismatchSnafu { op: "regex_matches", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "regex_matches",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1384,7 +1796,11 @@ pub(crate) fn op_regex_replace(args: &[DataValue]) -> Result<DataValue> {
         (DataValue::Str(s), DataValue::Regex(r), DataValue::Str(rp)) => {
             Ok(DataValue::Str(r.0.replace(s, rp as &str).into()))
         }
-        _ => return TypeMismatchSnafu { op: "regex_replace", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "regex_replace",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1394,7 +1810,11 @@ pub(crate) fn op_regex_replace_all(args: &[DataValue]) -> Result<DataValue> {
         (DataValue::Str(s), DataValue::Regex(r), DataValue::Str(rp)) => {
             Ok(DataValue::Str(r.0.replace_all(s, rp as &str).into()))
         }
-        _ => return TypeMismatchSnafu { op: "regex_replace", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "regex_replace",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1408,7 +1828,11 @@ pub(crate) fn op_regex_extract(args: &[DataValue]) -> Result<DataValue> {
                     .collect_vec();
             Ok(DataValue::List(found))
         }
-        _ => return TypeMismatchSnafu { op: "regex_extract", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "regex_extract",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1419,7 +1843,11 @@ pub(crate) fn op_regex_extract_first(args: &[DataValue]) -> Result<DataValue> {
             let found = r.0.find(s).map(|v| DataValue::from(v.as_str()));
             Ok(found.unwrap_or(DataValue::Null))
         }
-        _ => return TypeMismatchSnafu { op: "regex_extract_first", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "regex_extract_first",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1514,7 +1942,11 @@ pub(crate) fn op_append(args: &[DataValue]) -> Result<DataValue> {
             l.push(args[1].clone());
             Ok(DataValue::List(l))
         }
-        _ => return TypeMismatchSnafu { op: "append", expected: "first argument to be a list" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "append",
+            expected: "first argument to be a list",
+        }
+        .fail(),
     }
 }
 
@@ -1531,7 +1963,11 @@ pub(crate) fn op_prepend(args: &[DataValue]) -> Result<DataValue> {
             l.extend(pl.iter().cloned());
             Ok(DataValue::List(l))
         }
-        _ => return TypeMismatchSnafu { op: "prepend", expected: "first argument to be a list" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "prepend",
+            expected: "first argument to be a list",
+        }
+        .fail(),
     }
 }
 
@@ -1548,7 +1984,13 @@ pub(crate) fn op_length(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Str(s) => s.chars().count() as i64,
         DataValue::Bytes(b) => b.len() as i64,
         DataValue::Vec(v) => v.len() as i64,
-        _ => return TypeMismatchSnafu { op: "length", expected: "lists" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "length",
+                expected: "lists",
+            }
+            .fail();
+        }
     }))
 }
 
@@ -1560,9 +2002,18 @@ pub(crate) fn op_unicode_normalize(args: &[DataValue]) -> Result<DataValue> {
             "nfd" => s.nfd().collect(),
             "nfkc" => s.nfkc().collect(),
             "nfkd" => s.nfkd().collect(),
-            u => return InvalidValueSnafu { message: format!("unknown normalization {u} for 'unicode_normalize'") }.fail(),
+            u => {
+                return InvalidValueSnafu {
+                    message: format!("unknown normalization {u} for 'unicode_normalize'"),
+                }
+                .fail();
+            }
         })),
-        _ => return TypeMismatchSnafu { op: "unicode_normalize", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "unicode_normalize",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1570,7 +2021,13 @@ define_op!(OP_SORTED, op_sorted, 1, false);
 pub(crate) fn op_sorted(args: &[DataValue]) -> Result<DataValue> {
     let mut arg = args[0]
         .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "sort", expected: "lists" }.build())?
+        .ok_or_else(|| {
+            TypeMismatchSnafu {
+                op: "sort",
+                expected: "lists",
+            }
+            .build()
+        })?
         .to_vec();
     arg.sort();
     Ok(DataValue::List(arg))
@@ -1580,7 +2037,13 @@ define_op!(OP_REVERSE, op_reverse, 1, false);
 pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
     let mut arg = args[0]
         .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "reverse", expected: "lists" }.build())?
+        .ok_or_else(|| {
+            TypeMismatchSnafu {
+                op: "reverse",
+                expected: "lists",
+            }
+            .build()
+        })?
         .to_vec();
     arg.reverse();
     Ok(DataValue::List(arg))
@@ -1588,7 +2051,13 @@ pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_HAVERSINE, op_haversine, 4, false);
 pub(crate) fn op_haversine(args: &[DataValue]) -> Result<DataValue> {
-    let make_err = || TypeMismatchSnafu { op: "haversine", expected: "numbers" }.build();
+    let make_err = || {
+        TypeMismatchSnafu {
+            op: "haversine",
+            expected: "numbers",
+        }
+        .build()
+    };
     let lat1 = args[0].get_float().ok_or_else(make_err)?;
     let lon1 = args[1].get_float().ok_or_else(make_err)?;
     let lat2 = args[2].get_float().ok_or_else(make_err)?;
@@ -1603,7 +2072,13 @@ pub(crate) fn op_haversine(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_HAVERSINE_DEG_INPUT, op_haversine_deg_input, 4, false);
 pub(crate) fn op_haversine_deg_input(args: &[DataValue]) -> Result<DataValue> {
-    let make_err = || TypeMismatchSnafu { op: "haversine_deg_input", expected: "numbers" }.build();
+    let make_err = || {
+        TypeMismatchSnafu {
+            op: "haversine_deg_input",
+            expected: "numbers",
+        }
+        .build()
+    };
     let lat1 = args[0].get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
     let lon1 = args[1].get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
     let lat2 = args[2].get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
@@ -1618,17 +2093,25 @@ pub(crate) fn op_haversine_deg_input(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_DEG_TO_RAD, op_deg_to_rad, 1, false);
 pub(crate) fn op_deg_to_rad(args: &[DataValue]) -> Result<DataValue> {
-    let x = args[0]
-        .get_float()
-        .ok_or_else(|| TypeMismatchSnafu { op: "deg_to_rad", expected: "numbers" }.build())?;
+    let x = args[0].get_float().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "deg_to_rad",
+            expected: "numbers",
+        }
+        .build()
+    })?;
     Ok(DataValue::from(x * std::f64::consts::PI / 180.))
 }
 
 define_op!(OP_RAD_TO_DEG, op_rad_to_deg, 1, false);
 pub(crate) fn op_rad_to_deg(args: &[DataValue]) -> Result<DataValue> {
-    let x = args[0]
-        .get_float()
-        .ok_or_else(|| TypeMismatchSnafu { op: "rad_to_deg", expected: "numbers" }.build())?;
+    let x = args[0].get_float().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "rad_to_deg",
+            expected: "numbers",
+        }
+        .build()
+    })?;
     Ok(DataValue::from(x * 180. / std::f64::consts::PI))
 }
 
@@ -1636,7 +2119,13 @@ define_op!(OP_FIRST, op_first, 1, false);
 pub(crate) fn op_first(args: &[DataValue]) -> Result<DataValue> {
     Ok(args[0]
         .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "first", expected: "lists" }.build())?
+        .ok_or_else(|| {
+            TypeMismatchSnafu {
+                op: "first",
+                expected: "lists",
+            }
+            .build()
+        })?
         .first()
         .cloned()
         .unwrap_or(DataValue::Null))
@@ -1646,7 +2135,13 @@ define_op!(OP_LAST, op_last, 1, false);
 pub(crate) fn op_last(args: &[DataValue]) -> Result<DataValue> {
     Ok(args[0]
         .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "last", expected: "lists" }.build())?
+        .ok_or_else(|| {
+            TypeMismatchSnafu {
+                op: "last",
+                expected: "lists",
+            }
+            .build()
+        })?
         .last()
         .cloned()
         .unwrap_or(DataValue::Null))
@@ -1654,13 +2149,26 @@ pub(crate) fn op_last(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_CHUNKS, op_chunks, 2, false);
 pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
-    let arg = args[0]
-        .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "chunks", expected: "a list as first argument" }.build())?;
-    let n = args[1]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "chunks", expected: "an integer as second argument" }.build())?;
-    snafu::ensure!(n > 0, InvalidValueSnafu { message: "second argument to 'chunks' must be positive" });
+    let arg = args[0].get_slice().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "chunks",
+            expected: "a list as first argument",
+        }
+        .build()
+    })?;
+    let n = args[1].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "chunks",
+            expected: "an integer as second argument",
+        }
+        .build()
+    })?;
+    snafu::ensure!(
+        n > 0,
+        InvalidValueSnafu {
+            message: "second argument to 'chunks' must be positive"
+        }
+    );
     let res = arg
         .chunks(n as usize)
         .map(|el| DataValue::List(el.to_vec()))
@@ -1670,13 +2178,26 @@ pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_CHUNKS_EXACT, op_chunks_exact, 2, false);
 pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
-    let arg = args[0]
-        .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "chunks_exact", expected: "a list as first argument" }.build())?;
-    let n = args[1]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "chunks_exact", expected: "an integer as second argument" }.build())?;
-    snafu::ensure!(n > 0, InvalidValueSnafu { message: "second argument to 'chunks_exact' must be positive" });
+    let arg = args[0].get_slice().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "chunks_exact",
+            expected: "a list as first argument",
+        }
+        .build()
+    })?;
+    let n = args[1].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "chunks_exact",
+            expected: "an integer as second argument",
+        }
+        .build()
+    })?;
+    snafu::ensure!(
+        n > 0,
+        InvalidValueSnafu {
+            message: "second argument to 'chunks_exact' must be positive"
+        }
+    );
     let res = arg
         .chunks_exact(n as usize)
         .map(|el| DataValue::List(el.to_vec()))
@@ -1686,13 +2207,26 @@ pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_WINDOWS, op_windows, 2, false);
 pub(crate) fn op_windows(args: &[DataValue]) -> Result<DataValue> {
-    let arg = args[0]
-        .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "windows", expected: "a list as first argument" }.build())?;
-    let n = args[1]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "windows", expected: "an integer as second argument" }.build())?;
-    snafu::ensure!(n > 0, InvalidValueSnafu { message: "second argument to 'windows' must be positive" });
+    let arg = args[0].get_slice().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "windows",
+            expected: "a list as first argument",
+        }
+        .build()
+    })?;
+    let n = args[1].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "windows",
+            expected: "an integer as second argument",
+        }
+        .build()
+    })?;
+    snafu::ensure!(
+        n > 0,
+        InvalidValueSnafu {
+            message: "second argument to 'windows' must be positive"
+        }
+    );
     let res = arg
         .windows(n as usize)
         .map(|el| DataValue::List(el.to_vec()))
@@ -1707,12 +2241,12 @@ fn get_index(mut i: i64, total: usize, is_upper: bool) -> Result<usize> {
     Ok(if i >= 0 {
         let i = i as usize;
         if i > total || (!is_upper && i == total) {
-            return IndexOutOfBoundsSnafu { index: i as i64 }.fail()
+            return IndexOutOfBoundsSnafu { index: i as i64 }.fail();
         } else {
             i
         }
     } else {
-        return IndexOutOfBoundsSnafu { index: i as i64 }.fail()
+        return IndexOutOfBoundsSnafu { index: i }.fail();
     })
 }
 
@@ -1733,9 +2267,13 @@ pub(crate) fn op_get(args: &[DataValue]) -> Result<DataValue> {
 fn get_impl(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::List(l) => {
-            let n = args[1]
-                .get_int()
-                .ok_or_else(|| TypeMismatchSnafu { op: "get", expected: "an integer as second argument" }.build())?;
+            let n = args[1].get_int().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "get",
+                    expected: "an integer as second argument",
+                }
+                .build()
+            })?;
             let idx = get_index(n, l.len(), false)?;
             Ok(l[idx].clone())
         }
@@ -1743,23 +2281,46 @@ fn get_impl(args: &[DataValue]) -> Result<DataValue> {
             let res = match &args[1] {
                 DataValue::Str(s) => json
                     .get(s as &str)
-                    .ok_or_else(|| InvalidValueSnafu { message: format!("key '{s}' not found in json") }.build())?
+                    .ok_or_else(|| {
+                        InvalidValueSnafu {
+                            message: format!("key '{s}' not found in json"),
+                        }
+                        .build()
+                    })?
                     .clone(),
                 DataValue::Num(i) => {
-                    let i = i
-                        .get_int()
-                        .ok_or_else(|| InvalidValueSnafu { message: format!("index '{i}' not found in json") }.build())?;
+                    let i = i.get_int().ok_or_else(|| {
+                        InvalidValueSnafu {
+                            message: format!("index '{i}' not found in json"),
+                        }
+                        .build()
+                    })?;
                     json.get(i as usize)
-                        .ok_or_else(|| InvalidValueSnafu { message: format!("index '{i}' not found in json") }.build())?
+                        .ok_or_else(|| {
+                            InvalidValueSnafu {
+                                message: format!("index '{i}' not found in json"),
+                            }
+                            .build()
+                        })?
                         .clone()
                 }
                 DataValue::List(l) => get_json_path_immutable(json, l)?.clone(),
-                _ => return TypeMismatchSnafu { op: "get", expected: "a string or integer as second argument" }.fail(),
+                _ => {
+                    return TypeMismatchSnafu {
+                        op: "get",
+                        expected: "a string or integer as second argument",
+                    }
+                    .fail();
+                }
             };
             let res = json2val(res);
             Ok(res)
         }
-        _ => return TypeMismatchSnafu { op: "get", expected: "a list or json as first argument" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "get",
+            expected: "a list or json as first argument",
+        }
+        .fail(),
     }
 }
 
@@ -1792,15 +2353,27 @@ pub(crate) fn op_maybe_get(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_SLICE, op_slice, 3, false);
 pub(crate) fn op_slice(args: &[DataValue]) -> Result<DataValue> {
-    let l = args[0]
-        .get_slice()
-        .ok_or_else(|| TypeMismatchSnafu { op: "slice", expected: "a list as first argument" }.build())?;
-    let m = args[1]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "slice", expected: "an integer as second argument" }.build())?;
-    let n = args[2]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "slice", expected: "an integer as third argument" }.build())?;
+    let l = args[0].get_slice().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "slice",
+            expected: "a list as first argument",
+        }
+        .build()
+    })?;
+    let m = args[1].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "slice",
+            expected: "an integer as second argument",
+        }
+        .build()
+    })?;
+    let n = args[2].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "slice",
+            expected: "an integer as third argument",
+        }
+        .build()
+    })?;
     let m = get_index(m, l.len(), false)?;
     let n = get_index(n, l.len(), true)?;
     Ok(DataValue::List(l[m..n].to_vec()))
@@ -1811,7 +2384,13 @@ pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(
         args[0]
             .get_str()
-            .ok_or_else(|| TypeMismatchSnafu { op: "chars", expected: "strings" }.build())?
+            .ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "chars",
+                    expected: "strings",
+                }
+                .build()
+            })?
             .chars()
             .map(|c| {
                 let mut s = CompactString::default();
@@ -1824,17 +2403,39 @@ pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
 
 define_op!(OP_SLICE_STRING, op_slice_string, 3, false);
 pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
-    let s = args[0]
-        .get_str()
-        .ok_or_else(|| TypeMismatchSnafu { op: "slice_string", expected: "a string as first argument" }.build())?;
-    let m = args[1]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "slice_string", expected: "an integer as second argument" }.build())?;
-    snafu::ensure!(m >= 0, InvalidValueSnafu { message: "second argument to 'slice_string' mut be a positive integer" });
-    let n = args[2]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "slice_string", expected: "an integer as third argument" }.build())?;
-    snafu::ensure!(n >= m, InvalidValueSnafu { message: "third argument to 'slice_string' mut be a positive integer greater than the second argument" });
+    let s = args[0].get_str().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "slice_string",
+            expected: "a string as first argument",
+        }
+        .build()
+    })?;
+    let m = args[1].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "slice_string",
+            expected: "an integer as second argument",
+        }
+        .build()
+    })?;
+    snafu::ensure!(
+        m >= 0,
+        InvalidValueSnafu {
+            message: "second argument to 'slice_string' mut be a positive integer"
+        }
+    );
+    let n = args[2].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "slice_string",
+            expected: "an integer as third argument",
+        }
+        .build()
+    })?;
+    snafu::ensure!(
+        n >= m,
+        InvalidValueSnafu {
+            message: "third argument to 'slice_string' mut be a positive integer greater than the second argument"
+        }
+    );
     Ok(DataValue::Str(
         s.chars().skip(m as usize).take((n - m) as usize).collect(),
     ))
@@ -1849,7 +2450,11 @@ pub(crate) fn op_from_substrings(args: &[DataValue]) -> Result<DataValue> {
                 if let DataValue::Str(s) = arg {
                     ret.push_str(s);
                 } else {
-                    return TypeMismatchSnafu { op: "from_substring", expected: "a list of strings" }.fail()
+                    return TypeMismatchSnafu {
+                        op: "from_substring",
+                        expected: "a list of strings",
+                    }
+                    .fail();
                 }
             }
         }
@@ -1858,11 +2463,21 @@ pub(crate) fn op_from_substrings(args: &[DataValue]) -> Result<DataValue> {
                 if let DataValue::Str(s) = arg {
                     ret.push_str(s);
                 } else {
-                    return TypeMismatchSnafu { op: "from_substring", expected: "a list of strings" }.fail()
+                    return TypeMismatchSnafu {
+                        op: "from_substring",
+                        expected: "a list of strings",
+                    }
+                    .fail();
                 }
             }
         }
-        _ => return TypeMismatchSnafu { op: "from_substring", expected: "a list of strings" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "from_substring",
+                expected: "a list of strings",
+            }
+            .fail();
+        }
     }
     Ok(DataValue::from(ret))
 }
@@ -1874,7 +2489,11 @@ pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
             let s = STANDARD.encode(b);
             Ok(DataValue::from(s))
         }
-        _ => return TypeMismatchSnafu { op: "encode_base64", expected: "bytes" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "encode_base64",
+            expected: "bytes",
+        }
+        .fail(),
     }
 }
 
@@ -1883,12 +2502,19 @@ define_op!(OP_DECODE_BASE64, op_decode_base64, 1, false);
 pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Str(s) => {
-            let b = STANDARD
-                .decode(s)
-                .map_err(|_| EncodingFailedSnafu { message: "Data is not properly encoded" }.build())?;
+            let b = STANDARD.decode(s).map_err(|_| {
+                EncodingFailedSnafu {
+                    message: "Data is not properly encoded",
+                }
+                .build()
+            })?;
             Ok(DataValue::Bytes(b))
         }
-        _ => return TypeMismatchSnafu { op: "decode_base64", expected: "strings" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "decode_base64",
+            expected: "strings",
+        }
+        .fail(),
     }
 }
 
@@ -1964,7 +2590,13 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
                 .into()
         }
         DataValue::Validity(vld) => DataValue::Num(Num::Int(vld.timestamp.0.0)),
-        v => return TypeMismatchSnafu { op: "to_int", expected: format!("recognized type, got {v:?}") }.fail(),
+        v => {
+            return TypeMismatchSnafu {
+                op: "to_int",
+                expected: format!("recognized type, got {v:?}"),
+            }
+            .fail();
+        }
     })
 }
 
@@ -1985,7 +2617,13 @@ pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
                 .map_err(|_| ParseFailedSnafu { target: "float" }.build())?
                 .into(),
         },
-        v => return TypeMismatchSnafu { op: "to_float", expected: format!("recognized type, got {v:?}") }.fail(),
+        v => {
+            return TypeMismatchSnafu {
+                op: "to_float",
+                expected: format!("recognized type, got {v:?}"),
+            }
+            .fail();
+        }
     })
 }
 
@@ -2012,10 +2650,21 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
         Some(DataValue::Str(s)) => match s as &str {
             "F32" | "Float" => VecElementType::F32,
             "F64" | "Double" => VecElementType::F64,
-            _ => return InvalidValueSnafu { message: format!("'vec' does not recognize type {s}") }.fail(),
+            _ => {
+                return InvalidValueSnafu {
+                    message: format!("'vec' does not recognize type {s}"),
+                }
+                .fail();
+            }
         },
         None => VecElementType::F32,
-        _ => return TypeMismatchSnafu { op: "vec", expected: "a string as second argument" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "vec",
+                expected: "a string as second argument",
+            }
+            .fail();
+        }
     };
 
     match &args[0] {
@@ -2026,9 +2675,13 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                     .axis_iter_mut(ndarray::Axis(0))
                     .zip(j.0.as_array().unwrap().iter())
                 {
-                    let f = el
-                        .as_f64()
-                        .ok_or_else(|| TypeMismatchSnafu { op: "vec", expected: "a list of numbers" }.build())?;
+                    let f = el.as_f64().ok_or_else(|| {
+                        TypeMismatchSnafu {
+                            op: "vec",
+                            expected: "a list of numbers",
+                        }
+                        .build()
+                    })?;
                     row.fill(f as f32);
                 }
                 Ok(DataValue::Vec(Vector::F32(res_arr)))
@@ -2039,9 +2692,13 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                     .axis_iter_mut(ndarray::Axis(0))
                     .zip(j.0.as_array().unwrap().iter())
                 {
-                    let f = el
-                        .as_f64()
-                        .ok_or_else(|| TypeMismatchSnafu { op: "vec", expected: "a list of numbers" }.build())?;
+                    let f = el.as_f64().ok_or_else(|| {
+                        TypeMismatchSnafu {
+                            op: "vec",
+                            expected: "a list of numbers",
+                        }
+                        .build()
+                    })?;
                     row.fill(f);
                 }
                 Ok(DataValue::Vec(Vector::F64(res_arr)))
@@ -2051,9 +2708,13 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             VecElementType::F32 => {
                 let mut res_arr = ndarray::Array1::zeros(l.len());
                 for (mut row, el) in res_arr.axis_iter_mut(ndarray::Axis(0)).zip(l.iter()) {
-                    let f = el
-                        .get_float()
-                        .ok_or_else(|| TypeMismatchSnafu { op: "vec", expected: "a list of numbers" }.build())?;
+                    let f = el.get_float().ok_or_else(|| {
+                        TypeMismatchSnafu {
+                            op: "vec",
+                            expected: "a list of numbers",
+                        }
+                        .build()
+                    })?;
                     row.fill(f as f32);
                 }
                 Ok(DataValue::Vec(Vector::F32(res_arr)))
@@ -2061,9 +2722,13 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             VecElementType::F64 => {
                 let mut res_arr = ndarray::Array1::zeros(l.len());
                 for (mut row, el) in res_arr.axis_iter_mut(ndarray::Axis(0)).zip(l.iter()) {
-                    let f = el
-                        .get_float()
-                        .ok_or_else(|| TypeMismatchSnafu { op: "vec", expected: "a list of numbers" }.build())?;
+                    let f = el.get_float().ok_or_else(|| {
+                        TypeMismatchSnafu {
+                            op: "vec",
+                            expected: "a list of numbers",
+                        }
+                        .build()
+                    })?;
                     row.fill(f);
                 }
                 Ok(DataValue::Vec(Vector::F64(res_arr)))
@@ -2080,9 +2745,12 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             }
         },
         DataValue::Str(s) => {
-            let bytes = STANDARD
-                .decode(s)
-                .map_err(|_| EncodingFailedSnafu { message: "Data is not base64 encoded" }.build())?;
+            let bytes = STANDARD.decode(s).map_err(|_| {
+                EncodingFailedSnafu {
+                    message: "Data is not base64 encoded",
+                }
+                .build()
+            })?;
             match t {
                 VecElementType::F32 => {
                     let f32_count = bytes.len() / mem::size_of::<f32>();
@@ -2152,23 +2820,42 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 }
             }
         }
-        _ => return TypeMismatchSnafu { op: "vec", expected: "a list or a vector" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "vec",
+            expected: "a list or a vector",
+        }
+        .fail(),
     }
 }
 
 define_op!(OP_RAND_VEC, op_rand_vec, 1, true);
 pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
-    let len = args[0]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "rand_vec", expected: "an integer" }.build())? as usize;
+    let len = args[0].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "rand_vec",
+            expected: "an integer",
+        }
+        .build()
+    })? as usize;
     let t = match args.get(1) {
         Some(DataValue::Str(s)) => match s as &str {
             "F32" | "Float" => VecElementType::F32,
             "F64" | "Double" => VecElementType::F64,
-            _ => return InvalidValueSnafu { message: format!("'vec' does not recognize type {s}") }.fail(),
+            _ => {
+                return InvalidValueSnafu {
+                    message: format!("'vec' does not recognize type {s}"),
+                }
+                .fail();
+            }
         },
         None => VecElementType::F32,
-        _ => return TypeMismatchSnafu { op: "vec", expected: "a string as second argument" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "vec",
+                expected: "a string as second argument",
+            }
+            .fail();
+        }
     };
 
     let mut rng = rand::rng();
@@ -2202,7 +2889,11 @@ pub(crate) fn op_l2_normalize(args: &[DataValue]) -> Result<DataValue> {
             let norm = a.dot(a).sqrt();
             Ok(DataValue::Vec(Vector::F64(a / norm)))
         }
-        _ => return TypeMismatchSnafu { op: "l2_normalize", expected: "a vector" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "l2_normalize",
+            expected: "a vector",
+        }
+        .fail(),
     }
 }
 
@@ -2213,19 +2904,31 @@ pub(crate) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
     match (a, b) {
         (DataValue::Vec(Vector::F32(a)), DataValue::Vec(Vector::F32(b))) => {
             if a.len() != b.len() {
-                return TypeMismatchSnafu { op: "l2_dist", expected: "two vectors of the same length" }.fail();
+                return TypeMismatchSnafu {
+                    op: "l2_dist",
+                    expected: "two vectors of the same length",
+                }
+                .fail();
             }
             let diff = a - b;
             Ok(DataValue::from(diff.dot(&diff) as f64))
         }
         (DataValue::Vec(Vector::F64(a)), DataValue::Vec(Vector::F64(b))) => {
             if a.len() != b.len() {
-                return TypeMismatchSnafu { op: "l2_dist", expected: "two vectors of the same length" }.fail();
+                return TypeMismatchSnafu {
+                    op: "l2_dist",
+                    expected: "two vectors of the same length",
+                }
+                .fail();
             }
             let diff = a - b;
             Ok(DataValue::from(diff.dot(&diff)))
         }
-        _ => return TypeMismatchSnafu { op: "l2_dist", expected: "two vectors of the same type" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "l2_dist",
+            expected: "two vectors of the same type",
+        }
+        .fail(),
     }
 }
 
@@ -2236,19 +2939,31 @@ pub(crate) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
     match (a, b) {
         (DataValue::Vec(Vector::F32(a)), DataValue::Vec(Vector::F32(b))) => {
             if a.len() != b.len() {
-                return TypeMismatchSnafu { op: "ip_dist", expected: "two vectors of the same length" }.fail();
+                return TypeMismatchSnafu {
+                    op: "ip_dist",
+                    expected: "two vectors of the same length",
+                }
+                .fail();
             }
             let dot = a.dot(b);
             Ok(DataValue::from(1. - dot as f64))
         }
         (DataValue::Vec(Vector::F64(a)), DataValue::Vec(Vector::F64(b))) => {
             if a.len() != b.len() {
-                return TypeMismatchSnafu { op: "ip_dist", expected: "two vectors of the same length" }.fail();
+                return TypeMismatchSnafu {
+                    op: "ip_dist",
+                    expected: "two vectors of the same length",
+                }
+                .fail();
             }
             let dot = a.dot(b);
             Ok(DataValue::from(1. - dot))
         }
-        _ => return TypeMismatchSnafu { op: "ip_dist", expected: "two vectors of the same type" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "ip_dist",
+            expected: "two vectors of the same type",
+        }
+        .fail(),
     }
 }
 
@@ -2259,7 +2974,11 @@ pub(crate) fn op_cos_dist(args: &[DataValue]) -> Result<DataValue> {
     match (a, b) {
         (DataValue::Vec(Vector::F32(a)), DataValue::Vec(Vector::F32(b))) => {
             if a.len() != b.len() {
-                return TypeMismatchSnafu { op: "cos_dist", expected: "two vectors of the same length" }.fail();
+                return TypeMismatchSnafu {
+                    op: "cos_dist",
+                    expected: "two vectors of the same length",
+                }
+                .fail();
             }
             let a_norm = a.dot(a) as f64;
             let b_norm = b.dot(b) as f64;
@@ -2268,14 +2987,22 @@ pub(crate) fn op_cos_dist(args: &[DataValue]) -> Result<DataValue> {
         }
         (DataValue::Vec(Vector::F64(a)), DataValue::Vec(Vector::F64(b))) => {
             if a.len() != b.len() {
-                return TypeMismatchSnafu { op: "cos_dist", expected: "two vectors of the same length" }.fail();
+                return TypeMismatchSnafu {
+                    op: "cos_dist",
+                    expected: "two vectors of the same length",
+                }
+                .fail();
             }
             let a_norm = a.dot(a);
             let b_norm = b.dot(b);
             let dot = a.dot(b);
             Ok(DataValue::from(1. - dot / (a_norm * b_norm).sqrt()))
         }
-        _ => return TypeMismatchSnafu { op: "cos_dist", expected: "two vectors of the same type" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "cos_dist",
+            expected: "two vectors of the same type",
+        }
+        .fail(),
     }
 }
 
@@ -2283,30 +3010,54 @@ define_op!(OP_INT_RANGE, op_int_range, 1, true);
 pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
     let [start, end] = match args.len() {
         1 => {
-            let end = args[0]
-                .get_int()
-                .ok_or_else(|| TypeMismatchSnafu { op: "int_range", expected: "an integer for end" }.build())?;
+            let end = args[0].get_int().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "int_range",
+                    expected: "an integer for end",
+                }
+                .build()
+            })?;
             [0, end]
         }
         2 => {
-            let start = args[0]
-                .get_int()
-                .ok_or_else(|| TypeMismatchSnafu { op: "int_range", expected: "an integer for start" }.build())?;
-            let end = args[1]
-                .get_int()
-                .ok_or_else(|| TypeMismatchSnafu { op: "int_range", expected: "an integer for end" }.build())?;
+            let start = args[0].get_int().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "int_range",
+                    expected: "an integer for start",
+                }
+                .build()
+            })?;
+            let end = args[1].get_int().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "int_range",
+                    expected: "an integer for end",
+                }
+                .build()
+            })?;
             [start, end]
         }
         3 => {
-            let start = args[0]
-                .get_int()
-                .ok_or_else(|| TypeMismatchSnafu { op: "int_range", expected: "an integer for start" }.build())?;
-            let end = args[1]
-                .get_int()
-                .ok_or_else(|| TypeMismatchSnafu { op: "int_range", expected: "an integer for end" }.build())?;
-            let step = args[2]
-                .get_int()
-                .ok_or_else(|| TypeMismatchSnafu { op: "int_range", expected: "an integer for step" }.build())?;
+            let start = args[0].get_int().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "int_range",
+                    expected: "an integer for start",
+                }
+                .build()
+            })?;
+            let end = args[1].get_int().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "int_range",
+                    expected: "an integer for end",
+                }
+                .build()
+            })?;
+            let step = args[2].get_int().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "int_range",
+                    expected: "an integer for step",
+                }
+                .build()
+            })?;
             let mut current = start;
             let mut result = vec![];
             if step > 0 {
@@ -2322,7 +3073,13 @@ pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
             }
             return Ok(DataValue::List(result));
         }
-        _ => return TypeMismatchSnafu { op: "int_range", expected: "1 to 3 argument" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "int_range",
+                expected: "1 to 3 argument",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::List((start..end).map(DataValue::from).collect()))
 }
@@ -2337,22 +3094,41 @@ pub(crate) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
     let prob = match &args[0] {
         DataValue::Num(n) => {
             let f = n.get_float();
-            snafu::ensure!((0. ..=1.).contains(&f), InvalidValueSnafu { message: "'rand_bernoulli' requires number between 0. and 1." });
+            snafu::ensure!(
+                (0. ..=1.).contains(&f),
+                InvalidValueSnafu {
+                    message: "'rand_bernoulli' requires number between 0. and 1."
+                }
+            );
             f
         }
-        _ => return TypeMismatchSnafu { op: "rand_bernoulli", expected: "number between 0. and 1." }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "rand_bernoulli",
+                expected: "number between 0. and 1.",
+            }
+            .fail();
+        }
     };
     Ok(DataValue::from(rand::rng().random_bool(prob)))
 }
 
 define_op!(OP_RAND_INT, op_rand_int, 2, false);
 pub(crate) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
-    let lower = &args[0]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "rand_int", expected: "integers" }.build())?;
-    let upper = &args[1]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "rand_int", expected: "integers" }.build())?;
+    let lower = &args[0].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "rand_int",
+            expected: "integers",
+        }
+        .build()
+    })?;
+    let upper = &args[1].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "rand_int",
+            expected: "integers",
+        }
+        .build()
+    })?;
     Ok(rand::rng().random_range(*lower..=*upper).into())
 }
 
@@ -2370,7 +3146,11 @@ pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
             .cloned()
             .cloned()
             .unwrap_or(DataValue::Null)),
-        _ => return TypeMismatchSnafu { op: "rand_choice", expected: "lists" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "rand_choice",
+            expected: "lists",
+        }
+        .fail(),
     }
 }
 
@@ -2378,7 +3158,10 @@ define_op!(OP_ASSERT, op_assert, 1, true);
 pub(crate) fn op_assert(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Bool(true) => Ok(DataValue::from(true)),
-        _ => return AssertionFailedSnafu { message: format!("{args:?}") }.fail(),
+        _ => AssertionFailedSnafu {
+            message: format!("{args:?}"),
+        }
+        .fail(),
     }
 }
 
@@ -2397,7 +3180,13 @@ pub(crate) fn op_union(args: &[DataValue]) -> Result<DataValue> {
                     ret.insert(el.clone());
                 }
             }
-            _ => return TypeMismatchSnafu { op: "union", expected: "lists" }.fail(),
+            _ => {
+                return TypeMismatchSnafu {
+                    op: "union",
+                    expected: "lists",
+                }
+                .fail();
+            }
         }
     }
     Ok(DataValue::List(ret.into_iter().collect()))
@@ -2408,7 +3197,13 @@ pub(crate) fn op_difference(args: &[DataValue]) -> Result<DataValue> {
     let mut start: BTreeSet<_> = match &args[0] {
         DataValue::List(l) => l.iter().cloned().collect(),
         DataValue::Set(s) => s.iter().cloned().collect(),
-        _ => return TypeMismatchSnafu { op: "difference", expected: "lists" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "difference",
+                expected: "lists",
+            }
+            .fail();
+        }
     };
     for arg in &args[1..] {
         match arg {
@@ -2422,7 +3217,13 @@ pub(crate) fn op_difference(args: &[DataValue]) -> Result<DataValue> {
                     start.remove(el);
                 }
             }
-            _ => return TypeMismatchSnafu { op: "difference", expected: "lists" }.fail(),
+            _ => {
+                return TypeMismatchSnafu {
+                    op: "difference",
+                    expected: "lists",
+                }
+                .fail();
+            }
         }
     }
     Ok(DataValue::List(start.into_iter().collect()))
@@ -2433,7 +3234,13 @@ pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
     let mut start: BTreeSet<_> = match &args[0] {
         DataValue::List(l) => l.iter().cloned().collect(),
         DataValue::Set(s) => s.iter().cloned().collect(),
-        _ => return TypeMismatchSnafu { op: "intersection", expected: "lists" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "intersection",
+                expected: "lists",
+            }
+            .fail();
+        }
     };
     for arg in &args[1..] {
         match arg {
@@ -2442,7 +3249,13 @@ pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
                 start = start.intersection(&other).cloned().collect();
             }
             DataValue::Set(s) => start = start.intersection(s).cloned().collect(),
-            _ => return TypeMismatchSnafu { op: "intersection", expected: "lists" }.fail(),
+            _ => {
+                return TypeMismatchSnafu {
+                    op: "intersection",
+                    expected: "lists",
+                }
+                .fail();
+            }
         }
     }
     Ok(DataValue::List(start.into_iter().collect()))
@@ -2454,10 +3267,15 @@ pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         d @ DataValue::Uuid(_u) => Ok(d.clone()),
         DataValue::Str(s) => {
-            let id = uuid::Uuid::try_parse(s).map_err(|_| ParseFailedSnafu { target: "UUID" }.build())?;
+            let id = uuid::Uuid::try_parse(s)
+                .map_err(|_| ParseFailedSnafu { target: "UUID" }.build())?;
             Ok(DataValue::uuid(id))
         }
-        _ => return TypeMismatchSnafu { op: "to_uuid", expected: "a string" }.fail(),
+        _ => TypeMismatchSnafu {
+            op: "to_uuid",
+            expected: "a string",
+        }
+        .fail(),
     }
 }
 
@@ -2500,21 +3318,37 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let millis = match &args[0] {
         DataValue::Validity(vld) => vld.timestamp.0.0 / 1000,
         v => {
-            let f = v
-                .get_float()
-                .ok_or_else(|| TypeMismatchSnafu { op: "format_timestamp", expected: "a number" }.build())?;
+            let f = v.get_float().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "format_timestamp",
+                    expected: "a number",
+                }
+                .build()
+            })?;
             (f * 1000.) as i64
         }
     };
-    let ts =
-        jiff::Timestamp::from_millisecond(millis).map_err(|_| BadTimeSnafu { message: format!("bad time: {}", &args[0]) }.build())?;
+    let ts = jiff::Timestamp::from_millisecond(millis).map_err(|_| {
+        BadTimeSnafu {
+            message: format!("bad time: {}", &args[0]),
+        }
+        .build()
+    })?;
     match args.get(1) {
         Some(tz_v) => {
             let tz_s = tz_v.get_str().ok_or_else(|| {
-                TypeMismatchSnafu { op: "format_timestamp", expected: "a string for timezone specification" }.build()
+                TypeMismatchSnafu {
+                    op: "format_timestamp",
+                    expected: "a string for timezone specification",
+                }
+                .build()
             })?;
-            let tz = jiff::tz::TimeZone::get(tz_s)
-                .map_err(|_| BadTimeSnafu { message: format!("bad timezone specification: {tz_s}") }.build())?;
+            let tz = jiff::tz::TimeZone::get(tz_s).map_err(|_| {
+                BadTimeSnafu {
+                    message: format!("bad timezone specification: {tz_s}"),
+                }
+                .build()
+            })?;
             let zoned = ts.to_zoned(tz);
             let s = CompactString::from(zoned.to_string());
             Ok(DataValue::Str(s))
@@ -2529,10 +3363,19 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
 define_op!(OP_PARSE_TIMESTAMP, op_parse_timestamp, 1, false);
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
-    let s = args[0]
-        .get_str()
-        .ok_or_else(|| TypeMismatchSnafu { op: "parse_timestamp", expected: "a string" }.build())?;
-    let ts: jiff::Timestamp = s.parse().map_err(|_| BadTimeSnafu { message: format!("bad datetime: {s}") }.build())?;
+    let s = args[0].get_str().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "parse_timestamp",
+            expected: "a string",
+        }
+        .build()
+    })?;
+    let ts: jiff::Timestamp = s.parse().map_err(|_| {
+        BadTimeSnafu {
+            message: format!("bad datetime: {s}"),
+        }
+        .build()
+    })?;
     Ok(DataValue::from(
         ts.as_second() as f64 + ts.subsec_nanosecond() as f64 / 1e9,
     ))
@@ -2540,7 +3383,12 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn str2vld(s: &str) -> Result<ValidityTs> {
-    let ts: jiff::Timestamp = s.parse().map_err(|_| BadTimeSnafu { message: format!("bad datetime: {s}") }.build())?;
+    let ts: jiff::Timestamp = s.parse().map_err(|_| {
+        BadTimeSnafu {
+            message: format!("bad datetime: {s}"),
+        }
+        .build()
+    })?;
     Ok(ValidityTs(Reverse(ts.as_microsecond())))
 }
 
@@ -2584,21 +3432,35 @@ pub(crate) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
                 s.into()
             }
         },
-        _ => return TypeMismatchSnafu { op: "uuid_timestamp", expected: "a UUID" }.fail(),
+        _ => {
+            return TypeMismatchSnafu {
+                op: "uuid_timestamp",
+                expected: "a UUID",
+            }
+            .fail();
+        }
     })
 }
 
 define_op!(OP_VALIDITY, op_validity, 1, true);
 pub(crate) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
-    let ts = args[0]
-        .get_int()
-        .ok_or_else(|| TypeMismatchSnafu { op: "validity", expected: "an integer" }.build())?;
+    let ts = args[0].get_int().ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "validity",
+            expected: "an integer",
+        }
+        .build()
+    })?;
     let is_assert = if args.len() == 1 {
         true
     } else {
-        args[1]
-            .get_bool()
-            .ok_or_else(|| TypeMismatchSnafu { op: "validity", expected: "a boolean as second argument" }.build())?
+        args[1].get_bool().ok_or_else(|| {
+            TypeMismatchSnafu {
+                op: "validity",
+                expected: "a boolean as second argument",
+            }
+            .build()
+        })?
     };
     Ok(DataValue::Validity(Validity {
         timestamp: ValidityTs(Reverse(ts)),

@@ -72,7 +72,7 @@ pub fn eval_bytecode_pred(
     bytecodes: &[Bytecode],
     bindings: impl AsRef<[DataValue]>,
     stack: &mut Vec<DataValue>,
-    span: SourceSpan,
+    _span: SourceSpan,
 ) -> Result<bool> {
     match eval_bytecode(bytecodes, bindings, stack)? {
         DataValue::Bool(b) => Ok(b),
@@ -108,12 +108,7 @@ pub fn eval_bytecode(
                         .as_ref()
                         .get(*i)
                         .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                            tuple_too_short_err(
-                                &var.name,
-                                *i,
-                                bindings.as_ref().len(),
-                            )
-                            .into()
+                            tuple_too_short_err(&var.name, *i, bindings.as_ref().len()).into()
                         })?
                         .clone();
                     stack.push(val);
@@ -134,14 +129,16 @@ pub fn eval_bytecode(
             }
             Bytecode::JumpIfFalse { jump_to, span: _ } => {
                 let val = stack.pop().unwrap();
-                let cond = val.get_bool().ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                    TypeMismatchSnafu {
-                        op: "predicate evaluation".to_string(),
-                        expected: format!("a boolean value, got {:?}", val),
-                    }
-                    .build()
-                    .into()
-                })?;
+                let cond =
+                    val.get_bool()
+                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                            TypeMismatchSnafu {
+                                op: "predicate evaluation".to_string(),
+                                expected: format!("a boolean value, got {:?}", val),
+                            }
+                            .build()
+                            .into()
+                        })?;
                 if cond {
                     pointer += 1;
                 } else {
@@ -460,19 +457,12 @@ impl Expr {
     pub(crate) fn eval(&self, bindings: impl AsRef<[DataValue]>) -> Result<DataValue> {
         match self {
             Expr::Binding { var, tuple_pos, .. } => match tuple_pos {
-                None => {
-                    Err(unbound_variable_err(&var.name).into())
-                }
+                None => Err(unbound_variable_err(&var.name).into()),
                 Some(i) => Ok(bindings
                     .as_ref()
                     .get(*i)
                     .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                        tuple_too_short_err(
-                            &var.name,
-                            *i,
-                            bindings.as_ref().len(),
-                        )
-                        .into()
+                        tuple_too_short_err(&var.name, *i, bindings.as_ref().len()).into()
                     })?
                     .clone()),
             },
@@ -504,9 +494,7 @@ impl Expr {
                 }
                 Ok(DataValue::Null)
             }
-            Expr::UnboundApply { op, .. } => {
-                Err(no_implementation_err(op).into())
-            }
+            Expr::UnboundApply { op, .. } => Err(no_implementation_err(op).into()),
         }
     }
     pub(crate) fn extract_bound(&self, target: &Symbol) -> Result<ValueRange> {
@@ -647,7 +635,7 @@ impl Expr {
                                     message: format!("Invalid field element: {}", field),
                                 }
                                 .build()
-                                .into())
+                                .into());
                             }
                         }
                     }
