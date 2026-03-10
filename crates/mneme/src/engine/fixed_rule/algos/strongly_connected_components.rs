@@ -122,7 +122,7 @@ impl TarjanSccG {
         self.id += 1;
         self.ids[at as usize] = Some(self.id);
         self.low[at as usize] = self.id;
-        for to in self.graph.out_neighbors(at).cloned().collect_vec() {
+        for to in self.graph.out_neighbors(at).collect_vec() {
             if self.ids[to as usize].is_none() {
                 self.dfs(to);
             }
