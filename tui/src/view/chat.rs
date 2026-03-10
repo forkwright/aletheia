@@ -38,8 +38,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) ->
         .map(|a| a.name_lower.as_str())
         .unwrap_or("assistant");
 
-    // --- Virtual scroll: determine which messages to render ---
-    //
     // When filter is active, we fall back to iterating all messages (filter changes
     // the visible set dynamically). For the non-filtered common path, we use the
     // VirtualScroll prefix-sum index for O(log n) range lookup.

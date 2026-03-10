@@ -635,10 +635,6 @@ pub async fn events(
     )
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
 /// Emit turn result as individual SSE events to a single client channel.
 ///
 /// Each SSE endpoint serves exactly one client — there is no multi-subscriber
@@ -741,8 +737,6 @@ async fn find_session(
 
     session.ok_or_else(|| SessionNotFoundSnafu { id: id_for_error }.build())
 }
-
-// --- Request/Response types ---
 
 /// Body for `POST /api/v1/sessions`.
 #[derive(Debug, Deserialize, ToSchema)]

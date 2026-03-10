@@ -112,8 +112,6 @@ pub async fn tools(
     Ok(Json(ToolsResponse { tools }))
 }
 
-// --- Response types ---
-
 /// Response listing all registered nous agents.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NousListResponse {

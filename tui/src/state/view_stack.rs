@@ -1,7 +1,4 @@
 //! Stack-based navigation for hierarchical view drill-in/drill-out.
-//!
-//! Enter pushes a detail view onto the stack, Esc pops back.
-//! The stack always has at least one element (Home).
 
 use crate::id::{NousId, SessionId};
 

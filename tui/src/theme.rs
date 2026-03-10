@@ -20,48 +20,39 @@ pub enum ColorDepth {
     reason = "palette fields are the complete semantic color set"
 )]
 pub struct ThemePalette {
-    // --- Surface colors ---
     pub bg: Color,
     pub surface: Color,
     pub surface_bright: Color,
     pub surface_dim: Color,
 
-    // --- Text ---
     pub fg: Color,
     pub fg_muted: Color,
     pub fg_dim: Color,
 
-    // --- Accent ---
     pub accent: Color,
     pub accent_dim: Color,
 
-    // --- Semantic ---
     pub success: Color,
     pub warning: Color,
     pub error: Color,
     pub info: Color,
 
-    // --- Agent role colors ---
     pub user: Color,
     pub assistant: Color,
     pub system: Color,
 
-    // --- Interactive ---
     pub selected: Color,
     pub border: Color,
     pub border_focused: Color,
     pub separator: Color,
 
-    // --- Code ---
     pub code_fg: Color,
     pub code_bg: Color,
     pub code_lang: Color,
 
-    // --- Thinking ---
     pub thinking: Color,
     pub thinking_border: Color,
 
-    // --- Status ---
     pub spinner: Color,
     pub idle: Color,
     pub streaming: Color,
@@ -216,8 +207,6 @@ impl ThemePalette {
             depth: ColorDepth::Basic,
         }
     }
-
-    // --- Convenience style constructors ---
 
     pub fn style_fg(&self) -> Style {
         Style::default().fg(self.fg)

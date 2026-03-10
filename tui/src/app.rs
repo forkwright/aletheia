@@ -30,8 +30,6 @@ pub use crate::state::{
     TabCompletion, ToolApprovalOverlay, ToolCallInfo, View, ViewStack,
 };
 
-// --- App ---
-
 pub struct App {
     pub config: Config,
     pub client: ApiClient,
@@ -377,8 +375,6 @@ impl App {
         }
     }
 
-    // --- Event source management (take/restore pattern for borrow checker) ---
-
     #[tracing::instrument(skip_all)]
     pub fn take_sse(&mut self) -> Option<SseConnection> {
         self.sse.take()
@@ -399,14 +395,10 @@ impl App {
         self.stream_rx = rx;
     }
 
-    // --- State update ---
-
     #[tracing::instrument(skip_all)]
     pub async fn update(&mut self, msg: Msg) {
         crate::update::update(self, msg).await;
     }
-
-    // --- Tab state management ---
 
     /// Save current app state into the active tab.
     pub(crate) fn save_to_active_tab(&mut self) {
@@ -485,8 +477,6 @@ impl App {
         self.tab_bar.clear_active_unread();
         self.restore_from_active_tab();
     }
-
-    // --- View ---
 
     #[tracing::instrument(skip_all)]
     pub fn view(&self, frame: &mut Frame) -> Vec<OscLink> {

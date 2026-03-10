@@ -160,8 +160,6 @@ pub struct TimelineResponse {
     pub events: Vec<TimelineEvent>,
 }
 
-// --- Handlers ---
-
 /// GET /api/v1/knowledge/facts
 ///
 /// List facts with sorting, filtering, and pagination.
@@ -392,8 +390,6 @@ pub async fn timeline(
     events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
     Ok(Json(TimelineResponse { events }))
 }
-
-// --- Internal helpers ---
 
 fn get_stored_facts(
     _state: &AppState,
