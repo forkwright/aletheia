@@ -281,6 +281,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 /// Uses HNSW vector search with cosine distance ≤ 0.28 (similarity ≥ 0.72),
 /// filtered to currently valid facts for the given nous.
 #[cfg(feature = "mneme-engine")]
+#[expect(clippy::cast_possible_wrap, reason = "MAX_CANDIDATES = 5, always fits in i64")]
 pub(crate) fn retrieve_candidates(
     store: &crate::knowledge_store::KnowledgeStore,
     fact: &FactForConflictCheck,
@@ -352,7 +353,7 @@ pub(crate) fn retrieve_candidates(
                 .and_then(|v| v.get_str())
                 .unwrap_or("")
                 .to_owned();
-            let confidence = row.get(2).and_then(|v| v.get_float()).unwrap_or(0.0);
+            let confidence = row.get(2).and_then(DataValue::get_float).unwrap_or(0.0);
             let tier_str = row.get(3).and_then(|v| v.get_str()).unwrap_or("assumed");
             let tier = match tier_str {
                 "verified" => EpistemicTier::Verified,
@@ -380,7 +381,7 @@ pub(crate) fn retrieve_candidates(
 // ---------------------------------------------------------------------------
 
 /// Build the classification prompt for the LLM.
-#[cfg(any(feature = "mneme-engine", test))]
+#[cfg(test)]
 fn build_classification_prompt(
     existing_content: &str,
     existing_confidence: f64,
@@ -524,7 +525,7 @@ pub(crate) fn resolve_action(
 /// Phase 3: LLM classification
 /// Phase 4: Action resolution
 #[cfg(feature = "mneme-engine")]
-pub(crate) fn detect_conflicts(
+pub fn detect_conflicts(
     facts: Vec<FactForConflictCheck>,
     store: &crate::knowledge_store::KnowledgeStore,
     nous_id: &str,

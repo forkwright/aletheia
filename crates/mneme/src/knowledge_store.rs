@@ -503,7 +503,7 @@ impl KnowledgeStore {
                 old_fact
                     .last_accessed_at
                     .as_ref()
-                    .map(|t| format_timestamp(t))
+                    .map(format_timestamp)
                     .unwrap_or_default()
                     .into(),
             ),
