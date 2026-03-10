@@ -85,4 +85,5 @@ hf-hub = { version = "0.5", optional = true, default-features = false, features 
 static_assertions = { workspace = true }
 tempfile = "3"
 proptest = { workspace = true }
+tokio = { workspace = true }
 tracing-subscriber = { workspace = true }

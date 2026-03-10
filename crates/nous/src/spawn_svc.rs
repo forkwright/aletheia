@@ -203,15 +203,24 @@ mod tests {
     }
 
     impl LlmProvider for MockProvider {
-        fn complete(
-            &self,
-            _request: &CompletionRequest,
-        ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-            #[expect(
-                clippy::expect_used,
-                reason = "test mock: poisoned lock means a test bug"
-            )]
-            Ok(self.response.lock().expect("lock poisoned").clone())
+        fn complete<'a>(
+            &'a self,
+            _request: &'a CompletionRequest,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
+                    > + Send
+                    + 'a,
+            >,
+        > {
+            Box::pin(async {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "test mock: poisoned lock means a test bug"
+                )]
+                Ok(self.response.lock().expect("lock poisoned").clone())
+            })
         }
 
         fn supported_models(&self) -> &[&str] {
@@ -327,20 +336,29 @@ mod tests {
     struct SlowProvider;
 
     impl LlmProvider for SlowProvider {
-        fn complete(
-            &self,
-            _request: &CompletionRequest,
-        ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-            std::thread::sleep(std::time::Duration::from_secs(5));
-            Ok(CompletionResponse {
-                id: "slow".to_owned(),
-                model: "claude-sonnet-4-20250514".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![ContentBlock::Text {
-                    text: "late".to_owned(),
-                    citations: None,
-                }],
-                usage: Usage::default(),
+        fn complete<'a>(
+            &'a self,
+            _request: &'a CompletionRequest,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
+                    > + Send
+                    + 'a,
+            >,
+        > {
+            Box::pin(async {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                Ok(CompletionResponse {
+                    id: "slow".to_owned(),
+                    model: "claude-sonnet-4-20250514".to_owned(),
+                    stop_reason: StopReason::EndTurn,
+                    content: vec![ContentBlock::Text {
+                        text: "late".to_owned(),
+                        citations: None,
+                    }],
+                    usage: Usage::default(),
+                })
             })
         }
 

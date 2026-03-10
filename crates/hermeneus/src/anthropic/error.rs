@@ -1,6 +1,6 @@
 //! Anthropic API error mapping to hermeneus error variants.
 
-use reqwest::blocking::Response;
+use reqwest::Response;
 use snafu::ResultExt;
 
 use super::wire::WireErrorResponse;
@@ -9,15 +9,16 @@ use crate::error::{self, Result};
 /// Map an HTTP response with a non-success status to a hermeneus error.
 ///
 /// Consumes the response body to extract the Anthropic error detail.
-pub(crate) fn map_error_response(response: Response) -> error::Error {
+pub(crate) async fn map_error_response(response: Response) -> error::Error {
     let status = response.status().as_u16();
     let retry_after_ms = extract_retry_after(&response);
 
-    let detail = response
-        .text()
-        .ok()
-        .and_then(|body| serde_json::from_str::<WireErrorResponse>(&body).ok())
-        .map(|e| e.error.message);
+    let detail = match response.text().await.ok() {
+        Some(body) => serde_json::from_str::<WireErrorResponse>(&body)
+            .ok()
+            .map(|e| e.error.message),
+        None => None,
+    };
 
     let message = detail.unwrap_or_else(|| format!("HTTP {status}"));
 
