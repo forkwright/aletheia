@@ -62,6 +62,8 @@ pub struct NousActor {
     /// Skill loader for per-turn skill injection. None when knowledge-store is disabled.
     #[cfg(feature = "knowledge-store")]
     skill_loader: Option<crate::skills::SkillLoader>,
+    /// Candidate tracker for skill auto-capture pipeline.
+    candidate_tracker: Arc<aletheia_mneme::skills::CandidateTracker>,
 }
 
 impl NousActor {
@@ -116,6 +118,7 @@ impl NousActor {
             extra_bootstrap,
             #[cfg(feature = "knowledge-store")]
             skill_loader,
+            candidate_tracker: Arc::new(aletheia_mneme::skills::CandidateTracker::new()),
         }
     }
 
@@ -238,6 +241,7 @@ impl NousActor {
 
         if let Ok(ref turn_result) = result {
             self.maybe_spawn_extraction(&content, &turn_result.content);
+            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &session_key);
             self.maybe_spawn_distillation(&session_key).await;
         }
 
@@ -274,6 +278,7 @@ impl NousActor {
 
         if let Ok(ref turn_result) = result {
             self.maybe_spawn_extraction(&content, &turn_result.content);
+            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &session_key);
             self.maybe_spawn_distillation(&session_key).await;
         }
 
@@ -462,6 +467,94 @@ impl NousActor {
         );
     }
 
+    /// Analyze tool calls from the completed turn for skill auto-capture.
+    ///
+    /// Converts the turn's tool calls to mneme's [`ToolCallRecord`] format,
+    /// runs them through the heuristic filter and candidate tracker, and
+    /// spawns LLM extraction if a candidate is promoted (Rule of Three).
+    fn maybe_spawn_skill_analysis(
+        &self,
+        tool_calls: &[crate::pipeline::ToolCall],
+        session_key: &str,
+    ) {
+        use aletheia_mneme::skills::{ToolCallRecord, TrackResult};
+
+        if tool_calls.is_empty() {
+            return;
+        }
+
+        // Convert pipeline ToolCalls to mneme ToolCallRecords
+        let records: Vec<ToolCallRecord> = tool_calls
+            .iter()
+            .map(|tc| {
+                if tc.is_error {
+                    ToolCallRecord::errored(&tc.name, tc.duration_ms)
+                } else {
+                    ToolCallRecord::new(&tc.name, tc.duration_ms)
+                }
+            })
+            .collect();
+
+        let nous_id = self.id.clone();
+        let result = self
+            .candidate_tracker
+            .track_sequence(&records, session_key, &nous_id);
+
+        match result {
+            TrackResult::Rejected => {
+                debug!("skill analysis: sequence rejected by heuristic filter");
+            }
+            TrackResult::New => {
+                info!("skill analysis: new candidate tracked");
+            }
+            TrackResult::Tracked(count) => {
+                info!(count, "skill analysis: candidate recurrence updated");
+            }
+            TrackResult::Promoted(candidate_id) => {
+                info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning LLM extraction");
+                self.spawn_skill_extraction(&candidate_id, &records);
+            }
+        }
+    }
+
+    /// Spawn background LLM extraction for a promoted skill candidate.
+    fn spawn_skill_extraction(
+        &self,
+        candidate_id: &str,
+        tool_calls: &[aletheia_mneme::skills::ToolCallRecord],
+    ) {
+        let Some(ref extraction_config) = self.pipeline_config.extraction else {
+            return;
+        };
+
+        // Use the extraction model (Haiku) for cost-effective skill extraction
+        let model = extraction_config.model.clone();
+        let providers = Arc::clone(&self.providers);
+        let nous_id = self.id.clone();
+        let candidate_id = candidate_id.to_owned();
+        let tool_calls = tool_calls.to_vec();
+        let tracker = Arc::clone(&self.candidate_tracker);
+        #[cfg(feature = "knowledge-store")]
+        let knowledge_store = self.knowledge_store.clone();
+        let span = tracing::info_span!("skill_extraction", nous.id = %nous_id, candidate.id = %candidate_id);
+
+        tokio::spawn(
+            async move {
+                run_skill_extraction(
+                    &model,
+                    providers,
+                    &nous_id,
+                    &candidate_id,
+                    &tool_calls,
+                    &tracker,
+                    #[cfg(feature = "knowledge-store")]
+                    knowledge_store.as_ref(),
+                );
+            }
+            .instrument(span),
+        );
+    }
+
     async fn maybe_spawn_distillation(&self, session_key: &str) {
         let Some(ref store_arc) = self.session_store else {
             return;
@@ -524,7 +617,10 @@ impl NousActor {
     // intentional; the function stays async so callers can `.await` uniformly.
     #[cfg_attr(
         not(feature = "knowledge-store"),
-        expect(clippy::unused_async, reason = "await compiled away without knowledge-store feature")
+        expect(
+            clippy::unused_async,
+            reason = "await compiled away without knowledge-store feature"
+        )
     )]
     async fn resolve_skill_sections(&self, content: &str) -> Vec<BootstrapSection> {
         #[cfg(feature = "knowledge-store")]
@@ -532,11 +628,7 @@ impl NousActor {
             if let Some(ref loader) = self.skill_loader {
                 let task_context = crate::skills::extract_task_context(content);
                 return loader
-                    .resolve_skills(
-                        &self.id,
-                        &task_context,
-                        crate::skills::DEFAULT_MAX_SKILLS,
-                    )
+                    .resolve_skills(&self.id, &task_context, crate::skills::DEFAULT_MAX_SKILLS)
                     .await;
             }
         }
@@ -634,6 +726,126 @@ fn run_extraction(
         }
         Err(e) => {
             warn!(nous_id = %nous_id, error = %e, "extraction failed");
+        }
+    }
+}
+
+/// Run LLM skill extraction as a background task. Logs results, never panics.
+fn run_skill_extraction(
+    model: &str,
+    providers: Arc<ProviderRegistry>,
+    nous_id: &str,
+    candidate_id: &str,
+    tool_calls: &[aletheia_mneme::skills::ToolCallRecord],
+    tracker: &aletheia_mneme::skills::CandidateTracker,
+    #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
+) {
+    use aletheia_mneme::skills::SkillExtractor;
+
+    // Find the candidate in the tracker
+    let candidates = tracker.candidates_for(nous_id);
+    let Some(candidate) = candidates.iter().find(|c| c.id == candidate_id) else {
+        warn!(candidate_id = %candidate_id, "candidate not found in tracker");
+        return;
+    };
+
+    // Build the extraction provider (uses Haiku for cost-effectiveness)
+    let provider = crate::extraction::HermeneusSkillExtractionProvider::new(providers, model);
+    let extractor = SkillExtractor::new(provider);
+
+    // The current turn's tool calls are the only sequence we have at this point.
+    // In a richer implementation, we'd collect sequences from all session_refs.
+    let sequences = vec![tool_calls.to_vec()];
+
+    match extractor.extract_skill(candidate, &sequences) {
+        Ok(extracted) => {
+            info!(
+                nous_id = %nous_id,
+                skill_name = %extracted.name,
+                steps = extracted.steps.len(),
+                tools = extracted.tools_used.len(),
+                domains = ?extracted.domain_tags,
+                "skill extracted from promoted candidate"
+            );
+
+            #[cfg(feature = "knowledge-store")]
+            if let Some(store) = knowledge_store {
+                // Check for duplicates before storing
+                let skill_content = extracted.to_skill_content();
+                match store.find_duplicate_skill(nous_id, &skill_content) {
+                    Ok(Some(existing_id)) => {
+                        info!(
+                            existing_id = %existing_id,
+                            skill_name = %extracted.name,
+                            "duplicate skill detected, skipping storage"
+                        );
+                        return;
+                    }
+                    Ok(None) => {} // No duplicate, proceed
+                    Err(e) => {
+                        warn!(error = %e, "failed to check skill duplicates, proceeding with storage");
+                    }
+                }
+
+                // Store as pending_review fact
+                let pending = aletheia_mneme::skills::PendingSkill::new(&extracted, candidate_id);
+                match pending.to_json() {
+                    Ok(content) => {
+                        let fact_id =
+                            aletheia_mneme::id::FactId::from(ulid::Ulid::new().to_string());
+                        let now = jiff::Timestamp::now();
+                        let fact = aletheia_mneme::knowledge::Fact {
+                            id: fact_id.clone(),
+                            nous_id: nous_id.to_owned(),
+                            content,
+                            confidence: 0.6, // Pending review — moderate confidence
+                            tier: aletheia_mneme::knowledge::EpistemicTier::Inferred,
+                            valid_from: now,
+                            valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
+                            superseded_by: None,
+                            source_session_id: None,
+                            recorded_at: now,
+                            access_count: 0,
+                            last_accessed_at: None,
+                            stability_hours: 720.0,
+                            fact_type: "skill_pending".to_owned(),
+                            is_forgotten: false,
+                            forgotten_at: None,
+                            forget_reason: None,
+                        };
+
+                        match store.insert_fact(&fact) {
+                            Ok(()) => {
+                                info!(
+                                    fact_id = %fact_id,
+                                    skill_name = %extracted.name,
+                                    "pending skill stored for review"
+                                );
+                            }
+                            Err(e) => {
+                                warn!(error = %e, "failed to store pending skill");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "failed to serialize pending skill");
+                    }
+                }
+            }
+
+            #[cfg(not(feature = "knowledge-store"))]
+            {
+                let _ = candidate_id; // suppress unused warning
+                info!("skill extracted but knowledge-store feature disabled, not persisting");
+            }
+        }
+        Err(e) => {
+            warn!(
+                nous_id = %nous_id,
+                candidate_id = %candidate_id,
+                error = %e,
+                "skill extraction failed"
+            );
         }
     }
 }

@@ -374,7 +374,10 @@ pub async fn timeline(
         // Access events (summarized)
         if fact.access_count > 0 && fact.last_accessed_at.is_some() {
             events.push(TimelineEvent {
-                timestamp: fact.last_accessed_at.map(|t| t.to_string()).unwrap_or_default(),
+                timestamp: fact
+                    .last_accessed_at
+                    .map(|t| t.to_string())
+                    .unwrap_or_default(),
                 event_type: "accessed".to_string(),
                 description: format!(
                     "{} accesses, stability: {:.0}h",
