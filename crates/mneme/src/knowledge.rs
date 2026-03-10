@@ -310,13 +310,14 @@ mod tests {
     #[test]
     fn entity_id_serde_transparent() {
         let id = EntityId::from("e-123");
-        let json = serde_json::to_string(&id).unwrap();
+        let json = serde_json::to_string(&id).expect("EntityId serialization is infallible");
         // Must serialize as a plain JSON string, not {"0":"e-123"}
         assert_eq!(
             json, r#""e-123""#,
             "EntityId must serialize as plain string"
         );
-        let back: EntityId = serde_json::from_str(&json).unwrap();
+        let back: EntityId =
+            serde_json::from_str(&json).expect("EntityId should deserialize from its own JSON");
         assert_eq!(id, back);
     }
 
@@ -350,8 +351,10 @@ mod tests {
             EpistemicTier::Inferred,
             EpistemicTier::Assumed,
         ] {
-            let json = serde_json::to_string(&tier).unwrap();
-            let back: EpistemicTier = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
+            let back: EpistemicTier = serde_json::from_str(&json)
+                .expect("EpistemicTier should deserialize from its own JSON");
             assert_eq!(tier, back);
         }
     }
@@ -377,8 +380,9 @@ mod tests {
             forgotten_at: None,
             forget_reason: None,
         };
-        let json = serde_json::to_string(&fact).unwrap();
-        let back: Fact = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
+        let back: Fact =
+            serde_json::from_str(&json).expect("Fact should deserialize from its own JSON");
         assert_eq!(fact.content, back.content);
         assert_eq!(fact.tier, back.tier);
     }
@@ -393,8 +397,9 @@ mod tests {
             created_at: test_timestamp("2026-01-28T00:00:00Z"),
             updated_at: test_timestamp("2026-02-28T00:00:00Z"),
         };
-        let json = serde_json::to_string(&entity).unwrap();
-        let back: Entity = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entity).expect("Entity serialization is infallible");
+        let back: Entity =
+            serde_json::from_str(&json).expect("Entity should deserialize from its own JSON");
         assert_eq!(entity.name, back.name);
         assert_eq!(entity.aliases, back.aliases);
     }
@@ -408,8 +413,10 @@ mod tests {
             weight: 0.85,
             created_at: test_timestamp("2026-02-28T00:00:00Z"),
         };
-        let json = serde_json::to_string(&rel).unwrap();
-        let back: Relationship = serde_json::from_str(&json).unwrap();
+        let json =
+            serde_json::to_string(&rel).expect("Relationship serialization is infallible");
+        let back: Relationship =
+            serde_json::from_str(&json).expect("Relationship should deserialize from its own JSON");
         assert_eq!(rel.src, back.src);
         assert_eq!(rel.dst, back.dst);
         assert_eq!(rel.relation, back.relation);
@@ -426,8 +433,10 @@ mod tests {
             embedding: vec![0.1, 0.2, 0.3],
             created_at: test_timestamp("2026-02-28T00:00:00Z"),
         };
-        let json = serde_json::to_string(&chunk).unwrap();
-        let back: EmbeddedChunk = serde_json::from_str(&json).unwrap();
+        let json =
+            serde_json::to_string(&chunk).expect("EmbeddedChunk serialization is infallible");
+        let back: EmbeddedChunk = serde_json::from_str(&json)
+            .expect("EmbeddedChunk should deserialize from its own JSON");
         assert_eq!(chunk.content, back.content);
         assert_eq!(chunk.embedding.len(), back.embedding.len());
     }
@@ -440,8 +449,10 @@ mod tests {
             source_type: "fact".to_owned(),
             source_id: "fact-1".to_owned(),
         };
-        let json = serde_json::to_string(&result).unwrap();
-        let back: RecallResult = serde_json::from_str(&json).unwrap();
+        let json =
+            serde_json::to_string(&result).expect("RecallResult serialization is infallible");
+        let back: RecallResult =
+            serde_json::from_str(&json).expect("RecallResult should deserialize from its own JSON");
         assert_eq!(result.content, back.content);
         assert!((result.distance - back.distance).abs() < f64::EPSILON);
     }
@@ -467,8 +478,10 @@ mod tests {
             forgotten_at: None,
             forget_reason: None,
         };
-        let json = serde_json::to_string(&fact).unwrap();
-        let back: Fact = serde_json::from_str(&json).unwrap();
+        let json =
+            serde_json::to_string(&fact).expect("Fact with empty content serializes successfully");
+        let back: Fact = serde_json::from_str(&json)
+            .expect("Fact with empty content should deserialize from its own JSON");
         assert!(back.content.is_empty());
     }
 
@@ -493,8 +506,10 @@ mod tests {
             forgotten_at: None,
             forget_reason: None,
         };
-        let json = serde_json::to_string(&fact).unwrap();
-        let back: Fact = serde_json::from_str(&json).unwrap();
+        let json =
+            serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");
+        let back: Fact = serde_json::from_str(&json)
+            .expect("Fact with unicode content should deserialize from its own JSON");
         assert_eq!(fact.content, back.content);
     }
 
@@ -508,8 +523,10 @@ mod tests {
             created_at: test_timestamp("2026-01-01T00:00:00Z"),
             updated_at: test_timestamp("2026-01-01T00:00:00Z"),
         };
-        let json = serde_json::to_string(&entity).unwrap();
-        let back: Entity = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entity)
+            .expect("Entity with empty aliases serializes successfully");
+        let back: Entity = serde_json::from_str(&json)
+            .expect("Entity with empty aliases should deserialize from its own JSON");
         assert!(back.aliases.is_empty());
     }
 
@@ -540,7 +557,8 @@ mod tests {
             EpistemicTier::Inferred,
             EpistemicTier::Assumed,
         ] {
-            let json = serde_json::to_string(&tier).unwrap();
+            let json =
+                serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
             let expected = format!("\"{}\"", tier.as_str());
             assert_eq!(json, expected);
         }
@@ -554,8 +572,10 @@ mod tests {
             ForgetReason::Incorrect,
             ForgetReason::Privacy,
         ] {
-            let json = serde_json::to_string(&reason).unwrap();
-            let back: ForgetReason = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&reason).expect("ForgetReason serialization is infallible");
+            let back: ForgetReason = serde_json::from_str(&json)
+                .expect("ForgetReason should deserialize from its own JSON");
             assert_eq!(reason, back);
         }
     }
@@ -568,7 +588,8 @@ mod tests {
             ForgetReason::Incorrect,
             ForgetReason::Privacy,
         ] {
-            let json = serde_json::to_string(&reason).unwrap();
+            let json =
+                serde_json::to_string(&reason).expect("ForgetReason serialization is infallible");
             let expected = format!("\"{}\"", reason.as_str());
             assert_eq!(json, expected);
         }
@@ -582,7 +603,10 @@ mod tests {
             ForgetReason::Incorrect,
             ForgetReason::Privacy,
         ] {
-            let parsed: ForgetReason = reason.as_str().parse().unwrap();
+            let parsed: ForgetReason = reason
+                .as_str()
+                .parse()
+                .expect("ForgetReason as_str() should round-trip through FromStr");
             assert_eq!(reason, parsed);
         }
     }
@@ -609,7 +633,8 @@ mod tests {
         ] {
             let s = tier.as_str();
             let json_str = format!("\"{s}\"");
-            let parsed: EpistemicTier = serde_json::from_str(&json_str).unwrap();
+            let parsed: EpistemicTier = serde_json::from_str(&json_str)
+                .expect("EpistemicTier should deserialize from its as_str() representation");
             assert_eq!(tier, parsed, "roundtrip failed for {s}");
         }
     }
@@ -651,8 +676,9 @@ mod tests {
         assert!(diff.added.is_empty());
         assert!(diff.modified.is_empty());
         assert!(diff.removed.is_empty());
-        let json = serde_json::to_string(&diff).unwrap();
-        let back: FactDiff = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&diff).expect("FactDiff serialization is infallible");
+        let back: FactDiff =
+            serde_json::from_str(&json).expect("FactDiff should deserialize from its own JSON");
         assert!(back.added.is_empty());
         assert!(back.modified.is_empty());
         assert!(back.removed.is_empty());
@@ -729,8 +755,10 @@ mod tests {
             fact.superseded_by.as_ref().map(FactId::as_str),
             Some("f-new")
         );
-        let json = serde_json::to_string(&fact).unwrap();
-        let back: Fact = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&fact)
+            .expect("Fact with superseded_by field serializes successfully");
+        let back: Fact = serde_json::from_str(&json)
+            .expect("Fact with superseded_by should deserialize from its own JSON");
         assert_eq!(
             back.superseded_by.as_ref().map(FactId::as_str),
             Some("f-new")
@@ -759,8 +787,10 @@ mod tests {
             forget_reason: None,
         };
         assert_eq!(fact.source_session_id.as_deref(), Some("ses-abc-123"));
-        let json = serde_json::to_string(&fact).unwrap();
-        let back: Fact = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&fact)
+            .expect("Fact with source_session_id serializes successfully");
+        let back: Fact = serde_json::from_str(&json)
+            .expect("Fact with source_session_id should deserialize from its own JSON");
         assert_eq!(back.source_session_id.as_deref(), Some("ses-abc-123"));
     }
 
@@ -788,10 +818,11 @@ mod tests {
 
     #[test]
     fn format_timestamp_roundtrip() {
-        let ts = parse_timestamp("2026-03-01T12:30:00Z").unwrap();
+        let ts = parse_timestamp("2026-03-01T12:30:00Z")
+            .expect("valid ISO 8601 timestamp should parse");
         let s = format_timestamp(&ts);
         assert_eq!(s, "2026-03-01T12:30:00Z");
-        let back = parse_timestamp(&s).unwrap();
+        let back = parse_timestamp(&s).expect("formatted timestamp should parse back");
         assert_eq!(ts, back);
     }
 
