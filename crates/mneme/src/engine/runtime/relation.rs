@@ -192,7 +192,6 @@ impl RelationHandle {
         );
         Ok(NamedRows::new(headers, rows))
     }
-    #[expect(dead_code, reason = "utility method retained for future maintenance tooling")]
     pub(crate) fn amend_key_prefix(&self, data: &mut [u8]) {
         let prefix_bytes = self.id.0.to_be_bytes();
         data[0..8].copy_from_slice(&prefix_bytes);
