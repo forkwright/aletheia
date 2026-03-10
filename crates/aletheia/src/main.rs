@@ -257,6 +257,18 @@ enum Command {
         #[arg(short, long)]
         domain: Option<String>,
     },
+    /// Review pending auto-extracted skills (approve, reject, or list)
+    ReviewSkills {
+        /// Agent (nous) ID whose pending skills to review
+        #[arg(short, long)]
+        nous_id: String,
+        /// Action: list, approve, reject
+        #[arg(short, long, default_value = "list")]
+        action: String,
+        /// Fact ID of the pending skill (required for approve/reject)
+        #[arg(short, long)]
+        fact_id: Option<String>,
+    },
     /// Generate shell completions for bash, zsh, or fish
     Completions {
         /// Shell to generate completions for
@@ -403,6 +415,13 @@ async fn main() -> Result<()> {
             domain,
         }) => {
             return export_skills_cmd(&cli, nous_id, output, domain.as_deref());
+        }
+        Some(Command::ReviewSkills {
+            nous_id,
+            action,
+            fact_id,
+        }) => {
+            return review_skills_cmd(&cli, nous_id, action, fact_id.as_deref());
         }
         Some(Command::Completions { shell }) => {
             let mut cmd = Cli::command();
@@ -1886,6 +1905,100 @@ fn export_skills_cmd(cli: &Cli, nous_id: &str, output: &Path, domain: Option<&st
         let _ = (cli, nous_id, output, domain);
         anyhow::bail!(
             "export-skills requires the 'recall' feature (KnowledgeStore). \
+             Build with: cargo build --features recall"
+        );
+    }
+}
+
+fn review_skills_cmd(cli: &Cli, nous_id: &str, action: &str, fact_id: Option<&str>) -> Result<()> {
+    #[cfg(feature = "recall")]
+    {
+        use aletheia_mneme::knowledge_store::KnowledgeStore;
+        use aletheia_mneme::skills::extract::PendingSkill;
+
+        let oikos = match &cli.instance_root {
+            Some(root) => Oikos::from_root(root),
+            None => Oikos::discover(),
+        };
+        let knowledge_path = oikos.knowledge_db();
+
+        let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
+        let store = KnowledgeStore::open_redb(&knowledge_path, config).map_err(|e| {
+            anyhow::anyhow!(
+                "failed to open knowledge store at {}: {e}",
+                knowledge_path.display()
+            )
+        })?;
+
+        match action {
+            "list" => {
+                let pending = store
+                    .find_pending_skills(nous_id)
+                    .map_err(|e| anyhow::anyhow!("failed to query pending skills: {e}"))?;
+
+                if pending.is_empty() {
+                    println!("No pending skills for nous '{nous_id}'");
+                    return Ok(());
+                }
+
+                println!(
+                    "Found {} pending skill(s) for nous '{nous_id}':\n",
+                    pending.len()
+                );
+                for fact in &pending {
+                    match PendingSkill::from_json(&fact.content) {
+                        Ok(ps) => {
+                            println!("  ID: {}", fact.id);
+                            println!("  Name: {}", ps.skill.name);
+                            println!(
+                                "  Description: {}",
+                                ps.skill.description.lines().next().unwrap_or("")
+                            );
+                            println!("  Tools: {}", ps.skill.tools_used.join(", "));
+                            println!("  Tags: {}", ps.skill.domain_tags.join(", "));
+                            println!("  Steps: {}", ps.skill.steps.len());
+                            println!("  Status: {}", ps.status);
+                            println!("  Candidate: {}", ps.candidate_id);
+                            println!("  Extracted: {}", ps.extracted_at);
+                            println!();
+                        }
+                        Err(e) => {
+                            eprintln!("  SKIP {}: failed to parse: {e}", fact.id);
+                        }
+                    }
+                }
+            }
+            "approve" => {
+                let fid = fact_id
+                    .ok_or_else(|| anyhow::anyhow!("--fact-id required for approve action"))?;
+                let fact_id = aletheia_mneme::id::FactId::from(fid);
+                let new_id = store
+                    .approve_pending_skill(&fact_id, nous_id)
+                    .map_err(|e| anyhow::anyhow!("failed to approve skill: {e}"))?;
+                println!("Approved: {fid} → new skill fact: {new_id}");
+            }
+            "reject" => {
+                let fid = fact_id
+                    .ok_or_else(|| anyhow::anyhow!("--fact-id required for reject action"))?;
+                let fact_id = aletheia_mneme::id::FactId::from(fid);
+                store
+                    .reject_pending_skill(&fact_id)
+                    .map_err(|e| anyhow::anyhow!("failed to reject skill: {e}"))?;
+                println!("Rejected: {fid}");
+            }
+            other => {
+                anyhow::bail!("unknown action '{other}'. Use: list, approve, reject");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "recall"))]
+    {
+        let _ = (cli, nous_id, action, fact_id);
+        anyhow::bail!(
+            "review-skills requires the 'recall' feature (KnowledgeStore). \
              Build with: cargo build --features recall"
         );
     }

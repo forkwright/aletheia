@@ -38,9 +38,7 @@ pub(crate) fn extract_task_context(content: &str) -> String {
 
 /// Format a [`SkillContent`] as a compact markdown section for the system prompt.
 #[cfg(any(feature = "knowledge-store", test))]
-pub(crate) fn format_skill_as_markdown(
-    skill: &aletheia_mneme::skill::SkillContent,
-) -> String {
+pub(crate) fn format_skill_as_markdown(skill: &aletheia_mneme::skill::SkillContent) -> String {
     use std::fmt::Write as _;
 
     let mut md = format!("**{}**\n\n{}", skill.name, skill.description);
@@ -273,10 +271,7 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
             )]
             let access_score = (fact.access_count.min(20) as f64) / 20.0;
 
-            let reference_secs = fact
-                .last_accessed_at
-                .unwrap_or(fact.valid_from)
-                .as_second();
+            let reference_secs = fact.last_accessed_at.unwrap_or(fact.valid_from).as_second();
             let age_days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
             // Half-life of 30 days: recency = 2^(-age/30)
             let recency_score = 2_f64.powf(-age_days / 30.0);
@@ -327,7 +322,10 @@ mod tests {
     fn extract_task_context_truncates_long_input() {
         let long = "a".repeat(250);
         let ctx = extract_task_context(&long);
-        assert!(ctx.len() <= MAX_CONTEXT_CHARS, "should be truncated to ≤200 chars");
+        assert!(
+            ctx.len() <= MAX_CONTEXT_CHARS,
+            "should be truncated to ≤200 chars"
+        );
     }
 
     #[test]
@@ -422,8 +420,7 @@ mod tests {
             confidence,
             tier: aletheia_mneme::knowledge::EpistemicTier::Verified,
             valid_from: jiff::Timestamp::now(),
-            valid_to: jiff::Timestamp::from_second(i64::MAX / 2)
-                .unwrap_or(jiff::Timestamp::now()),
+            valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(jiff::Timestamp::now()),
             superseded_by: None,
             source_session_id: None,
             recorded_at: jiff::Timestamp::now(),
