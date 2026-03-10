@@ -3,6 +3,7 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
+use crate::ensure;
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
