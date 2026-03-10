@@ -4,8 +4,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
-use crate::bail;
-use crate::engine::error::DbResult as Result;
+use super::error::*;
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
@@ -84,24 +83,12 @@ impl Symbol {
     pub(crate) fn is_generated_ignored_symbol(&self) -> bool {
         self.name.starts_with('~')
     }
-    pub(crate) fn ensure_valid_field(&self) -> Result<()> {
+    pub(crate) fn ensure_valid_field(&self) -> DataResult<()> {
         if self.name.contains('(') || self.name.contains(')') {
-            #[derive(Debug)]
-            #[expect(
-                dead_code,
-                reason = "SourceSpan carried for error context but not included in Display"
-            )]
-            struct SymbolInvalidAsField(String, SourceSpan);
-
-            impl std::fmt::Display for SymbolInvalidAsField {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    write!(f, "The symbol {} is not valid as a field", self.0)
-                }
+            return InvalidSymbolSnafu {
+                message: format!("The symbol {} is not valid as a field", self.name),
             }
-
-            impl std::error::Error for SymbolInvalidAsField {}
-
-            bail!(SymbolInvalidAsField(self.name.to_string(), self.span))
+            .fail();
         }
         Ok(())
     }
