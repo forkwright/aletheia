@@ -460,11 +460,7 @@ fn highlight_span(
 
 /// Render a compact tool call summary line:
 ///   ╰─ exec (0.3s) → read (0.1s) → grep (0.2s)
-fn render_tool_summary(
-    tools: &[ToolCallInfo],
-    lines: &mut Vec<Line<'static>>,
-    theme: &Theme,
-) {
+fn render_tool_summary(tools: &[ToolCallInfo], lines: &mut Vec<Line<'static>>, theme: &Theme) {
     let mut spans: Vec<Span> = vec![Span::raw("  "), Span::styled("╰─ ", theme.style_dim())];
 
     for (i, tc) in tools.iter().enumerate() {

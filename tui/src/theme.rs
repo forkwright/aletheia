@@ -14,7 +14,10 @@ pub enum ColorDepth {
 
 /// Background and accent colors.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "complete semantic color set; not all fields used by every view")]
+#[expect(
+    dead_code,
+    reason = "complete semantic color set; not all fields used by every view"
+)]
 pub struct Colors {
     pub bg: Color,
     pub surface: Color,
@@ -26,7 +29,10 @@ pub struct Colors {
 
 /// Foreground text and role-speaker colors.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "complete semantic color set; not all fields used by every view")]
+#[expect(
+    dead_code,
+    reason = "complete semantic color set; not all fields used by every view"
+)]
 pub struct TextColors {
     pub fg: Color,
     pub fg_muted: Color,
@@ -47,7 +53,10 @@ pub struct Borders {
 
 /// Semantic feedback and animation-state colors.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "complete semantic color set; not all fields used by every view")]
+#[expect(
+    dead_code,
+    reason = "complete semantic color set; not all fields used by every view"
+)]
 pub struct StatusColors {
     pub success: Color,
     pub warning: Color,
@@ -180,16 +189,16 @@ impl Theme {
                 system: Color::Indexed(245),
             },
             borders: Borders {
-                normal: Color::Indexed(238),    // #444444
+                normal: Color::Indexed(238), // #444444
                 focused: Color::Indexed(111),
                 separator: Color::Indexed(236), // #303030
                 selected: Color::Indexed(111),
             },
             status: StatusColors {
-                success: Color::Indexed(114),   // #87d787
-                warning: Color::Indexed(221),   // #ffd75f
-                error: Color::Indexed(167),     // #d75f5f
-                info: Color::Indexed(111),      // #87afff
+                success: Color::Indexed(114), // #87d787
+                warning: Color::Indexed(221), // #ffd75f
+                error: Color::Indexed(167),   // #d75f5f
+                info: Color::Indexed(111),    // #87afff
                 spinner: Color::Indexed(221),
                 idle: Color::Indexed(240),
                 streaming: Color::Indexed(114),

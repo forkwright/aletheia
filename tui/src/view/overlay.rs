@@ -82,7 +82,9 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         .fg(theme.colors.accent)
         .add_modifier(Modifier::BOLD);
     let desc_style = theme.style_fg();
-    let section_style = Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD);
+    let section_style = Style::default()
+        .fg(theme.text.fg)
+        .add_modifier(Modifier::BOLD);
 
     let contexts = keybindings::current_contexts(app);
     let groups = keybindings::grouped_keybindings(&contexts);
@@ -115,13 +117,7 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(paragraph, area);
 }
 
-fn render_agent_picker(
-    app: &App,
-    frame: &mut Frame,
-    area: Rect,
-    cursor: usize,
-    theme: &Theme,
-) {
+fn render_agent_picker(app: &App, frame: &mut Frame, area: Rect, cursor: usize, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
@@ -305,7 +301,9 @@ fn render_tool_approval(
         Line::raw(""),
         Line::from(Span::styled(
             "  Input:",
-            Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.text.fg)
+                .add_modifier(Modifier::BOLD),
         )),
     ];
 
@@ -406,15 +404,23 @@ fn render_plan_approval(
 
 fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines = vec![Line::raw("")];
-    let section_style = Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD);
+    let section_style = Style::default()
+        .fg(theme.text.fg)
+        .add_modifier(Modifier::BOLD);
 
     // Connection status
     lines.push(Line::from(Span::styled("  Connection", section_style)));
     lines.push(Line::raw(""));
     let sse_status = if app.sse_connected {
-        Span::styled("  SSE: connected ●", Style::default().fg(theme.status.success))
+        Span::styled(
+            "  SSE: connected ●",
+            Style::default().fg(theme.status.success),
+        )
     } else {
-        Span::styled("  SSE: disconnected ○", Style::default().fg(theme.status.error))
+        Span::styled(
+            "  SSE: disconnected ○",
+            Style::default().fg(theme.status.error),
+        )
     };
     lines.push(Line::from(sse_status));
     lines.push(Line::from(Span::styled(
@@ -434,7 +440,9 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
     for agent in &app.agents {
         let status_str = match agent.status {
             AgentStatus::Idle => Span::styled("idle", theme.style_dim()),
-            AgentStatus::Working => Span::styled("working", Style::default().fg(theme.status.spinner)),
+            AgentStatus::Working => {
+                Span::styled("working", Style::default().fg(theme.status.spinner))
+            }
             AgentStatus::Streaming => {
                 Span::styled("streaming", Style::default().fg(theme.status.streaming))
             }

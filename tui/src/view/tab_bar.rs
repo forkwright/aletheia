@@ -56,9 +56,13 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 .bg(theme.colors.surface)
                 .add_modifier(Modifier::BOLD)
         } else if tab.unread {
-            Style::default().fg(theme.borders.selected).bg(theme.colors.surface_dim)
+            Style::default()
+                .fg(theme.borders.selected)
+                .bg(theme.colors.surface_dim)
         } else {
-            Style::default().fg(theme.text.fg_dim).bg(theme.colors.surface_dim)
+            Style::default()
+                .fg(theme.text.fg_dim)
+                .bg(theme.colors.surface_dim)
         };
 
         spans.push(Span::styled(prefix, style));
@@ -66,12 +70,18 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         spans.push(Span::styled(" ", style));
 
         if idx < total_tabs - 1 {
-            spans.push(Span::styled("\u{2502}", Style::default().fg(theme.text.fg_dim)));
+            spans.push(Span::styled(
+                "\u{2502}",
+                Style::default().fg(theme.text.fg_dim),
+            ));
         }
     }
 
     // "+" button
-    spans.push(Span::styled(plus_label, Style::default().fg(theme.text.fg_dim)));
+    spans.push(Span::styled(
+        plus_label,
+        Style::default().fg(theme.text.fg_dim),
+    ));
 
     // Pad remaining width
     let rendered_width: usize = spans.iter().map(|s| s.width()).sum();

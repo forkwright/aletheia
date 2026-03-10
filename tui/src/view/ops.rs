@@ -267,7 +267,9 @@ fn render_tool_call(
         Span::styled(format!(" {status_icon}"), status_style),
         Span::styled(
             format!(" {}", tc.name),
-            Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.text.fg)
+                .add_modifier(Modifier::BOLD),
         ),
     ];
 
@@ -370,7 +372,10 @@ fn render_diff(
     for add in &diff.additions {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(format!("+ {add}"), Style::default().fg(theme.status.success)),
+            Span::styled(
+                format!("+ {add}"),
+                Style::default().fg(theme.status.success),
+            ),
         ]));
     }
 }

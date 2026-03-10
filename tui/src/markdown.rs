@@ -128,7 +128,10 @@ pub fn render(
                         push_span(
                             &mut current_spans,
                             &mut current_col,
-                            Span::styled("│ ".to_string(), Style::default().fg(theme.borders.normal)),
+                            Span::styled(
+                                "│ ".to_string(),
+                                Style::default().fg(theme.borders.normal),
+                            ),
                         );
                     }
                 }

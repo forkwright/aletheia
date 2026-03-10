@@ -21,7 +21,9 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             format!("  {}", section.name),
-            Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.text.fg)
+                .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::raw(""));
 

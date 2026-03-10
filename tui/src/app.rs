@@ -12,7 +12,7 @@ use crate::hyperlink::OscLink;
 use crate::id::{NousId, SessionId, TurnId};
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
-use crate::theme::{Theme, THEME};
+use crate::theme::{THEME, Theme};
 use crate::update::extract_text_content;
 use crate::view;
 

@@ -23,8 +23,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 let ch = theme::spinner_frame(app.tick_count);
                 Span::styled(ch.to_string(), Style::default().fg(theme.status.spinner))
             }
-            AgentStatus::Streaming => Span::styled("●", Style::default().fg(theme.status.streaming)),
-            AgentStatus::Compacting => Span::styled("◉", Style::default().fg(theme.status.compacting)),
+            AgentStatus::Streaming => {
+                Span::styled("●", Style::default().fg(theme.status.streaming))
+            }
+            AgentStatus::Compacting => {
+                Span::styled("◉", Style::default().fg(theme.status.compacting))
+            }
         };
 
         let name_style = if is_focused {

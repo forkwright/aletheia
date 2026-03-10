@@ -233,7 +233,10 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static
                     let display = text.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(format!("-{display}"), Style::default().fg(theme.status.error)),
+                        Span::styled(
+                            format!("-{display}"),
+                            Style::default().fg(theme.status.error),
+                        ),
                     ]));
                     old_line += 1;
                 }
@@ -241,7 +244,10 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static
                     let display = text.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(format!("+{display}"), Style::default().fg(theme.status.success)),
+                        Span::styled(
+                            format!("+{display}"),
+                            Style::default().fg(theme.status.success),
+                        ),
                     ]));
                     new_line += 1;
                 }
@@ -250,12 +256,18 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static
                     let new_disp = new.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(format!("-{old_disp}"), Style::default().fg(theme.status.error)),
+                        Span::styled(
+                            format!("-{old_disp}"),
+                            Style::default().fg(theme.status.error),
+                        ),
                     ]));
                     old_line += 1;
                     lines.push(Line::from(vec![
                         Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(format!("+{new_disp}"), Style::default().fg(theme.status.success)),
+                        Span::styled(
+                            format!("+{new_disp}"),
+                            Style::default().fg(theme.status.success),
+                        ),
                     ]));
                     new_line += 1;
                 }
@@ -342,7 +354,10 @@ pub(crate) fn render_side_by_side(
                     let left = format!("{old_line:>4} {truncated:<content_width$} ");
                     let right = format!("{:>4} {:<content_width$}", "", "");
                     lines.push(Line::from(vec![
-                        Span::styled(pad_to(left, half_width), Style::default().fg(theme.status.error)),
+                        Span::styled(
+                            pad_to(left, half_width),
+                            Style::default().fg(theme.status.error),
+                        ),
                         Span::styled("│", theme.style_dim()),
                         Span::styled(right, theme.style_dim()),
                     ]));
@@ -366,7 +381,10 @@ pub(crate) fn render_side_by_side(
                     let left = format!("{old_line:>4} {old_disp:<content_width$} ");
                     let right = format!("{new_line:>4} {new_disp:<content_width$}");
                     lines.push(Line::from(vec![
-                        Span::styled(pad_to(left, half_width), Style::default().fg(theme.status.error)),
+                        Span::styled(
+                            pad_to(left, half_width),
+                            Style::default().fg(theme.status.error),
+                        ),
                         Span::styled("│", theme.style_dim()),
                         Span::styled(right, Style::default().fg(theme.status.success)),
                     ]));
@@ -419,7 +437,10 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'stat
                     let display = text.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(format!("-{display}"), Style::default().fg(theme.status.error)),
+                        Span::styled(
+                            format!("-{display}"),
+                            Style::default().fg(theme.status.error),
+                        ),
                     ]));
                     old_line += 1;
                 }
@@ -427,7 +448,10 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'stat
                     let display = text.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(format!("+{display}"), Style::default().fg(theme.status.success)),
+                        Span::styled(
+                            format!("+{display}"),
+                            Style::default().fg(theme.status.success),
+                        ),
                     ]));
                     new_line += 1;
                 }
