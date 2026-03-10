@@ -981,7 +981,9 @@ impl MeetAggrObj for MeetAggrMinCost {
                         )
                     }
                 );
-                let cur_cost = l.get(1).unwrap();
+                let cur_cost = l
+                    .get(1)
+                    .expect("length validated as 2 by the ensure! above");
                 let cur_cost = cur_cost.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
                         op: "min_cost",
@@ -989,7 +991,9 @@ impl MeetAggrObj for MeetAggrMinCost {
                     }
                     .build()
                 })?;
-                let prev_cost = prev.get(1).unwrap();
+                let prev_cost = prev
+                    .get(1)
+                    .expect("length validated as 2 by the ensure! above");
                 let prev_cost = prev_cost.get_float().ok_or_else(|| {
                     TypeMismatchSnafu {
                         op: "min_cost",

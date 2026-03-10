@@ -555,7 +555,11 @@ impl InputProgram {
     pub(crate) fn get_entry_arity(&self) -> Result<usize> {
         if let Some(entry) = self.prog.get(&Symbol::new(PROG_ENTRY, SourceSpan(0, 0))) {
             return match entry {
-                InputInlineRulesOrFixed::Rules { rules } => Ok(rules.last().unwrap().head.len()),
+                InputInlineRulesOrFixed::Rules { rules } => Ok(rules
+                    .last()
+                    .expect("rules vec always has at least one rule")
+                    .head
+                    .len()),
                 InputInlineRulesOrFixed::Fixed { fixed } => fixed.arity(),
             };
         }
@@ -577,9 +581,12 @@ impl InputProgram {
         if let Some(entry) = self.prog.get(&Symbol::new(PROG_ENTRY, SourceSpan(0, 0))) {
             return match entry {
                 InputInlineRulesOrFixed::Rules { rules } => {
-                    let head = &rules.last().unwrap().head;
+                    let last_rule = rules
+                        .last()
+                        .expect("rules vec always has at least one rule");
+                    let head = &last_rule.head;
                     let mut ret = Vec::with_capacity(head.len());
-                    let aggrs = &rules.last().unwrap().aggr;
+                    let aggrs = &last_rule.aggr;
                     for (symb, aggr) in head.iter().zip(aggrs.iter()) {
                         if let Some((aggr, _)) = aggr {
                             ret.push(Symbol::new(
@@ -587,7 +594,7 @@ impl InputProgram {
                                     "{}({})",
                                     aggr.name
                                         .strip_prefix("AGGR_")
-                                        .unwrap()
+                                        .expect("all aggregator names are prefixed with AGGR_")
                                         .to_ascii_lowercase(),
                                     symb
                                 ),
@@ -733,7 +740,11 @@ impl Default for MagicRulesOrFixed {
 impl MagicRulesOrFixed {
     pub(crate) fn arity(&self) -> Result<usize> {
         Ok(match self {
-            MagicRulesOrFixed::Rules { rules } => rules.first().unwrap().head.len(),
+            MagicRulesOrFixed::Rules { rules } => rules
+                .first()
+                .expect("rules vec always has at least one rule")
+                .head
+                .len(),
             MagicRulesOrFixed::Fixed { fixed } => fixed.arity,
         })
     }

@@ -206,7 +206,9 @@ impl serde::Serialize for Vector {
         match self {
             Vector::F32(a) => {
                 state.serialize_element(&0u8)?;
-                let arr = a.as_slice().unwrap();
+                let arr = a
+                    .as_slice()
+                    .expect("ndarray::Array1 is always contiguous in memory");
                 let len = std::mem::size_of_val(arr);
                 let ptr = arr.as_ptr() as *const u8;
                 // SAFETY: `ptr` comes from a valid &[f32] allocation. Reinterpreting as
@@ -217,7 +219,9 @@ impl serde::Serialize for Vector {
             }
             Vector::F64(a) => {
                 state.serialize_element(&1u8)?;
-                let arr = a.as_slice().unwrap();
+                let arr = a
+                    .as_slice()
+                    .expect("ndarray::Array1 is always contiguous in memory");
                 let len = std::mem::size_of_val(arr);
                 let ptr = arr.as_ptr() as *const u8;
                 // SAFETY: `ptr` comes from a valid &[f64] allocation. Reinterpreting as
