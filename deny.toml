@@ -33,6 +33,7 @@ allow = [
     "LGPL-3.0-or-later",    # priority-queue
     "NCSA",                 # libfuzzer-sys (transitive via rav1e)
     "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs
+    "OpenSSL",              # aws-lc-sys (transitive via rustls crypto backend)
 ]
 confidence-threshold = 0.8
 
