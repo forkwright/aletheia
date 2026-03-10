@@ -2101,11 +2101,29 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             match t {
                 VecElementType::F32 => {
                     let f32_count = bytes.len() / mem::size_of::<f32>();
-                    // SAFETY: `bytes` was produced by base64-decoding a serialised
-                    // f32 vector (written by `Vector::serialize`). `f32_count` is
-                    // `bytes.len() / size_of::<f32>()`, so the pointer covers exactly
-                    // `f32_count` valid f32-sized elements. The view is immediately
-                    // converted to an owned array, so no aliasing or lifetime issues.
+                    // Rust's global allocator guarantees allocations are aligned
+                    // to at least max_align_t (≥ 16 bytes on 64-bit platforms),
+                    // satisfying align_of::<f32>() == 4.
+                    debug_assert_eq!(
+                        bytes.as_ptr() as usize % mem::align_of::<f32>(),
+                        0,
+                        "Vec<u8> buffer must be aligned for f32 reinterpretation"
+                    );
+                    // SAFETY: `bytes` is a Vec<u8> produced by base64-decoding a
+                    // serialised f32 vector (written by `Vector::serialize`). Three
+                    // invariants hold:
+                    // (1) Alignment: the global allocator guarantees the buffer is
+                    //     aligned to at least max_align_t (≥ 16 B), which is larger
+                    //     than align_of::<f32>() (4 B); the debug_assert above
+                    //     verifies this at runtime in debug builds.
+                    // (2) Length: `f32_count` is `bytes.len() / size_of::<f32>()`, so
+                    //     the pointer covers exactly `f32_count` fully-initialised f32
+                    //     elements within the live `bytes` allocation.
+                    // (3) Lifetime: `arr` is immediately converted to an owned array
+                    //     via `to_owned()` before `bytes` is dropped, so the view
+                    //     never outlives the backing buffer.
+                    // Violating any of these would cause UB: misaligned read,
+                    // out-of-bounds access, or dangling pointer respectively.
                     let arr = unsafe {
                         ndarray::ArrayView1::from_shape_ptr(
                             ndarray::Dim([f32_count]),
@@ -2116,11 +2134,29 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 }
                 VecElementType::F64 => {
                     let f64_count = bytes.len() / mem::size_of::<f64>();
-                    // SAFETY: `bytes` was produced by base64-decoding a serialised
-                    // f64 vector (written by `Vector::serialize`). `f64_count` is
-                    // `bytes.len() / size_of::<f64>()`, so the pointer covers exactly
-                    // `f64_count` valid f64-sized elements. The view is immediately
-                    // converted to an owned array, so no aliasing or lifetime issues.
+                    // Rust's global allocator guarantees allocations are aligned
+                    // to at least max_align_t (≥ 16 bytes on 64-bit platforms),
+                    // satisfying align_of::<f64>() == 8.
+                    debug_assert_eq!(
+                        bytes.as_ptr() as usize % mem::align_of::<f64>(),
+                        0,
+                        "Vec<u8> buffer must be aligned for f64 reinterpretation"
+                    );
+                    // SAFETY: `bytes` is a Vec<u8> produced by base64-decoding a
+                    // serialised f64 vector (written by `Vector::serialize`). Three
+                    // invariants hold:
+                    // (1) Alignment: the global allocator guarantees the buffer is
+                    //     aligned to at least max_align_t (≥ 16 B), which is larger
+                    //     than align_of::<f64>() (8 B); the debug_assert above
+                    //     verifies this at runtime in debug builds.
+                    // (2) Length: `f64_count` is `bytes.len() / size_of::<f64>()`, so
+                    //     the pointer covers exactly `f64_count` fully-initialised f64
+                    //     elements within the live `bytes` allocation.
+                    // (3) Lifetime: `arr` is immediately converted to an owned array
+                    //     via `to_owned()` before `bytes` is dropped, so the view
+                    //     never outlives the backing buffer.
+                    // Violating any of these would cause UB: misaligned read,
+                    // out-of-bounds access, or dangling pointer respectively.
                     let arr = unsafe {
                         ndarray::ArrayView1::from_shape_ptr(
                             ndarray::Dim([f64_count]),
