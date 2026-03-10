@@ -245,7 +245,7 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Export skills to Claude Code format (.claude/skills/<slug>/SKILL.md)
+    /// Export skills to Claude Code format (`.claude/skills/<slug>/SKILL.md`)
     ExportSkills {
         /// Agent (nous) ID whose skills to export
         #[arg(short, long)]
