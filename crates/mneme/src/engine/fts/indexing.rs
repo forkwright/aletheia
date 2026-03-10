@@ -1,6 +1,6 @@
 //! Full-text search indexing operations.
-use crate::bail;
 use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
+use crate::engine::fts::error::TokenizationFailedSnafu;
 use crate::engine::data::program::{FtsScoreKind, FtsSearch};
 use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple, decode_tuple_from_key};
 use crate::engine::data::value::LARGEST_UTF_CHAR;
@@ -125,7 +125,8 @@ impl<'a> SessionTx<'a> {
         for item in self.store_tx.range_scan(&start_key_bytes, &end_key_bytes) {
             let (kvec, vvec) = item?;
             let key_tuple = decode_tuple_from_key(&kvec, idx_handle.metadata.keys.len());
-            let found_str_key = key_tuple[0].get_str().unwrap();
+            let found_str_key =
+                key_tuple[0].get_str().expect("FTS index key[0] is always a string");
             if literal.is_prefix {
                 if !found_str_key.starts_with(start_key_str) {
                     break;
@@ -136,9 +137,10 @@ impl<'a> SessionTx<'a> {
 
             let vals: Vec<DataValue> = rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-            let froms = vals[0].get_slice().unwrap();
-            let tos = vals[1].get_slice().unwrap();
-            let positions = vals[2].get_slice().unwrap();
+            let froms = vals[0].get_slice().expect("FTS index val[0] (froms) is always a list");
+            let tos = vals[1].get_slice().expect("FTS index val[1] (tos) is always a list");
+            let positions =
+                vals[2].get_slice().expect("FTS index val[2] (positions) is always a list");
             let total_length = vals[3].get_int().unwrap_or(0) as u32;
             let position_info = froms
                 .iter()
@@ -147,7 +149,7 @@ impl<'a> SessionTx<'a> {
                 .map(|(_, p)| PositionInfo {
                     // from: f.get_int().unwrap() as u32,
                     // to: t.get_int().unwrap() as u32,
-                    position: p.get_int().unwrap() as u32,
+                    position: p.get_int().expect("FTS position is always an integer") as u32,
                 })
                 .collect_vec();
             results.push(LiteralStats {
@@ -196,7 +198,12 @@ impl<'a> SessionTx<'a> {
             }
             FtsExpr::And(ls) => {
                 let mut l_iter = ls.iter();
-                let mut res = self.fts_search_impl(l_iter.next().unwrap(), config, n, avgdl)?;
+                let mut res = self.fts_search_impl(
+                    l_iter.next().expect("And node always has at least one child"),
+                    config,
+                    n,
+                    avgdl,
+                )?;
                 for nxt in l_iter {
                     let nxt_res = self.fts_search_impl(nxt, config, n, avgdl)?;
                     res = res
@@ -223,7 +230,10 @@ impl<'a> SessionTx<'a> {
             FtsExpr::Near(FtsNear { literals, distance }) => {
                 let mut l_it = literals.iter();
                 let mut coll: FxHashMap<_, _> = FxHashMap::default();
-                for first_el in self.fts_search_literal(l_it.next().unwrap(), &config.idx_handle)? {
+                for first_el in self.fts_search_literal(
+                    l_it.next().expect("Near node always has at least one literal"),
+                    &config.idx_handle,
+                )? {
                     coll.insert(
                         first_el.key,
                         first_el
@@ -373,7 +383,12 @@ impl<'a> SessionTx<'a> {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
             _val => {
-                bail!("FTS index extractor must return a string, got {}")
+                return Err(Box::new(
+                    TokenizationFailedSnafu {
+                        message: "FTS index extractor must return a string".to_string(),
+                    }
+                    .build(),
+                ))
             }
         };
         let mut token_stream = tokenizer.token_stream(&to_index);
@@ -422,7 +437,12 @@ impl<'a> SessionTx<'a> {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
             _val => {
-                bail!("FTS index extractor must return a string, got {}")
+                return Err(Box::new(
+                    TokenizationFailedSnafu {
+                        message: "FTS index extractor must return a string".to_string(),
+                    }
+                    .build(),
+                ))
             }
         };
         let mut token_stream = tokenizer.token_stream(&to_index);
