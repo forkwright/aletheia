@@ -1,5 +1,9 @@
 //! Knowledge extraction pipeline — LLM-driven entity/relationship/fact extraction.
 
+/// Context-dependent extraction refinement: turn classification, correction
+/// detection, quality filters, and fact type classification.
+pub mod refinement;
+
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use tracing::instrument;
@@ -85,6 +89,12 @@ pub struct ExtractedFact {
     pub object: String,
     /// Confidence score (0.0–1.0).
     pub confidence: f64,
+    /// Whether this fact corrects a previously stated fact.
+    #[serde(default)]
+    pub is_correction: bool,
+    /// Classified fact type for FSRS decay tuning.
+    #[serde(default)]
+    pub fact_type: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -184,10 +194,24 @@ impl ExtractionEngine {
     }
 
     /// Build the system prompt and user message for knowledge extraction.
+    ///
+    /// When `turn_type` is `Some`, appends context-dependent extraction
+    /// instructions to the base prompt.
     #[must_use]
     #[instrument(skip(self, messages), fields(msg_count = messages.len()))]
     pub fn build_prompt(&self, messages: &[ConversationMessage]) -> ExtractionPrompt {
-        let system = format!(
+        self.build_prompt_with_turn_type(messages, None)
+    }
+
+    /// Build the extraction prompt with optional turn-type-specific instructions.
+    #[must_use]
+    #[instrument(skip(self, messages), fields(msg_count = messages.len(), turn_type))]
+    pub fn build_prompt_with_turn_type(
+        &self,
+        messages: &[ConversationMessage],
+        turn_type: Option<refinement::TurnType>,
+    ) -> ExtractionPrompt {
+        let mut system = format!(
             r#"You are a knowledge extraction engine. Analyze the conversation and extract structured knowledge.
 
 Output ONLY valid JSON matching this schema — no commentary, no markdown fences:
@@ -215,6 +239,11 @@ Rules:
             max_entities = self.config.max_entities,
             max_relationships = self.config.max_relationships,
         );
+
+        if let Some(tt) = turn_type {
+            system.push_str("\n\nContext-specific instructions:\n");
+            system.push_str(tt.prompt_appendix());
+        }
 
         let mut conversation = String::new();
         for msg in messages {
@@ -258,6 +287,90 @@ Rules:
         let prompt = self.build_prompt(messages);
         let response = provider.complete(&prompt.system, &prompt.user_message)?;
         self.parse_response(&response)
+    }
+
+    /// Run extraction with context-dependent refinement.
+    ///
+    /// Classifies the turn, applies per-type prompt instructions, detects
+    /// corrections, classifies fact types, applies quality filters, and boosts
+    /// confidence where appropriate.
+    #[instrument(skip(self, provider))]
+    pub fn extract_refined(
+        &self,
+        messages: &[ConversationMessage],
+        provider: &dyn ExtractionProvider,
+    ) -> Result<RefinedExtraction, ExtractionError> {
+        let total_len: usize = messages.iter().map(|m| m.content.len()).sum();
+        if total_len < self.config.min_message_length {
+            return Ok(RefinedExtraction {
+                extraction: Extraction {
+                    entities: vec![],
+                    relationships: vec![],
+                    facts: vec![],
+                },
+                turn_type: refinement::TurnType::Discussion,
+                facts_filtered: 0,
+            });
+        }
+
+        // Classify the turn from combined content
+        let combined: String = messages
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let turn_type = refinement::classify_turn(&combined);
+
+        // Build prompt with turn-type-specific instructions
+        let prompt = self.build_prompt_with_turn_type(messages, Some(turn_type));
+        let response = provider.complete(&prompt.system, &prompt.user_message)?;
+        let mut extraction = self.parse_response(&response)?;
+
+        // Detect corrections in source content
+        let correction = refinement::detect_correction(&combined);
+
+        // Post-process facts: classify type, boost confidence, apply quality filters
+        let boost = turn_type.confidence_boost() + correction.confidence_boost;
+        let mut filtered_count = 0;
+
+        extraction.facts = extraction
+            .facts
+            .into_iter()
+            .filter_map(|mut fact| {
+                // Classify fact type
+                let fact_content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
+                let classified_type = refinement::classify_fact(&fact_content);
+                fact.fact_type = Some(classified_type.as_str().to_owned());
+
+                // Mark corrections
+                if correction.is_correction {
+                    fact.is_correction = true;
+                }
+
+                // Apply confidence boost
+                fact.confidence = refinement::boosted_confidence(fact.confidence, boost);
+
+                // Quality filter
+                let filter = refinement::filter_fact(&fact_content, fact.confidence);
+                if filter.passed {
+                    Some(fact)
+                } else {
+                    filtered_count += 1;
+                    tracing::debug!(
+                        subject = %fact.subject,
+                        reason = ?filter.reason,
+                        "fact filtered out during extraction refinement"
+                    );
+                    None
+                }
+            })
+            .collect();
+
+        Ok(RefinedExtraction {
+            extraction,
+            turn_type,
+            facts_filtered: filtered_count,
+        })
     }
 
     /// Persist an extraction to the knowledge store.
@@ -346,6 +459,7 @@ Rules:
                 slugify(&fact.subject),
                 slugify(&fact.predicate)
             ));
+            let ft = fact.fact_type.as_deref().unwrap_or("inference");
             let f = Fact {
                 id,
                 nous_id: nous_id.to_owned(),
@@ -359,8 +473,8 @@ Rules:
                 recorded_at: now,
                 access_count: 0,
                 last_accessed_at: None,
-                stability_hours: crate::knowledge::default_stability_hours("inference"),
-                fact_type: "inference".to_owned(),
+                stability_hours: crate::knowledge::default_stability_hours(ft),
+                fact_type: ft.to_owned(),
                 is_forgotten: false,
                 forgotten_at: None,
                 forget_reason: None,
@@ -376,6 +490,21 @@ Rules:
 
         Ok(result)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Refined extraction result
+// ---------------------------------------------------------------------------
+
+/// Result of extraction with context-dependent refinement applied.
+#[derive(Debug, Clone)]
+pub struct RefinedExtraction {
+    /// The extraction after quality filters and confidence boosts.
+    pub extraction: Extraction,
+    /// The classified turn type.
+    pub turn_type: refinement::TurnType,
+    /// Number of facts filtered out by quality checks.
+    pub facts_filtered: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -867,6 +996,8 @@ mod tests {
                 predicate: "uses".to_owned(),
                 object: "CozoDB for knowledge storage".to_owned(),
                 confidence: 0.9,
+                is_correction: false,
+                fact_type: None,
             }],
         };
 
