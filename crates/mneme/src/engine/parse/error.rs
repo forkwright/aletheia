@@ -42,7 +42,6 @@ pub(crate) enum ParseError {
     ///
     /// Constructed by callers that have a pest error in hand; `parse_script` uses
     /// [`Syntax`] instead so it can attach span information inline.
-    #[expect(dead_code, reason = "reserved for external callers who hold a raw pest::error::Error")]
     #[snafu(display("parse failed: {source}"))]
     PestError {
         source: pest::error::Error<super::Rule>,
