@@ -89,7 +89,11 @@ pub struct ExtractedFact {
     pub object: String,
     /// Confidence score (0.0–1.0).
     pub confidence: f64,
-    /// Whether this fact corrects a previously stated fact.
+    /// Whether this fact is a correction of prior information.
+    ///
+    /// Detected by heuristic patterns (e.g. "actually, it's X not Y").
+    /// Corrections get a +0.2 confidence boost (capped at 1.0) and
+    /// skip the SUPPLEMENTS path in conflict detection.
     #[serde(default)]
     pub is_correction: bool,
     /// Classified fact type for FSRS decay tuning.
@@ -467,11 +471,19 @@ Rules:
                 || crate::knowledge::FactType::classify(&content),
                 crate::knowledge::FactType::from_str_lossy,
             );
+            // Apply correction detection and confidence boost
+            let is_correction =
+                fact.is_correction || crate::conflict::is_correction_heuristic(&content);
+            let confidence = if is_correction {
+                crate::conflict::apply_correction_boost(fact.confidence)
+            } else {
+                fact.confidence
+            };
             let f = Fact {
                 id,
                 nous_id: nous_id.to_owned(),
                 content,
-                confidence: fact.confidence,
+                confidence,
                 tier: EpistemicTier::Inferred,
                 valid_from: now,
                 valid_to: far_future(),
