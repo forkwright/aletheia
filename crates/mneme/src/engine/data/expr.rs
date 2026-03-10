@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::mem;
 
+use super::error::*;
 use crate::engine::error::DbResult as Result;
-use crate::{bail, miette};
 use compact_str::CompactString;
 use itertools::Itertools;
 use serde::de::{Error, Visitor};
@@ -52,39 +52,21 @@ pub enum Bytecode {
     },
 }
 
-#[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "SourceSpan carried for error context but not included in Display"
-)]
-struct UnboundVariableError(String, SourceSpan);
-
-impl std::fmt::Display for UnboundVariableError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "The variable '{}' is unbound", self.0)
+fn unbound_variable_err(name: &str) -> DataError {
+    UnboundVariableSnafu {
+        message: format!("The variable '{name}' is unbound"),
     }
+    .build()
 }
 
-impl std::error::Error for UnboundVariableError {}
-
-#[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "SourceSpan carried for error context but not included in Display"
-)]
-struct TupleTooShortError(String, usize, usize, SourceSpan);
-
-impl std::fmt::Display for TupleTooShortError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "The tuple bound by variable '{}' is too short: index is {}, length is {}",
-            self.0, self.1, self.2
-        )
+fn tuple_too_short_err(name: &str, index: usize, length: usize) -> DataError {
+    InvalidValueSnafu {
+        message: format!(
+            "The tuple bound by variable '{name}' is too short: index is {index}, length is {length}"
+        ),
     }
+    .build()
 }
-
-impl std::error::Error for TupleTooShortError {}
 
 pub fn eval_bytecode_pred(
     bytecodes: &[Bytecode],
@@ -94,7 +76,12 @@ pub fn eval_bytecode_pred(
 ) -> Result<bool> {
     match eval_bytecode(bytecodes, bindings, stack)? {
         DataValue::Bool(b) => Ok(b),
-        v => bail!(PredicateTypeError(span, v)),
+        v => Err(TypeMismatchSnafu {
+            op: "predicate evaluation".to_string(),
+            expected: format!("a boolean value, got {:?}", v),
+        }
+        .build()
+        .into()),
     }
 }
 
@@ -114,19 +101,19 @@ pub fn eval_bytecode(
         match current_instruction {
             Bytecode::Binding { var, tuple_pos, .. } => match tuple_pos {
                 None => {
-                    bail!(UnboundVariableError(var.name.to_string(), var.span))
+                    return Err(unbound_variable_err(&var.name).into());
                 }
                 Some(i) => {
                     let val = bindings
                         .as_ref()
                         .get(*i)
-                        .ok_or_else(|| {
-                            TupleTooShortError(
-                                var.name.to_string(),
+                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                            tuple_too_short_err(
+                                &var.name,
                                 *i,
                                 bindings.as_ref().len(),
-                                var.span,
                             )
+                            .into()
                         })?
                         .clone();
                     stack.push(val);
@@ -137,20 +124,24 @@ pub fn eval_bytecode(
                 stack.push(val.clone());
                 pointer += 1;
             }
-            Bytecode::Apply { op, arity, span } => {
+            Bytecode::Apply { op, arity, span: _ } => {
                 let frame_start = stack.len() - *arity;
                 let args_frame = &stack[frame_start..];
-                let result = (op.inner)(args_frame)
-                    .map_err(|err| EvalRaisedError(*span, err.to_string()))?;
+                let result = (op.inner)(args_frame)?;
                 stack.truncate(frame_start);
                 stack.push(result);
                 pointer += 1;
             }
-            Bytecode::JumpIfFalse { jump_to, span } => {
+            Bytecode::JumpIfFalse { jump_to, span: _ } => {
                 let val = stack.pop().unwrap();
-                let cond = val
-                    .get_bool()
-                    .ok_or_else(|| PredicateTypeError(*span, val))?;
+                let cond = val.get_bool().ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                    TypeMismatchSnafu {
+                        op: "predicate evaluation".to_string(),
+                        expected: format!("a boolean value, got {:?}", val),
+                    }
+                    .build()
+                    .into()
+                })?;
                 if cond {
                     pointer += 1;
                 } else {
@@ -255,69 +246,12 @@ impl Display for Expr {
     }
 }
 
-#[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "SourceSpan carried for error context but not included in Display"
-)]
-pub(crate) struct NoImplementationError(pub(crate) SourceSpan, pub(crate) String);
-
-impl std::fmt::Display for NoImplementationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "No implementation found for op `{}`", self.1)
+pub(crate) fn no_implementation_err(op: &str) -> DataError {
+    NotImplementedSnafu {
+        message: format!("No implementation found for op `{op}`"),
     }
+    .build()
 }
-
-impl std::error::Error for NoImplementationError {}
-
-#[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "SourceSpan carried for error context but not included in Display"
-)]
-pub(crate) struct PredicateTypeError(pub(crate) SourceSpan, pub(crate) DataValue);
-
-impl std::fmt::Display for PredicateTypeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Found value {:?} where a boolean value is expected",
-            self.1
-        )
-    }
-}
-
-impl std::error::Error for PredicateTypeError {}
-
-#[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "error struct defined for completeness but not yet triggered by current code paths"
-)]
-struct BadEntityId(DataValue, SourceSpan);
-
-impl std::fmt::Display for BadEntityId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Cannot build entity ID from {:?}", self.0)
-    }
-}
-
-impl std::error::Error for BadEntityId {}
-
-#[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "SourceSpan and message carried for error context but Display is a fixed string"
-)]
-struct EvalRaisedError(SourceSpan, String);
-
-impl std::fmt::Display for EvalRaisedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Evaluation of expression failed")
-    }
-}
-
-impl std::error::Error for EvalRaisedError {}
 
 impl Expr {
     pub(crate) fn compile(&self) -> Result<Vec<Bytecode>> {
@@ -386,24 +320,15 @@ impl Expr {
     ) -> Result<()> {
         match self {
             Expr::Binding { var, tuple_pos, .. } => {
-                #[derive(Debug)]
-                #[expect(
-                    dead_code,
-                    reason = "SourceSpan carried for error context but not included in Display"
-                )]
-                struct BadBindingError(String, SourceSpan);
-
-                impl std::fmt::Display for BadBindingError {
-                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        write!(f, "Cannot find binding {}", self.0)
-                    }
-                }
-
-                impl std::error::Error for BadBindingError {}
-
-                let found_idx = *binding_map
-                    .get(var)
-                    .ok_or_else(|| BadBindingError(var.to_string(), var.span))?;
+                let found_idx = *binding_map.get(var).ok_or_else(
+                    || -> Box<dyn std::error::Error + Send + Sync> {
+                        UnboundVariableSnafu {
+                            message: format!("Cannot find binding {}", var),
+                        }
+                        .build()
+                        .into()
+                    },
+                )?;
                 *tuple_pos = Some(found_idx)
             }
             Expr::Const { .. } => {}
@@ -418,17 +343,19 @@ impl Expr {
                     val.fill_binding_indices(binding_map)?;
                 }
             }
-            Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+            Expr::UnboundApply { op, .. } => {
+                return Err(no_implementation_err(op).into());
             }
         }
         Ok(())
     }
+    #[expect(dead_code, reason = "diagnostic helper for expression binding analysis")]
     pub(crate) fn binding_indices(&self) -> Result<BTreeSet<usize>> {
         let mut ret = BTreeSet::default();
         self.do_binding_indices(&mut ret)?;
         Ok(ret)
     }
+    #[expect(dead_code, reason = "recursive helper for binding_indices diagnostic")]
     fn do_binding_indices(&self, coll: &mut BTreeSet<usize>) -> Result<()> {
         match self {
             Expr::Binding { tuple_pos, .. } => {
@@ -448,29 +375,22 @@ impl Expr {
                     val.do_binding_indices(coll)?;
                 }
             }
-            Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+            Expr::UnboundApply { op, .. } => {
+                return Err(no_implementation_err(op).into());
             }
         }
         Ok(())
     }
     /// Evaluate the expression to a constant value if possible
     pub fn eval_to_const(mut self) -> Result<DataValue> {
-        #[derive(Debug)]
-        struct NotConstError;
-
-        impl std::fmt::Display for NotConstError {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Expression contains unevaluated constant")
-            }
-        }
-
-        impl std::error::Error for NotConstError {}
-
         self.partial_eval()?;
         match self {
             Expr::Const { val, .. } => Ok(val),
-            _ => bail!(NotConstError),
+            _ => Err(InvalidValueSnafu {
+                message: "Expression contains unevaluated constant".to_string(),
+            }
+            .build()
+            .into()),
         }
     }
     pub(crate) fn partial_eval(&mut self) -> Result<()> {
@@ -531,8 +451,8 @@ impl Expr {
                     val.collect_bindings(coll)?;
                 }
             }
-            Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+            Expr::UnboundApply { op, .. } => {
+                return Err(no_implementation_err(op).into());
             }
         }
         Ok(())
@@ -541,18 +461,18 @@ impl Expr {
         match self {
             Expr::Binding { var, tuple_pos, .. } => match tuple_pos {
                 None => {
-                    bail!(UnboundVariableError(var.name.to_string(), var.span))
+                    Err(unbound_variable_err(&var.name).into())
                 }
                 Some(i) => Ok(bindings
                     .as_ref()
                     .get(*i)
-                    .ok_or_else(|| {
-                        TupleTooShortError(
-                            var.name.to_string(),
+                    .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                        tuple_too_short_err(
+                            &var.name,
                             *i,
                             bindings.as_ref().len(),
-                            var.span,
                         )
+                        .into()
                     })?
                     .clone()),
             },
@@ -562,15 +482,21 @@ impl Expr {
                     .iter()
                     .map(|v| v.eval(bindings.as_ref()))
                     .try_collect()?;
-                Ok((op.inner)(&args)
-                    .map_err(|err| EvalRaisedError(self.span(), err.to_string()))?)
+                Ok((op.inner)(&args)?)
             }
             Expr::Cond { clauses, .. } => {
                 for (cond, val) in clauses {
                     let cond_val = cond.eval(bindings.as_ref())?;
-                    let cond_val = cond_val
-                        .get_bool()
-                        .ok_or_else(|| PredicateTypeError(cond.span(), cond_val))?;
+                    let cond_val = cond_val.get_bool().ok_or_else(
+                        || -> Box<dyn std::error::Error + Send + Sync> {
+                            TypeMismatchSnafu {
+                                op: "predicate evaluation".to_string(),
+                                expected: format!("a boolean value, got {:?}", cond_val),
+                            }
+                            .build()
+                            .into()
+                        },
+                    )?;
 
                     if cond_val {
                         return val.eval(bindings.as_ref());
@@ -578,8 +504,8 @@ impl Expr {
                 }
                 Ok(DataValue::Null)
             }
-            Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+            Expr::UnboundApply { op, .. } => {
+                Err(no_implementation_err(op).into())
             }
         }
     }
@@ -643,25 +569,16 @@ impl Expr {
                     if let Some(symb) = args[0].get_binding() {
                         if let Some(val) = args[1].get_const() {
                             if target == symb {
-                                let s = val.get_str().ok_or_else(|| {
-                                    #[derive(Debug)]
-                                    #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
-                                    struct StrRangeScanError(DataValue, SourceSpan);
-
-                                    impl std::fmt::Display for StrRangeScanError {
-                                        fn fmt(
-                                            &self,
-                                            f: &mut std::fmt::Formatter<'_>,
-                                        ) -> std::fmt::Result
-                                        {
-                                            write!(f, "Cannot prefix scan with {:?}", self.0)
+                                let s = val.get_str().ok_or_else(
+                                    || -> Box<dyn std::error::Error + Send + Sync> {
+                                        TypeMismatchSnafu {
+                                            op: "prefix scan".to_string(),
+                                            expected: format!("a string value, got {:?}", val),
                                         }
-                                    }
-
-                                    impl std::error::Error for StrRangeScanError {}
-
-                                    StrRangeScanError(val.clone(), symb.span)
-                                })?;
+                                        .build()
+                                        .into()
+                                    },
+                                )?;
                                 let lower = DataValue::from(s);
                                 let mut upper = CompactString::from(s);
                                 upper.push(LARGEST_UTF_CHAR);
@@ -674,8 +591,8 @@ impl Expr {
                 }
                 _ => ValueRange::default(),
             },
-            Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+            Expr::UnboundApply { op, .. } => {
+                return Err(no_implementation_err(op).into());
             }
         })
     }
@@ -705,8 +622,8 @@ impl Expr {
                     act.do_get_variables(coll)?;
                 }
             }
-            Expr::UnboundApply { op, span, .. } => {
-                bail!(NoImplementationError(*span, op.to_string()));
+            Expr::UnboundApply { op, .. } => {
+                return Err(no_implementation_err(op).into());
             }
         }
         Ok(())
@@ -715,20 +632,34 @@ impl Expr {
         match self {
             Expr::Apply { op, args, .. } => {
                 if op.name != "OP_LIST" {
-                    Err(miette!("Invalid fields op: {} for {}", op.name, self))
+                    Err(InvalidValueSnafu {
+                        message: format!("Invalid fields op: {} for {}", op.name, self),
+                    }
+                    .build()
+                    .into())
                 } else {
                     let mut collected = vec![];
                     for field in args.iter() {
                         match field {
                             Expr::Binding { var, .. } => collected.push(var.name.clone()),
-                            _ => return Err(miette!("Invalid field element: {}", field)),
+                            _ => {
+                                return Err(InvalidValueSnafu {
+                                    message: format!("Invalid field element: {}", field),
+                                }
+                                .build()
+                                .into())
+                            }
                         }
                     }
                     Ok(collected)
                 }
             }
             Expr::Binding { var, .. } => Ok(vec![var.name.clone()]),
-            _ => Err(miette!("Invalid fields: {}", self)),
+            _ => Err(InvalidValueSnafu {
+                message: format!("Invalid fields: {}", self),
+            }
+            .build()
+            .into()),
         }
     }
 }
@@ -805,7 +736,7 @@ pub struct Op {
     pub(crate) name: &'static str,
     pub(crate) min_arity: usize,
     pub(crate) vararg: bool,
-    pub(crate) inner: fn(&[DataValue]) -> Result<DataValue>,
+    pub(crate) inner: fn(&[DataValue]) -> DataResult<DataValue>,
 }
 
 /// Used as `Arc<dyn CustomOp>`

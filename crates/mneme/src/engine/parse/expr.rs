@@ -9,7 +9,7 @@ use itertools::Itertools;
 use pest::pratt_parser::{Op, PrattParser};
 use std::sync::LazyLock;
 
-use crate::engine::data::expr::{Bytecode, Expr, NoImplementationError, get_op};
+use crate::engine::data::expr::{Bytecode, Expr, get_op, no_implementation_err};
 use crate::engine::data::functions::{
     OP_ADD, OP_AND, OP_COALESCE, OP_CONCAT, OP_DIV, OP_EQ, OP_GE, OP_GT, OP_JSON_OBJECT, OP_LE,
     OP_LIST, OP_LT, OP_MAYBE_GET, OP_MINUS, OP_MOD, OP_MUL, OP_NEGATE, OP_NEQ, OP_OR, OP_POW,
@@ -94,8 +94,8 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
                 }
             }
         }
-        Expr::UnboundApply { op, span, .. } => {
-            bail!(NoImplementationError(*span, op.to_string()));
+        Expr::UnboundApply { op, .. } => {
+            return Err(no_implementation_err(op).into());
         }
     }
     Ok(())

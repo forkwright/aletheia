@@ -2,9 +2,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter};
 
-use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure, miette};
+use super::error::*;
 use rand::prelude::*;
+
+type Result<T> = DataResult<T>;
 
 use crate::engine::data::value::DataValue;
 
@@ -75,7 +76,7 @@ impl NormalAggrObj for AggrAnd {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::Bool(v) => self.accum &= *v,
-            v => bail!("cannot compute 'and' for {:?}", v),
+            v => return TypeMismatchSnafu { op: "and", expected: format!("compatible type, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -99,7 +100,7 @@ impl MeetAggrObj for MeetAggrAnd {
                 *l &= *r;
                 Ok(old == *l)
             }
-            (u, v) => bail!("cannot compute 'and' for {:?} and {:?}", u, v),
+            (u, v) => TypeMismatchSnafu { op: "and", expected: format!("compatible type, got {u:?} and {v:?}") }.fail(),
         }
     }
 }
@@ -115,7 +116,7 @@ impl NormalAggrObj for AggrOr {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::Bool(v) => self.accum |= *v,
-            v => bail!("cannot compute 'or' for {:?}", v),
+            v => return TypeMismatchSnafu { op: "or", expected: format!("compatible type, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -139,7 +140,7 @@ impl MeetAggrObj for MeetAggrOr {
                 *l |= *r;
                 Ok(old == *l)
             }
-            (u, v) => bail!("cannot compute 'or' for {:?} and {:?}", u, v),
+            (u, v) => TypeMismatchSnafu { op: "or", expected: format!("compatible type, got {u:?} and {v:?}") }.fail(),
         }
     }
 }
@@ -219,7 +220,7 @@ impl NormalAggrObj for AggrUnion {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(v) => self.accum.extend(v.iter().cloned()),
-            v => bail!("cannot compute 'union' for value {:?}", v),
+            v => return TypeMismatchSnafu { op: "union", expected: format!("list, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -258,7 +259,7 @@ impl MeetAggrObj for MeetAggrUnion {
                     }
                     inserted
                 }
-                (_, v) => bail!("cannot compute 'union' for value {:?}", v),
+                (_, v) => return TypeMismatchSnafu { op: "union", expected: format!("set or list, got {v:?}") }.fail(),
             });
         }
     }
@@ -285,7 +286,7 @@ impl NormalAggrObj for AggrIntersection {
                     self.accum = Some(v.iter().cloned().collect())
                 }
             }
-            v => bail!("cannot compute 'intersection' for value {:?}", v),
+            v => return TypeMismatchSnafu { op: "intersection", expected: format!("list, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -340,7 +341,7 @@ impl MeetAggrObj for MeetAggrIntersection {
                         true
                     }
                 }
-                (_, v) => bail!("cannot compute 'union' for value {:?}", v),
+                (_, v) => return TypeMismatchSnafu { op: "intersection", expected: format!("set or list, got {v:?}") }.fail(),
             });
         }
     }
@@ -447,7 +448,7 @@ impl NormalAggrObj for AggrVariance {
                 self.sum_sq += f * f;
                 self.count += 1;
             }
-            v => bail!("cannot compute 'variance': encountered value {:?}", v),
+            v => return TypeMismatchSnafu { op: "variance", expected: format!("numerical value, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -478,7 +479,7 @@ impl NormalAggrObj for AggrStdDev {
                 self.sum_sq += f * f;
                 self.count += 1;
             }
-            v => bail!("cannot compute 'std_dev': encountered value {:?}", v),
+            v => return TypeMismatchSnafu { op: "std_dev", expected: format!("numerical value, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -505,7 +506,7 @@ impl NormalAggrObj for AggrMean {
                 self.sum += n.get_float();
                 self.count += 1;
             }
-            v => bail!("cannot compute 'mean': encountered value {:?}", v),
+            v => return TypeMismatchSnafu { op: "mean", expected: format!("numerical value, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -528,7 +529,7 @@ impl NormalAggrObj for AggrSum {
             DataValue::Num(n) => {
                 self.sum += n.get_float();
             }
-            v => bail!("cannot compute 'sum': encountered value {:?}", v),
+            v => return TypeMismatchSnafu { op: "sum", expected: format!("numerical value, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -556,7 +557,7 @@ impl NormalAggrObj for AggrProduct {
             DataValue::Num(n) => {
                 self.product *= n.get_float();
             }
-            v => bail!("cannot compute 'product': encountered value {:?}", v),
+            v => return TypeMismatchSnafu { op: "product", expected: format!("numerical value, got {v:?}") }.fail(),
         }
         Ok(())
     }
@@ -592,10 +593,10 @@ impl NormalAggrObj for AggrMin {
         let f1 = self
             .found
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| TypeMismatchSnafu { op: "min", expected: "numerical values" }.build())?;
         let f2 = value
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| TypeMismatchSnafu { op: "min", expected: "numerical values" }.build())?;
         if f1 > f2 {
             self.found = value.clone();
         }
@@ -624,10 +625,10 @@ impl MeetAggrObj for MeetAggrMin {
         }
         let f1 = left
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| TypeMismatchSnafu { op: "min", expected: "numerical values" }.build())?;
         let f2 = right
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| TypeMismatchSnafu { op: "min", expected: "numerical values" }.build())?;
 
         Ok(if f1 > f2 {
             *left = right.clone();
@@ -664,10 +665,10 @@ impl NormalAggrObj for AggrMax {
         let f1 = self
             .found
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| TypeMismatchSnafu { op: "max", expected: "numerical values" }.build())?;
         let f2 = value
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| TypeMismatchSnafu { op: "max", expected: "numerical values" }.build())?;
         if f1 < f2 {
             self.found = value.clone();
         }
@@ -696,10 +697,10 @@ impl MeetAggrObj for MeetAggrMax {
         }
         let f1 = left
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| TypeMismatchSnafu { op: "max", expected: "numerical values" }.build())?;
         let f2 = right
             .get_float()
-            .ok_or_else(|| miette!("'min' applied to non-numerical values"))?;
+            .ok_or_else(|| TypeMismatchSnafu { op: "max", expected: "numerical values" }.build())?;
 
         Ok(if f1 < f2 {
             *left = right.clone();
@@ -730,9 +731,9 @@ impl NormalAggrObj for AggrLatestBy {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {
-                ensure!(
+                snafu::ensure!(
                     l.len() == 2,
-                    "'latest_by' requires a list of exactly two items as argument"
+                    InvalidValueSnafu { message: "'latest_by' requires a list of exactly two items as argument" }
                 );
                 let c = &l[1];
                 if *c > self.cost {
@@ -741,7 +742,7 @@ impl NormalAggrObj for AggrLatestBy {
                 }
                 Ok(())
             }
-            v => bail!("cannot compute 'latest_by' on {:?}", v),
+            v => TypeMismatchSnafu { op: "latest_by", expected: format!("list, got {v:?}") }.fail(),
         }
     }
 
@@ -770,9 +771,9 @@ impl NormalAggrObj for AggrSmallestBy {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {
-                ensure!(
+                snafu::ensure!(
                     l.len() == 2,
-                    "'smallest_by' requires a list of exactly two items as argument"
+                    InvalidValueSnafu { message: "'smallest_by' requires a list of exactly two items as argument" }
                 );
                 let c = &l[1];
                 if self.cost == DataValue::Null || *c < self.cost {
@@ -781,7 +782,7 @@ impl NormalAggrObj for AggrSmallestBy {
                 }
                 Ok(())
             }
-            v => bail!("cannot compute 'smallest_by' on {:?}", v),
+            v => TypeMismatchSnafu { op: "smallest_by", expected: format!("list, got {v:?}") }.fail(),
         }
     }
 
@@ -810,21 +811,21 @@ impl NormalAggrObj for AggrMinCost {
     fn set(&mut self, value: &DataValue) -> Result<()> {
         match value {
             DataValue::List(l) => {
-                ensure!(
+                snafu::ensure!(
                     l.len() == 2,
-                    "'min_cost' requires a list of exactly two items as argument"
+                    InvalidValueSnafu { message: "'min_cost' requires a list of exactly two items as argument" }
                 );
                 let c = &l[1];
                 let cost = c
                     .get_float()
-                    .ok_or_else(|| miette!("Cost must be numeric"))?;
+                    .ok_or_else(|| TypeMismatchSnafu { op: "min_cost", expected: "numerical cost" }.build())?;
                 if cost < self.cost {
                     self.cost = cost;
                     self.found = l[0].clone();
                 }
                 Ok(())
             }
-            v => bail!("cannot compute 'min_cost' on {:?}", v),
+            v => TypeMismatchSnafu { op: "min_cost", expected: format!("list, got {v:?}") }.fail(),
         }
     }
 
@@ -846,20 +847,18 @@ impl MeetAggrObj for MeetAggrMinCost {
     fn update(&self, left: &mut DataValue, right: &DataValue) -> Result<bool> {
         Ok(match (left, right) {
             (DataValue::List(prev), DataValue::List(l)) => {
-                ensure!(
+                snafu::ensure!(
                     l.len() == 2 && prev.len() == 2,
-                    "'min_cost' requires a list of length 2 as argument, got {:?}, {:?}",
-                    prev,
-                    l
+                    InvalidValueSnafu { message: format!("'min_cost' requires a list of length 2 as argument, got {prev:?}, {l:?}") }
                 );
                 let cur_cost = l.get(1).unwrap();
                 let cur_cost = cur_cost
                     .get_float()
-                    .ok_or_else(|| miette!("'min_cost' must have numerical costs"))?;
+                    .ok_or_else(|| TypeMismatchSnafu { op: "min_cost", expected: "numerical costs" }.build())?;
                 let prev_cost = prev.get(1).unwrap();
                 let prev_cost = prev_cost
                     .get_float()
-                    .ok_or_else(|| miette!("'prev_cost' must have numerical costs"))?;
+                    .ok_or_else(|| TypeMismatchSnafu { op: "min_cost", expected: "numerical costs" }.build())?;
 
                 if prev_cost <= cur_cost {
                     false
@@ -868,7 +867,7 @@ impl MeetAggrObj for MeetAggrMinCost {
                     true
                 }
             }
-            (u, v) => bail!("cannot compute 'min_cost' on {:?}, {:?}", u, v),
+            (u, v) => return TypeMismatchSnafu { op: "min_cost", expected: format!("list, got {u:?} and {v:?}") }.fail(),
         })
     }
 }
@@ -894,7 +893,7 @@ impl NormalAggrObj for AggrShortest {
                 }
                 Ok(())
             }
-            v => bail!("cannot compute 'shortest' on {:?}", v),
+            v => return TypeMismatchSnafu { op: "shortest", expected: format!("list, got {v:?}") }.fail(),
         }
     }
 
@@ -927,7 +926,7 @@ impl MeetAggrObj for MeetAggrShortest {
             } else {
                 false
             }),
-            (l, v) => bail!("cannot compute 'shortest' on {:?} and {:?}", l, v),
+            (l, v) => TypeMismatchSnafu { op: "shortest", expected: format!("list, got {l:?} and {v:?}") }.fail(),
         }
     }
 }
@@ -990,11 +989,9 @@ impl NormalAggrObj for AggrBitAnd {
                 if self.res.is_empty() {
                     self.res = bs.to_vec();
                 } else {
-                    ensure!(
+                    snafu::ensure!(
                         self.res.len() == bs.len(),
-                        "operands of 'bit_and' must have the same lengths, got {:x?} and {:x?}",
-                        self.res,
-                        bs
+                        ByteLengthMismatchSnafu { op: "bit_and" }
                     );
                     for (l, r) in self.res.iter_mut().zip(bs.iter()) {
                         *l &= *r;
@@ -1002,7 +999,7 @@ impl NormalAggrObj for AggrBitAnd {
                 }
                 Ok(())
             }
-            v => bail!("cannot apply 'bit_and' to {:?}", v),
+            v => return TypeMismatchSnafu { op: "bit_and", expected: format!("bytes, got {v:?}") }.fail(),
         }
     }
 
@@ -1028,11 +1025,9 @@ impl MeetAggrObj for MeetAggrBitAnd {
                     *left = right.clone();
                     return Ok(true);
                 }
-                ensure!(
+                snafu::ensure!(
                     left.len() == right.len(),
-                    "operands of 'bit_and' must have the same lengths, got {:x?} and {:x?}",
-                    left,
-                    right
+                    ByteLengthMismatchSnafu { op: "bit_and" }
                 );
                 for (l, r) in left.iter_mut().zip(right.iter()) {
                     *l &= *r;
@@ -1040,7 +1035,7 @@ impl MeetAggrObj for MeetAggrBitAnd {
 
                 Ok(true)
             }
-            v => bail!("cannot apply 'bit_and' to {:?}", v),
+            v => TypeMismatchSnafu { op: "bit_and", expected: format!("bytes, got {v:?}") }.fail(),
         }
     }
 }
@@ -1059,11 +1054,9 @@ impl NormalAggrObj for AggrBitOr {
                 if self.res.is_empty() {
                     self.res = bs.to_vec();
                 } else {
-                    ensure!(
+                    snafu::ensure!(
                         self.res.len() == bs.len(),
-                        "operands of 'bit_or' must have the same lengths, got {:x?} and {:x?}",
-                        self.res,
-                        bs
+                        ByteLengthMismatchSnafu { op: "bit_or" }
                     );
                     for (l, r) in self.res.iter_mut().zip(bs.iter()) {
                         *l |= *r;
@@ -1071,7 +1064,7 @@ impl NormalAggrObj for AggrBitOr {
                 }
                 Ok(())
             }
-            v => bail!("cannot apply 'bit_or' to {:?}", v),
+            v => return TypeMismatchSnafu { op: "bit_or", expected: format!("bytes, got {v:?}") }.fail(),
         }
     }
 
@@ -1097,11 +1090,9 @@ impl MeetAggrObj for MeetAggrBitOr {
                     *left = right.clone();
                     return Ok(true);
                 }
-                ensure!(
+                snafu::ensure!(
                     left.len() == right.len(),
-                    "operands of 'bit_or' must have the same lengths, got {:x?} and {:x?}",
-                    left,
-                    right
+                    ByteLengthMismatchSnafu { op: "bit_or" }
                 );
                 for (l, r) in left.iter_mut().zip(right.iter()) {
                     *l |= *r;
@@ -1109,7 +1100,7 @@ impl MeetAggrObj for MeetAggrBitOr {
 
                 Ok(true)
             }
-            v => bail!("cannot apply 'bit_or' to {:?}", v),
+            v => TypeMismatchSnafu { op: "bit_or", expected: format!("bytes, got {v:?}") }.fail(),
         }
     }
 }
@@ -1128,11 +1119,9 @@ impl NormalAggrObj for AggrBitXor {
                 if self.res.is_empty() {
                     self.res = bs.to_vec();
                 } else {
-                    ensure!(
+                    snafu::ensure!(
                         self.res.len() == bs.len(),
-                        "operands of 'bit_xor' must have the same lengths, got {:x?} and {:x?}",
-                        self.res,
-                        bs
+                        ByteLengthMismatchSnafu { op: "bit_xor" }
                     );
                     for (l, r) in self.res.iter_mut().zip(bs.iter()) {
                         *l ^= *r;
@@ -1140,7 +1129,7 @@ impl NormalAggrObj for AggrBitXor {
                 }
                 Ok(())
             }
-            v => bail!("cannot apply 'bit_xor' to {:?}", v),
+            v => return TypeMismatchSnafu { op: "bit_xor", expected: format!("bytes, got {v:?}") }.fail(),
         }
     }
 
@@ -1230,15 +1219,11 @@ impl Aggregation {
                     AggrCollect::default()
                 } else {
                     let arg = args[0].get_int().ok_or_else(|| {
-                        miette!(
-                            "the argument to 'collect' must be an integer, got {:?}",
-                            args[0]
-                        )
+                        TypeMismatchSnafu { op: "collect", expected: format!("integer argument, got {:?}", args[0]) }.build()
                     })?;
-                    ensure!(
+                    snafu::ensure!(
                         arg > 0,
-                        "argument to 'collect' must be positive, got {}",
-                        arg
+                        InvalidValueSnafu { message: format!("argument to 'collect' must be positive, got {arg}") }
                     );
                     AggrCollect::new(arg as usize)
                 }

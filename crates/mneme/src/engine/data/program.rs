@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
+use super::error::*;
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure, miette};
 use compact_str::CompactString;
 use smallvec::SmallVec;
 
@@ -18,11 +18,11 @@ use crate::engine::fixed_rule::{FixedRule, FixedRuleHandle};
 use crate::engine::fts::FtsIndexManifest;
 use crate::engine::parse::SourceSpan;
 use crate::engine::query::compile::ContainedRuleMultiplicity;
-use crate::engine::query::logical::{Disjunction, NamedFieldNotFound};
+use crate::engine::query::logical::Disjunction;
 use crate::engine::runtime::hnsw::HnswIndexManifest;
 use crate::engine::runtime::minhash_lsh::{LshSearch, MinHashLshIndexManifest};
 use crate::engine::runtime::relation::{
-    AccessLevel, InputRelationHandle, InsufficientAccessLevel, RelationHandle,
+    AccessLevel, InputRelationHandle, RelationHandle,
 };
 use crate::engine::runtime::temp_store::EpochStore;
 use crate::engine::runtime::transact::SessionTx;
@@ -267,10 +267,6 @@ pub(crate) struct MagicFixedRuleApply {
 #[derive(Debug)]
 pub(crate) struct FixedRuleOptionNotFoundError {
     pub(crate) name: String,
-    #[expect(
-        dead_code,
-        reason = "SourceSpan carried for error context but not included in Display"
-    )]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
 }
@@ -290,16 +286,8 @@ impl std::error::Error for FixedRuleOptionNotFoundError {}
 #[derive(Debug)]
 pub(crate) struct WrongFixedRuleOptionError {
     pub(crate) name: String,
-    #[expect(
-        dead_code,
-        reason = "SourceSpan carried for error context but not included in Display"
-    )]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
-    #[expect(
-        dead_code,
-        reason = "help text carried for future extended error reporting"
-    )]
     pub(crate) help: String,
 }
 
@@ -316,6 +304,7 @@ impl std::fmt::Display for WrongFixedRuleOptionError {
 impl std::error::Error for WrongFixedRuleOptionError {}
 
 impl MagicFixedRuleApply {
+    #[expect(dead_code, reason = "validation helper retained for fixed rule implementors")]
     pub(crate) fn relation_with_min_len(
         &self,
         idx: usize,
@@ -323,59 +312,33 @@ impl MagicFixedRuleApply {
         tx: &SessionTx<'_>,
         stores: &BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<&MagicFixedRuleRuleArg> {
-        #[derive(Debug)]
-        struct InputRelationArityError(usize, usize, SourceSpan);
-
-        impl std::fmt::Display for InputRelationArityError {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Input relation to fixed rule has insufficient arity")
-            }
-        }
-
-        impl std::error::Error for InputRelationArityError {}
-
         let rel = self.relation(idx)?;
         let arity = rel.arity(tx, stores)?;
-        ensure!(
-            arity >= len,
-            InputRelationArityError(len, arity, rel.span())
-        );
+        if arity < len {
+            return Err(ProgramConstraintSnafu {
+                message: "Input relation to fixed rule has insufficient arity".to_string(),
+            }
+            .build()
+            .into());
+        }
         Ok(rel)
     }
     pub(crate) fn relations_count(&self) -> usize {
         self.rule_args.len()
     }
     pub(crate) fn relation(&self, idx: usize) -> Result<&MagicFixedRuleRuleArg> {
-        #[derive(Debug)]
-        pub(crate) struct FixedRuleNotEnoughRelationError {
-            idx: usize,
-            #[expect(
-                dead_code,
-                reason = "SourceSpan carried for error context but not included in Display"
-            )]
-            span: SourceSpan,
-            rule_name: String,
-        }
-
-        impl std::fmt::Display for FixedRuleNotEnoughRelationError {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(
-                    f,
-                    "Cannot find a required positional argument at index {} for '{}'",
-                    self.idx, self.rule_name
-                )
-            }
-        }
-
-        impl std::error::Error for FixedRuleNotEnoughRelationError {}
-
         Ok(self
             .rule_args
             .get(idx)
-            .ok_or_else(|| FixedRuleNotEnoughRelationError {
-                idx,
-                span: self.span,
-                rule_name: self.fixed_handle.name.to_string(),
+            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                ProgramConstraintSnafu {
+                    message: format!(
+                        "Cannot find a required positional argument at index {} for '{}'",
+                        idx, self.fixed_handle.name
+                    ),
+                }
+                .build()
+                .into()
             })?)
     }
 }
@@ -451,12 +414,14 @@ pub(crate) enum MagicFixedRuleRuleArg {
     },
 }
 impl MagicFixedRuleRuleArg {
+    #[expect(dead_code, reason = "accessor retained for external fixed rule implementations")]
     pub(crate) fn bindings(&self) -> &[Symbol] {
         match self {
             MagicFixedRuleRuleArg::InMem { bindings, .. }
             | MagicFixedRuleRuleArg::Stored { bindings, .. } => bindings,
         }
     }
+    #[expect(dead_code, reason = "accessor used by external fixed rule error reporting")]
     pub(crate) fn span(&self) -> SourceSpan {
         match self {
             MagicFixedRuleRuleArg::InMem { span, .. }
@@ -1091,66 +1056,26 @@ impl SearchInput {
         }
 
         if let Some((name, _)) = self.bindings.pop_first() {
-            bail!(NamedFieldNotFound {
-                relation: self.relation.name.to_string(),
-                field: name.to_string(),
-                span: self.span
-            });
-        }
-
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "SourceSpan carried for error context but not included in Display"
-        )]
-        struct LshRequiredMissing(String, SourceSpan);
-
-        impl std::fmt::Display for LshRequiredMissing {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Field `{}` is required for LSH search", self.0)
+            return Err(FieldNotFoundSnafu {
+                message: format!(
+                    "stored relation '{}' does not have field '{}'",
+                    self.relation.name, name
+                ),
             }
+            .build()
+            .into());
         }
-
-        impl std::error::Error for LshRequiredMissing {}
-
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "error struct defined but not yet triggered by current code paths"
-        )]
-        struct ExpectedListForLshKeys(SourceSpan);
-
-        impl std::fmt::Display for ExpectedListForLshKeys {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Expected a list of keys for LSH search")
-            }
-        }
-
-        impl std::error::Error for ExpectedListForLshKeys {}
-
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "error struct defined but not yet triggered by current code paths"
-        )]
-        struct WrongArityForKeys(SourceSpan, usize, usize);
-
-        impl std::fmt::Display for WrongArityForKeys {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(
-                    f,
-                    "Wrong arity for LSH keys, expected {}, got {}",
-                    self.1, self.2
-                )
-            }
-        }
-
-        impl std::error::Error for WrongArityForKeys {}
 
         let query = match self
             .parameters
             .remove("query")
-            .ok_or_else(|| miette!(LshRequiredMissing("query".to_string(), self.span)))?
+            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                FieldNotFoundSnafu {
+                    message: "Field `query` is required for LSH search".to_string(),
+                }
+                .build()
+                .into()
+            })?
         {
             Expr::Binding { var, .. } => var,
             expr => {
@@ -1171,50 +1096,35 @@ impl SearchInput {
             None => None,
             Some(k_expr) => {
                 let k = k_expr.eval_to_const()?;
-                let k = k.get_int().ok_or(ExpectedPosIntForFtsK(self.span))?;
-
-                #[derive(Debug)]
-                #[expect(
-                    dead_code,
-                    reason = "SourceSpan carried for error context but not included in Display"
-                )]
-                struct ExpectedPosIntForFtsK(SourceSpan);
-
-                impl std::fmt::Display for ExpectedPosIntForFtsK {
-                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        write!(f, "Expected positive integer for `k`")
+                let k = k.get_int().ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                    InvalidValueSnafu {
+                        message: "Expected positive integer for `k`".to_string(),
                     }
+                    .build()
+                    .into()
+                })?;
+                if k <= 0 {
+                    return Err(InvalidValueSnafu {
+                        message: "Expected positive integer for `k`".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
-
-                impl std::error::Error for ExpectedPosIntForFtsK {}
-
-                ensure!(k > 0, ExpectedPosIntForFtsK(self.span));
                 Some(k as usize)
             }
         };
 
         let filter = self.parameters.remove("filter");
 
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "SourceSpan carried for error context but not included in Display"
-        )]
-        struct ExtraParametersForLshSearch(Vec<String>, SourceSpan);
-
-        impl std::fmt::Display for ExtraParametersForLshSearch {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Extra parameters for LSH search: {:?}", self.0)
-            }
-        }
-
-        impl std::error::Error for ExtraParametersForLshSearch {}
-
         if !self.parameters.is_empty() {
-            bail!(ExtraParametersForLshSearch(
-                self.parameters.keys().map(|s| s.to_string()).collect(),
-                self.span
-            ));
+            return Err(InvalidValueSnafu {
+                message: format!(
+                    "Extra parameters for LSH search: {:?}",
+                    self.parameters.keys().collect::<Vec<_>>()
+                ),
+            }
+            .build()
+            .into());
         }
 
         conj.push(NormalFormAtom::LshSearch(LshSearch {
@@ -1289,32 +1199,26 @@ impl SearchInput {
         }
 
         if let Some((name, _)) = self.bindings.pop_first() {
-            bail!(NamedFieldNotFound {
-                relation: self.relation.name.to_string(),
-                field: name.to_string(),
-                span: self.span
-            });
-        }
-
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "SourceSpan carried for error context but not included in Display"
-        )]
-        struct HnswRequiredMissing(String, SourceSpan);
-
-        impl std::fmt::Display for HnswRequiredMissing {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Field `{}` is required for HNSW search", self.0)
+            return Err(FieldNotFoundSnafu {
+                message: format!(
+                    "stored relation '{}' does not have field '{}'",
+                    self.relation.name, name
+                ),
             }
+            .build()
+            .into());
         }
-
-        impl std::error::Error for HnswRequiredMissing {}
 
         let query = match self
             .parameters
             .remove("query")
-            .ok_or_else(|| miette!(HnswRequiredMissing("query".to_string(), self.span)))?
+            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                FieldNotFoundSnafu {
+                    message: "Field `query` is required for FTS search".to_string(),
+                }
+                .build()
+                .into()
+            })?
         {
             Expr::Binding { var, .. } => var,
             expr => {
@@ -1334,40 +1238,54 @@ impl SearchInput {
         let k_expr = self
             .parameters
             .remove("k")
-            .ok_or_else(|| miette!(HnswRequiredMissing("k".to_string(), self.span)))?;
+            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                FieldNotFoundSnafu {
+                    message: "Field `k` is required for FTS search".to_string(),
+                }
+                .build()
+                .into()
+            })?;
         let k = k_expr.eval_to_const()?;
-        let k = k.get_int().ok_or(ExpectedPosIntForFtsK(self.span))?;
-
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "SourceSpan carried for error context but not included in Display"
-        )]
-        struct ExpectedPosIntForFtsK(SourceSpan);
-
-        impl std::fmt::Display for ExpectedPosIntForFtsK {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Expected positive integer for `k`")
+        let k = k.get_int().ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+            InvalidValueSnafu {
+                message: "Expected positive integer for `k`".to_string(),
             }
+            .build()
+            .into()
+        })?;
+        if k <= 0 {
+            return Err(InvalidValueSnafu {
+                message: "Expected positive integer for `k`".to_string(),
+            }
+            .build()
+            .into());
         }
-
-        impl std::error::Error for ExpectedPosIntForFtsK {}
-
-        ensure!(k > 0, ExpectedPosIntForFtsK(self.span));
 
         let score_kind_expr = self.parameters.remove("score_kind");
         let score_kind = match score_kind_expr {
             Some(expr) => {
                 let r = expr.eval_to_const()?;
-                let r = r
-                    .get_str()
-                    .ok_or_else(|| miette!("Score kind for FTS must be a string"))?;
+                let r = r.get_str().ok_or_else(
+                    || -> Box<dyn std::error::Error + Send + Sync> {
+                        InvalidValueSnafu {
+                            message: "Score kind for FTS must be a string".to_string(),
+                        }
+                        .build()
+                        .into()
+                    },
+                )?;
 
                 match r {
                     "tf_idf" => FtsScoreKind::TfIdf,
                     "tf" => FtsScoreKind::Tf,
                     "bm25" => FtsScoreKind::Bm25,
-                    s => bail!("Unknown score kind for FTS: {}", s),
+                    s => {
+                        return Err(InvalidValueSnafu {
+                            message: format!("Unknown score kind for FTS: {}", s),
+                        }
+                        .build()
+                        .into())
+                    }
                 }
             }
             None => FtsScoreKind::TfIdf,
@@ -1393,7 +1311,14 @@ impl SearchInput {
         };
 
         if !self.parameters.is_empty() {
-            bail!("Unknown parameters for FTS: {:?}", self.parameters.keys());
+            return Err(InvalidValueSnafu {
+                message: format!(
+                    "Unknown parameters for FTS: {:?}",
+                    self.parameters.keys().collect::<Vec<_>>()
+                ),
+            }
+            .build()
+            .into());
         }
 
         conj.push(NormalFormAtom::FtsSearch(FtsSearch {
@@ -1473,32 +1398,26 @@ impl SearchInput {
         }
 
         if let Some((name, _)) = self.bindings.pop_first() {
-            bail!(NamedFieldNotFound {
-                relation: self.relation.name.to_string(),
-                field: name.to_string(),
-                span: self.span
-            });
-        }
-
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "SourceSpan carried for error context but not included in Display"
-        )]
-        struct HnswRequiredMissing(String, SourceSpan);
-
-        impl std::fmt::Display for HnswRequiredMissing {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Field `{}` is required for HNSW search", self.0)
+            return Err(FieldNotFoundSnafu {
+                message: format!(
+                    "stored relation '{}' does not have field '{}'",
+                    self.relation.name, name
+                ),
             }
+            .build()
+            .into());
         }
-
-        impl std::error::Error for HnswRequiredMissing {}
 
         let query = match self
             .parameters
             .remove("query")
-            .ok_or_else(|| miette!(HnswRequiredMissing("query".to_string(), self.span)))?
+            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                FieldNotFoundSnafu {
+                    message: "Field `query` is required for HNSW search".to_string(),
+                }
+                .build()
+                .into()
+            })?
         {
             Expr::Binding { var, .. } => var,
             expr => {
@@ -1518,74 +1437,74 @@ impl SearchInput {
         let k_expr = self
             .parameters
             .remove("k")
-            .ok_or_else(|| miette!(HnswRequiredMissing("k".to_string(), self.span)))?;
+            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                FieldNotFoundSnafu {
+                    message: "Field `k` is required for HNSW search".to_string(),
+                }
+                .build()
+                .into()
+            })?;
         let k = k_expr.eval_to_const()?;
-        let k = k.get_int().ok_or(ExpectedPosIntForHnswK(self.span))?;
-
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "SourceSpan carried for error context but not included in Display"
-        )]
-        struct ExpectedPosIntForHnswK(SourceSpan);
-
-        impl std::fmt::Display for ExpectedPosIntForHnswK {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Expected positive integer for `k`")
+        let k = k.get_int().ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+            InvalidValueSnafu {
+                message: "Expected positive integer for `k`".to_string(),
             }
+            .build()
+            .into()
+        })?;
+        if k <= 0 {
+            return Err(InvalidValueSnafu {
+                message: "Expected positive integer for `k`".to_string(),
+            }
+            .build()
+            .into());
         }
-
-        impl std::error::Error for ExpectedPosIntForHnswK {}
-
-        ensure!(k > 0, ExpectedPosIntForHnswK(self.span));
 
         let ef_expr = self
             .parameters
             .remove("ef")
-            .ok_or_else(|| miette!(HnswRequiredMissing("ef".to_string(), self.span)))?;
+            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                FieldNotFoundSnafu {
+                    message: "Field `ef` is required for HNSW search".to_string(),
+                }
+                .build()
+                .into()
+            })?;
         let ef = ef_expr.eval_to_const()?;
-        let ef = ef.get_int().ok_or(ExpectedPosIntForHnswEf(self.span))?;
-
-        #[derive(Debug)]
-        #[expect(
-            dead_code,
-            reason = "SourceSpan carried for error context but not included in Display"
-        )]
-        struct ExpectedPosIntForHnswEf(SourceSpan);
-
-        impl std::fmt::Display for ExpectedPosIntForHnswEf {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "Expected positive integer for `ef`")
+        let ef = ef.get_int().ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+            InvalidValueSnafu {
+                message: "Expected positive integer for `ef`".to_string(),
             }
+            .build()
+            .into()
+        })?;
+        if ef <= 0 {
+            return Err(InvalidValueSnafu {
+                message: "Expected positive integer for `ef`".to_string(),
+            }
+            .build()
+            .into());
         }
-
-        impl std::error::Error for ExpectedPosIntForHnswEf {}
-
-        ensure!(ef > 0, ExpectedPosIntForHnswEf(self.span));
 
         let radius_expr = self.parameters.remove("radius");
         let radius = match radius_expr {
             Some(expr) => {
                 let r = expr.eval_to_const()?;
-                let r = r.get_float().ok_or(ExpectedFloatForHnswRadius(self.span))?;
-
-                #[derive(Debug)]
-                #[expect(
-                    dead_code,
-                    reason = "SourceSpan carried for error context but not included in Display"
-                )]
-                struct ExpectedFloatForHnswRadius(SourceSpan);
-
-                impl std::fmt::Display for ExpectedFloatForHnswRadius {
-                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        write!(f, "Expected positive float for `radius`")
-                    }
-                }
-
-                impl std::error::Error for ExpectedFloatForHnswRadius {}
-
+                let r = r.get_float().ok_or_else(
+                    || -> Box<dyn std::error::Error + Send + Sync> {
+                        InvalidValueSnafu {
+                            message: "Expected positive float for `radius`".to_string(),
+                        }
+                        .build()
+                        .into()
+                    },
+                )?;
                 if r <= 0.0 || r.is_nan() {
-                    bail!(ExpectedFloatForHnswRadius(self.span))
+                    return Err(InvalidValueSnafu {
+                        message: "Expected positive float for `radius`".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
                 Some(r)
             }
@@ -1663,7 +1582,11 @@ impl SearchInput {
         };
 
         if !self.parameters.is_empty() {
-            bail!("Unexpected parameters for HNSW: {:?}", self.parameters);
+            return Err(InvalidValueSnafu {
+                message: format!("Unexpected parameters for HNSW: {:?}", self.parameters),
+            }
+            .build()
+            .into());
         }
 
         conj.push(NormalFormAtom::HnswSearch(HnswSearch {
@@ -1692,11 +1615,14 @@ impl SearchInput {
     ) -> Result<Disjunction> {
         let base_handle = tx.get_relation(&self.relation, false)?;
         if base_handle.access_level < AccessLevel::ReadOnly {
-            bail!(InsufficientAccessLevel(
-                base_handle.name.to_string(),
-                "reading rows".to_string(),
-                base_handle.access_level
-            ));
+            return Err(InsufficientAccessSnafu {
+                message: format!(
+                    "Cannot read rows from '{}': access level insufficient ({:?})",
+                    base_handle.name, base_handle.access_level
+                ),
+            }
+            .build()
+            .into());
         }
         if let Some((idx_handle, manifest)) =
             base_handle.hnsw_indices.get(&self.index.name).cloned()
@@ -1712,29 +1638,14 @@ impl SearchInput {
         {
             return self.normalize_lsh(base_handle, idx_handle, manifest, r#gen);
         }
-        #[derive(Debug)]
-        struct IndexNotFound {
-            relation: String,
-            name: String,
-            span: SourceSpan,
+        Err(FieldNotFoundSnafu {
+            message: format!(
+                "Index '{}' not found on relation '{}'",
+                self.index, self.relation
+            ),
         }
-
-        impl std::fmt::Display for IndexNotFound {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(
-                    f,
-                    "Index {} not found on relation {} at {:?}",
-                    self.name, self.relation, self.span
-                )
-            }
-        }
-
-        impl std::error::Error for IndexNotFound {}
-        bail!(IndexNotFound {
-            relation: self.relation.to_string(),
-            name: self.index.to_string(),
-            span: self.span,
-        })
+        .build()
+        .into())
     }
 }
 

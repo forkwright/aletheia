@@ -556,7 +556,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         let v = row.get(*i).ok_or_else(|| {
                             crate::engine::error::AdhocError(format!("row too short: {:?}", row))
                         })?;
-                        col.typing.coerce(v.clone(), cur_vld)
+                        col.typing.coerce(v.clone(), cur_vld).map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
                     })
                     .try_collect()?;
                 let k_store = handle.encode_key_for_store(&keys, Default::default())?;
@@ -587,7 +587,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                                     row
                                 ))
                             })?;
-                            col.typing.coerce(v.clone(), cur_vld)
+                            col.typing.coerce(v.clone(), cur_vld).map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
                         })
                         .try_collect()?;
                     let v_store = handle.encode_val_only_for_store(&vals, Default::default())?;
