@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Imperative script parsing.
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -64,7 +62,6 @@ fn parse_imperative_stmt(
             ImperativeStmt::Continue { target, span }
         }
         Rule::return_stmt => {
-            // let span = pair.extract_span();
             let mut rets = vec![];
             for p in pair.into_inner() {
                 match p.as_rule() {
@@ -139,7 +136,6 @@ fn parse_imperative_stmt(
             ImperativeStmt::Loop { label: mark, body }
         }
         Rule::temp_swap => {
-            // let span = pair.extract_span();
             let mut pairs = pair.into_inner();
             let left = pairs.next().unwrap();
             let left_name = left.as_str();
@@ -152,7 +148,6 @@ fn parse_imperative_stmt(
             }
         }
         Rule::debug_stmt => {
-            // let span = pair.extract_span();
             let name_p = pair.into_inner().next().unwrap();
             let name = name_p.as_str();
 

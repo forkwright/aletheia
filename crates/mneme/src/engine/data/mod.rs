@@ -1,7 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
-// Suppress clippy lints for vendored engine code.
+//! Core data types for the Datalog engine.
 #[allow(
     warnings,
     clippy::all,

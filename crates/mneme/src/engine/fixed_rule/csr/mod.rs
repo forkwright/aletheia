@@ -1,12 +1,4 @@
-// CSR (Compressed Sparse Row) graph representation.
-//
-// Derived from the `graph` crate (graph_builder 0.4.1, graph 0.3.1).
-// Original authors: Neo4j Labs. Licensed under Apache-2.0.
-// https://crates.io/crates/graph / https://crates.io/crates/graph_builder
-//
-// Absorbed into the engine to eliminate an external dependency with known
-// rayon >=1.11 build breakage and heavy transitive deps (dashmap, memmap2,
-// num, etc.). Only the subset used by engine graph algorithms is retained.
+//! Compressed sparse row graph representation.
 
 mod page_rank;
 

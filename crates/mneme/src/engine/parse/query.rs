@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Datalog query parsing.
 use std::cmp::Reverse;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
@@ -395,8 +393,6 @@ pub(crate) fn parse_query(
             make_empty_const_rule(&mut prog, &bindings);
         }
     }
-
-    // let head_arity = prog.get_entry_arity()?;
 
     match stored_relation {
         None => {}

@@ -1,3 +1,4 @@
+//! Whitespace-based tokenizer.
 use std::str::CharIndices;
 
 use super::{BoxTokenStream, Token, TokenStream, Tokenizer};

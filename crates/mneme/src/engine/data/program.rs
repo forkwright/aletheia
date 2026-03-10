@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Datalog program representation.
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
@@ -226,21 +224,6 @@ impl InputInlineRulesOrFixed {
             InputInlineRulesOrFixed::Fixed { fixed, .. } => fixed.span,
         }
     }
-    // pub(crate) fn used_rule(&self, rule_name: &Symbol) -> bool {
-    //     match self {
-    //         InputInlineRulesOrFixed::Rules { rules, .. } => rules
-    //             .iter()
-    //             .any(|rule| rule.body.iter().any(|atom| atom.used_rule(rule_name))),
-    //         InputInlineRulesOrFixed::Fixed { fixed, .. } => fixed.rule_args.iter().any(|arg| {
-    //             if let FixedRuleArg::InMem { name, .. } = arg {
-    //                 if name == rule_name {
-    //                     return true;
-    //                 }
-    //             }
-    //             false
-    //         }),
-    //     }
-    // }
 }
 
 #[derive(Clone)]
@@ -1011,12 +994,9 @@ pub(crate) struct FtsSearch {
     pub(crate) manifest: FtsIndexManifest,
     pub(crate) bindings: Vec<Symbol>,
     pub(crate) k: usize,
-    // pub(crate) k1: f64,
-    // pub(crate) b: f64,
     pub(crate) query: Symbol,
     pub(crate) score_kind: FtsScoreKind,
     pub(crate) bind_score: Option<Symbol>,
-    // pub(crate) lax_mode: bool,
     pub(crate) filter: Option<Expr>,
     pub(crate) span: SourceSpan,
 }
@@ -1786,16 +1766,6 @@ impl Display for InputAtom {
 }
 
 impl InputAtom {
-    // pub(crate) fn used_rule(&self, rule_name: &Symbol) -> bool {
-    //     match self {
-    //         InputAtom::Rule { inner } => inner.name == *rule_name,
-    //         InputAtom::Negation { inner, .. } => inner.used_rule(rule_name),
-    //         InputAtom::Conjunction { inner, .. } | InputAtom::Disjunction { inner, .. } => {
-    //             inner.iter().any(|a| a.used_rule(rule_name))
-    //         }
-    //         _ => false,
-    //     }
-    // }
     pub(crate) fn span(&self) -> SourceSpan {
         match self {
             InputAtom::Negation { span, .. }

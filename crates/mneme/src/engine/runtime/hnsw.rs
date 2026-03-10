@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
-
+//! Hierarchical Navigable Small World vector index.
 use crate::bail;
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::engine::data::program::HnswSearch;
@@ -505,17 +503,6 @@ impl<'a> SessionTx<'a> {
         vec_cache: &mut VectorCache,
     ) -> Result<PriorityQueue<CompoundKey, Reverse<OrderedFloat<f64>>>> {
         let mut candidates = PriorityQueue::new();
-        // Simple non-heuristic selection
-        // let mut temp = found.clone();
-        // while temp.len() > m {
-        //     temp.pop();
-        // }
-        // for (item, dist) in temp.iter() {
-        //     candidates.push(item.clone(), Reverse(*dist));
-        // }
-        // return Ok(candidates);
-        // End of simple non-heuristic selection
-
         let mut ret: PriorityQueue<CompoundKey, Reverse<OrderedFloat<_>>> = PriorityQueue::new();
         let mut discarded: PriorityQueue<_, Reverse<OrderedFloat<_>>> = PriorityQueue::new();
         for (item, dist) in found.iter() {

@@ -1,4 +1,4 @@
-// ReciprocalRankFusion fixed rule: fuses BM25, vector, and graph ranked lists.
+//! Reciprocal rank fusion fixed rule.
 
 use std::collections::BTreeMap;
 

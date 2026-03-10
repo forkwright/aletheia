@@ -1,4 +1,4 @@
-// aletheia-mneme-engine -- embedded Datalog + HNSW + graph engine for Aletheia
+//! Embedded Datalog engine with HNSW and graph support.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -8,7 +8,6 @@ use crossbeam::channel::{Receiver, Sender, bounded};
 pub mod error;
 pub use error::{Error, Result};
 
-// Public type re-exports
 pub use crate::engine::data::value::{DataValue, ValidityTs, Vector};
 pub use crate::engine::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::engine::runtime::callback::CallbackOp;
@@ -20,19 +19,16 @@ pub use crate::engine::storage::mem::MemStorage;
 pub use crate::engine::storage::redb::RedbStorage;
 pub use ndarray::Array1;
 
-// Internal re-exports needed by submodules (not part of the public API)
 pub(crate) use crate::engine::data::expr::Expr;
 pub(crate) use crate::engine::data::symb::Symbol;
 pub(crate) use crate::engine::parse::SourceSpan;
 pub(crate) use crate::engine::runtime::db::Db as DbCore;
 pub(crate) use crate::engine::runtime::relation::decode_tuple_from_kv;
 pub(crate) use crate::engine::storage::{Storage, StoreTx};
-// Test-only type alias — matches original `DbInstance` used in internal test modules
 #[cfg(test)]
 pub(crate) type DbInstance =
     crate::engine::runtime::db::Db<crate::engine::storage::mem::MemStorage>;
 
-// All internal modules — pub(crate) only
 pub(crate) mod data;
 pub(crate) mod fixed_rule;
 pub(crate) mod fts;

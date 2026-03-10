@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Query planning, optimization, and evaluation.
 pub(crate) mod compile;
 pub(crate) mod eval;
 pub(crate) mod graph;

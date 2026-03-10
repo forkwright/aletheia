@@ -1,16 +1,4 @@
-//! # Example
-//! ```text
-//! use tantivy::tokenizer::*;
-//!
-//! let tokenizer = TextAnalyzer::from(SimpleTokenizer)
-//!   .filter(RemoveLongFilter::limit(5));
-//!
-//! let mut stream = tokenizer.token_stream("toolong nice");
-//! // because `toolong` is more than 5 characters, it is filtered
-//! // out of the token stream.
-//! assert_eq!(stream.next().unwrap().text, "nice");
-//! assert!(stream.next().is_none());
-//! ```
+//! Filter that removes tokens exceeding a byte-length limit.
 use super::{Token, TokenFilter, TokenStream};
 use crate::engine::fts::tokenizer::BoxTokenStream;
 

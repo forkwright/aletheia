@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Integration tests for the engine runtime.
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -243,83 +241,6 @@ fn do_not_unify_underscore() {
 
 #[test]
 fn imperative_script() {
-    // let db = DbInstance::default();
-    // let res = db
-    //     .run_default(
-    //         r#"
-    //     {:create _test {a}}
-    //
-    //     %loop
-    //         %if { len[count(x)] := *_test[x]; ?[x] := len[z], x = z >= 10 }
-    //             %then %return _test
-    //         %end
-    //         { ?[a] := a = rand_uuid_v1(); :put _test {a} }
-    //         %debug _test
-    //     %end
-    // "#,
-    //         Default::default(),
-    //     )
-    //     .unwrap();
-    // assert_eq!(res.rows.len(), 10);
-    //
-    // let res = db
-    //     .run_default(
-    //         r#"
-    //     {?[a] <- [[1], [2], [3]]
-    //      :replace _test {a}}
-    //
-    //     %loop
-    //         { ?[a] := *_test[a]; :limit 1; :rm _test {a} }
-    //         %debug _test
-    //
-    //         %if_not _test
-    //         %then %break
-    //         %end
-    //     %end
-    //
-    //     %return _test
-    // "#,
-    //         Default::default(),
-    //     )
-    //     .unwrap();
-    // assert_eq!(res.rows.len(), 0);
-    //
-    // let res = db.run_default(
-    //     r#"
-    //     {:create _test {a}}
-    //
-    //     %loop
-    //         { ?[a] := a = rand_uuid_v1(); :put _test {a} }
-    //
-    //         %if { len[count(x)] := *_test[x]; ?[x] := len[z], x = z < 10 }
-    //             %continue
-    //         %end
-    //
-    //         %return _test
-    //         %debug _test
-    //     %end
-    // "#,
-    //     Default::default(),
-    // );
-    // if let Err(err) = &res {
-    //     eprintln!("{err:?}");
-    // }
-    // assert_eq!(res.unwrap().rows.len(), 10);
-    //
-    // let res = db
-    //     .run_default(
-    //         r#"
-    //     {?[a] <- [[1], [2], [3]]
-    //      :replace _test {a}}
-    //     {?[a] <- []
-    //      :replace _test2 {a}}
-    //     %swap _test _test2
-    //     %return _test
-    // "#,
-    //         Default::default(),
-    //     )
-    //     .unwrap();
-    // assert_eq!(res.rows.len(), 0);
 }
 
 #[test]
@@ -1004,9 +925,6 @@ fn test_lsh_indexing() {
         ",
         )
         .unwrap();
-    // for row in _res.into_json()["rows"].as_array().unwrap() {
-    //     println!("{}", row);
-    // }
     let _res = db
         .run_default(
             r"
@@ -1015,9 +933,6 @@ fn test_lsh_indexing() {
         ",
         )
         .unwrap();
-    // for row in res.into_json()["rows"].as_array().unwrap() {
-    //     println!("{}", row);
-    // }
     let res = db
         .run_default(
             r"
@@ -1080,10 +995,6 @@ fn tokenizers() {
         )
         .unwrap();
 
-    // let tokenizer = TextAnalyzer::from(SimpleTokenizer)
-    //     .filter(RemoveLongFilter::limit(40))
-    //     .filter(LowerCaser)
-    //     .filter(Stemmer::new(Language::English));
     let mut token_stream = tokenizer.token_stream("It is closer to Apache Lucene than to Elasticsearch or Apache Solr in the sense it is not an off-the-shelf search engine server, but rather a crate that can be used to build such a search engine.");
     while let Some(token) = token_stream.next() {
         println!("Token {:?}", token.text);
@@ -1209,9 +1120,6 @@ fn returning() {
         .run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y} ")
         .unwrap();
     assert_eq!(res.into_json()["rows"], json!([["OK"]]));
-    // for row in res.into_json()["rows"].as_array().unwrap() {
-    //     println!("{}", row);
-    // }
 
     let res = db
         .run_default(r"?[x, y] <- [[1, 3], [2, 4]] :returning :put a {x => y} ")
@@ -1220,18 +1128,10 @@ fn returning() {
         res.into_json()["rows"],
         json!([["inserted", 1, 3], ["inserted", 2, 4], ["replaced", 1, 2]])
     );
-    // println!("{:?}", res.headers);
-    // for row in res.into_json()["rows"].as_array().unwrap() {
-    //     println!("{}", row);
-    // }
 
     let res = db
         .run_default(r"?[x] <- [[1], [4]] :returning :rm a {x} ")
         .unwrap();
-    // println!("{:?}", res.headers);
-    // for row in res.into_json()["rows"].as_array().unwrap() {
-    //     println!("{}", row);
-    // }
     assert_eq!(
         res.into_json()["rows"],
         json!([

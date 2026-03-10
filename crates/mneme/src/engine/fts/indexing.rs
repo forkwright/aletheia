@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
-
+//! Full-text search indexing operations.
 use crate::bail;
 use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
 use crate::engine::data::program::{FtsScoreKind, FtsSearch};

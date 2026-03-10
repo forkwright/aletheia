@@ -1,3 +1,4 @@
+//! Compound word splitting filter.
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
 use crate::engine::error::DbResult as Result;
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};

@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Graph algorithm implementations as fixed rules.
 pub(crate) mod all_pairs_shortest_path;
 pub(crate) mod astar;
 pub(crate) mod bfs;

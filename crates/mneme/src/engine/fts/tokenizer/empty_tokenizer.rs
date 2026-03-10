@@ -1,3 +1,4 @@
+//! No-op tokenizer producing zero tokens.
 use crate::engine::fts::tokenizer::{BoxTokenStream, Token, TokenStream, Tokenizer};
 
 #[derive(Clone)]

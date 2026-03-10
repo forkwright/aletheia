@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Datalog program stratification.
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 

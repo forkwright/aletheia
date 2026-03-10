@@ -1,7 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
-
-// Some ideas are from https://github.com/schelterlabs/rust-minhash
+//! MinHash locality-sensitive hashing.
 
 use crate::bail;
 use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
@@ -368,10 +365,6 @@ impl HashValues {
             )
         }
     }
-    // pub(crate) fn get_byte_chunks(&self, n_chunks: usize) -> impl Iterator<Item = &[u8]> {
-    //     let chunk_size = self.0.len() * std::mem::size_of::<u32>() / n_chunks;
-    //     self.get_bytes().chunks_exact(chunk_size)
-    // }
 }
 
 #[cfg(test)]

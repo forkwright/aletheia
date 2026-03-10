@@ -1,3 +1,4 @@
+//! Tokenizer that emits the entire input as one token.
 use super::{Token, TokenStream, Tokenizer};
 use crate::engine::fts::tokenizer::BoxTokenStream;
 

@@ -1,3 +1,4 @@
+//! Folds Unicode characters to ASCII equivalents.
 use std::mem;
 
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
@@ -44,11 +45,6 @@ impl<'a> TokenStream for AsciiFoldingFilterTokenStream<'a> {
     }
 }
 
-// Returns a string that represents the ascii folded version of
-// the character. If the `char` does not require ascii folding
-// (e.g. simple ASCII chars like `A`) or if the `char`
-// does not have a sensible ascii equivalent (e.g.: Kanjis like 馬,
-// this function returns `None`.
 fn fold_non_ascii_char(c: char) -> Option<&'static str> {
     match c {
         '\u{00C0}' | // À  [LATIN CAPITAL LETTER A WITH GRAVE]

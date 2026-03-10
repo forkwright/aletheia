@@ -1,3 +1,4 @@
+//! Lowercasing token filter.
 use std::mem;
 
 use super::{Token, TokenFilter, TokenStream};
