@@ -21,5 +21,5 @@ fn expression_eval() {
     "#,
         )
         .unwrap();
-    assert_eq!(res.rows[0][0].get_bool().unwrap(), true);
+    assert!(res.rows[0][0].get_bool().unwrap());
 }
