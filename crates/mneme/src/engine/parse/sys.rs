@@ -100,7 +100,10 @@ pub(crate) fn parse_sys(
         Rule::compact_op => SysOp::Compact,
         Rule::running_op => SysOp::ListRunning,
         Rule::kill_op => {
-            let i_expr = inner.into_inner().next().expect("pest guarantees kill op expr");
+            let i_expr = inner
+                .into_inner()
+                .next()
+                .expect("pest guarantees kill op expr");
             let i_val = build_expr(i_expr, param_pool)?;
             let i_val = i_val.eval_to_const()?;
             let i_val = i_val.get_int().ok_or_else(|| {
@@ -110,7 +113,11 @@ pub(crate) fn parse_sys(
         }
         Rule::explain_op => {
             let prog = parse_query(
-                inner.into_inner().next().expect("pest guarantees explain op script").into_inner(),
+                inner
+                    .into_inner()
+                    .next()
+                    .expect("pest guarantees explain op script")
+                    .into_inner(),
                 param_pool,
                 algorithms,
                 cur_vld,
@@ -119,7 +126,9 @@ pub(crate) fn parse_sys(
         }
         Rule::describe_relation_op => {
             let mut inner = inner.into_inner();
-            let rels_p = inner.next().expect("pest guarantees describe relation name");
+            let rels_p = inner
+                .next()
+                .expect("pest guarantees describe relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             let description = match inner.next() {
                 None => Default::default(),
@@ -137,12 +146,18 @@ pub(crate) fn parse_sys(
             SysOp::RemoveRelation(rel)
         }
         Rule::list_columns_op => {
-            let rels_p = inner.into_inner().next().expect("pest guarantees column relation name");
+            let rels_p = inner
+                .into_inner()
+                .next()
+                .expect("pest guarantees column relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ListColumns(rel)
         }
         Rule::list_indices_op => {
-            let rels_p = inner.into_inner().next().expect("pest guarantees index relation name");
+            let rels_p = inner
+                .into_inner()
+                .next()
+                .expect("pest guarantees index relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ListIndices(rel)
         }
@@ -177,7 +192,10 @@ pub(crate) fn parse_sys(
             SysOp::SetAccessLevel(rels, access_level)
         }
         Rule::trigger_relation_show_op => {
-            let rels_p = inner.into_inner().next().expect("pest guarantees trigger relation name");
+            let rels_p = inner
+                .into_inner()
+                .next()
+                .expect("pest guarantees trigger relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ShowTrigger(rel)
         }
@@ -209,7 +227,10 @@ pub(crate) fn parse_sys(
             SysOp::SetTriggers(rel, puts, rms, replaces)
         }
         Rule::lsh_idx_op => {
-            let inner = inner.into_inner().next().expect("pest guarantees lsh idx inner");
+            let inner = inner
+                .into_inner()
+                .next()
+                .expect("pest guarantees lsh idx inner");
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
@@ -320,10 +341,13 @@ pub(crate) fn parse_sys(
                                 match expr {
                                     Expr::Apply { op, args, .. } => {
                                         if op.name != "OP_LIST" {
-                                            bail!(InvalidQuerySnafu {
-                                                message: "Filters must be a list of filters".to_string()
-                                            }
-                                            .build());
+                                            bail!(
+                                                InvalidQuerySnafu {
+                                                    message: "Filters must be a list of filters"
+                                                        .to_string()
+                                                }
+                                                .build()
+                                            );
                                         }
                                         for arg in args.iter() {
                                             match arg {
@@ -351,47 +375,62 @@ pub(crate) fn parse_sys(
                                             }
                                         }
                                     }
-                                    _ => bail!(InvalidQuerySnafu {
-                                        message: "Filters must be a list of filters".to_string()
-                                    }
-                                    .build()),
+                                    _ => bail!(
+                                        InvalidQuerySnafu {
+                                            message: "Filters must be a list of filters"
+                                                .to_string()
+                                        }
+                                        .build()
+                                    ),
                                 }
                             }
-                            s => bail!(InvalidQuerySnafu {
-                                message: format!("Unknown option {s} for LSH index")
-                            }
-                            .build()),
+                            s => bail!(
+                                InvalidQuerySnafu {
+                                    message: format!("Unknown option {s} for LSH index")
+                                }
+                                .build()
+                            ),
                         }
                     }
                     if false_positive_weight <= 0. {
-                        bail!(InvalidQuerySnafu {
-                            message: "false_positive_weight must be positive".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "false_positive_weight must be positive".to_string()
+                            }
+                            .build()
+                        );
                     }
                     if false_negative_weight <= 0. {
-                        bail!(InvalidQuerySnafu {
-                            message: "false_negative_weight must be positive".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "false_negative_weight must be positive".to_string()
+                            }
+                            .build()
+                        );
                     }
                     if n_gram == 0 {
-                        bail!(InvalidQuerySnafu {
-                            message: "n_gram must be positive".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "n_gram must be positive".to_string()
+                            }
+                            .build()
+                        );
                     }
                     if n_perm == 0 {
-                        bail!(InvalidQuerySnafu {
-                            message: "n_perm must be positive".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "n_perm must be positive".to_string()
+                            }
+                            .build()
+                        );
                     }
                     if target_threshold <= 0. || target_threshold >= 1. {
-                        bail!(InvalidQuerySnafu {
-                            message: "target_threshold must be between 0 and 1".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "target_threshold must be between 0 and 1".to_string()
+                            }
+                            .build()
+                        );
                     }
                     let total_weights = false_positive_weight + false_negative_weight;
                     false_positive_weight /= total_weights;
@@ -417,7 +456,9 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().expect("pest guarantees lsh drop relation name");
+                    let rel = inner
+                        .next()
+                        .expect("pest guarantees lsh drop relation name");
                     let name = inner.next().expect("pest guarantees lsh drop index name");
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
@@ -428,7 +469,10 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::fts_idx_op => {
-            let inner = inner.into_inner().next().expect("pest guarantees fts idx inner");
+            let inner = inner
+                .into_inner()
+                .next()
+                .expect("pest guarantees fts idx inner");
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
@@ -485,10 +529,13 @@ pub(crate) fn parse_sys(
                                 match expr {
                                     Expr::Apply { op, args, .. } => {
                                         if op.name != "OP_LIST" {
-                                            bail!(InvalidQuerySnafu {
-                                                message: "Filters must be a list of filters".to_string()
-                                            }
-                                            .build());
+                                            bail!(
+                                                InvalidQuerySnafu {
+                                                    message: "Filters must be a list of filters"
+                                                        .to_string()
+                                                }
+                                                .build()
+                                            );
                                         }
                                         for arg in args.iter() {
                                             match arg {
@@ -516,16 +563,21 @@ pub(crate) fn parse_sys(
                                             }
                                         }
                                     }
-                                    _ => bail!(InvalidQuerySnafu {
-                                        message: "Filters must be a list of filters".to_string()
-                                    }
-                                    .build()),
+                                    _ => bail!(
+                                        InvalidQuerySnafu {
+                                            message: "Filters must be a list of filters"
+                                                .to_string()
+                                        }
+                                        .build()
+                                    ),
                                 }
                             }
-                            s => bail!(InvalidQuerySnafu {
-                                message: format!("Unknown option {s} for FTS index")
-                            }
-                            .build()),
+                            s => bail!(
+                                InvalidQuerySnafu {
+                                    message: format!("Unknown option {s} for FTS index")
+                                }
+                                .build()
+                            ),
                         }
                     }
                     if !extract_filter.is_empty() {
@@ -542,7 +594,9 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().expect("pest guarantees fts drop relation name");
+                    let rel = inner
+                        .next()
+                        .expect("pest guarantees fts drop relation name");
                     let name = inner.next().expect("pest guarantees fts drop index name");
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
@@ -553,7 +607,10 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::vec_idx_op => {
-            let inner = inner.into_inner().next().expect("pest guarantees vec idx inner");
+            let inner = inner
+                .into_inner()
+                .next()
+                .expect("pest guarantees vec idx inner");
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
@@ -586,10 +643,12 @@ pub(crate) fn parse_sys(
                                         ))
                                     })?;
                                 if v <= 0 {
-                                    bail!(InvalidQuerySnafu {
-                                        message: format!("Invalid vec_dim: {v}")
-                                    }
-                                    .build());
+                                    bail!(
+                                        InvalidQuerySnafu {
+                                            message: format!("Invalid vec_dim: {v}")
+                                        }
+                                        .build()
+                                    );
                                 }
                                 vec_dim = v as usize;
                             }
@@ -603,10 +662,12 @@ pub(crate) fn parse_sys(
                                         ))
                                     })?;
                                 if v <= 0 {
-                                    bail!(InvalidQuerySnafu {
-                                        message: format!("Invalid ef_construction: {v}")
-                                    }
-                                    .build());
+                                    bail!(
+                                        InvalidQuerySnafu {
+                                            message: format!("Invalid ef_construction: {v}")
+                                        }
+                                        .build()
+                                    );
                                 }
                                 ef_construction = v as usize;
                             }
@@ -620,10 +681,12 @@ pub(crate) fn parse_sys(
                                         ))
                                     })?;
                                 if v <= 0 {
-                                    bail!(InvalidQuerySnafu {
-                                        message: format!("Invalid m_neighbours: {v}")
-                                    }
-                                    .build());
+                                    bail!(
+                                        InvalidQuerySnafu {
+                                            message: format!("Invalid m_neighbours: {v}")
+                                        }
+                                        .build()
+                                    );
                                 }
                                 m_neighbours = v as usize;
                             }
@@ -631,10 +694,12 @@ pub(crate) fn parse_sys(
                                 dtype = match opt_val.as_str() {
                                     "F32" | "Float" => VecElementType::F32,
                                     "F64" | "Double" => VecElementType::F64,
-                                    s => bail!(InvalidQuerySnafu {
-                                        message: format!("Invalid dtype: {s}")
-                                    }
-                                    .build()),
+                                    s => bail!(
+                                        InvalidQuerySnafu {
+                                            message: format!("Invalid dtype: {s}")
+                                        }
+                                        .build()
+                                    ),
                                 }
                             }
                             "fields" => {
@@ -646,10 +711,12 @@ pub(crate) fn parse_sys(
                                     "L2" => HnswDistance::L2,
                                     "IP" => HnswDistance::InnerProduct,
                                     "Cosine" => HnswDistance::Cosine,
-                                    s => bail!(InvalidQuerySnafu {
-                                        message: format!("Invalid distance: {s}")
-                                    }
-                                    .build()),
+                                    s => bail!(
+                                        InvalidQuerySnafu {
+                                            message: format!("Invalid distance: {s}")
+                                        }
+                                        .build()
+                                    ),
                                 }
                             }
                             "filter" => {
@@ -661,23 +728,29 @@ pub(crate) fn parse_sys(
                             "keep_pruned_connections" => {
                                 keep_pruned_connections = opt_val.as_str().trim() == "true";
                             }
-                            s => bail!(InvalidQuerySnafu {
-                                message: format!("Invalid option: {s}")
-                            }
-                            .build()),
+                            s => bail!(
+                                InvalidQuerySnafu {
+                                    message: format!("Invalid option: {s}")
+                                }
+                                .build()
+                            ),
                         }
                     }
                     if ef_construction == 0 {
-                        bail!(InvalidQuerySnafu {
-                            message: "ef_construction must be set".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "ef_construction must be set".to_string()
+                            }
+                            .build()
+                        );
                     }
                     if m_neighbours == 0 {
-                        bail!(InvalidQuerySnafu {
-                            message: "m_neighbours must be set".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "m_neighbours must be set".to_string()
+                            }
+                            .build()
+                        );
                     }
                     SysOp::CreateVectorIndex(HnswIndexConfig {
                         base_relation: CompactString::from(rel.as_str()),
@@ -695,7 +768,9 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().expect("pest guarantees vec drop relation name");
+                    let rel = inner
+                        .next()
+                        .expect("pest guarantees vec drop relation name");
                     let name = inner.next().expect("pest guarantees vec drop index name");
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
@@ -706,7 +781,10 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::index_op => {
-            let inner = inner.into_inner().next().expect("pest guarantees index op inner");
+            let inner = inner
+                .into_inner()
+                .next()
+                .expect("pest guarantees index op inner");
             match inner.as_rule() {
                 Rule::index_create => {
                     let _span = inner.extract_span();
@@ -718,10 +796,13 @@ pub(crate) fn parse_sys(
                         .collect_vec();
 
                     if cols.is_empty() {
-                        bail!(InvalidQuerySnafu {
-                            message: "index must have at least one column specified".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "index must have at least one column specified"
+                                    .to_string()
+                            }
+                            .build()
+                        );
                     }
                     SysOp::CreateIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
@@ -731,7 +812,9 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().expect("pest guarantees index drop relation name");
+                    let rel = inner
+                        .next()
+                        .expect("pest guarantees index drop relation name");
                     let name = inner.next().expect("pest guarantees index drop name");
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),

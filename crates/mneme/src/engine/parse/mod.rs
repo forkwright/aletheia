@@ -240,7 +240,6 @@ pub(crate) struct ParseError {
     pub(crate) span: SourceSpan,
 }
 
-
 /// Parse a text script into the datalog AST.
 ///
 /// * `src` - the script to parse

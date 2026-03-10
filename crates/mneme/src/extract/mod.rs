@@ -375,10 +375,6 @@ Rules:
 
     /// Persist an extraction to the knowledge store.
     #[cfg(feature = "mneme-engine")]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "single logical operation across three entity types; splitting would obscure the parallel structure"
-    )]
     #[instrument(skip(self, store))]
     #[expect(
         clippy::too_many_lines,
@@ -470,8 +466,7 @@ Rules:
             let classified_type = fact
                 .fact_type
                 .as_deref()
-                .map(crate::knowledge::FactType::from_str_lossy)
-                .unwrap_or_else(|| crate::knowledge::FactType::classify(&content));
+                .map_or_else(|| crate::knowledge::FactType::classify(&content), crate::knowledge::FactType::from_str_lossy);
             let f = Fact {
                 id,
                 nous_id: nous_id.to_owned(),
