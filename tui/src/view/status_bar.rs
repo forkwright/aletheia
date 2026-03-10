@@ -7,9 +7,9 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::App;
 use crate::keybindings;
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let line1 = render_keybindings(app, area.width, theme);
     let line2 = render_info_bar(app, area.width, theme);
 
@@ -17,7 +17,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     frame.render_widget(bar, area);
 }
 
-fn render_keybindings(app: &App, width: u16, theme: &ThemePalette) -> Line<'static> {
+fn render_keybindings(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     let hints = keybindings::status_bar_hints(app);
     let hint_str: String = hints
         .iter()
@@ -33,7 +33,7 @@ fn render_keybindings(app: &App, width: u16, theme: &ThemePalette) -> Line<'stat
     ])
 }
 
-fn render_info_bar(app: &App, width: u16, theme: &ThemePalette) -> Line<'static> {
+fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     let mut left_spans = Vec::new();
     let mut right_spans = Vec::new();
 
@@ -83,7 +83,7 @@ fn render_info_bar(app: &App, width: u16, theme: &ThemePalette) -> Line<'static>
     Line::from(spans)
 }
 
-fn agent_identity_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
+fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     let agent = app
         .focused_agent
         .as_ref()
@@ -114,7 +114,7 @@ fn agent_identity_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
     spans
 }
 
-fn connection_indicator_span(app: &App, theme: &ThemePalette) -> Span<'static> {
+fn connection_indicator_span(app: &App, theme: &Theme) -> Span<'static> {
     if app.sse_connected {
         Span::styled("●", theme.style_success())
     } else {
@@ -122,7 +122,7 @@ fn connection_indicator_span(app: &App, theme: &ThemePalette) -> Span<'static> {
     }
 }
 
-fn cost_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
+fn cost_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
 
     if app.session_cost_cents > 0 {
@@ -152,7 +152,7 @@ fn format_cost(cents: u32) -> String {
     format!("${:.2}", cents as f64 / 100.0)
 }
 
-fn scroll_position_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
+fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     let viewport = app.terminal_height.saturating_sub(6); // approximate chat area
     match app
         .virtual_scroll
@@ -169,7 +169,7 @@ fn scroll_position_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> 
     }
 }
 
-fn context_gauge_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
+fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     const GAUGE_WIDTH: usize = 6;
     const CONTEXT_WARN_THRESHOLD: u8 = 60;
     const CONTEXT_CRITICAL_THRESHOLD: u8 = 80;
@@ -180,11 +180,11 @@ fn context_gauge_spans(app: &App, theme: &ThemePalette) -> Vec<Span<'static>> {
             let empty = GAUGE_WIDTH.saturating_sub(filled);
 
             let color = if pct <= CONTEXT_WARN_THRESHOLD {
-                theme.success
+                theme.status.success
             } else if pct <= CONTEXT_CRITICAL_THRESHOLD {
-                theme.warning
+                theme.status.warning
             } else {
-                theme.error
+                theme.status.error
             };
 
             vec![

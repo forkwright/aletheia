@@ -6,9 +6,9 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::App;
 use crate::command::CommandCategory;
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     if !app.command_palette.active || area.height < 2 {
         return;
     }
@@ -21,7 +21,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
         Span::styled(
             ":",
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(&palette.input, theme.style_fg()),
@@ -34,17 +34,17 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 
         let name_style = if selected {
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
             theme.style_fg()
         };
 
         let category_color = match suggestion.category {
-            CommandCategory::Navigation => theme.accent,
-            CommandCategory::Action => theme.warning,
-            CommandCategory::Query => theme.success,
-            CommandCategory::Agent => theme.streaming,
+            CommandCategory::Navigation => theme.colors.accent,
+            CommandCategory::Action => theme.status.warning,
+            CommandCategory::Query => theme.status.success,
+            CommandCategory::Agent => theme.status.streaming,
         };
 
         let mut spans = vec![
@@ -80,7 +80,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 
     let block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme.separator));
+        .border_style(Style::default().fg(theme.borders.separator));
 
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
