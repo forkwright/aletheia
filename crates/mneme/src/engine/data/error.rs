@@ -16,7 +16,9 @@ pub(crate) enum DataError {
     },
 
     /// Comparison between incompatible types.
-    #[snafu(display("comparison can only be done between the same datatypes, got {left} and {right}"))]
+    #[snafu(display(
+        "comparison can only be done between the same datatypes, got {left} and {right}"
+    ))]
     ComparisonTypeMismatch {
         left: String,
         right: String,

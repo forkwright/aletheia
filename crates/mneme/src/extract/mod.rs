@@ -463,10 +463,10 @@ Rules:
                 slugify(&fact.subject),
                 slugify(&fact.predicate)
             ));
-            let classified_type = fact
-                .fact_type
-                .as_deref()
-                .map_or_else(|| crate::knowledge::FactType::classify(&content), crate::knowledge::FactType::from_str_lossy);
+            let classified_type = fact.fact_type.as_deref().map_or_else(
+                || crate::knowledge::FactType::classify(&content),
+                crate::knowledge::FactType::from_str_lossy,
+            );
             let f = Fact {
                 id,
                 nous_id: nous_id.to_owned(),

@@ -153,7 +153,10 @@ impl StoredRelationMetadata {
 }
 
 impl NullableColType {
-    #[expect(clippy::map_err_ignore, reason = "error context preserved in returned error type")]
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "error context preserved in returned error type"
+    )]
     pub(crate) fn coerce(&self, data: DataValue, cur_vld: ValidityTs) -> DataResult<DataValue> {
         if matches!(data, DataValue::Null) {
             return if self.nullable {
@@ -224,12 +227,16 @@ impl NullableColType {
             ColType::List { eltype, len } => {
                 if let DataValue::List(l) = data {
                     if let Some(expected) = len {
-                        snafu::ensure!(*expected == l.len(), CoercionFailedSnafu {
-                            message: format!(
-                                "bad list length: expected datatype {}, got length {}",
-                                self, l.len()
-                            ),
-                        });
+                        snafu::ensure!(
+                            *expected == l.len(),
+                            CoercionFailedSnafu {
+                                message: format!(
+                                    "bad list length: expected datatype {}, got length {}",
+                                    self,
+                                    l.len()
+                                ),
+                            }
+                        );
                     }
                     DataValue::List(
                         l.into_iter()
@@ -354,12 +361,16 @@ impl NullableColType {
             },
             ColType::Tuple(typ) => {
                 if let DataValue::List(l) = data {
-                    snafu::ensure!(typ.len() == l.len(), CoercionFailedSnafu {
-                        message: format!(
-                            "bad list length: expected datatype {}, got length {}",
-                            self, l.len()
-                        ),
-                    });
+                    snafu::ensure!(
+                        typ.len() == l.len(),
+                        CoercionFailedSnafu {
+                            message: format!(
+                                "bad list length: expected datatype {}, got length {}",
+                                self,
+                                l.len()
+                            ),
+                        }
+                    );
                     DataValue::List(
                         l.into_iter()
                             .zip(typ.iter())
@@ -370,86 +381,81 @@ impl NullableColType {
                     return Err(make_err());
                 }
             }
-            ColType::Validity => {
-                match data {
-                    vld @ DataValue::Validity(_) => vld,
-                    DataValue::Str(s) => match &s as &str {
-                        "ASSERT" => DataValue::Validity(Validity {
-                            timestamp: cur_vld,
-                            is_assert: Reverse(true),
-                        }),
-                        "RETRACT" => DataValue::Validity(Validity {
-                            timestamp: cur_vld,
-                            is_assert: Reverse(false),
-                        }),
-                        s => {
-                            let (is_assert, ts_str) = match s.strip_prefix('~') {
-                                None => (true, s),
-                                Some(remaining) => (false, remaining),
-                            };
-                            let ts: Timestamp = ts_str.parse().map_err(|_| {
-                                BadTimeSnafu {
-                                    message: format!(
-                                        "{} cannot be coerced into validity",
-                                        DataValue::Str(s.into())
-                                    ),
-                                }
-                                .build()
-                            })?;
-                            let microseconds = ts.as_microsecond();
+            ColType::Validity => match data {
+                vld @ DataValue::Validity(_) => vld,
+                DataValue::Str(s) => match &s as &str {
+                    "ASSERT" => DataValue::Validity(Validity {
+                        timestamp: cur_vld,
+                        is_assert: Reverse(true),
+                    }),
+                    "RETRACT" => DataValue::Validity(Validity {
+                        timestamp: cur_vld,
+                        is_assert: Reverse(false),
+                    }),
+                    s => {
+                        let (is_assert, ts_str) = match s.strip_prefix('~') {
+                            None => (true, s),
+                            Some(remaining) => (false, remaining),
+                        };
+                        let ts: Timestamp = ts_str.parse().map_err(|_| {
+                            BadTimeSnafu {
+                                message: format!(
+                                    "{} cannot be coerced into validity",
+                                    DataValue::Str(s.into())
+                                ),
+                            }
+                            .build()
+                        })?;
+                        let microseconds = ts.as_microsecond();
 
-                            if microseconds == i64::MAX || microseconds == i64::MIN {
+                        if microseconds == i64::MAX || microseconds == i64::MIN {
+                            return BadTimeSnafu {
+                                message: format!(
+                                    "{} cannot be coerced into validity",
+                                    DataValue::Str(s.into())
+                                ),
+                            }
+                            .fail();
+                        }
+
+                        DataValue::Validity(Validity {
+                            timestamp: ValidityTs(Reverse(microseconds)),
+                            is_assert: Reverse(is_assert),
+                        })
+                    }
+                },
+                DataValue::List(l) => {
+                    if l.len() == 2 {
+                        let o_ts = l[0].get_int();
+                        let o_is_assert = l[1].get_bool();
+                        if let (Some(ts), Some(is_assert)) = (o_ts, o_is_assert) {
+                            if ts == i64::MAX || ts == i64::MIN {
                                 return BadTimeSnafu {
                                     message: format!(
                                         "{} cannot be coerced into validity",
-                                        DataValue::Str(s.into())
+                                        DataValue::List(l)
                                     ),
                                 }
                                 .fail();
                             }
-
-                            DataValue::Validity(Validity {
-                                timestamp: ValidityTs(Reverse(microseconds)),
+                            return Ok(DataValue::Validity(Validity {
+                                timestamp: ValidityTs(Reverse(ts)),
                                 is_assert: Reverse(is_assert),
-                            })
+                            }));
                         }
-                    },
-                    DataValue::List(l) => {
-                        if l.len() == 2 {
-                            let o_ts = l[0].get_int();
-                            let o_is_assert = l[1].get_bool();
-                            if let (Some(ts), Some(is_assert)) = (o_ts, o_is_assert) {
-                                if ts == i64::MAX || ts == i64::MIN {
-                                    return BadTimeSnafu {
-                                        message: format!(
-                                            "{} cannot be coerced into validity",
-                                            DataValue::List(l)
-                                        ),
-                                    }
-                                    .fail();
-                                }
-                                return Ok(DataValue::Validity(Validity {
-                                    timestamp: ValidityTs(Reverse(ts)),
-                                    is_assert: Reverse(is_assert),
-                                }));
-                            }
-                        }
-                        return BadTimeSnafu {
-                            message: format!(
-                                "{} cannot be coerced into validity",
-                                DataValue::List(l)
-                            ),
-                        }
-                        .fail();
                     }
-                    v => {
-                        return BadTimeSnafu {
-                            message: format!("{v} cannot be coerced into validity"),
-                        }
-                        .fail();
+                    return BadTimeSnafu {
+                        message: format!("{} cannot be coerced into validity", DataValue::List(l)),
                     }
+                    .fail();
                 }
-            }
+                v => {
+                    return BadTimeSnafu {
+                        message: format!("{v} cannot be coerced into validity"),
+                    }
+                    .fail();
+                }
+            },
             ColType::Json => DataValue::Json(JsonData(match data {
                 DataValue::Null => {
                     json!(null)
