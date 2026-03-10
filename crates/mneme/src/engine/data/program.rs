@@ -307,7 +307,6 @@ impl std::fmt::Display for WrongFixedRuleOptionError {
 impl std::error::Error for WrongFixedRuleOptionError {}
 
 impl MagicFixedRuleApply {
-    #[expect(dead_code, reason = "validation helper retained for fixed rule implementors")]
     pub(crate) fn relation_with_min_len(
         &self,
         idx: usize,
