@@ -8,7 +8,6 @@
 #[cfg(feature = "mneme-engine")]
 #[expect(
     unsafe_code,
-    dead_code,
     private_interfaces,
     unused_imports,
     clippy::pedantic,

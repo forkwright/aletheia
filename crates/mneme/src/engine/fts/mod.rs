@@ -232,14 +232,6 @@ impl TokenizerConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub(crate) struct FtsIndexConfig {
-    base_relation: CompactString,
-    index_name: CompactString,
-    fts_fields: Vec<CompactString>,
-    tokenizer: TokenizerConfig,
-    filters: Vec<TokenizerConfig>,
-}
 
 #[derive(Default)]
 pub(crate) struct TokenizerCache {

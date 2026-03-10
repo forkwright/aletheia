@@ -16,12 +16,11 @@ use snafu::Snafu;
 use crate::engine::data::program::InputProgram;
 use crate::engine::data::relation::NullableColType;
 use crate::engine::data::value::{DataValue, ValidityTs};
-use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::imperative::parse_imperative_block;
 use crate::engine::parse::query::parse_query;
 use crate::engine::parse::schema::parse_nullable_type;
 use crate::engine::parse::sys::{SysOp, parse_sys};
-use crate::engine::{Expr, FixedRule};
+use crate::engine::FixedRule;
 
 pub(crate) mod expr;
 pub(crate) mod fts;
@@ -240,31 +239,7 @@ pub(crate) struct ParseError {
     pub(crate) span: SourceSpan,
 }
 
-pub(crate) fn parse_type(src: &str) -> Result<NullableColType> {
-    let parsed = DatalogParser::parse(Rule::col_type_with_term, src)
-        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
-        .next()
-        .unwrap();
-    parse_nullable_type(parsed.into_inner().next().unwrap())
-}
 
-pub(crate) fn parse_expressions(
-    src: &str,
-    param_pool: &BTreeMap<String, DataValue>,
-) -> Result<Expr> {
-    let parsed = DatalogParser::parse(Rule::expression_script, src)
-        .map_err(|err| {
-            let span = match err.location {
-                InputLocation::Pos(p) => SourceSpan(p, 0),
-                InputLocation::Span((start, end)) => SourceSpan(start, end - start),
-            };
-            ParseError { span }
-        })?
-        .next()
-        .unwrap();
-
-    build_expr(parsed.into_inner().next().unwrap(), param_pool)
-}
 
 /// Parse a text script into the datalog AST.
 ///

@@ -186,21 +186,6 @@ fn redb_collect_range(
     Ok(results)
 }
 
-fn redb_collect_all(read_txn: &redb::ReadTransaction) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
-    let table = read_txn
-        .open_table(TABLE)
-        .map_err(|e| crate::engine::error::AdhocError(format!("redb open_table: {e}")))?;
-    let iter = table
-        .iter()
-        .map_err(|e| crate::engine::error::AdhocError(format!("redb iter: {e}")))?;
-    let mut results = Vec::new();
-    for entry in iter {
-        let (k, v) =
-            entry.map_err(|e| crate::engine::error::AdhocError(format!("redb iter: {e}")))?;
-        results.push((k.value().to_vec(), v.value().to_vec()));
-    }
-    Ok(results)
-}
 
 impl<'s> StoreTx<'s> for RedbTx<'s> {
     fn get(&self, key: &[u8], _for_update: bool) -> Result<Option<Vec<u8>>> {
@@ -424,27 +409,6 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                 }
                 .count())
             }
-        }
-    }
-
-    fn total_scan<'a>(&'a self) -> Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>
-    where
-        's: 'a,
-    {
-        match self {
-            RedbTx::Reader(r) => match redb_collect_all(&r.read_txn) {
-                Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                Err(e) => Box::new(std::iter::once(Err(e))),
-            },
-            RedbTx::Writer(w) => match redb_collect_all(&w.snapshot) {
-                Ok(persisted) => Box::new(DeltaMergeIterRaw {
-                    change_iter: w.delta.iter().fuse(),
-                    db_iter: persisted.into_iter().fuse(),
-                    change_cache: None,
-                    db_cache: None,
-                }),
-                Err(e) => Box::new(std::iter::once(Err(e))),
-            },
         }
     }
 }

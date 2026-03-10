@@ -126,11 +126,4 @@ impl<'s> StoreTx<'s> for TempTx {
     {
         Ok(self.store.range(lower.to_vec()..upper.to_vec()).count())
     }
-
-    fn total_scan<'a>(&'a self) -> Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>
-    where
-        's: 'a,
-    {
-        Box::new(self.store.iter().map(|(k, v)| Ok((k.clone(), v.clone()))))
-    }
 }

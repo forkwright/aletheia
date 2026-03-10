@@ -1,9 +1,13 @@
 //! Pre-tokenized string wrapper.
+
+#[cfg(test)]
 use std::cmp::Ordering;
 
+#[cfg(test)]
 use crate::engine::fts::tokenizer::{Token, TokenStream};
 
 /// Struct representing pre-tokenized text
+#[cfg(test)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 pub(crate) struct PreTokenizedString {
     /// Original text
@@ -12,12 +16,14 @@ pub(crate) struct PreTokenizedString {
     pub(crate) tokens: Vec<Token>,
 }
 
+#[cfg(test)]
 impl Ord for PreTokenizedString {
     fn cmp(&self, other: &Self) -> Ordering {
         self.text.cmp(&other.text)
     }
 }
 
+#[cfg(test)]
 impl PartialOrd for PreTokenizedString {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -25,11 +31,13 @@ impl PartialOrd for PreTokenizedString {
 }
 
 /// [`TokenStream`] implementation which wraps [`PreTokenizedString`]
+#[cfg(test)]
 pub(crate) struct PreTokenizedStream {
     tokenized_string: PreTokenizedString,
     current_token: i64,
 }
 
+#[cfg(test)]
 impl From<PreTokenizedString> for PreTokenizedStream {
     fn from(s: PreTokenizedString) -> PreTokenizedStream {
         PreTokenizedStream {
@@ -39,6 +47,7 @@ impl From<PreTokenizedString> for PreTokenizedStream {
     }
 }
 
+#[cfg(test)]
 impl TokenStream for PreTokenizedStream {
     fn advance(&mut self) -> bool {
         self.current_token += 1;

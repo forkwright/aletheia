@@ -35,7 +35,6 @@ impl CallbackOp {
     }
 }
 
-#[allow(dead_code)]
 pub struct CallbackDeclaration {
     pub(crate) dependent: CompactString,
     pub(crate) sender: Sender<(CallbackOp, NamedRows, NamedRows)>,
@@ -44,7 +43,6 @@ pub struct CallbackDeclaration {
 pub(crate) type CallbackCollector =
     BTreeMap<CompactString, Vec<(CallbackOp, NamedRows, NamedRows)>>;
 
-#[allow(dead_code)]
 pub(crate) type EventCallbackRegistry = (
     BTreeMap<u32, CallbackDeclaration>,
     BTreeMap<CompactString, BTreeSet<u32>>,

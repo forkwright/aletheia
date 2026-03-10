@@ -396,13 +396,13 @@ impl Expr {
         }
         Ok(())
     }
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "diagnostic helper for expression binding analysis")]
     pub(crate) fn binding_indices(&self) -> Result<BTreeSet<usize>> {
         let mut ret = BTreeSet::default();
         self.do_binding_indices(&mut ret)?;
         Ok(ret)
     }
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "recursive helper for binding_indices diagnostic")]
     fn do_binding_indices(&self, coll: &mut BTreeSet<usize>) -> Result<()> {
         match self {
             Expr::Binding { tuple_pos, .. } => {
