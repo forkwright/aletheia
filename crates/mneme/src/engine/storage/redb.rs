@@ -15,10 +15,10 @@ use crate::engine::data::tuple::{Tuple, check_key_for_validity};
 use crate::engine::data::value::ValidityTs;
 use crate::engine::error::DbResult;
 use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
-use crate::engine::storage::{Storage, StoreTx};
 use crate::engine::storage::error::{
     IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
 };
+use crate::engine::storage::{Storage, StoreTx};
 use crate::engine::utils::swap_option_result;
 
 type Result<T> = StorageResult<T>;
@@ -123,32 +123,26 @@ impl<'s> Storage<'s> for RedbStorage {
 
     fn transact(&'s self, write: bool) -> Result<Self::Tx> {
         if write {
-            let snapshot = self
-                .db
-                .begin_read()
-                .map_err(|e| {
-                    TransactionFailedSnafu {
-                        backend: "redb",
-                        message: format!("begin_read for snapshot: {e}"),
-                    }
-                    .build()
-                })?;
+            let snapshot = self.db.begin_read().map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "redb",
+                    message: format!("begin_read for snapshot: {e}"),
+                }
+                .build()
+            })?;
             Ok(RedbTx::Writer(RedbWriteTx {
                 storage: self,
                 snapshot,
                 delta: BTreeMap::new(),
             }))
         } else {
-            let read_txn = self
-                .db
-                .begin_read()
-                .map_err(|e| {
-                    TransactionFailedSnafu {
-                        backend: "redb",
-                        message: format!("begin_read: {e}"),
-                    }
-                    .build()
-                })?;
+            let read_txn = self.db.begin_read().map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "redb",
+                    message: format!("begin_read: {e}"),
+                }
+                .build()
+            })?;
             Ok(RedbTx::Reader(RedbReadTx { read_txn }))
         }
     }
@@ -162,48 +156,39 @@ impl<'s> Storage<'s> for RedbStorage {
         &'a self,
         data: Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>,
     ) -> Result<()> {
-        let write_txn = self
-            .db
-            .begin_write()
-            .map_err(|e| {
+        let write_txn = self.db.begin_write().map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "redb",
+                message: format!("begin_write: {e}"),
+            }
+            .build()
+        })?;
+        {
+            let mut table = write_txn.open_table(TABLE).map_err(|e| {
                 TransactionFailedSnafu {
                     backend: "redb",
-                    message: format!("begin_write: {e}"),
+                    message: format!("open_table: {e}"),
                 }
                 .build()
             })?;
-        {
-            let mut table = write_txn
-                .open_table(TABLE)
-                .map_err(|e| {
+            for pair in data {
+                let (k, v) = pair?;
+                table.insert(k.as_slice(), v.as_slice()).map_err(|e| {
                     TransactionFailedSnafu {
                         backend: "redb",
-                        message: format!("open_table: {e}"),
+                        message: format!("insert: {e}"),
                     }
                     .build()
                 })?;
-            for pair in data {
-                let (k, v) = pair?;
-                table
-                    .insert(k.as_slice(), v.as_slice())
-                    .map_err(|e| {
-                        TransactionFailedSnafu {
-                            backend: "redb",
-                            message: format!("insert: {e}"),
-                        }
-                        .build()
-                    })?;
             }
         }
-        write_txn
-            .commit()
-            .map_err(|e| {
-                TransactionFailedSnafu {
-                    backend: "redb",
-                    message: format!("commit: {e}"),
-                }
-                .build()
-            })?;
+        write_txn.commit().map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "redb",
+                message: format!("commit: {e}"),
+            }
+            .build()
+        })?;
         Ok(())
     }
 }
@@ -224,15 +209,13 @@ pub struct RedbWriteTx<'s> {
 }
 
 fn redb_table_get(read_txn: &redb::ReadTransaction, key: &[u8]) -> Result<Option<Vec<u8>>> {
-    let table = read_txn
-        .open_table(TABLE)
-        .map_err(|e| {
-            TransactionFailedSnafu {
-                backend: "redb",
-                message: format!("open_table: {e}"),
-            }
-            .build()
-        })?;
+    let table = read_txn.open_table(TABLE).map_err(|e| {
+        TransactionFailedSnafu {
+            backend: "redb",
+            message: format!("open_table: {e}"),
+        }
+        .build()
+    })?;
     let val = table
         .get(key)
         .map_err(|e| {
@@ -251,24 +234,20 @@ fn redb_collect_range(
     lower: &[u8],
     upper: &[u8],
 ) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
-    let table = read_txn
-        .open_table(TABLE)
-        .map_err(|e| {
-            TransactionFailedSnafu {
-                backend: "redb",
-                message: format!("open_table: {e}"),
-            }
-            .build()
-        })?;
-    let range = table
-        .range(lower..upper)
-        .map_err(|e| {
-            TransactionFailedSnafu {
-                backend: "redb",
-                message: format!("range: {e}"),
-            }
-            .build()
-        })?;
+    let table = read_txn.open_table(TABLE).map_err(|e| {
+        TransactionFailedSnafu {
+            backend: "redb",
+            message: format!("open_table: {e}"),
+        }
+        .build()
+    })?;
+    let range = table.range(lower..upper).map_err(|e| {
+        TransactionFailedSnafu {
+            backend: "redb",
+            message: format!("range: {e}"),
+        }
+        .build()
+    })?;
     let mut results = Vec::new();
     for entry in range {
         let entry = entry.map_err(|e| {
@@ -282,7 +261,6 @@ fn redb_collect_range(
     }
     Ok(results)
 }
-
 
 impl<'s> StoreTx<'s> for RedbTx<'s> {
     fn get(&self, key: &[u8], _for_update: bool) -> Result<Option<Vec<u8>>> {
@@ -350,27 +328,21 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                     return Ok(());
                 }
 
-                let write_txn = w
-                    .storage
-                    .db
-                    .begin_write()
-                    .map_err(|e| {
+                let write_txn = w.storage.db.begin_write().map_err(|e| {
+                    TransactionFailedSnafu {
+                        backend: "redb",
+                        message: format!("begin_write: {e}"),
+                    }
+                    .build()
+                })?;
+                {
+                    let mut table = write_txn.open_table(TABLE).map_err(|e| {
                         TransactionFailedSnafu {
                             backend: "redb",
-                            message: format!("begin_write: {e}"),
+                            message: format!("open_table: {e}"),
                         }
                         .build()
                     })?;
-                {
-                    let mut table = write_txn
-                        .open_table(TABLE)
-                        .map_err(|e| {
-                            TransactionFailedSnafu {
-                                backend: "redb",
-                                message: format!("open_table: {e}"),
-                            }
-                            .build()
-                        })?;
                     for (k, mv) in &w.delta {
                         match mv {
                             None => {
@@ -394,15 +366,13 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                         }
                     }
                 }
-                write_txn
-                    .commit()
-                    .map_err(|e| {
-                        TransactionFailedSnafu {
-                            backend: "redb",
-                            message: format!("commit: {e}"),
-                        }
-                        .build()
-                    })?;
+                write_txn.commit().map_err(|e| {
+                    TransactionFailedSnafu {
+                        backend: "redb",
+                        message: format!("commit: {e}"),
+                    }
+                    .build()
+                })?;
 
                 w.delta.clear();
                 Ok(())
@@ -510,25 +480,20 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
     {
         match self {
             RedbTx::Reader(r) => {
-                let table = r
-                    .read_txn
-                    .open_table(TABLE)
-                    .map_err(|e| {
-                        TransactionFailedSnafu {
-                            backend: "redb",
-                            message: format!("open_table: {e}"),
-                        }
-                        .build()
-                    })?;
-                let range = table
-                    .range(lower..upper)
-                    .map_err(|e| {
-                        TransactionFailedSnafu {
-                            backend: "redb",
-                            message: format!("range: {e}"),
-                        }
-                        .build()
-                    })?;
+                let table = r.read_txn.open_table(TABLE).map_err(|e| {
+                    TransactionFailedSnafu {
+                        backend: "redb",
+                        message: format!("open_table: {e}"),
+                    }
+                    .build()
+                })?;
+                let range = table.range(lower..upper).map_err(|e| {
+                    TransactionFailedSnafu {
+                        backend: "redb",
+                        message: format!("range: {e}"),
+                    }
+                    .build()
+                })?;
                 Ok(range.count())
             }
             RedbTx::Writer(w) => {
@@ -580,7 +545,9 @@ where
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take()
+                    let (k, cv) = self
+                        .change_cache
+                        .take()
                         .expect("change_cache present: matched Some(_) arm");
                     match cv {
                         None => continue,
@@ -588,13 +555,17 @@ where
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take()
+                    let (k, v) = self
+                        .db_cache
+                        .take()
                         .expect("db_cache present: matched Some(_) arm");
                     return Ok(Some((k, v)));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.as_slice().cmp(dk.as_slice()) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take()
+                        let (k, sv) = self
+                            .change_cache
+                            .take()
                             .expect("change_cache present: matched Some(_) arm");
                         match sv {
                             None => continue,
@@ -602,7 +573,9 @@ where
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take()
+                        let (k, v) = self
+                            .db_cache
+                            .take()
                             .expect("db_cache present: matched Some(_) arm");
                         return Ok(Some((k, v)));
                     }
@@ -664,7 +637,9 @@ where
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take()
+                    let (k, cv) = self
+                        .change_cache
+                        .take()
                         .expect("change_cache present: matched Some(_) arm");
                     match cv {
                         None => continue,
@@ -672,13 +647,17 @@ where
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take()
+                    let (k, v) = self
+                        .db_cache
+                        .take()
                         .expect("db_cache present: matched Some(_) arm");
                     return Ok(Some(decode_tuple_from_kv(&k, &v, None)));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.as_slice().cmp(dk.as_slice()) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take()
+                        let (k, sv) = self
+                            .change_cache
+                            .take()
                             .expect("change_cache present: matched Some(_) arm");
                         match sv {
                             None => continue,
@@ -686,7 +665,9 @@ where
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take()
+                        let (k, v) = self
+                            .db_cache
+                            .take()
                             .expect("db_cache present: matched Some(_) arm");
                         return Ok(Some(decode_tuple_from_kv(&k, &v, None)));
                     }
@@ -781,19 +762,21 @@ fn merge_with_delta(
             }
             (Some((dk, _)), Some((ck, _))) => match dk.as_slice().cmp(ck.as_slice()) {
                 Ordering::Less => {
-                    result.push(
-                        db_iter.next().expect("db_iter present: just peeked Some"),
-                    );
+                    result.push(db_iter.next().expect("db_iter present: just peeked Some"));
                 }
                 Ordering::Greater => {
-                    let (k, mv) = delta_iter.next().expect("delta_iter present: just peeked Some");
+                    let (k, mv) = delta_iter
+                        .next()
+                        .expect("delta_iter present: just peeked Some");
                     if let Some(v) = mv {
                         result.push((k.clone(), v.clone()));
                     }
                 }
                 Ordering::Equal => {
                     db_iter.next(); // discard persisted
-                    let (k, mv) = delta_iter.next().expect("delta_iter present: just peeked Some");
+                    let (k, mv) = delta_iter
+                        .next()
+                        .expect("delta_iter present: just peeked Some");
                     if let Some(v) = mv {
                         result.push((k.clone(), v.clone()));
                     }

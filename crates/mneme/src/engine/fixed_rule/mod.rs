@@ -557,7 +557,6 @@ pub trait FixedRule: Send + Sync {
     ) -> Result<()>;
 }
 
-
 #[derive(Clone, Debug)]
 pub(crate) struct FixedRuleHandle {
     pub(crate) name: Symbol,
@@ -716,10 +715,7 @@ pub(crate) struct NodeNotFoundError {
 }
 
 #[derive(Debug)]
-pub(crate) struct BadExprValueError(
-    pub(crate) DataValue,
-    pub(crate) String,
-);
+pub(crate) struct BadExprValueError(pub(crate) DataValue, pub(crate) String);
 
 impl std::fmt::Display for BadExprValueError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

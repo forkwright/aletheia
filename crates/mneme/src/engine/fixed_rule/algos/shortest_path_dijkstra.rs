@@ -155,7 +155,6 @@ impl FixedRule for ShortestPathDijkstra {
     }
 }
 
-
 pub(crate) trait ForbiddenEdge {
     fn is_forbidden(&self, src: u32, dst: u32) -> bool;
 }

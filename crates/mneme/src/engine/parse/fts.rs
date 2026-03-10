@@ -12,19 +12,21 @@ use pest::pratt_parser::{Op, PrattParser};
 use std::sync::LazyLock;
 
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
-    let mut pairs = DatalogParser::parse(Rule::fts_doc, q)
-        .map_err(|err| {
-            let span = match err.location {
-                InputLocation::Pos(p) => SourceSpan(p, 0),
-                InputLocation::Span((start, end)) => SourceSpan(start, end - start),
-            };
-            SyntaxSnafu {
-                span: span.to_string(),
-                message: err.to_string(),
-            }
-            .build()
-        })?;
-    let pairs = pairs.next().expect("pest guarantees fts_doc token").into_inner();
+    let mut pairs = DatalogParser::parse(Rule::fts_doc, q).map_err(|err| {
+        let span = match err.location {
+            InputLocation::Pos(p) => SourceSpan(p, 0),
+            InputLocation::Span((start, end)) => SourceSpan(start, end - start),
+        };
+        SyntaxSnafu {
+            span: span.to_string(),
+            message: err.to_string(),
+        }
+        .build()
+    })?;
+    let pairs = pairs
+        .next()
+        .expect("pest guarantees fts_doc token")
+        .into_inner();
     let pairs: Vec<_> = pairs
         .filter(|r| r.as_rule() != Rule::EOI)
         .map(parse_fts_expr)
@@ -103,7 +105,10 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
         match pair.as_rule() {
             Rule::fts_prefix_marker => is_quoted = true,
             Rule::fts_booster => {
-                let boosted = pair.into_inner().next().expect("pest guarantees booster value");
+                let boosted = pair
+                    .into_inner()
+                    .next()
+                    .expect("pest guarantees booster value");
                 match boosted.as_rule() {
                     Rule::dot_float => {
                         let f = boosted

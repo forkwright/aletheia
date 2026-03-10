@@ -13,6 +13,7 @@ use pest::Parser;
 use pest::error::InputLocation;
 use snafu::Snafu;
 
+use crate::engine::FixedRule;
 use crate::engine::data::program::InputProgram;
 use crate::engine::data::relation::NullableColType;
 use crate::engine::data::value::{DataValue, ValidityTs};
@@ -20,7 +21,6 @@ use crate::engine::parse::imperative::parse_imperative_block;
 use crate::engine::parse::query::parse_query;
 use crate::engine::parse::schema::parse_nullable_type;
 use crate::engine::parse::sys::{SysOp, parse_sys};
-use crate::engine::FixedRule;
 
 pub(crate) mod error;
 pub(crate) mod expr;

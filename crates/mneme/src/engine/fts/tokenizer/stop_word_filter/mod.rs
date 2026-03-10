@@ -4,8 +4,8 @@ mod stopwords;
 
 use std::sync::Arc;
 
-use crate::bail;
 use crate::engine::error::DbResult as Result;
+use crate::engine::fts::error::TokenizationFailedSnafu;
 use rustc_hash::FxHashSet;
 
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
@@ -80,7 +80,14 @@ impl StopWordFilter {
             "vi" => stopwords::VI,
             "yo" => stopwords::YO,
             "zu" => stopwords::ZU,
-            _ => bail!("Unsupported stop word language: {}", language),
+            _ => {
+                return Err(Box::new(
+                    TokenizationFailedSnafu {
+                        message: format!("Unsupported stop word language: {}", language),
+                    }
+                    .build(),
+                ));
+            }
         };
 
         Ok(Self::new(words.iter().map(|&word| word.to_owned())))

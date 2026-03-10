@@ -282,9 +282,7 @@ mod tests {
     #[test]
     fn page_rank_star() {
         // Hub-and-spoke: 0 → 1, 0 → 2, 0 → 3 (0 is the hub, no incoming edges)
-        let g = CsrBuilder::new()
-            .edges([(0, 1), (0, 2), (0, 3)])
-            .build();
+        let g = CsrBuilder::new().edges([(0, 1), (0, 2), (0, 3)]).build();
         let config = PageRankConfig::new(100, 1e-6, 0.85);
         let (scores, _, _) = page_rank(&g, config);
         // Nodes 1, 2, 3 receive rank from 0; they should rank higher than 0

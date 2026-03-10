@@ -103,10 +103,12 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
 
 pub(crate) fn build_expr(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Result<Expr> {
     if pair.as_rule() != Rule::expr {
-        bail!(InvalidQuerySnafu {
-            message: "Invalid expression encountered".to_string()
-        }
-        .build());
+        bail!(
+            InvalidQuerySnafu {
+                message: "Invalid expression encountered".to_string()
+            }
+            .build()
+        );
     }
 
     PRATT_PARSER
@@ -173,7 +175,10 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             tuple_pos: None,
         },
         Rule::param => {
-            let param_str = pair.as_str().strip_prefix('$').expect("pest guarantees $ prefix on param");
+            let param_str = pair
+                .as_str()
+                .strip_prefix('$')
+                .expect("pest guarantees $ prefix on param");
             Expr::Const {
                 val: param_pool
                     .get(param_str)
@@ -217,10 +222,9 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             }
         }
         Rule::dot_float | Rule::sci_float => {
-            let f =
-                pair.as_str().replace('_', "").parse::<f64>().map_err(|e| {
-                    crate::engine::error::AdhocError(format!("Cannot parse float: {e}"))
-                })?;
+            let f = pair.as_str().replace('_', "").parse::<f64>().map_err(|e| {
+                crate::engine::error::AdhocError(format!("Cannot parse float: {e}"))
+            })?;
             Expr::Const {
                 val: DataValue::from(f),
                 span,
@@ -283,10 +287,12 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             match ident {
                 "cond" => {
                     if args.is_empty() {
-                        bail!(InvalidQuerySnafu {
-                            message: "'cond' cannot have empty body".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "'cond' cannot have empty body".to_string()
+                            }
+                            .build()
+                        );
                     }
                     if args.len() & 1 == 1 {
                         args.insert(
@@ -325,10 +331,13 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                 }
                 "if" => {
                     if args.len() != 2 && args.len() != 3 {
-                        bail!(InvalidQuerySnafu {
-                            message: "wrong number of arguments to if: 2 or 3 required".to_string()
-                        }
-                        .build());
+                        bail!(
+                            InvalidQuerySnafu {
+                                message: "wrong number of arguments to if: 2 or 3 required"
+                                    .to_string()
+                            }
+                            .build()
+                        );
                     }
 
                     let mut clauses = vec![];
@@ -385,7 +394,12 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                 },
             }
         }
-        Rule::grouping => build_expr(pair.into_inner().next().expect("pest guarantees grouping inner"), param_pool)?,
+        Rule::grouping => build_expr(
+            pair.into_inner()
+                .next()
+                .expect("pest guarantees grouping inner"),
+            param_pool,
+        )?,
         r => unreachable!("Encountered unknown op {:?}", r),
     })
 }
@@ -406,7 +420,11 @@ pub(crate) fn parse_string(pair: Pair<'_>) -> Result<CompactString> {
 }
 
 fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
-    let pairs = pair.into_inner().next().expect("pest guarantees quoted string inner").into_inner();
+    let pairs = pair
+        .into_inner()
+        .next()
+        .expect("pest guarantees quoted string inner")
+        .into_inner();
     let mut ret = CompactString::default();
     for pair in pairs {
         let s = pair.as_str();
@@ -427,10 +445,12 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
-                bail!(InvalidQuerySnafu {
-                    message: format!("invalid escape sequence {s}")
-                }
-                .build());
+                bail!(
+                    InvalidQuerySnafu {
+                        message: format!("invalid escape sequence {s}")
+                    }
+                    .build()
+                );
             }
             s => ret.push_str(s),
         }
@@ -439,7 +459,11 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
 }
 
 fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
-    let pairs = pair.into_inner().next().expect("pest guarantees s-quoted string inner").into_inner();
+    let pairs = pair
+        .into_inner()
+        .next()
+        .expect("pest guarantees s-quoted string inner")
+        .into_inner();
     let mut ret = CompactString::default();
     for pair in pairs {
         let s = pair.as_str();
@@ -460,10 +484,12 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
-                bail!(InvalidQuerySnafu {
-                    message: format!("invalid escape sequence {s}")
-                }
-                .build());
+                bail!(
+                    InvalidQuerySnafu {
+                        message: format!("invalid escape sequence {s}")
+                    }
+                    .build()
+                );
             }
             s => ret.push_str(s),
         }
@@ -473,6 +499,9 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
 
 fn parse_raw_string(pair: Pair<'_>) -> Result<CompactString> {
     Ok(CompactString::from(
-        pair.into_inner().next().expect("pest guarantees raw string inner").as_str(),
+        pair.into_inner()
+            .next()
+            .expect("pest guarantees raw string inner")
+            .as_str(),
     ))
 }

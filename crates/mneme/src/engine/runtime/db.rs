@@ -71,7 +71,6 @@ impl Drop for RunningQueryCleanup {
     }
 }
 
-
 /// Whether a script is mutable or immutable.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ScriptMutability {
@@ -1742,7 +1741,6 @@ impl<'s, S: Storage<'s>> Db<S> {
         ))
     }
 }
-
 
 /// Used for user-initiated termination of running queries
 #[derive(Clone, Default)]
