@@ -45,7 +45,7 @@ impl FixedRule for ReorderSort {
                     span: payload.span(),
                     rule_name: payload.name().to_string(),
                     help: "This option must evaluate to a list".to_string(),
-                }))
+                }));
             }
         };
 
@@ -133,12 +133,14 @@ impl FixedRule for ReorderSort {
                 ..
             } => l.len() + 1,
             Expr::Apply { op, args, .. } if **op == OP_LIST => args.len() + 1,
-            _ => return Err(Box::new(FixedRuleError::Config {
-                rule: "ReorderSort".to_string(),
-                param: "out".to_string(),
-                message: "invalid option 'out' given, expect a list".to_string(),
-                location: snafu::location!(),
-            })),
+            _ => {
+                return Err(Box::new(FixedRuleError::Config {
+                    rule: "ReorderSort".to_string(),
+                    param: "out".to_string(),
+                    message: "invalid option 'out' given, expect a list".to_string(),
+                    location: snafu::location!(),
+                }));
+            }
         })
     }
 }

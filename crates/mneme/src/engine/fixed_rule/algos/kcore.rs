@@ -43,7 +43,7 @@ impl FixedRule for KCore {
         // set to recompute effective degrees after removals.
         let adj: Vec<Vec<u32>> = (0..n as u32)
             .map(|node| {
-                let mut nb: Vec<u32> = graph.out_neighbors(node).cloned().collect();
+                let mut nb: Vec<u32> = graph.out_neighbors(node).collect();
                 // Deduplicate — edges may have been mirrored by as_directed_graph.
                 nb.sort_unstable();
                 nb.dedup();
@@ -52,7 +52,8 @@ impl FixedRule for KCore {
             .collect_vec();
 
         // effective_degree[v] = number of neighbours that are still alive.
-        let mut effective_degree: Vec<u32> = adj.iter().map(|nb| nb.len() as u32).collect();
+        let mut effective_degree: Vec<u32> =
+            adj.iter().map(|nb: &Vec<u32>| nb.len() as u32).collect();
         let mut alive: Vec<bool> = vec![true; n];
         // core[v] = k-core value; starts at 0 and is promoted as we peel.
         let mut core: Vec<u32> = vec![0; n];

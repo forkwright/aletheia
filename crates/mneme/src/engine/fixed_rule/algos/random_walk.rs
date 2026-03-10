@@ -87,11 +87,13 @@ impl FixedRule for RandomWalk {
                                         }
                                         f
                                     }
-                                    v => return Err(Box::new(BadExprValueError(
-                                        v,
-                                        "'weight' must evaluate to a non-negative number"
-                                            .to_string(),
-                                    ))),
+                                    v => {
+                                        return Err(Box::new(BadExprValueError(
+                                            v,
+                                            "'weight' must evaluate to a non-negative number"
+                                                .to_string(),
+                                        )));
+                                    }
                                 })
                             })
                             .try_collect()?;
