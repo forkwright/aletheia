@@ -327,7 +327,7 @@ impl RecallStage {
                 nous_id: String::new(),
                 factors: FactorScores {
                     vector_similarity: self.engine.score_vector_similarity(r.distance),
-                    recency: 0.5,
+                    decay: 0.5,
                     relevance: 0.5,
                     epistemic_tier: 0.3,
                     relationship_proximity: 0.0,

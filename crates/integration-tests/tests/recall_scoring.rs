@@ -1,6 +1,6 @@
 //! Cross-crate tests for mneme recall scoring engine.
 
-use aletheia_mneme::knowledge::EpistemicTier;
+use aletheia_mneme::knowledge::{EpistemicTier, FactType};
 use aletheia_mneme::recall::{FactorScores, RecallEngine, RecallWeights, ScoredResult};
 
 fn make_result(content: &str, nous_id: &str, factors: FactorScores) -> ScoredResult {
@@ -23,7 +23,7 @@ fn verified_fact_scores_higher_than_assumed() {
         "syn",
         FactorScores {
             vector_similarity: 0.8,
-            recency: 0.5,
+            decay: 0.5,
             relevance: 1.0,
             epistemic_tier: engine.score_epistemic_tier(EpistemicTier::Verified.as_str()),
             relationship_proximity: 0.5,
@@ -35,7 +35,7 @@ fn verified_fact_scores_higher_than_assumed() {
         "syn",
         FactorScores {
             vector_similarity: 0.8,
-            recency: 0.5,
+            decay: 0.5,
             relevance: 1.0,
             epistemic_tier: engine.score_epistemic_tier(EpistemicTier::Assumed.as_str()),
             relationship_proximity: 0.5,
@@ -56,7 +56,7 @@ fn own_fact_outranks_other_agent() {
         "syn",
         FactorScores {
             vector_similarity: 0.7,
-            recency: 0.5,
+            decay: 0.5,
             relevance: engine.score_relevance("syn", "syn"),
             epistemic_tier: engine.score_epistemic_tier("inferred"),
             relationship_proximity: 0.5,
@@ -68,7 +68,7 @@ fn own_fact_outranks_other_agent() {
         "demiurge",
         FactorScores {
             vector_similarity: 0.7,
-            recency: 0.5,
+            decay: 0.5,
             relevance: engine.score_relevance("demiurge", "syn"),
             epistemic_tier: engine.score_epistemic_tier("inferred"),
             relationship_proximity: 0.5,
@@ -89,7 +89,7 @@ fn recent_fact_outranks_old() {
         "syn",
         FactorScores {
             vector_similarity: 0.7,
-            recency: engine.score_recency(1.0),
+            decay: engine.score_decay(1.0, FactType::Event, EpistemicTier::Inferred, 0),
             relevance: 1.0,
             epistemic_tier: 0.6,
             relationship_proximity: 0.5,
@@ -101,7 +101,7 @@ fn recent_fact_outranks_old() {
         "syn",
         FactorScores {
             vector_similarity: 0.7,
-            recency: engine.score_recency(720.0),
+            decay: engine.score_decay(720.0, FactType::Event, EpistemicTier::Inferred, 0),
             relevance: 1.0,
             epistemic_tier: 0.6,
             relationship_proximity: 0.5,
@@ -118,7 +118,7 @@ fn custom_weights_shift_ranking() {
     // Only epistemic_tier weight matters
     let weights = RecallWeights {
         vector_similarity: 0.0,
-        recency: 0.0,
+        decay: 0.0,
         relevance: 0.0,
         epistemic_tier: 1.0,
         relationship_proximity: 0.0,
@@ -132,7 +132,7 @@ fn custom_weights_shift_ranking() {
         "demiurge",
         FactorScores {
             vector_similarity: 0.1,
-            recency: 0.1,
+            decay: 0.1,
             relevance: engine.score_relevance("demiurge", "syn"),
             epistemic_tier: engine.score_epistemic_tier("verified"),
             relationship_proximity: 0.0,
@@ -144,7 +144,7 @@ fn custom_weights_shift_ranking() {
         "syn",
         FactorScores {
             vector_similarity: 0.9,
-            recency: 0.9,
+            decay: 0.9,
             relevance: engine.score_relevance("syn", "syn"),
             epistemic_tier: engine.score_epistemic_tier("assumed"),
             relationship_proximity: 1.0,

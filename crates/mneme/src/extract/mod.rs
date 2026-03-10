@@ -463,7 +463,11 @@ Rules:
                 slugify(&fact.subject),
                 slugify(&fact.predicate)
             ));
-            let ft = fact.fact_type.as_deref().unwrap_or("inference");
+            let classified_type = fact
+                .fact_type
+                .as_deref()
+                .map(crate::knowledge::FactType::from_str_lossy)
+                .unwrap_or_else(|| crate::knowledge::FactType::classify(&content));
             let f = Fact {
                 id,
                 nous_id: nous_id.to_owned(),
@@ -477,8 +481,8 @@ Rules:
                 recorded_at: now,
                 access_count: 0,
                 last_accessed_at: None,
-                stability_hours: crate::knowledge::default_stability_hours(ft),
-                fact_type: ft.to_owned(),
+                stability_hours: classified_type.base_stability_hours(),
+                fact_type: classified_type.as_str().to_owned(),
                 is_forgotten: false,
                 forgotten_at: None,
                 forget_reason: None,

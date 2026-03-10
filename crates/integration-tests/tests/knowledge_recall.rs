@@ -13,7 +13,7 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
         nous_id: fact.nous_id.clone(),
         factors: FactorScores {
             vector_similarity: 0.8,
-            recency: 0.5,
+            decay: 0.5,
             relevance: engine.score_relevance(&fact.nous_id, query_nous),
             epistemic_tier: engine.score_epistemic_tier(fact.tier.as_str()),
             relationship_proximity: 0.5,

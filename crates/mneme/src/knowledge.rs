@@ -125,6 +125,16 @@ impl EpistemicTier {
             Self::Assumed => "assumed",
         }
     }
+
+    /// FSRS stability multiplier — verified facts decay 2× slower than inferred.
+    #[must_use]
+    pub fn stability_multiplier(self) -> f64 {
+        match self {
+            Self::Verified => 2.0,
+            Self::Inferred => 1.0,
+            Self::Assumed => 0.5,
+        }
+    }
 }
 
 impl std::fmt::Display for EpistemicTier {
@@ -179,17 +189,131 @@ impl std::str::FromStr for ForgetReason {
     }
 }
 
-/// Default FSRS stability by fact type (hours until 50% recall probability).
+/// Classification of a fact for FSRS decay stability defaults.
+///
+/// Each variant carries a base stability (hours) calibrated to spaced repetition
+/// research. Higher stability means slower decay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FactType {
+    /// "My name is X" — very stable (2 years).
+    Identity,
+    /// "I prefer tabs" — stable (1 year).
+    Preference,
+    /// "I know Rust" — moderately stable (6 months).
+    Skill,
+    /// "X works at Y" — moderate (3 months).
+    Relationship,
+    /// "We discussed X" — short-lived (30 days).
+    Event,
+    /// "TODO: fix bug" — ephemeral (7 days).
+    Task,
+    /// "Build was slow" — very ephemeral (3 days).
+    Observation,
+}
+
+impl FactType {
+    /// Base stability in hours for FSRS power-law decay.
+    #[must_use]
+    pub fn base_stability_hours(self) -> f64 {
+        match self {
+            Self::Identity => 17_520.0,
+            Self::Preference => 8_760.0,
+            Self::Skill => 4_380.0,
+            Self::Relationship => 2_190.0,
+            Self::Event => 720.0,
+            Self::Task => 168.0,
+            Self::Observation => 72.0,
+        }
+    }
+
+    /// Classify a fact by its text content using keyword heuristics.
+    ///
+    /// Falls back to [`FactType::Observation`] when no pattern matches.
+    #[must_use]
+    pub fn classify(content: &str) -> Self {
+        let lower = content.to_lowercase();
+        if lower.contains("i am") || lower.contains("my name") || lower.contains("i identify") {
+            Self::Identity
+        } else if lower.contains("i prefer")
+            || lower.contains("i like")
+            || lower.contains("i don't like")
+            || lower.contains("i do not like")
+        {
+            Self::Preference
+        } else if lower.contains("i know")
+            || lower.contains("i use")
+            || lower.contains("i work with")
+        {
+            Self::Skill
+        } else if lower.contains("todo") || lower.contains("need to") || lower.contains("should") {
+            Self::Task
+        } else if lower.contains("yesterday")
+            || lower.contains("last week")
+            || lower.contains("last month")
+            || lower.contains("last year")
+            || lower.contains("today")
+        {
+            Self::Event
+        } else if contains_named_entity_relationship(&lower) {
+            Self::Relationship
+        } else {
+            Self::Observation
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Identity => "identity",
+            Self::Preference => "preference",
+            Self::Skill => "skill",
+            Self::Relationship => "relationship",
+            Self::Event => "event",
+            Self::Task => "task",
+            Self::Observation => "observation",
+        }
+    }
+
+    /// Parse from a string, falling back to [`FactType::Observation`] for unknown values.
+    #[must_use]
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s {
+            "identity" => Self::Identity,
+            "preference" => Self::Preference,
+            "skill" => Self::Skill,
+            "relationship" => Self::Relationship,
+            "event" => Self::Event,
+            "task" => Self::Task,
+            // "observation" and any unknown value both fall back to Observation
+            _ => Self::Observation,
+        }
+    }
+}
+
+impl std::fmt::Display for FactType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Heuristic: content mentions a named relationship pattern (e.g. "works at", "reports to").
+fn contains_named_entity_relationship(lower: &str) -> bool {
+    lower.contains("works at")
+        || lower.contains("works for")
+        || lower.contains("reports to")
+        || lower.contains("manages")
+        || lower.contains("member of")
+        || lower.contains("belongs to")
+}
+
+/// Default FSRS stability by fact type string (hours until 50% recall probability).
+///
+/// Prefer [`FactType::base_stability_hours`] for typed access. This function
+/// exists for backward compatibility with string-typed `fact_type` fields.
 #[must_use]
 pub fn default_stability_hours(fact_type: &str) -> f64 {
-    match fact_type {
-        "identity" => 17520.0,
-        "preference" => 8760.0,
-        "relationship" => 4380.0,
-        "skill" => 2190.0,
-        "task" => 168.0,
-        _ => 720.0,
-    }
+    FactType::from_str_lossy(fact_type).base_stability_hours()
 }
 
 /// Sentinel timestamp representing "current / no end date" in bi-temporal facts.
@@ -540,13 +664,15 @@ mod tests {
     fn default_stability_by_fact_type() {
         assert!((default_stability_hours("identity") - 17520.0).abs() < f64::EPSILON);
         assert!((default_stability_hours("preference") - 8760.0).abs() < f64::EPSILON);
-        assert!((default_stability_hours("relationship") - 4380.0).abs() < f64::EPSILON);
-        assert!((default_stability_hours("skill") - 2190.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("skill") - 4380.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("relationship") - 2190.0).abs() < f64::EPSILON);
         assert!((default_stability_hours("event") - 720.0).abs() < f64::EPSILON);
         assert!((default_stability_hours("task") - 168.0).abs() < f64::EPSILON);
-        assert!((default_stability_hours("inference") - 720.0).abs() < f64::EPSILON);
-        assert!((default_stability_hours("unknown") - 720.0).abs() < f64::EPSILON);
-        assert!((default_stability_hours("") - 720.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("observation") - 72.0).abs() < f64::EPSILON);
+        // Unknown types fall back to Observation (72h)
+        assert!((default_stability_hours("inference") - 72.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("unknown") - 72.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("") - 72.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -642,12 +768,12 @@ mod tests {
     fn fact_default_stability_hours_known_types() {
         assert!((default_stability_hours("identity") - 17520.0).abs() < f64::EPSILON);
         assert!((default_stability_hours("preference") - 8760.0).abs() < f64::EPSILON);
-        assert!((default_stability_hours("relationship") - 4380.0).abs() < f64::EPSILON);
-        assert!((default_stability_hours("skill") - 2190.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("skill") - 4380.0).abs() < f64::EPSILON);
+        assert!((default_stability_hours("relationship") - 2190.0).abs() < f64::EPSILON);
         assert!((default_stability_hours("task") - 168.0).abs() < f64::EPSILON);
         assert!(
-            (default_stability_hours("completely_unknown_type") - 720.0).abs() < f64::EPSILON,
-            "fallback for unknown fact types should be 720 hours"
+            (default_stability_hours("completely_unknown_type") - 72.0).abs() < f64::EPSILON,
+            "fallback for unknown fact types should be 72 hours (Observation)"
         );
     }
 
