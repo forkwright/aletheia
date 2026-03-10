@@ -1,7 +1,4 @@
 //! Newtype wrappers for domain identifiers.
-//!
-//! Every domain concept gets its own type. No raw `String` or `u64` for identifiers.
-//! Construction validates. The type *is* the documentation.
 
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};

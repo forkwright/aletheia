@@ -1,8 +1,4 @@
 //! Bridge from nous to mneme's extraction pipeline via hermeneus providers.
-//!
-//! Provides [`HermeneusExtractionProvider`] for fact extraction and
-//! [`HermeneusSkillExtractionProvider`] for skill extraction — both bridge
-//! hermeneus's `ProviderRegistry` to mneme's provider traits.
 
 use std::sync::Arc;
 

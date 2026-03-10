@@ -2,8 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::id::{NousId, PlanId, SessionId, TurnId};
 
-// --- Agent ---
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
     pub id: NousId,
@@ -23,8 +21,6 @@ impl Agent {
         self.name.as_deref().unwrap_or(&self.id)
     }
 }
-
-// --- Session ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
@@ -66,8 +62,6 @@ impl Session {
     }
 }
 
-// --- History ---
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryMessage {
     pub role: String,
@@ -85,8 +79,6 @@ pub struct HistoryMessage {
 pub struct HistoryResponse {
     pub messages: Vec<HistoryMessage>,
 }
-
-// --- Turn outcome ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnOutcome {
@@ -109,8 +101,6 @@ pub struct TurnOutcome {
     #[serde(default)]
     pub error: Option<String>,
 }
-
-// --- Plans ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanStep {
@@ -136,8 +126,6 @@ pub struct Plan {
     pub total_estimated_cost_cents: u32,
     pub status: String,
 }
-
-// --- SSE events ---
 
 #[non_exhaustive]
 #[derive(Debug, Clone)]
@@ -200,8 +188,6 @@ pub struct ActiveTurn {
     pub turn_id: TurnId,
 }
 
-// --- Auth ---
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthMode {
     pub mode: String,
@@ -219,8 +205,6 @@ impl std::fmt::Debug for LoginResponse {
             .finish()
     }
 }
-
-// --- Costs ---
 
 #[expect(dead_code, reason = "deserialization target for /api/v1/costs")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,8 +239,6 @@ pub struct DailyEntry {
     #[serde(default)]
     pub turns: u32,
 }
-
-// --- Response wrappers ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentsResponse {

@@ -1,8 +1,4 @@
 //! Tab bar state for multi-session tabbed navigation.
-//!
-//! Each tab holds an isolated snapshot of session state (messages, scroll position,
-//! input buffer, selection, filter). Switching tabs saves the current state and
-//! restores the target tab's state.
 
 use std::collections::HashSet;
 

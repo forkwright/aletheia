@@ -21,8 +21,6 @@ use crate::extract::OptionalClaims;
 use crate::state::AppState;
 use crate::stream::{TurnOutcome, WebchatEvent};
 
-// --- POST /api/sessions/stream ---
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamRequest {
@@ -243,8 +241,6 @@ pub async fn stream(
     ))
 }
 
-// --- GET /api/agents ---
-
 #[derive(Debug, Serialize)]
 pub struct AgentsListResponse {
     pub agents: Vec<AgentInfo>,
@@ -285,8 +281,6 @@ pub async fn agents_list(
 
     Json(AgentsListResponse { agents })
 }
-
-// --- GET /api/agents/{id}/identity ---
 
 #[derive(Debug, Serialize)]
 pub struct AgentIdentityResponse {
@@ -343,8 +337,6 @@ fn parse_identity(content: &str, fallback_name: &str) -> (String, Option<String>
     (name, emoji)
 }
 
-// --- GET /api/branding ---
-
 #[derive(Debug, Serialize)]
 pub struct BrandingResponse {
     pub name: &'static str,
@@ -353,8 +345,6 @@ pub struct BrandingResponse {
 pub async fn branding(_claims: OptionalClaims) -> Json<BrandingResponse> {
     Json(BrandingResponse { name: "Aletheia" })
 }
-
-// --- GET /api/auth/mode ---
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -376,8 +366,6 @@ pub async fn auth_mode(
         session_auth: false,
     })
 }
-
-// --- GET /api/sessions ---
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -435,8 +423,6 @@ pub async fn sessions_list(
 
     Ok(Json(SessionsListResponse { sessions: items }))
 }
-
-// --- GET /api/events ---
 
 pub async fn events_sse(
     _claims: OptionalClaims,

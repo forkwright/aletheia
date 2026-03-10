@@ -1,9 +1,4 @@
 //! Diff computation and rendering for file changes.
-//!
-//! Three display modes:
-//! - **Unified**: standard +/- format with colored additions/deletions
-//! - **SideBySide**: split layout with old on left, new on right
-//! - **WordDiff**: inline highlighting of changed words/tokens within lines
 
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -11,10 +6,6 @@ use ratatui::text::{Line, Span};
 use similar::{ChangeTag, TextDiff};
 
 use crate::theme::ThemePalette;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 /// Display mode for the diff viewer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,10 +101,6 @@ impl DiffViewState {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Diff Computation
-// ---------------------------------------------------------------------------
-
 /// Compute a diff between old and new text for a single file.
 pub(crate) fn compute_diff(path: &str, old: &str, new: &str) -> FileDiff {
     let text_diff = TextDiff::from_lines(old, new);
@@ -186,10 +173,6 @@ pub(crate) fn collapse_to_replacements(hunks: &[DiffHunk]) -> Vec<DiffHunk> {
         })
         .collect()
 }
-
-// ---------------------------------------------------------------------------
-// Rendering — Unified
-// ---------------------------------------------------------------------------
 
 /// Render hunks in unified diff format.
 pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<'static>> {
@@ -282,10 +265,6 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<
 
     lines
 }
-
-// ---------------------------------------------------------------------------
-// Rendering — Side-by-Side
-// ---------------------------------------------------------------------------
 
 /// Render hunks in a side-by-side layout.
 pub(crate) fn render_side_by_side(
@@ -400,10 +379,6 @@ pub(crate) fn render_side_by_side(
 
     lines
 }
-
-// ---------------------------------------------------------------------------
-// Rendering — Word Diff (inline)
-// ---------------------------------------------------------------------------
 
 /// Render hunks with inline word-level highlighting.
 pub(crate) fn render_word_diff(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<'static>> {

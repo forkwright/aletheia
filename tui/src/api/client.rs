@@ -81,8 +81,6 @@ impl ApiClient {
         req
     }
 
-    // --- Health ---
-
     #[tracing::instrument(skip(self))]
     pub async fn health(&self) -> Result<bool> {
         let resp = self
@@ -95,8 +93,6 @@ impl ApiClient {
             })?;
         Ok(resp.status().is_success())
     }
-
-    // --- Auth ---
 
     #[tracing::instrument(skip(self))]
     pub async fn auth_mode(&self) -> Result<AuthMode> {
@@ -135,8 +131,6 @@ impl ApiClient {
         })
     }
 
-    // --- Agents ---
-
     #[tracing::instrument(skip(self))]
     pub async fn agents(&self) -> Result<Vec<Agent>> {
         let resp = self
@@ -155,8 +149,6 @@ impl ApiClient {
         })?;
         Ok(wrapper.nous)
     }
-
-    // --- Sessions ---
 
     #[tracing::instrument(skip(self))]
     pub async fn sessions(&self, nous_id: &str) -> Result<Vec<Session>> {
@@ -284,8 +276,6 @@ impl ApiClient {
         Ok(())
     }
 
-    // --- Turns ---
-
     #[expect(dead_code, reason = "reserved for turn abort keybinding")]
     #[tracing::instrument(skip(self))]
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
@@ -346,8 +336,6 @@ impl ApiClient {
         Ok(())
     }
 
-    // --- Plans ---
-
     #[tracing::instrument(skip(self))]
     pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
         let encoded = encode_path(plan_id);
@@ -386,8 +374,6 @@ impl ApiClient {
         Ok(())
     }
 
-    // --- Costs ---
-
     #[tracing::instrument(skip(self))]
     pub async fn today_cost_cents(&self) -> Result<u32> {
         let resp = self
@@ -409,8 +395,6 @@ impl ApiClient {
         Ok((today_cost * 100.0) as u32)
     }
 
-    // --- Distillation ---
-
     #[tracing::instrument(skip(self))]
     pub async fn compact(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
@@ -429,8 +413,6 @@ impl ApiClient {
         })?;
         Ok(())
     }
-
-    // --- Memory recall ---
 
     #[tracing::instrument(skip(self))]
     pub async fn recall(&self, nous_id: &str, query: &str) -> Result<String> {
@@ -453,8 +435,6 @@ impl ApiClient {
             operation: "recall response",
         })
     }
-
-    // --- Config ---
 
     #[tracing::instrument(skip(self))]
     pub async fn config(&self) -> Result<serde_json::Value> {
@@ -497,8 +477,6 @@ impl ApiClient {
             operation: "config update response",
         })
     }
-
-    // --- Knowledge ---
 
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_facts(
@@ -607,8 +585,6 @@ impl ApiClient {
         })?;
         Ok(())
     }
-
-    // --- Message queue (mid-turn) ---
 
     #[tracing::instrument(skip(self, text))]
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {

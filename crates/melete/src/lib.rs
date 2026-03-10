@@ -1,11 +1,4 @@
 //! aletheia-melete — context distillation engine
-//!
-//! Melete (Μελέτη) — "practice, exercise." One of the three original Muses,
-//! representing meditation and the discipline of focused thought. Compresses
-//! conversation history into structured summaries that preserve essential
-//! context across distillation boundaries.
-//!
-//! Depends on `aletheia-koina` (types) and `aletheia-hermeneus` (LLM provider).
 
 /// Context distillation engine: token budgeting, LLM-driven summarization, and verbatim tail preservation.
 pub mod distill;

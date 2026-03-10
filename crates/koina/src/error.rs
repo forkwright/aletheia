@@ -1,7 +1,4 @@
 //! Error types for Aletheia.
-//!
-//! Each crate defines its own error enum using `snafu`. This module provides
-//! the koina-level errors (config, I/O, serialization) that other crates wrap.
 
 use snafu::Snafu;
 use std::path::PathBuf;
