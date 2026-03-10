@@ -497,6 +497,9 @@ pub struct MaintenanceSettings {
     pub db_monitoring: DbMonitoringSettings,
     /// Automatic data retention enforcement.
     pub retention: RetentionSettings,
+    /// Whether background knowledge graph maintenance tasks are enabled.
+    #[serde(default)]
+    pub knowledge_maintenance_enabled: bool,
 }
 
 /// Trace file rotation settings.

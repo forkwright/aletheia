@@ -5,6 +5,8 @@ mod dispatch;
 mod init;
 #[cfg(feature = "recall")]
 mod knowledge_adapter;
+#[cfg(feature = "recall")]
+mod knowledge_maintenance;
 #[cfg(feature = "migrate-qdrant")]
 mod migrate_memory;
 mod planning_adapter;
@@ -588,6 +590,9 @@ fn build_maintenance_config(
         retention: aletheia_oikonomos::maintenance::RetentionConfig {
             enabled: settings.retention.enabled,
         },
+        knowledge_maintenance: aletheia_oikonomos::maintenance::KnowledgeMaintenanceConfig {
+            enabled: settings.knowledge_maintenance_enabled,
+        },
     }
 }
 
@@ -782,6 +787,10 @@ async fn serve(cli: Cli) -> Result<()> {
     });
 
     // Spawn nous actors
+    // Clone knowledge_store Arc before moving into NousManager — needed for daemon executor.
+    #[cfg(feature = "recall")]
+    let knowledge_store_for_daemon = knowledge_store.clone();
+
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),
         Arc::clone(&tool_registry),
@@ -845,6 +854,16 @@ async fn serve(cli: Cli) -> Result<()> {
     let daemon_token = shutdown_token.child_token();
     let mut daemon_runner =
         TaskRunner::new("system", daemon_token).with_maintenance(maintenance_config);
+
+    // Wire knowledge maintenance executor when recall feature is enabled
+    #[cfg(feature = "recall")]
+    if let Some(ks) = knowledge_store_for_daemon.as_ref() {
+        let km_executor = Arc::new(knowledge_maintenance::KnowledgeMaintenanceAdapter::new(
+            Arc::clone(ks),
+        ));
+        daemon_runner = daemon_runner.with_knowledge_maintenance(km_executor);
+    }
+
     daemon_runner.register_maintenance_tasks();
     let daemon_handle = tokio::spawn(async move {
         daemon_runner.run().await;

@@ -61,10 +61,6 @@ pub enum TaskAction {
 pub enum BuiltinTask {
     /// Prosoche attention check.
     Prosoche,
-    /// Knowledge graph maintenance (dedup, orphan purge).
-    GraphMaintenance,
-    /// Memory consolidation.
-    MemoryConsolidation,
     /// Session retention policy enforcement.
     SessionRetention,
     /// Rotate and compress old trace files.
@@ -75,6 +71,20 @@ pub enum BuiltinTask {
     DbSizeMonitor,
     /// Execute data retention policy cleanup.
     RetentionExecution,
+    /// Refresh temporal decay scores for knowledge graph entities/edges.
+    DecayRefresh,
+    /// Find and merge duplicate entities in the knowledge graph.
+    EntityDedup,
+    /// Recompute graph-wide scores (`PageRank`, centrality, etc.).
+    GraphRecompute,
+    /// Re-embed entities whose embeddings are stale or missing.
+    EmbeddingRefresh,
+    /// Remove orphaned nodes, expired edges, and other detritus.
+    KnowledgeGc,
+    /// Rebuild or optimize knowledge graph indexes.
+    IndexMaintenance,
+    /// Run a diagnostic health check on the knowledge graph.
+    GraphHealthCheck,
 }
 
 impl Schedule {
