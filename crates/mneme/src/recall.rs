@@ -3,7 +3,7 @@
 //! Combines multiple signals to rank recall results:
 //!
 //! 1. **Vector similarity** — cosine distance from HNSW search
-//! 2. **Recency** — exponential decay from recording time
+//! 2. **Decay** — FSRS power-law decay from last access time
 //! 3. **Relevance** — nous-specific boost (your own memories rank higher)
 //! 4. **Epistemic tier** — verified > inferred > assumed
 //! 5. **Relationship proximity** — graph distance from query context entities
@@ -12,6 +12,7 @@
 //! Each factor produces a score in [0.0, 1.0]. The final score is a weighted
 //! combination, configurable per-nous via oikos cascade.
 
+use crate::knowledge::{EpistemicTier, FactType};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -23,8 +24,8 @@ use tracing::instrument;
 pub struct RecallWeights {
     /// Weight for vector similarity (cosine distance). Default: 0.35
     pub vector_similarity: f64,
-    /// Weight for recency (exponential decay). Default: 0.20
-    pub recency: f64,
+    /// Weight for FSRS power-law decay. Default: 0.20
+    pub decay: f64,
     /// Weight for nous-relevance (own memories boosted). Default: 0.15
     pub relevance: f64,
     /// Weight for epistemic tier (verified > inferred > assumed). Default: 0.15
@@ -39,7 +40,7 @@ impl Default for RecallWeights {
     fn default() -> Self {
         Self {
             vector_similarity: 0.35,
-            recency: 0.20,
+            decay: 0.20,
             relevance: 0.15,
             epistemic_tier: 0.15,
             relationship_proximity: 0.10,
@@ -54,7 +55,7 @@ impl RecallWeights {
     #[instrument(skip(self))]
     pub fn total(&self) -> f64 {
         self.vector_similarity
-            + self.recency
+            + self.decay
             + self.relevance
             + self.epistemic_tier
             + self.relationship_proximity
@@ -67,8 +68,8 @@ impl RecallWeights {
 pub struct FactorScores {
     /// Cosine similarity score [0.0, 1.0] (1.0 = identical).
     pub vector_similarity: f64,
-    /// Recency score [0.0, 1.0] (1.0 = just recorded).
-    pub recency: f64,
+    /// FSRS decay score [0.0, 1.0] (1.0 = just accessed).
+    pub decay: f64,
     /// Relevance score [0.0, 1.0] (1.0 = same nous).
     pub relevance: f64,
     /// Epistemic tier score [0.0, 1.0] (1.0 = verified).
@@ -100,8 +101,6 @@ pub struct ScoredResult {
 #[derive(Debug, Clone)]
 pub struct RecallEngine {
     weights: RecallWeights,
-    /// Half-life for recency decay in hours. Default: 168 (1 week).
-    recency_half_life_hours: f64,
     /// Maximum access count for frequency normalization.
     max_access_count: f64,
 }
@@ -113,7 +112,6 @@ impl RecallEngine {
     pub fn new() -> Self {
         Self {
             weights: RecallWeights::default(),
-            recency_half_life_hours: 168.0,
             max_access_count: 100.0,
         }
     }
@@ -126,14 +124,6 @@ impl RecallEngine {
             weights,
             ..Self::default()
         }
-    }
-
-    /// Set the recency half-life in hours.
-    #[must_use]
-    #[instrument(skip(self))]
-    pub fn with_recency_half_life(mut self, hours: f64) -> Self {
-        self.recency_half_life_hours = hours;
-        self
     }
 
     /// Set the max access count for frequency normalization.
@@ -154,16 +144,36 @@ impl RecallEngine {
         (1.0 - cosine_distance / 2.0).clamp(0.0, 1.0)
     }
 
-    /// Compute the recency score from age in hours.
+    /// Compute the FSRS power-law decay score.
     ///
-    /// Exponential decay: `score = 0.5^(age / half_life)`
+    /// Formula: `R(t) = (1 + 19/81 × t/S)^(-0.5)`
+    ///
+    /// Where:
+    /// - `t` = hours since last access (or creation if never accessed)
+    /// - `S` = effective stability = base × `tier_mult` × `access_mult`
+    /// - Access growth: `1 + 0.1 × ln(1 + access_count)` (logarithmic, bounded)
+    ///
+    /// Properties:
+    /// - R(0) = 1.0 for any stability
+    /// - R(S) ≈ 0.9 (by design of FSRS 19/81 constant)
     #[must_use]
     #[instrument(skip(self))]
-    pub fn score_recency(&self, age_hours: f64) -> f64 {
+    pub fn score_decay(
+        &self,
+        age_hours: f64,
+        fact_type: FactType,
+        tier: EpistemicTier,
+        access_count: u32,
+    ) -> f64 {
         if age_hours <= 0.0 {
             return 1.0;
         }
-        (0.5_f64).powf(age_hours / self.recency_half_life_hours)
+        let s = compute_effective_stability(fact_type, tier, access_count);
+        // Guard against zero/negative stability (shouldn't happen, but be safe)
+        if s <= 0.0 {
+            return 0.0;
+        }
+        (1.0 + (19.0 / 81.0) * age_hours / s).powf(-0.5)
     }
 
     /// Compute the relevance score.
@@ -231,7 +241,7 @@ impl RecallEngine {
         }
 
         let raw = factors.vector_similarity * w.vector_similarity
-            + factors.recency * w.recency
+            + factors.decay * w.decay
             + factors.relevance * w.relevance
             + factors.epistemic_tier * w.epistemic_tier
             + factors.relationship_proximity * w.relationship_proximity
@@ -269,6 +279,43 @@ impl Default for RecallEngine {
     }
 }
 
+/// Compute effective stability for FSRS decay.
+///
+/// `S = base_stability × tier_multiplier × access_growth`
+///
+/// Access growth is logarithmic: `1 + 0.1 × ln(1 + access_count)`.
+/// This ensures frequently accessed facts decay slower, but growth is bounded.
+#[must_use]
+pub fn compute_effective_stability(
+    fact_type: FactType,
+    tier: EpistemicTier,
+    access_count: u32,
+) -> f64 {
+    let s_base = fact_type.base_stability_hours();
+    let tier_mult = tier.stability_multiplier();
+    #[expect(clippy::cast_lossless, reason = "u32 to f64 is always lossless")]
+    let access_mult = 1.0 + 0.1 * (1.0 + access_count as f64).ln();
+    s_base * tier_mult * access_mult
+}
+
+/// Recompute the stored `stability_hours` value for a fact.
+///
+/// This is the same formula as [`compute_effective_stability`] but takes string
+/// parameters for compatibility with the knowledge store's string-typed fields.
+///
+/// The stored value is for diagnostics/reporting — actual `R(t)` is computed
+/// on-the-fly at query time via [`RecallEngine::score_decay`].
+#[must_use]
+pub fn refresh_stability_hours(fact_type: &str, tier: &str, access_count: u32) -> f64 {
+    let ft = FactType::from_str_lossy(fact_type);
+    let et = match tier {
+        "verified" => EpistemicTier::Verified,
+        "inferred" => EpistemicTier::Inferred,
+        _ => EpistemicTier::Assumed,
+    };
+    compute_effective_stability(ft, et, access_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,31 +344,177 @@ mod tests {
         assert!((e.score_vector_similarity(1.0) - 0.5).abs() < f64::EPSILON);
     }
 
-    // --- Recency ---
+    // --- FSRS Decay ---
 
     #[test]
-    fn recency_just_now() {
+    fn decay_at_zero_is_one() {
         let e = engine();
-        assert!((e.score_recency(0.0) - 1.0).abs() < f64::EPSILON);
+        // R(0) = 1.0 for any stability
+        for ft in [
+            FactType::Identity,
+            FactType::Observation,
+            FactType::Task,
+            FactType::Event,
+        ] {
+            let score = e.score_decay(0.0, ft, EpistemicTier::Inferred, 0);
+            assert!(
+                (score - 1.0).abs() < f64::EPSILON,
+                "R(0) should be 1.0 for {ft:?}, got {score}"
+            );
+        }
     }
 
     #[test]
-    fn recency_one_half_life() {
+    fn decay_at_stability_approx_0_9() {
+        // By FSRS design: R(S) = (1 + 19/81)^(-0.5) ≈ 0.9
         let e = engine();
-        // After one half-life (168h = 1 week), score should be 0.5
-        assert!((e.score_recency(168.0) - 0.5).abs() < 0.01);
+        let ft = FactType::Event;
+        let tier = EpistemicTier::Inferred;
+        let s = compute_effective_stability(ft, tier, 0);
+        let score = e.score_decay(s, ft, tier, 0);
+        assert!(
+            (score - 0.9).abs() < 0.01,
+            "R(S) should be ~0.9, got {score}"
+        );
     }
 
     #[test]
-    fn recency_two_half_lives() {
+    fn decay_identity_at_30_days_still_high() {
         let e = engine();
-        assert!((e.score_recency(336.0) - 0.25).abs() < 0.01);
+        let score = e.score_decay(720.0, FactType::Identity, EpistemicTier::Inferred, 0);
+        assert!(
+            score > 0.95,
+            "Identity at 30 days should still be high, got {score}"
+        );
     }
 
     #[test]
-    fn recency_custom_half_life() {
-        let e = RecallEngine::new().with_recency_half_life(24.0);
-        assert!((e.score_recency(24.0) - 0.5).abs() < 0.01);
+    fn decay_observation_at_30_days_significantly_decayed() {
+        let e = engine();
+        let score = e.score_decay(720.0, FactType::Observation, EpistemicTier::Inferred, 0);
+        assert!(
+            score < 0.6,
+            "Observation at 30 days should be significantly decayed, got {score}"
+        );
+        // Much lower than a fresh fact
+        assert!(
+            score < 0.9,
+            "Observation at 30 days should be well below fresh, got {score}"
+        );
+    }
+
+    #[test]
+    fn decay_verified_slower_than_inferred() {
+        let e = engine();
+        let age = 500.0;
+        let ft = FactType::Event;
+        let verified = e.score_decay(age, ft, EpistemicTier::Verified, 0);
+        let inferred = e.score_decay(age, ft, EpistemicTier::Inferred, 0);
+        assert!(
+            verified > inferred,
+            "Verified ({verified}) should decay slower than inferred ({inferred})"
+        );
+    }
+
+    #[test]
+    fn decay_assumed_faster_than_inferred() {
+        let e = engine();
+        let age = 500.0;
+        let ft = FactType::Event;
+        let inferred = e.score_decay(age, ft, EpistemicTier::Inferred, 0);
+        let assumed = e.score_decay(age, ft, EpistemicTier::Assumed, 0);
+        assert!(
+            inferred > assumed,
+            "Inferred ({inferred}) should decay slower than assumed ({assumed})"
+        );
+    }
+
+    #[test]
+    fn decay_high_access_slower() {
+        let e = engine();
+        let age = 500.0;
+        let ft = FactType::Event;
+        let tier = EpistemicTier::Inferred;
+        let no_access = e.score_decay(age, ft, tier, 0);
+        let high_access = e.score_decay(age, ft, tier, 100);
+        assert!(
+            high_access > no_access,
+            "100-access ({high_access}) should decay slower than 0-access ({no_access})"
+        );
+    }
+
+    #[test]
+    fn decay_negative_age_returns_one() {
+        let e = engine();
+        let score = e.score_decay(-10.0, FactType::Event, EpistemicTier::Inferred, 0);
+        assert!((score - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn decay_very_old_near_zero() {
+        let e = engine();
+        let score = e.score_decay(
+            1_000_000.0,
+            FactType::Observation,
+            EpistemicTier::Assumed,
+            0,
+        );
+        assert!(score >= 0.0);
+        assert!(
+            score < 0.02,
+            "Very old observation should be near zero, got {score}"
+        );
+    }
+
+    #[test]
+    fn decay_just_created_fact() {
+        let e = engine();
+        let score = e.score_decay(0.0, FactType::Task, EpistemicTier::Assumed, 0);
+        assert!((score - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn decay_default_params_reasonable() {
+        // With default Event/Inferred/0-access, should produce a reasonable curve
+        let e = engine();
+        let score_hour = e.score_decay(1.0, FactType::Event, EpistemicTier::Inferred, 0);
+        let score_day = e.score_decay(24.0, FactType::Event, EpistemicTier::Inferred, 0);
+        let score_week = e.score_decay(168.0, FactType::Event, EpistemicTier::Inferred, 0);
+        assert!(score_hour > score_day);
+        assert!(score_day > score_week);
+        assert!(
+            score_hour > 0.9,
+            "1h old Event should still be >0.9, got {score_hour}"
+        );
+        assert!(
+            score_week > 0.5,
+            "1w old Event should still be >0.5, got {score_week}"
+        );
+    }
+
+    #[test]
+    fn decay_access_growth_logarithmic() {
+        let ft = FactType::Event;
+        let tier = EpistemicTier::Inferred;
+        let s0 = compute_effective_stability(ft, tier, 0);
+        let s10 = compute_effective_stability(ft, tier, 10);
+        let s100 = compute_effective_stability(ft, tier, 100);
+        let s1000 = compute_effective_stability(ft, tier, 1000);
+        // Strictly increasing with access count
+        assert!(s10 > s0);
+        assert!(s100 > s10);
+        assert!(s1000 > s100);
+        // Growth is bounded — even 1000 accesses doesn't double stability
+        let growth_ratio = s1000 / s0;
+        assert!(
+            growth_ratio < 2.0,
+            "1000-access growth ratio {growth_ratio} should be bounded below 2×"
+        );
+        // But it does grow meaningfully
+        assert!(
+            growth_ratio > 1.05,
+            "1000-access growth ratio {growth_ratio} should be meaningful"
+        );
     }
 
     // --- Relevance ---
@@ -409,7 +602,7 @@ mod tests {
         let e = engine();
         let factors = FactorScores {
             vector_similarity: 1.0,
-            recency: 1.0,
+            decay: 1.0,
             relevance: 1.0,
             epistemic_tier: 1.0,
             relationship_proximity: 1.0,
@@ -428,17 +621,15 @@ mod tests {
     #[test]
     fn vector_similarity_dominates() {
         let e = engine();
-        // A memory with high vector similarity but low everything else
-        // should still score well since vector_similarity has the highest weight
         let high_vec = FactorScores {
             vector_similarity: 1.0,
             ..FactorScores::default()
         };
-        let high_recency = FactorScores {
-            recency: 1.0,
+        let high_decay = FactorScores {
+            decay: 1.0,
             ..FactorScores::default()
         };
-        assert!(e.compute_score(&high_vec) > e.compute_score(&high_recency));
+        assert!(e.compute_score(&high_vec) > e.compute_score(&high_decay));
     }
 
     // --- Ranking ---
@@ -465,7 +656,7 @@ mod tests {
                 nous_id: "syn".to_owned(),
                 factors: FactorScores {
                     vector_similarity: 0.9,
-                    recency: 0.8,
+                    decay: 0.8,
                     relevance: 1.0,
                     epistemic_tier: 1.0,
                     ..FactorScores::default()
@@ -479,7 +670,7 @@ mod tests {
                 nous_id: "syn".to_owned(),
                 factors: FactorScores {
                     vector_similarity: 0.5,
-                    recency: 0.5,
+                    decay: 0.5,
                     ..FactorScores::default()
                 },
                 score: 0.0,
@@ -498,11 +689,9 @@ mod tests {
 
     #[test]
     fn custom_weights_change_ranking() {
-        // With only recency weight, a recent low-similarity memory beats
-        // an old high-similarity one
         let weights = RecallWeights {
             vector_similarity: 0.0,
-            recency: 1.0,
+            decay: 1.0,
             relevance: 0.0,
             epistemic_tier: 0.0,
             relationship_proximity: 0.0,
@@ -512,12 +701,12 @@ mod tests {
 
         let old_similar = FactorScores {
             vector_similarity: 1.0,
-            recency: 0.1,
+            decay: 0.1,
             ..FactorScores::default()
         };
         let new_dissimilar = FactorScores {
             vector_similarity: 0.1,
-            recency: 1.0,
+            decay: 1.0,
             ..FactorScores::default()
         };
 
@@ -530,7 +719,7 @@ mod tests {
     fn all_weights_zero_returns_zero() {
         let weights = RecallWeights {
             vector_similarity: 0.0,
-            recency: 0.0,
+            decay: 0.0,
             relevance: 0.0,
             epistemic_tier: 0.0,
             relationship_proximity: 0.0,
@@ -539,7 +728,7 @@ mod tests {
         let e = RecallEngine::with_weights(weights);
         let factors = FactorScores {
             vector_similarity: 1.0,
-            recency: 1.0,
+            decay: 1.0,
             relevance: 1.0,
             epistemic_tier: 1.0,
             relationship_proximity: 1.0,
@@ -559,20 +748,6 @@ mod tests {
     fn vector_similarity_over_two_clamps() {
         let e = engine();
         assert!((e.score_vector_similarity(3.0)).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn recency_negative_age_returns_one() {
-        let e = engine();
-        assert!((e.score_recency(-10.0) - 1.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn recency_very_old_near_zero() {
-        let e = engine();
-        let score = e.score_recency(1_000_000.0);
-        assert!(score >= 0.0);
-        assert!(score < 0.001);
     }
 
     #[test]
@@ -636,7 +811,7 @@ mod tests {
     fn single_weight_isolation() {
         let factors = FactorScores {
             vector_similarity: 0.0,
-            recency: 0.0,
+            decay: 0.0,
             relevance: 1.0,
             epistemic_tier: 0.0,
             relationship_proximity: 0.0,
@@ -648,36 +823,32 @@ mod tests {
         assert!((score - expected).abs() < 0.01);
     }
 
-    // --- Acceptance criteria tests (prompt 99) ---
+    // --- Acceptance criteria tests ---
 
     #[test]
     fn scores_are_bounded_zero_to_one() {
         let e = engine();
         let extreme_inputs: Vec<FactorScores> = vec![
-            // All zeros
             FactorScores::default(),
-            // All ones
             FactorScores {
                 vector_similarity: 1.0,
-                recency: 1.0,
+                decay: 1.0,
                 relevance: 1.0,
                 epistemic_tier: 1.0,
                 relationship_proximity: 1.0,
                 access_frequency: 1.0,
             },
-            // Mixed extremes
             FactorScores {
                 vector_similarity: 1.0,
-                recency: 0.0,
+                decay: 0.0,
                 relevance: 1.0,
                 epistemic_tier: 0.0,
                 relationship_proximity: 1.0,
                 access_frequency: 0.0,
             },
-            // Values at boundary
             FactorScores {
                 vector_similarity: 0.0,
-                recency: 0.0,
+                decay: 0.0,
                 relevance: 0.0,
                 epistemic_tier: 0.0,
                 relationship_proximity: 0.0,
@@ -709,7 +880,7 @@ mod tests {
         let e = engine();
         let base = FactorScores {
             vector_similarity: 0.5,
-            recency: 0.5,
+            decay: 0.5,
             relevance: 0.5,
             relationship_proximity: 0.5,
             access_frequency: 0.5,
@@ -717,15 +888,15 @@ mod tests {
         };
 
         let verified = FactorScores {
-            epistemic_tier: 1.0, // verified
+            epistemic_tier: 1.0,
             ..base.clone()
         };
         let inferred = FactorScores {
-            epistemic_tier: 0.6, // inferred
+            epistemic_tier: 0.6,
             ..base.clone()
         };
         let assumed = FactorScores {
-            epistemic_tier: 0.3, // assumed
+            epistemic_tier: 0.3,
             ..base
         };
 
@@ -754,9 +925,9 @@ mod tests {
                 nous_id: "syn".to_owned(),
                 factors: FactorScores {
                     vector_similarity: 0.8,
-                    recency: 0.7,
+                    decay: 0.7,
                     relevance: 1.0,
-                    epistemic_tier: 0.6, // inferred
+                    epistemic_tier: 0.6,
                     relationship_proximity: 0.5,
                     access_frequency: 0.3,
                 },
@@ -769,9 +940,9 @@ mod tests {
                 nous_id: "syn".to_owned(),
                 factors: FactorScores {
                     vector_similarity: 0.8,
-                    recency: 0.7,
+                    decay: 0.7,
                     relevance: 1.0,
-                    epistemic_tier: 1.0, // verified
+                    epistemic_tier: 1.0,
                     relationship_proximity: 0.5,
                     access_frequency: 0.3,
                 },
@@ -797,13 +968,10 @@ mod tests {
         };
 
         let recent = FactorScores {
-            recency: 1.0, // just now
+            decay: 1.0,
             ..base.clone()
         };
-        let old = FactorScores {
-            recency: 0.1, // 6 months ago
-            ..base
-        };
+        let old = FactorScores { decay: 0.1, ..base };
 
         let score_recent = e.compute_score(&recent);
         let score_old = e.compute_score(&old);
@@ -819,7 +987,7 @@ mod tests {
         let e = engine();
         let factors = FactorScores {
             vector_similarity: 0.75,
-            recency: 0.6,
+            decay: 0.6,
             relevance: 0.9,
             epistemic_tier: 0.8,
             relationship_proximity: 0.4,
@@ -847,7 +1015,7 @@ mod tests {
                     nous_id: "syn".to_owned(),
                     factors: FactorScores {
                         vector_similarity: 0.9,
-                        recency: 0.3,
+                        decay: 0.3,
                         ..FactorScores::default()
                     },
                     score: 0.0,
@@ -859,7 +1027,7 @@ mod tests {
                     nous_id: "syn".to_owned(),
                     factors: FactorScores {
                         vector_similarity: 0.3,
-                        recency: 0.9,
+                        decay: 0.9,
                         ..FactorScores::default()
                     },
                     score: 0.0,
@@ -882,7 +1050,7 @@ mod tests {
         let e = RecallEngine::new();
         let w = e.weights();
         assert!((w.vector_similarity - 0.35).abs() < f64::EPSILON);
-        assert!((w.recency - 0.20).abs() < f64::EPSILON);
+        assert!((w.decay - 0.20).abs() < f64::EPSILON);
         assert!((w.relevance - 0.15).abs() < f64::EPSILON);
         assert!((w.epistemic_tier - 0.15).abs() < f64::EPSILON);
         assert!((w.relationship_proximity - 0.10).abs() < f64::EPSILON);
@@ -893,7 +1061,7 @@ mod tests {
     fn with_weights_overrides_all() {
         let custom = RecallWeights {
             vector_similarity: 0.5,
-            recency: 0.1,
+            decay: 0.1,
             relevance: 0.1,
             epistemic_tier: 0.1,
             relationship_proximity: 0.1,
@@ -902,18 +1070,11 @@ mod tests {
         let e = RecallEngine::with_weights(custom);
         let w = e.weights();
         assert!((w.vector_similarity - 0.5).abs() < f64::EPSILON);
-        assert!((w.recency - 0.1).abs() < f64::EPSILON);
+        assert!((w.decay - 0.1).abs() < f64::EPSILON);
         assert!((w.relevance - 0.1).abs() < f64::EPSILON);
         assert!((w.epistemic_tier - 0.1).abs() < f64::EPSILON);
         assert!((w.relationship_proximity - 0.1).abs() < f64::EPSILON);
         assert!((w.access_frequency - 0.1).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn with_recency_half_life_changes_scoring() {
-        let e = RecallEngine::new().with_recency_half_life(24.0);
-        let score = e.score_recency(24.0);
-        assert!((score - 0.5).abs() < 0.01);
     }
 
     #[test]
@@ -927,19 +1088,15 @@ mod tests {
     fn builder_chain_preserves_all() {
         let custom = RecallWeights {
             vector_similarity: 0.6,
-            recency: 0.1,
+            decay: 0.1,
             relevance: 0.1,
             epistemic_tier: 0.1,
             relationship_proximity: 0.05,
             access_frequency: 0.05,
         };
-        let e = RecallEngine::with_weights(custom)
-            .with_recency_half_life(48.0)
-            .with_max_access_count(50.0);
+        let e = RecallEngine::with_weights(custom).with_max_access_count(50.0);
 
         assert!((e.weights().vector_similarity - 0.6).abs() < f64::EPSILON);
-        let recency_at_half = e.score_recency(48.0);
-        assert!((recency_at_half - 0.5).abs() < 0.01);
         let freq_at_max = e.score_access_frequency(50);
         assert!((freq_at_max - 1.0).abs() < 0.01);
     }
@@ -988,7 +1145,7 @@ mod tests {
     fn compute_score_single_factor_nonzero() {
         let weights = RecallWeights {
             vector_similarity: 1.0,
-            recency: 0.0,
+            decay: 0.0,
             relevance: 0.0,
             epistemic_tier: 0.0,
             relationship_proximity: 0.0,
@@ -997,7 +1154,7 @@ mod tests {
         let e = RecallEngine::with_weights(weights);
         let factors = FactorScores {
             vector_similarity: 0.8,
-            recency: 0.5,
+            decay: 0.5,
             relevance: 0.9,
             epistemic_tier: 0.7,
             relationship_proximity: 0.6,
@@ -1014,7 +1171,7 @@ mod tests {
         let e = engine();
         let factors = FactorScores {
             vector_similarity: 0.5,
-            recency: 0.5,
+            decay: 0.5,
             relevance: 0.5,
             epistemic_tier: 0.5,
             relationship_proximity: 0.5,
@@ -1079,12 +1236,6 @@ mod tests {
     // --- Individual scorer edge cases ---
 
     #[test]
-    fn score_recency_zero_age() {
-        let e = engine();
-        assert!((e.score_recency(0.0) - 1.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
     fn score_access_frequency_one() {
         let e = engine();
         let score = e.score_access_frequency(1);
@@ -1103,6 +1254,240 @@ mod tests {
         let e = engine();
         assert!(e.score_vector_similarity(2.0).abs() < f64::EPSILON);
     }
+
+    // --- FactType classification tests ---
+
+    #[test]
+    fn classify_identity() {
+        assert_eq!(
+            FactType::classify("I am a software engineer"),
+            FactType::Identity
+        );
+        assert_eq!(FactType::classify("My name is Alice"), FactType::Identity);
+    }
+
+    #[test]
+    fn classify_preference() {
+        assert_eq!(
+            FactType::classify("I prefer tabs over spaces"),
+            FactType::Preference
+        );
+        assert_eq!(FactType::classify("I like Rust"), FactType::Preference);
+        assert_eq!(
+            FactType::classify("I don't like Java"),
+            FactType::Preference
+        );
+    }
+
+    #[test]
+    fn classify_skill() {
+        assert_eq!(
+            FactType::classify("I know Rust and Python"),
+            FactType::Skill
+        );
+        assert_eq!(FactType::classify("I use VS Code"), FactType::Skill);
+        assert_eq!(FactType::classify("I work with databases"), FactType::Skill);
+    }
+
+    #[test]
+    fn classify_task() {
+        assert_eq!(FactType::classify("TODO: fix the bug"), FactType::Task);
+        assert_eq!(
+            FactType::classify("We need to deploy by Friday"),
+            FactType::Task
+        );
+    }
+
+    #[test]
+    fn classify_event() {
+        assert_eq!(
+            FactType::classify("Yesterday we deployed the service"),
+            FactType::Event
+        );
+        assert_eq!(
+            FactType::classify("Last week the build broke"),
+            FactType::Event
+        );
+    }
+
+    #[test]
+    fn classify_relationship() {
+        assert_eq!(
+            FactType::classify("Alice works at Acme Corp"),
+            FactType::Relationship
+        );
+        assert_eq!(
+            FactType::classify("Bob reports to Carol"),
+            FactType::Relationship
+        );
+    }
+
+    #[test]
+    fn classify_observation_fallback() {
+        assert_eq!(
+            FactType::classify("The build was slow"),
+            FactType::Observation
+        );
+        assert_eq!(
+            FactType::classify("Something happened"),
+            FactType::Observation
+        );
+    }
+
+    // --- FactType enum tests ---
+
+    #[test]
+    fn fact_type_all_variants_have_stability() {
+        let variants = [
+            FactType::Identity,
+            FactType::Preference,
+            FactType::Skill,
+            FactType::Relationship,
+            FactType::Event,
+            FactType::Task,
+            FactType::Observation,
+        ];
+        for ft in variants {
+            let s = ft.base_stability_hours();
+            assert!(s > 0.0, "{ft:?} has non-positive stability {s}");
+        }
+    }
+
+    #[test]
+    fn fact_type_stability_ordering() {
+        // Identity is most stable, Observation is least
+        assert!(
+            FactType::Identity.base_stability_hours() > FactType::Preference.base_stability_hours()
+        );
+        assert!(
+            FactType::Preference.base_stability_hours() > FactType::Skill.base_stability_hours()
+        );
+        assert!(
+            FactType::Skill.base_stability_hours() > FactType::Relationship.base_stability_hours()
+        );
+        assert!(
+            FactType::Relationship.base_stability_hours() > FactType::Event.base_stability_hours()
+        );
+        assert!(FactType::Event.base_stability_hours() > FactType::Task.base_stability_hours());
+        assert!(
+            FactType::Task.base_stability_hours() > FactType::Observation.base_stability_hours()
+        );
+    }
+
+    #[test]
+    fn fact_type_serde_roundtrip() {
+        for ft in [
+            FactType::Identity,
+            FactType::Preference,
+            FactType::Skill,
+            FactType::Relationship,
+            FactType::Event,
+            FactType::Task,
+            FactType::Observation,
+        ] {
+            let json = serde_json::to_string(&ft).unwrap();
+            let back: FactType = serde_json::from_str(&json).unwrap();
+            assert_eq!(ft, back, "roundtrip failed for {ft:?}");
+        }
+    }
+
+    #[test]
+    fn fact_type_from_str_lossy_known() {
+        assert_eq!(FactType::from_str_lossy("identity"), FactType::Identity);
+        assert_eq!(FactType::from_str_lossy("task"), FactType::Task);
+        assert_eq!(
+            FactType::from_str_lossy("observation"),
+            FactType::Observation
+        );
+    }
+
+    #[test]
+    fn fact_type_from_str_lossy_unknown_falls_back() {
+        assert_eq!(FactType::from_str_lossy("bogus"), FactType::Observation);
+        assert_eq!(FactType::from_str_lossy(""), FactType::Observation);
+        assert_eq!(FactType::from_str_lossy("inference"), FactType::Observation);
+    }
+
+    // --- Epistemic tier stability multiplier tests ---
+
+    #[test]
+    fn tier_multiplier_ordering() {
+        assert!(
+            EpistemicTier::Verified.stability_multiplier()
+                > EpistemicTier::Inferred.stability_multiplier()
+        );
+        assert!(
+            EpistemicTier::Inferred.stability_multiplier()
+                > EpistemicTier::Assumed.stability_multiplier()
+        );
+    }
+
+    #[test]
+    fn tier_verified_is_2x_inferred() {
+        let v = EpistemicTier::Verified.stability_multiplier();
+        let i = EpistemicTier::Inferred.stability_multiplier();
+        assert!((v / i - 2.0).abs() < f64::EPSILON);
+    }
+
+    // --- refresh_stability_hours tests ---
+
+    #[test]
+    fn refresh_stability_matches_compute() {
+        let ft = FactType::Event;
+        let tier = EpistemicTier::Verified;
+        let count = 42;
+        let from_typed = compute_effective_stability(ft, tier, count);
+        let from_strings = refresh_stability_hours("event", "verified", count);
+        assert!((from_typed - from_strings).abs() < f64::EPSILON);
+    }
+
+    // --- Integration: full recall scoring with decay ---
+
+    #[test]
+    fn integration_full_recall_with_decay() {
+        let e = engine();
+        // Simulate two facts: one fresh identity, one old observation
+        let fresh_identity = e.score_decay(1.0, FactType::Identity, EpistemicTier::Verified, 5);
+        let old_observation =
+            e.score_decay(500.0, FactType::Observation, EpistemicTier::Assumed, 0);
+
+        let candidates = vec![
+            ScoredResult {
+                content: "identity fact".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f1".to_owned(),
+                nous_id: "syn".to_owned(),
+                factors: FactorScores {
+                    vector_similarity: 0.6,
+                    decay: fresh_identity,
+                    relevance: 1.0,
+                    epistemic_tier: 1.0,
+                    relationship_proximity: 0.5,
+                    access_frequency: 0.3,
+                },
+                score: 0.0,
+            },
+            ScoredResult {
+                content: "old observation".to_owned(),
+                source_type: "fact".to_owned(),
+                source_id: "f2".to_owned(),
+                nous_id: "syn".to_owned(),
+                factors: FactorScores {
+                    vector_similarity: 0.7,
+                    decay: old_observation,
+                    relevance: 1.0,
+                    epistemic_tier: 0.3,
+                    relationship_proximity: 0.0,
+                    access_frequency: 0.0,
+                },
+                score: 0.0,
+            },
+        ];
+
+        let ranked = e.rank(candidates);
+        assert_eq!(ranked[0].content, "identity fact");
+        assert_eq!(ranked[1].content, "old observation");
+    }
 }
 
 // Property tests in a separate module to keep organization clean.
@@ -1115,7 +1500,7 @@ mod proptests {
         #[test]
         fn recall_scores_always_bounded(
             vec_sim in 0.0_f64..=1.0,
-            recency in 0.0_f64..=1.0,
+            decay in 0.0_f64..=1.0,
             relevance in 0.0_f64..=1.0,
             tier in 0.0_f64..=1.0,
             proximity in 0.0_f64..=1.0,
@@ -1124,7 +1509,7 @@ mod proptests {
             let e = RecallEngine::new();
             let factors = FactorScores {
                 vector_similarity: vec_sim,
-                recency,
+                decay,
                 relevance,
                 epistemic_tier: tier,
                 relationship_proximity: proximity,
@@ -1149,8 +1534,13 @@ mod proptests {
             let vs = e.score_vector_similarity(cosine_dist);
             prop_assert!((0.0..=1.0).contains(&vs), "vector_similarity {vs} out of bounds");
 
-            let rs = e.score_recency(age_hours);
-            prop_assert!((0.0..=1.0).contains(&rs), "recency {rs} out of bounds");
+            let ds = e.score_decay(
+                age_hours,
+                FactType::Event,
+                EpistemicTier::Inferred,
+                0,
+            );
+            prop_assert!((0.0..=1.0).contains(&ds), "decay {ds} out of bounds");
 
             let af = e.score_access_frequency(access_count);
             prop_assert!(af >= 0.0, "access_frequency {af} below 0");
@@ -1163,7 +1553,7 @@ mod proptests {
         #[test]
         fn weights_total_matches_sum(
             vs in 0.0_f64..=1.0,
-            rec in 0.0_f64..=1.0,
+            dec in 0.0_f64..=1.0,
             rel in 0.0_f64..=1.0,
             epi in 0.0_f64..=1.0,
             prox in 0.0_f64..=1.0,
@@ -1171,13 +1561,13 @@ mod proptests {
         ) {
             let w = RecallWeights {
                 vector_similarity: vs,
-                recency: rec,
+                decay: dec,
                 relevance: rel,
                 epistemic_tier: epi,
                 relationship_proximity: prox,
                 access_frequency: freq,
             };
-            let expected = vs + rec + rel + epi + prox + freq;
+            let expected = vs + dec + rel + epi + prox + freq;
             prop_assert!(
                 (w.total() - expected).abs() < 1e-10,
                 "total() {} != sum {} for weights {:?}",

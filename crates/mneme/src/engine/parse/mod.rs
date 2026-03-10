@@ -234,6 +234,12 @@ impl SourceSpan {
     }
 }
 
+#[derive(Debug, Snafu)]
+#[snafu(display("The query parser has encountered unexpected input / end of input at {span}"))]
+pub(crate) struct ParseError {
+    pub(crate) span: SourceSpan,
+}
+
 /// Parse a text script into the datalog AST.
 ///
 /// * `src` - the script to parse
