@@ -15,12 +15,13 @@ mod graph_algo_tests {
     use crate::engine::DbInstance;
     use crate::engine::data::value::DataValue;
 
-    // ── 1. ShortestPathDijkstra ──────────────────────────────────────────────
-    // Directed weighted graph (5 nodes):
-    //   0→1 (1), 0→2 (4), 1→2 (1), 1→3 (5), 2→3 (1), 3→4 (2)
-    //   Shortest 0→4 = 0→1→2→3→4, cost 5.
+    // ────────────────────────────────────────────────────────────────────────
+    // 1. ShortestPathDijkstra
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Basic correctness: 0→1→2→3→4 with edge weights, cost must be 5.0.
     #[test]
-    fn test_shortest_path_dijkstra_basic() {
+    fn test_shortest_path_dijkstra_when_path_exists_returns_correct_cost() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -45,9 +46,76 @@ start[] <- [[0]]
         assert_eq!(row[3].get_slice().unwrap().len(), 5, "path 0→1→2→3→4 has 5 nodes");
     }
 
-    // ── 2. BetweennessCentrality ─────────────────────────────────────────────
+    /// Dijkstra on a graph where start and destination are disconnected returns
+    /// an infinite cost and empty path.
     #[test]
-    fn test_betweenness_centrality() {
+    fn test_shortest_path_dijkstra_when_disconnected_returns_no_path() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0]]
+start[] <- [[0]]
+end[]   <- [[2]]
+?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        // Node 2 is unreachable; Dijkstra emits no row for it.
+        assert!(
+            res.is_empty() || res.iter().all(|r| r[2].get_float().map_or(true, |c| !c.is_finite())),
+            "Disconnected node must have infinite cost or produce no row"
+        );
+    }
+
+    /// Dijkstra with a self-loop start+end: cost is 0.
+    #[test]
+    fn test_shortest_path_dijkstra_when_start_equals_end_cost_is_zero() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 1.0]]
+start[] <- [[0]]
+end[]   <- [[0]]
+?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 1);
+        let cost = res[0][2].get_float().unwrap();
+        assert!(cost.abs() < 1e-9, "Cost from node to itself = 0, got {cost}");
+    }
+
+    /// Dijkstra with multiple starting nodes discovers all reachable targets.
+    #[test]
+    fn test_shortest_path_dijkstra_when_multiple_starts_covers_all_targets() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0], [2, 3, 1.0]]
+start[] <- [[0], [2]]
+?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert!(!res.is_empty(), "Each start node should reach at least its neighbour");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 2. BetweennessCentrality
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// On a path graph 0-1-2-3-4, intermediate nodes have higher betweenness.
+    #[test]
+    fn test_betweenness_centrality_when_path_graph_interior_nodes_are_higher() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -74,9 +142,59 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
         );
     }
 
-    // ── 3. ClosenessCentrality ───────────────────────────────────────────────
+    /// On a star graph, the center has strictly higher betweenness than leaves.
     #[test]
-    fn test_closeness_centrality() {
+    fn test_betweenness_centrality_when_star_graph_center_is_highest() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 1.0], [0, 3, 1.0], [0, 4, 1.0]]
+?[node, bc] <~ BetweennessCentrality(edges[], undirected: true)
+:order -bc
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert!(!res.is_empty());
+        assert_eq!(
+            res[0][0],
+            DataValue::from(0i64),
+            "Star center (node 0) must have highest betweenness"
+        );
+    }
+
+    /// Empty-ish graph (one isolated edge) returns zero betweenness for both nodes.
+    #[test]
+    fn test_betweenness_centrality_when_single_edge_returns_zero_betweenness() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0]]
+?[node, bc] <~ BetweennessCentrality(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 2, "One edge → 2 nodes, each with zero betweenness");
+        for row in &res {
+            assert!(
+                (row[1].get_float().unwrap()).abs() < 1e-9,
+                "No intermediate nodes ⇒ zero betweenness"
+            );
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 3. ClosenessCentrality
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// On a weighted path graph, all closeness scores must be non-negative.
+    #[test]
+    fn test_closeness_centrality_when_path_graph_all_scores_non_negative() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -97,10 +215,33 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
         }
     }
 
-    // ── 4. ShortestPathAStar ─────────────────────────────────────────────────
-    // heuristic: 0 is admissible → A* finds same optimal path as Dijkstra.
+    /// Single edge: closeness is defined and non-negative for both endpoints.
     #[test]
-    fn test_astar_zero_heuristic_equals_dijkstra() {
+    fn test_closeness_centrality_when_single_edge_returns_non_negative() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0]]
+?[node, cc] <~ ClosenessCentrality(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 2);
+        for row in &res {
+            assert!(row[1].get_float().unwrap() >= 0.0);
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 4. ShortestPathAStar
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// A* with zero heuristic is equivalent to Dijkstra: cost 5.0 for 0→4.
+    #[test]
+    fn test_astar_when_zero_heuristic_equals_dijkstra_cost() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -122,10 +263,57 @@ goal[] <- [[4]]
         assert_eq!(res[0][3].get_slice().unwrap().len(), 5, "path has 5 nodes");
     }
 
-    // ── 5. BFS (BreadthFirstSearch) ─────────────────────────────────────────
-    // Linear chain — BFS finds node 4 from 0 in exactly 4 hops.
+    /// A* with no path between start and goal returns infinity.
     #[test]
-    fn test_bfs_finds_target() {
+    fn test_astar_when_no_path_returns_infinity() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0]]
+nodes[n] <- [[0], [1], [2]]
+start[] <- [[0]]
+goal[] <- [[2]]
+?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 1);
+        let cost = res[0][2].get_float().unwrap();
+        assert!(cost.is_infinite(), "No path ⇒ cost = infinity, got {cost}");
+    }
+
+    /// A* on a direct single-hop edge returns cost equal to edge weight.
+    #[test]
+    fn test_astar_when_direct_edge_returns_edge_weight() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 3.5]]
+nodes[n] <- [[0], [1]]
+start[] <- [[0]]
+goal[] <- [[1]]
+?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 1);
+        assert!((res[0][2].get_float().unwrap() - 3.5).abs() < 1e-9);
+        assert_eq!(res[0][3].get_slice().unwrap().len(), 2);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 5. BFS (BreadthFirstSearch)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// BFS on a linear chain finds the end in exactly 4 hops.
+    #[test]
+    fn test_bfs_when_linear_chain_finds_target_at_depth_4() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -144,9 +332,32 @@ start[] <- [[0]]
         assert_eq!(res[0][2].get_slice().unwrap().len(), 5, "path 0..4 has 5 nodes");
     }
 
-    // ── 6. DFS (DepthFirstSearch) ────────────────────────────────────────────
+    /// BFS with no matching condition returns no rows.
     #[test]
-    fn test_dfs_finds_target() {
+    fn test_bfs_when_condition_never_true_returns_empty() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [1, 2]]
+nodes[n] <- [[0], [1], [2]]
+start[] <- [[0]]
+?[from, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 99, limit: 1)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert!(res.is_empty(), "Condition never true → no results");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 6. DFS (DepthFirstSearch)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// DFS finds a target reachable via a chain.
+    #[test]
+    fn test_dfs_when_linear_chain_finds_target() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -167,12 +378,32 @@ start[] <- [[0]]
         assert_eq!(path[path.len() - 1], DataValue::from(4i64), "path ends at 4");
     }
 
-    // ── 7. DegreeCentrality ─────────────────────────────────────────────────
-    // Undirected graph: triangle 0-1-2 + tail 2-3-4.
-    // Provide BOTH directions (DegreeCentrality does not mirror internally).
-    // Node 2: connects to 0, 1, 3 → total degree 6.
+    /// DFS with unreachable target returns no rows.
     #[test]
-    fn test_degree_centrality() {
+    fn test_dfs_when_target_unreachable_returns_empty() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1]]
+nodes[n] <- [[0], [1], [2]]
+start[] <- [[0]]
+?[from, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 2, limit: 1)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert!(res.is_empty(), "Node 2 is unreachable from 0");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 7. DegreeCentrality
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Triangle+tail: node 2 is most connected, total degree = 6.
+    #[test]
+    fn test_degree_centrality_when_triangle_plus_tail_hub_has_highest_degree() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -194,11 +425,55 @@ edges[src, dst] <- [[0, 1], [1, 0],
         assert_eq!(node2[1].get_int().unwrap(), 6, "Node 2 total degree = 6");
     }
 
-    // ── 8. MinimumSpanningForestKruskal ─────────────────────────────────────
-    // Triangle+tail, one direction per edge (Kruskal uses undirected=true internally).
-    // MST: 0-1(1) + 1-2(2) + 3-4(1) + 2-3(3) = 7. Four edges for 5 nodes.
+    /// Leaf node has in-degree = 1, out-degree = 0 when only receiving edges.
     #[test]
-    fn test_kruskal_mst() {
+    fn test_degree_centrality_when_directed_star_hub_has_zero_in_degree() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
+?[node, total, out_deg, in_deg] <~ DegreeCentrality(edges[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        let node0 = res.iter().find(|r| r[0] == DataValue::from(0i64)).unwrap();
+        assert_eq!(node0[2].get_int().unwrap(), 3, "Hub out-degree = 3");
+        assert_eq!(node0[3].get_int().unwrap(), 0, "Hub in-degree = 0");
+    }
+
+    /// Isolated node included via optional nodes[] relation has degree 0.
+    #[test]
+    fn test_degree_centrality_when_isolated_node_included_has_zero_degree() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1]]
+isolated[n]    <- [[5]]
+?[node, total, out_deg, in_deg] <~ DegreeCentrality(edges[], isolated[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        let node5 = res.iter().find(|r| r[0] == DataValue::from(5i64)).unwrap();
+        assert_eq!(node5[1].get_int().unwrap(), 0);
+        assert_eq!(node5[2].get_int().unwrap(), 0);
+        assert_eq!(node5[3].get_int().unwrap(), 0);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 8. MinimumSpanningForestKruskal
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Connected 5-node graph: MST has exactly 4 edges with total cost 7.
+    #[test]
+    fn test_kruskal_when_connected_graph_returns_n_minus_1_edges() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -216,9 +491,51 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 5.0],
         assert!((total - 7.0).abs() < 1e-9, "Kruskal MST total cost = 7.0, got {total}");
     }
 
-    // ── 9. MinimumSpanningTreePrim ───────────────────────────────────────────
+    /// Disconnected graph produces a spanning forest, not a tree.
     #[test]
-    fn test_prim_mst() {
+    fn test_kruskal_when_disconnected_graph_returns_spanning_forest() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0],
+                           [3, 4, 5.0]]
+?[src, dst, cost] <~ MinimumSpanningForestKruskal(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        // 5 nodes in 2 components → forest has 3 edges (2 from comp 1, 1 from comp 2).
+        assert_eq!(res.len(), 3, "Forest has n - components edges");
+    }
+
+    /// Triangle: Kruskal picks the two cheapest edges.
+    #[test]
+    fn test_kruskal_when_triangle_picks_two_cheapest_edges() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 3.0]]
+?[src, dst, cost] <~ MinimumSpanningForestKruskal(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 2, "Triangle MST = 2 edges");
+        let total: f64 = res.iter().map(|r| r[2].get_float().unwrap()).sum();
+        assert!((total - 3.0).abs() < 1e-9, "Triangle MST cost = 1+2 = 3.0, got {total}");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 9. MinimumSpanningTreePrim
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Prim on the same 5-node graph produces the same MST cost as Kruskal.
+    #[test]
+    fn test_prim_when_connected_graph_returns_same_cost_as_kruskal() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -236,10 +553,31 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 5.0],
         assert!((total - 7.0).abs() < 1e-9, "Prim MST total cost = 7.0, got {total}");
     }
 
-    // ── 10. LabelPropagation ────────────────────────────────────────────────
-    // Two triangles joined by a bridge. All 6 nodes must receive a label.
+    /// Prim with explicit start node finds the same spanning tree.
     #[test]
-    fn test_label_propagation_node_count() {
+    fn test_prim_when_start_node_specified_returns_valid_spanning_tree() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [2, 3, 3.0]]
+start[] <- [[2]]
+?[src, dst, cost] <~ MinimumSpanningTreePrim(edges[], start[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 3, "Linear 4-node graph MST = 3 edges");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 10. LabelPropagation
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Two triangles joined by a bridge: all 6 nodes receive a label.
+    #[test]
+    fn test_label_propagation_when_two_clusters_all_nodes_labeled() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -256,10 +594,47 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
         assert_eq!(res.len(), 6, "Every node must receive a community label");
     }
 
-    // ── 11. PageRank ─────────────────────────────────────────────────────────
-    // Star topology: nodes 0-3 all point to node 4 → node 4 has highest rank.
+    /// Single isolated edge: both endpoints receive a label.
     #[test]
-    fn test_pagerank_sink_gets_highest_rank() {
+    fn test_label_propagation_when_single_edge_returns_two_labels() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1]]
+?[label, node] <~ LabelPropagation(edges[], undirected: true)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 2, "Single edge → 2 nodes → 2 label rows");
+    }
+
+    /// Disconnected graph: nodes in each component still receive labels.
+    #[test]
+    fn test_label_propagation_when_disconnected_graph_all_nodes_labeled() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [2, 3]]
+?[label, node] <~ LabelPropagation(edges[], undirected: true)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 4, "4 nodes → 4 label rows");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 11. PageRank
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Star topology: sink node has highest rank.
+    #[test]
+    fn test_pagerank_when_star_graph_sink_has_highest_rank() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -280,11 +655,55 @@ edges[src, dst] <- [[0, 4], [1, 4], [2, 4], [3, 4]]
         );
     }
 
-    // ── 12. RandomWalk ───────────────────────────────────────────────────────
-    // Cycle 0→1→2→3→0 ensures the walk never gets stuck.
-    // steps=5 → path of 6 nodes (start + 5).
+    /// PageRank on a symmetric cycle should assign approximately uniform rank.
     #[test]
-    fn test_random_walk_path_length() {
+    fn test_pagerank_when_cycle_scores_are_approximately_uniform() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 0]]
+?[node, rank] <~ PageRank(edges[], iterations: 100)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 4, "4 nodes in cycle");
+        let ranks: Vec<f64> = res.iter().map(|r| r[1].get_float().unwrap()).collect();
+        let mean = ranks.iter().sum::<f64>() / ranks.len() as f64;
+        for &r in &ranks {
+            assert!(
+                (r - mean).abs() < 0.05,
+                "Cycle PageRank should be ~uniform; mean={mean}, got {r}"
+            );
+        }
+    }
+
+    /// PageRank returns no results for an empty edge relation.
+    #[test]
+    fn test_pagerank_when_empty_edges_returns_no_rows() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- []
+?[node, rank] <~ PageRank(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert!(res.is_empty(), "Empty graph → no PageRank rows");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 12. RandomWalk
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Cycle ensures walk never gets stuck; steps=5 → path length 6.
+    #[test]
+    fn test_random_walk_when_cycle_graph_path_has_expected_length() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -303,11 +722,54 @@ start[] <- [[0]]
         assert_eq!(res[0][1], DataValue::from(0i64), "walk starts at node 0");
     }
 
-    // ── 13. StronglyConnectedComponents ────────────────────────────────────
-    // Cycle A: 0→1→2→0; Cycle B: 3→4→5→3; bridge 2→3 (one-way).
-    // Tarjan: exactly 2 SCCs.
+    /// Multiple iterations produce multiple walk rows.
     #[test]
-    fn test_scc_two_cycles() {
+    fn test_random_walk_when_multiple_iterations_returns_multiple_rows() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [1, 2], [2, 0]]
+nodes[n] <- [[0], [1], [2]]
+start[] <- [[0]]
+?[walk_id, start_node, path] <~ RandomWalk(edges[], nodes[n], start[], steps: 3, iterations: 5)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 5, "5 iterations → 5 rows");
+    }
+
+    /// Walk from a dead-end node stops early (path shorter than steps+1).
+    #[test]
+    fn test_random_walk_when_dead_end_path_is_shorter_than_max_steps() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1]]
+nodes[n] <- [[0], [1]]
+start[] <- [[1]]
+?[walk_id, start_node, path] <~ RandomWalk(edges[], nodes[n], start[], steps: 10, iterations: 1)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 1);
+        // Node 1 has no outgoing edges, so path is just [1].
+        let path_len = res[0][2].get_slice().unwrap().len();
+        assert!(path_len <= 2, "Dead-end walk path len = {path_len}");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 13. StronglyConnectedComponents
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Two disjoint cycles joined by a bridge: exactly 2 SCCs.
+    #[test]
+    fn test_scc_when_two_disjoint_cycles_returns_two_components() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -336,11 +798,123 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
         assert_eq!(comp(3), comp(4), "Nodes 3 and 4 share a SCC");
     }
 
-    // ── 14. TopSort ─────────────────────────────────────────────────────────
-    // DAG: 0→1→3, 0→2→3, 3→4.
-    // Valid order: pos[0]<pos[1], pos[0]<pos[2], pos[1]<pos[3], pos[2]<pos[3], pos[3]<pos[4].
+    /// In a DAG every node is its own SCC.
     #[test]
-    fn test_top_sort_dag() {
+    fn test_scc_when_dag_each_node_is_its_own_component() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
+?[node, component] <~ StronglyConnectedComponents(edges[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 4, "4 nodes in DAG");
+        let comps: Vec<_> = res.iter().map(|r| r[1].clone()).collect();
+        let unique: std::collections::BTreeSet<_> = comps.iter().cloned().collect();
+        assert_eq!(unique.len(), 4, "Each DAG node is its own SCC");
+    }
+
+    /// Single self-loop is its own SCC.
+    #[test]
+    fn test_scc_when_single_self_loop_returns_one_component() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 0]]
+?[node, component] <~ StronglyConnectedComponents(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 1, "Self-loop is one SCC of one node");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 14. ConnectedComponents (undirected SCCs)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Two disjoint triangles: exactly 2 components.
+    #[test]
+    fn test_connected_components_when_two_triangles_returns_two_components() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
+                    [3, 4], [4, 5], [5, 3]]
+?[node, component] <~ ConnectedComponents(edges[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 6, "6 nodes");
+        let comp_of = |n: i64| {
+            res.iter()
+                .find(|r| r[0] == DataValue::from(n))
+                .unwrap()[1]
+                .clone()
+        };
+        assert_eq!(comp_of(0), comp_of(1));
+        assert_eq!(comp_of(0), comp_of(2));
+        assert_ne!(comp_of(0), comp_of(3));
+        assert_eq!(comp_of(3), comp_of(4));
+        assert_eq!(comp_of(4), comp_of(5));
+    }
+
+    /// Single connected component: all nodes get the same label.
+    #[test]
+    fn test_connected_components_when_single_chain_all_nodes_same_label() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
+?[node, component] <~ ConnectedComponents(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        let comps: Vec<_> = res.iter().map(|r| r[1].clone()).collect();
+        let unique: std::collections::BTreeSet<_> = comps.iter().cloned().collect();
+        assert_eq!(unique.len(), 1, "All nodes in one component");
+    }
+
+    /// Directed star treated as undirected: all nodes in one component.
+    #[test]
+    fn test_connected_components_when_directed_star_returns_single_component() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
+?[node, component] <~ ConnectedComponents(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        let comps: Vec<_> = res.iter().map(|r| r[1].clone()).collect();
+        let unique: std::collections::BTreeSet<_> = comps.iter().cloned().collect();
+        assert_eq!(unique.len(), 1, "Undirected view merges all star nodes");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 15. TopSort
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// DAG 0→1→3, 0→2→3, 3→4: topological ordering must respect all edges.
+    #[test]
+    fn test_top_sort_when_dag_ordering_respects_all_edges() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -368,11 +942,53 @@ edges[src, dst] <- [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]]
         assert!(pos[3] < pos[4], "3 before 4");
     }
 
-    // ── 15. ClusteringCoefficients (triangle counting) ────────────────────────
-    // Triangle 0-1-2 + tail 2-3 (one direction each; algorithm mirrors internally).
-    // Each of 0,1,2 participates in 1 triangle; node 3 has none.
+    /// Linear chain: topological order equals natural order.
     #[test]
-    fn test_clustering_coefficients_triangle() {
+    fn test_top_sort_when_linear_chain_returns_natural_order() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
+?[idx, node] <~ TopSort(edges[])
+:order idx
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 4);
+        let nodes: Vec<i64> = res.iter().map(|r| r[1].get_int().unwrap()).collect();
+        assert_eq!(nodes, vec![0, 1, 2, 3], "Linear chain order is 0,1,2,3");
+    }
+
+    /// A single directed edge 0→1: TopSort returns both nodes in order 0, 1.
+    #[test]
+    fn test_top_sort_when_single_edge_returns_two_nodes_in_order() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1]]
+?[idx, node] <~ TopSort(edges[])
+:order idx
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 2, "Single edge → 2 nodes sorted");
+        let nodes: Vec<i64> = res.iter().map(|r| r[1].get_int().unwrap()).collect();
+        assert_eq!(nodes, vec![0, 1], "0 must precede 1");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 16. ClusteringCoefficients (TriangleCounting)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Triangle 0-1-2 + tail node 3: nodes 0,1,2 each in 1 triangle.
+    #[test]
+    fn test_clustering_coefficients_when_triangle_each_node_has_one_triangle() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -405,10 +1021,60 @@ edges[src, dst] <- [[0, 1], [1, 2], [0, 2], [2, 3]]
         assert_eq!(tri3, 0, "Node 3 has no triangles");
     }
 
-    // ── 16. KShortestPathYen ─────────────────────────────────────────────────
-    // Two paths 0→3: A=0→1→3 (cost 2), B=0→2→3 (cost 4).
+    /// Complete graph K4: every node participates in 3 triangles with cc = 1.0.
     #[test]
-    fn test_yen_k_shortest_paths() {
+    fn test_clustering_coefficients_when_k4_every_node_has_cc_one() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]]
+?[node, cc, triangles, degree] <~ ClusteringCoefficients(edges[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 4, "K4 has 4 nodes");
+        for row in &res {
+            let tri = row[2].get_int().unwrap();
+            assert_eq!(tri, 3, "Every K4 node is in 3 triangles; got {tri}");
+            let cc = row[1].get_float().unwrap();
+            assert!(
+                (cc - 1.0).abs() < 1e-9,
+                "K4 clustering coefficient = 1.0; got {cc}"
+            );
+        }
+    }
+
+    /// Single edge: no triangles possible for either endpoint.
+    #[test]
+    fn test_clustering_coefficients_when_single_edge_no_triangles() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1]]
+?[node, cc, triangles, degree] <~ ClusteringCoefficients(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 2);
+        for row in &res {
+            assert_eq!(row[2].get_int().unwrap(), 0, "No triangles for a single edge");
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 17. KShortestPathYen
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Two paths 0→3: k=2 returns both in cost order.
+    #[test]
+    fn test_yen_when_two_paths_returns_both_in_cost_order() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -431,9 +1097,32 @@ goal[] <- [[3]]
         assert!((c2 - 4.0).abs() < 1e-9, "2nd path cost = 4.0, got {c2}");
     }
 
-    // ── 17. CommunityDetectionLouvain (existing — regression guard) ──────────
+    /// Requesting k=3 when only 1 path exists returns 1 row.
     #[test]
-    fn test_louvain_assigns_labels() {
+    fn test_yen_when_fewer_paths_than_k_returns_all_available() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 1.0]]
+start[] <- [[0]]
+goal[] <- [[2]]
+?[from, to, cost, path] <~ KShortestPathYen(edges[], start[], goal[], k: 3)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 1, "Only 1 path exists; k=3 still returns 1");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 18. CommunityDetectionLouvain
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// All 6 nodes in two triangles bridged together must receive community labels.
+    #[test]
+    fn test_louvain_when_two_triangles_all_nodes_labeled() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -450,9 +1139,30 @@ edges[src, dst, w] <- [[0, 1, 1.0], [1, 2, 1.0], [2, 0, 1.0],
         assert_eq!(res.len(), 6, "All 6 nodes must receive a community label");
     }
 
-    // ── 18. ShortestPathBFS (existing — regression guard) ────────────────────
+    /// Single edge: both endpoints receive a community label.
     #[test]
-    fn test_shortest_path_bfs_regression() {
+    fn test_louvain_when_single_edge_both_nodes_labeled() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst, w] <- [[0, 1, 1.0]]
+?[label, node] <~ CommunityDetectionLouvain(edges[], undirected: true)
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 2, "Single edge → 2 nodes receive labels");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 19. ShortestPathBFS
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Known social-graph path: alice→eve→bob has 3 nodes.
+    #[test]
+    fn test_shortest_path_bfs_when_known_path_returns_three_nodes() {
         let db = DbInstance::default();
         let res = db
             .run_default(
@@ -468,5 +1178,173 @@ end[] <- [['bob']]
             .unwrap()
             .rows;
         assert_eq!(res[0][2].get_slice().unwrap().len(), 3);
+    }
+
+    /// No path between disconnected nodes: result path is Null.
+    #[test]
+    fn test_shortest_path_bfs_when_disconnected_returns_null() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+love[loving, loved] <- [['alice', 'eve'], ['david', 'george']]
+start[] <- [['alice']]
+end[] <- [['george']]
+?[fr, to, path] <~ ShortestPathBFS(love[], start[], end[])
+"#,
+            )
+            .unwrap()
+            .rows;
+        assert_eq!(res[0][2], DataValue::Null, "Disconnected ⇒ path is Null");
+    }
+
+    /// Direct edge: path has exactly 2 nodes.
+    #[test]
+    fn test_shortest_path_bfs_when_direct_edge_path_has_two_nodes() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1]]
+start[] <- [[0]]
+end[]   <- [[1]]
+?[fr, to, path] <~ ShortestPathBFS(edges[], start[], end[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res[0][2].get_slice().unwrap().len(), 2);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 20. KCore (new algorithm — k-core decomposition)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /// Clique K4 + pendant: K4 nodes are in 3-core; pendant is in 1-core.
+    ///
+    /// Graph: 0-1-2-3 fully connected (K4), plus node 4 connected only to 0.
+    /// Expected: 0,1,2,3 → k=3; node 4 → k=1.
+    #[test]
+    fn test_kcore_when_clique_plus_pendant_assigns_correct_cores() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3],[0,4]]
+?[node, k] <~ KCore(edges[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 5, "5 nodes → 5 k-core rows");
+
+        let k_of = |n: i64| {
+            res.iter()
+                .find(|r| r[0] == DataValue::from(n))
+                .unwrap()[1]
+                .get_int()
+                .unwrap()
+        };
+        assert_eq!(k_of(0), 3, "Node 0 (K4 member) ∈ 3-core");
+        assert_eq!(k_of(1), 3, "Node 1 (K4 member) ∈ 3-core");
+        assert_eq!(k_of(2), 3, "Node 2 (K4 member) ∈ 3-core");
+        assert_eq!(k_of(3), 3, "Node 3 (K4 member) ∈ 3-core");
+        assert_eq!(k_of(4), 1, "Node 4 (pendant) ∈ 1-core");
+    }
+
+    /// Path graph 0-1-2-3-4: every node is in exactly the 1-core.
+    /// A path has no 2-core because peeling endpoints cascades inward.
+    #[test]
+    fn test_kcore_when_path_graph_all_nodes_are_1core() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
+?[node, k] <~ KCore(edges[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 5, "5-node path");
+        // A path graph has no 2-core: each endpoint has degree 1 and peels,
+        // cascading until all nodes are removed from the 2-core.
+        for row in &res {
+            let k = row[1].get_int().unwrap();
+            assert_eq!(k, 1, "All path nodes are in exactly the 1-core, got k={k}");
+        }
+    }
+
+    /// Two nodes in a single edge (simplest non-trivial graph): both in 1-core.
+    #[test]
+    fn test_kcore_when_single_edge_both_nodes_are_1core() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0, 1]]
+?[node, k] <~ KCore(edges[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert_eq!(res.len(), 2, "Single edge → 2 nodes");
+        for row in &res {
+            assert_eq!(row[1].get_int().unwrap(), 1, "Both endpoints are in 1-core");
+        }
+    }
+
+    /// Empty edge relation: no rows returned.
+    #[test]
+    fn test_kcore_when_empty_edges_returns_no_rows() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- []
+?[node, k] <~ KCore(edges[])
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        assert!(res.is_empty(), "Empty graph ⇒ no k-core rows");
+    }
+
+    /// Disconnected graph — two K3 cliques + isolated edge:
+    /// K3 nodes are in 2-core; isolated-edge nodes are in 1-core.
+    #[test]
+    fn test_kcore_when_disconnected_graph_assigns_per_component_cores() {
+        let db = DbInstance::default();
+        let res = db
+            .run_default(
+                r#"
+edges[src, dst] <- [[0,1],[1,2],[0,2],  [3,4]]
+?[node, k] <~ KCore(edges[])
+:order node
+"#,
+            )
+            .unwrap()
+            .rows;
+
+        let k_of = |n: i64| {
+            res.iter()
+                .find(|r| r[0] == DataValue::from(n))
+                .unwrap()[1]
+                .get_int()
+                .unwrap()
+        };
+        assert_eq!(k_of(0), 2, "K3 node 0 ∈ 2-core");
+        assert_eq!(k_of(1), 2, "K3 node 1 ∈ 2-core");
+        assert_eq!(k_of(2), 2, "K3 node 2 ∈ 2-core");
+        assert_eq!(k_of(3), 1, "Edge node 3 ∈ 1-core");
+        assert_eq!(k_of(4), 1, "Edge node 4 ∈ 1-core");
     }
 }

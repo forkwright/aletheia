@@ -680,6 +680,11 @@ pub(crate) static DEFAULT_FIXED_RULES: LazyLock<BTreeMap<String, Arc<Box<dyn Fix
                 "RandomWalk".to_string(),
                 Arc::<Box<dyn FixedRule>>::new(Box::new(RandomWalk)),
             ),
+            #[cfg(feature = "graph-algo")]
+            (
+                "KCore".to_string(),
+                Arc::<Box<dyn FixedRule>>::new(Box::new(KCore)),
+            ),
             (
                 "ReorderSort".to_string(),
                 Arc::<Box<dyn FixedRule>>::new(Box::new(ReorderSort)),
