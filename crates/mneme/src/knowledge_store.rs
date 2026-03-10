@@ -2775,7 +2775,7 @@ reach[a, c] := reach[a, b], edge[b, c]
         );
 
         assert!(result.is_err(), "expected timeout error");
-        let err = result.unwrap_err();
+        let err = result.expect_err("timeout query must fail");
         let msg = err.to_string();
         assert!(
             msg.contains("timed out"),
@@ -2792,7 +2792,7 @@ reach[a, c] := reach[a, b], edge[b, c]
         let result = store.run_query_with_timeout("?[x] := x = 42", BTreeMap::new(), None);
 
         assert!(result.is_ok(), "query without timeout should succeed");
-        let rows = result.unwrap();
+        let rows = result.expect("query without timeout must succeed");
         assert_eq!(rows.rows.len(), 1);
     }
 }
@@ -2911,11 +2911,11 @@ mod tests {
             content: "Rust systems programming".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
             valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             access_count: 0,
             last_accessed_at: None,
             stability_hours: 720.0,
@@ -2933,7 +2933,7 @@ mod tests {
             source_id: "f1".to_owned(),
             nous_id: "test".to_owned(),
             embedding: vec![0.9, 0.1, 0.1, 0.1],
-            created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
         };
         store.insert_embedding(&chunk).expect("insert embedding");
 
@@ -2979,11 +2979,11 @@ mod tests {
             content: "Rust systems programming".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
             valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             access_count: 0,
             last_accessed_at: None,
             stability_hours: 720.0,
@@ -3001,7 +3001,7 @@ mod tests {
                 source_id: "f1".to_owned(),
                 nous_id: "test".to_owned(),
                 embedding: vec![0.9, 0.1, 0.1, 0.1],
-                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             })
             .expect("insert f1 embedding");
 
@@ -3012,11 +3012,11 @@ mod tests {
             content: "Rust memory safety".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
             valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             access_count: 0,
             last_accessed_at: None,
             stability_hours: 720.0,
@@ -3034,7 +3034,7 @@ mod tests {
                 source_id: "f2".to_owned(),
                 nous_id: "test".to_owned(),
                 embedding: vec![0.8, 0.2, 0.1, 0.1],
-                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             })
             .expect("insert f2 embedding");
 
@@ -3046,8 +3046,8 @@ mod tests {
                     name: name.to_owned(),
                     entity_type: "concept".to_owned(),
                     aliases: vec![],
-                    created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
-                    updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                    created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
+                    updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
                 })
                 .expect("insert entity");
             store
@@ -3056,7 +3056,7 @@ mod tests {
                     dst: crate::id::EntityId::new_unchecked("f1"),
                     relation: "describes".to_owned(),
                     weight: 0.7,
-                    created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                    created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
                 })
                 .expect("insert relationship to f1");
         }
@@ -3066,7 +3066,7 @@ mod tests {
                 dst: crate::id::EntityId::new_unchecked("f2"),
                 relation: "describes".to_owned(),
                 weight: 0.7,
-                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             })
             .expect("insert relationship to f2");
 
@@ -3128,11 +3128,11 @@ mod tests {
             content: "unique harpsichord melody testing".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
             valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             access_count: 0,
             last_accessed_at: None,
             stability_hours: 720.0,
@@ -3151,7 +3151,7 @@ mod tests {
                 source_id: "f-twosig".to_owned(),
                 nous_id: "test".to_owned(),
                 embedding: vec![0.7, 0.3, 0.2, 0.1],
-                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             })
             .expect("insert embedding");
 
@@ -3163,8 +3163,8 @@ mod tests {
                 name: "Unrelated".to_owned(),
                 entity_type: "concept".to_owned(),
                 aliases: vec![],
-                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
-                updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+                created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
+                updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             })
             .expect("insert entity");
 
@@ -3180,7 +3180,7 @@ mod tests {
 
         let hit = results.iter().find(|r| r.id.as_str() == "f-twosig");
         assert!(hit.is_some(), "BM25+vector fact must appear in results");
-        let hit = hit.unwrap();
+        let hit = hit.expect("f-twosig must appear in hybrid results");
         assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
         assert!(hit.vec_rank > 0, "must have positive vector rank");
         assert_eq!(hit.graph_rank, -1, "absent from graph signal must be -1");
@@ -3206,11 +3206,11 @@ mod tests {
             content: "unique xylophone testing keyword".to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+            valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
             valid_to: crate::knowledge::far_future(),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("valid test timestamp"),
             access_count: 0,
             last_accessed_at: None,
             stability_hours: 720.0,
@@ -3233,7 +3233,7 @@ mod tests {
 
         let hit = results.iter().find(|r| r.id.as_str() == "f-bm25-only");
         assert!(hit.is_some(), "BM25-only fact must appear in results");
-        let hit = hit.unwrap();
+        let hit = hit.expect("f-bm25-only must appear in hybrid results");
         assert!(hit.bm25_rank > 0, "must have positive BM25 rank");
         assert_eq!(hit.vec_rank, -1, "absent from vector signal must be -1");
         assert_eq!(hit.graph_rank, -1, "absent from graph signal must be -1");
@@ -3256,7 +3256,7 @@ mod knowledge_store_tests {
     }
 
     fn test_ts(s: &str) -> jiff::Timestamp {
-        crate::knowledge::parse_timestamp(s).expect("valid test timestamp")
+        crate::knowledge::parse_timestamp(s).expect("valid test timestamp in test helper")
     }
 
     fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
@@ -3517,7 +3517,7 @@ mod knowledge_store_tests {
         let found = all.iter().find(|f| f.id.as_str() == "f1");
         assert!(found.is_some(), "fact should still exist");
         assert!(
-            !found.expect("checked").is_forgotten,
+            !found.expect("f1 must exist after unforget").is_forgotten,
             "should not be forgotten"
         );
     }
@@ -3538,7 +3538,7 @@ mod knowledge_store_tests {
         let all = store.audit_all_facts("agent-a", 100).expect("audit all");
         let found = all.iter().find(|f| f.id.as_str() == "f1");
         assert!(found.is_some(), "audit must return forgotten facts");
-        let found = found.expect("checked");
+        let found = found.expect("f1 must appear in audit after forget");
         assert!(found.is_forgotten);
         assert_eq!(found.forget_reason, Some(ForgetReason::Privacy));
     }
@@ -3652,7 +3652,7 @@ mod knowledge_store_tests {
 
         // Expired fact (valid_to in the past)
         let mut expired = make_fact("f-expired", "agent-a", "Expired fact");
-        expired.valid_to = crate::knowledge::parse_timestamp("2025-01-01").unwrap();
+        expired.valid_to = crate::knowledge::parse_timestamp("2025-01-01").expect("valid expiry timestamp");
         store.insert_fact(&expired).expect("insert expired");
 
         let results = store
@@ -3694,8 +3694,8 @@ mod knowledge_store_tests {
 
         // Fact valid from 2026-01-01 to 2026-06-01
         let mut fact = make_fact("f1", "agent-a", "Temporal fact");
-        fact.valid_from = crate::knowledge::parse_timestamp("2026-01-01").unwrap();
-        fact.valid_to = crate::knowledge::parse_timestamp("2026-06-01").unwrap();
+        fact.valid_from = crate::knowledge::parse_timestamp("2026-01-01").expect("valid_from timestamp for temporal test");
+        fact.valid_to = crate::knowledge::parse_timestamp("2026-06-01").expect("valid_to timestamp for temporal test");
         store.insert_fact(&fact).expect("insert temporal fact");
 
         // Query at a time within the validity window
@@ -3778,7 +3778,7 @@ mod knowledge_store_tests {
         let result = store.insert_fact(&fact);
         assert!(result.is_err(), "empty content must be rejected");
         assert!(matches!(
-            result.unwrap_err(),
+            result.expect_err("empty content must fail"),
             crate::error::Error::EmptyContent { .. }
         ));
     }
@@ -3792,7 +3792,7 @@ mod knowledge_store_tests {
         let result = store.insert_fact(&high);
         assert!(result.is_err(), "confidence > 1.0 must be rejected");
         assert!(matches!(
-            result.unwrap_err(),
+            result.expect_err("confidence > 1.0 must fail"),
             crate::error::Error::InvalidConfidence { .. }
         ));
 
@@ -3801,7 +3801,7 @@ mod knowledge_store_tests {
         let result = store.insert_fact(&negative);
         assert!(result.is_err(), "confidence < 0.0 must be rejected");
         assert!(matches!(
-            result.unwrap_err(),
+            result.expect_err("confidence < 0.0 must fail"),
             crate::error::Error::InvalidConfidence { .. }
         ));
     }
@@ -3880,12 +3880,12 @@ mod knowledge_store_tests {
                         content: format!("Concurrent fact {i}"),
                         confidence: 0.9,
                         tier: EpistemicTier::Inferred,
-                        valid_from: crate::knowledge::parse_timestamp("2026-01-01").unwrap(),
+                        valid_from: crate::knowledge::parse_timestamp("2026-01-01").expect("valid test timestamp"),
                         valid_to: crate::knowledge::far_future(),
                         superseded_by: None,
                         source_session_id: None,
                         recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                            .unwrap(),
+                            .expect("valid test timestamp"),
                         access_count: 0,
                         last_accessed_at: None,
                         stability_hours: 720.0,
@@ -3922,9 +3922,9 @@ mod knowledge_store_tests {
                         entity_type: "concept".to_owned(),
                         aliases: vec![],
                         created_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                            .unwrap(),
+                            .expect("valid test timestamp"),
                         updated_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                            .unwrap(),
+                            .expect("valid test timestamp"),
                     };
                     s.insert_entity(&entity).expect("concurrent entity insert");
                 })
@@ -4142,11 +4142,11 @@ mod knowledge_store_tests {
             content: content.to_owned(),
             confidence: 0.9,
             tier: EpistemicTier::Inferred,
-            valid_from: crate::knowledge::parse_timestamp(valid_from).unwrap(),
-            valid_to: crate::knowledge::parse_timestamp(valid_to).unwrap(),
+            valid_from: crate::knowledge::parse_timestamp(valid_from).expect("valid_from timestamp in make_temporal_fact"),
+            valid_to: crate::knowledge::parse_timestamp(valid_to).expect("valid_to timestamp in make_temporal_fact"),
             superseded_by: None,
             source_session_id: None,
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
+            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z").expect("recorded_at timestamp in make_temporal_fact"),
             access_count: 0,
             last_accessed_at: None,
             stability_hours: 720.0,
@@ -4449,7 +4449,7 @@ mod knowledge_store_tests {
     #[test]
     fn backup_db_returns_error_for_mem_backend() {
         let store = make_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let backup_path = dir.path().join("backup.db");
         let result = store.backup_db(&backup_path);
         assert!(
@@ -4461,9 +4461,9 @@ mod knowledge_store_tests {
     #[test]
     fn restore_backup_returns_error_for_mem_backend() {
         let store = make_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let backup_path = dir.path().join("backup.db");
-        std::fs::write(&backup_path, "fake").unwrap();
+        std::fs::write(&backup_path, "fake").expect("write fake backup file");
         let result = store.restore_backup(&backup_path);
         assert!(
             result.is_err(),
@@ -4474,9 +4474,9 @@ mod knowledge_store_tests {
     #[test]
     fn import_from_backup_returns_error_for_mem_backend() {
         let store = make_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let backup_path = dir.path().join("backup.db");
-        std::fs::write(&backup_path, "fake").unwrap();
+        std::fs::write(&backup_path, "fake").expect("write fake backup file");
         let result = store.import_from_backup(&backup_path, &["facts".to_owned()]);
         assert!(
             result.is_err(),
@@ -4829,7 +4829,7 @@ mod knowledge_store_tests {
             domain_tags: domain_tags.iter().map(|t| (*t).to_owned()).collect(),
             origin: "seeded".to_owned(),
         })
-        .unwrap();
+        .expect("skill content serializes to JSON");
         Fact {
             id: crate::id::FactId::new_unchecked(id),
             nous_id: nous_id.to_owned(),
