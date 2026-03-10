@@ -1,5 +1,5 @@
-pub(crate) mod error;
 pub mod client;
+pub(crate) mod error;
 pub mod sse;
 pub mod streaming;
 pub mod types;

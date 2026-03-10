@@ -1,8 +1,8 @@
 use reqwest::{Client, Response, StatusCode};
 use snafu::prelude::*;
 
-use super::types::*;
 use super::error::{AuthSnafu, HttpSnafu, Result};
+use super::types::*;
 
 /// Percent-encode a value for use in a URL path segment.
 fn encode_path(s: &str) -> String {
