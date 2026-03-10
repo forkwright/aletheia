@@ -13,10 +13,14 @@
 //! ```
 
 pub mod candidate;
+pub mod extract;
 pub mod heuristics;
 pub mod signature;
 
 pub use candidate::{CandidateTracker, SkillCandidate, TrackResult};
+pub use extract::{
+    ExtractedSkill, PendingSkill, SkillExtractionError, SkillExtractionProvider, SkillExtractor,
+};
 pub use heuristics::{HeuristicScore, PatternType, score_sequence};
 pub use signature::{SequenceSignature, sequence_signature, signature_similarity};
 
