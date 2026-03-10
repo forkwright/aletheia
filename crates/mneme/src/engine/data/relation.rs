@@ -183,7 +183,10 @@ impl StoredRelationMetadata {
 }
 
 impl NullableColType {
-    #[expect(clippy::map_err_ignore, reason = "error context preserved in returned error type")]
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "error context preserved in returned error type"
+    )]
     pub(crate) fn coerce(&self, data: DataValue, cur_vld: ValidityTs) -> Result<DataValue> {
         if matches!(data, DataValue::Null) {
             return if self.nullable {

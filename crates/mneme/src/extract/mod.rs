@@ -375,6 +375,10 @@ Rules:
 
     /// Persist an extraction to the knowledge store.
     #[cfg(feature = "mneme-engine")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "single logical operation across three entity types; splitting would obscure the parallel structure"
+    )]
     #[instrument(skip(self, store))]
     #[expect(
         clippy::too_many_lines,

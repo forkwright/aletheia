@@ -10,8 +10,14 @@ fn show_size() {
     println!("DataValue size: {}", size_of::<DataValue>());
     println!("Symbol size: {}", size_of::<Symbol>());
     println!("String size: {}", size_of::<String>());
-    println!("HashMap<String,String> size: {}", size_of::<HashMap<String, String>>());
-    println!("BTreeMap<String,String> size: {}", size_of::<BTreeMap<String, String>>());
+    println!(
+        "HashMap<String,String> size: {}",
+        size_of::<HashMap<String, String>>()
+    );
+    println!(
+        "BTreeMap<String,String> size: {}",
+        size_of::<BTreeMap<String, String>>()
+    );
 }
 
 #[test]
