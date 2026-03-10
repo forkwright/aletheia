@@ -31,6 +31,20 @@ use crate::engine::parse::schema::parse_schema;
 use crate::engine::parse::{DatalogParser, ExtractSpan, Pair, Pairs, Rule};
 use crate::engine::runtime::relation::InputRelationHandle;
 
+#[derive(Debug)]
+struct MultipleRuleDefinitionError(String);
+
+impl Error for MultipleRuleDefinitionError {}
+
+impl Display for MultipleRuleDefinitionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "The rule '{0}' cannot have multiple definitions since it contains non-Horn clauses",
+            self.0
+        )
+    }
+}
 
 pub(crate) fn parse_query(
     src: Pairs<'_>,

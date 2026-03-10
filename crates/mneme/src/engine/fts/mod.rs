@@ -232,7 +232,6 @@ impl TokenizerConfig {
     }
 }
 
-
 #[derive(Default)]
 pub(crate) struct TokenizerCache {
     pub(crate) named_cache: RwLock<HashMap<CompactString, Arc<TextAnalyzer>>>,

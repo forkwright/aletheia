@@ -82,18 +82,12 @@ fn astar(
         v.extend_from_slice(goal);
         let t = v;
         let cost_val = eval_bytecode(&heuristic_bytecode, &t, &mut stack)?;
-        let cost = cost_val.get_float().ok_or_else(|| {
-            BadExprValueError(
-                cost_val,
-                "a number is required".to_string(),
-            )
-        })?;
+        let cost = cost_val
+            .get_float()
+            .ok_or_else(|| BadExprValueError(cost_val, "a number is required".to_string()))?;
         ensure!(
             !cost.is_nan(),
-            BadExprValueError(
-                DataValue::from(cost),
-                "a number is required".to_string(),
-            )
+            BadExprValueError(DataValue::from(cost), "a number is required".to_string(),)
         );
         Ok(cost)
     };
@@ -123,18 +117,12 @@ fn astar(
             let edge_cost = match edge.get(2) {
                 None => 1.,
                 Some(cost) => cost.get_float().ok_or_else(|| {
-                    BadExprValueError(
-                        edge_dst.clone(),
-                        "edge cost must be a number".to_string(),
-                    )
+                    BadExprValueError(edge_dst.clone(), "edge cost must be a number".to_string())
                 })?,
             };
             ensure!(
                 !edge_cost.is_nan(),
-                BadExprValueError(
-                    edge_dst.clone(),
-                    "edge cost must be a number".to_string(),
-                )
+                BadExprValueError(edge_dst.clone(), "edge cost must be a number".to_string(),)
             );
 
             let cost_to_src = g_score.get(&node).cloned().unwrap_or(f64::INFINITY);
