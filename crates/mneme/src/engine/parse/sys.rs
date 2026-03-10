@@ -2,8 +2,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
@@ -94,12 +95,12 @@ pub(crate) fn parse_sys(
     algorithms: &BTreeMap<String, Arc<Box<dyn FixedRule>>>,
     cur_vld: ValidityTs,
 ) -> Result<SysOp> {
-    let inner = src.next().unwrap();
+    let inner = src.next().expect("pest guarantees sys op inner");
     Ok(match inner.as_rule() {
         Rule::compact_op => SysOp::Compact,
         Rule::running_op => SysOp::ListRunning,
         Rule::kill_op => {
-            let i_expr = inner.into_inner().next().unwrap();
+            let i_expr = inner.into_inner().next().expect("pest guarantees kill op expr");
             let i_val = build_expr(i_expr, param_pool)?;
             let i_val = i_val.eval_to_const()?;
             let i_val = i_val.get_int().ok_or_else(|| {
@@ -109,7 +110,7 @@ pub(crate) fn parse_sys(
         }
         Rule::explain_op => {
             let prog = parse_query(
-                inner.into_inner().next().unwrap().into_inner(),
+                inner.into_inner().next().expect("pest guarantees explain op script").into_inner(),
                 param_pool,
                 algorithms,
                 cur_vld,
@@ -118,7 +119,7 @@ pub(crate) fn parse_sys(
         }
         Rule::describe_relation_op => {
             let mut inner = inner.into_inner();
-            let rels_p = inner.next().unwrap();
+            let rels_p = inner.next().expect("pest guarantees describe relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             let description = match inner.next() {
                 None => Default::default(),
@@ -136,12 +137,12 @@ pub(crate) fn parse_sys(
             SysOp::RemoveRelation(rel)
         }
         Rule::list_columns_op => {
-            let rels_p = inner.into_inner().next().unwrap();
+            let rels_p = inner.into_inner().next().expect("pest guarantees column relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ListColumns(rel)
         }
         Rule::list_indices_op => {
-            let rels_p = inner.into_inner().next().unwrap();
+            let rels_p = inner.into_inner().next().expect("pest guarantees index relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ListIndices(rel)
         }
@@ -150,9 +151,9 @@ pub(crate) fn parse_sys(
                 .into_inner()
                 .map(|pair| {
                     let mut src = pair.into_inner();
-                    let rels_p = src.next().unwrap();
+                    let rels_p = src.next().expect("pest guarantees rename source name");
                     let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
-                    let rels_p = src.next().unwrap();
+                    let rels_p = src.next().expect("pest guarantees rename target name");
                     let new_rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
                     (rel, new_rel)
                 })
@@ -161,7 +162,7 @@ pub(crate) fn parse_sys(
         }
         Rule::access_level_op => {
             let mut ps = inner.into_inner();
-            let access_level = match ps.next().unwrap().as_str() {
+            let access_level = match ps.next().expect("pest guarantees access level").as_str() {
                 "normal" => AccessLevel::Normal,
                 "protected" => AccessLevel::Protected,
                 "read_only" => AccessLevel::ReadOnly,
@@ -176,21 +177,21 @@ pub(crate) fn parse_sys(
             SysOp::SetAccessLevel(rels, access_level)
         }
         Rule::trigger_relation_show_op => {
-            let rels_p = inner.into_inner().next().unwrap();
+            let rels_p = inner.into_inner().next().expect("pest guarantees trigger relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             SysOp::ShowTrigger(rel)
         }
         Rule::trigger_relation_op => {
             let mut src = inner.into_inner();
-            let rels_p = src.next().unwrap();
+            let rels_p = src.next().expect("pest guarantees trigger relation name");
             let rel = Symbol::new(rels_p.as_str(), rels_p.extract_span());
             let mut puts = vec![];
             let mut rms = vec![];
             let mut replaces = vec![];
             for clause in src {
                 let mut clause_inner = clause.into_inner();
-                let op = clause_inner.next().unwrap();
-                let script = clause_inner.next().unwrap();
+                let op = clause_inner.next().expect("pest guarantees trigger op");
+                let script = clause_inner.next().expect("pest guarantees trigger script");
                 let script_str = script.as_str();
                 parse_query(
                     script.into_inner(),
@@ -208,12 +209,12 @@ pub(crate) fn parse_sys(
             SysOp::SetTriggers(rel, puts, rms, replaces)
         }
         Rule::lsh_idx_op => {
-            let inner = inner.into_inner().next().unwrap();
+            let inner = inner.into_inner().next().expect("pest guarantees lsh idx inner");
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap();
-                    let name = inner.next().unwrap();
+                    let rel = inner.next().expect("pest guarantees lsh relation name");
+                    let name = inner.next().expect("pest guarantees lsh index name");
                     let mut filters = vec![];
                     let mut tokenizer = TokenizerConfig {
                         name: Default::default(),
@@ -228,8 +229,8 @@ pub(crate) fn parse_sys(
                     let mut false_negative_weight = 1.0;
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().unwrap();
-                        let opt_val = opt_inner.next().unwrap();
+                        let opt_name = opt_inner.next().expect("pest guarantees option name");
+                        let opt_val = opt_inner.next().expect("pest guarantees option value");
                         match opt_name.as_str() {
                             "false_positive_weight" => {
                                 let mut expr = build_expr(opt_val, param_pool)?;
@@ -308,9 +309,9 @@ pub(crate) fn parse_sys(
                                         tokenizer.name = var.name;
                                         tokenizer.args = vec![];
                                     }
-                                    _ => bail!(
-                                        "Tokenizer must be a symbol or a call for an existing tokenizer"
-                                    ),
+                                    _ => bail!(InvalidQuerySnafu {
+                                        message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string()
+                                    }.build()),
                                 }
                             }
                             "filters" => {
@@ -319,7 +320,10 @@ pub(crate) fn parse_sys(
                                 match expr {
                                     Expr::Apply { op, args, .. } => {
                                         if op.name != "OP_LIST" {
-                                            bail!("Filters must be a list of filters");
+                                            bail!(InvalidQuerySnafu {
+                                                message: "Filters must be a list of filters".to_string()
+                                            }
+                                            .build());
                                         }
                                         for arg in args.iter() {
                                             match arg {
@@ -340,38 +344,61 @@ pub(crate) fn parse_sys(
                                                         args: vec![],
                                                     })
                                                 }
-                                                _ => bail!(
-                                                    "Tokenizer must be a symbol or a call for an existing tokenizer"
-                                                ),
+                                                _ => bail!(InvalidQuerySnafu {
+                                                    message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string()
+                                                }
+                                                .build()),
                                             }
                                         }
                                     }
-                                    _ => bail!("Filters must be a list of filters"),
+                                    _ => bail!(InvalidQuerySnafu {
+                                        message: "Filters must be a list of filters".to_string()
+                                    }
+                                    .build()),
                                 }
                             }
-                            _ => bail!("Unknown option {} for LSH index", opt_name.as_str()),
+                            s => bail!(InvalidQuerySnafu {
+                                message: format!("Unknown option {s} for LSH index")
+                            }
+                            .build()),
                         }
                     }
-                    ensure!(
-                        false_positive_weight > 0.,
-                        "false_positive_weight must be positive"
-                    );
-                    ensure!(
-                        false_negative_weight > 0.,
-                        "false_negative_weight must be positive"
-                    );
-                    ensure!(n_gram > 0, "n_gram must be positive");
-                    ensure!(n_perm > 0, "n_perm must be positive");
-                    ensure!(
-                        target_threshold > 0. && target_threshold < 1.,
-                        "target_threshold must be between 0 and 1"
-                    );
+                    if false_positive_weight <= 0. {
+                        bail!(InvalidQuerySnafu {
+                            message: "false_positive_weight must be positive".to_string()
+                        }
+                        .build());
+                    }
+                    if false_negative_weight <= 0. {
+                        bail!(InvalidQuerySnafu {
+                            message: "false_negative_weight must be positive".to_string()
+                        }
+                        .build());
+                    }
+                    if n_gram == 0 {
+                        bail!(InvalidQuerySnafu {
+                            message: "n_gram must be positive".to_string()
+                        }
+                        .build());
+                    }
+                    if n_perm == 0 {
+                        bail!(InvalidQuerySnafu {
+                            message: "n_perm must be positive".to_string()
+                        }
+                        .build());
+                    }
+                    if target_threshold <= 0. || target_threshold >= 1. {
+                        bail!(InvalidQuerySnafu {
+                            message: "target_threshold must be between 0 and 1".to_string()
+                        }
+                        .build());
+                    }
                     let total_weights = false_positive_weight + false_negative_weight;
                     false_positive_weight /= total_weights;
                     false_negative_weight /= total_weights;
 
                     if !extract_filter.is_empty() {
-                        extractor = format!("if({}, {})", extract_filter, extractor);
+                        extractor = format!("if({extract_filter}, {extractor})");
                     }
 
                     let config = MinHashLshConfig {
@@ -390,8 +417,8 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap();
-                    let name = inner.next().unwrap();
+                    let rel = inner.next().expect("pest guarantees lsh drop relation name");
+                    let name = inner.next().expect("pest guarantees lsh drop index name");
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
@@ -401,12 +428,12 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::fts_idx_op => {
-            let inner = inner.into_inner().next().unwrap();
+            let inner = inner.into_inner().next().expect("pest guarantees fts idx inner");
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap();
-                    let name = inner.next().unwrap();
+                    let rel = inner.next().expect("pest guarantees fts relation name");
+                    let name = inner.next().expect("pest guarantees fts index name");
                     let mut filters = vec![];
                     let mut tokenizer = TokenizerConfig {
                         name: Default::default(),
@@ -416,8 +443,8 @@ pub(crate) fn parse_sys(
                     let mut extract_filter = "".to_string();
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().unwrap();
-                        let opt_val = opt_inner.next().unwrap();
+                        let opt_name = opt_inner.next().expect("pest guarantees option name");
+                        let opt_val = opt_inner.next().expect("pest guarantees option value");
                         match opt_name.as_str() {
                             "extractor" => {
                                 let mut ex = build_expr(opt_val, param_pool)?;
@@ -446,9 +473,10 @@ pub(crate) fn parse_sys(
                                         tokenizer.name = var.name;
                                         tokenizer.args = vec![];
                                     }
-                                    _ => bail!(
-                                        "Tokenizer must be a symbol or a call for an existing tokenizer"
-                                    ),
+                                    _ => bail!(InvalidQuerySnafu {
+                                        message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string()
+                                    }
+                                    .build()),
                                 }
                             }
                             "filters" => {
@@ -457,7 +485,10 @@ pub(crate) fn parse_sys(
                                 match expr {
                                     Expr::Apply { op, args, .. } => {
                                         if op.name != "OP_LIST" {
-                                            bail!("Filters must be a list of filters");
+                                            bail!(InvalidQuerySnafu {
+                                                message: "Filters must be a list of filters".to_string()
+                                            }
+                                            .build());
                                         }
                                         for arg in args.iter() {
                                             match arg {
@@ -478,20 +509,27 @@ pub(crate) fn parse_sys(
                                                         args: vec![],
                                                     })
                                                 }
-                                                _ => bail!(
-                                                    "Tokenizer must be a symbol or a call for an existing tokenizer"
-                                                ),
+                                                _ => bail!(InvalidQuerySnafu {
+                                                    message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string()
+                                                }
+                                                .build()),
                                             }
                                         }
                                     }
-                                    _ => bail!("Filters must be a list of filters"),
+                                    _ => bail!(InvalidQuerySnafu {
+                                        message: "Filters must be a list of filters".to_string()
+                                    }
+                                    .build()),
                                 }
                             }
-                            _ => bail!("Unknown option {} for FTS index", opt_name.as_str()),
+                            s => bail!(InvalidQuerySnafu {
+                                message: format!("Unknown option {s} for FTS index")
+                            }
+                            .build()),
                         }
                     }
                     if !extract_filter.is_empty() {
-                        extractor = format!("if({}, {})", extract_filter, extractor);
+                        extractor = format!("if({extract_filter}, {extractor})");
                     }
                     let config = FtsIndexConfig {
                         base_relation: CompactString::from(rel.as_str()),
@@ -504,8 +542,8 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap();
-                    let name = inner.next().unwrap();
+                    let rel = inner.next().expect("pest guarantees fts drop relation name");
+                    let name = inner.next().expect("pest guarantees fts drop index name");
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
@@ -515,12 +553,12 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::vec_idx_op => {
-            let inner = inner.into_inner().next().unwrap();
+            let inner = inner.into_inner().next().expect("pest guarantees vec idx inner");
             match inner.as_rule() {
                 Rule::index_create_adv => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap();
-                    let name = inner.next().unwrap();
+                    let rel = inner.next().expect("pest guarantees vec relation name");
+                    let name = inner.next().expect("pest guarantees vec index name");
                     // options
                     let mut vec_dim = 0;
                     let mut dtype = VecElementType::F32;
@@ -534,8 +572,8 @@ pub(crate) fn parse_sys(
 
                     for opt_pair in inner {
                         let mut opt_inner = opt_pair.into_inner();
-                        let opt_name = opt_inner.next().unwrap();
-                        let opt_val = opt_inner.next().unwrap();
+                        let opt_name = opt_inner.next().expect("pest guarantees option name");
+                        let opt_val = opt_inner.next().expect("pest guarantees option value");
                         let opt_val_str = opt_val.as_str();
                         match opt_name.as_str() {
                             "dim" => {
@@ -544,11 +582,15 @@ pub(crate) fn parse_sys(
                                     .get_int()
                                     .ok_or_else(|| {
                                         crate::engine::error::AdhocError(format!(
-                                            "Invalid vec_dim: {}",
-                                            opt_val_str
+                                            "Invalid vec_dim: {opt_val_str}",
                                         ))
                                     })?;
-                                ensure!(v > 0, "Invalid vec_dim: {}", v);
+                                if v <= 0 {
+                                    bail!(InvalidQuerySnafu {
+                                        message: format!("Invalid vec_dim: {v}")
+                                    }
+                                    .build());
+                                }
                                 vec_dim = v as usize;
                             }
                             "ef_construction" | "ef" => {
@@ -557,11 +599,15 @@ pub(crate) fn parse_sys(
                                     .get_int()
                                     .ok_or_else(|| {
                                         crate::engine::error::AdhocError(format!(
-                                            "Invalid ef_construction: {}",
-                                            opt_val_str
+                                            "Invalid ef_construction: {opt_val_str}",
                                         ))
                                     })?;
-                                ensure!(v > 0, "Invalid ef_construction: {}", v);
+                                if v <= 0 {
+                                    bail!(InvalidQuerySnafu {
+                                        message: format!("Invalid ef_construction: {v}")
+                                    }
+                                    .build());
+                                }
                                 ef_construction = v as usize;
                             }
                             "m_neighbours" | "m" => {
@@ -570,23 +616,25 @@ pub(crate) fn parse_sys(
                                     .get_int()
                                     .ok_or_else(|| {
                                         crate::engine::error::AdhocError(format!(
-                                            "Invalid m_neighbours: {}",
-                                            opt_val_str
+                                            "Invalid m_neighbours: {opt_val_str}",
                                         ))
                                     })?;
-                                ensure!(v > 0, "Invalid m_neighbours: {}", v);
+                                if v <= 0 {
+                                    bail!(InvalidQuerySnafu {
+                                        message: format!("Invalid m_neighbours: {v}")
+                                    }
+                                    .build());
+                                }
                                 m_neighbours = v as usize;
                             }
                             "dtype" => {
                                 dtype = match opt_val.as_str() {
                                     "F32" | "Float" => VecElementType::F32,
                                     "F64" | "Double" => VecElementType::F64,
-                                    _ => {
-                                        return Err(Box::new(crate::engine::error::AdhocError(
-                                            format!("Invalid dtype: {}", opt_val.as_str()),
-                                        ))
-                                            as crate::engine::error::BoxErr);
+                                    s => bail!(InvalidQuerySnafu {
+                                        message: format!("Invalid dtype: {s}")
                                     }
+                                    .build()),
                                 }
                             }
                             "fields" => {
@@ -598,9 +646,10 @@ pub(crate) fn parse_sys(
                                     "L2" => HnswDistance::L2,
                                     "IP" => HnswDistance::InnerProduct,
                                     "Cosine" => HnswDistance::Cosine,
-                                    _ => {
-                                        bail!("Invalid distance: {}", opt_val.as_str())
+                                    s => bail!(InvalidQuerySnafu {
+                                        message: format!("Invalid distance: {s}")
                                     }
+                                    .build()),
                                 }
                             }
                             "filter" => {
@@ -612,20 +661,23 @@ pub(crate) fn parse_sys(
                             "keep_pruned_connections" => {
                                 keep_pruned_connections = opt_val.as_str().trim() == "true";
                             }
-                            _ => {
-                                return Err(Box::new(crate::engine::error::AdhocError(format!(
-                                    "Invalid option: {}",
-                                    opt_name.as_str()
-                                )))
-                                    as crate::engine::error::BoxErr);
+                            s => bail!(InvalidQuerySnafu {
+                                message: format!("Invalid option: {s}")
                             }
+                            .build()),
                         }
                     }
                     if ef_construction == 0 {
-                        bail!("ef_construction must be set");
+                        bail!(InvalidQuerySnafu {
+                            message: "ef_construction must be set".to_string()
+                        }
+                        .build());
                     }
                     if m_neighbours == 0 {
-                        bail!("m_neighbours must be set");
+                        bail!(InvalidQuerySnafu {
+                            message: "m_neighbours must be set".to_string()
+                        }
+                        .build());
                     }
                     SysOp::CreateVectorIndex(HnswIndexConfig {
                         base_relation: CompactString::from(rel.as_str()),
@@ -643,8 +695,8 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap();
-                    let name = inner.next().unwrap();
+                    let rel = inner.next().expect("pest guarantees vec drop relation name");
+                    let name = inner.next().expect("pest guarantees vec drop index name");
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
@@ -654,23 +706,23 @@ pub(crate) fn parse_sys(
             }
         }
         Rule::index_op => {
-            let inner = inner.into_inner().next().unwrap();
+            let inner = inner.into_inner().next().expect("pest guarantees index op inner");
             match inner.as_rule() {
                 Rule::index_create => {
                     let _span = inner.extract_span();
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap();
-                    let name = inner.next().unwrap();
+                    let rel = inner.next().expect("pest guarantees index relation name");
+                    let name = inner.next().expect("pest guarantees index name");
                     let cols = inner
                         .map(|p| Symbol::new(p.as_str(), p.extract_span()))
                         .collect_vec();
 
-                    ensure!(
-                        !cols.is_empty(),
-                        crate::engine::error::AdhocError(
-                            "index must have at least one column specified".to_string()
-                        )
-                    );
+                    if cols.is_empty() {
+                        bail!(InvalidQuerySnafu {
+                            message: "index must have at least one column specified".to_string()
+                        }
+                        .build());
+                    }
                     SysOp::CreateIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),
@@ -679,8 +731,8 @@ pub(crate) fn parse_sys(
                 }
                 Rule::index_drop => {
                     let mut inner = inner.into_inner();
-                    let rel = inner.next().unwrap();
-                    let name = inner.next().unwrap();
+                    let rel = inner.next().expect("pest guarantees index drop relation name");
+                    let name = inner.next().expect("pest guarantees index drop name");
                     SysOp::RemoveIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),
                         Symbol::new(name.as_str(), name.extract_span()),

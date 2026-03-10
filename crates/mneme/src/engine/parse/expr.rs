@@ -1,8 +1,9 @@
 //! Expression parsing from Datalog source.
 use std::collections::BTreeMap;
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use itertools::Itertools;
 use pest::pratt_parser::{Op, PrattParser};
@@ -101,10 +102,12 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
 }
 
 pub(crate) fn build_expr(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Result<Expr> {
-    ensure!(
-        pair.as_rule() == Rule::expr,
-        "Invalid expression encountered"
-    );
+    if pair.as_rule() != Rule::expr {
+        bail!(InvalidQuerySnafu {
+            message: "Invalid expression encountered".to_string()
+        }
+        .build());
+    }
 
     PRATT_PARSER
         .map_primary(|v| build_term(v, param_pool))
@@ -170,7 +173,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             tuple_pos: None,
         },
         Rule::param => {
-            let param_str = pair.as_str().strip_prefix('$').unwrap();
+            let param_str = pair.as_str().strip_prefix('$').expect("pest guarantees $ prefix on param");
             Expr::Const {
                 val: param_pool
                     .get(param_str)
@@ -184,8 +187,8 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             }
         }
         Rule::pos_int => {
-            let i = pair.as_str().replace('_', "").parse::<i64>().map_err(|_| {
-                crate::engine::error::AdhocError("Cannot parse integer".to_string())
+            let i = pair.as_str().replace('_', "").parse::<i64>().map_err(|e| {
+                crate::engine::error::AdhocError(format!("Cannot parse integer: {e}"))
             })?;
             Expr::Const {
                 val: DataValue::from(i),
@@ -215,8 +218,8 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
         }
         Rule::dot_float | Rule::sci_float => {
             let f =
-                pair.as_str().replace('_', "").parse::<f64>().map_err(|_| {
-                    crate::engine::error::AdhocError("Cannot parse float".to_string())
+                pair.as_str().replace('_', "").parse::<f64>().map_err(|e| {
+                    crate::engine::error::AdhocError(format!("Cannot parse float: {e}"))
                 })?;
             Expr::Const {
                 val: DataValue::from(f),
@@ -253,8 +256,8 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             let mut args = vec![];
             for p in pair.into_inner() {
                 let mut p = p.into_inner();
-                let k = p.next().unwrap();
-                let v = p.next().unwrap();
+                let k = p.next().expect("pest guarantees object key");
+                let v = p.next().expect("pest guarantees object value");
                 let k = build_expr(k, param_pool)?;
                 let v = build_expr(v, param_pool)?;
                 args.push(k);
@@ -268,11 +271,11 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
         }
         Rule::apply => {
             let mut p = pair.into_inner();
-            let ident_p = p.next().unwrap();
+            let ident_p = p.next().expect("pest guarantees apply ident");
             let ident = ident_p.as_str();
             let mut args: Vec<_> = p
                 .next()
-                .unwrap()
+                .expect("pest guarantees apply args")
                 .into_inner()
                 .map(|v| build_expr(v, param_pool))
                 .try_collect()?;
@@ -280,14 +283,17 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             match ident {
                 "cond" => {
                     if args.is_empty() {
-                        bail!("'cond' cannot have empty body");
+                        bail!(InvalidQuerySnafu {
+                            message: "'cond' cannot have empty body".to_string()
+                        }
+                        .build());
                     }
                     if args.len() & 1 == 1 {
                         args.insert(
                             args.len() - 1,
                             Expr::Const {
                                 val: DataValue::Null,
-                                span: args.last().unwrap().span(),
+                                span: args.last().expect("just checked non-empty").span(),
                             },
                         )
                     }
@@ -318,17 +324,17 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                     Expr::Cond { clauses, span }
                 }
                 "if" => {
-                    ensure!(
-                        args.len() == 2 || args.len() == 3,
-                        crate::engine::error::AdhocError(
-                            "wrong number of arguments to if: 2 or 3 required".to_string()
-                        )
-                    );
+                    if args.len() != 2 && args.len() != 3 {
+                        bail!(InvalidQuerySnafu {
+                            message: "wrong number of arguments to if: 2 or 3 required".to_string()
+                        }
+                        .build());
+                    }
 
                     let mut clauses = vec![];
                     let mut args = args.into_iter();
-                    let cond = args.next().unwrap();
-                    let then = args.next().unwrap();
+                    let cond = args.next().expect("checked len >= 2");
+                    let then = args.next().expect("checked len >= 2");
                     clauses.push((cond, then));
                     clauses.push((
                         Expr::Const {
@@ -352,17 +358,23 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                         op.post_process_args(&mut args);
 
                         if op.vararg {
-                            ensure!(
-                                op.min_arity <= args.len(),
-                                "Wrong number of arguments for function: need at least {} argument(s)",
-                                op.min_arity
-                            );
-                        } else {
-                            ensure!(
-                                op.min_arity == args.len(),
-                                "Wrong number of arguments for function: need exactly {} argument(s)",
-                                op.min_arity
-                            );
+                            if op.min_arity > args.len() {
+                                bail!(InvalidQuerySnafu {
+                                    message: format!(
+                                        "Wrong number of arguments for function: need at least {} argument(s)",
+                                        op.min_arity
+                                    )
+                                }
+                                .build());
+                            }
+                        } else if op.min_arity != args.len() {
+                            bail!(InvalidQuerySnafu {
+                                message: format!(
+                                    "Wrong number of arguments for function: need exactly {} argument(s)",
+                                    op.min_arity
+                                )
+                            }
+                            .build());
                         }
                         Expr::Apply {
                             op,
@@ -373,13 +385,14 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                 },
             }
         }
-        Rule::grouping => build_expr(pair.into_inner().next().unwrap(), param_pool)?,
+        Rule::grouping => build_expr(pair.into_inner().next().expect("pest guarantees grouping inner"), param_pool)?,
         r => unreachable!("Encountered unknown op {:?}", r),
     })
 }
 
 pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
-    i64::from_str_radix(&s[2..].replace('_', ""), radix).unwrap()
+    i64::from_str_radix(&s[2..].replace('_', ""), radix)
+        .expect("pest guarantees valid integer literal syntax")
 }
 
 pub(crate) fn parse_string(pair: Pair<'_>) -> Result<CompactString> {
@@ -393,7 +406,7 @@ pub(crate) fn parse_string(pair: Pair<'_>) -> Result<CompactString> {
 }
 
 fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
-    let pairs = pair.into_inner().next().unwrap().into_inner();
+    let pairs = pair.into_inner().next().expect("pest guarantees quoted string inner").into_inner();
     let mut ret = CompactString::default();
     for pair in pairs {
         let s = pair.as_str();
@@ -414,7 +427,10 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
-                bail!("invalid escape sequence {}", s)
+                bail!(InvalidQuerySnafu {
+                    message: format!("invalid escape sequence {s}")
+                }
+                .build());
             }
             s => ret.push_str(s),
         }
@@ -423,7 +439,7 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
 }
 
 fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
-    let pairs = pair.into_inner().next().unwrap().into_inner();
+    let pairs = pair.into_inner().next().expect("pest guarantees s-quoted string inner").into_inner();
     let mut ret = CompactString::default();
     for pair in pairs {
         let s = pair.as_str();
@@ -444,7 +460,10 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
-                bail!("invalid escape sequence {}", s)
+                bail!(InvalidQuerySnafu {
+                    message: format!("invalid escape sequence {s}")
+                }
+                .build());
             }
             s => ret.push_str(s),
         }
@@ -454,6 +473,6 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
 
 fn parse_raw_string(pair: Pair<'_>) -> Result<CompactString> {
     Ok(CompactString::from(
-        pair.into_inner().next().unwrap().as_str(),
+        pair.into_inner().next().expect("pest guarantees raw string inner").as_str(),
     ))
 }

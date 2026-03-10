@@ -2,12 +2,11 @@
 use std::cmp::Reverse;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
+use crate::bail;
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use either::{Left, Right};
 use itertools::Itertools;
@@ -31,21 +30,6 @@ use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::schema::parse_schema;
 use crate::engine::parse::{DatalogParser, ExtractSpan, Pair, Pairs, Rule};
 use crate::engine::runtime::relation::InputRelationHandle;
-
-#[derive(Debug)]
-struct MultipleRuleDefinitionError(String);
-
-impl Error for MultipleRuleDefinitionError {}
-
-impl Display for MultipleRuleDefinitionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "The rule '{0}' cannot have multiple definitions since it contains non-Horn clauses",
-            self.0
-        )
-    }
-}
 
 
 pub(crate) fn parse_query(
@@ -74,21 +58,24 @@ pub(crate) fn parse_query(
                         let key = e.key().to_string();
                         match e.get_mut() {
                             InputInlineRulesOrFixed::Rules { rules: rs } => {
-                                let prev = rs.first().unwrap();
-                                ensure!(
-                                    prev.aggr == rule.aggr,
-                                    "Rule {} has multiple definitions with conflicting heads",
-                                    key
-                                );
+                                let prev = rs.first().expect("rules vec always has at least one element");
+                                if prev.aggr != rule.aggr {
+                                    bail!(InvalidQuerySnafu {
+                                        message: format!("Rule {key} has multiple definitions with conflicting heads")
+                                    }
+                                    .build());
+                                }
 
                                 rs.push(rule);
                             }
-                            InputInlineRulesOrFixed::Fixed { fixed } => {
-                                let _fixed_span = fixed.span;
-                                bail!(
-                                    "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
-                                    e.key().name
-                                )
+                            InputInlineRulesOrFixed::Fixed { .. } => {
+                                bail!(InvalidQuerySnafu {
+                                    message: format!(
+                                        "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
+                                        e.key().name
+                                    )
+                                }
+                                .build())
                             }
                         }
                     }
@@ -103,29 +90,39 @@ pub(crate) fn parse_query(
                     }
                     Entry::Occupied(e) => {
                         let found_name = e.key().name.to_string();
-                        bail!(MultipleRuleDefinitionError(found_name));
+                        bail!(InvalidQuerySnafu {
+                            message: format!(
+                                "The rule '{found_name}' cannot have multiple definitions since it contains non-Horn clauses"
+                            )
+                        }
+                        .build());
                     }
                 }
             }
             Rule::const_rule => {
                 let span = pair.extract_span();
                 let mut src = pair.into_inner();
-                let (name, mut head, aggr) = parse_rule_head(src.next().unwrap(), param_pool)?;
+                let (name, mut head, aggr) = parse_rule_head(src.next().expect("pest guarantees rule head"), param_pool)?;
 
                 if progs.contains_key(&name) {
-                    bail!(
-                        "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
-                        name.name
-                    );
+                    bail!(InvalidQuerySnafu {
+                        message: format!(
+                            "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
+                            name.name
+                        )
+                    }
+                    .build());
                 }
 
                 for (a, _v) in aggr.iter().zip(head.iter()) {
-                    ensure!(
-                        a.is_none(),
-                        "Constant rules cannot have aggregation application"
-                    );
+                    if a.is_some() {
+                        bail!(InvalidQuerySnafu {
+                            message: "Constant rules cannot have aggregation application".to_string()
+                        }
+                        .build());
+                    }
                 }
-                let data_part = src.next().unwrap();
+                let data_part = src.next().expect("pest guarantees data part after rule head");
                 let data_part_str = data_part.as_str();
                 let data = build_expr(data_part.clone(), param_pool)?;
                 let mut options = BTreeMap::new();
@@ -137,18 +134,25 @@ pub(crate) fn parse_query(
                 fixed_impl.init_options(&mut options, span)?;
                 let arity = fixed_impl.arity(&options, &head, span)?;
 
-                ensure!(arity != 0, "Encountered empty row for constant rule");
-                ensure!(
-                    head.is_empty() || arity == head.len(),
-                    "Fixed rule head arity mismatch"
-                );
+                if arity == 0 {
+                    bail!(InvalidQuerySnafu {
+                        message: "Encountered empty row for constant rule".to_string()
+                    }
+                    .build());
+                }
+                if !head.is_empty() && arity != head.len() {
+                    bail!(InvalidQuerySnafu {
+                        message: "Fixed rule head arity mismatch".to_string()
+                    }
+                    .build());
+                }
                 if head.is_empty() && name.is_prog_entry() {
                     if let Ok(mut datalist) = DatalogParser::parse(Rule::param_list, data_part_str)
                     {
-                        for s in datalist.next().unwrap().into_inner() {
+                        for s in datalist.next().expect("pest guarantees param_list token").into_inner() {
                             if s.as_rule() == Rule::param {
                                 head.push(Symbol::new(
-                                    s.as_str().strip_prefix('$').unwrap(),
+                                    s.as_str().strip_prefix('$').expect("pest guarantees $ prefix on param"),
                                     Default::default(),
                                 ));
                             }
@@ -171,7 +175,7 @@ pub(crate) fn parse_query(
                 );
             }
             Rule::timeout_option => {
-                let pair = pair.into_inner().next().unwrap();
+                let pair = pair.into_inner().next().expect("pest guarantees timeout value");
                 let _span = pair.extract_span();
                 let timeout = build_expr(pair, param_pool)?
                     .eval_to_const()
@@ -192,11 +196,14 @@ pub(crate) fn parse_query(
             }
             Rule::sleep_option => {
                 #[cfg(target_arch = "wasm32")]
-                bail!(":sleep is not supported under WASM");
+                bail!(InvalidQuerySnafu {
+                    message: ":sleep is not supported under WASM".to_string()
+                }
+                .build());
 
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    let pair = pair.into_inner().next().unwrap();
+                    let pair = pair.into_inner().next().expect("pest guarantees sleep value");
                     let _span = pair.extract_span();
                     let sleep = build_expr(pair, param_pool)?
                         .eval_to_const()
@@ -209,17 +216,17 @@ pub(crate) fn parse_query(
                         .ok_or(crate::engine::error::AdhocError(
                             "Query option {} requires a non-negative integer".to_string(),
                         ))?;
-                    ensure!(
-                        sleep > 0.,
-                        crate::engine::error::AdhocError(
-                            "Query option {} requires a positive integer".to_string()
-                        )
-                    );
+                    if sleep <= 0. {
+                        bail!(InvalidQuerySnafu {
+                            message: "Query option :sleep requires a positive integer".to_string()
+                        }
+                        .build());
+                    }
                     out_opts.sleep = Some(sleep);
                 }
             }
             Rule::limit_option => {
-                let pair = pair.into_inner().next().unwrap();
+                let pair = pair.into_inner().next().expect("pest guarantees limit value");
                 let _span = pair.extract_span();
                 let limit = build_expr(pair, param_pool)?
                     .eval_to_const()
@@ -235,7 +242,7 @@ pub(crate) fn parse_query(
                 out_opts.limit = Some(limit as usize);
             }
             Rule::offset_option => {
-                let pair = pair.into_inner().next().unwrap();
+                let pair = pair.into_inner().next().expect("pest guarantees offset value");
                 let _span = pair.extract_span();
                 let offset = build_expr(pair, param_pool)?
                     .eval_to_const()
@@ -275,7 +282,7 @@ pub(crate) fn parse_query(
             Rule::relation_option => {
                 let span = pair.extract_span();
                 let mut args = pair.into_inner();
-                let op = match args.next().unwrap().as_rule() {
+                let op = match args.next().expect("pest guarantees relation op").as_rule() {
                     Rule::relation_create => RelationOp::Create,
                     Rule::relation_replace => RelationOp::Replace,
                     Rule::relation_put => RelationOp::Put,
@@ -288,7 +295,7 @@ pub(crate) fn parse_query(
                     _ => unreachable!(),
                 };
 
-                let name_p = args.next().unwrap();
+                let name_p = args.next().expect("pest guarantees relation name");
                 let name = Symbol::new(name_p.as_str(), name_p.extract_span());
                 match args.next() {
                     None => stored_relation = Some(Left((name, span, op))),
@@ -315,21 +322,25 @@ pub(crate) fn parse_query(
                 }
             }
             Rule::assert_none_option => {
-                ensure!(
-                    out_opts.assertion.is_none(),
-                    "Multiple query output assertions defined"
-                );
+                if out_opts.assertion.is_some() {
+                    bail!(InvalidQuerySnafu {
+                        message: "Multiple query output assertions defined".to_string()
+                    }
+                    .build());
+                }
                 out_opts.assertion = Some(QueryAssertion::AssertNone(pair.extract_span()))
             }
             Rule::assert_some_option => {
-                ensure!(
-                    out_opts.assertion.is_none(),
-                    "Multiple query output assertions defined"
-                );
+                if out_opts.assertion.is_some() {
+                    bail!(InvalidQuerySnafu {
+                        message: "Multiple query output assertions defined".to_string()
+                    }
+                    .build());
+                }
                 out_opts.assertion = Some(QueryAssertion::AssertSome(pair.extract_span()))
             }
             Rule::disable_magic_rewrite_option => {
-                let pair = pair.into_inner().next().unwrap();
+                let pair = pair.into_inner().next().expect("pest guarantees magic rewrite value");
                 let _span = pair.extract_span();
                 let val = build_expr(pair, param_pool)?
                     .eval_to_const()
@@ -417,7 +428,12 @@ pub(crate) fn parse_query(
         let head_args = prog.get_entry_out_head()?;
 
         for (sorter, _) in &prog.out_opts.sorters {
-            ensure!(head_args.contains(sorter), "Sort key not found");
+            if !head_args.contains(sorter) {
+                bail!(InvalidQuerySnafu {
+                    message: "Sort key not found".to_string()
+                }
+                .build());
+            }
         }
     }
 
@@ -428,7 +444,10 @@ pub(crate) fn parse_query(
                 if handle.dep_bindings.is_empty() {
                     true
                 } else {
-                    bail!("Input relation has no keys");
+                    bail!(InvalidQuerySnafu {
+                        message: "Input relation has no keys".to_string()
+                    }
+                    .build());
                 }
             } else {
                 false
@@ -440,7 +459,10 @@ pub(crate) fn parse_query(
         let head_args = prog.get_entry_out_head()?;
         if let Some((handle, _, _)) = &mut prog.out_opts.store_relation {
             if head_args.is_empty() {
-                bail!("Input relation has no keys");
+                bail!(InvalidQuerySnafu {
+                    message: "Input relation has no keys".to_string()
+                }
+                .build());
             }
             handle.key_bindings = head_args.clone();
             handle.metadata.keys = head_args
@@ -469,17 +491,17 @@ fn parse_rule(
 ) -> Result<(Symbol, InputInlineRule)> {
     let span = src.extract_span();
     let mut src = src.into_inner();
-    let head = src.next().unwrap();
+    let head = src.next().expect("pest guarantees rule head");
     let _head_span = head.extract_span();
     let (name, head, aggr) = parse_rule_head(head, param_pool)?;
 
-    ensure!(
-        !head.is_empty(),
-        crate::engine::error::AdhocError(
-            "Horn-clause rule cannot have empty rule head".to_string()
-        )
-    );
-    let body = src.next().unwrap();
+    if head.is_empty() {
+        bail!(InvalidQuerySnafu {
+            message: "Horn-clause rule cannot have empty rule head".to_string()
+        }
+        .build());
+    }
+    let body = src.next().expect("pest guarantees rule body after head");
     let mut body_clauses = vec![];
     let mut ignored_counter = 0;
     for atom_src in body.into_inner() {
@@ -517,7 +539,7 @@ fn parse_disjunction(
         })
         .try_collect()?;
     Ok(if res.len() == 1 {
-        res.into_iter().next().unwrap()
+        res.into_iter().next().expect("just checked len == 1")
     } else {
         InputAtom::Disjunction { inner: res, span }
     })
@@ -545,8 +567,8 @@ fn parse_atom(
         Rule::negation => {
             let span = src.extract_span();
             let mut src = src.into_inner();
-            src.next().unwrap();
-            let inner = parse_atom(src.next().unwrap(), param_pool, cur_vld, ignored_counter)?;
+            src.next().expect("pest guarantees negation marker");
+            let inner = parse_atom(src.next().expect("pest guarantees negation body"), param_pool, cur_vld, ignored_counter)?;
             InputAtom::Negation {
                 inner: inner.into(),
                 span,
@@ -559,13 +581,13 @@ fn parse_atom(
         Rule::unify => {
             let span = src.extract_span();
             let mut src = src.into_inner();
-            let var = src.next().unwrap();
+            let var = src.next().expect("pest guarantees unify variable");
             let mut symb = Symbol::new(var.as_str(), var.extract_span());
             if symb.is_ignored_symbol() {
                 symb.name = format!("*^*{}", *ignored_counter).into();
                 *ignored_counter += 1;
             }
-            let expr = build_expr(src.next().unwrap(), param_pool)?;
+            let expr = build_expr(src.next().expect("pest guarantees unify expression"), param_pool)?;
             InputAtom::Unification {
                 inner: Unification {
                     binding: symb,
@@ -578,14 +600,14 @@ fn parse_atom(
         Rule::unify_multi => {
             let span = src.extract_span();
             let mut src = src.into_inner();
-            let var = src.next().unwrap();
+            let var = src.next().expect("pest guarantees unify_multi variable");
             let mut symb = Symbol::new(var.as_str(), var.extract_span());
             if symb.is_ignored_symbol() {
                 symb.name = format!("*^*{}", *ignored_counter).into();
                 *ignored_counter += 1;
             }
-            src.next().unwrap();
-            let expr = build_expr(src.next().unwrap(), param_pool)?;
+            src.next().expect("pest guarantees unify_multi separator");
+            let expr = build_expr(src.next().expect("pest guarantees unify_multi expression"), param_pool)?;
             InputAtom::Unification {
                 inner: Unification {
                     binding: symb,
@@ -598,10 +620,10 @@ fn parse_atom(
         Rule::rule_apply => {
             let span = src.extract_span();
             let mut src = src.into_inner();
-            let name = src.next().unwrap();
+            let name = src.next().expect("pest guarantees rule_apply name");
             let args: Vec<_> = src
                 .next()
-                .unwrap()
+                .expect("pest guarantees rule_apply args")
                 .into_inner()
                 .map(|v| build_expr(v, param_pool))
                 .try_collect()?;
@@ -616,17 +638,17 @@ fn parse_atom(
         Rule::relation_apply => {
             let span = src.extract_span();
             let mut src = src.into_inner();
-            let name = src.next().unwrap();
+            let name = src.next().expect("pest guarantees relation_apply name");
             let args: Vec<_> = src
                 .next()
-                .unwrap()
+                .expect("pest guarantees relation_apply args")
                 .into_inner()
                 .map(|v| build_expr(v, param_pool))
                 .try_collect()?;
             let valid_at = match src.next() {
                 None => None,
                 Some(vld_clause) => {
-                    let vld_expr = build_expr(vld_clause.into_inner().next().unwrap(), param_pool)?;
+                    let vld_expr = build_expr(vld_clause.into_inner().next().expect("pest guarantees validity expr"), param_pool)?;
                     Some(expr2vld_spec(vld_expr, cur_vld)?)
                 }
             };
@@ -642,18 +664,20 @@ fn parse_atom(
         Rule::search_apply => {
             let span = src.extract_span();
             let mut src = src.into_inner();
-            let name_p = src.next().unwrap();
+            let name_p = src.next().expect("pest guarantees search_apply name");
             let name_segs = name_p.as_str().split(':').collect_vec();
 
-            ensure!(
-                name_segs.len() == 2,
-                "Search head must be of the form `relation_name:index_name`"
-            );
+            if name_segs.len() != 2 {
+                bail!(InvalidQuerySnafu {
+                    message: "Search head must be of the form `relation_name:index_name`".to_string()
+                }
+                .build());
+            }
             let relation = Symbol::new(name_segs[0], name_p.extract_span());
             let index = Symbol::new(name_segs[1], name_p.extract_span());
             let bindings: BTreeMap<CompactString, Expr> = src
                 .next()
-                .unwrap()
+                .expect("pest guarantees search_apply bindings")
                 .into_inner()
                 .map(|arg| extract_named_apply_arg(arg, param_pool))
                 .try_collect()?;
@@ -674,18 +698,18 @@ fn parse_atom(
         Rule::relation_named_apply => {
             let span = src.extract_span();
             let mut src = src.into_inner();
-            let name_p = src.next().unwrap();
+            let name_p = src.next().expect("pest guarantees relation_named_apply name");
             let name = Symbol::new(&name_p.as_str()[1..], name_p.extract_span());
             let args = src
                 .next()
-                .unwrap()
+                .expect("pest guarantees relation_named_apply args")
                 .into_inner()
                 .map(|arg| extract_named_apply_arg(arg, param_pool))
                 .try_collect()?;
             let valid_at = match src.next() {
                 None => None,
                 Some(vld_clause) => {
-                    let vld_expr = build_expr(vld_clause.into_inner().next().unwrap(), param_pool)?;
+                    let vld_expr = build_expr(vld_clause.into_inner().next().expect("pest guarantees validity expr"), param_pool)?;
                     Some(expr2vld_spec(vld_expr, cur_vld)?)
                 }
             };
@@ -707,7 +731,7 @@ fn extract_named_apply_arg(
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<(CompactString, Expr)> {
     let mut inner = pair.into_inner();
-    let name_p = inner.next().unwrap();
+    let name_p = inner.next().expect("pest guarantees named arg key");
     let name = CompactString::from(name_p.as_str());
     let arg = match inner.next() {
         Some(a) => build_expr(a, param_pool)?,
@@ -728,7 +752,7 @@ fn parse_rule_head(
     Vec<Option<(Aggregation, Vec<DataValue>)>>,
 )> {
     let mut src = src.into_inner();
-    let name = src.next().unwrap();
+    let name = src.next().expect("pest guarantees rule head name");
     let mut args = vec![];
     let mut aggrs = vec![];
     for p in src {
@@ -743,14 +767,14 @@ fn parse_rule_head_arg(
     src: Pair<'_>,
     param_pool: &BTreeMap<String, DataValue>,
 ) -> Result<(Symbol, Option<(Aggregation, Vec<DataValue>)>)> {
-    let src = src.into_inner().next().unwrap();
+    let src = src.into_inner().next().expect("pest guarantees rule head arg inner");
     Ok(match src.as_rule() {
         Rule::var => (Symbol::new(src.as_str(), src.extract_span()), None),
         Rule::aggr_arg => {
             let mut inner = src.into_inner();
-            let aggr_p = inner.next().unwrap();
+            let aggr_p = inner.next().expect("pest guarantees aggregation name");
             let aggr_name = aggr_p.as_str();
-            let var = inner.next().unwrap();
+            let var = inner.next().expect("pest guarantees aggregation variable");
             let args: Vec<_> = inner
                 .map(|v| -> Result<DataValue> { build_expr(v, param_pool)?.eval_to_const() })
                 .try_collect()?;
@@ -779,36 +803,36 @@ fn parse_fixed_rule(
     cur_vld: ValidityTs,
 ) -> Result<(Symbol, FixedRuleApply)> {
     let mut src = src.into_inner();
-    let (out_symbol, head, aggr) = parse_rule_head(src.next().unwrap(), param_pool)?;
+    let (out_symbol, head, aggr) = parse_rule_head(src.next().expect("pest guarantees fixed rule head"), param_pool)?;
 
     for (a, _v) in aggr.iter().zip(head.iter()) {
-        ensure!(
-            a.is_none(),
-            crate::engine::error::AdhocError(
-                "fixed rule cannot be combined with aggregation".to_string()
-            )
-        )
+        if a.is_some() {
+            bail!(InvalidQuerySnafu {
+                message: "fixed rule cannot be combined with aggregation".to_string()
+            }
+            .build());
+        }
     }
 
     let mut seen_bindings = BTreeSet::new();
     let mut binding_gen_id = 0;
 
-    let name_pair = src.next().unwrap();
+    let name_pair = src.next().expect("pest guarantees fixed rule name");
     let fixed_name = &name_pair.as_str();
     let mut rule_args: Vec<FixedRuleArg> = vec![];
     let mut options: BTreeMap<CompactString, Expr> = Default::default();
-    let args_list = src.next().unwrap();
+    let args_list = src.next().expect("pest guarantees fixed rule args list");
     let args_list_span = args_list.extract_span();
 
     for nxt in args_list.into_inner() {
         match nxt.as_rule() {
             Rule::fixed_rel => {
-                let inner = nxt.into_inner().next().unwrap();
+                let inner = nxt.into_inner().next().expect("pest guarantees fixed_rel inner");
                 let span = inner.extract_span();
                 match inner.as_rule() {
                     Rule::fixed_rule_rel => {
                         let mut els = inner.into_inner();
-                        let name = els.next().unwrap();
+                        let name = els.next().expect("pest guarantees fixed_rule_rel name");
                         let mut bindings = Vec::with_capacity(els.size_hint().1.unwrap_or(4));
                         for v in els {
                             let s = v.as_str();
@@ -819,7 +843,10 @@ fn parse_fixed_rule(
                                 bindings.push(symb);
                             } else {
                                 if !seen_bindings.insert(s) {
-                                    bail!("fixed rule cannot have duplicate bindings")
+                                    bail!(InvalidQuerySnafu {
+                                        message: "fixed rule cannot have duplicate bindings".to_string()
+                                    }
+                                    .build());
                                 }
                                 let symb = Symbol::new(s, v.extract_span());
                                 bindings.push(symb);
@@ -833,7 +860,7 @@ fn parse_fixed_rule(
                     }
                     Rule::fixed_relation_rel => {
                         let mut els = inner.into_inner();
-                        let name = els.next().unwrap();
+                        let name = els.next().expect("pest guarantees fixed_relation_rel name");
                         let mut bindings = vec![];
                         let mut valid_at = None;
                         for v in els {
@@ -849,13 +876,16 @@ fn parse_fixed_rule(
                                         bindings.push(symb);
                                     } else {
                                         if !seen_bindings.insert(s) {
-                                            bail!("fixed rule cannot have duplicate bindings")
+                                            bail!(InvalidQuerySnafu {
+                                                message: "fixed rule cannot have duplicate bindings".to_string()
+                                            }
+                                            .build());
                                         }
                                         bindings.push(Symbol::new(v.as_str(), v.extract_span()))
                                     }
                                 }
                                 Rule::validity_clause => {
-                                    let vld_inner = v.into_inner().next().unwrap();
+                                    let vld_inner = v.into_inner().next().expect("pest guarantees validity expr");
                                     let vld_expr = build_expr(vld_inner, param_pool)?;
                                     valid_at = Some(expr2vld_spec(vld_expr, cur_vld)?)
                                 }
@@ -864,7 +894,7 @@ fn parse_fixed_rule(
                         }
                         rule_args.push(FixedRuleArg::Stored {
                             name: Symbol::new(
-                                name.as_str().strip_prefix('*').unwrap(),
+                                name.as_str().strip_prefix('*').expect("pest guarantees * prefix on stored relation"),
                                 name.extract_span(),
                             ),
                             bindings,
@@ -874,25 +904,31 @@ fn parse_fixed_rule(
                     }
                     Rule::fixed_named_relation_rel => {
                         let mut els = inner.into_inner();
-                        let name = els.next().unwrap();
+                        let name = els.next().expect("pest guarantees fixed_named_relation_rel name");
                         let mut bindings = BTreeMap::new();
                         let mut valid_at = None;
                         for p in els {
                             match p.as_rule() {
                                 Rule::fixed_named_relation_arg_pair => {
                                     let mut vs = p.into_inner();
-                                    let kp = vs.next().unwrap();
+                                    let kp = vs.next().expect("pest guarantees named arg key");
                                     let k = CompactString::from(kp.as_str());
                                     let v = match vs.next() {
                                         Some(vp) => {
                                             if !seen_bindings.insert(vp.as_str()) {
-                                                bail!("fixed rule cannot have duplicate bindings")
+                                                bail!(InvalidQuerySnafu {
+                                                    message: "fixed rule cannot have duplicate bindings".to_string()
+                                                }
+                                                .build());
                                             }
                                             Symbol::new(vp.as_str(), vp.extract_span())
                                         }
                                         None => {
                                             if !seen_bindings.insert(kp.as_str()) {
-                                                bail!("fixed rule cannot have duplicate bindings")
+                                                bail!(InvalidQuerySnafu {
+                                                    message: "fixed rule cannot have duplicate bindings".to_string()
+                                                }
+                                                .build());
                                             }
                                             Symbol::new(k.clone(), kp.extract_span())
                                         }
@@ -900,7 +936,7 @@ fn parse_fixed_rule(
                                     bindings.insert(k, v);
                                 }
                                 Rule::validity_clause => {
-                                    let vld_inner = p.into_inner().next().unwrap();
+                                    let vld_inner = p.into_inner().next().expect("pest guarantees validity expr");
                                     let vld_expr = build_expr(vld_inner, param_pool)?;
                                     valid_at = Some(expr2vld_spec(vld_expr, cur_vld)?)
                                 }
@@ -910,7 +946,7 @@ fn parse_fixed_rule(
 
                         rule_args.push(FixedRuleArg::NamedStored {
                             name: Symbol::new(
-                                name.as_str().strip_prefix(':').unwrap(),
+                                name.as_str().strip_prefix(':').expect("pest guarantees : prefix on named stored relation"),
                                 name.extract_span(),
                             ),
                             bindings,
@@ -923,8 +959,8 @@ fn parse_fixed_rule(
             }
             Rule::fixed_opt_pair => {
                 let mut inner = nxt.into_inner();
-                let name = inner.next().unwrap().as_str();
-                let val = inner.next().unwrap();
+                let name = inner.next().expect("pest guarantees option name").as_str();
+                let val = inner.next().expect("pest guarantees option value");
                 let val = build_expr(val, param_pool)?;
                 options.insert(CompactString::from(name), val);
             }
@@ -940,10 +976,12 @@ fn parse_fixed_rule(
     fixed_impl.init_options(&mut options, args_list_span)?;
     let arity = fixed_impl.arity(&options, &head, name_pair.extract_span())?;
 
-    ensure!(
-        head.is_empty() || arity == head.len(),
-        "Fixed rule head arity mismatch"
-    );
+    if !head.is_empty() && arity != head.len() {
+        bail!(InvalidQuerySnafu {
+            message: "Fixed rule head arity mismatch".to_string()
+        }
+        .build());
+    }
 
     Ok((
         out_symbol,
@@ -999,12 +1037,15 @@ fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityTs> {
         DataValue::Str(s) => match &s as &str {
             "NOW" => Ok(cur_vld),
             "END" => Ok(MAX_VALIDITY_TS),
-            s => Ok(str2vld(s).map_err(|_| {
-                crate::engine::error::AdhocError("bad specification of validity".to_string())
+            s => Ok(str2vld(s).map_err(|e| {
+                crate::engine::error::AdhocError(format!("bad specification of validity: {e}"))
             })?),
         },
         _ => {
-            bail!("bad specification of validity")
+            bail!(InvalidQuerySnafu {
+                message: "bad specification of validity".to_string()
+            }
+            .build())
         }
     }
 }

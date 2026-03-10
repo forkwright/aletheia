@@ -53,6 +53,7 @@ pub enum Bytecode {
 }
 
 #[derive(Debug)]
+#[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
 struct UnboundVariableError(String, SourceSpan);
 
 impl std::fmt::Display for UnboundVariableError {
@@ -64,6 +65,7 @@ impl std::fmt::Display for UnboundVariableError {
 impl std::error::Error for UnboundVariableError {}
 
 #[derive(Debug)]
+#[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
 struct TupleTooShortError(String, usize, usize, SourceSpan);
 
 impl std::fmt::Display for TupleTooShortError {
@@ -248,6 +250,7 @@ impl Display for Expr {
 }
 
 #[derive(Debug)]
+#[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
 pub(crate) struct NoImplementationError(pub(crate) SourceSpan, pub(crate) String);
 
 impl std::fmt::Display for NoImplementationError {
@@ -259,6 +262,7 @@ impl std::fmt::Display for NoImplementationError {
 impl std::error::Error for NoImplementationError {}
 
 #[derive(Debug)]
+#[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
 pub(crate) struct PredicateTypeError(pub(crate) SourceSpan, pub(crate) DataValue);
 
 impl std::fmt::Display for PredicateTypeError {
@@ -274,6 +278,7 @@ impl std::fmt::Display for PredicateTypeError {
 impl std::error::Error for PredicateTypeError {}
 
 #[derive(Debug)]
+#[expect(dead_code, reason = "error struct defined for completeness but not yet triggered by current code paths")]
 struct BadEntityId(DataValue, SourceSpan);
 
 impl std::fmt::Display for BadEntityId {
@@ -285,6 +290,7 @@ impl std::fmt::Display for BadEntityId {
 impl std::error::Error for BadEntityId {}
 
 #[derive(Debug)]
+#[expect(dead_code, reason = "SourceSpan and message carried for error context but Display is a fixed string")]
 struct EvalRaisedError(SourceSpan, String);
 
 impl std::fmt::Display for EvalRaisedError {
@@ -363,6 +369,7 @@ impl Expr {
         match self {
             Expr::Binding { var, tuple_pos, .. } => {
                 #[derive(Debug)]
+                #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
                 struct BadBindingError(String, SourceSpan);
 
                 impl std::fmt::Display for BadBindingError {
@@ -617,6 +624,7 @@ impl Expr {
                             if target == symb {
                                 let s = val.get_str().ok_or_else(|| {
                                     #[derive(Debug)]
+                                    #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
                                     struct StrRangeScanError(DataValue, SourceSpan);
 
                                     impl std::fmt::Display for StrRangeScanError {
@@ -650,6 +658,7 @@ impl Expr {
             }
         })
     }
+    #[expect(dead_code, reason = "utility method for variable introspection, retained for future analysis")]
     pub(crate) fn get_variables(&self) -> Result<BTreeSet<String>> {
         let mut ret = BTreeSet::new();
         self.do_get_variables(&mut ret)?;
@@ -776,6 +785,7 @@ pub struct Op {
 }
 
 /// Used as `Arc<dyn CustomOp>`
+#[expect(dead_code, reason = "public extension point for custom operations, no built-in implementors yet")]
 pub trait CustomOp {
     fn name(&self) -> &'static str;
     fn min_arity(&self) -> usize;

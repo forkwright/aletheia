@@ -267,6 +267,7 @@ pub(crate) struct MagicFixedRuleApply {
 #[derive(Debug)]
 pub(crate) struct FixedRuleOptionNotFoundError {
     pub(crate) name: String,
+    #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
 }
@@ -286,8 +287,10 @@ impl std::error::Error for FixedRuleOptionNotFoundError {}
 #[derive(Debug)]
 pub(crate) struct WrongFixedRuleOptionError {
     pub(crate) name: String,
+    #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
+    #[expect(dead_code, reason = "help text carried for future extended error reporting")]
     pub(crate) help: String,
 }
 
@@ -337,6 +340,7 @@ impl MagicFixedRuleApply {
         #[derive(Debug)]
         pub(crate) struct FixedRuleNotEnoughRelationError {
             idx: usize,
+            #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
             span: SourceSpan,
             rule_name: String,
         }
@@ -1083,6 +1087,7 @@ impl SearchInput {
         }
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
         struct LshRequiredMissing(String, SourceSpan);
 
         impl std::fmt::Display for LshRequiredMissing {
@@ -1094,6 +1099,7 @@ impl SearchInput {
         impl std::error::Error for LshRequiredMissing {}
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "error struct defined but not yet triggered by current code paths")]
         struct ExpectedListForLshKeys(SourceSpan);
 
         impl std::fmt::Display for ExpectedListForLshKeys {
@@ -1105,6 +1111,7 @@ impl SearchInput {
         impl std::error::Error for ExpectedListForLshKeys {}
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "error struct defined but not yet triggered by current code paths")]
         struct WrongArityForKeys(SourceSpan, usize, usize);
 
         impl std::fmt::Display for WrongArityForKeys {
@@ -1146,6 +1153,7 @@ impl SearchInput {
                 let k = k.get_int().ok_or(ExpectedPosIntForFtsK(self.span))?;
 
                 #[derive(Debug)]
+                #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
                 struct ExpectedPosIntForFtsK(SourceSpan);
 
                 impl std::fmt::Display for ExpectedPosIntForFtsK {
@@ -1164,6 +1172,7 @@ impl SearchInput {
         let filter = self.parameters.remove("filter");
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
         struct ExtraParametersForLshSearch(Vec<String>, SourceSpan);
 
         impl std::fmt::Display for ExtraParametersForLshSearch {
@@ -1261,6 +1270,7 @@ impl SearchInput {
         }
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
         struct HnswRequiredMissing(String, SourceSpan);
 
         impl std::fmt::Display for HnswRequiredMissing {
@@ -1299,6 +1309,7 @@ impl SearchInput {
         let k = k.get_int().ok_or(ExpectedPosIntForFtsK(self.span))?;
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
         struct ExpectedPosIntForFtsK(SourceSpan);
 
         impl std::fmt::Display for ExpectedPosIntForFtsK {
@@ -1437,6 +1448,7 @@ impl SearchInput {
         }
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
         struct HnswRequiredMissing(String, SourceSpan);
 
         impl std::fmt::Display for HnswRequiredMissing {
@@ -1475,6 +1487,7 @@ impl SearchInput {
         let k = k.get_int().ok_or(ExpectedPosIntForHnswK(self.span))?;
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
         struct ExpectedPosIntForHnswK(SourceSpan);
 
         impl std::fmt::Display for ExpectedPosIntForHnswK {
@@ -1495,6 +1508,7 @@ impl SearchInput {
         let ef = ef.get_int().ok_or(ExpectedPosIntForHnswEf(self.span))?;
 
         #[derive(Debug)]
+        #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
         struct ExpectedPosIntForHnswEf(SourceSpan);
 
         impl std::fmt::Display for ExpectedPosIntForHnswEf {
@@ -1514,6 +1528,7 @@ impl SearchInput {
                 let r = r.get_float().ok_or(ExpectedFloatForHnswRadius(self.span))?;
 
                 #[derive(Debug)]
+                #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
                 struct ExpectedFloatForHnswRadius(SourceSpan);
 
                 impl std::fmt::Display for ExpectedFloatForHnswRadius {
