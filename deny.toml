@@ -38,8 +38,67 @@ allow = [
 confidence-threshold = 0.8
 
 [bans]
-multiple-versions = "warn"
+multiple-versions = "deny"
 wildcards = "allow"
+
+# Skip entries for duplicates caused by upstream constraints we cannot resolve.
+# Each entry exempts the named version from the multiple-versions check.
+# The newer/canonical version is not listed here and is kept as-is.
+skip = [
+    # rand 0.8 — jsonwebtoken 10.x pins rand 0.8; no upstream release uses rand 0.9.
+    # Track: https://github.com/Keats/jsonwebtoken/issues
+    { name = "rand", version = "=0.8.5" },
+    { name = "rand_chacha", version = "=0.3.1" },
+    { name = "rand_core", version = "=0.6.4" },
+
+    # getrandom — three versions coexist: 0.2 (rand 0.8 ecosystem via jsonwebtoken),
+    # 0.3 (rand 0.9 ecosystem), 0.4 (jsonwebtoken rust_crypto feature).
+    { name = "getrandom", version = "=0.2.17" },
+    { name = "getrandom", version = "=0.3.4" },
+
+    # base64 0.13 — from spm_precompiled → tokenizers (ML tokenizer lib for candle embeddings).
+    # tokenizers has not yet released with base64 0.22.
+    { name = "base64", version = "=0.13.1" },
+
+    # darling 0.20 — from derive_builder → tokenizers. Newer darling 0.23 is used by ratatui/instability.
+    { name = "darling", version = "=0.20.11" },
+    { name = "darling_core", version = "=0.20.11" },
+    { name = "darling_macro", version = "=0.20.11" },
+
+    # linux-raw-sys 0.4 — rustix 0.38 (from prometheus/procfs) requires 0.4;
+    # rustix 1.x (newer crates) requires 0.12.
+    { name = "linux-raw-sys", version = "=0.4.15" },
+
+    # r-efi — two versions from different platform abstraction layers.
+    { name = "r-efi", version = "=5.3.0" },
+
+    # rustix 0.38 — prometheus/procfs has not migrated to rustix 1.x.
+    { name = "rustix", version = "=0.38.44" },
+
+    # thiserror 1.x — protobuf (transitive via prometheus) has not migrated to thiserror 2.x.
+    { name = "thiserror", version = "=1.0.69" },
+    { name = "thiserror-impl", version = "=1.0.69" },
+
+    # windows-sys — four versions from different dep generations:
+    # 0.52 (ring/rustls), 0.59 (rustix 0.38), 0.60 (arboard via tui), 0.61 (current).
+    { name = "windows-sys", version = "=0.52.0" },
+    { name = "windows-sys", version = "=0.59.0" },
+    { name = "windows-sys", version = "=0.60.2" },
+
+    # windows-targets and subcomponents — 0.52 from ring/rustls, 0.53 from arboard/tui.
+    { name = "windows-targets", version = "=0.52.6" },
+    { name = "windows_aarch64_gnullvm", version = "=0.52.6" },
+    { name = "windows_aarch64_msvc", version = "=0.52.6" },
+    { name = "windows_i686_gnu", version = "=0.52.6" },
+    { name = "windows_i686_gnullvm", version = "=0.52.6" },
+    { name = "windows_i686_msvc", version = "=0.52.6" },
+    { name = "windows_x86_64_gnu", version = "=0.52.6" },
+    { name = "windows_x86_64_gnullvm", version = "=0.52.6" },
+    { name = "windows_x86_64_msvc", version = "=0.52.6" },
+
+    # winnow 0.6 — cron 0.15 (used by oikonomos/daemon) has not migrated to winnow 0.7.
+    { name = "winnow", version = "=0.6.26" },
+]
 
 [sources]
 unknown-registry = "deny"
