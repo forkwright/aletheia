@@ -376,6 +376,7 @@ Rules:
     /// Persist an extraction to the knowledge store.
     #[cfg(feature = "mneme-engine")]
     #[instrument(skip(self, store))]
+    #[expect(clippy::too_many_lines, reason = "sequential extraction pipeline: entities → relationships → facts")]
     pub fn persist(
         &self,
         extraction: &Extraction,
