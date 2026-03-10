@@ -626,8 +626,8 @@ mod tests {
     #[test]
     fn recall_weights_serde_roundtrip() {
         let weights = RecallWeights::default();
-        let json = serde_json::to_string(&weights).unwrap();
-        let back: RecallWeights = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&weights).expect("RecallWeights is serializable");
+        let back: RecallWeights = serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert!((weights.vector_similarity - back.vector_similarity).abs() < f64::EPSILON);
         assert!((weights.total() - back.total()).abs() < f64::EPSILON);
     }

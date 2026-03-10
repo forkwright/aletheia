@@ -1,6 +1,6 @@
 //! In-memory storage backend.
-use crate::bail;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::DbResult;
+use crate::engine::storage::error::{StorageResult, WriteInReadTransactionSnafu};
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -19,12 +19,13 @@ use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v
 use crate::engine::storage::{Storage, StoreTx};
 use crate::engine::utils::swap_option_result;
 
+type Result<T> = StorageResult<T>;
+
 /// Create a database backed by memory.
 /// This is the fastest storage, but non-persistent.
 /// Supports concurrent readers but only a single writer.
-pub fn new_mem_db() -> Result<crate::engine::DbCore<MemStorage>> {
+pub fn new_mem_db() -> crate::engine::error::DbResult<crate::engine::DbCore<MemStorage>> {
     let ret = crate::engine::DbCore::new(MemStorage::default())?;
-
     ret.initialize()?;
     Ok(ret)
 }
@@ -44,10 +45,10 @@ impl<'s> Storage<'s> for MemStorage {
 
     fn transact(&'s self, write: bool) -> Result<Self::Tx> {
         Ok(if write {
-            let wtr = self.store.write().unwrap(); // INVARIANT: lock is not poisoned
+            let wtr = self.store.write().expect("lock not poisoned");
             MemTx::Writer(wtr, Default::default())
         } else {
-            let rdr = self.store.read().unwrap(); // INVARIANT: lock is not poisoned
+            let rdr = self.store.read().expect("lock not poisoned");
             MemTx::Reader(rdr)
         })
     }
@@ -60,7 +61,7 @@ impl<'s> Storage<'s> for MemStorage {
         &'a self,
         data: Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>,
     ) -> Result<()> {
-        let mut store = self.store.write().unwrap(); // INVARIANT: lock is not poisoned
+        let mut store = self.store.write().expect("lock not poisoned");
         for pair in data {
             let (k, v) = pair?;
             store.insert(k, v);
@@ -90,9 +91,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
 
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
         match self {
-            MemTx::Reader(_) => {
-                bail!("write in read transaction")
-            }
+            MemTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             MemTx::Writer(_, cache) => {
                 cache.insert(key.to_vec(), Some(val.to_vec()));
                 Ok(())
@@ -110,9 +109,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
 
     fn del(&mut self, key: &[u8]) -> Result<()> {
         match self {
-            MemTx::Reader(_) => {
-                bail!("write in read transaction")
-            }
+            MemTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             MemTx::Writer(_, cache) => {
                 cache.insert(key.to_vec(), None);
                 Ok(())
@@ -122,9 +119,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
 
     fn del_range_from_persisted(&mut self, lower: &[u8], upper: &[u8]) -> Result<()> {
         match self {
-            MemTx::Reader(_) => {
-                bail!("write in read transaction")
-            }
+            MemTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             MemTx::Writer(wtr, _) => {
                 let keys = wtr
                     .range(lower.to_vec()..upper.to_vec())
@@ -133,10 +128,9 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
                 for k in keys.iter() {
                     wtr.remove(k);
                 }
+                Ok(())
             }
         }
-
-        Ok(())
     }
 
     fn exists(&self, key: &[u8], _for_update: bool) -> Result<bool> {
@@ -174,7 +168,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = Result<Tuple>> + 'a>
+    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a>
     where
         's: 'a,
     {
@@ -197,7 +191,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         lower: &[u8],
         upper: &[u8],
         valid_at: ValidityTs,
-    ) -> Box<dyn Iterator<Item = Result<Tuple>> + 'a> {
+    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a> {
         match self {
             MemTx::Reader(stored) => Box::new(
                 SkipIterator {
@@ -226,7 +220,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>
+    ) -> Box<dyn Iterator<Item = DbResult<(Vec<u8>, Vec<u8>)>> + 'a>
     where
         's: 'a,
     {
@@ -278,7 +272,7 @@ where
     T: Iterator<Item = (&'a Vec<u8>, &'a Vec<u8>)>,
 {
     #[inline]
-    fn fill_cache(&mut self) -> Result<()> {
+    fn fill_cache(&mut self) -> DbResult<()> {
         if self.change_cache.is_none() {
             if let Some(kmv) = self.change_iter.next() {
                 self.change_cache = Some(kmv)
@@ -295,32 +289,36 @@ where
     }
 
     #[inline]
-    fn next_inner(&mut self) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
+    fn next_inner(&mut self) -> DbResult<Option<(Vec<u8>, Vec<u8>)>> {
         loop {
             self.fill_cache()?;
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take().unwrap();
+                    let (k, cv) = self.change_cache.take()
+                        .expect("change_cache present: matched Some(_) arm");
                     match cv {
                         None => continue,
                         Some(v) => return Ok(Some((k.clone(), v.clone()))),
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take().unwrap();
+                    let (k, v) = self.db_cache.take()
+                        .expect("db_cache present: matched Some(_) arm");
                     return Ok(Some((k.clone(), v.clone())));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.cmp(dk) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take().unwrap();
+                        let (k, sv) = self.change_cache.take()
+                            .expect("change_cache present: matched Some(_) arm");
                         match sv {
                             None => continue,
                             Some(v) => return Ok(Some((k.clone(), v.clone()))),
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take().unwrap();
+                        let (k, v) = self.db_cache.take()
+                            .expect("db_cache present: matched Some(_) arm");
                         return Ok(Some((k.clone(), v.clone())));
                     }
                     Ordering::Equal => {
@@ -338,7 +336,7 @@ where
     C: Iterator<Item = (&'a Vec<u8>, &'a Option<Vec<u8>>)> + 'a,
     T: Iterator<Item = (&'a Vec<u8>, &'a Vec<u8>)>,
 {
-    type Item = Result<(Vec<u8>, Vec<u8>)>;
+    type Item = DbResult<(Vec<u8>, Vec<u8>)>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -355,7 +353,7 @@ struct CacheIter<'a> {
 
 impl CacheIter<'_> {
     #[inline]
-    fn fill_cache(&mut self) -> Result<()> {
+    fn fill_cache(&mut self) -> DbResult<()> {
         if self.change_cache.is_none() {
             if let Some(kmv) = self.change_iter.next() {
                 self.change_cache = Some(kmv)
@@ -372,32 +370,36 @@ impl CacheIter<'_> {
     }
 
     #[inline]
-    fn next_inner(&mut self) -> Result<Option<Tuple>> {
+    fn next_inner(&mut self) -> DbResult<Option<Tuple>> {
         loop {
             self.fill_cache()?;
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take().unwrap();
+                    let (k, cv) = self.change_cache.take()
+                        .expect("change_cache present: matched Some(_) arm");
                     match cv {
                         None => continue,
                         Some(v) => return Ok(Some(decode_tuple_from_kv(k, v, None))),
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take().unwrap();
+                    let (k, v) = self.db_cache.take()
+                        .expect("db_cache present: matched Some(_) arm");
                     return Ok(Some(decode_tuple_from_kv(k, v, None)));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.cmp(dk) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take().unwrap();
+                        let (k, sv) = self.change_cache.take()
+                            .expect("change_cache present: matched Some(_) arm");
                         match sv {
                             None => continue,
                             Some(v) => return Ok(Some(decode_tuple_from_kv(k, v, None))),
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take().unwrap();
+                        let (k, v) = self.db_cache.take()
+                            .expect("db_cache present: matched Some(_) arm");
                         return Ok(Some(decode_tuple_from_kv(k, v, None)));
                     }
                     Ordering::Equal => {
@@ -411,7 +413,7 @@ impl CacheIter<'_> {
 }
 
 impl Iterator for CacheIter<'_> {
-    type Item = Result<Tuple>;
+    type Item = DbResult<Tuple>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {

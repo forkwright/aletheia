@@ -1,5 +1,6 @@
 //! Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,7 +11,8 @@ use tokio_util::sync::CancellationToken;
 use crate::bridge::DaemonBridge;
 use crate::error::{self, Result};
 use crate::maintenance::{
-    DbMonitor, DriftDetector, MaintenanceConfig, RetentionExecutor, TraceRotator,
+    DbMonitor, DriftDetector, KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor,
+    TraceRotator,
 };
 use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 
@@ -22,6 +24,9 @@ pub struct TaskRunner {
     bridge: Option<Arc<dyn DaemonBridge>>,
     maintenance: Option<MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
+    knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    /// Task IDs currently executing (for backpressure).
+    in_flight: HashSet<String>,
 }
 
 struct RegisteredTask {
@@ -51,6 +56,8 @@ impl TaskRunner {
             bridge: None,
             maintenance: None,
             retention_executor: None,
+            knowledge_executor: None,
+            in_flight: HashSet::new(),
         }
     }
 
@@ -67,6 +74,8 @@ impl TaskRunner {
             bridge: Some(bridge),
             maintenance: None,
             retention_executor: None,
+            knowledge_executor: None,
+            in_flight: HashSet::new(),
         }
     }
 
@@ -81,6 +90,16 @@ impl TaskRunner {
     #[must_use]
     pub fn with_retention(mut self, executor: Arc<dyn RetentionExecutor>) -> Self {
         self.retention_executor = Some(executor);
+        self
+    }
+
+    /// Attach a knowledge maintenance executor for graph operations.
+    #[must_use]
+    pub fn with_knowledge_maintenance(
+        mut self,
+        executor: Arc<dyn KnowledgeMaintenanceExecutor>,
+    ) -> Self {
+        self.knowledge_executor = Some(executor);
         self
     }
 
@@ -136,6 +155,70 @@ impl TaskRunner {
                 nous_id: self.nous_id.clone(),
                 schedule: Schedule::Cron("0 30 3 * * *".to_owned()),
                 action: TaskAction::Builtin(BuiltinTask::RetentionExecution),
+                enabled: true,
+                active_window: None,
+            });
+        }
+
+        if config.knowledge_maintenance.enabled && self.knowledge_executor.is_some() {
+            self.register_knowledge_maintenance_tasks();
+        }
+    }
+
+    /// Register the 7 knowledge maintenance tasks with their schedules.
+    fn register_knowledge_maintenance_tasks(&mut self) {
+        let tasks = [
+            (
+                "decay-refresh",
+                "Decay score refresh",
+                Schedule::Interval(Duration::from_secs(4 * 3600)),
+                BuiltinTask::DecayRefresh,
+            ),
+            (
+                "entity-dedup",
+                "Entity deduplication",
+                Schedule::Interval(Duration::from_secs(6 * 3600)),
+                BuiltinTask::EntityDedup,
+            ),
+            (
+                "graph-recompute",
+                "Graph score recomputation",
+                Schedule::Interval(Duration::from_secs(8 * 3600)),
+                BuiltinTask::GraphRecompute,
+            ),
+            (
+                "embedding-refresh",
+                "Embedding refresh",
+                Schedule::Interval(Duration::from_secs(12 * 3600)),
+                BuiltinTask::EmbeddingRefresh,
+            ),
+            (
+                "knowledge-gc",
+                "Knowledge garbage collection",
+                Schedule::Cron("0 0 4 * * *".to_owned()),
+                BuiltinTask::KnowledgeGc,
+            ),
+            (
+                "index-maintenance",
+                "Index maintenance",
+                Schedule::Cron("0 30 4 * * *".to_owned()),
+                BuiltinTask::IndexMaintenance,
+            ),
+            (
+                "graph-health-check",
+                "Graph health check",
+                Schedule::Cron("0 0 5 * * *".to_owned()),
+                BuiltinTask::GraphHealthCheck,
+            ),
+        ];
+
+        for (id, name, schedule, task) in tasks {
+            self.register(TaskDef {
+                id: id.to_owned(),
+                name: name.to_owned(),
+                nous_id: self.nous_id.clone(),
+                schedule,
+                action: TaskAction::Builtin(task),
                 enabled: true,
                 active_window: None,
             });
@@ -221,13 +304,26 @@ impl TaskRunner {
                 continue;
             }
 
+            // Backpressure: skip if previous execution is still in progress.
+            if self.in_flight.contains(&self.tasks[i].def.id) {
+                tracing::debug!(
+                    task_id = %self.tasks[i].def.id,
+                    "skipping — previous execution still in progress"
+                );
+                continue;
+            }
+
             // Clone action and nous_id to release the borrow on self.tasks before
             // calling self.execute_action (which needs &self). TaskAction contains
             // heap data (String, Value) so Copy is not possible.
             let action = self.tasks[i].def.action.clone();
             let nous_id = self.tasks[i].def.nous_id.clone();
+            let task_id = self.tasks[i].def.id.clone();
 
+            self.in_flight.insert(task_id.clone());
             let result = self.execute_action(&action, &nous_id).await;
+            self.in_flight.remove(&task_id);
+
             let task = &mut self.tasks[i];
             task.last_run = Some(now);
 
@@ -251,7 +347,13 @@ impl TaskRunner {
                         "task failed"
                     );
 
-                    if task.consecutive_failures >= 3 {
+                    // GraphHealthCheck failures don't count toward auto-disable.
+                    let exempt = matches!(
+                        task.def.action,
+                        TaskAction::Builtin(BuiltinTask::GraphHealthCheck)
+                    );
+
+                    if !exempt && task.consecutive_failures >= 3 {
                         task.def.enabled = false;
                         tracing::warn!(
                             task_id = %task.def.id,
@@ -356,26 +458,13 @@ impl TaskRunner {
                     })
                 }
             }
-            BuiltinTask::GraphMaintenance => {
-                tracing::info!(
-                    nous_id = %nous_id,
-                    "graph maintenance not yet implemented — requires mneme integration"
-                );
-                Ok(ExecutionResult {
-                    success: true,
-                    output: None,
-                })
-            }
-            BuiltinTask::MemoryConsolidation => {
-                tracing::info!(
-                    nous_id = %nous_id,
-                    "memory consolidation not yet implemented — requires melete integration"
-                );
-                Ok(ExecutionResult {
-                    success: true,
-                    output: None,
-                })
-            }
+            BuiltinTask::DecayRefresh
+            | BuiltinTask::EntityDedup
+            | BuiltinTask::GraphRecompute
+            | BuiltinTask::EmbeddingRefresh
+            | BuiltinTask::KnowledgeGc
+            | BuiltinTask::IndexMaintenance
+            | BuiltinTask::GraphHealthCheck => self.execute_knowledge_task(builtin, nous_id).await,
             BuiltinTask::TraceRotation => {
                 let config = self
                     .maintenance
@@ -503,6 +592,73 @@ impl TaskRunner {
                 })
             }
         }
+    }
+
+    /// Dispatch a knowledge maintenance task to the executor via `spawn_blocking`.
+    async fn execute_knowledge_task(
+        &self,
+        builtin: &BuiltinTask,
+        nous_id: &str,
+    ) -> Result<ExecutionResult> {
+        let Some(executor) = self.knowledge_executor.as_ref().map(Arc::clone) else {
+            tracing::info!(
+                task = ?builtin,
+                "knowledge maintenance skipped — no executor configured"
+            );
+            return Ok(ExecutionResult {
+                success: true,
+                output: Some("skipped — no executor".to_owned()),
+            });
+        };
+
+        let task_name = format!("{builtin:?}");
+        let nous_id_owned = nous_id.to_owned();
+        let builtin_clone = builtin.clone();
+
+        let report = tokio::task::spawn_blocking(move || {
+            let _span = tracing::info_span!(
+                "knowledge_maintenance",
+                task = %task_name,
+                nous_id = %nous_id_owned,
+            )
+            .entered();
+
+            let start = std::time::Instant::now();
+            let mut report = match builtin_clone {
+                BuiltinTask::DecayRefresh => executor.refresh_decay_scores(&nous_id_owned),
+                BuiltinTask::EntityDedup => executor.deduplicate_entities(&nous_id_owned),
+                BuiltinTask::GraphRecompute => executor.recompute_graph_scores(&nous_id_owned),
+                BuiltinTask::EmbeddingRefresh => executor.refresh_embeddings(&nous_id_owned),
+                BuiltinTask::KnowledgeGc => executor.garbage_collect(&nous_id_owned),
+                BuiltinTask::IndexMaintenance => executor.maintain_indexes(&nous_id_owned),
+                BuiltinTask::GraphHealthCheck => executor.health_check(&nous_id_owned),
+                _ => unreachable!("non-knowledge task routed to execute_knowledge_task"),
+            }?;
+
+            report.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+
+            tracing::info!(
+                items_processed = report.items_processed,
+                items_modified = report.items_modified,
+                duration_ms = report.duration_ms,
+                errors = report.errors,
+                "knowledge maintenance complete"
+            );
+
+            Ok(report)
+        })
+        .await
+        .context(error::BlockingJoinSnafu {
+            context: format!("knowledge maintenance: {builtin:?}"),
+        })??;
+
+        Ok(ExecutionResult {
+            success: true,
+            output: Some(format!(
+                "{} processed, {} modified in {}ms",
+                report.items_processed, report.items_modified, report.duration_ms
+            )),
+        })
     }
 }
 

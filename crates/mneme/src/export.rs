@@ -492,12 +492,12 @@ mod tests {
 
     #[test]
     fn binary_content_detection() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let text_path = dir.path().join("text.txt");
         let bin_path = dir.path().join("data.bin");
 
-        std::fs::write(&text_path, "hello world").unwrap();
-        std::fs::write(&bin_path, b"\x00\x01\x02\x03").unwrap();
+        std::fs::write(&text_path, "hello world").expect("write text file");
+        std::fs::write(&bin_path, b"\x00\x01\x02\x03").expect("write binary file");
 
         assert!(!is_binary_content(&text_path));
         assert!(is_binary_content(&bin_path));
@@ -505,28 +505,30 @@ mod tests {
 
     #[test]
     fn scan_empty_workspace() {
-        let dir = tempfile::tempdir().unwrap();
-        let ws = scan_workspace(dir.path()).unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
+        let ws = scan_workspace(dir.path()).expect("scan empty workspace");
         assert!(ws.files.is_empty());
         assert!(ws.binary_files.is_empty());
     }
 
     #[test]
     fn scan_missing_workspace() {
-        let ws = scan_workspace(Path::new("/nonexistent/path")).unwrap();
+        let ws = scan_workspace(Path::new("/nonexistent/path"))
+            .expect("scan missing workspace returns empty");
         assert!(ws.files.is_empty());
         assert!(ws.binary_files.is_empty());
     }
 
     #[test]
     fn scan_classifies_files() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("notes.md"), "# Notes").unwrap();
-        std::fs::write(dir.path().join("data.bin"), b"\x00binary\x00").unwrap();
-        std::fs::create_dir(dir.path().join(".git")).unwrap();
-        std::fs::write(dir.path().join(".git/HEAD"), "ref: refs/heads/main").unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
+        std::fs::write(dir.path().join("notes.md"), "# Notes").expect("write notes.md");
+        std::fs::write(dir.path().join("data.bin"), b"\x00binary\x00").expect("write data.bin");
+        std::fs::create_dir(dir.path().join(".git")).expect("create .git dir");
+        std::fs::write(dir.path().join(".git/HEAD"), "ref: refs/heads/main")
+            .expect("write .git/HEAD");
 
-        let ws = scan_workspace(dir.path()).unwrap();
+        let ws = scan_workspace(dir.path()).expect("scan workspace");
         assert_eq!(ws.files.len(), 1);
         assert!(ws.files.contains_key("notes.md"));
         assert_eq!(ws.binary_files.len(), 1);
@@ -535,12 +537,13 @@ mod tests {
 
     #[test]
     fn scan_skips_ignored_dirs() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(dir.path().join("node_modules")).unwrap();
-        std::fs::write(dir.path().join("node_modules/package.json"), "{}").unwrap();
-        std::fs::write(dir.path().join("readme.md"), "hello").unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
+        std::fs::create_dir(dir.path().join("node_modules")).expect("create node_modules dir");
+        std::fs::write(dir.path().join("node_modules/package.json"), "{}")
+            .expect("write package.json");
+        std::fs::write(dir.path().join("readme.md"), "hello").expect("write readme.md");
 
-        let ws = scan_workspace(dir.path()).unwrap();
+        let ws = scan_workspace(dir.path()).expect("scan workspace");
         assert_eq!(ws.files.len(), 1);
         assert!(ws.files.contains_key("readme.md"));
     }
@@ -550,17 +553,19 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "alice", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .append_message("ses-1", Role::User, "hello", None, None, 50)
-            .unwrap();
+            .expect("append user message");
         store
             .append_message("ses-1", Role::Assistant, "hi", None, None, 40)
-            .unwrap();
-        store.add_note("ses-1", "alice", "task", "testing").unwrap();
+            .expect("append assistant message");
+        store
+            .add_note("ses-1", "alice", "task", "testing")
+            .expect("add note");
 
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("notes.md"), "# Test").unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
+        std::fs::write(dir.path().join("notes.md"), "# Test").expect("write notes.md");
 
         let opts = ExportOptions::default();
         let agent = export_agent(
@@ -572,7 +577,7 @@ mod tests {
             dir.path(),
             &opts,
         )
-        .unwrap();
+        .expect("export agent");
 
         assert_eq!(agent.version, 1);
         assert_eq!(agent.nous.id, "alice");
@@ -588,15 +593,15 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-active", "bob", "main", None, None)
-            .unwrap();
+            .expect("create active session");
         store
             .create_session("ses-archived", "bob", "old", None, None)
-            .unwrap();
+            .expect("create archived session");
         store
             .update_session_status("ses-archived", SessionStatus::Archived)
-            .unwrap();
+            .expect("archive session");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let opts = ExportOptions::default();
         let agent = export_agent(
             "bob",
@@ -607,7 +612,7 @@ mod tests {
             dir.path(),
             &opts,
         )
-        .unwrap();
+        .expect("export agent without archived");
         assert_eq!(agent.sessions.len(), 1);
 
         let opts_with_archived = ExportOptions {
@@ -623,7 +628,7 @@ mod tests {
             dir.path(),
             &opts_with_archived,
         )
-        .unwrap();
+        .expect("export agent with archived");
         assert_eq!(agent.sessions.len(), 2);
     }
 
@@ -632,16 +637,18 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "carol", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .append_message("ses-1", Role::User, "old", None, None, 100)
-            .unwrap();
+            .expect("append old message");
         store
             .append_message("ses-1", Role::User, "new", None, None, 50)
-            .unwrap();
-        store.mark_messages_distilled("ses-1", &[1]).unwrap();
+            .expect("append new message");
+        store
+            .mark_messages_distilled("ses-1", &[1])
+            .expect("mark messages distilled");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let opts = ExportOptions::default();
         let agent = export_agent(
             "carol",
@@ -652,7 +659,7 @@ mod tests {
             dir.path(),
             &opts,
         )
-        .unwrap();
+        .expect("export agent with distilled messages");
 
         // Both messages exported, including the distilled one
         assert_eq!(agent.sessions[0].messages.len(), 2);
@@ -665,14 +672,14 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "dave", "main", None, None)
-            .unwrap();
+            .expect("create session");
         for i in 1..=10 {
             store
                 .append_message("ses-1", Role::User, &format!("msg {i}"), None, None, 10)
-                .unwrap();
+                .expect("append message");
         }
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let opts = ExportOptions {
             max_messages_per_session: 3,
             include_archived: false,
@@ -686,7 +693,7 @@ mod tests {
             dir.path(),
             &opts,
         )
-        .unwrap();
+        .expect("export agent with message limit");
 
         assert_eq!(agent.sessions[0].messages.len(), 3);
         assert_eq!(agent.sessions[0].messages[0].content, "msg 1");
@@ -695,7 +702,7 @@ mod tests {
     #[test]
     fn export_empty_agent() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let opts = ExportOptions::default();
 
         let agent = export_agent(
@@ -707,7 +714,7 @@ mod tests {
             dir.path(),
             &opts,
         )
-        .unwrap();
+        .expect("export empty agent");
 
         assert_eq!(agent.sessions.len(), 0);
         assert!(agent.workspace.files.is_empty());
@@ -715,8 +722,8 @@ mod tests {
         assert_eq!(agent.nous.id, "nobody");
         assert!(agent.memory.is_none());
 
-        let json = serde_json::to_string(&agent).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&agent).expect("serialize agent to JSON");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse JSON value");
         assert!(parsed.is_object(), "empty export produces valid JSON");
     }
 
@@ -725,12 +732,12 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-ts", "ts-agent", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .append_message("ses-ts", Role::User, "time test", None, None, 30)
-            .unwrap();
+            .expect("append message");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let agent = export_agent(
             "ts-agent",
             None,
@@ -740,7 +747,7 @@ mod tests {
             dir.path(),
             &ExportOptions::default(),
         )
-        .unwrap();
+        .expect("export agent");
 
         let session = &agent.sessions[0];
         assert!(!session.created_at.is_empty(), "created_at must be set");
@@ -750,8 +757,9 @@ mod tests {
             "message created_at must be set"
         );
 
-        let json = serde_json::to_string(&agent).unwrap();
-        let restored: crate::portability::AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&agent).expect("serialize agent to JSON");
+        let restored: crate::portability::AgentFile =
+            serde_json::from_str(&json).expect("deserialize agent from JSON");
         assert_eq!(restored.sessions[0].created_at, session.created_at);
         assert_eq!(restored.sessions[0].updated_at, session.updated_at);
         assert_eq!(
@@ -765,7 +773,7 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-uni", "uni-agent", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         let emoji = "Hello 🌍🔥 world";
         let cjk = "你好世界 こんにちは";
@@ -774,14 +782,14 @@ mod tests {
 
         store
             .append_message("ses-uni", Role::User, &mixed, None, None, 100)
-            .unwrap();
+            .expect("append unicode message");
         store
             .add_note("ses-uni", "uni-agent", "context", &mixed)
-            .unwrap();
+            .expect("add unicode note");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let unicode_file = "日本語.txt";
-        std::fs::write(dir.path().join(unicode_file), &mixed).unwrap();
+        std::fs::write(dir.path().join(unicode_file), &mixed).expect("write unicode file");
 
         let agent = export_agent(
             "uni-agent",
@@ -792,14 +800,15 @@ mod tests {
             dir.path(),
             &ExportOptions::default(),
         )
-        .unwrap();
+        .expect("export unicode agent");
 
         assert_eq!(agent.sessions[0].messages[0].content, mixed);
         assert_eq!(agent.sessions[0].notes[0].content, mixed);
         assert_eq!(agent.nous.name.as_deref(), Some("Ünïcödé Àgënt"));
 
-        let json = serde_json::to_string_pretty(&agent).unwrap();
-        let restored: crate::portability::AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string_pretty(&agent).expect("serialize unicode agent to JSON");
+        let restored: crate::portability::AgentFile =
+            serde_json::from_str(&json).expect("deserialize unicode agent from JSON");
         assert_eq!(restored.sessions[0].messages[0].content, mixed);
         assert_eq!(restored.sessions[0].notes[0].content, mixed);
     }
@@ -807,7 +816,7 @@ mod tests {
     #[test]
     fn export_empty_store() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let opts = ExportOptions::default();
 
         let agent = export_agent(
@@ -819,13 +828,14 @@ mod tests {
             dir.path(),
             &opts,
         )
-        .unwrap();
+        .expect("export empty store agent");
 
         assert_eq!(agent.sessions.len(), 0);
         assert_eq!(agent.nous.id, "empty-agent");
 
-        let json = serde_json::to_string(&agent).unwrap();
-        let restored: crate::portability::AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&agent).expect("serialize agent to JSON");
+        let restored: crate::portability::AgentFile =
+            serde_json::from_str(&json).expect("deserialize agent from JSON");
         assert_eq!(restored.sessions.len(), 0);
     }
 
@@ -834,14 +844,14 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-lim", "limiter", "main", None, None)
-            .unwrap();
+            .expect("create session");
         for i in 1..=20 {
             store
                 .append_message("ses-lim", Role::User, &format!("msg {i}"), None, None, 10)
-                .unwrap();
+                .expect("append message");
         }
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
 
         let opts_limited = ExportOptions {
             max_messages_per_session: 5,
@@ -856,7 +866,7 @@ mod tests {
             dir.path(),
             &opts_limited,
         )
-        .unwrap();
+        .expect("export agent with limit of 5");
         assert_eq!(agent.sessions[0].messages.len(), 5);
 
         let opts_unlimited = ExportOptions {
@@ -872,7 +882,7 @@ mod tests {
             dir.path(),
             &opts_unlimited,
         )
-        .unwrap();
+        .expect("export agent with no message limit");
         assert_eq!(agent_all.sessions[0].messages.len(), 20);
     }
 
@@ -921,15 +931,15 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-meta", "meta-agent", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .append_message("ses-meta", Role::User, "hello", None, None, 42)
-            .unwrap();
+            .expect("append message");
         store
             .add_note("ses-meta", "meta-agent", "context", "important note")
-            .unwrap();
+            .expect("add note");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let agent = export_agent(
             "meta-agent",
             Some("Meta"),
@@ -939,7 +949,7 @@ mod tests {
             dir.path(),
             &ExportOptions::default(),
         )
-        .unwrap();
+        .expect("export agent with session metadata");
 
         let session = &agent.sessions[0];
         assert_eq!(session.id, "ses-meta");
@@ -958,15 +968,15 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-a", "filter-agent", "main", None, None)
-            .unwrap();
+            .expect("create active session");
         store
             .create_session("ses-b", "filter-agent", "old", None, None)
-            .unwrap();
+            .expect("create session to archive");
         store
             .update_session_status("ses-b", SessionStatus::Archived)
-            .unwrap();
+            .expect("archive session");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
 
         let opts_default = ExportOptions::default();
         let agent = export_agent(
@@ -978,7 +988,7 @@ mod tests {
             dir.path(),
             &opts_default,
         )
-        .unwrap();
+        .expect("export agent without archived");
         assert_eq!(
             agent.sessions.len(),
             1,
@@ -999,7 +1009,7 @@ mod tests {
             dir.path(),
             &opts_include,
         )
-        .unwrap();
+        .expect("export agent with archived");
         assert_eq!(
             agent_all.sessions.len(),
             2,
@@ -1009,13 +1019,13 @@ mod tests {
 
     #[test]
     fn scan_workspace_nested_structure() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create tempdir");
         let sub = dir.path().join("sub/deep");
-        std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(dir.path().join("root.txt"), "root").unwrap();
-        std::fs::write(sub.join("nested.md"), "nested").unwrap();
+        std::fs::create_dir_all(&sub).expect("create nested directories");
+        std::fs::write(dir.path().join("root.txt"), "root").expect("write root.txt");
+        std::fs::write(sub.join("nested.md"), "nested").expect("write nested.md");
 
-        let ws = scan_workspace(dir.path()).unwrap();
+        let ws = scan_workspace(dir.path()).expect("scan nested workspace");
         assert_eq!(ws.files.len(), 2);
         assert!(ws.files.contains_key("root.txt"));
         assert!(ws.files.contains_key("sub/deep/nested.md"));

@@ -485,7 +485,7 @@ When you need company intelligence.
 
     #[test]
     fn parse_basic_skill_md() {
-        let skill = parse_skill_md(SAMPLE_SKILL, "web-research").unwrap();
+        let skill = parse_skill_md(SAMPLE_SKILL, "web-research").expect("valid skill md");
         assert_eq!(skill.name, "web-research");
         assert!(skill.description.contains("Systematically research"));
         assert_eq!(skill.steps.len(), 3);
@@ -496,7 +496,8 @@ When you need company intelligence.
 
     #[test]
     fn parse_skill_with_frontmatter() {
-        let skill = parse_skill_md(SAMPLE_WITH_FRONTMATTER, "web-intel").unwrap();
+        let skill = parse_skill_md(SAMPLE_WITH_FRONTMATTER, "web-intel")
+            .expect("valid frontmatter skill md");
         assert_eq!(skill.tools_used, vec!["web_fetch", "web_search"]);
         assert_eq!(skill.domain_tags, vec!["research", "writing"]);
         assert_eq!(skill.steps.len(), 2);
@@ -504,34 +505,37 @@ When you need company intelligence.
 
     #[test]
     fn parse_skill_derives_domain_tags_from_slug() {
-        let skill = parse_skill_md(SAMPLE_SKILL, "docker-network-diagnostics").unwrap();
+        let skill = parse_skill_md(SAMPLE_SKILL, "docker-network-diagnostics")
+            .expect("valid skill md for domain tag derivation");
         assert_eq!(skill.domain_tags, vec!["docker", "network", "diagnostics"]);
     }
 
     #[test]
     fn parse_skill_missing_heading_fails() {
         let bad = "No heading here\n\n## Steps\n1. Do stuff";
-        let err = parse_skill_md(bad, "bad-skill").unwrap_err();
+        let err = parse_skill_md(bad, "bad-skill").expect_err("bad skill md must fail");
         assert!(err.reason.contains("missing top-level heading"));
     }
 
     #[test]
     fn parse_skill_empty_doc_fails() {
-        let err = parse_skill_md("", "empty").unwrap_err();
+        let err = parse_skill_md("", "empty").expect_err("empty skill md must fail");
         assert!(err.reason.contains("empty document"));
     }
 
     #[test]
     fn parse_skill_no_description_uses_when_to_use() {
         let md = "# Skill\n\n## When to Use\nWhen you need to do things.\n\n## Steps\n1. Do it\n";
-        let skill = parse_skill_md(md, "fallback").unwrap();
+        let skill = parse_skill_md(md, "fallback")
+            .expect("skill with when-to-use fallback description should parse");
         assert!(skill.description.contains("When you need to do things"));
     }
 
     #[test]
     fn parse_skill_no_description_at_all_fails() {
         let md = "# Skill\n\n## Steps\n1. Do it\n";
-        let err = parse_skill_md(md, "no-desc").unwrap_err();
+        let err = parse_skill_md(md, "no-desc")
+            .expect_err("skill without any description must fail to parse");
         assert!(err.reason.contains("no description"));
     }
 
@@ -545,8 +549,9 @@ When you need company intelligence.
             domain_tags: vec!["test".to_owned()],
             origin: "manual".to_owned(),
         };
-        let json = serde_json::to_string(&skill).unwrap();
-        let back: SkillContent = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&skill).expect("SkillContent serializes to JSON");
+        let back: SkillContent =
+            serde_json::from_str(&json).expect("SkillContent deserializes from JSON");
         assert_eq!(skill, back);
     }
 
@@ -561,7 +566,7 @@ When you need company intelligence.
     fn split_frontmatter_present() {
         let (fm, body) = split_frontmatter("---\ntools: [a]\n---\n# Title\n");
         assert!(fm.is_some());
-        assert!(fm.unwrap().contains("tools:"));
+        assert!(fm.expect("frontmatter present").contains("tools:"));
         assert!(body.contains("# Title"));
     }
 
@@ -574,35 +579,35 @@ When you need company intelligence.
 
     #[test]
     fn scan_skill_dir_with_tempdir() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("my-skill");
-        std::fs::create_dir(&skill_dir).unwrap();
+        std::fs::create_dir(&skill_dir).expect("create skill subdir");
         std::fs::write(
             skill_dir.join("SKILL.md"),
             "# My Skill\nDoes things.\n\n## When to Use\nAlways.\n\n## Steps\n1. Go\n",
         )
-        .unwrap();
+        .expect("write SKILL.md");
 
-        let skills = scan_skill_dir(dir.path()).unwrap();
+        let skills = scan_skill_dir(dir.path()).expect("scan skill dir");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].0, "my-skill");
     }
 
     #[test]
     fn scan_skill_dir_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let skills = scan_skill_dir(dir.path()).unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let skills = scan_skill_dir(dir.path()).expect("scan empty skill dir");
         assert!(skills.is_empty());
     }
 
     #[test]
     fn scan_skill_dir_ignores_non_skill_dirs() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let sub = dir.path().join("not-a-skill");
-        std::fs::create_dir(&sub).unwrap();
-        std::fs::write(sub.join("README.md"), "not a skill").unwrap();
+        std::fs::create_dir(&sub).expect("create non-skill subdir");
+        std::fs::write(sub.join("README.md"), "not a skill").expect("write README.md");
 
-        let skills = scan_skill_dir(dir.path()).unwrap();
+        let skills = scan_skill_dir(dir.path()).expect("scan dir with non-skill subdirs");
         assert!(skills.is_empty());
     }
 
@@ -771,9 +776,9 @@ When you need company intelligence.
 
     #[test]
     fn export_creates_correct_directory_structure() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let skills = vec![export_skill()];
-        let exported = export_skills_to_cc(&skills, dir.path(), None).unwrap();
+        let exported = export_skills_to_cc(&skills, dir.path(), None).expect("export skills to cc");
 
         assert_eq!(exported.len(), 1);
         assert_eq!(exported[0].slug, "rust-error-handling");
@@ -788,13 +793,13 @@ When you need company intelligence.
 
     #[test]
     fn export_skill_md_contains_valid_frontmatter() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let skills = vec![export_skill()];
-        export_skills_to_cc(&skills, dir.path(), None).unwrap();
+        export_skills_to_cc(&skills, dir.path(), None).expect("export skills to cc");
 
         let content =
             std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
-                .unwrap();
+                .expect("read exported SKILL.md");
         assert!(content.starts_with("---\n"));
         assert!(content.contains("name: rust-error-handling"));
         assert!(content.contains("description:"));
@@ -803,14 +808,15 @@ When you need company intelligence.
 
     #[test]
     fn export_domain_filtering_excludes_non_matching() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let rust_skill = export_skill();
         let mut python_skill = export_skill();
         python_skill.name = "python-testing".to_owned();
         python_skill.domain_tags = vec!["python".to_owned(), "testing".to_owned()];
 
         let skills = vec![rust_skill, python_skill];
-        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["rust"])).unwrap();
+        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["rust"]))
+            .expect("export with domain filter");
 
         assert_eq!(exported.len(), 1);
         assert_eq!(exported[0].slug, "rust-error-handling");
@@ -818,20 +824,22 @@ When you need company intelligence.
 
     #[test]
     fn export_no_skills_produces_empty_result() {
-        let dir = tempfile::tempdir().unwrap();
-        let exported = export_skills_to_cc(&[], dir.path(), None).unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let exported =
+            export_skills_to_cc(&[], dir.path(), None).expect("export empty skills list");
         assert!(exported.is_empty());
     }
 
     #[test]
     fn export_multiple_skills_creates_separate_directories() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut docker_skill = export_skill();
         docker_skill.name = "docker-diagnostics".to_owned();
         docker_skill.domain_tags = vec!["docker".to_owned()];
 
         let skills = vec![export_skill(), docker_skill];
-        let exported = export_skills_to_cc(&skills, dir.path(), None).unwrap();
+        let exported =
+            export_skills_to_cc(&skills, dir.path(), None).expect("export multiple skills");
 
         assert_eq!(exported.len(), 2);
         assert!(
@@ -850,15 +858,17 @@ When you need company intelligence.
 
     #[test]
     fn export_roundtrip_content_preserved() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let original = export_skill();
-        export_skills_to_cc(std::slice::from_ref(&original), dir.path(), None).unwrap();
+        export_skills_to_cc(std::slice::from_ref(&original), dir.path(), None)
+            .expect("export skill for roundtrip");
 
         // Read back and parse
         let exported_md =
             std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
-                .unwrap();
-        let parsed = parse_skill_md(&exported_md, "rust-error-handling").unwrap();
+                .expect("read back exported SKILL.md");
+        let parsed = parse_skill_md(&exported_md, "rust-error-handling")
+            .expect("re-parse exported skill md");
 
         assert_eq!(parsed.name, original.name);
         assert_eq!(parsed.description, original.description);
@@ -868,10 +878,11 @@ When you need company intelligence.
 
     #[test]
     fn export_special_chars_in_name_slugified() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut skill = export_skill();
         skill.name = "C++ Template (Meta)".to_owned();
-        let exported = export_skills_to_cc(&[skill], dir.path(), None).unwrap();
+        let exported = export_skills_to_cc(&[skill], dir.path(), None)
+            .expect("export skill with special chars in name");
 
         assert_eq!(exported[0].slug, "c-template-meta");
         assert!(dir.path().join("c-template-meta").join("SKILL.md").exists());
@@ -879,15 +890,17 @@ When you need company intelligence.
 
     #[test]
     fn export_overwrites_existing_file() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("rust-error-handling");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "old content").unwrap();
+        std::fs::create_dir_all(&skill_dir).expect("create pre-existing skill dir");
+        std::fs::write(skill_dir.join("SKILL.md"), "old content")
+            .expect("write pre-existing SKILL.md");
 
         let skills = vec![export_skill()];
-        export_skills_to_cc(&skills, dir.path(), None).unwrap();
+        export_skills_to_cc(&skills, dir.path(), None).expect("overwrite existing skill");
 
-        let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+        let content =
+            std::fs::read_to_string(skill_dir.join("SKILL.md")).expect("read overwritten SKILL.md");
         assert!(
             content.contains("## When to Use"),
             "should have new content"
@@ -897,9 +910,10 @@ When you need company intelligence.
 
     #[test]
     fn export_domain_filter_with_no_matches_returns_empty() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let skills = vec![export_skill()]; // domain_tags: ["rust", "errors"]
-        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["python"])).unwrap();
+        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["python"]))
+            .expect("export with non-matching domain filter");
         assert!(exported.is_empty());
     }
 }

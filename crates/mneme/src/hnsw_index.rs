@@ -287,7 +287,7 @@ mod tests {
 
     #[test]
     fn dump_and_load_roundtrip() {
-        let dir = tempfile::TempDir::new().unwrap();
+        let dir = tempfile::TempDir::new().expect("temp dir creation succeeds");
         let config = HnswConfig {
             dim: 4,
             persist_dir: Some(dir.path().to_path_buf()),

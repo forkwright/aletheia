@@ -212,13 +212,14 @@ mod tests {
     use super::*;
 
     fn fresh_conn() -> Connection {
-        Connection::open_in_memory().unwrap()
+        Connection::open_in_memory().expect("in-memory SQLite connection should always open")
     }
 
     #[test]
     fn fresh_database_gets_all_migrations() {
         let conn = fresh_conn();
-        let result = run_migrations(&conn).unwrap();
+        let result =
+            run_migrations(&conn).expect("migrations should apply successfully to a fresh DB");
 
         assert!(result.was_fresh);
         assert_eq!(result.applied, vec![1, 2, 3]);
@@ -228,9 +229,9 @@ mod tests {
     #[test]
     fn already_migrated_skips_applied() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap();
+        run_migrations(&conn).expect("first migration run should succeed");
 
-        let result = run_migrations(&conn).unwrap();
+        let result = run_migrations(&conn).expect("second migration run on same DB should succeed");
         assert!(!result.was_fresh);
         assert!(result.applied.is_empty());
         assert_eq!(result.current_version, 3);
@@ -239,7 +240,7 @@ mod tests {
     #[test]
     fn version_recorded_in_schema_version() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         let (version, description): (u32, String) = conn
             .query_row(
@@ -247,7 +248,7 @@ mod tests {
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .unwrap();
+            .expect("schema_version row for version 1 should exist after migration");
         assert_eq!(version, 1);
         assert!(!description.is_empty());
     }
@@ -256,9 +257,10 @@ mod tests {
     fn dry_run_reports_pending_without_applying() {
         let conn = fresh_conn();
         // Bootstrap table but don't apply migrations
-        bootstrap_version_table(&conn).unwrap();
+        bootstrap_version_table(&conn).expect("bootstrap_version_table should succeed");
 
-        let pending = check_migrations(&conn).unwrap();
+        let pending = check_migrations(&conn)
+            .expect("check_migrations should return pending list without applying");
         assert_eq!(pending.len(), 3);
         assert_eq!(pending[0].version, 1);
 
@@ -270,9 +272,10 @@ mod tests {
     #[test]
     fn dry_run_empty_when_current() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
-        let pending = check_migrations(&conn).unwrap();
+        let pending = check_migrations(&conn)
+            .expect("check_migrations should succeed on a fully migrated DB");
         assert!(pending.is_empty());
     }
 
@@ -292,7 +295,7 @@ mod tests {
     #[test]
     fn tables_exist_after_migration() {
         let conn = fresh_conn();
-        run_migrations(&conn).unwrap();
+        run_migrations(&conn).expect("migrations should apply successfully");
 
         for table in &[
             "sessions",
@@ -308,7 +311,7 @@ mod tests {
                     [table],
                     |row| row.get(0),
                 )
-                .unwrap();
+                .expect("sqlite_master query should succeed for table existence check");
             assert!(exists, "table {table} should exist after migration");
         }
     }
@@ -316,7 +319,7 @@ mod tests {
     #[test]
     fn run_migrations_fresh_db_schema_version() {
         let conn = fresh_conn();
-        let result = run_migrations(&conn).unwrap();
+        let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
         assert_eq!(result.current_version, 3);
         let version = get_schema_version(&conn);
         assert_eq!(version, 3);
@@ -325,8 +328,9 @@ mod tests {
     #[test]
     fn run_migrations_idempotent() {
         let conn = fresh_conn();
-        let first = run_migrations(&conn).unwrap();
-        let second = run_migrations(&conn).unwrap();
+        let first = run_migrations(&conn).expect("first migration run should succeed");
+        let second =
+            run_migrations(&conn).expect("second migration run should succeed idempotently");
         assert_eq!(first.current_version, second.current_version);
         assert!(second.applied.is_empty());
     }
@@ -334,7 +338,8 @@ mod tests {
     #[test]
     fn check_migrations_reports_pending() {
         let conn = fresh_conn();
-        let pending = check_migrations(&conn).unwrap();
+        let pending = check_migrations(&conn)
+            .expect("check_migrations should return all pending on fresh DB");
         assert_eq!(pending.len(), MIGRATIONS.len());
         assert_eq!(pending[0].version, 1);
     }
@@ -342,7 +347,7 @@ mod tests {
     #[test]
     fn get_schema_version_fresh_db() {
         let conn = fresh_conn();
-        bootstrap_version_table(&conn).unwrap();
+        bootstrap_version_table(&conn).expect("bootstrap_version_table should succeed on fresh DB");
         let version = get_schema_version(&conn);
         assert_eq!(version, 0);
     }
@@ -358,13 +363,15 @@ mod tests {
                 applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             )",
         )
-        .unwrap();
-        conn.execute_batch(DDL).unwrap();
+        .expect("creating legacy schema_version table should succeed");
+        conn.execute_batch(DDL)
+            .expect("applying base DDL to simulate v1 database should succeed");
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
-            .unwrap();
+            .expect("inserting v1 schema_version record should succeed");
 
         // Running migrations should detect existing v1 and apply v2+v3
-        let result = run_migrations(&conn).unwrap();
+        let result =
+            run_migrations(&conn).expect("migrations should apply v2 and v3 to a v1 database");
         assert!(!result.was_fresh);
         assert_eq!(result.applied, vec![2, 3]);
         assert_eq!(result.current_version, 3);

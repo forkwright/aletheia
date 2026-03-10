@@ -490,7 +490,9 @@ mod tests {
             ]
         }"#;
 
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("valid extraction JSON should parse");
         assert_eq!(extraction.entities.len(), 2);
         assert_eq!(extraction.entities[0].name, "Dr. Chen");
         assert_eq!(extraction.entities[1].entity_type, "project");
@@ -514,7 +516,9 @@ mod tests {
 }
 ```"#;
 
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("JSON with code fences should parse after stripping");
         assert_eq!(extraction.entities.len(), 1);
         assert_eq!(extraction.entities[0].name, "Rust");
     }
@@ -524,7 +528,7 @@ mod tests {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let result = engine.parse_response("this is not json at all");
         assert!(result.is_err());
-        let err = result.unwrap_err();
+        let err = result.expect_err("non-JSON input should produce parse error");
         assert!(matches!(err, ExtractionError::ParseResponse { .. }));
     }
 
@@ -543,7 +547,9 @@ mod tests {
             content: "Hi".to_owned(),
         }];
 
-        let result = engine.extract(&messages, &NeverCallProvider).unwrap();
+        let result = engine
+            .extract(&messages, &NeverCallProvider)
+            .expect("short message should return empty extraction without error");
         assert!(result.entities.is_empty());
     }
 
@@ -563,7 +569,9 @@ mod tests {
                 .to_owned(),
         }];
 
-        let result = engine.extract(&messages, &MockProvider).unwrap();
+        let result = engine
+            .extract(&messages, &MockProvider)
+            .expect("mock provider returns valid JSON, extraction should succeed");
         assert_eq!(result.facts.len(), 1);
         assert_eq!(result.facts[0].subject, "Dr. Chen");
     }
@@ -603,7 +611,9 @@ mod tests {
     fn parse_empty_extraction() {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let json = r#"{"entities": [], "relationships": [], "facts": []}"#;
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("empty arrays JSON should parse to empty extraction");
         assert!(extraction.entities.is_empty());
         assert!(extraction.relationships.is_empty());
         assert!(extraction.facts.is_empty());
@@ -646,7 +656,9 @@ mod tests {
                 {"subject": "Alice", "predicate": "uses", "object": "Rust", "confidence": -0.3}
             ]
         }"#;
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("out-of-range confidence values should parse without error");
         assert!(
             (extraction.relationships[0].confidence - 1.5).abs() < f64::EPSILON,
             "confidence > 1.0 is not clamped at parse time"
@@ -672,7 +684,9 @@ mod tests {
             "relationships": [],
             "facts": []
         }"#;
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("all entity types including unknown should parse");
         assert_eq!(extraction.entities.len(), 6);
         // entity_type is a free-form string — no validation at parse time
         assert_eq!(extraction.entities[5].entity_type, "unknown_type");
@@ -692,7 +706,9 @@ mod tests {
                 {"subject": "Alice", "predicate": "lives in", "object": "Athens", "confidence": 0.7}
             ]
         }"#;
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("multiple facts should parse successfully");
         assert_eq!(extraction.facts.len(), 5);
     }
 
@@ -709,7 +725,9 @@ mod tests {
             "relationships": [],
             "facts": []
         }"#;
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("duplicate entities in JSON should parse without deduplication");
         assert_eq!(
             extraction.entities.len(),
             2,
@@ -774,9 +792,18 @@ mod tests {
         ];
 
         let prompt = engine.build_prompt(&messages);
-        let first_pos = prompt.user_message.find("first message").unwrap();
-        let second_pos = prompt.user_message.find("second message").unwrap();
-        let third_pos = prompt.user_message.find("third message").unwrap();
+        let first_pos = prompt
+            .user_message
+            .find("first message")
+            .expect("first message should appear in user_message");
+        let second_pos = prompt
+            .user_message
+            .find("second message")
+            .expect("second message should appear in user_message");
+        let third_pos = prompt
+            .user_message
+            .find("third message")
+            .expect("third message should appear in user_message");
         assert!(first_pos < second_pos);
         assert!(second_pos < third_pos);
     }
@@ -804,7 +831,7 @@ mod tests {
         let result = engine.extract(&messages, &FailingProvider);
         assert!(result.is_err());
         assert!(matches!(
-            result.unwrap_err(),
+            result.expect_err("failing provider should return LlmCall error"),
             ExtractionError::LlmCall { .. }
         ));
     }
@@ -812,7 +839,8 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     #[test]
     fn persist_round_trip() {
-        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let store = crate::knowledge_store::KnowledgeStore::open_mem()
+            .expect("in-memory knowledge store should open successfully");
         let engine = ExtractionEngine::new(ExtractionConfig::default());
 
         let extraction = Extraction {
@@ -844,7 +872,7 @@ mod tests {
 
         let result = engine
             .persist(&extraction, &store, "session:test:main:2026-03-02", "syn")
-            .unwrap();
+            .expect("persist should succeed with valid entities, relationships, and facts");
         assert_eq!(result.entities_inserted, 2);
         assert_eq!(result.relationships_inserted, 1);
         assert_eq!(result.relationships_skipped, 0);
@@ -853,7 +881,7 @@ mod tests {
         // Verify entities are queryable via entity_neighborhood.
         let neighborhood = store
             .entity_neighborhood(&crate::id::EntityId::new_unchecked("dr-chen"))
-            .unwrap();
+            .expect("entity neighborhood query for dr-chen should succeed");
         assert!(
             !neighborhood.rows.is_empty(),
             "dr-chen entity should be reachable in the graph"
@@ -864,7 +892,7 @@ mod tests {
         // far_future() is 9999-01-01T00:00:00Z, so query before that.
         let facts = store
             .query_facts("syn", "2099-01-01T00:00:00Z", 100)
-            .unwrap();
+            .expect("query_facts should return results for syn nous up to year 2099");
         assert!(
             facts.iter().any(|f| f.content.contains("CozoDB")),
             "persisted fact should be retrievable"
@@ -874,7 +902,8 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     #[test]
     fn persist_skips_relates_to() {
-        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let store = crate::knowledge_store::KnowledgeStore::open_mem()
+            .expect("in-memory knowledge store should open successfully");
         let engine = ExtractionEngine::new(ExtractionConfig::default());
 
         let extraction = Extraction {
@@ -901,7 +930,7 @@ mod tests {
 
         let result = engine
             .persist(&extraction, &store, "session:test", "syn")
-            .unwrap();
+            .expect("persist should succeed even when all relationships are skipped");
         assert_eq!(result.relationships_inserted, 0);
         assert_eq!(result.relationships_skipped, 1);
     }
@@ -909,7 +938,8 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     #[test]
     fn persist_normalizes_relation_type() {
-        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let store = crate::knowledge_store::KnowledgeStore::open_mem()
+            .expect("in-memory knowledge store should open successfully");
         let engine = ExtractionEngine::new(ExtractionConfig::default());
 
         let extraction = Extraction {
@@ -936,13 +966,13 @@ mod tests {
 
         let result = engine
             .persist(&extraction, &store, "session:test", "syn")
-            .unwrap();
+            .expect("persist should succeed with normalized relation type");
         assert_eq!(result.relationships_inserted, 1);
         assert_eq!(result.relationships_skipped, 0);
 
         let neighborhood = store
             .entity_neighborhood(&crate::id::EntityId::new_unchecked("nyx"))
-            .unwrap();
+            .expect("entity neighborhood query for nyx should succeed");
         assert!(
             neighborhood
                 .rows
@@ -955,7 +985,8 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     #[test]
     fn persist_accepts_unknown_type() {
-        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let store = crate::knowledge_store::KnowledgeStore::open_mem()
+            .expect("in-memory knowledge store should open successfully");
         let engine = ExtractionEngine::new(ExtractionConfig::default());
 
         let extraction = Extraction {
@@ -982,7 +1013,7 @@ mod tests {
 
         let result = engine
             .persist(&extraction, &store, "session:test", "syn")
-            .unwrap();
+            .expect("persist should succeed with unknown relationship type");
         assert_eq!(result.relationships_inserted, 1);
         assert_eq!(result.relationships_skipped, 0);
     }
@@ -1043,7 +1074,7 @@ mod tests {
         let result = engine.parse_response(truncated);
         assert!(result.is_err(), "truncated JSON must return error");
         assert!(matches!(
-            result.unwrap_err(),
+            result.expect_err("truncated JSON should produce parse error"),
             ExtractionError::ParseResponse { .. }
         ));
     }
@@ -1076,7 +1107,9 @@ mod tests {
             "facts": [],
             "metadata": {"version": 2}
         }"#;
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("extra fields should be ignored during deserialization");
         assert_eq!(extraction.entities.len(), 1);
         assert_eq!(extraction.entities[0].name, "Alice");
     }
@@ -1093,7 +1126,9 @@ mod tests {
             "relationships": [],
             "facts": []
         }"#;
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("unicode entity names should parse successfully");
         assert_eq!(extraction.entities.len(), 3);
         assert_eq!(extraction.entities[0].name, "東京");
         assert_eq!(extraction.entities[1].name, "München");
@@ -1104,7 +1139,9 @@ mod tests {
     fn parse_response_empty_entities_array() {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let json = r#"{"entities":[],"relationships":[],"facts":[]}"#;
-        let extraction = engine.parse_response(json).unwrap();
+        let extraction = engine
+            .parse_response(json)
+            .expect("compact empty arrays JSON should parse");
         assert!(extraction.entities.is_empty());
         assert!(extraction.relationships.is_empty());
         assert!(extraction.facts.is_empty());
@@ -1129,7 +1166,9 @@ mod tests {
             role: "user".to_owned(),
             content: "123456789".to_owned(),
         }];
-        let result = engine.extract(&below, &EchoProvider).unwrap();
+        let result = engine
+            .extract(&below, &EchoProvider)
+            .expect("extraction on below-threshold input should return empty without error");
         assert!(
             result.entities.is_empty(),
             "9 chars < 10 threshold, should skip"
@@ -1139,7 +1178,9 @@ mod tests {
             role: "user".to_owned(),
             content: "1234567890".to_owned(),
         }];
-        let result = engine.extract(&exact, &EchoProvider).unwrap();
+        let result = engine
+            .extract(&exact, &EchoProvider)
+            .expect("extraction on exact-threshold input should call provider and return result");
         assert!(
             result.entities.is_empty(),
             "10 chars == 10 threshold, provider should be called"
@@ -1149,7 +1190,9 @@ mod tests {
             role: "user".to_owned(),
             content: "12345678901".to_owned(),
         }];
-        let result = engine.extract(&above, &EchoProvider).unwrap();
+        let result = engine
+            .extract(&above, &EchoProvider)
+            .expect("extraction on above-threshold input should call provider and return result");
         assert!(
             result.entities.is_empty(),
             "11 chars > 10 threshold, provider should be called"
@@ -1166,7 +1209,9 @@ mod tests {
         }
 
         let engine = ExtractionEngine::new(ExtractionConfig::default());
-        let result = engine.extract(&[], &PanicProvider).unwrap();
+        let result = engine
+            .extract(&[], &PanicProvider)
+            .expect("empty messages should return empty extraction without calling provider");
         assert!(result.entities.is_empty());
         assert!(result.relationships.is_empty());
         assert!(result.facts.is_empty());
@@ -1244,7 +1289,8 @@ Some text
     #[cfg(feature = "mneme-engine")]
     #[test]
     fn persist_skips_is_type() {
-        let store = crate::knowledge_store::KnowledgeStore::open_mem().unwrap();
+        let store = crate::knowledge_store::KnowledgeStore::open_mem()
+            .expect("in-memory knowledge store should open successfully");
         let engine = ExtractionEngine::new(ExtractionConfig::default());
 
         let extraction = Extraction {
@@ -1271,7 +1317,7 @@ Some text
 
         let result = engine
             .persist(&extraction, &store, "session:test", "syn")
-            .unwrap();
+            .expect("persist should succeed even when 'is' relationship is skipped");
         assert_eq!(result.relationships_inserted, 0);
         assert_eq!(result.relationships_skipped, 1);
     }
@@ -1302,15 +1348,18 @@ mod proptests {
             etype in "(person|project|concept|tool|location)",
             desc in "\\PC{0,100}",
         ) {
-            let escaped_name = serde_json::to_string(&name).unwrap();
-            let escaped_desc = serde_json::to_string(&desc).unwrap();
+            let escaped_name =
+                serde_json::to_string(&name).expect("string serialization is infallible");
+            let escaped_desc =
+                serde_json::to_string(&desc).expect("string serialization is infallible");
             let json = format!(
                 r#"{{"entities":[{{"name":{escaped_name},"entity_type":"{etype}","description":{escaped_desc}}}],"relationships":[],"facts":[]}}"#,
             );
             let engine = ExtractionEngine::new(ExtractionConfig::default());
             let result = engine.parse_response(&json);
             assert!(result.is_ok(), "valid JSON with arbitrary strings should parse: {result:?}");
-            let extraction = result.unwrap();
+            let extraction =
+                result.expect("valid JSON with arbitrary strings should parse successfully");
             assert_eq!(extraction.entities.len(), 1);
             assert_eq!(extraction.entities[0].name, name);
         }
