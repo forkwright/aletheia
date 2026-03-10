@@ -768,22 +768,24 @@ mod tests {
         let store = test_store();
         let session = store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         assert_eq!(session.id, "ses-1");
         assert_eq!(session.nous_id, "syn");
         assert_eq!(session.session_key, "main");
         assert_eq!(session.status, SessionStatus::Active);
         assert_eq!(session.session_type, SessionType::Primary);
 
-        let found = store.find_session("syn", "main").unwrap();
+        let found = store.find_session("syn", "main").expect("find session");
         assert!(found.is_some());
-        assert_eq!(found.unwrap().id, "ses-1");
+        assert_eq!(found.expect("session must exist").id, "ses-1");
     }
 
     #[test]
     fn find_session_returns_none_for_missing() {
         let store = test_store();
-        let found = store.find_session("syn", "nonexistent").unwrap();
+        let found = store
+            .find_session("syn", "nonexistent")
+            .expect("find session");
         assert!(found.is_none());
     }
 
@@ -793,17 +795,17 @@ mod tests {
 
         let s1 = store
             .create_session("ses-bg", "syn", "prosoche-wake", None, None)
-            .unwrap();
+            .expect("create session");
         assert_eq!(s1.session_type, SessionType::Background);
 
         let s2 = store
             .create_session("ses-eph", "syn", "ask:demiurge", None, None)
-            .unwrap();
+            .expect("create session");
         assert_eq!(s2.session_type, SessionType::Ephemeral);
 
         let s3 = store
             .create_session("ses-pri", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         assert_eq!(s3.session_type, SessionType::Primary);
     }
 
@@ -812,14 +814,14 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .update_session_status("ses-1", SessionStatus::Archived)
-            .unwrap();
+            .expect("update session status");
 
         let session = store
             .find_or_create_session("ses-new", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         assert_eq!(session.id, "ses-1"); // Reactivated, not created new
         assert_eq!(session.status, SessionStatus::Active);
     }
@@ -829,19 +831,19 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         let seq1 = store
             .append_message("ses-1", Role::User, "hello", None, None, 10)
-            .unwrap();
+            .expect("append message");
         let seq2 = store
             .append_message("ses-1", Role::Assistant, "hi there", None, None, 15)
-            .unwrap();
+            .expect("append message");
 
         assert_eq!(seq1, 1);
         assert_eq!(seq2, 2);
 
-        let history = store.get_history("ses-1", None).unwrap();
+        let history = store.get_history("ses-1", None).expect("get history");
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].content, "hello");
         assert_eq!(history[0].role, Role::User);
@@ -854,16 +856,19 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .append_message("ses-1", Role::User, "hello", None, None, 100)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-1", Role::Assistant, "world", None, None, 200)
-            .unwrap();
+            .expect("append message");
 
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.message_count, 2);
         assert_eq!(session.token_count_estimate, 300);
     }
@@ -873,15 +878,15 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         for i in 1..=5 {
             store
                 .append_message("ses-1", Role::User, &format!("msg {i}"), None, None, 10)
-                .unwrap();
+                .expect("append message");
         }
 
-        let history = store.get_history("ses-1", Some(2)).unwrap();
+        let history = store.get_history("ses-1", Some(2)).expect("get history");
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].content, "msg 4");
         assert_eq!(history[1].content, "msg 5");
@@ -892,19 +897,21 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .append_message("ses-1", Role::User, "old", None, None, 100)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-1", Role::User, "mid", None, None, 100)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-1", Role::User, "new", None, None, 100)
-            .unwrap();
+            .expect("append message");
 
-        let history = store.get_history_with_budget("ses-1", 200).unwrap();
+        let history = store
+            .get_history_with_budget("ses-1", 200)
+            .expect("get history with budget");
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].content, "mid");
         assert_eq!(history[1].content, "new");
@@ -915,28 +922,33 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .append_message("ses-1", Role::User, "old msg 1", None, None, 100)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-1", Role::User, "old msg 2", None, None, 150)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-1", Role::User, "keep this", None, None, 50)
-            .unwrap();
+            .expect("append message");
 
         // Distill the first two messages
-        store.mark_messages_distilled("ses-1", &[1, 2]).unwrap();
+        store
+            .mark_messages_distilled("ses-1", &[1, 2])
+            .expect("mark messages distilled");
 
         // History should only return undistilled
-        let history = store.get_history("ses-1", None).unwrap();
+        let history = store.get_history("ses-1", None).expect("get history");
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].content, "keep this");
 
         // Session counts should be recalculated
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.message_count, 1);
         assert_eq!(session.token_count_estimate, 50);
     }
@@ -946,7 +958,7 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .record_usage(&UsageRecord {
@@ -958,7 +970,7 @@ mod tests {
                 cache_write_tokens: 200,
                 model: Some("claude-opus-4-20250514".to_owned()),
             })
-            .unwrap();
+            .expect("record usage");
 
         // Verify it was stored
         let count: i64 = store
@@ -968,7 +980,7 @@ mod tests {
                 ["ses-1"],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("query usage count");
         assert_eq!(count, 1);
     }
 
@@ -977,22 +989,22 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         let id1 = store
             .add_note("ses-1", "syn", "task", "working on M0b")
-            .unwrap();
+            .expect("add note");
         let id2 = store
             .add_note("ses-1", "syn", "decision", "use snafu for errors")
-            .unwrap();
+            .expect("add note");
 
-        let notes = store.get_notes("ses-1").unwrap();
+        let notes = store.get_notes("ses-1").expect("add note");
         assert_eq!(notes.len(), 2);
         assert_eq!(notes[0].content, "working on M0b");
         assert_eq!(notes[1].content, "use snafu for errors");
 
-        store.delete_note(id1).unwrap();
-        let notes = store.get_notes("ses-1").unwrap();
+        store.delete_note(id1).expect("delete note");
+        let notes = store.get_notes("ses-1").expect("get notes");
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].id, id2);
     }
@@ -1002,15 +1014,15 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .create_session("ses-2", "demiurge", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
-        let all = store.list_sessions(None).unwrap();
+        let all = store.list_sessions(None).expect("create session");
         assert_eq!(all.len(), 2);
 
-        let syn_only = store.list_sessions(Some("syn")).unwrap();
+        let syn_only = store.list_sessions(Some("syn")).expect("list sessions");
         assert_eq!(syn_only.len(), 1);
         assert_eq!(syn_only[0].nous_id, "syn");
     }
@@ -1020,7 +1032,7 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .append_message(
@@ -1031,9 +1043,9 @@ mod tests {
                 Some("exec"),
                 50,
             )
-            .unwrap();
+            .expect("append message");
 
-        let history = store.get_history("ses-1", None).unwrap();
+        let history = store.get_history("ses-1", None).expect("get history");
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].role, Role::ToolResult);
         assert_eq!(history[0].tool_call_id.as_deref(), Some("tool_123"));
@@ -1047,8 +1059,8 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
-        let history = store.get_history("ses-1", None).unwrap();
+            .expect("create session");
+        let history = store.get_history("ses-1", None).expect("get history");
         assert!(history.is_empty());
     }
 
@@ -1057,13 +1069,13 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         for i in 1..=5 {
             store
                 .append_message("ses-1", Role::User, &format!("msg {i}"), None, None, 10)
-                .unwrap();
+                .expect("append message");
         }
-        let history = store.get_history("ses-1", Some(1)).unwrap();
+        let history = store.get_history("ses-1", Some(1)).expect("get history");
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].content, "msg 5");
     }
@@ -1073,11 +1085,11 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .append_message("ses-1", Role::User, "only", None, None, 10)
-            .unwrap();
-        let history = store.get_history("ses-1", Some(100)).unwrap();
+            .expect("append message");
+        let history = store.get_history("ses-1", Some(100)).expect("get history");
         assert_eq!(history.len(), 1);
     }
 
@@ -1086,12 +1098,12 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         let big = "x".repeat(1_000_000);
         store
             .append_message("ses-1", Role::User, &big, None, None, 250_000)
-            .unwrap();
-        let history = store.get_history("ses-1", None).unwrap();
+            .expect("append message");
+        let history = store.get_history("ses-1", None).expect("get history");
         assert_eq!(history[0].content.len(), 1_000_000);
     }
 
@@ -1100,19 +1112,21 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .append_message("ses-1", Role::User, "keep", None, None, 10)
-            .unwrap();
-        store.mark_messages_distilled("ses-1", &[]).unwrap();
-        let history = store.get_history("ses-1", None).unwrap();
+            .expect("append message");
+        store
+            .mark_messages_distilled("ses-1", &[])
+            .expect("mark messages distilled");
+        let history = store.get_history("ses-1", None).expect("append message");
         assert_eq!(history.len(), 1);
     }
 
     #[test]
     fn delete_nonexistent_note_returns_false() {
         let store = test_store();
-        let deleted = store.delete_note(9999).unwrap();
+        let deleted = store.delete_note(9999).expect("delete note");
         assert!(!deleted);
     }
 
@@ -1121,16 +1135,16 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         let s1 = store
             .append_message("ses-1", Role::User, "a", None, None, 5)
-            .unwrap();
+            .expect("append message");
         let s2 = store
             .append_message("ses-1", Role::Assistant, "b", None, None, 5)
-            .unwrap();
+            .expect("append message");
         let s3 = store
             .append_message("ses-1", Role::User, "c", None, None, 5)
-            .unwrap();
+            .expect("append message");
         assert!(s1 < s2);
         assert!(s2 < s3);
     }
@@ -1140,11 +1154,13 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .append_message("ses-1", Role::User, "big", None, None, 999_999)
-            .unwrap();
-        let history = store.get_history_with_budget("ses-1", 1).unwrap();
+            .expect("append message");
+        let history = store
+            .get_history_with_budget("ses-1", 1)
+            .expect("get history with budget");
         assert_eq!(history.len(), 1);
     }
 
@@ -1155,20 +1171,25 @@ mod tests {
         let store = test_store();
         store
             .blackboard_write("goal", "finish M0b", "syn", 3600)
-            .unwrap();
+            .expect("blackboard write");
 
-        let entry = store.blackboard_read("goal").unwrap().unwrap();
+        let entry = store
+            .blackboard_read("goal")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(entry.key, "goal");
         assert_eq!(entry.value, "finish M0b");
         assert_eq!(entry.author_nous_id, "syn");
 
-        let list = store.blackboard_list().unwrap();
+        let list = store.blackboard_list().expect("blackboard list");
         assert_eq!(list.len(), 1);
 
-        let deleted = store.blackboard_delete("goal", "syn").unwrap();
+        let deleted = store
+            .blackboard_delete("goal", "syn")
+            .expect("blackboard delete");
         assert!(deleted);
 
-        let gone = store.blackboard_read("goal").unwrap();
+        let gone = store.blackboard_read("goal").expect("blackboard delete");
         assert!(gone.is_none());
     }
 
@@ -1177,15 +1198,18 @@ mod tests {
         let store = test_store();
         store
             .blackboard_write("status", "starting", "syn", 3600)
-            .unwrap();
+            .expect("blackboard write");
         store
             .blackboard_write("status", "running", "syn", 3600)
-            .unwrap();
+            .expect("blackboard write");
 
-        let entry = store.blackboard_read("status").unwrap().unwrap();
+        let entry = store
+            .blackboard_read("status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(entry.value, "running");
 
-        let list = store.blackboard_list().unwrap();
+        let list = store.blackboard_list().expect("blackboard list");
         assert_eq!(list.len(), 1);
     }
 
@@ -1194,26 +1218,32 @@ mod tests {
         let store = test_store();
         store
             .blackboard_write("secret", "value", "syn", 3600)
-            .unwrap();
+            .expect("blackboard write");
 
-        let deleted = store.blackboard_delete("secret", "other-agent").unwrap();
+        let deleted = store
+            .blackboard_delete("secret", "other-agent")
+            .expect("blackboard write");
         assert!(!deleted);
 
-        let still_there = store.blackboard_read("secret").unwrap();
+        let still_there = store.blackboard_read("secret").expect("blackboard delete");
         assert!(still_there.is_some());
     }
 
     #[test]
     fn blackboard_read_missing_returns_none() {
         let store = test_store();
-        let result = store.blackboard_read("nonexistent").unwrap();
+        let result = store
+            .blackboard_read("nonexistent")
+            .expect("blackboard read");
         assert!(result.is_none());
     }
 
     #[test]
     fn blackboard_expiry_filtered() {
         let store = test_store();
-        store.blackboard_write("temp", "data", "syn", 3600).unwrap();
+        store
+            .blackboard_write("temp", "data", "syn", 3600)
+            .expect("blackboard write");
 
         // Manually set expires_at to the past
         store
@@ -1222,12 +1252,12 @@ mod tests {
                 "UPDATE blackboard SET expires_at = datetime('now', '-1 second') WHERE key = 'temp'",
                 [],
             )
-            .unwrap();
+            .expect("execute sql");
 
-        let result = store.blackboard_read("temp").unwrap();
+        let result = store.blackboard_read("temp").expect("blackboard read");
         assert!(result.is_none());
 
-        let list = store.blackboard_list().unwrap();
+        let list = store.blackboard_list().expect("blackboard list");
         assert!(list.is_empty());
     }
 
@@ -1236,38 +1266,49 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.distillation_count, 0);
         assert!(session.last_distilled_at.is_none());
 
         store
             .record_distillation("ses-1", 20, 5, 50000, 2000, Some("sonnet"))
-            .unwrap();
+            .expect("record distillation");
 
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.distillation_count, 1);
         assert!(session.last_distilled_at.is_some());
 
         store
             .record_distillation("ses-1", 15, 3, 30000, 1500, None)
-            .unwrap();
+            .expect("record distillation");
 
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.distillation_count, 2);
     }
 
     #[test]
     fn open_in_memory_creates_tables() {
         let store = test_store();
-        let sessions = store.list_sessions(None).unwrap();
+        let sessions = store.list_sessions(None).expect("list sessions");
         assert!(sessions.is_empty());
         let session = store
             .create_session("tbl-check", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         assert_eq!(session.id, "tbl-check");
-        let found = store.find_session_by_id("tbl-check").unwrap();
+        let found = store
+            .find_session_by_id("tbl-check")
+            .expect("create session");
         assert!(found.is_some());
     }
 
@@ -1276,7 +1317,7 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-dup", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         let result = store.create_session("ses-dup", "syn", "other", None, None);
         assert!(
             result.is_err(),
@@ -1287,14 +1328,18 @@ mod tests {
     #[test]
     fn find_session_nonexistent() {
         let store = test_store();
-        let found = store.find_session("no-such-nous", "no-such-key").unwrap();
+        let found = store
+            .find_session("no-such-nous", "no-such-key")
+            .expect("find session");
         assert!(found.is_none());
     }
 
     #[test]
     fn find_session_by_id_nonexistent() {
         let store = test_store();
-        let found = store.find_session_by_id("non-existent-id-999").unwrap();
+        let found = store
+            .find_session_by_id("non-existent-id-999")
+            .expect("find session by id");
         assert!(found.is_none());
     }
 
@@ -1313,10 +1358,12 @@ mod tests {
         let store = test_store();
         store
             .create_session("empty-ses", "syn", "main", None, None)
-            .unwrap();
-        let history = store.get_history("empty-ses", None).unwrap();
+            .expect("create session");
+        let history = store.get_history("empty-ses", None).expect("get history");
         assert!(history.is_empty());
-        let history_limited = store.get_history("empty-ses", Some(10)).unwrap();
+        let history_limited = store
+            .get_history("empty-ses", Some(10))
+            .expect("get history");
         assert!(history_limited.is_empty());
     }
 
@@ -1324,31 +1371,43 @@ mod tests {
     fn blackboard_write_read_delete_cycle() {
         let store = test_store();
 
-        let read_before = store.blackboard_read("cycle-key").unwrap();
+        let read_before = store
+            .blackboard_read("cycle-key")
+            .expect("blackboard write");
         assert!(read_before.is_none());
 
         store
             .blackboard_write("cycle-key", "value-1", "agent-alice", 7200)
-            .unwrap();
-        let entry = store.blackboard_read("cycle-key").unwrap().unwrap();
+            .expect("blackboard write");
+        let entry = store
+            .blackboard_read("cycle-key")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(entry.value, "value-1");
         assert_eq!(entry.author_nous_id, "agent-alice");
         assert_eq!(entry.ttl_seconds, 7200);
 
         store
             .blackboard_write("cycle-key", "value-2", "agent-alice", 3600)
-            .unwrap();
-        let updated = store.blackboard_read("cycle-key").unwrap().unwrap();
+            .expect("blackboard write");
+        let updated = store
+            .blackboard_read("cycle-key")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(updated.value, "value-2");
         assert_eq!(updated.ttl_seconds, 3600);
 
-        let deleted = store.blackboard_delete("cycle-key", "agent-alice").unwrap();
+        let deleted = store
+            .blackboard_delete("cycle-key", "agent-alice")
+            .expect("blackboard delete");
         assert!(deleted);
 
-        let after_delete = store.blackboard_read("cycle-key").unwrap();
+        let after_delete = store
+            .blackboard_read("cycle-key")
+            .expect("blackboard delete");
         assert!(after_delete.is_none());
 
-        let list = store.blackboard_list().unwrap();
+        let list = store.blackboard_list().expect("blackboard list");
         assert!(list.is_empty());
     }
 
@@ -1357,7 +1416,7 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-cat", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
         let result = store.add_note("ses-cat", "syn", "totally_bogus_category", "some content");
         assert!(
             result.is_err(),
@@ -1370,27 +1429,39 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-status", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
-        let session = store.find_session_by_id("ses-status").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.status, SessionStatus::Active);
 
         store
             .update_session_status("ses-status", SessionStatus::Archived)
-            .unwrap();
-        let session = store.find_session_by_id("ses-status").unwrap().unwrap();
+            .expect("update session status");
+        let session = store
+            .find_session_by_id("ses-status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.status, SessionStatus::Archived);
 
         store
             .update_session_status("ses-status", SessionStatus::Distilled)
-            .unwrap();
-        let session = store.find_session_by_id("ses-status").unwrap().unwrap();
+            .expect("update session status");
+        let session = store
+            .find_session_by_id("ses-status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.status, SessionStatus::Distilled);
 
         store
             .update_session_status("ses-status", SessionStatus::Active)
-            .unwrap();
-        let session = store.find_session_by_id("ses-status").unwrap().unwrap();
+            .expect("update session status");
+        let session = store
+            .find_session_by_id("ses-status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.status, SessionStatus::Active);
     }
 
@@ -1399,28 +1470,30 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         // Add some messages
         store
             .append_message("ses-1", Role::User, "msg1", None, None, 100)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-1", Role::Assistant, "msg2", None, None, 200)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-1", Role::User, "msg3", None, None, 50)
-            .unwrap();
+            .expect("append message");
 
         // Mark first two as distilled
-        store.mark_messages_distilled("ses-1", &[1, 2]).unwrap();
+        store
+            .mark_messages_distilled("ses-1", &[1, 2])
+            .expect("mark messages distilled");
 
         // Insert summary (should also delete distilled messages)
         store
             .insert_distillation_summary("ses-1", "[Distillation #1]\n\nSummary text")
-            .unwrap();
+            .expect("insert distillation summary");
 
-        let history = store.get_history("ses-1", None).unwrap();
+        let history = store.get_history("ses-1", None).expect("get history");
         // Should have: summary (seq 0) + undistilled msg3 (seq shifted)
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].role, Role::System);
@@ -1428,7 +1501,10 @@ mod tests {
         assert_eq!(history[1].content, "msg3");
 
         // Session counts should reflect new state
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.message_count, 2);
     }
 
@@ -1437,7 +1513,7 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-usage", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .record_usage(&UsageRecord {
@@ -1449,7 +1525,7 @@ mod tests {
                 cache_write_tokens: 100,
                 model: Some("test-model".to_owned()),
             })
-            .unwrap();
+            .expect("record usage");
 
         store
             .record_usage(&UsageRecord {
@@ -1461,7 +1537,7 @@ mod tests {
                 cache_write_tokens: 150,
                 model: None,
             })
-            .unwrap();
+            .expect("record usage");
 
         let count: i64 = store
             .conn
@@ -1470,7 +1546,7 @@ mod tests {
                 ["ses-usage"],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("query usage count");
         assert_eq!(count, 2);
     }
 
@@ -1479,7 +1555,7 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-lim", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         for i in 1..=10 {
             store
@@ -1491,15 +1567,15 @@ mod tests {
                     None,
                     10,
                 )
-                .unwrap();
+                .expect("append message");
         }
 
-        let history_3 = store.get_history("ses-lim", Some(3)).unwrap();
+        let history_3 = store.get_history("ses-lim", Some(3)).expect("get history");
         assert_eq!(history_3.len(), 3);
         assert_eq!(history_3[0].content, "message 8");
         assert_eq!(history_3[2].content, "message 10");
 
-        let history_all = store.get_history("ses-lim", None).unwrap();
+        let history_all = store.get_history("ses-lim", None).expect("get history");
         assert_eq!(history_all.len(), 10);
     }
 
@@ -1508,15 +1584,17 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-a", "agent-x", "main", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .create_session("ses-b", "agent-x", "secondary", None, None)
-            .unwrap();
+            .expect("create session");
         store
             .create_session("ses-c", "agent-x", "prosoche-wake", None, None)
-            .unwrap();
+            .expect("create session");
 
-        let sessions = store.list_sessions(Some("agent-x")).unwrap();
+        let sessions = store
+            .list_sessions(Some("agent-x"))
+            .expect("create session");
         assert_eq!(sessions.len(), 3);
 
         let keys: Vec<&str> = sessions.iter().map(|s| s.session_key.as_str()).collect();
@@ -1528,7 +1606,9 @@ mod tests {
     #[test]
     fn blackboard_read_nonexistent_key() {
         let store = test_store();
-        let result = store.blackboard_read("does-not-exist-key").unwrap();
+        let result = store
+            .blackboard_read("does-not-exist-key")
+            .expect("blackboard read");
         assert!(result.is_none());
     }
 
@@ -1537,9 +1617,9 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-no-notes", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
-        let notes = store.get_notes("ses-no-notes").unwrap();
+        let notes = store.get_notes("ses-no-notes").expect("create session");
         assert!(notes.is_empty());
     }
 
@@ -1548,19 +1628,19 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-ord", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .append_message("ses-ord", Role::User, "first", None, None, 10)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-ord", Role::Assistant, "second", None, None, 10)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-ord", Role::User, "third", None, None, 10)
-            .unwrap();
+            .expect("append message");
 
-        let history = store.get_history("ses-ord", None).unwrap();
+        let history = store.get_history("ses-ord", None).expect("get history");
         assert_eq!(history.len(), 3);
         assert_eq!(history[0].content, "first");
         assert_eq!(history[1].content, "second");
@@ -1574,21 +1654,23 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-dist", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .append_message("ses-dist", Role::User, "to distill 1", None, None, 50)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-dist", Role::User, "to distill 2", None, None, 60)
-            .unwrap();
+            .expect("append message");
         store
             .append_message("ses-dist", Role::User, "keep me", None, None, 30)
-            .unwrap();
+            .expect("append message");
 
-        store.mark_messages_distilled("ses-dist", &[1, 2]).unwrap();
+        store
+            .mark_messages_distilled("ses-dist", &[1, 2])
+            .expect("mark messages distilled");
 
-        let history = store.get_history("ses-dist", None).unwrap();
+        let history = store.get_history("ses-dist", None).expect("get history");
         assert_eq!(history.len(), 1, "distilled messages excluded from history");
         assert_eq!(history[0].content, "keep me");
 
@@ -1599,7 +1681,7 @@ mod tests {
                 [],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("query row");
         assert_eq!(all_count, 3, "distilled messages still in DB, just flagged");
 
         let distilled_count: i64 = store
@@ -1609,7 +1691,7 @@ mod tests {
                 [],
                 |row| row.get(0),
             )
-            .unwrap();
+            .expect("query row");
         assert_eq!(distilled_count, 2);
     }
 
@@ -1618,7 +1700,7 @@ mod tests {
         let store = test_store();
         let session = store
             .create_session("ses-ts", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         assert!(
             !session.created_at.is_empty(),
@@ -1635,15 +1717,18 @@ mod tests {
         let store = test_store();
         store
             .blackboard_write("overwrite-key", "value-one", "syn", 3600)
-            .unwrap();
+            .expect("blackboard write");
         store
             .blackboard_write("overwrite-key", "value-two", "syn", 3600)
-            .unwrap();
+            .expect("blackboard write");
 
-        let entry = store.blackboard_read("overwrite-key").unwrap().unwrap();
+        let entry = store
+            .blackboard_read("overwrite-key")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(entry.value, "value-two", "second write must win");
 
-        let list = store.blackboard_list().unwrap();
+        let list = store.blackboard_list().expect("blackboard list");
         let matching: Vec<_> = list.iter().filter(|e| e.key == "overwrite-key").collect();
         assert_eq!(matching.len(), 1, "upsert must not create duplicates");
     }
@@ -1653,19 +1738,19 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-notes", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
         store
             .add_note("ses-notes", "syn", "task", "note alpha")
-            .unwrap();
+            .expect("add note");
         store
             .add_note("ses-notes", "syn", "context", "note beta")
-            .unwrap();
+            .expect("add note");
         store
             .add_note("ses-notes", "syn", "decision", "note gamma")
-            .unwrap();
+            .expect("add note");
 
-        let notes = store.get_notes("ses-notes").unwrap();
+        let notes = store.get_notes("ses-notes").expect("add note");
         assert_eq!(notes.len(), 3);
         assert_eq!(notes[0].content, "note alpha");
         assert_eq!(notes[1].content, "note beta");
@@ -1677,14 +1762,22 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert!(session.display_name.is_none());
 
-        store.update_display_name("ses-1", "My Chat").unwrap();
+        store
+            .update_display_name("ses-1", "My Chat")
+            .expect("find session by id");
 
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.display_name.as_deref(), Some("My Chat"));
     }
 
@@ -1693,12 +1786,19 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session");
 
-        store.update_display_name("ses-1", "First").unwrap();
-        store.update_display_name("ses-1", "Second").unwrap();
+        store
+            .update_display_name("ses-1", "First")
+            .expect("create session");
+        store
+            .update_display_name("ses-1", "Second")
+            .expect("update display name");
 
-        let session = store.find_session_by_id("ses-1").unwrap().unwrap();
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.display_name.as_deref(), Some("Second"));
     }
 }

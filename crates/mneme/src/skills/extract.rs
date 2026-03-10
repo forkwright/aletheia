@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn parse_valid_json_response() {
         let response = valid_json_response();
-        let skill = parse_skill_response(&response).unwrap();
+        let skill = parse_skill_response(&response).expect("valid JSON response should parse");
 
         assert_eq!(skill.name, "test-driven-bug-fix");
         assert_eq!(skill.steps.len(), 4);
@@ -487,14 +487,14 @@ mod tests {
     #[test]
     fn parse_json_in_markdown_fences() {
         let response = format!("```json\n{}\n```", valid_json_response());
-        let skill = parse_skill_response(&response).unwrap();
+        let skill = parse_skill_response(&response).expect("json in markdown fences should parse");
         assert_eq!(skill.name, "test-driven-bug-fix");
     }
 
     #[test]
     fn parse_json_in_bare_fences() {
         let response = format!("```\n{}\n```", valid_json_response());
-        let skill = parse_skill_response(&response).unwrap();
+        let skill = parse_skill_response(&response).expect("json in bare fences should parse");
         assert_eq!(skill.name, "test-driven-bug-fix");
     }
 
@@ -504,7 +504,8 @@ mod tests {
             "Here is the extracted skill:\n{}\nDone.",
             valid_json_response()
         );
-        let skill = parse_skill_response(&response).unwrap();
+        let skill =
+            parse_skill_response(&response).expect("json with surrounding text should parse");
         assert_eq!(skill.name, "test-driven-bug-fix");
     }
 
@@ -541,7 +542,7 @@ mod tests {
             "domain_tags": [],
             "when_to_use": ""
         }"#;
-        let skill = parse_skill_response(response).unwrap();
+        let skill = parse_skill_response(response).expect("minimal skill JSON should parse");
         assert_eq!(skill.name, "minimal-skill");
         assert!(skill.steps.is_empty());
     }
@@ -555,7 +556,9 @@ mod tests {
         let candidate = sample_candidate();
         let seqs = sample_sequences();
 
-        let skill = extractor.extract_skill(&candidate, &seqs).unwrap();
+        let skill = extractor
+            .extract_skill(&candidate, &seqs)
+            .expect("mock provider returns valid response");
         assert_eq!(skill.name, "test-driven-bug-fix");
     }
 
@@ -656,8 +659,8 @@ mod tests {
             when_to_use: "For tests".to_owned(),
         };
         let pending = PendingSkill::new(&extracted, "cand-002");
-        let json = pending.to_json().unwrap();
-        let back = PendingSkill::from_json(&json).unwrap();
+        let json = pending.to_json().expect("pending skill serializes to JSON");
+        let back = PendingSkill::from_json(&json).expect("pending skill deserializes from JSON");
         assert_eq!(back.skill.name, "roundtrip-skill");
         assert_eq!(back.candidate_id, "cand-002");
         assert!(back.is_pending());
