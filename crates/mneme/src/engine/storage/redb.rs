@@ -10,14 +10,18 @@ use itertools::Itertools;
 
 use redb::{ReadableDatabase, ReadableTable};
 
-use crate::bail;
 use crate::engine::DbCore;
 use crate::engine::data::tuple::{Tuple, check_key_for_validity};
 use crate::engine::data::value::ValidityTs;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::DbResult;
 use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
 use crate::engine::storage::{Storage, StoreTx};
+use crate::engine::storage::error::{
+    IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
+};
 use crate::engine::utils::swap_option_result;
+
+type Result<T> = StorageResult<T>;
 
 const TABLE: redb::TableDefinition<'_, &[u8], &[u8]> = redb::TableDefinition::new("data");
 
@@ -33,31 +37,58 @@ const TABLE: redb::TableDefinition<'_, &[u8], &[u8]> = redb::TableDefinition::ne
 ///   on panic.  Production paths live under `instance/` and are not
 ///   automatically removed.
 /// - redb flushes its WAL on `Database` drop; no manual flush is needed.
-pub fn new_cozo_redb(path: impl AsRef<Path>) -> Result<DbCore<RedbStorage>> {
+pub fn new_cozo_redb(
+    path: impl AsRef<Path>,
+) -> crate::engine::error::DbResult<DbCore<RedbStorage>> {
+    use snafu::ResultExt as _;
     let path = path.as_ref();
-    fs::create_dir_all(path).map_err(|e| {
-        crate::engine::error::AdhocError(format!("cannot create directory {}: {e}", path.display()))
-    })?;
+    fs::create_dir_all(path)
+        .context(IoSnafu { backend: "redb" })
+        .map_err(crate::engine::error::BoxErr::from)?;
 
     let db_file = path.join("data.redb");
-    let db = redb::Database::create(&db_file).map_err(|e| {
-        crate::engine::error::AdhocError(format!(
-            "failed to open redb at {}: {e}",
-            db_file.display()
-        ))
-    })?;
+    let db = redb::Database::create(&db_file)
+        .map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "redb",
+                message: format!("open {}: {e}", db_file.display()),
+            }
+            .build()
+        })
+        .map_err(crate::engine::error::BoxErr::from)?;
 
     // Ensure the data table exists before any reads
     {
         let write_txn = db
             .begin_write()
-            .map_err(|e| crate::engine::error::AdhocError(format!("redb begin_write: {e}")))?;
+            .map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "redb",
+                    message: format!("begin_write: {e}"),
+                }
+                .build()
+            })
+            .map_err(crate::engine::error::BoxErr::from)?;
         write_txn
             .open_table(TABLE)
-            .map_err(|e| crate::engine::error::AdhocError(format!("redb open_table: {e}")))?;
+            .map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "redb",
+                    message: format!("open_table: {e}"),
+                }
+                .build()
+            })
+            .map_err(crate::engine::error::BoxErr::from)?;
         write_txn
             .commit()
-            .map_err(|e| crate::engine::error::AdhocError(format!("redb commit: {e}")))?;
+            .map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "redb",
+                    message: format!("commit: {e}"),
+                }
+                .build()
+            })
+            .map_err(crate::engine::error::BoxErr::from)?;
     }
 
     let storage = RedbStorage { db: Arc::new(db) };
@@ -92,9 +123,16 @@ impl<'s> Storage<'s> for RedbStorage {
 
     fn transact(&'s self, write: bool) -> Result<Self::Tx> {
         if write {
-            let snapshot = self.db.begin_read().map_err(|e| {
-                crate::engine::error::AdhocError(format!("redb begin_read for snapshot: {e}"))
-            })?;
+            let snapshot = self
+                .db
+                .begin_read()
+                .map_err(|e| {
+                    TransactionFailedSnafu {
+                        backend: "redb",
+                        message: format!("begin_read for snapshot: {e}"),
+                    }
+                    .build()
+                })?;
             Ok(RedbTx::Writer(RedbWriteTx {
                 storage: self,
                 snapshot,
@@ -104,7 +142,13 @@ impl<'s> Storage<'s> for RedbStorage {
             let read_txn = self
                 .db
                 .begin_read()
-                .map_err(|e| crate::engine::error::AdhocError(format!("redb begin_read: {e}")))?;
+                .map_err(|e| {
+                    TransactionFailedSnafu {
+                        backend: "redb",
+                        message: format!("begin_read: {e}"),
+                    }
+                    .build()
+                })?;
             Ok(RedbTx::Reader(RedbReadTx { read_txn }))
         }
     }
@@ -121,21 +165,45 @@ impl<'s> Storage<'s> for RedbStorage {
         let write_txn = self
             .db
             .begin_write()
-            .map_err(|e| crate::engine::error::AdhocError(format!("redb begin_write: {e}")))?;
+            .map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "redb",
+                    message: format!("begin_write: {e}"),
+                }
+                .build()
+            })?;
         {
             let mut table = write_txn
                 .open_table(TABLE)
-                .map_err(|e| crate::engine::error::AdhocError(format!("redb open_table: {e}")))?;
+                .map_err(|e| {
+                    TransactionFailedSnafu {
+                        backend: "redb",
+                        message: format!("open_table: {e}"),
+                    }
+                    .build()
+                })?;
             for pair in data {
                 let (k, v) = pair?;
                 table
                     .insert(k.as_slice(), v.as_slice())
-                    .map_err(|e| crate::engine::error::AdhocError(format!("redb insert: {e}")))?;
+                    .map_err(|e| {
+                        TransactionFailedSnafu {
+                            backend: "redb",
+                            message: format!("insert: {e}"),
+                        }
+                        .build()
+                    })?;
             }
         }
         write_txn
             .commit()
-            .map_err(|e| crate::engine::error::AdhocError(format!("redb commit: {e}")))?;
+            .map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "redb",
+                    message: format!("commit: {e}"),
+                }
+                .build()
+            })?;
         Ok(())
     }
 }
@@ -158,11 +226,23 @@ pub struct RedbWriteTx<'s> {
 fn redb_table_get(read_txn: &redb::ReadTransaction, key: &[u8]) -> Result<Option<Vec<u8>>> {
     let table = read_txn
         .open_table(TABLE)
-        .map_err(|e| crate::engine::error::AdhocError(format!("redb open_table: {e}")))?;
+        .map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "redb",
+                message: format!("open_table: {e}"),
+            }
+            .build()
+        })?;
     let val = table
         .get(key)
-        .map_err(|e| crate::engine::error::AdhocError(format!("redb get: {e}")))?
-        .map(|guard| guard.value().to_vec());
+        .map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "redb",
+                message: format!("get: {e}"),
+            }
+            .build()
+        })?
+        .map(|guard: redb::AccessGuard<'_, &[u8]>| guard.value().to_vec());
     Ok(val)
 }
 
@@ -173,15 +253,32 @@ fn redb_collect_range(
 ) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
     let table = read_txn
         .open_table(TABLE)
-        .map_err(|e| crate::engine::error::AdhocError(format!("redb open_table: {e}")))?;
+        .map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "redb",
+                message: format!("open_table: {e}"),
+            }
+            .build()
+        })?;
     let range = table
         .range(lower..upper)
-        .map_err(|e| crate::engine::error::AdhocError(format!("redb range: {e}")))?;
+        .map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "redb",
+                message: format!("range: {e}"),
+            }
+            .build()
+        })?;
     let mut results = Vec::new();
     for entry in range {
-        let (k, v) =
-            entry.map_err(|e| crate::engine::error::AdhocError(format!("redb iter: {e}")))?;
-        results.push((k.value().to_vec(), v.value().to_vec()));
+        let entry = entry.map_err(|e| {
+            TransactionFailedSnafu {
+                backend: "redb",
+                message: format!("iter: {e}"),
+            }
+            .build()
+        })?;
+        results.push((entry.0.value().to_vec(), entry.1.value().to_vec()));
     }
     Ok(results)
 }
@@ -200,9 +297,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
 
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
         match self {
-            RedbTx::Reader(_) => {
-                bail!("write in read transaction")
-            }
+            RedbTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             RedbTx::Writer(w) => {
                 w.delta.insert(key.to_vec(), Some(val.to_vec()));
                 Ok(())
@@ -216,9 +311,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
 
     fn del(&mut self, key: &[u8]) -> Result<()> {
         match self {
-            RedbTx::Reader(_) => {
-                bail!("write in read transaction")
-            }
+            RedbTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             RedbTx::Writer(w) => {
                 w.delta.insert(key.to_vec(), None);
                 Ok(())
@@ -228,9 +321,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
 
     fn del_range_from_persisted(&mut self, lower: &[u8], upper: &[u8]) -> Result<()> {
         match self {
-            RedbTx::Reader(_) => {
-                bail!("write in read transaction")
-            }
+            RedbTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
             RedbTx::Writer(w) => {
                 let persisted = redb_collect_range(&w.snapshot, lower, upper)?;
                 for (k, _) in persisted {
@@ -259,23 +350,45 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                     return Ok(());
                 }
 
-                let write_txn = w.storage.db.begin_write().map_err(|e| {
-                    crate::engine::error::AdhocError(format!("redb begin_write: {e}"))
-                })?;
-                {
-                    let mut table = write_txn.open_table(TABLE).map_err(|e| {
-                        crate::engine::error::AdhocError(format!("redb open_table: {e}"))
+                let write_txn = w
+                    .storage
+                    .db
+                    .begin_write()
+                    .map_err(|e| {
+                        TransactionFailedSnafu {
+                            backend: "redb",
+                            message: format!("begin_write: {e}"),
+                        }
+                        .build()
                     })?;
+                {
+                    let mut table = write_txn
+                        .open_table(TABLE)
+                        .map_err(|e| {
+                            TransactionFailedSnafu {
+                                backend: "redb",
+                                message: format!("open_table: {e}"),
+                            }
+                            .build()
+                        })?;
                     for (k, mv) in &w.delta {
                         match mv {
                             None => {
                                 table.remove(k.as_slice()).map_err(|e| {
-                                    crate::engine::error::AdhocError(format!("redb remove: {e}"))
+                                    TransactionFailedSnafu {
+                                        backend: "redb",
+                                        message: format!("remove: {e}"),
+                                    }
+                                    .build()
                                 })?;
                             }
                             Some(v) => {
                                 table.insert(k.as_slice(), v.as_slice()).map_err(|e| {
-                                    crate::engine::error::AdhocError(format!("redb insert: {e}"))
+                                    TransactionFailedSnafu {
+                                        backend: "redb",
+                                        message: format!("insert: {e}"),
+                                    }
+                                    .build()
                                 })?;
                             }
                         }
@@ -283,7 +396,13 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                 }
                 write_txn
                     .commit()
-                    .map_err(|e| crate::engine::error::AdhocError(format!("redb commit: {e}")))?;
+                    .map_err(|e| {
+                        TransactionFailedSnafu {
+                            backend: "redb",
+                            message: format!("commit: {e}"),
+                        }
+                        .build()
+                    })?;
 
                 w.delta.clear();
                 Ok(())
@@ -295,7 +414,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = Result<Tuple>> + 'a>
+    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a>
     where
         's: 'a,
     {
@@ -306,7 +425,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                         .into_iter()
                         .map(|(k, v)| Ok(decode_tuple_from_kv(&k, &v, None))),
                 ),
-                Err(e) => Box::new(std::iter::once(Err(e))),
+                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
             },
             RedbTx::Writer(w) => match redb_collect_range(&w.snapshot, lower, upper) {
                 Ok(persisted) => Box::new(DeltaMergeIter {
@@ -315,7 +434,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                     change_cache: None,
                     db_cache: None,
                 }),
-                Err(e) => Box::new(std::iter::once(Err(e))),
+                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
             },
         }
     }
@@ -325,7 +444,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
         lower: &[u8],
         upper: &[u8],
         valid_at: ValidityTs,
-    ) -> Box<dyn Iterator<Item = Result<Tuple>> + 'a> {
+    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a> {
         match self {
             RedbTx::Reader(r) => match redb_collect_range(&r.read_txn, lower, upper) {
                 Ok(pairs) => Box::new(
@@ -338,7 +457,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                     }
                     .map(Ok),
                 ),
-                Err(e) => Box::new(std::iter::once(Err(e))),
+                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
             },
             RedbTx::Writer(w) => match redb_collect_range(&w.snapshot, lower, upper) {
                 Ok(persisted) => {
@@ -355,7 +474,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                         .map(Ok),
                     )
                 }
-                Err(e) => Box::new(std::iter::once(Err(e))),
+                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
             },
         }
     }
@@ -364,14 +483,14 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>
+    ) -> Box<dyn Iterator<Item = DbResult<(Vec<u8>, Vec<u8>)>> + 'a>
     where
         's: 'a,
     {
         match self {
             RedbTx::Reader(r) => match redb_collect_range(&r.read_txn, lower, upper) {
                 Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                Err(e) => Box::new(std::iter::once(Err(e))),
+                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
             },
             RedbTx::Writer(w) => match redb_collect_range(&w.snapshot, lower, upper) {
                 Ok(persisted) => Box::new(DeltaMergeIterRaw {
@@ -380,7 +499,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                     change_cache: None,
                     db_cache: None,
                 }),
-                Err(e) => Box::new(std::iter::once(Err(e))),
+                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
             },
         }
     }
@@ -391,12 +510,25 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
     {
         match self {
             RedbTx::Reader(r) => {
-                let table = r.read_txn.open_table(TABLE).map_err(|e| {
-                    crate::engine::error::AdhocError(format!("redb open_table: {e}"))
-                })?;
+                let table = r
+                    .read_txn
+                    .open_table(TABLE)
+                    .map_err(|e| {
+                        TransactionFailedSnafu {
+                            backend: "redb",
+                            message: format!("open_table: {e}"),
+                        }
+                        .build()
+                    })?;
                 let range = table
                     .range(lower..upper)
-                    .map_err(|e| crate::engine::error::AdhocError(format!("redb range: {e}")))?;
+                    .map_err(|e| {
+                        TransactionFailedSnafu {
+                            backend: "redb",
+                            message: format!("range: {e}"),
+                        }
+                        .build()
+                    })?;
                 Ok(range.count())
             }
             RedbTx::Writer(w) => {
@@ -442,32 +574,36 @@ where
     }
 
     #[inline]
-    fn next_inner(&mut self) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
+    fn next_inner(&mut self) -> DbResult<Option<(Vec<u8>, Vec<u8>)>> {
         loop {
             self.fill_cache();
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take().unwrap();
+                    let (k, cv) = self.change_cache.take()
+                        .expect("change_cache present: matched Some(_) arm");
                     match cv {
                         None => continue,
                         Some(v) => return Ok(Some((k.clone(), v.clone()))),
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take().unwrap();
+                    let (k, v) = self.db_cache.take()
+                        .expect("db_cache present: matched Some(_) arm");
                     return Ok(Some((k, v)));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.as_slice().cmp(dk.as_slice()) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take().unwrap();
+                        let (k, sv) = self.change_cache.take()
+                            .expect("change_cache present: matched Some(_) arm");
                         match sv {
                             None => continue,
                             Some(v) => return Ok(Some((k.clone(), v.clone()))),
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take().unwrap();
+                        let (k, v) = self.db_cache.take()
+                            .expect("db_cache present: matched Some(_) arm");
                         return Ok(Some((k, v)));
                     }
                     Ordering::Equal => {
@@ -485,7 +621,7 @@ impl<'a, C> Iterator for DeltaMergeIterRaw<'a, C>
 where
     C: Iterator<Item = (&'a Vec<u8>, &'a Option<Vec<u8>>)> + 'a,
 {
-    type Item = Result<(Vec<u8>, Vec<u8>)>;
+    type Item = DbResult<(Vec<u8>, Vec<u8>)>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -522,32 +658,36 @@ where
     }
 
     #[inline]
-    fn next_inner(&mut self) -> Result<Option<Tuple>> {
+    fn next_inner(&mut self) -> DbResult<Option<Tuple>> {
         loop {
             self.fill_cache();
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take().unwrap();
+                    let (k, cv) = self.change_cache.take()
+                        .expect("change_cache present: matched Some(_) arm");
                     match cv {
                         None => continue,
                         Some(v) => return Ok(Some(decode_tuple_from_kv(k, v, None))),
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take().unwrap();
+                    let (k, v) = self.db_cache.take()
+                        .expect("db_cache present: matched Some(_) arm");
                     return Ok(Some(decode_tuple_from_kv(&k, &v, None)));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.as_slice().cmp(dk.as_slice()) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take().unwrap();
+                        let (k, sv) = self.change_cache.take()
+                            .expect("change_cache present: matched Some(_) arm");
                         match sv {
                             None => continue,
                             Some(v) => return Ok(Some(decode_tuple_from_kv(k, v, None))),
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take().unwrap();
+                        let (k, v) = self.db_cache.take()
+                            .expect("db_cache present: matched Some(_) arm");
                         return Ok(Some(decode_tuple_from_kv(&k, &v, None)));
                     }
                     Ordering::Equal => {
@@ -564,7 +704,7 @@ impl<'a, C> Iterator for DeltaMergeIter<'a, C>
 where
     C: Iterator<Item = (&'a Vec<u8>, &'a Option<Vec<u8>>)> + 'a,
 {
-    type Item = Result<Tuple>;
+    type Item = DbResult<Tuple>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -641,17 +781,19 @@ fn merge_with_delta(
             }
             (Some((dk, _)), Some((ck, _))) => match dk.as_slice().cmp(ck.as_slice()) {
                 Ordering::Less => {
-                    result.push(db_iter.next().unwrap());
+                    result.push(
+                        db_iter.next().expect("db_iter present: just peeked Some"),
+                    );
                 }
                 Ordering::Greater => {
-                    let (k, mv) = delta_iter.next().unwrap();
+                    let (k, mv) = delta_iter.next().expect("delta_iter present: just peeked Some");
                     if let Some(v) = mv {
                         result.push((k.clone(), v.clone()));
                     }
                 }
                 Ordering::Equal => {
                     db_iter.next(); // discard persisted
-                    let (k, mv) = delta_iter.next().unwrap();
+                    let (k, mv) = delta_iter.next().expect("delta_iter present: just peeked Some");
                     if let Some(v) = mv {
                         result.push((k.clone(), v.clone()));
                     }
@@ -666,13 +808,13 @@ fn merge_with_delta(
 mod tests {
     use super::*;
     use crate::engine::data::value::{DataValue, Validity};
+    use crate::engine::error::DbResult;
     use crate::engine::runtime::db::ScriptMutability;
     use std::collections::BTreeMap;
     use tempfile::TempDir;
 
-    fn setup_test_db() -> Result<(TempDir, DbCore<RedbStorage>)> {
-        let temp_dir =
-            TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+    fn setup_test_db() -> DbResult<(TempDir, DbCore<RedbStorage>)> {
+        let temp_dir = TempDir::new()?;
         let db = new_cozo_redb(temp_dir.path())?;
         db.run_script(
             r#"
@@ -691,9 +833,7 @@ mod tests {
     #[test]
     fn temp_dir_raii_removes_database_file_on_drop() {
         let db_path = {
-            let dir = TempDir::new()
-                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))
-                .expect("create temp dir");
+            let dir = TempDir::new().expect("create temp dir");
             let db_file = dir.path().join("data.redb");
             let path_copy = db_file.clone();
 
@@ -716,10 +856,10 @@ mod tests {
     /// Verify that data written and committed before dropping the Database
     /// is readable after reopening — confirming WAL flush on drop.
     #[test]
-    fn redb_flushes_wal_on_database_drop() -> Result<()> {
+    fn redb_flushes_wal_on_database_drop() -> DbResult<()> {
         use crate::engine::runtime::db::ScriptMutability;
 
-        let dir = TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+        let dir = TempDir::new()?;
 
         // Write and commit data, then drop the Database.
         {
@@ -750,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    fn basic_operations() -> Result<()> {
+    fn basic_operations() -> DbResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -778,7 +918,7 @@ mod tests {
     }
 
     #[test]
-    fn time_travel() -> Result<()> {
+    fn time_travel() -> DbResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -821,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn range_operations() -> Result<()> {
+    fn range_operations() -> DbResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -850,8 +990,8 @@ mod tests {
     }
 
     #[test]
-    fn persistence_across_restarts() -> Result<()> {
-        let dir = TempDir::new().map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+    fn persistence_across_restarts() -> DbResult<()> {
+        let dir = TempDir::new()?;
 
         // Write data
         {
@@ -887,7 +1027,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_reads() -> Result<()> {
+    fn concurrent_reads() -> DbResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
