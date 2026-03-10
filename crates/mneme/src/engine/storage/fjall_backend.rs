@@ -9,10 +9,10 @@ use crate::engine::data::tuple::{Tuple, check_key_for_validity};
 use crate::engine::data::value::ValidityTs;
 use crate::engine::error::DbResult;
 use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
-use crate::engine::storage::{Storage, StoreTx};
 use crate::engine::storage::error::{
     IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
 };
+use crate::engine::storage::{Storage, StoreTx};
 use crate::engine::utils::swap_option_result;
 
 type Result<T> = StorageResult<T>;
@@ -235,26 +235,20 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     fn exists(&self, key: &[u8], _for_update: bool) -> Result<bool> {
         use fjall::Readable;
         match self {
-            FjallTx::Reader(r) => r
-                .snapshot
-                .contains_key(r.keyspace, key)
-                .map_err(|e| {
-                    TransactionFailedSnafu {
-                        backend: "fjall",
-                        message: format!("contains_key: {e}"),
-                    }
-                    .build()
-                }),
-            FjallTx::Writer(w) => w
-                .tx_ref()
-                .contains_key(w.keyspace, key)
-                .map_err(|e| {
-                    TransactionFailedSnafu {
-                        backend: "fjall",
-                        message: format!("contains_key: {e}"),
-                    }
-                    .build()
-                }),
+            FjallTx::Reader(r) => r.snapshot.contains_key(r.keyspace, key).map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "fjall",
+                    message: format!("contains_key: {e}"),
+                }
+                .build()
+            }),
+            FjallTx::Writer(w) => w.tx_ref().contains_key(w.keyspace, key).map_err(|e| {
+                TransactionFailedSnafu {
+                    backend: "fjall",
+                    message: format!("contains_key: {e}"),
+                }
+                .build()
+            }),
         }
     }
 
@@ -385,12 +379,10 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         use fjall::Readable;
         match self {
             FjallTx::Reader(r) => {
-                fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper)
-                    .map(|pairs| pairs.len())
+                fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper).map(|pairs| pairs.len())
             }
             FjallTx::Writer(w) => {
-                fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper)
-                    .map(|pairs| pairs.len())
+                fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper).map(|pairs| pairs.len())
             }
         }
     }

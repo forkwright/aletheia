@@ -1,5 +1,8 @@
 //! Tarjan's strongly connected components.
-#![expect(unused_imports, reason = "algorithm may use additional imports depending on feature flags")]
+#![expect(
+    unused_imports,
+    reason = "algorithm may use additional imports depending on feature flags"
+)]
 
 use crate::engine::error::DbResult as Result;
 use crate::engine::fixed_rule::csr::DirectedCsrGraph;

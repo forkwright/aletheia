@@ -433,7 +433,9 @@ impl RelationHandle {
     pub(crate) fn exists(&self, tx: &SessionTx<'_>, key: &[DataValue]) -> Result<bool> {
         let key_data = key.encode_as_key(self.id);
         if self.is_temp {
-            tx.temp_store_tx.exists(&key_data, false).map_err(Into::into)
+            tx.temp_store_tx
+                .exists(&key_data, false)
+                .map_err(Into::into)
         } else {
             tx.store_tx.exists(&key_data, false).map_err(Into::into)
         }
@@ -551,7 +553,9 @@ impl<'a> SessionTx<'a> {
         let key = DataValue::from(name);
         let encoded = vec![key].encode_as_key(RelationId::SYSTEM);
         if name.starts_with('_') {
-            self.temp_store_tx.exists(&encoded, false).map_err(Into::into)
+            self.temp_store_tx
+                .exists(&encoded, false)
+                .map_err(Into::into)
         } else {
             self.store_tx.exists(&encoded, false).map_err(Into::into)
         }
