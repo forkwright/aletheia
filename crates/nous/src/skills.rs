@@ -1,9 +1,9 @@
 //! Skill loading for bootstrap context assembly.
 //!
 //! Queries mneme for skills relevant to the current task and returns them
-//! as [`BootstrapSection`] values ready for injection into the bootstrap assembler.
+//! as `BootstrapSection` values ready for injection into the bootstrap assembler.
 //!
-//! Skills are injected at [`SectionPriority::Flexible`], so they are truncated
+//! Skills are injected at `SectionPriority::Flexible`, so they are truncated
 //! before workspace identity files under budget pressure.
 
 // ── Always-available pure utilities ─────────────────────────────────────────
@@ -185,16 +185,7 @@ impl SkillLoader {
         let ranked = rank_skills(candidates);
         let selected: Vec<Fact> = ranked.into_iter().take(max_skills).collect();
 
-        let sections: Vec<BootstrapSection> = selected
-            .iter()
-            .filter_map(|fact| match fact_to_section(fact) {
-                Ok(s) => Some(s),
-                Err(e) => {
-                    warn!(fact_id = %fact.id, error = %e, "failed to convert skill fact to section");
-                    None
-                }
-            })
-            .collect();
+        let sections: Vec<BootstrapSection> = selected.iter().map(fact_to_section).collect();
 
         // Increment access counts in the background — do not block the pipeline
         if !selected.is_empty() {
@@ -221,7 +212,7 @@ impl SkillLoader {
 /// Tries to parse `content` as JSON [`SkillContent`] and format it as markdown.
 /// Falls back to the raw content string if parsing fails (e.g. plain-text skills).
 #[cfg(feature = "knowledge-store")]
-pub(crate) fn fact_to_section(fact: &Fact) -> Result<BootstrapSection, String> {
+pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
     let content = if let Ok(skill) =
         serde_json::from_str::<aletheia_mneme::skill::SkillContent>(&fact.content)
     {
@@ -232,13 +223,13 @@ pub(crate) fn fact_to_section(fact: &Fact) -> Result<BootstrapSection, String> {
 
     let tokens = CharEstimator.estimate(&content);
 
-    Ok(BootstrapSection {
+    BootstrapSection {
         name: format!("[skill] {}", fact.id),
         priority: SectionPriority::Flexible,
         content,
         tokens,
         truncatable: true,
-    })
+    }
 }
 
 /// Rank skill candidates by a combined score.
@@ -262,16 +253,20 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
         .into_iter()
         .enumerate()
         .map(|(i, fact)| {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "array index and length for ranking; sub-LSB precision loss is acceptable"
+            )]
             let position_score = 1.0 - (i as f64 / total as f64);
             let confidence = fact.confidence.clamp(0.0, 1.0);
 
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "access_count max 20 fits exactly in f64"
-            )]
-            let access_score = (fact.access_count.min(20) as f64) / 20.0;
+            let access_score = f64::from(fact.access_count.min(20)) / 20.0;
 
             let reference_secs = fact.last_accessed_at.unwrap_or(fact.valid_from).as_second();
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "age in seconds converted to days; sub-second precision is not needed"
+            )]
             let age_days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
             // Half-life of 30 days: recency = 2^(-age/30)
             let recency_score = 2_f64.powf(-age_days / 30.0);
@@ -439,7 +434,7 @@ mod tests {
     fn fact_to_section_uses_flexible_priority() {
         let skill_json = serde_json::to_string(&sample_skill()).unwrap();
         let fact = make_fact("fact-1", &skill_json, 0.9, 3);
-        let section = fact_to_section(&fact).unwrap();
+        let section = fact_to_section(&fact);
         assert_eq!(section.priority, SectionPriority::Flexible);
     }
 
@@ -448,7 +443,7 @@ mod tests {
     fn fact_to_section_is_truncatable() {
         let skill_json = serde_json::to_string(&sample_skill()).unwrap();
         let fact = make_fact("fact-1", &skill_json, 0.9, 0);
-        let section = fact_to_section(&fact).unwrap();
+        let section = fact_to_section(&fact);
         assert!(section.truncatable);
     }
 
@@ -457,7 +452,7 @@ mod tests {
     fn fact_to_section_parses_json_skill_content() {
         let skill_json = serde_json::to_string(&sample_skill()).unwrap();
         let fact = make_fact("fact-1", &skill_json, 0.9, 0);
-        let section = fact_to_section(&fact).unwrap();
+        let section = fact_to_section(&fact);
         assert!(section.content.contains("rust-error-handling"));
     }
 
@@ -465,7 +460,7 @@ mod tests {
     #[test]
     fn fact_to_section_falls_back_to_plain_text() {
         let fact = make_fact("fact-2", "plain text skill description", 0.8, 0);
-        let section = fact_to_section(&fact).unwrap();
+        let section = fact_to_section(&fact);
         assert_eq!(section.content, "plain text skill description");
     }
 
@@ -473,7 +468,7 @@ mod tests {
     #[test]
     fn fact_to_section_name_includes_fact_id() {
         let fact = make_fact("my-skill-id", "content", 0.7, 0);
-        let section = fact_to_section(&fact).unwrap();
+        let section = fact_to_section(&fact);
         assert!(
             section.name.contains("my-skill-id"),
             "section name: {}",
@@ -486,7 +481,7 @@ mod tests {
     fn fact_to_section_has_nonzero_token_estimate() {
         let skill_json = serde_json::to_string(&sample_skill()).unwrap();
         let fact = make_fact("fact-1", &skill_json, 0.9, 0);
-        let section = fact_to_section(&fact).unwrap();
+        let section = fact_to_section(&fact);
         assert!(section.tokens > 0);
     }
 
