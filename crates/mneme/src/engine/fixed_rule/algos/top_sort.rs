@@ -52,7 +52,7 @@ pub(crate) fn kahn_g(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32
     let mut in_degree = vec![0; graph_size as usize];
     for tos in 0..graph_size {
         for to in graph.out_neighbors(tos) {
-            in_degree[*to as usize] += 1;
+            in_degree[to as usize] += 1;
         }
     }
     let mut sorted = Vec::with_capacity(graph_size as usize);
@@ -67,9 +67,9 @@ pub(crate) fn kahn_g(graph: &DirectedCsrGraph, poison: Poison) -> Result<Vec<u32
     while let Some(removed) = pending.pop() {
         sorted.push(removed);
         for nxt in graph.out_neighbors(removed) {
-            in_degree[*nxt as usize] -= 1;
-            if in_degree[*nxt as usize] == 0 {
-                pending.push(*nxt);
+            in_degree[nxt as usize] -= 1;
+            if in_degree[nxt as usize] == 0 {
+                pending.push(nxt);
             }
         }
         poison.check()?;

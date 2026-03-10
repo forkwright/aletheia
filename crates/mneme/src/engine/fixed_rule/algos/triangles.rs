@@ -72,7 +72,7 @@ fn clustering_coefficients(
                                 if e_src <= e_dst {
                                     return false;
                                 }
-                                for nb in graph.out_neighbors(**e_src) {
+                                for nb in graph.out_neighbors(*e_src) {
                                     if nb == **e_dst {
                                         return true;
                                     }

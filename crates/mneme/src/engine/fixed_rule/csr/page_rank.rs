@@ -47,7 +47,7 @@ pub(crate) fn page_rank(
         for u in 0..node_count {
             let incoming_total: f32 = graph
                 .in_neighbors(u as u32)
-                .map(|&v| out_scores[v as usize])
+                .map(|v| out_scores[v as usize])
                 .sum();
 
             let old_score = scores[u];
