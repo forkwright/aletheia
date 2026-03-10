@@ -29,11 +29,11 @@ use crate::engine::fixed_rule::FixedRuleHandle;
 use crate::engine::fixed_rule::utilities::constant::Constant;
 use crate::engine::parse::expr::build_expr;
 use crate::engine::parse::schema::parse_schema;
-use crate::engine::parse::{DatalogParser, ExtractSpan, Pair, Pairs, Rule, SourceSpan};
+use crate::engine::parse::{DatalogParser, ExtractSpan, Pair, Pairs, Rule};
 use crate::engine::runtime::relation::InputRelationHandle;
 
 #[derive(Debug)]
-struct MultipleRuleDefinitionError(String, Vec<SourceSpan>);
+struct MultipleRuleDefinitionError(String);
 
 impl Error for MultipleRuleDefinitionError {}
 
@@ -47,13 +47,6 @@ impl Display for MultipleRuleDefinitionError {
     }
 }
 
-fn merge_spans(symbs: &[Symbol]) -> SourceSpan {
-    let mut fst = symbs.first().unwrap().span;
-    for nxt in symbs.iter().skip(1) {
-        fst = fst.merge(nxt.span);
-    }
-    fst
-}
 
 pub(crate) fn parse_query(
     src: Pairs<'_>,
@@ -102,7 +95,6 @@ pub(crate) fn parse_query(
                 }
             }
             Rule::fixed_rule => {
-                let rule_span = pair.extract_span();
                 let (name, apply) = parse_fixed_rule(pair, param_pool, fixed_rules, cur_vld)?;
 
                 match progs.entry(name) {
@@ -111,14 +103,7 @@ pub(crate) fn parse_query(
                     }
                     Entry::Occupied(e) => {
                         let found_name = e.key().name.to_string();
-                        let mut found_span = match e.get() {
-                            InputInlineRulesOrFixed::Rules { rules } => {
-                                rules.iter().map(|r| r.span).collect_vec()
-                            }
-                            InputInlineRulesOrFixed::Fixed { fixed } => vec![fixed.span],
-                        };
-                        found_span.push(rule_span);
-                        bail!(MultipleRuleDefinitionError(found_name, found_span));
+                        bail!(MultipleRuleDefinitionError(found_name));
                     }
                 }
             }
@@ -127,16 +112,7 @@ pub(crate) fn parse_query(
                 let mut src = pair.into_inner();
                 let (name, mut head, aggr) = parse_rule_head(src.next().unwrap(), param_pool)?;
 
-                if let Some(found) = progs.get(&name) {
-                    let mut found_span = match found {
-                        InputInlineRulesOrFixed::Rules { rules } => {
-                            rules.iter().map(|r| r.span).collect_vec()
-                        }
-                        InputInlineRulesOrFixed::Fixed { fixed } => {
-                            vec![fixed.span]
-                        }
-                    };
-                    found_span.push(span);
+                if progs.contains_key(&name) {
                     bail!(
                         "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
                         name.name

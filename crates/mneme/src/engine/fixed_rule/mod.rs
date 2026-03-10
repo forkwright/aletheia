@@ -9,14 +9,12 @@ use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use crate::ensure;
 #[allow(unused_imports)]
 use compact_str::CompactString;
-use crossbeam::channel::{Receiver, Sender, bounded};
 #[allow(unused_imports)]
 use either::{Left, Right};
 use itertools::Itertools;
 use snafu::Snafu;
 use std::sync::LazyLock;
 
-use crate::engine::NamedRows;
 use crate::engine::data::expr::Expr;
 use crate::engine::data::program::{
     FixedRuleOptionNotFoundError, MagicFixedRuleApply, MagicFixedRuleRuleArg, MagicSymbol,
@@ -559,126 +557,6 @@ pub trait FixedRule: Send + Sync {
     ) -> Result<()>;
 }
 
-/// Simple wrapper for custom fixed rule. You have less control than implementing [FixedRule] directly,
-/// but implementation is simpler.
-pub struct SimpleFixedRule {
-    return_arity: usize,
-    rule: Box<
-        dyn Fn(Vec<NamedRows>, BTreeMap<String, DataValue>) -> Result<NamedRows>
-            + Send
-            + Sync
-            + 'static,
-    >,
-}
-
-impl SimpleFixedRule {
-    /// Construct a SimpleFixedRule.
-    ///
-    /// * `return_arity`: The return arity of this rule.
-    /// * `rule`:  The rule implementation as a closure.
-    //    The first argument is a vector of input relations, realized into NamedRows,
-    //    and the second argument is a JSON object of passed in options.
-    //    The returned NamedRows is the return relation of the application of this rule.
-    //    Every row of the returned relation must have length equal to `return_arity`.
-    pub fn new<R>(return_arity: usize, rule: R) -> Self
-    where
-        R: Fn(Vec<NamedRows>, BTreeMap<String, DataValue>) -> Result<NamedRows>
-            + Send
-            + Sync
-            + 'static,
-    {
-        Self {
-            return_arity,
-            rule: Box::new(rule),
-        }
-    }
-    /// Construct a SimpleFixedRule that uses channels for communication.
-    pub fn rule_with_channel(
-        return_arity: usize,
-    ) -> (
-        Self,
-        Receiver<(
-            Vec<NamedRows>,
-            BTreeMap<String, DataValue>,
-            Sender<Result<NamedRows>>,
-        )>,
-    ) {
-        let (db2app_sender, db2app_receiver) = bounded(0);
-        (
-            Self {
-                return_arity,
-                rule: Box::new(move |inputs, options| -> Result<NamedRows> {
-                    let (app2db_sender, app2db_receiver) = bounded(0);
-                    db2app_sender
-                        .send((inputs, options, app2db_sender))
-                        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
-                    app2db_receiver
-                        .recv()
-                        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
-                }),
-            },
-            db2app_receiver,
-        )
-    }
-}
-
-impl FixedRule for SimpleFixedRule {
-    fn arity(
-        &self,
-        _options: &BTreeMap<CompactString, Expr>,
-        _rule_head: &[Symbol],
-        _span: SourceSpan,
-    ) -> Result<usize> {
-        Ok(self.return_arity)
-    }
-
-    fn run(
-        &self,
-        payload: FixedRulePayload<'_, '_>,
-        out: &'_ mut RegularTempStore,
-        _poison: Poison,
-    ) -> Result<()> {
-        let options: BTreeMap<_, _> = payload
-            .manifest
-            .options
-            .iter()
-            .map(|(k, v)| -> Result<_> {
-                let val = v.clone().eval_to_const()?;
-                Ok((k.to_string(), val))
-            })
-            .try_collect()?;
-        let input_arity = payload.manifest.rule_args.len();
-        let inputs: Vec<_> = (0..input_arity)
-            .map(|i| -> Result<_> {
-                let input = payload.get_input(i).unwrap();
-                let rows: Vec<_> = input.iter()?.try_collect()?;
-                let mut headers = input
-                    .arg_manifest
-                    .bindings()
-                    .iter()
-                    .map(|s| s.name.to_string())
-                    .collect_vec();
-                let l = headers.len();
-                let m = input.arg_manifest.arity(payload.tx, payload.stores)?;
-                for i in l..m {
-                    headers.push(format!("_{i}"));
-                }
-                Ok(NamedRows::new(headers, rows))
-            })
-            .try_collect()?;
-        let results: NamedRows = (self.rule)(inputs, options)?;
-        for row in results.rows {
-            ensure!(
-                row.len() == self.return_arity,
-                "arity mismatch: expect {}, got {}",
-                self.return_arity,
-                row.len()
-            );
-            out.put(row);
-        }
-        Ok(())
-    }
-}
 
 #[derive(Clone, Debug)]
 pub(crate) struct FixedRuleHandle {
@@ -840,13 +718,12 @@ pub(crate) struct NodeNotFoundError {
 #[derive(Debug)]
 pub(crate) struct BadExprValueError(
     pub(crate) DataValue,
-    pub(crate) SourceSpan,
     pub(crate) String,
 );
 
 impl std::fmt::Display for BadExprValueError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Bad expression value {:?}: {}", self.0, self.2)
+        write!(f, "Bad expression value {:?}: {}", self.0, self.1)
     }
 }
 

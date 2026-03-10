@@ -344,23 +344,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
             }
         }
     }
-
-    fn total_scan<'a>(&'a self) -> Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>
-    where
-        's: 'a,
-    {
-        use fjall::Readable;
-        match self {
-            FjallTx::Reader(r) => match fjall_collect_all(&r.snapshot, &r.keyspace) {
-                Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                Err(e) => Box::new(std::iter::once(Err(e))),
-            },
-            FjallTx::Writer(w) => match fjall_collect_all(w.tx_ref(), &w.keyspace) {
-                Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                Err(e) => Box::new(std::iter::once(Err(e))),
-            },
-        }
-    }
 }
 
 fn fjall_collect_range(
@@ -374,18 +357,6 @@ fn fjall_collect_range(
         let (k, v) = guard
             .into_inner()
             .map_err(|e| fjall_err("fjall range", e))?;
-        results.push((k.to_vec(), v.to_vec()));
-    }
-    Ok(results)
-}
-
-fn fjall_collect_all(
-    readable: &impl fjall::Readable,
-    keyspace: &impl AsRef<fjall::Keyspace>,
-) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
-    let mut results = Vec::new();
-    for guard in readable.iter(keyspace) {
-        let (k, v) = guard.into_inner().map_err(|e| fjall_err("fjall iter", e))?;
         results.push((k.to_vec(), v.to_vec()));
     }
     Ok(results)

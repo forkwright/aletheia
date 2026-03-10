@@ -34,7 +34,7 @@ use crate::engine::data::value::{DataValue, LARGEST_UTF_CHAR, ValidityTs};
 use crate::engine::fixed_rule::DEFAULT_FIXED_RULES;
 use crate::engine::fts::TokenizerCache;
 use crate::engine::parse::sys::SysOp;
-use crate::engine::parse::{DatalogScript, parse_expressions, parse_script};
+use crate::engine::parse::{DatalogScript, parse_script};
 use crate::engine::query::compile::{CompiledProgram, CompiledRule, CompiledRuleSet};
 use crate::engine::query::ra::{
     FilteredRA, FtsSearchRA, HnswSearchRA, InnerJoin, LshSearchRA, NegJoin, RelAlgebra, ReorderRA,
@@ -71,10 +71,6 @@ impl Drop for RunningQueryCleanup {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct DbManifest {
-    pub storage_version: u64,
-}
 
 /// Whether a script is mutable or immutable.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -1747,40 +1743,6 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 }
 
-/// Evaluate a string expression in the context of a set of parameters and variables
-pub fn evaluate_expressions(
-    src: &str,
-    params: &BTreeMap<String, DataValue>,
-    vars: &BTreeMap<String, DataValue>,
-) -> Result<DataValue> {
-    _evaluate_expressions(src, params, vars)
-}
-
-/// Get the variables referenced in a string expression
-pub fn get_variables(src: &str, params: &BTreeMap<String, DataValue>) -> Result<BTreeSet<String>> {
-    _get_variables(src, params)
-}
-
-fn _evaluate_expressions(
-    src: &str,
-    params: &BTreeMap<String, DataValue>,
-    vars: &BTreeMap<String, DataValue>,
-) -> Result<DataValue> {
-    let mut expr = parse_expressions(src, params)?;
-    let mut ctx = vec![];
-    let mut binding_map = BTreeMap::new();
-    for (i, (k, v)) in vars.iter().enumerate() {
-        ctx.push(v.clone());
-        binding_map.insert(Symbol::new(k, Default::default()), i);
-    }
-    expr.fill_binding_indices(&binding_map)?;
-    expr.eval(&ctx)
-}
-
-fn _get_variables(src: &str, params: &BTreeMap<String, DataValue>) -> Result<BTreeSet<String>> {
-    let expr = parse_expressions(src, params)?;
-    expr.get_variables()
-}
 
 /// Used for user-initiated termination of running queries
 #[derive(Clone, Default)]

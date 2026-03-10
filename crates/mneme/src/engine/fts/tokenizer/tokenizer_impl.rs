@@ -286,13 +286,13 @@ pub(crate) trait TokenStream {
         }
     }
 
-    /// Helper function to consume the entire `TokenStream`
-    /// and push the tokens to a sink function.
+    /// Iterates over all tokens and calls `callback` for each.
     ///
-    /// Remove this.
-    fn process(&mut self, sink: &mut dyn FnMut(&Token)) {
+    /// Only used in tests.
+    #[cfg(test)]
+    fn process(&mut self, callback: &mut dyn FnMut(&Token)) {
         while self.advance() {
-            sink(self.token());
+            callback(self.token());
         }
     }
 }
