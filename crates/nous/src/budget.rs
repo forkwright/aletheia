@@ -126,8 +126,6 @@ impl TokenBudget {
     }
 }
 
-// --- Time budget (complementary to token budget) ---
-
 use crate::config::StageBudget;
 use std::time::{Duration, Instant};
 
@@ -251,8 +249,6 @@ impl TimeBudget {
 mod tests {
     use super::*;
 
-    // --- CharEstimator ---
-
     #[test]
     fn char_estimator_empty_string() {
         assert_eq!(CharEstimator.estimate(""), 0);
@@ -278,8 +274,6 @@ mod tests {
     fn char_estimator_single_char() {
         assert_eq!(CharEstimator.estimate("x"), 1);
     }
-
-    // --- TokenBudget ---
 
     #[test]
     fn budget_computes_system_budget() {
@@ -345,15 +339,11 @@ mod tests {
         assert_eq!(budget.remaining(), 44_000);
     }
 
-    // --- Static assertions ---
-
     #[test]
     fn char_estimator_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<CharEstimator>();
     }
-
-    // --- TimeBudget ---
 
     #[test]
     fn time_budget_not_exceeded_initially() {

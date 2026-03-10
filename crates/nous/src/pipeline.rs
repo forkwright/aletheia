@@ -1,13 +1,4 @@
 //! Message processing pipeline.
-//!
-//! Each inbound message flows through stages:
-//! 1. **Context** — assemble bootstrap (SOUL.md, USER.md, etc.)
-//!     - **Recall** — retrieve and inject relevant knowledge
-//! 2. **History** — load conversation history within token budget
-//! 3. **Guard** — check rate limits, loop detection, safety
-//! 4. **Resolve** — resolve model, tools, and routing
-//! 5. **Execute** — call LLM, process tool use, iterate
-//! 6. **Finalize** — persist messages, update counts, extract facts
 
 use std::collections::VecDeque;
 use std::time::Instant;

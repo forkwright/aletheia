@@ -294,8 +294,6 @@ mod tests {
 
     use super::*;
 
-    // --- Mock provider ---
-
     struct MockProvider {
         response: std::sync::Mutex<Option<aletheia_hermeneus::error::Result<CompletionResponse>>>,
     }
@@ -392,8 +390,6 @@ mod tests {
         }
     }
 
-    // --- Helpers ---
-
     fn text_msg(role: Role, text: &str) -> Message {
         Message {
             role,
@@ -442,8 +438,6 @@ Bug is fixed, test passes.
 ## Corrections
 - Initially looked at wrong file before finding the issue in login.rs";
 
-    // --- should_distill tests ---
-
     #[test]
     fn should_distill_below_threshold_returns_false() {
         let engine = default_engine();
@@ -489,8 +483,6 @@ Bug is fixed, test passes.
         // 8 < min_messages(6) + verbatim_tail(3) = 9
         assert!(!engine.should_distill(8, 190_000, 200_000, 0.8));
     }
-
-    // --- build_prompt tests ---
 
     #[test]
     fn build_prompt_has_system_prompt() {
@@ -554,8 +546,6 @@ Bug is fixed, test passes.
         let request = engine.build_prompt(&sample_conversation(), "test");
         assert!(request.tools.is_empty());
     }
-
-    // --- distill tests ---
 
     #[tokio::test]
     async fn distill_success_returns_result() {
@@ -621,8 +611,6 @@ Bug is fixed, test passes.
         );
     }
 
-    // --- error cases ---
-
     #[tokio::test]
     async fn distill_empty_messages_returns_no_messages_error() {
         let engine = default_engine();
@@ -670,8 +658,6 @@ Bug is fixed, test passes.
         assert!(err.to_string().contains("empty summary"));
     }
 
-    // --- config defaults ---
-
     #[test]
     fn config_default_model() {
         let config = DistillConfig::default();
@@ -685,8 +671,6 @@ Bug is fixed, test passes.
         assert_eq!(config.min_messages, 6);
         assert!(config.include_tool_calls);
     }
-
-    // --- estimate_tokens ---
 
     #[test]
     fn estimate_tokens_chars_div_4() {
@@ -705,8 +689,6 @@ Bug is fixed, test passes.
         let messages: Vec<Message> = vec![];
         assert_eq!(estimate_tokens(&messages), 0);
     }
-
-    // --- extract_summary_text ---
 
     #[test]
     fn extract_summary_from_text_blocks() {
@@ -750,8 +732,6 @@ Bug is fixed, test passes.
         assert_eq!(text, "summary");
     }
 
-    // --- new config defaults ---
-
     #[test]
     fn config_default_sections() {
         let config = DistillConfig::default();
@@ -776,8 +756,6 @@ Bug is fixed, test passes.
         let config = DistillConfig::default();
         assert!(config.distillation_model.is_none());
     }
-
-    // --- model downshift ---
 
     #[test]
     fn build_prompt_uses_distillation_model_when_set() {
@@ -815,8 +793,6 @@ Bug is fixed, test passes.
         assert!(system.contains("## Key Decisions"));
         assert!(!system.contains("## Open Threads"));
     }
-
-    // --- verbatim tail ---
 
     #[tokio::test]
     async fn distill_preserves_verbatim_messages() {

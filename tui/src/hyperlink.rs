@@ -1,24 +1,4 @@
 //! OSC 8 terminal hyperlink support.
-//!
-//! # Overview
-//! - URL detection in plain text via [`detect_urls`]
-//! - Terminal capability detection via [`supports_hyperlinks`]
-//! - OSC 8 escape sequence helpers: [`osc8_open`], [`osc8_close`]
-//! - [`MdLink`] — link metadata returned by the markdown renderer
-//! - [`OscLink`] — screen-resolved hyperlink ready for post-render emission
-//!
-//! # OSC 8 format
-//! ```text
-//! ESC ] 8 ;; URL BEL  <display text>  ESC ] 8 ;; BEL
-//! \x1b]8;;https://example.com\x07  click here  \x1b]8;;\x07
-//! ```
-//!
-//! # Ratatui status
-//! Ratatui 0.30 has no native OSC 8 support (tracked upstream in #1227).
-//! We implement a **post-render** approach: after `terminal.draw()` completes,
-//! we re-write link text at its screen position, wrapped in OSC 8 sequences.
-//! The visual appearance is identical (underline + accent colour already set by
-//! ratatui); OSC 8 merely adds clickable hyperlink metadata on top.
 
 use std::sync::LazyLock;
 

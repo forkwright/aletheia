@@ -1,7 +1,4 @@
 //! Tracing initialization for Aletheia.
-//!
-//! Sets up structured logging via `tracing-subscriber`. Supports JSON output
-//! for production and human-readable output for development.
 
 use tracing_subscriber::{EnvFilter, fmt};
 

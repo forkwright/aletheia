@@ -133,8 +133,6 @@ mod tests {
         let fact: FactId = "id-1".into();
         let entity: EntityId = "id-1".into();
         // Same string content, but different types — this is the point.
-        // The following would not compile:
-        // let _: FactId = entity;
         assert_eq!(fact.as_str(), entity.as_str());
     }
 

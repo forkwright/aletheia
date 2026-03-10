@@ -209,8 +209,6 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
     frame.render_widget(paragraph, area);
 }
 
-// --- Internal renderers ---
-
 fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let tabs = [MemoryTab::Facts, MemoryTab::Graph, MemoryTab::Timeline];
     let mut spans: Vec<Span> = vec![Span::raw(" ")];
@@ -553,8 +551,6 @@ fn render_memory_status(app: &App, frame: &mut Frame, area: Rect, theme: &ThemeP
     let paragraph = Paragraph::new(vec![line]);
     frame.render_widget(paragraph, area);
 }
-
-// --- Helpers ---
 
 fn meta_line<'a>(theme: &'a ThemePalette, label: &'a str, value: &str) -> Line<'a> {
     Line::from(vec![
