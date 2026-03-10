@@ -43,7 +43,11 @@ start[] <- [[0]]
             (cost - 5.0).abs() < 1e-9,
             "Dijkstra 0→4 cost = 5.0, got {cost}"
         );
-        assert_eq!(row[3].get_slice().unwrap().len(), 5, "path 0→1→2→3→4 has 5 nodes");
+        assert_eq!(
+            row[3].get_slice().unwrap().len(),
+            5,
+            "path 0→1→2→3→4 has 5 nodes"
+        );
     }
 
     /// Dijkstra on a graph where start and destination are disconnected returns
@@ -65,7 +69,10 @@ end[]   <- [[2]]
 
         // Node 2 is unreachable; Dijkstra emits no row for it.
         assert!(
-            res.is_empty() || res.iter().all(|r| r[2].get_float().map_or(true, |c| !c.is_finite())),
+            res.is_empty()
+                || res
+                    .iter()
+                    .all(|r| r[2].get_float().is_none_or(|c| !c.is_finite())),
             "Disconnected node must have infinite cost or produce no row"
         );
     }
@@ -88,7 +95,10 @@ end[]   <- [[0]]
 
         assert_eq!(res.len(), 1);
         let cost = res[0][2].get_float().unwrap();
-        assert!(cost.abs() < 1e-9, "Cost from node to itself = 0, got {cost}");
+        assert!(
+            cost.abs() < 1e-9,
+            "Cost from node to itself = 0, got {cost}"
+        );
     }
 
     /// Dijkstra with multiple starting nodes discovers all reachable targets.
@@ -106,7 +116,10 @@ start[] <- [[0], [2]]
             .unwrap()
             .rows;
 
-        assert!(!res.is_empty(), "Each start node should reach at least its neighbour");
+        assert!(
+            !res.is_empty(),
+            "Each start node should reach at least its neighbour"
+        );
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -179,7 +192,11 @@ edges[src, dst, cost] <- [[0, 1, 1.0]]
             .unwrap()
             .rows;
 
-        assert_eq!(res.len(), 2, "One edge → 2 nodes, each with zero betweenness");
+        assert_eq!(
+            res.len(),
+            2,
+            "One edge → 2 nodes, each with zero betweenness"
+        );
         for row in &res {
             assert!(
                 (row[1].get_float().unwrap()).abs() < 1e-9,
@@ -329,7 +346,11 @@ start[] <- [[0]]
 
         assert_eq!(res.len(), 1, "BFS finds exactly one matching node");
         assert_eq!(res[0][1], DataValue::from(4i64), "BFS target is node 4");
-        assert_eq!(res[0][2].get_slice().unwrap().len(), 5, "path 0..4 has 5 nodes");
+        assert_eq!(
+            res[0][2].get_slice().unwrap().len(),
+            5,
+            "path 0..4 has 5 nodes"
+        );
     }
 
     /// BFS with no matching condition returns no rows.
@@ -375,7 +396,11 @@ start[] <- [[0]]
         assert_eq!(res[0][1], DataValue::from(4i64), "DFS target is node 4");
         let path = res[0][2].get_slice().unwrap();
         assert_eq!(path[0], DataValue::from(0i64), "path starts at 0");
-        assert_eq!(path[path.len() - 1], DataValue::from(4i64), "path ends at 4");
+        assert_eq!(
+            path[path.len() - 1],
+            DataValue::from(4i64),
+            "path ends at 4"
+        );
     }
 
     /// DFS with unreachable target returns no rows.
@@ -488,7 +513,10 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 5.0],
 
         assert_eq!(res.len(), 4, "MST of 5 nodes = 4 edges");
         let total: f64 = res.iter().map(|r| r[2].get_float().unwrap()).sum();
-        assert!((total - 7.0).abs() < 1e-9, "Kruskal MST total cost = 7.0, got {total}");
+        assert!(
+            (total - 7.0).abs() < 1e-9,
+            "Kruskal MST total cost = 7.0, got {total}"
+        );
     }
 
     /// Disconnected graph produces a spanning forest, not a tree.
@@ -526,7 +554,10 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 3.0]]
 
         assert_eq!(res.len(), 2, "Triangle MST = 2 edges");
         let total: f64 = res.iter().map(|r| r[2].get_float().unwrap()).sum();
-        assert!((total - 3.0).abs() < 1e-9, "Triangle MST cost = 1+2 = 3.0, got {total}");
+        assert!(
+            (total - 3.0).abs() < 1e-9,
+            "Triangle MST cost = 1+2 = 3.0, got {total}"
+        );
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -550,7 +581,10 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 5.0],
 
         assert_eq!(res.len(), 4, "Prim MST of 5 nodes = 4 edges");
         let total: f64 = res.iter().map(|r| r[2].get_float().unwrap()).sum();
-        assert!((total - 7.0).abs() < 1e-9, "Prim MST total cost = 7.0, got {total}");
+        assert!(
+            (total - 7.0).abs() < 1e-9,
+            "Prim MST total cost = 7.0, got {total}"
+        );
     }
 
     /// Prim with explicit start node finds the same spanning tree.
@@ -718,7 +752,11 @@ start[] <- [[0]]
             .rows;
 
         assert_eq!(res.len(), 1, "1 iteration → 1 walk");
-        assert_eq!(res[0][2].get_slice().unwrap().len(), 6, "steps=5 → 6-node path");
+        assert_eq!(
+            res[0][2].get_slice().unwrap().len(),
+            6,
+            "steps=5 → 6-node path"
+        );
         assert_eq!(res[0][1], DataValue::from(0i64), "walk starts at node 0");
     }
 
@@ -857,12 +895,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
             .rows;
 
         assert_eq!(res.len(), 6, "6 nodes");
-        let comp_of = |n: i64| {
-            res.iter()
-                .find(|r| r[0] == DataValue::from(n))
-                .unwrap()[1]
-                .clone()
-        };
+        let comp_of = |n: i64| res.iter().find(|r| r[0] == DataValue::from(n)).unwrap()[1].clone();
         assert_eq!(comp_of(0), comp_of(1));
         assert_eq!(comp_of(0), comp_of(2));
         assert_ne!(comp_of(0), comp_of(3));
@@ -1004,18 +1037,12 @@ edges[src, dst] <- [[0, 1], [1, 2], [0, 2], [2, 3]]
         assert_eq!(res.len(), 4, "4 distinct nodes");
 
         for &n in &[0i64, 1, 2] {
-            let tri = res
-                .iter()
-                .find(|r| r[0] == DataValue::from(n))
-                .unwrap()[2]
+            let tri = res.iter().find(|r| r[0] == DataValue::from(n)).unwrap()[2]
                 .get_int()
                 .unwrap();
             assert_eq!(tri, 1, "Node {n} should have 1 triangle, got {tri}");
         }
-        let tri3 = res
-            .iter()
-            .find(|r| r[0] == DataValue::from(3i64))
-            .unwrap()[2]
+        let tri3 = res.iter().find(|r| r[0] == DataValue::from(3i64)).unwrap()[2]
             .get_int()
             .unwrap();
         assert_eq!(tri3, 0, "Node 3 has no triangles");
@@ -1064,7 +1091,11 @@ edges[src, dst] <- [[0, 1]]
 
         assert_eq!(res.len(), 2);
         for row in &res {
-            assert_eq!(row[2].get_int().unwrap(), 0, "No triangles for a single edge");
+            assert_eq!(
+                row[2].get_int().unwrap(),
+                0,
+                "No triangles for a single edge"
+            );
         }
     }
 
@@ -1242,9 +1273,7 @@ edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3],[0,4]]
         assert_eq!(res.len(), 5, "5 nodes → 5 k-core rows");
 
         let k_of = |n: i64| {
-            res.iter()
-                .find(|r| r[0] == DataValue::from(n))
-                .unwrap()[1]
+            res.iter().find(|r| r[0] == DataValue::from(n)).unwrap()[1]
                 .get_int()
                 .unwrap()
         };
@@ -1335,9 +1364,7 @@ edges[src, dst] <- [[0,1],[1,2],[0,2],  [3,4]]
             .rows;
 
         let k_of = |n: i64| {
-            res.iter()
-                .find(|r| r[0] == DataValue::from(n))
-                .unwrap()[1]
+            res.iter().find(|r| r[0] == DataValue::from(n)).unwrap()[1]
                 .get_int()
                 .unwrap()
         };
