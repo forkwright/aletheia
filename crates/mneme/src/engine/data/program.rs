@@ -1527,7 +1527,9 @@ impl SearchInput {
 
                 impl std::error::Error for ExpectedFloatForHnswRadius {}
 
-                ensure!(r > 0.0, ExpectedFloatForHnswRadius(self.span));
+                if r <= 0.0 || r.is_nan() {
+                    bail!(ExpectedFloatForHnswRadius(self.span))
+                }
                 Some(r)
             }
             None => None,

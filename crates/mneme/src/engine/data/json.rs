@@ -45,6 +45,10 @@ impl<'a> From<&'a JsonValue> for DataValue {
     }
 }
 
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "DataValue::Bot is a sentinel that must never appear here; panic is intentional"
+)]
 impl From<DataValue> for JsonValue {
     fn from(v: DataValue) -> Self {
         match v {

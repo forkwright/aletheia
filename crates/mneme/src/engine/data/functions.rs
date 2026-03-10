@@ -1898,6 +1898,7 @@ pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
 }
 
 define_op!(OP_DECODE_BASE64, op_decode_base64, 1, false);
+#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::Str(s) => {
@@ -1963,6 +1964,7 @@ pub(crate) fn op_to_unity(args: &[DataValue]) -> Result<DataValue> {
 }
 
 define_op!(OP_TO_INT, op_to_int, 1, false);
+#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(n) => match n.get_int() {
@@ -1986,6 +1988,7 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
 }
 
 define_op!(OP_TO_FLOAT, op_to_float, 1, false);
+#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(n) => n.get_float().into(),
@@ -2022,6 +2025,7 @@ fn val2str(arg: &DataValue) -> String {
 }
 
 define_op!(OP_VEC, op_vec, 1, true);
+#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
     let t = match args.get(1) {
         Some(DataValue::Str(s)) => match s as &str {
@@ -2324,7 +2328,7 @@ pub(crate) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
         }
         _ => bail!("'rand_bernoulli' requires number between 0. and 1."),
     };
-    Ok(DataValue::from(rand::rng().gen_bool(prob)))
+    Ok(DataValue::from(rand::rng().random_bool(prob)))
 }
 
 define_op!(OP_RAND_INT, op_rand_int, 2, false);
@@ -2431,6 +2435,7 @@ pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
 }
 
 define_op!(OP_TO_UUID, op_to_uuid, 1, false);
+#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         d @ DataValue::Uuid(_u) => Ok(d.clone()),
@@ -2476,6 +2481,7 @@ pub(crate) const TERMINAL_VALIDITY: Validity = Validity {
 };
 
 define_op!(OP_FORMAT_TIMESTAMP, op_format_timestamp, 1, true);
+#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let millis = match &args[0] {
         DataValue::Validity(vld) => vld.timestamp.0.0 / 1000,
@@ -2507,6 +2513,7 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
 }
 
 define_op!(OP_PARSE_TIMESTAMP, op_parse_timestamp, 1, false);
+#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let s = args[0]
         .get_str()
@@ -2517,6 +2524,7 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
+#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn str2vld(s: &str) -> Result<ValidityTs> {
     let ts: jiff::Timestamp = s.parse().map_err(|_| miette!("bad datetime: {}", s))?;
     Ok(ValidityTs(Reverse(ts.as_microsecond())))
