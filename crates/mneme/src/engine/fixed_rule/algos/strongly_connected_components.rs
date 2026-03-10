@@ -1,7 +1,5 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
-#![allow(unused_imports)]
+//! Tarjan's strongly connected components.
+#![expect(unused_imports, reason = "algorithm may use additional imports depending on feature flags")]
 
 use crate::engine::error::DbResult as Result;
 use crate::engine::fixed_rule::csr::DirectedCsrGraph;

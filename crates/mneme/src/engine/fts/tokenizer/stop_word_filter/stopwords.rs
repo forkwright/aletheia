@@ -1,3 +1,4 @@
+//! Stop word lists for supported languages.
 /*
 These stop word lists are from the stopwords-iso project (https://github.com/stopwords-iso/stopwords-iso/) which carries the MIT license.
 */

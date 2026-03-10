@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Core value type for the Datalog engine.
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use ndarray::Array1;
@@ -211,6 +209,9 @@ impl serde::Serialize for Vector {
                 let arr = a.as_slice().unwrap();
                 let len = std::mem::size_of_val(arr);
                 let ptr = arr.as_ptr() as *const u8;
+                // SAFETY: `ptr` comes from a valid &[f32] allocation. Reinterpreting as
+                // &[u8] is safe because u8 has alignment 1 (always satisfied) and `len`
+                // is exactly `size_of_val(arr)` — the true byte length of the slice.
                 let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
                 state.serialize_element(&VecBytes(bytes))?;
             }
@@ -219,6 +220,9 @@ impl serde::Serialize for Vector {
                 let arr = a.as_slice().unwrap();
                 let len = std::mem::size_of_val(arr);
                 let ptr = arr.as_ptr() as *const u8;
+                // SAFETY: `ptr` comes from a valid &[f64] allocation. Reinterpreting as
+                // &[u8] is safe because u8 has alignment 1 (always satisfied) and `len`
+                // is exactly `size_of_val(arr)` — the true byte length of the slice.
                 let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
                 state.serialize_element(&VecBytes(bytes))?;
             }
@@ -260,6 +264,10 @@ impl<'de> Visitor<'de> for VectorVisitor {
                 let mut v = vec![];
                 v.reserve_exact(len);
                 let ptr = v.as_mut_ptr() as *mut u8;
+                // SAFETY: `v` has capacity for `len` f32 values, which is exactly
+                // `bytes.len()` bytes. `copy_nonoverlapping` writes into the reserved
+                // (but not yet initialized) capacity. After the copy every element is
+                // initialised, so `set_len(len)` is sound.
                 unsafe {
                     std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
                     v.set_len(len);
@@ -271,6 +279,10 @@ impl<'de> Visitor<'de> for VectorVisitor {
                 let mut v = vec![];
                 v.reserve_exact(len);
                 let ptr = v.as_mut_ptr() as *mut u8;
+                // SAFETY: `v` has capacity for `len` f64 values, which is exactly
+                // `bytes.len()` bytes. `copy_nonoverlapping` writes into the reserved
+                // (but not yet initialized) capacity. After the copy every element is
+                // initialised, so `set_len(len)` is sound.
                 unsafe {
                     std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
                     v.set_len(len);

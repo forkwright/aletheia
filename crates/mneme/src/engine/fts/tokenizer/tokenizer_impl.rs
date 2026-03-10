@@ -1,3 +1,4 @@
+//! Core tokenizer trait implementations.
 use compact_str::CompactString;
 use rustc_hash::FxHashSet;
 /// The tokenizer module contains all of the tools used to process

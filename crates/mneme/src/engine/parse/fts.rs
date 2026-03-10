@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
-
+//! Full-text search clause parsing.
 use crate::engine::error::DbResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::engine::parse::expr::parse_string;

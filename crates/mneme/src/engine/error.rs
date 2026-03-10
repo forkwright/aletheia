@@ -1,4 +1,4 @@
-// Public crate-level error type for mneme-engine.
+//! Error types for the Datalog engine.
 use snafu::Snafu;
 
 /// Top-level error type for the mneme-engine public API.

@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Small utility helpers for the engine.
 #[inline(always)]
 pub(crate) fn swap_option_result<T, E>(d: Result<Option<T>, E>) -> Option<Result<T, E>> {
     match d {

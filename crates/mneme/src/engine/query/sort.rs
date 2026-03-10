@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Sort operators for query output.
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 

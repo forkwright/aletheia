@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Stored relation management.
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::Ordering;
@@ -686,9 +684,6 @@ impl<'a> SessionTx<'a> {
         let is_temp = name.starts_with('_');
         let mut to_clean = vec![];
 
-        // if name.starts_with('_') {
-        //     bail!("Cannot destroy temp relation");
-        // }
         let store = self.get_relation(name, true)?;
         if !store.has_no_index() {
             bail!(

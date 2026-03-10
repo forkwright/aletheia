@@ -1,12 +1,4 @@
-// PageRank algorithm for directed CSR graphs.
-//
-// Derived from the `graph` crate (graph 0.3.1).
-// Original authors: Neo4j Labs. Licensed under Apache-2.0.
-// https://crates.io/crates/graph
-//
-// Simplified: single-threaded (graph sizes in this engine are small),
-// no atomic floats, no rayon. The original used thread-scoped parallelism
-// which is unnecessary for the in-process graph algorithm use case.
+//! PageRank over CSR graphs.
 
 use super::DirectedCsrGraph;
 

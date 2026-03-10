@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Built-in scalar functions.
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
 use std::mem;
@@ -2103,6 +2101,11 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             match t {
                 VecElementType::F32 => {
                     let f32_count = bytes.len() / mem::size_of::<f32>();
+                    // SAFETY: `bytes` was produced by base64-decoding a serialised
+                    // f32 vector (written by `Vector::serialize`). `f32_count` is
+                    // `bytes.len() / size_of::<f32>()`, so the pointer covers exactly
+                    // `f32_count` valid f32-sized elements. The view is immediately
+                    // converted to an owned array, so no aliasing or lifetime issues.
                     let arr = unsafe {
                         ndarray::ArrayView1::from_shape_ptr(
                             ndarray::Dim([f32_count]),
@@ -2113,6 +2116,11 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                 }
                 VecElementType::F64 => {
                     let f64_count = bytes.len() / mem::size_of::<f64>();
+                    // SAFETY: `bytes` was produced by base64-decoding a serialised
+                    // f64 vector (written by `Vector::serialize`). `f64_count` is
+                    // `bytes.len() / size_of::<f64>()`, so the pointer covers exactly
+                    // `f64_count` valid f64-sized elements. The view is immediately
+                    // converted to an owned array, so no aliasing or lifetime issues.
                     let arr = unsafe {
                         ndarray::ArrayView1::from_shape_ptr(
                             ndarray::Dim([f64_count]),

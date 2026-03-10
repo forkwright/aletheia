@@ -1,3 +1,4 @@
+//! Pre-tokenized string wrapper.
 use std::cmp::Ordering;
 
 use crate::engine::fts::tokenizer::{Token, TokenStream};

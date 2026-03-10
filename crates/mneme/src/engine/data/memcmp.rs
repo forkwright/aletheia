@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Memory-comparable encoding for composite keys.
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
 use std::io::Write;
@@ -250,6 +248,9 @@ impl DataValue {
             }
             STR_TAG => {
                 let (bytes, remaining) = decode_bytes(remaining);
+                // SAFETY: These bytes were produced by `encode_datavalue` for a
+                // `DataValue::Str`, which called `s.as_bytes()` on a valid Rust `&str`.
+                // UTF-8 validity is therefore guaranteed by the encoding invariant.
                 let s = unsafe { String::from_utf8_unchecked(bytes) };
                 (DataValue::Str(s.into()), remaining)
             }
@@ -276,6 +277,10 @@ impl DataValue {
             }
             REGEX_TAG => {
                 let (bytes, remaining) = decode_bytes(remaining);
+                // SAFETY: These bytes were produced by `encode_datavalue` for a
+                // `DataValue::Regex`, which serialised the regex source string via
+                // `s.as_bytes()`. The original source is a valid Rust `&str`, so
+                // UTF-8 validity is guaranteed by the encoding invariant.
                 let s = unsafe { String::from_utf8_unchecked(bytes) };
                 (
                     DataValue::Regex(RegexWrapper(Regex::from_str(&s).unwrap())),

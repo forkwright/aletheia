@@ -1,10 +1,4 @@
-// fjall persistent storage backend for the Datalog engine.
-//
-// Replaces redb as the primary on-disk backend. Key advantages:
-// - Native read-your-own-writes via SingleWriterTxDatabase (no delta buffer)
-// - LSM-tree with LZ4 compression
-// - Pure Rust, zero C dependencies
-// - Streaming prefix/range iterators
+//! Fjall persistent storage backend.
 
 use std::fs;
 use std::path::Path;
@@ -121,8 +115,10 @@ pub struct FjallWriteTx<'s> {
     keyspace: &'s fjall::SingleWriterTxKeyspace,
 }
 
-// fjall's Snapshot and SingleWriterWriteTx are safe to share across threads.
-// Snapshot is a read-only view; SingleWriterWriteTx is protected by a mutex guard.
+// SAFETY: fjall's Snapshot is a read-only view with no interior mutability, so
+// sharing a reference across threads is sound. SingleWriterWriteTx is protected
+// by an external mutex guard at the call site, ensuring exclusive access while
+// the reference is live. Both impls are therefore safe to declare Sync.
 unsafe impl Sync for FjallReadTx<'_> {}
 unsafe impl Sync for FjallWriteTx<'_> {}
 
@@ -367,8 +363,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     }
 }
 
-// --- Helper: collect range from any Readable ---
-
 fn fjall_collect_range(
     readable: &impl fjall::Readable,
     keyspace: &impl AsRef<fjall::Keyspace>,
@@ -396,8 +390,6 @@ fn fjall_collect_all(
     }
     Ok(results)
 }
-
-// --- Skip-scan on collected data (validity-aware time-travel) ---
 
 struct CollectedSkipIterator {
     data: Vec<(Vec<u8>, Vec<u8>)>,

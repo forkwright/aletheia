@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
-
+//! Full-text search query AST.
 use crate::engine::fts::tokenizer::TextAnalyzer;
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;
@@ -46,16 +44,6 @@ pub(crate) enum FtsExpr {
 }
 
 impl FtsExpr {
-    // pub(crate) fn needs_idf(&self) -> bool {
-    //     match self {
-    //         FtsExpr::Literal(_) => false,
-    //         FtsExpr::Near(_) => false,
-    //         FtsExpr::And(exprs) => exprs.iter().any(|e| e.needs_idf()),
-    //         FtsExpr::Or(_) => true,
-    //         FtsExpr::Not(lhs, _) => lhs.needs_idf(),
-    //     }
-    // }
-
     pub(crate) fn tokenize(self, tokenizer: &TextAnalyzer) -> Self {
         self.do_tokenize(tokenizer).flatten()
     }

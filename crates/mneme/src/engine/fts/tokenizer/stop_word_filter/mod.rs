@@ -1,15 +1,4 @@
-//! # Example
-//! ```text
-//! use tantivy::tokenizer::*;
-//!
-//! let tokenizer = TextAnalyzer::from(SimpleTokenizer)
-//!   .filter(StopWordFilter::remove(vec!["the".to_string(), "is".to_string()]));
-//!
-//! let mut stream = tokenizer.token_stream("the fox is crafty");
-//! assert_eq!(stream.next().unwrap().text, "fox");
-//! assert_eq!(stream.next().unwrap().text, "crafty");
-//! assert!(stream.next().is_none());
-//! ```
+//! Stop word removal filter with multi-language support.
 #[rustfmt::skip]
 mod stopwords;
 

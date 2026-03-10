@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! JSON serialization and deserialization for data values.
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 pub(crate) use serde_json::Value as JsonValue;

@@ -1,4 +1,4 @@
-// redb persistent storage backend for the Datalog engine.
+//! Redb persistent storage backend.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -155,8 +155,6 @@ pub struct RedbWriteTx<'s> {
     delta: BTreeMap<Vec<u8>, Option<Vec<u8>>>,
 }
 
-// --- Helper: read from a ReadTransaction, collecting into Vec ---
-
 fn redb_table_get(read_txn: &redb::ReadTransaction, key: &[u8]) -> Result<Option<Vec<u8>>> {
     let table = read_txn
         .open_table(TABLE)
@@ -203,8 +201,6 @@ fn redb_collect_all(read_txn: &redb::ReadTransaction) -> Result<Vec<(Vec<u8>, Ve
     }
     Ok(results)
 }
-
-// --- StoreTx implementation ---
 
 impl<'s> StoreTx<'s> for RedbTx<'s> {
     fn get(&self, key: &[u8], _for_update: bool) -> Result<Option<Vec<u8>>> {
@@ -453,9 +449,6 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
     }
 }
 
-// --- Merge iterators: delta cache + persisted data (owned variant) ---
-// Adapted from MemStorage's CacheIter/CacheIterRaw for owned persisted data.
-
 struct DeltaMergeIterRaw<'a, C>
 where
     C: Iterator<Item = (&'a Vec<u8>, &'a Option<Vec<u8>>)> + 'a,
@@ -536,7 +529,6 @@ where
     }
 }
 
-// Tuple-decoding variant for range_scan_tuple
 struct DeltaMergeIter<'a, C>
 where
     C: Iterator<Item = (&'a Vec<u8>, &'a Option<Vec<u8>>)> + 'a,
@@ -615,8 +607,6 @@ where
         swap_option_result(self.next_inner())
     }
 }
-
-// --- Skip-scan on collected data (validity-aware time-travel) ---
 
 struct CollectedSkipIterator {
     data: Vec<(Vec<u8>, Vec<u8>)>,

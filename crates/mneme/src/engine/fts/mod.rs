@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2023, The Cozo Project Authors — see NOTICE for details.
-
+//! Full-text search subsystem.
 use crate::engine::data::memcmp::MemCmpEncoder;
 use crate::engine::data::value::DataValue;
 use crate::engine::error::DbResult as Result;
@@ -37,7 +35,6 @@ pub struct TokenizerConfig {
 }
 
 impl TokenizerConfig {
-    // use sha256::digest;
     pub(crate) fn config_hash(&self, filters: &[Self]) -> impl AsRef<[u8]> {
         let mut hasher = Sha256::new();
         hasher.update(self.name.as_bytes());

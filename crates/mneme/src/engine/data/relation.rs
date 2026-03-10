@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Relation metadata and schema definitions.
 use crate::engine::error::DbResult as Result;
 use crate::{bail, ensure};
 use base64::Engine;
@@ -349,6 +347,11 @@ impl NullableColType {
                             if f32_count != *len {
                                 bail!(make_err())
                             }
+                            // SAFETY: `bytes` is a base64-decoded f32 vector payload.
+                            // The length check above ensures `f32_count == *len`, so
+                            // the pointer covers exactly `f32_count` f32-aligned elements
+                            // within the live `bytes` allocation. The view is immediately
+                            // converted to an owned array before `bytes` is dropped.
                             let arr = unsafe {
                                 ndarray::ArrayView1::from_shape_ptr(
                                     ndarray::Dim([f32_count]),
@@ -362,6 +365,11 @@ impl NullableColType {
                             if f64_count != *len {
                                 bail!(make_err())
                             }
+                            // SAFETY: `bytes` is a base64-decoded f64 vector payload.
+                            // The length check above ensures `f64_count == *len`, so
+                            // the pointer covers exactly `f64_count` f64-aligned elements
+                            // within the live `bytes` allocation. The view is immediately
+                            // converted to an owned array before `bytes` is dropped.
                             let arr = unsafe {
                                 ndarray::ArrayView1::from_shape_ptr(
                                     ndarray::Dim([f64_count]),

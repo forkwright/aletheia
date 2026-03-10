@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Schema and relation transact operations.
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 

@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Tests for temporal validity ranges.
 use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
 use serde_json::json;

@@ -1,3 +1,4 @@
+//! Snowball stemming filter.
 use std::borrow::Cow;
 use std::mem;
 

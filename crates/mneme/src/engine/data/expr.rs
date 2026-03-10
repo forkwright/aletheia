@@ -1,6 +1,4 @@
-// Originally derived from CozoDB v0.7.6 (MPL-2.0).
-// Copyright 2022, The Cozo Project Authors — see NOTICE for details.
-
+//! Expression evaluation and representation.
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display, Formatter};
@@ -99,12 +97,7 @@ pub fn eval_bytecode(
 ) -> Result<DataValue> {
     stack.clear();
     let mut pointer = 0;
-    // for (i, c) in bytecodes.iter().enumerate() {
-    //     println!("{i}  {c:?}");
-    // }
-    // println!();
     loop {
-        // println!("{pointer}  {stack:?}");
         if pointer == bytecodes.len() {
             break;
         }
@@ -428,11 +421,7 @@ impl Expr {
                     cond.do_binding_indices(coll)?;
                     val.do_binding_indices(coll)?;
                 }
-            } // Expr::Try { clauses, .. } => {
-            //     for clause in clauses {
-            //         clause.do_binding_indices(coll)
-            //     }
-            // }
+            }
             Expr::UnboundApply { op, span, .. } => {
                 bail!(NoImplementationError(*span, op.to_string()));
             }
@@ -647,9 +636,7 @@ impl Expr {
                                     StrRangeScanError(val.clone(), symb.span)
                                 })?;
                                 let lower = DataValue::from(s);
-                                // let lower = DataValue::Str(s.to_string());
                                 let mut upper = CompactString::from(s);
-                                // let mut upper = s.to_string();
                                 upper.push(LARGEST_UTF_CHAR);
                                 let upper = DataValue::Str(upper);
                                 return Ok(ValueRange::new(lower, upper));
