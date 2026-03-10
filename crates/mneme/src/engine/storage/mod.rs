@@ -45,12 +45,6 @@ pub trait StoreTx<'s>: Sync {
     /// the key has not been modified outside the transaction.
     fn get(&self, key: &[u8], for_update: bool) -> Result<Option<Vec<u8>>>;
 
-    /// Get multiple keys. If `for_update` is `true` (only possible in a write transaction),
-    /// then the database needs to guarantee that `commit()` can only succeed if
-    /// the keys have not been modified outside the transaction.
-    fn multi_get(&self, keys: &[Vec<u8>], for_update: bool) -> Result<Vec<Option<Vec<u8>>>> {
-        keys.iter().map(|k| self.get(k, for_update)).collect()
-    }
 
     /// Put a key-value pair into the storage. In case of existing key,
     /// the storage engine needs to overwrite the old value.
@@ -137,8 +131,4 @@ pub trait StoreTx<'s>: Sync {
     where
         's: 'a;
 
-    /// Scan for all rows. The rows are required to be in ascending order.
-    fn total_scan<'a>(&'a self) -> Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>
-    where
-        's: 'a;
 }

@@ -155,28 +155,6 @@ impl FixedRule for ShortestPathDijkstra {
     }
 }
 
-#[derive(PartialEq)]
-struct HeapState {
-    cost: f64,
-    node: usize,
-}
-
-impl PartialOrd for HeapState {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for HeapState {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.cost
-            .total_cmp(&other.cost)
-            .reverse()
-            .then_with(|| self.node.cmp(&other.node))
-    }
-}
-
-impl Eq for HeapState {}
 
 pub(crate) trait ForbiddenEdge {
     fn is_forbidden(&self, src: u32, dst: u32) -> bool;

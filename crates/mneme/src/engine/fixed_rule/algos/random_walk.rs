@@ -70,7 +70,7 @@ impl FixedRule for RandomWalk {
                     if candidate_steps.is_empty() {
                         break;
                     }
-                    let next_step = if let Some((weight_expr, span)) = &maybe_weight_bytecode {
+                    let next_step = if let Some((weight_expr, _span)) = &maybe_weight_bytecode {
                         let weights: Vec<_> = candidate_steps
                             .iter()
                             .map(|t| -> Result<f64> {
@@ -83,7 +83,6 @@ impl FixedRule for RandomWalk {
                                             f >= 0.,
                                             BadExprValueError(
                                                 DataValue::from(f),
-                                                *span,
                                                 "'weight' must evaluate to a non-negative number"
                                                     .to_string()
                                             )
@@ -92,7 +91,6 @@ impl FixedRule for RandomWalk {
                                     }
                                     v => bail!(BadExprValueError(
                                         v,
-                                        *span,
                                         "'weight' must evaluate to a non-negative number"
                                             .to_string()
                                     )),

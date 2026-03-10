@@ -286,15 +286,6 @@ pub(crate) trait TokenStream {
         }
     }
 
-    /// Helper function to consume the entire `TokenStream`
-    /// and push the tokens to a sink function.
-    ///
-    /// Remove this.
-    fn process(&mut self, sink: &mut dyn FnMut(&Token)) {
-        while self.advance() {
-            sink(self.token());
-        }
-    }
 }
 
 pub(crate) trait TokenFilterClone {

@@ -95,16 +95,8 @@ impl<EV> DirectedCsrGraph<EV> {
         self.csr_out.degree(node)
     }
 
-    pub fn in_degree(&self, node: u32) -> u32 {
-        self.csr_inc.degree(node)
-    }
-
     pub fn out_neighbors_with_values(&self, node: u32) -> std::slice::Iter<'_, Target<EV>> {
         self.csr_out.targets_with_values(node).iter()
-    }
-
-    pub fn in_neighbors_with_values(&self, node: u32) -> std::slice::Iter<'_, Target<EV>> {
-        self.csr_inc.targets_with_values(node).iter()
     }
 }
 

@@ -304,7 +304,7 @@ impl std::fmt::Display for WrongFixedRuleOptionError {
 impl std::error::Error for WrongFixedRuleOptionError {}
 
 impl MagicFixedRuleApply {
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "validation helper retained for fixed rule implementors")]
     pub(crate) fn relation_with_min_len(
         &self,
         idx: usize,
@@ -436,14 +436,14 @@ pub(crate) enum MagicFixedRuleRuleArg {
     },
 }
 impl MagicFixedRuleRuleArg {
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "accessor retained for external fixed rule implementations")]
     pub(crate) fn bindings(&self) -> &[Symbol] {
         match self {
             MagicFixedRuleRuleArg::InMem { bindings, .. }
             | MagicFixedRuleRuleArg::Stored { bindings, .. } => bindings,
         }
     }
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "accessor used by external fixed rule error reporting")]
     pub(crate) fn span(&self) -> SourceSpan {
         match self {
             MagicFixedRuleRuleArg::InMem { span, .. }

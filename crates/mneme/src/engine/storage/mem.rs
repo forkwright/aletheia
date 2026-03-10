@@ -259,21 +259,6 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
             .count(),
         })
     }
-
-    fn total_scan<'a>(&'a self) -> Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + 'a>
-    where
-        's: 'a,
-    {
-        match self {
-            MemTx::Reader(rdr) => Box::new(rdr.iter().map(|(k, v)| Ok((k.clone(), v.clone())))),
-            MemTx::Writer(wtr, cache) => Box::new(CacheIterRaw {
-                change_iter: cache.iter().fuse(),
-                db_iter: wtr.iter().fuse(),
-                change_cache: None,
-                db_cache: None,
-            }),
-        }
-    }
 }
 
 struct CacheIterRaw<'a, C, T>

@@ -85,7 +85,6 @@ fn astar(
         let cost = cost_val.get_float().ok_or_else(|| {
             BadExprValueError(
                 cost_val,
-                heuristic.span(),
                 "a number is required".to_string(),
             )
         })?;
@@ -93,7 +92,6 @@ fn astar(
             !cost.is_nan(),
             BadExprValueError(
                 DataValue::from(cost),
-                heuristic.span(),
                 "a number is required".to_string(),
             )
         );
@@ -127,7 +125,6 @@ fn astar(
                 Some(cost) => cost.get_float().ok_or_else(|| {
                     BadExprValueError(
                         edge_dst.clone(),
-                        edges.span(),
                         "edge cost must be a number".to_string(),
                     )
                 })?,
@@ -136,7 +133,6 @@ fn astar(
                 !edge_cost.is_nan(),
                 BadExprValueError(
                     edge_dst.clone(),
-                    edges.span(),
                     "edge cost must be a number".to_string(),
                 )
             );
