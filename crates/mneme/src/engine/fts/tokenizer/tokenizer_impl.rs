@@ -286,6 +286,15 @@ pub(crate) trait TokenStream {
         }
     }
 
+    /// Iterates over all tokens and calls `callback` for each.
+    ///
+    /// Only used in tests.
+    #[cfg(test)]
+    fn process(&mut self, callback: &mut dyn FnMut(&Token)) {
+        while self.advance() {
+            callback(self.token());
+        }
+    }
 }
 
 pub(crate) trait TokenFilterClone {
