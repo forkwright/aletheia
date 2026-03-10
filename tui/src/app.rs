@@ -490,6 +490,7 @@ pub(crate) mod test_helpers {
     use std::collections::{HashMap, HashSet};
 
     pub fn test_app() -> App {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let config = Config {
             url: "http://localhost:18789".to_string(),
             token: None,

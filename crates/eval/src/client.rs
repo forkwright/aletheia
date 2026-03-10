@@ -363,14 +363,20 @@ pub struct HistoryMessage {
 mod tests {
     use super::*;
 
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
     #[test]
     fn url_construction_trims_trailing_slash() {
+        install_crypto_provider();
         let client = EvalClient::new("http://localhost:18789/", None);
         assert_eq!(client.base_url(), "http://localhost:18789");
     }
 
     #[test]
     fn has_token_reports_correctly() {
+        install_crypto_provider();
         let without = EvalClient::new("http://localhost", None);
         assert!(!without.has_token());
 
@@ -380,24 +386,28 @@ mod tests {
 
     #[test]
     fn url_construction_no_trailing_slash() {
+        install_crypto_provider();
         let client = EvalClient::new("http://localhost:8080", None);
         assert_eq!(client.base_url(), "http://localhost:8080");
     }
 
     #[test]
     fn url_construction_multiple_trailing_slashes() {
+        install_crypto_provider();
         let client = EvalClient::new("http://localhost:8080///", None);
         assert_eq!(client.base_url(), "http://localhost:8080");
     }
 
     #[test]
     fn base_url_returns_stored_url() {
+        install_crypto_provider();
         let client = EvalClient::new("http://192.168.1.100:3000", None);
         assert_eq!(client.base_url(), "http://192.168.1.100:3000");
     }
 
     #[test]
     fn new_client_without_token() {
+        install_crypto_provider();
         let client = EvalClient::new("http://localhost", None);
         assert!(!client.has_token());
         assert_eq!(client.base_url(), "http://localhost");
@@ -405,6 +415,7 @@ mod tests {
 
     #[test]
     fn new_client_with_token() {
+        install_crypto_provider();
         let client = EvalClient::new("http://localhost", Some("secret-token".to_owned()));
         assert!(client.has_token());
         assert_eq!(client.base_url(), "http://localhost");

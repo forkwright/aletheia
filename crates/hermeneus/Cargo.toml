@@ -23,6 +23,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+rustls = { workspace = true }
 static_assertions = { workspace = true }
 tokio = { workspace = true }
 wiremock = { workspace = true }

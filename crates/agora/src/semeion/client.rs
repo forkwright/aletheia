@@ -316,6 +316,10 @@ fn normalize_url(url: &str) -> String {
 mod tests {
     use super::*;
 
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
     #[test]
     fn url_normalization() {
         assert_eq!(normalize_url("localhost:8080/"), "http://localhost:8080");
@@ -369,12 +373,14 @@ mod tests {
 
     #[test]
     fn client_creation() {
+        install_crypto_provider();
         let client = SignalClient::new("localhost:8080").expect("create client");
         assert_eq!(client.rpc_url(), "http://localhost:8080/api/v1/rpc");
     }
 
     #[tokio::test]
     async fn receive_returns_envelopes() {
+        install_crypto_provider();
         let server = wiremock::MockServer::start().await;
 
         let rpc_response = serde_json::json!({
@@ -418,6 +424,7 @@ mod tests {
 
     #[tokio::test]
     async fn receive_empty_result() {
+        install_crypto_provider();
         let server = wiremock::MockServer::start().await;
 
         let rpc_response = serde_json::json!({
@@ -439,6 +446,7 @@ mod tests {
 
     #[tokio::test]
     async fn receive_rpc_error() {
+        install_crypto_provider();
         let server = wiremock::MockServer::start().await;
 
         let rpc_response = serde_json::json!({
@@ -461,6 +469,7 @@ mod tests {
 
     #[tokio::test]
     async fn receive_skips_malformed_envelopes() {
+        install_crypto_provider();
         let server = wiremock::MockServer::start().await;
 
         let rpc_response = serde_json::json!({

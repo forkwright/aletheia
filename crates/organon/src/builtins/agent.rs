@@ -294,6 +294,10 @@ mod tests {
         ToolServices,
     };
 
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
     fn test_ctx() -> ToolContext {
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
@@ -306,6 +310,7 @@ mod tests {
     }
 
     fn test_ctx_with_spawn(spawn: Arc<dyn SpawnService>) -> ToolContext {
+        install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),

@@ -31,7 +31,7 @@ allow = [
     "LGPL-3.0-or-later",    # priority-queue
     "NCSA",                 # libfuzzer-sys (transitive via rav1e)
     "CDLA-Permissive-2.0",  # webpki-roots, webpki-root-certs
-    "OpenSSL",              # aws-lc-sys (transitive via rustls crypto backend)
+    "OpenSSL",              # ring (rustls crypto backend) includes OpenSSL-licensed code
 ]
 confidence-threshold = 0.8
 
@@ -77,21 +77,37 @@ skip = [
     { name = "thiserror", version = "=1.0.69" },
     { name = "thiserror-impl", version = "=1.0.69" },
 
-    # windows-sys — four versions from different dep generations:
-    # 0.52 (ring/rustls), 0.59 (rustix 0.38), 0.60 (arboard via tui), 0.61 (current).
+    # reqwest 0.12 — hf-hub 0.5.0 has not yet migrated to reqwest 0.13.
+    # wasm-streams 0.4 is a transitive dep of reqwest 0.12.
+    { name = "reqwest", version = "=0.12.28" },
+    { name = "wasm-streams", version = "=0.4.2" },
+
+    # windows-sys — five versions from different dep generations:
+    # 0.45 (jni via rustls-platform-verifier → reqwest 0.13), 0.52 (ring/rustls),
+    # 0.59 (rustix 0.38), 0.60 (arboard via tui), 0.61 (current).
+    { name = "windows-sys", version = "=0.45.0" },
     { name = "windows-sys", version = "=0.52.0" },
     { name = "windows-sys", version = "=0.59.0" },
     { name = "windows-sys", version = "=0.60.2" },
 
-    # windows-targets and subcomponents — 0.52 from ring/rustls, 0.53 from arboard/tui.
+    # windows-targets and subcomponents — 0.42 from jni/windows-sys 0.45 era,
+    # 0.52 from ring/rustls, 0.53 from arboard/tui.
+    { name = "windows-targets", version = "=0.42.2" },
     { name = "windows-targets", version = "=0.52.6" },
+    { name = "windows_aarch64_gnullvm", version = "=0.42.2" },
     { name = "windows_aarch64_gnullvm", version = "=0.52.6" },
+    { name = "windows_aarch64_msvc", version = "=0.42.2" },
     { name = "windows_aarch64_msvc", version = "=0.52.6" },
+    { name = "windows_i686_gnu", version = "=0.42.2" },
     { name = "windows_i686_gnu", version = "=0.52.6" },
     { name = "windows_i686_gnullvm", version = "=0.52.6" },
+    { name = "windows_i686_msvc", version = "=0.42.2" },
     { name = "windows_i686_msvc", version = "=0.52.6" },
+    { name = "windows_x86_64_gnu", version = "=0.42.2" },
     { name = "windows_x86_64_gnu", version = "=0.52.6" },
+    { name = "windows_x86_64_gnullvm", version = "=0.42.2" },
     { name = "windows_x86_64_gnullvm", version = "=0.52.6" },
+    { name = "windows_x86_64_msvc", version = "=0.42.2" },
     { name = "windows_x86_64_msvc", version = "=0.52.6" },
 
     # winnow 0.6 — cron 0.15 (used by oikonomos/daemon) has not migrated to winnow 0.7.
@@ -140,4 +156,6 @@ skip = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = []
+allow-git = [
+    "https://github.com/romnn/reqwest-eventsource",  # pending upstream merge of reqwest 0.13 support (PR #35)
+]

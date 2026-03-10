@@ -77,7 +77,7 @@ serde_yaml = "0.9"
 # HTTP
 axum = "0.8"
 utoipa = { version = "5", features = ["axum_extras"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "http2"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "blocking", "http2", "query"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "compression-gzip", "trace", "limit", "set-header", "fs"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
@@ -116,6 +116,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 flate2 = "1"
 
 # TLS / Security
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
 rcgen = "0.14"
 regex = "1"
 

@@ -409,6 +409,10 @@ async fn poll_loop(
 mod tests {
     use super::*;
 
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
     #[test]
     fn parse_target_phone() {
         let target = parse_target("+1234567890");
@@ -468,6 +472,7 @@ mod tests {
 
     #[tokio::test]
     async fn listen_returns_receiver_and_handles() {
+        install_crypto_provider();
         let server = wiremock::MockServer::start().await;
 
         let rpc_response = serde_json::json!({
@@ -497,6 +502,7 @@ mod tests {
 
     #[tokio::test]
     async fn poll_loop_stops_on_receiver_drop() {
+        install_crypto_provider();
         let server = wiremock::MockServer::start().await;
 
         let rpc_response = serde_json::json!({
@@ -549,6 +555,7 @@ mod tests {
 
     #[tokio::test]
     async fn connection_health_reports_state() {
+        install_crypto_provider();
         let mut provider = SignalProvider::with_buffer_capacity(50);
         let server = wiremock::MockServer::start().await;
         let signal_client = client::SignalClient::new(&server.uri()).expect("client");

@@ -675,7 +675,28 @@ mod tests {
     use super::*;
     use crate::error::Error;
     use crate::provider::{LlmProvider, ProviderConfig};
-    use crate::types::{CompletionRequest, Content, Message, Role};
+    use crate::types::{CompletionRequest, CompletionResponse, Content, Message, Role};
+
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
+    /// Build a provider and call `complete()` on a blocking thread.
+    ///
+    /// `reqwest::blocking::Client` panics if constructed or used inside a tokio
+    /// async context, so wiremock tests dispatch everything to `spawn_blocking`.
+    async fn complete_on_blocking_thread(
+        config: ProviderConfig,
+        request: CompletionRequest,
+    ) -> crate::error::Result<CompletionResponse> {
+        install_crypto_provider();
+        tokio::task::spawn_blocking(move || {
+            let provider = AnthropicProvider::from_config(&config)?;
+            provider.complete(&request)
+        })
+        .await
+        .expect("spawn_blocking join")
+    }
 
     fn test_config_with(base_url: &str) -> ProviderConfig {
         ProviderConfig {

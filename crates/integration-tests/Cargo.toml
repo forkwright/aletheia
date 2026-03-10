@@ -28,6 +28,7 @@ aletheia-symbolon = { path = "../symbolon" }
 jiff = { workspace = true }
 axum = { workspace = true }
 reqwest = { workspace = true }
+rustls = { workspace = true }
 secrecy = { workspace = true }
 serde_json = { workspace = true }
 tempfile = "3"
