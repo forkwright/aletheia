@@ -22,6 +22,7 @@ use crate::engine::parse::schema::parse_nullable_type;
 use crate::engine::parse::sys::{SysOp, parse_sys};
 use crate::engine::FixedRule;
 
+pub(crate) mod error;
 pub(crate) mod expr;
 pub(crate) mod fts;
 pub(crate) mod imperative;
@@ -233,14 +234,6 @@ impl SourceSpan {
     }
 }
 
-#[derive(Debug, Snafu)]
-#[snafu(display("The query parser has encountered unexpected input / end of input at {span}"))]
-pub(crate) struct ParseError {
-    pub(crate) span: SourceSpan,
-}
-
-
-
 /// Parse a text script into the datalog AST.
 ///
 /// * `src` - the script to parse
@@ -262,10 +255,14 @@ pub fn parse_script(
                 InputLocation::Pos(p) => SourceSpan(p, 0),
                 InputLocation::Span((start, end)) => SourceSpan(start, end - start),
             };
-            ParseError { span }
+            error::SyntaxSnafu {
+                span: span.to_string(),
+                message: err.to_string(),
+            }
+            .build()
         })?
         .next()
-        .unwrap();
+        .expect("pest guarantees a script token after successful parse");
     Ok(match parsed.as_rule() {
         Rule::query_script => {
             let q = parse_query(parsed.into_inner(), param_pool, fixed_rules, cur_vld)?;

@@ -1,24 +1,36 @@
 //! Full-text search clause parsing.
 use crate::engine::error::DbResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
+use crate::engine::parse::error::SyntaxSnafu;
 use crate::engine::parse::expr::parse_string;
-use crate::engine::parse::{DatalogParser, Pair, Rule};
+use crate::engine::parse::{DatalogParser, Pair, Rule, SourceSpan};
 use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
+use pest::error::InputLocation;
 use pest::pratt_parser::{Op, PrattParser};
 use std::sync::LazyLock;
 
 pub(crate) fn parse_fts_query(q: &str) -> Result<FtsExpr> {
     let mut pairs = DatalogParser::parse(Rule::fts_doc, q)
-        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
-    let pairs = pairs.next().unwrap().into_inner();
+        .map_err(|err| {
+            let span = match err.location {
+                InputLocation::Pos(p) => SourceSpan(p, 0),
+                InputLocation::Span((start, end)) => SourceSpan(start, end - start),
+            };
+            SyntaxSnafu {
+                span: span.to_string(),
+                message: err.to_string(),
+            }
+            .build()
+        })?;
+    let pairs = pairs.next().expect("pest guarantees fts_doc token").into_inner();
     let pairs: Vec<_> = pairs
         .filter(|r| r.as_rule() != Rule::EOI)
         .map(parse_fts_expr)
         .try_collect()?;
     Ok(if pairs.len() == 1 {
-        pairs.into_iter().next().unwrap()
+        pairs.into_iter().next().expect("just checked len == 1")
     } else {
         FtsExpr::And(pairs)
     })
@@ -49,7 +61,7 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
         Rule::fts_grouped => {
             let collected: Vec<_> = pair.into_inner().map(parse_fts_expr).try_collect()?;
             if collected.len() == 1 {
-                collected.into_iter().next().unwrap()
+                collected.into_iter().next().expect("just checked len == 1")
             } else {
                 FtsExpr::And(collected)
             }
@@ -79,7 +91,7 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
 
 fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
     let mut inner = pair.into_inner();
-    let kernel = inner.next().unwrap();
+    let kernel = inner.next().expect("pest guarantees phrase kernel");
     let core_text = match kernel.as_rule() {
         Rule::fts_phrase_group => CompactString::from(kernel.as_str().trim()),
         Rule::quoted_string | Rule::s_quoted_string | Rule::raw_string => parse_string(kernel)?,
@@ -91,7 +103,7 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
         match pair.as_rule() {
             Rule::fts_prefix_marker => is_quoted = true,
             Rule::fts_booster => {
-                let boosted = pair.into_inner().next().unwrap();
+                let boosted = pair.into_inner().next().expect("pest guarantees booster value");
                 match boosted.as_rule() {
                     Rule::dot_float => {
                         let f = boosted

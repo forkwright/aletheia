@@ -87,6 +87,7 @@ impl Symbol {
     pub(crate) fn ensure_valid_field(&self) -> Result<()> {
         if self.name.contains('(') || self.name.contains(')') {
             #[derive(Debug)]
+            #[expect(dead_code, reason = "SourceSpan carried for error context but not included in Display")]
             struct SymbolInvalidAsField(String, SourceSpan);
 
             impl std::fmt::Display for SymbolInvalidAsField {

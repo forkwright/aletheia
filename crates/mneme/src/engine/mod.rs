@@ -32,7 +32,6 @@ pub(crate) type DbInstance =
 pub(crate) mod data;
 pub(crate) mod fixed_rule;
 pub(crate) mod fts;
-#[allow(clippy::all, clippy::restriction, unused_assignments)]
 pub(crate) mod parse;
 #[allow(clippy::all, clippy::restriction, unused_assignments)]
 pub(crate) mod query;
