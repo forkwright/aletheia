@@ -104,16 +104,16 @@ mod tests {
 
     #[test]
     fn fresh_database_initializes_via_migration() {
-        let conn = Connection::open_in_memory().unwrap();
-        let result = migration::run_migrations(&conn).unwrap();
+        let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
+        let result = migration::run_migrations(&conn).expect("initial migration succeeds");
         assert_eq!(result.current_version, 3);
     }
 
     #[test]
     fn idempotent_initialization() {
-        let conn = Connection::open_in_memory().unwrap();
-        migration::run_migrations(&conn).unwrap();
-        migration::run_migrations(&conn).unwrap();
+        let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
+        migration::run_migrations(&conn).expect("first migration succeeds");
+        migration::run_migrations(&conn).expect("idempotent second migration succeeds");
 
         let version = migration::get_schema_version(&conn);
         assert_eq!(version, 3);
@@ -121,8 +121,8 @@ mod tests {
 
     #[test]
     fn tables_exist_after_init() {
-        let conn = Connection::open_in_memory().unwrap();
-        migration::run_migrations(&conn).unwrap();
+        let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
+        migration::run_migrations(&conn).expect("migration succeeds");
 
         for table in &[
             "sessions",
@@ -138,7 +138,7 @@ mod tests {
                     [table],
                     |row| row.get(0),
                 )
-                .unwrap();
+                .expect("table existence query succeeds");
             assert!(exists, "table {table} should exist");
         }
     }

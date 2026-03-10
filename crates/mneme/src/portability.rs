@@ -189,8 +189,8 @@ mod tests {
     #[test]
     fn serde_roundtrip() {
         let original = sample_agent_file();
-        let json = serde_json::to_string_pretty(&original).unwrap();
-        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string_pretty(&original).expect("AgentFile is serializable");
+        let restored: AgentFile = serde_json::from_str(&json).expect("round-trip JSON is valid");
 
         assert_eq!(restored.version, original.version);
         assert_eq!(restored.exported_at, original.exported_at);
@@ -207,14 +207,14 @@ mod tests {
     #[test]
     fn camel_case_json_keys() {
         let agent = sample_agent_file();
-        let value: serde_json::Value = serde_json::to_value(&agent).unwrap();
+        let value: serde_json::Value = serde_json::to_value(&agent).expect("AgentFile is serializable");
 
         // Top-level keys
         assert!(value.get("exportedAt").is_some(), "missing exportedAt");
         assert!(value.get("exported_at").is_none(), "snake_case leaked");
 
         // Workspace keys
-        let ws = value.get("workspace").unwrap();
+        let ws = value.get("workspace").expect("workspace key must exist");
         assert!(ws.get("binaryFiles").is_some(), "missing binaryFiles");
         assert!(ws.get("binary_files").is_none(), "snake_case leaked");
 
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn memory_omitted_when_none() {
         let agent = sample_agent_file();
-        let json = serde_json::to_string(&agent).unwrap();
+        let json = serde_json::to_string(&agent).expect("AgentFile is serializable");
         assert!(
             !json.contains("\"memory\""),
             "memory should be omitted when None"
@@ -257,8 +257,8 @@ mod tests {
     #[test]
     fn agent_file_serde_roundtrip() {
         let original = sample_agent_file();
-        let json = serde_json::to_string(&original).unwrap();
-        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&original).expect("AgentFile is serializable");
+        let restored: AgentFile = serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert_eq!(restored.version, original.version);
         assert_eq!(restored.exported_at, original.exported_at);
         assert_eq!(restored.generator, original.generator);
@@ -274,15 +274,15 @@ mod tests {
     fn agent_file_empty_sessions() {
         let mut agent = sample_agent_file();
         agent.sessions = vec![];
-        let json = serde_json::to_string(&agent).unwrap();
-        let back: AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&agent).expect("AgentFile is serializable");
+        let back: AgentFile = serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert!(back.sessions.is_empty());
     }
 
     #[test]
     fn agent_file_optional_fields_omitted() {
         let agent = sample_agent_file();
-        let json = serde_json::to_string(&agent).unwrap();
+        let json = serde_json::to_string(&agent).expect("AgentFile is serializable");
         assert!(
             !json.contains("\"memory\""),
             "memory=None should be omitted"
@@ -309,8 +309,8 @@ mod tests {
             }]),
             graph: None,
         });
-        let value: serde_json::Value = serde_json::to_value(&agent).unwrap();
-        let mem = value.get("memory").unwrap();
+        let value: serde_json::Value = serde_json::to_value(&agent).expect("AgentFile is serializable");
+        let mem = value.get("memory").expect("memory key must exist when set");
         assert!(mem.get("vectors").is_some());
         assert!(
             mem.get("graph").is_none(),

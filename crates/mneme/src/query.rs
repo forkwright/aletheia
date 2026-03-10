@@ -977,7 +977,7 @@ mod tests {
         assert!(order_pos.is_some(), "must have :order");
         assert!(limit_pos.is_some(), "must have :limit");
         assert!(
-            order_pos.unwrap() < limit_pos.unwrap(),
+            order_pos.expect(":order directive must be present") < limit_pos.expect(":limit directive must be present"),
             ":order must come before :limit"
         );
     }
@@ -1354,7 +1354,7 @@ mod tests {
 
         assert!(script.contains("$name"));
         assert!(!script.contains("alice"));
-        assert_eq!(params.get("name").unwrap(), &DataValue::from("alice"));
+        assert_eq!(params.get("name").expect("name param must exist"), &DataValue::from("alice"));
     }
 
     #[test]
@@ -1366,7 +1366,7 @@ mod tests {
 
         assert!(script.contains("$threshold"));
         assert!(!script.contains("100"));
-        assert_eq!(params.get("threshold").unwrap(), &DataValue::from(100_i64));
+        assert_eq!(params.get("threshold").expect("threshold param must exist"), &DataValue::from(100_i64));
     }
 
     #[test]
@@ -1378,7 +1378,7 @@ mod tests {
 
         assert!(script.contains("$min_conf"));
         assert!(params.contains_key("min_conf"));
-        assert_eq!(params.get("min_conf").unwrap(), &DataValue::from(0.75_f64));
+        assert_eq!(params.get("min_conf").expect("min_conf param must exist"), &DataValue::from(0.75_f64));
     }
 
     #[test]
@@ -1390,7 +1390,7 @@ mod tests {
 
         assert!(script.contains("$forgotten"));
         assert!(params.contains_key("forgotten"));
-        assert_eq!(params.get("forgotten").unwrap(), &DataValue::from(false));
+        assert_eq!(params.get("forgotten").expect("forgotten param must exist"), &DataValue::from(false));
     }
 
     #[test]
@@ -1403,7 +1403,7 @@ mod tests {
 
         assert!(script.contains("$ts"));
         assert!(!script.contains(ts));
-        assert_eq!(params.get("ts").unwrap(), &DataValue::from(ts));
+        assert_eq!(params.get("ts").expect("ts param must exist"), &DataValue::from(ts));
     }
 
     #[test]
@@ -1446,7 +1446,7 @@ mod tests {
             "special characters must not appear in script body"
         );
         assert!(script.contains("$input"));
-        assert_eq!(params.get("input").unwrap(), &DataValue::from(dangerous));
+        assert_eq!(params.get("input").expect("input param must exist"), &DataValue::from(dangerous));
     }
 
     #[test]
@@ -1585,7 +1585,7 @@ mod tests {
         );
         assert!(script.contains("$user_input"));
         assert_eq!(
-            params.get("user_input").unwrap(),
+            params.get("user_input").expect("user_input param must exist"),
             &DataValue::from(":put evil {x => y}")
         );
     }

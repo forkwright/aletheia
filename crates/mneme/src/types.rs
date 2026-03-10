@@ -237,8 +237,8 @@ mod tests {
             SessionStatus::Archived,
             SessionStatus::Distilled,
         ] {
-            let json = serde_json::to_string(&status).unwrap();
-            let back: SessionStatus = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&status).expect("SessionStatus is serializable");
+            let back: SessionStatus = serde_json::from_str(&json).expect("round-trip JSON is valid");
             assert_eq!(status, back);
         }
     }
@@ -250,8 +250,8 @@ mod tests {
             SessionType::Background,
             SessionType::Ephemeral,
         ] {
-            let json = serde_json::to_string(&stype).unwrap();
-            let back: SessionType = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&stype).expect("SessionType is serializable");
+            let back: SessionType = serde_json::from_str(&json).expect("round-trip JSON is valid");
             assert_eq!(stype, back);
         }
     }
@@ -259,8 +259,8 @@ mod tests {
     #[test]
     fn role_serde_roundtrip() {
         for role in [Role::System, Role::User, Role::Assistant, Role::ToolResult] {
-            let json = serde_json::to_string(&role).unwrap();
-            let back: Role = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&role).expect("Role is serializable");
+            let back: Role = serde_json::from_str(&json).expect("round-trip JSON is valid");
             assert_eq!(role, back);
         }
     }
@@ -311,8 +311,8 @@ mod tests {
             created_at: "2026-02-28T00:00:00Z".to_owned(),
             updated_at: "2026-02-28T01:00:00Z".to_owned(),
         };
-        let json = serde_json::to_string(&session).unwrap();
-        let back: Session = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&session).expect("Session is serializable");
+        let back: Session = serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert_eq!(session.id, back.id);
         assert_eq!(session.status, back.status);
         assert_eq!(session.session_type, back.session_type);
@@ -333,8 +333,8 @@ mod tests {
             is_distilled: false,
             created_at: "2026-02-28T00:00:00Z".to_owned(),
         };
-        let json = serde_json::to_string(&msg).unwrap();
-        let back: Message = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&msg).expect("Message is serializable");
+        let back: Message = serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert_eq!(msg.role, back.role);
         assert_eq!(msg.content, back.content);
     }
