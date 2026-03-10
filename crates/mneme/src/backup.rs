@@ -291,7 +291,7 @@ mod tests {
     use crate::types::Role;
 
     fn test_store() -> SessionStore {
-        SessionStore::open_in_memory().unwrap()
+        SessionStore::open_in_memory().expect("open in-memory session store")
     }
 
     #[test]
@@ -299,63 +299,63 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "syn", "main", None, None)
-            .unwrap();
+            .expect("create session ses-1");
         store
             .append_message("ses-1", Role::User, "hello", None, None, 10)
-            .unwrap();
+            .expect("append user message");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let export_dir = dir.path().join("export");
         let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
 
-        let result = manager.export_sessions_json(&export_dir).unwrap();
+        let result = manager.export_sessions_json(&export_dir).expect("export sessions as JSON");
         assert_eq!(result.sessions_exported, 1);
         assert_eq!(result.files_written, 1);
 
         let json_path = export_dir.join("ses-1.json");
         assert!(json_path.exists());
-        let contents = std::fs::read_to_string(&json_path).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        let contents = std::fs::read_to_string(&json_path).expect("read exported JSON file");
+        let parsed: serde_json::Value = serde_json::from_str(&contents).expect("parse exported JSON");
         assert_eq!(parsed["session"]["id"], "ses-1");
-        assert_eq!(parsed["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(parsed["messages"].as_array().expect("messages is array").len(), 1);
     }
 
     #[test]
     fn backup_creates_valid_sqlite_database() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let db_path = dir.path().join("sessions.db");
 
         // Need a file-based DB for VACUUM INTO
-        let conn = Connection::open(&db_path).unwrap();
-        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
-        migration::run_migrations(&conn).unwrap();
+        let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
+        conn.execute_batch("PRAGMA foreign_keys = ON;").expect("enable foreign keys");
+        migration::run_migrations(&conn).expect("run migrations");
         conn.execute(
             "INSERT INTO sessions (id, nous_id, session_key) VALUES ('s1', 'syn', 'main')",
             [],
         )
-        .unwrap();
+        .expect("insert test session");
 
         let backup_dir = dir.path().join("backups");
         let manager = BackupManager::new(&conn, &backup_dir);
-        let result = manager.create_backup().unwrap();
+        let result = manager.create_backup().expect("create backup");
 
         assert!(result.path.exists());
         assert!(result.size_bytes > 0);
         assert_eq!(result.sessions_count, 1);
 
         // Verify the backup is a valid SQLite database
-        let backup_conn = Connection::open(&result.path).unwrap();
+        let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
         let count: u32 = backup_conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .unwrap();
+            .expect("query session count from backup");
         assert_eq!(count, 1);
     }
 
     #[test]
     fn prune_keeps_correct_number() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
         // Create 5 fake backup files
         for i in 0..5 {
@@ -363,36 +363,36 @@ mod tests {
                 backup_dir.join(format!("sessions_2026010{i}T120000.db")),
                 "fake",
             )
-            .unwrap();
+            .expect("write fake backup file");
         }
 
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
         let manager = BackupManager::new(&conn, &backup_dir);
 
-        let backups = manager.list_backups().unwrap();
+        let backups = manager.list_backups().expect("list backups");
         assert_eq!(backups.len(), 5);
 
-        let removed = manager.prune_backups(2).unwrap();
+        let removed = manager.prune_backups(2).expect("prune backups keeping 2");
         assert_eq!(removed, 3);
 
-        let remaining = manager.list_backups().unwrap();
+        let remaining = manager.list_backups().expect("list remaining backups");
         assert_eq!(remaining.len(), 2);
     }
 
     #[test]
     fn list_backups_returns_correct_metadata() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
-        std::fs::write(backup_dir.join("sessions_20260101T120000.db"), "test data").unwrap();
+        std::fs::write(backup_dir.join("sessions_20260101T120000.db"), "test data").expect("write backup file");
         // Non-matching file should be ignored
-        std::fs::write(backup_dir.join("other.txt"), "ignored").unwrap();
+        std::fs::write(backup_dir.join("other.txt"), "ignored").expect("write non-matching file");
 
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
         let manager = BackupManager::new(&conn, &backup_dir);
 
-        let backups = manager.list_backups().unwrap();
+        let backups = manager.list_backups().expect("list backups");
         assert_eq!(backups.len(), 1);
         assert_eq!(backups[0].filename, "sessions_20260101T120000.db");
         assert!(backups[0].size_bytes > 0);
@@ -400,9 +400,9 @@ mod tests {
 
     #[test]
     fn list_backups_empty_when_no_dir() {
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
         let manager = BackupManager::new(&conn, "/nonexistent/path");
-        let backups = manager.list_backups().unwrap();
+        let backups = manager.list_backups().expect("list backups for nonexistent dir");
         assert!(backups.is_empty());
     }
 
@@ -450,51 +450,51 @@ mod tests {
 
     #[test]
     fn restore_backup_preserves_data() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let db_path = dir.path().join("sessions.db");
 
-        let conn = Connection::open(&db_path).unwrap();
-        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
-        migration::run_migrations(&conn).unwrap();
+        let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
+        conn.execute_batch("PRAGMA foreign_keys = ON;").expect("enable foreign keys");
+        migration::run_migrations(&conn).expect("run migrations");
 
         conn.execute(
             "INSERT INTO sessions (id, nous_id, session_key) VALUES ('s1', 'alice', 'main')",
             [],
         )
-        .unwrap();
+        .expect("insert test session");
         conn.execute(
             "INSERT INTO messages (session_id, seq, role, content, token_estimate)
              VALUES ('s1', 1, 'user', 'hello world', 10)",
             [],
         )
-        .unwrap();
+        .expect("insert first test message");
         conn.execute(
             "INSERT INTO messages (session_id, seq, role, content, token_estimate)
              VALUES ('s1', 2, 'assistant', 'hi there', 8)",
             [],
         )
-        .unwrap();
+        .expect("insert second test message");
 
         let backup_dir = dir.path().join("backups");
         let manager = BackupManager::new(&conn, &backup_dir);
-        let result = manager.create_backup().unwrap();
+        let result = manager.create_backup().expect("create backup");
 
-        let backup_conn = Connection::open(&result.path).unwrap();
+        let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
         let session_count: u32 = backup_conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .unwrap();
+            .expect("query session count from backup");
         assert_eq!(session_count, 1);
 
         let msg_count: u32 = backup_conn
             .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
-            .unwrap();
+            .expect("query message count from backup");
         assert_eq!(msg_count, 2);
 
         let content: String = backup_conn
             .query_row("SELECT content FROM messages WHERE seq = 1", [], |row| {
                 row.get(0)
             })
-            .unwrap();
+            .expect("query first message content from backup");
         assert_eq!(content, "hello world");
     }
 
@@ -681,56 +681,56 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-export", "bob", "main", None, None)
-            .unwrap();
+            .expect("create session ses-export");
         store
             .append_message("ses-export", Role::User, "test content", None, None, 5)
-            .unwrap();
+            .expect("append user message");
         store
             .append_message("ses-export", Role::Assistant, "response", None, None, 7)
-            .unwrap();
+            .expect("append assistant message");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let export_dir = dir.path().join("export");
         let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
-        let result = manager.export_sessions_json(&export_dir).unwrap();
+        let result = manager.export_sessions_json(&export_dir).expect("export sessions as JSON");
 
         assert_eq!(result.sessions_exported, 1);
         assert_eq!(result.files_written, 1);
 
         let json_path = export_dir.join("ses-export.json");
-        let contents = std::fs::read_to_string(&json_path).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        let contents = std::fs::read_to_string(&json_path).expect("read exported JSON file");
+        let parsed: serde_json::Value = serde_json::from_str(&contents).expect("parse exported JSON");
 
         assert!(parsed.is_object());
         assert!(parsed["session"].is_object());
         assert!(parsed["messages"].is_array());
         assert!(parsed["exported_at"].is_string());
-        assert_eq!(parsed["messages"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["messages"].as_array().expect("messages is array").len(), 2);
         assert_eq!(parsed["messages"][0]["role"], "user");
     }
 
     #[test]
     fn backup_empty_store() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let db_path = dir.path().join("empty.db");
 
-        let conn = Connection::open(&db_path).unwrap();
-        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
-        migration::run_migrations(&conn).unwrap();
+        let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
+        conn.execute_batch("PRAGMA foreign_keys = ON;").expect("enable foreign keys");
+        migration::run_migrations(&conn).expect("run migrations");
 
         let backup_dir = dir.path().join("backups");
         let manager = BackupManager::new(&conn, &backup_dir);
-        let result = manager.create_backup().unwrap();
+        let result = manager.create_backup().expect("create backup of empty store");
 
         assert!(result.path.exists());
         assert!(result.size_bytes > 0);
         assert_eq!(result.sessions_count, 0);
         assert_eq!(result.messages_count, 0);
 
-        let backup_conn = Connection::open(&result.path).unwrap();
+        let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
         let count: u32 = backup_conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .unwrap();
+            .expect("query session count from backup");
         assert_eq!(count, 0);
     }
 
@@ -772,38 +772,38 @@ mod tests {
 
     #[test]
     fn prune_keeps_zero() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
         for i in 0..4 {
             std::fs::write(
                 backup_dir.join(format!("sessions_2026020{i}T120000.db")),
                 "data",
             )
-            .unwrap();
+            .expect("write fake backup file");
         }
 
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
         let manager = BackupManager::new(&conn, &backup_dir);
 
-        let removed = manager.prune_backups(0).unwrap();
+        let removed = manager.prune_backups(0).expect("prune all backups");
         assert_eq!(removed, 4);
 
-        let remaining = manager.list_backups().unwrap();
+        let remaining = manager.list_backups().expect("list remaining backups after prune");
         assert!(remaining.is_empty(), "keep=0 should remove all backups");
     }
 
     #[test]
     fn list_backups_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let backup_dir = dir.path().join("backups");
-        std::fs::create_dir_all(&backup_dir).unwrap();
+        std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
-        let conn = Connection::open_in_memory().unwrap();
+        let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
         let manager = BackupManager::new(&conn, &backup_dir);
 
-        let backups = manager.list_backups().unwrap();
+        let backups = manager.list_backups().expect("list backups in empty dir");
         assert!(
             backups.is_empty(),
             "existing but empty dir should return empty vec"
@@ -813,11 +813,11 @@ mod tests {
     #[test]
     fn export_sessions_json_empty_store() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let export_dir = dir.path().join("export");
         let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
 
-        let result = manager.export_sessions_json(&export_dir).unwrap();
+        let result = manager.export_sessions_json(&export_dir).expect("export empty store as JSON");
         assert_eq!(result.sessions_exported, 0);
         assert_eq!(result.files_written, 0);
         assert!(
@@ -825,15 +825,15 @@ mod tests {
             "output dir should be created even when empty"
         );
 
-        let entries: Vec<_> = std::fs::read_dir(&export_dir).unwrap().collect();
+        let entries: Vec<_> = std::fs::read_dir(&export_dir).expect("read export dir").collect();
         assert!(entries.is_empty(), "no JSON files should be written");
     }
 
     #[test]
     fn restore_from_corrupt_file_errors() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let corrupt_path = dir.path().join("corrupt.db");
-        std::fs::write(&corrupt_path, b"this is not a sqlite database").unwrap();
+        std::fs::write(&corrupt_path, b"this is not a sqlite database").expect("write corrupt file");
 
         if let Ok(c) = Connection::open(&corrupt_path) {
             let result = c.query_row("SELECT COUNT(*) FROM sessions", [], |row| {
