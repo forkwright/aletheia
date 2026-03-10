@@ -61,23 +61,11 @@ impl<EV> Csr<EV> {
 }
 
 impl Csr<()> {
-    fn targets(&self, node: u32) -> &[u32] {
+    fn targets_iter(&self, node: u32) -> impl Iterator<Item = u32> + '_ {
         let i = node as usize;
         let from = self.offsets[i] as usize;
         let to = self.offsets[i + 1] as usize;
-        let slice = &self.targets[from..to];
-        // Target<()> has the same layout as u32 due to #[repr(C)] and ()
-        // being zero-sized. This matches the original graph_builder behavior.
-        debug_assert_eq!(
-            std::mem::size_of::<Target<()>>(),
-            std::mem::size_of::<u32>()
-        );
-        // SAFETY: Target<()> is #[repr(C)] with a u32 field and a ZST,
-        // so it has identical size and alignment to u32.
-        #[expect(unsafe_code, reason = "CSR layout cast matching original graph crate")]
-        unsafe {
-            std::slice::from_raw_parts(slice.as_ptr().cast::<u32>(), slice.len())
-        }
+        self.targets[from..to].iter().map(|t| t.target)
     }
 }
 
@@ -101,12 +89,12 @@ impl<EV> DirectedCsrGraph<EV> {
 }
 
 impl DirectedCsrGraph<()> {
-    pub fn out_neighbors(&self, node: u32) -> std::slice::Iter<'_, u32> {
-        self.csr_out.targets(node).iter()
+    pub fn out_neighbors(&self, node: u32) -> impl Iterator<Item = u32> + '_ {
+        self.csr_out.targets_iter(node)
     }
 
-    pub fn in_neighbors(&self, node: u32) -> std::slice::Iter<'_, u32> {
-        self.csr_inc.targets(node).iter()
+    pub fn in_neighbors(&self, node: u32) -> impl Iterator<Item = u32> + '_ {
+        self.csr_inc.targets_iter(node)
     }
 }
 
@@ -115,12 +103,18 @@ pub(crate) struct CsrBuilder<EV> {
     sorted: bool,
 }
 
-impl<EV: Copy> CsrBuilder<EV> {
-    pub fn new() -> Self {
+impl<EV> Default for CsrBuilder<EV> {
+    fn default() -> Self {
         Self {
             edges: Vec::new(),
             sorted: false,
         }
+    }
+}
+
+impl<EV: Copy> CsrBuilder<EV> {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn sorted(mut self) -> Self {
@@ -181,5 +175,121 @@ impl CsrBuilder<()> {
     pub fn edges(mut self, edges: impl IntoIterator<Item = (u32, u32)>) -> Self {
         self.edges = edges.into_iter().map(|(s, t)| (s, t, ())).collect();
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn triangle_graph() -> DirectedCsrGraph {
+        // 0 → 1 → 2 → 0
+        CsrBuilder::new()
+            .sorted()
+            .edges([(0, 1), (1, 2), (2, 0)])
+            .build()
+    }
+
+    #[test]
+    fn construction_node_count() {
+        let g = triangle_graph();
+        assert_eq!(g.node_count(), 3);
+    }
+
+    #[test]
+    fn out_degree() {
+        let g = triangle_graph();
+        assert_eq!(g.out_degree(0), 1);
+        assert_eq!(g.out_degree(1), 1);
+        assert_eq!(g.out_degree(2), 1);
+    }
+
+    #[test]
+    fn out_neighbors_basic() {
+        let g = triangle_graph();
+        let out0: Vec<u32> = g.out_neighbors(0).collect();
+        assert_eq!(out0, vec![1]);
+        let out2: Vec<u32> = g.out_neighbors(2).collect();
+        assert_eq!(out2, vec![0]);
+    }
+
+    #[test]
+    fn in_neighbors_basic() {
+        let g = triangle_graph();
+        // Node 0 is reached from node 2
+        let in0: Vec<u32> = g.in_neighbors(0).collect();
+        assert_eq!(in0, vec![2]);
+        // Node 1 is reached from node 0
+        let in1: Vec<u32> = g.in_neighbors(1).collect();
+        assert_eq!(in1, vec![0]);
+    }
+
+    #[test]
+    fn multi_edge_graph() {
+        // 0 → 1, 0 → 2, 1 → 2
+        let g = CsrBuilder::new()
+            .sorted()
+            .edges([(0, 1), (0, 2), (1, 2)])
+            .build();
+        assert_eq!(g.node_count(), 3);
+        assert_eq!(g.out_degree(0), 2);
+        assert_eq!(g.out_degree(1), 1);
+        assert_eq!(g.out_degree(2), 0);
+        let out0: Vec<u32> = g.out_neighbors(0).collect();
+        assert_eq!(out0, vec![1, 2]);
+        let in2: Vec<u32> = g.in_neighbors(2).collect();
+        assert_eq!(in2, vec![0, 1]);
+    }
+
+    #[test]
+    fn empty_graph() {
+        let g: DirectedCsrGraph = CsrBuilder::new().edges([]).build();
+        assert_eq!(g.node_count(), 0);
+    }
+
+    #[test]
+    fn edge_weight_access() {
+        // Weighted graph: 0 -1.0-> 1, 1 -2.0-> 2
+        let g: DirectedCsrGraph<f32> = CsrBuilder::new()
+            .sorted()
+            .edges_with_values([(0, 1, 1.0_f32), (1, 2, 2.0_f32)])
+            .build();
+        let targets: Vec<(u32, f32)> = g
+            .out_neighbors_with_values(0)
+            .map(|t| (t.target, t.value))
+            .collect();
+        assert_eq!(targets, vec![(1, 1.0)]);
+        let targets1: Vec<(u32, f32)> = g
+            .out_neighbors_with_values(1)
+            .map(|t| (t.target, t.value))
+            .collect();
+        assert_eq!(targets1, vec![(2, 2.0)]);
+    }
+
+    #[test]
+    fn page_rank_triangle() {
+        // Symmetric triangle: equal PR for all nodes.
+        let g = triangle_graph();
+        let config = PageRankConfig::new(100, 1e-6, 0.85);
+        let (scores, iters, error) = page_rank(&g, config);
+        assert_eq!(scores.len(), 3);
+        // All nodes should have approximately equal rank
+        assert!((scores[0] - scores[1]).abs() < 1e-4);
+        assert!((scores[1] - scores[2]).abs() < 1e-4);
+        assert!(error < 1e-6 || iters == 100);
+    }
+
+    #[test]
+    fn page_rank_star() {
+        // Hub-and-spoke: 0 → 1, 0 → 2, 0 → 3 (0 is the hub, no incoming edges)
+        let g = CsrBuilder::new()
+            .edges([(0, 1), (0, 2), (0, 3)])
+            .build();
+        let config = PageRankConfig::new(100, 1e-6, 0.85);
+        let (scores, _, _) = page_rank(&g, config);
+        // Nodes 1, 2, 3 receive rank from 0; they should rank higher than 0
+        assert!(scores[1] > scores[0]);
+        assert!(scores[2] > scores[0]);
+        assert!(scores[3] > scores[0]);
     }
 }
