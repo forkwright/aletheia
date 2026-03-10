@@ -9,9 +9,12 @@ use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_oikonomos::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
 
 /// Bridges the daemon's `KnowledgeMaintenanceExecutor` trait to the concrete
-/// `KnowledgeStore`. All methods are blocking (CozoDB is sync).
+/// `KnowledgeStore`. All methods are blocking (`CozoDB` is sync).
 pub(crate) struct KnowledgeMaintenanceAdapter {
-    #[expect(dead_code, reason = "store will be used once F.1–F.8 stubs are replaced")]
+    #[expect(
+        dead_code,
+        reason = "store will be used once F.1–F.8 stubs are replaced"
+    )]
     store: Arc<KnowledgeStore>,
 }
 
@@ -64,10 +67,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         Ok(MaintenanceReport::default())
     }
 
-    fn health_check(
-        &self,
-        _nous_id: &str,
-    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+    fn health_check(&self, _nous_id: &str) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
         Ok(MaintenanceReport::default())
     }
 }

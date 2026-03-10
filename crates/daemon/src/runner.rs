@@ -168,13 +168,48 @@ impl TaskRunner {
     /// Register the 7 knowledge maintenance tasks with their schedules.
     fn register_knowledge_maintenance_tasks(&mut self) {
         let tasks = [
-            ("decay-refresh", "Decay score refresh", Schedule::Interval(Duration::from_secs(4 * 3600)), BuiltinTask::DecayRefresh),
-            ("entity-dedup", "Entity deduplication", Schedule::Interval(Duration::from_secs(6 * 3600)), BuiltinTask::EntityDedup),
-            ("graph-recompute", "Graph score recomputation", Schedule::Interval(Duration::from_secs(8 * 3600)), BuiltinTask::GraphRecompute),
-            ("embedding-refresh", "Embedding refresh", Schedule::Interval(Duration::from_secs(12 * 3600)), BuiltinTask::EmbeddingRefresh),
-            ("knowledge-gc", "Knowledge garbage collection", Schedule::Cron("0 0 4 * * *".to_owned()), BuiltinTask::KnowledgeGc),
-            ("index-maintenance", "Index maintenance", Schedule::Cron("0 30 4 * * *".to_owned()), BuiltinTask::IndexMaintenance),
-            ("graph-health-check", "Graph health check", Schedule::Cron("0 0 5 * * *".to_owned()), BuiltinTask::GraphHealthCheck),
+            (
+                "decay-refresh",
+                "Decay score refresh",
+                Schedule::Interval(Duration::from_secs(4 * 3600)),
+                BuiltinTask::DecayRefresh,
+            ),
+            (
+                "entity-dedup",
+                "Entity deduplication",
+                Schedule::Interval(Duration::from_secs(6 * 3600)),
+                BuiltinTask::EntityDedup,
+            ),
+            (
+                "graph-recompute",
+                "Graph score recomputation",
+                Schedule::Interval(Duration::from_secs(8 * 3600)),
+                BuiltinTask::GraphRecompute,
+            ),
+            (
+                "embedding-refresh",
+                "Embedding refresh",
+                Schedule::Interval(Duration::from_secs(12 * 3600)),
+                BuiltinTask::EmbeddingRefresh,
+            ),
+            (
+                "knowledge-gc",
+                "Knowledge garbage collection",
+                Schedule::Cron("0 0 4 * * *".to_owned()),
+                BuiltinTask::KnowledgeGc,
+            ),
+            (
+                "index-maintenance",
+                "Index maintenance",
+                Schedule::Cron("0 30 4 * * *".to_owned()),
+                BuiltinTask::IndexMaintenance,
+            ),
+            (
+                "graph-health-check",
+                "Graph health check",
+                Schedule::Cron("0 0 5 * * *".to_owned()),
+                BuiltinTask::GraphHealthCheck,
+            ),
         ];
 
         for (id, name, schedule, task) in tasks {
@@ -429,9 +464,7 @@ impl TaskRunner {
             | BuiltinTask::EmbeddingRefresh
             | BuiltinTask::KnowledgeGc
             | BuiltinTask::IndexMaintenance
-            | BuiltinTask::GraphHealthCheck => {
-                self.execute_knowledge_task(builtin, nous_id).await
-            }
+            | BuiltinTask::GraphHealthCheck => self.execute_knowledge_task(builtin, nous_id).await,
             BuiltinTask::TraceRotation => {
                 let config = self
                     .maintenance
@@ -602,8 +635,7 @@ impl TaskRunner {
                 _ => unreachable!("non-knowledge task routed to execute_knowledge_task"),
             }?;
 
-            report.duration_ms = u64::try_from(start.elapsed().as_millis())
-                .unwrap_or(u64::MAX);
+            report.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
 
             tracing::info!(
                 items_processed = report.items_processed,
