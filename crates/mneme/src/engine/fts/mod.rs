@@ -2,12 +2,12 @@
 use crate::engine::data::memcmp::MemCmpEncoder;
 use crate::engine::data::value::DataValue;
 use crate::engine::error::DbResult as Result;
+use crate::engine::fts::error::TokenizationFailedSnafu;
 use crate::engine::fts::tokenizer::{
     AlphaNumOnlyFilter, AsciiFoldingFilter, BoxTokenFilter, Language, LowerCaser, NgramTokenizer,
     RawTokenizer, RemoveLongFilter, SimpleTokenizer, SplitCompoundWords, Stemmer, StopWordFilter,
     TextAnalyzer, Tokenizer, WhitespaceTokenizer,
 };
-use crate::{bail, ensure};
 use compact_str::CompactString;
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 pub(crate) mod ast;
+pub(crate) mod error;
 pub(crate) mod indexing;
 pub(crate) mod tokenizer;
 
@@ -27,7 +28,7 @@ pub(crate) struct FtsIndexManifest {
     pub(crate) filters: Vec<TokenizerConfig>,
 }
 
-#[allow(missing_docs)]
+/// Configuration for a tokenizer or token filter, including its name and arguments.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerConfig {
     pub name: CompactString,
@@ -100,15 +101,36 @@ impl TokenizerConfig {
                             "Third argument `prefix_only` must be a boolean".to_string(),
                         )
                     })?;
-                ensure!(min_gram >= 1, "min_gram must be >= 1");
-                ensure!(max_gram >= min_gram, "max_gram must be >= min_gram");
+                if min_gram < 1 {
+                    return Err(Box::new(
+                        TokenizationFailedSnafu {
+                            message: "min_gram must be >= 1".to_string(),
+                        }
+                        .build(),
+                    ));
+                }
+                if max_gram < min_gram {
+                    return Err(Box::new(
+                        TokenizationFailedSnafu {
+                            message: "max_gram must be >= min_gram".to_string(),
+                        }
+                        .build(),
+                    ));
+                }
                 Box::new(NgramTokenizer::new(
                     min_gram as usize,
                     max_gram as usize,
                     prefix_only,
                 ))
             }
-            _ => bail!("Unknown tokenizer: {}", self.name),
+            _ => {
+                return Err(Box::new(
+                    TokenizationFailedSnafu {
+                        message: format!("Unknown tokenizer: {}", self.name),
+                    }
+                    .build(),
+                ));
+            }
         })
     }
     pub(crate) fn construct_token_filter(&self) -> Result<BoxTokenFilter> {
@@ -149,7 +171,16 @@ impl TokenizerConfig {
                             );
                         }
                     }
-                    _ => bail!("First argument `compound_words_list` must be a list of strings"),
+                    _ => {
+                        return Err(Box::new(
+                            TokenizationFailedSnafu {
+                                message:
+                                    "First argument `compound_words_list` must be a list of strings"
+                                        .to_string(),
+                            }
+                            .build(),
+                        ));
+                    }
                 }
                 SplitCompoundWords::from_dictionary(list_values)
                     .map_err(|e| {
@@ -196,7 +227,14 @@ impl TokenizerConfig {
                     "swedish" => Language::Swedish,
                     "tamil" => Language::Tamil,
                     "turkish" => Language::Turkish,
-                    lang => bail!("Unsupported language: {}", lang),
+                    lang => {
+                        return Err(Box::new(
+                            TokenizationFailedSnafu {
+                                message: format!("Unsupported language: {}", lang),
+                            }
+                            .build(),
+                        ));
+                    }
                 };
                 Stemmer::new(language).into()
             }
@@ -224,10 +262,26 @@ impl TokenizerConfig {
                         }
                         StopWordFilter::new(stopwords).into()
                     }
-                    _ => bail!("Filter Stopwords requires language name or a list of stopwords"),
+                    _ => {
+                        return Err(Box::new(
+                            TokenizationFailedSnafu {
+                                message:
+                                    "Filter Stopwords requires language name or a list of stopwords"
+                                        .to_string(),
+                            }
+                            .build(),
+                        ));
+                    }
                 }
             }
-            _ => bail!("Unknown token filter: {:?}", self.name),
+            _ => {
+                return Err(Box::new(
+                    TokenizationFailedSnafu {
+                        message: format!("Unknown token filter: {:?}", self.name),
+                    }
+                    .build(),
+                ));
+            }
         })
     }
 }
@@ -246,25 +300,40 @@ impl TokenizerCache {
         filters: &[TokenizerConfig],
     ) -> Result<Arc<TextAnalyzer>> {
         {
-            let idx_cache = self.named_cache.read().unwrap();
+            let idx_cache = self
+                .named_cache
+                .read()
+                .expect("tokenizer named_cache RwLock poisoned");
             if let Some(analyzer) = idx_cache.get(tokenizer_name) {
                 return Ok(analyzer.clone());
             }
         }
         let hash = tokenizer.config_hash(filters);
         {
-            let hashed_cache = self.hashed_cache.read().unwrap();
+            let hashed_cache = self
+                .hashed_cache
+                .read()
+                .expect("tokenizer hashed_cache RwLock poisoned");
             if let Some(analyzer) = hashed_cache.get(hash.as_ref()) {
-                let mut idx_cache = self.named_cache.write().unwrap();
+                let mut idx_cache = self
+                    .named_cache
+                    .write()
+                    .expect("tokenizer named_cache RwLock poisoned");
                 idx_cache.insert(tokenizer_name.into(), analyzer.clone());
                 return Ok(analyzer.clone());
             }
         }
         {
             let analyzer = Arc::new(tokenizer.build(filters)?);
-            let mut hashed_cache = self.hashed_cache.write().unwrap();
+            let mut hashed_cache = self
+                .hashed_cache
+                .write()
+                .expect("tokenizer hashed_cache RwLock poisoned");
             hashed_cache.insert(hash.as_ref().to_vec(), analyzer.clone());
-            let mut idx_cache = self.named_cache.write().unwrap();
+            let mut idx_cache = self
+                .named_cache
+                .write()
+                .expect("tokenizer named_cache RwLock poisoned");
             idx_cache.insert(tokenizer_name.into(), analyzer.clone());
             Ok(analyzer)
         }
