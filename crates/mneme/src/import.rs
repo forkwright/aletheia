@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn rejects_unsupported_version() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut agent = minimal_agent_file();
         agent.version = 99;
 
@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn import_restores_workspace_files() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let agent = minimal_agent_file();
 
         let id_gen = counter_id_gen();
@@ -461,18 +461,20 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("import_agent should succeed");
 
         assert_eq!(result.files_restored, 1);
-        let content = std::fs::read_to_string(dir.path().join("notes.md")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("notes.md"))
+            .expect("notes.md should be written");
         assert_eq!(content, "# Notes\n");
     }
 
     #[test]
     fn import_skips_existing_without_force() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("notes.md"), "original").unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("notes.md"), "original")
+            .expect("write existing notes.md");
 
         let agent = minimal_agent_file();
         let id_gen = counter_id_gen();
@@ -486,18 +488,20 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("import_agent should succeed");
 
         assert_eq!(result.files_restored, 0);
-        let content = std::fs::read_to_string(dir.path().join("notes.md")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("notes.md"))
+            .expect("notes.md should be readable");
         assert_eq!(content, "original");
     }
 
     #[test]
     fn import_overwrites_with_force() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("notes.md"), "original").unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("notes.md"), "original")
+            .expect("write existing notes.md");
 
         let agent = minimal_agent_file();
         let id_gen = counter_id_gen();
@@ -512,17 +516,18 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("import_agent with force should succeed");
 
         assert_eq!(result.files_restored, 1);
-        let content = std::fs::read_to_string(dir.path().join("notes.md")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("notes.md"))
+            .expect("notes.md should be overwritten");
         assert_eq!(content, "# Notes\n");
     }
 
     #[test]
     fn import_creates_sessions_and_messages() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let agent = minimal_agent_file();
 
         let id_gen = counter_id_gen();
@@ -533,13 +538,15 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent should succeed");
 
         assert_eq!(result.sessions_imported, 1);
         assert_eq!(result.messages_imported, 2);
         assert_eq!(result.notes_imported, 1);
 
-        let sessions = store.list_sessions(Some("alice")).unwrap();
+        let sessions = store
+            .list_sessions(Some("alice"))
+            .expect("list_sessions should succeed");
         assert_eq!(sessions.len(), 1);
         assert!(sessions[0].session_key.starts_with("main-import-"));
     }
@@ -547,7 +554,7 @@ mod tests {
     #[test]
     fn import_with_target_id_override() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let agent = minimal_agent_file();
 
         let id_gen = counter_id_gen();
@@ -561,17 +568,19 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("import_agent with target_nous_id should succeed");
 
         assert_eq!(result.nous_id, "bob");
-        let sessions = store.list_sessions(Some("bob")).unwrap();
+        let sessions = store
+            .list_sessions(Some("bob"))
+            .expect("list_sessions for bob should succeed");
         assert_eq!(sessions.len(), 1);
     }
 
     #[test]
     fn import_skip_sessions_flag() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let agent = minimal_agent_file();
 
         let id_gen = counter_id_gen();
@@ -585,7 +594,7 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("import_agent with skip_sessions should succeed");
 
         assert_eq!(result.sessions_imported, 0);
         assert_eq!(result.messages_imported, 0);
@@ -595,7 +604,7 @@ mod tests {
     #[test]
     fn import_skip_workspace_flag() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let agent = minimal_agent_file();
 
         let id_gen = counter_id_gen();
@@ -609,7 +618,7 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("import_agent with skip_workspace should succeed");
 
         assert_eq!(result.files_restored, 0);
         assert_eq!(result.sessions_imported, 1);
@@ -619,7 +628,7 @@ mod tests {
     #[test]
     fn import_rejects_path_traversal() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut agent = minimal_agent_file();
         agent.workspace.files =
             HashMap::from([("../../../etc/passwd".to_owned(), "evil".to_owned())]);
@@ -641,7 +650,7 @@ mod tests {
     #[test]
     fn import_validates_note_categories() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut agent = minimal_agent_file();
         agent.sessions[0].notes.push(ExportedNote {
             category: "invalid_category".to_owned(),
@@ -657,7 +666,7 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent should succeed with invalid category defaulted");
 
         assert_eq!(result.notes_imported, 2);
     }
@@ -667,19 +676,20 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-1", "eve", "main", None, None)
-            .unwrap();
+            .expect("create session ses-1");
         store
             .append_message("ses-1", Role::User, "hello", None, None, 50)
-            .unwrap();
+            .expect("append user message");
         store
             .append_message("ses-1", Role::Assistant, "hi back", None, None, 40)
-            .unwrap();
+            .expect("append assistant message");
         store
             .add_note("ses-1", "eve", "task", "roundtrip test")
-            .unwrap();
+            .expect("add note");
 
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("readme.md"), "# Hello").unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("readme.md"), "# Hello")
+            .expect("write readme.md");
 
         let exported = export_agent(
             "eve",
@@ -690,15 +700,17 @@ mod tests {
             dir.path(),
             &ExportOptions::default(),
         )
-        .unwrap();
+        .expect("export_agent should succeed");
 
         // Serialize and deserialize to simulate file I/O
-        let json = serde_json::to_string_pretty(&exported).unwrap();
-        let imported: AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string_pretty(&exported)
+            .expect("serialize exported agent to JSON");
+        let imported: AgentFile =
+            serde_json::from_str(&json).expect("deserialize agent file from JSON");
 
         // Import into fresh store under different ID
         let import_store = test_store();
-        let import_dir = tempfile::tempdir().unwrap();
+        let import_dir = tempfile::tempdir().expect("create import temp dir");
         let id_gen = counter_id_gen();
         let result = import_agent(
             &imported,
@@ -710,7 +722,7 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("import_agent roundtrip should succeed");
 
         assert_eq!(result.nous_id, "eve-clone");
         assert_eq!(result.files_restored, 1);
@@ -718,14 +730,15 @@ mod tests {
         assert_eq!(result.messages_imported, 2);
         assert_eq!(result.notes_imported, 1);
 
-        let content = std::fs::read_to_string(import_dir.path().join("readme.md")).unwrap();
+        let content = std::fs::read_to_string(import_dir.path().join("readme.md"))
+            .expect("readme.md should be restored");
         assert_eq!(content, "# Hello");
     }
 
     #[test]
     fn import_empty_agent_file() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let agent = AgentFile {
             version: 1,
             exported_at: "2026-03-05T12:00:00Z".to_owned(),
@@ -753,7 +766,7 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent with empty file should succeed");
 
         assert_eq!(result.files_restored, 0);
         assert_eq!(result.sessions_imported, 0);
@@ -798,13 +811,14 @@ mod tests {
             "sessions": []
         }"#;
 
-        let agent: AgentFile = serde_json::from_str(json).unwrap();
+        let agent: AgentFile =
+            serde_json::from_str(json).expect("parse minimal agent file JSON");
         assert!(agent.nous.name.is_none());
         assert!(agent.nous.model.is_none());
         assert!(agent.memory.is_none());
 
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let id_gen = counter_id_gen();
         let result = import_agent(
             &agent,
@@ -813,7 +827,7 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent with sparse file should succeed");
 
         assert_eq!(result.sessions_imported, 0);
         assert_eq!(result.files_restored, 0);
@@ -824,12 +838,12 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-ts", "ts-agent", "main", None, None)
-            .unwrap();
+            .expect("create session ses-ts");
         store
             .append_message("ses-ts", Role::User, "hello", None, None, 50)
-            .unwrap();
+            .expect("append user message");
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let exported = export_agent(
             "ts-agent",
             None,
@@ -839,17 +853,18 @@ mod tests {
             dir.path(),
             &ExportOptions::default(),
         )
-        .unwrap();
+        .expect("export_agent should succeed");
 
         let orig_created = exported.sessions[0].created_at.clone();
         let orig_updated = exported.sessions[0].updated_at.clone();
         let orig_msg_ts = exported.sessions[0].messages[0].created_at.clone();
 
-        let json = serde_json::to_string(&exported).unwrap();
-        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&exported).expect("serialize exported agent");
+        let restored: AgentFile =
+            serde_json::from_str(&json).expect("deserialize agent file");
 
         let import_store = test_store();
-        let import_dir = tempfile::tempdir().unwrap();
+        let import_dir = tempfile::tempdir().expect("create import temp dir");
         let id_gen = counter_id_gen();
         import_agent(
             &restored,
@@ -858,14 +873,18 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent should succeed");
 
-        let sessions = import_store.list_sessions(Some("ts-agent")).unwrap();
+        let sessions = import_store
+            .list_sessions(Some("ts-agent"))
+            .expect("list_sessions should succeed");
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].created_at, orig_created);
         assert_eq!(sessions[0].updated_at, orig_updated);
 
-        let messages = import_store.get_history(&sessions[0].id, None).unwrap();
+        let messages = import_store
+            .get_history(&sessions[0].id, None)
+            .expect("get_history should succeed");
         assert_eq!(messages[0].created_at, orig_msg_ts);
     }
 
@@ -874,7 +893,7 @@ mod tests {
         let store = test_store();
         store
             .create_session("ses-uni", "uni", "main", None, None)
-            .unwrap();
+            .expect("create session ses-uni");
 
         let emoji = "Hello 🌍🔥 world";
         let cjk = "你好世界 こんにちは";
@@ -883,13 +902,14 @@ mod tests {
 
         store
             .append_message("ses-uni", Role::User, &combined, None, None, 200)
-            .unwrap();
+            .expect("append unicode message");
         store
             .add_note("ses-uni", "uni", "context", &combined)
-            .unwrap();
+            .expect("add unicode note");
 
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("unicode.txt"), &combined).unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("unicode.txt"), &combined)
+            .expect("write unicode.txt");
 
         let exported = export_agent(
             "uni",
@@ -900,13 +920,15 @@ mod tests {
             dir.path(),
             &ExportOptions::default(),
         )
-        .unwrap();
+        .expect("export_agent should succeed");
 
-        let json = serde_json::to_string_pretty(&exported).unwrap();
-        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string_pretty(&exported)
+            .expect("serialize exported agent to JSON");
+        let restored: AgentFile =
+            serde_json::from_str(&json).expect("deserialize agent file from JSON");
 
         let import_store = test_store();
-        let import_dir = tempfile::tempdir().unwrap();
+        let import_dir = tempfile::tempdir().expect("create import temp dir");
         let id_gen = counter_id_gen();
         import_agent(
             &restored,
@@ -915,13 +937,18 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent should succeed");
 
-        let content = std::fs::read_to_string(import_dir.path().join("unicode.txt")).unwrap();
+        let content = std::fs::read_to_string(import_dir.path().join("unicode.txt"))
+            .expect("unicode.txt should be restored");
         assert_eq!(content, combined);
 
-        let sessions = import_store.list_sessions(Some("uni")).unwrap();
-        let messages = import_store.get_history(&sessions[0].id, None).unwrap();
+        let sessions = import_store
+            .list_sessions(Some("uni"))
+            .expect("list_sessions should succeed");
+        let messages = import_store
+            .get_history(&sessions[0].id, None)
+            .expect("get_history should succeed");
         assert_eq!(messages[0].content, combined);
     }
 
@@ -932,7 +959,7 @@ mod tests {
             let sid = format!("ses-{i}");
             store
                 .create_session(&sid, "bulk", &format!("key-{i}"), None, None)
-                .unwrap();
+                .expect("create bulk session");
             for j in 0..10 {
                 store
                     .append_message(
@@ -943,11 +970,11 @@ mod tests {
                         None,
                         20,
                     )
-                    .unwrap();
+                    .expect("append bulk message");
             }
         }
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let exported = export_agent(
             "bulk",
             None,
@@ -960,17 +987,18 @@ mod tests {
                 include_archived: false,
             },
         )
-        .unwrap();
+        .expect("export_agent should succeed");
 
         assert_eq!(exported.sessions.len(), 100);
         let total_msgs: usize = exported.sessions.iter().map(|s| s.messages.len()).sum();
         assert_eq!(total_msgs, 1000);
 
-        let json = serde_json::to_string(&exported).unwrap();
-        let restored: AgentFile = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&exported).expect("serialize large export");
+        let restored: AgentFile =
+            serde_json::from_str(&json).expect("deserialize large agent file");
 
         let import_store = test_store();
-        let import_dir = tempfile::tempdir().unwrap();
+        let import_dir = tempfile::tempdir().expect("create import temp dir");
         let id_gen = counter_id_gen();
         let result = import_agent(
             &restored,
@@ -979,7 +1007,7 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent large data should succeed");
 
         assert_eq!(result.sessions_imported, 100);
         assert_eq!(result.messages_imported, 1000);
@@ -988,7 +1016,7 @@ mod tests {
     #[test]
     fn category_validation_uses_shared_constant() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
 
         let valid_categories = crate::schema::VALID_CATEGORIES;
 
@@ -1015,7 +1043,7 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent with all valid categories should succeed");
 
         assert_eq!(
             result.notes_imported as usize,
@@ -1027,7 +1055,7 @@ mod tests {
     #[test]
     fn import_rejects_future_version() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut agent = minimal_agent_file();
         agent.version = AGENT_FILE_VERSION + 1;
 
@@ -1051,7 +1079,7 @@ mod tests {
     #[test]
     fn import_preserves_note_content() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut agent = minimal_agent_file();
         agent.sessions[0].notes = vec![
             ExportedNote {
@@ -1074,12 +1102,16 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent should succeed");
 
         assert_eq!(result.notes_imported, 2);
 
-        let sessions = store.list_sessions(Some("alice")).unwrap();
-        let notes = store.get_notes(&sessions[0].id).unwrap();
+        let sessions = store
+            .list_sessions(Some("alice"))
+            .expect("list_sessions should succeed");
+        let notes = store
+            .get_notes(&sessions[0].id)
+            .expect("get_notes should succeed");
         assert_eq!(notes.len(), 2);
         let contents: Vec<&str> = notes.iter().map(|n| n.content.as_str()).collect();
         assert!(contents.contains(&"first note content"));
@@ -1089,7 +1121,7 @@ mod tests {
     #[test]
     fn import_with_empty_facts() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut agent = minimal_agent_file();
         agent.knowledge = Some(crate::portability::KnowledgeExport {
             facts: vec![],
@@ -1105,7 +1137,7 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent with empty knowledge should succeed");
 
         assert_eq!(result.sessions_imported, 1);
         assert_eq!(result.messages_imported, 2);
@@ -1114,7 +1146,7 @@ mod tests {
     #[test]
     fn import_multiple_sessions_counts_correctly() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let mut agent = minimal_agent_file();
         // Add a second session
         agent.sessions.push(ExportedSession {
@@ -1148,7 +1180,7 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent with multiple sessions should succeed");
 
         assert_eq!(result.sessions_imported, 2);
         assert_eq!(result.messages_imported, 3);
@@ -1157,7 +1189,7 @@ mod tests {
     #[test]
     fn import_notes_counted_in_result() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let agent = minimal_agent_file();
 
         let id_gen = counter_id_gen();
@@ -1168,7 +1200,7 @@ mod tests {
             &*id_gen,
             &ImportOptions::default(),
         )
-        .unwrap();
+        .expect("import_agent should succeed");
 
         // minimal_agent_file has 1 note
         assert_eq!(result.notes_imported, 1);
@@ -1196,7 +1228,7 @@ mod tests {
     #[test]
     fn import_skip_both_flags_imports_nothing_from_disk_or_sessions() {
         let store = test_store();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("create temp dir");
         let agent = minimal_agent_file();
 
         let id_gen = counter_id_gen();
@@ -1211,7 +1243,7 @@ mod tests {
                 ..ImportOptions::default()
             },
         )
-        .unwrap();
+        .expect("import_agent with both skip flags should succeed");
 
         assert_eq!(result.files_restored, 0);
         assert_eq!(result.sessions_imported, 0);
@@ -1232,15 +1264,15 @@ mod tests {
                 let store = test_store();
                 store
                     .create_session("ses-prop", "prop-agent", "main", None, None)
-                    .unwrap();
+                    .expect("create proptest session");
                 store
                     .append_message("ses-prop", Role::User, &content, None, None, 50)
-                    .unwrap();
+                    .expect("append proptest message");
                 store
                     .add_note("ses-prop", "prop-agent", "context", &note_text)
-                    .unwrap();
+                    .expect("add proptest note");
 
-                let dir = tempfile::tempdir().unwrap();
+                let dir = tempfile::tempdir().expect("create proptest temp dir");
                 let exported = export_agent(
                     "prop-agent",
                     None,
@@ -1250,13 +1282,15 @@ mod tests {
                     dir.path(),
                     &ExportOptions::default(),
                 )
-                .unwrap();
+                .expect("export_agent should succeed in proptest");
 
-                let json = serde_json::to_string(&exported).unwrap();
-                let restored: AgentFile = serde_json::from_str(&json).unwrap();
+                let json = serde_json::to_string(&exported)
+                    .expect("serialize proptest export");
+                let restored: AgentFile =
+                    serde_json::from_str(&json).expect("deserialize proptest agent file");
 
                 let import_store = test_store();
-                let import_dir = tempfile::tempdir().unwrap();
+                let import_dir = tempfile::tempdir().expect("create proptest import dir");
                 let id_gen = counter_id_gen();
                 import_agent(
                     &restored,
@@ -1265,10 +1299,14 @@ mod tests {
                     &*id_gen,
                     &ImportOptions::default(),
                 )
-                .unwrap();
+                .expect("import_agent should succeed in proptest");
 
-                let sessions = import_store.list_sessions(Some("prop-agent")).unwrap();
-                let messages = import_store.get_history(&sessions[0].id, None).unwrap();
+                let sessions = import_store
+                    .list_sessions(Some("prop-agent"))
+                    .expect("list_sessions should succeed in proptest");
+                let messages = import_store
+                    .get_history(&sessions[0].id, None)
+                    .expect("get_history should succeed in proptest");
                 prop_assert_eq!(&messages[0].content, &content);
             }
         }
