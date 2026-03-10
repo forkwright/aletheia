@@ -31,6 +31,11 @@ use crate::engine::runtime::db::Poison;
 use crate::engine::runtime::temp_store::{EpochStore, RegularTempStore};
 use crate::engine::runtime::transact::SessionTx;
 
+pub(crate) mod error;
+
+#[cfg(test)]
+mod tests;
+
 #[cfg(feature = "graph-algo")]
 pub(crate) mod algos;
 #[cfg(feature = "graph-algo")]
@@ -60,10 +65,13 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     /// Ensure the input relation contains tuples of the given minimal length.
     pub fn ensure_min_len(self, len: usize) -> Result<Self> {
         let arity = self.arg_manifest.arity(self.tx, self.stores)?;
-        ensure!(
-            arity >= len,
-            "Input relation to algorithm has insufficient arity"
-        );
+        if arity < len {
+            return Err(Box::new(error::FixedRuleError::InvalidInput {
+                rule: String::new(),
+                message: "Input relation to algorithm has insufficient arity".to_string(),
+                location: snafu::location!(),
+            }));
+        }
         Ok(self)
     }
     /// Get the binding map of the input relation
@@ -433,29 +441,27 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     /// Extract a positive integer option
     pub fn pos_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         let i = self.integer_option(name, default.map(|i| i as i64))?;
-        ensure!(
-            i > 0,
-            WrongFixedRuleOptionError {
+        if i <= 0 {
+            return Err(Box::new(WrongFixedRuleOptionError {
                 name: name.to_string(),
                 span: self.option_span(name)?,
                 rule_name: self.manifest.fixed_handle.name.to_string(),
                 help: "a positive integer is required".to_string(),
-            }
-        );
+            }));
+        }
         Ok(i as usize)
     }
     /// Extract a non-negative integer option
     pub fn non_neg_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         let i = self.integer_option(name, default.map(|i| i as i64))?;
-        ensure!(
-            i >= 0,
-            WrongFixedRuleOptionError {
+        if i < 0 {
+            return Err(Box::new(WrongFixedRuleOptionError {
                 name: name.to_string(),
                 span: self.option_span(name)?,
                 rule_name: self.manifest.fixed_handle.name.to_string(),
                 help: "a non-negative integer is required".to_string(),
-            }
-        );
+            }));
+        }
         Ok(i as usize)
     }
     /// Extract a floating point option
@@ -488,15 +494,14 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     /// Extract a floating point option between 0. and 1.
     pub fn unit_interval_option(&self, name: &str, default: Option<f64>) -> Result<f64> {
         let f = self.float_option(name, default)?;
-        ensure!(
-            (0. ..=1.).contains(&f),
-            WrongFixedRuleOptionError {
+        if !(0. ..=1.).contains(&f) {
+            return Err(Box::new(WrongFixedRuleOptionError {
                 name: name.to_string(),
                 span: self.option_span(name)?,
                 rule_name: self.manifest.fixed_handle.name.to_string(),
                 help: "a number between 0. and 1. is required".to_string(),
-            }
-        );
+            }));
+        }
         Ok(f)
     }
     /// Extract a boolean option

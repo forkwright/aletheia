@@ -2,7 +2,6 @@
 use std::collections::BTreeMap;
 
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
 use compact_str::CompactString;
 use itertools::Itertools;
 use rand::distr::weighted::WeightedIndex;
@@ -79,21 +78,20 @@ impl FixedRule for RandomWalk {
                                 Ok(match eval_bytecode(weight_expr, &cand, &mut stack)? {
                                     DataValue::Num(n) => {
                                         let f = n.get_float();
-                                        ensure!(
-                                            f >= 0.,
-                                            BadExprValueError(
+                                        if f < 0. {
+                                            return Err(Box::new(BadExprValueError(
                                                 DataValue::from(f),
                                                 "'weight' must evaluate to a non-negative number"
-                                                    .to_string()
-                                            )
-                                        );
+                                                    .to_string(),
+                                            )));
+                                        }
                                         f
                                     }
-                                    v => bail!(BadExprValueError(
+                                    v => return Err(Box::new(BadExprValueError(
                                         v,
                                         "'weight' must evaluate to a non-negative number"
-                                            .to_string()
-                                    )),
+                                            .to_string(),
+                                    ))),
                                 })
                             })
                             .try_collect()?;

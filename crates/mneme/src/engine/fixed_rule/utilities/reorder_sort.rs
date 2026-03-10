@@ -1,8 +1,8 @@
 //! Reorder and sort fixed rule.
 use std::collections::BTreeMap;
 
-use crate::bail;
 use crate::engine::error::DbResult as Result;
+use crate::engine::fixed_rule::error::FixedRuleError;
 use compact_str::CompactString;
 use itertools::Itertools;
 
@@ -40,12 +40,12 @@ impl FixedRule for ReorderSort {
                 .collect_vec(),
             Expr::Apply { op, args, .. } if *op == OP_LIST => args.to_vec(),
             _ => {
-                bail!(WrongFixedRuleOptionError {
+                return Err(Box::new(WrongFixedRuleOptionError {
                     name: "out".to_string(),
                     span: payload.span(),
                     rule_name: payload.name().to_string(),
-                    help: "This option must evaluate to a list".to_string()
-                })
+                    help: "This option must evaluate to a list".to_string(),
+                }))
             }
         };
 
@@ -133,7 +133,12 @@ impl FixedRule for ReorderSort {
                 ..
             } => l.len() + 1,
             Expr::Apply { op, args, .. } if **op == OP_LIST => args.len() + 1,
-            _ => bail!("ReorderSort: invalid option 'out' given, expect a list"),
+            _ => return Err(Box::new(FixedRuleError::Config {
+                rule: "ReorderSort".to_string(),
+                param: "out".to_string(),
+                message: "invalid option 'out' given, expect a list".to_string(),
+                location: snafu::location!(),
+            })),
         })
     }
 }
