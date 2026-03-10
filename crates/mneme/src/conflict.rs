@@ -281,7 +281,10 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 /// Uses HNSW vector search with cosine distance ≤ 0.28 (similarity ≥ 0.72),
 /// filtered to currently valid facts for the given nous.
 #[cfg(feature = "mneme-engine")]
-#[expect(clippy::cast_possible_wrap, reason = "MAX_CANDIDATES = 5, always fits in i64")]
+#[expect(
+    clippy::cast_possible_wrap,
+    reason = "MAX_CANDIDATES = 5, always fits in i64"
+)]
 pub(crate) fn retrieve_candidates(
     store: &crate::knowledge_store::KnowledgeStore,
     fact: &FactForConflictCheck,
