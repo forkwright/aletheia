@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use std::mem;
 
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::engine::query::error::*;
 use compact_str::CompactString;
 use itertools::Itertools;
 use smallvec::SmallVec;
@@ -351,7 +351,9 @@ impl NormalFormProgram {
                                                             nullable: false,
                                                         })
                                                     {
-                                                        bail!("Invalid time travel scanning for relation '{}'", name);
+                                                        return Err(InvalidTimeTravelSnafu {
+                                                        message: format!("invalid time travel scanning for relation '{name}'"),
+                                                    }.build().into());
                                                     }
                                                 }
 
@@ -382,7 +384,9 @@ impl NormalFormProgram {
                                                             nullable: false,
                                                         })
                                                     {
-                                                        bail!("Invalid time travel scanning for relation '{}'", name);
+                                                        return Err(InvalidTimeTravelSnafu {
+                                                        message: format!("invalid time travel scanning for relation '{name}'"),
+                                                    }.build().into());
                                                     }
                                                 }
                                                 let fields: BTreeSet<_> = relation
@@ -393,9 +397,12 @@ impl NormalFormProgram {
                                                     .map(|col| &col.name)
                                                     .collect();
                                                 for k in bindings.keys() {
-                                                    ensure!(
+                                                    snafu::ensure!(
                                                         fields.contains(&k),
-                                                        "stored relation '{}' does not have field '{}'", name, k
+                                                        FieldNotFoundSnafu {
+                                                            relation: name.to_string(),
+                                                            field: k.to_string(),
+                                                        }
                                                     );
                                                 }
                                                 let new_bindings = relation

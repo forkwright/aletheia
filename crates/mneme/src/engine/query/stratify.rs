@@ -3,7 +3,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::DbResult as Result;
-use crate::ensure;
+use crate::engine::query::error::*;
 use itertools::Itertools;
 
 use crate::engine::data::program::{
@@ -150,7 +150,12 @@ fn verify_no_cycle(g: &StratifiedGraph<&'_ Symbol>, sccs: &[BTreeSet<&Symbol>]) 
         for scc in sccs {
             if scc.contains(k) {
                 for (v, negated) in vs {
-                    ensure!(!negated || !scc.contains(v), "Query is unstratifiable");
+                    snafu::ensure!(
+                        !negated || !scc.contains(v),
+                        StratificationFailedSnafu {
+                            message: "query is unstratifiable",
+                        }
+                    );
                 }
             }
         }

@@ -2,12 +2,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::bail;
 use crate::engine::error::DbResult as Result;
+use crate::engine::query::error::*;
 use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
-use snafu::Snafu;
 
 use crate::engine::data::expr::{Bytecode, Expr};
 use crate::engine::data::program::{
@@ -49,14 +48,26 @@ impl<'a> SessionTx<'a> {
         let mut replaced_old_triggers = None;
         if op == RelationOp::Replace {
             if !propagate_triggers {
-                bail!("replace op in trigger is not allowed")
+                return Err(StoredRelationSnafu {
+                    message: "replace op in trigger is not allowed",
+                }
+                .build()
+                .into());
             }
             if let Ok(old_handle) = self.get_relation(&meta.name, true) {
                 if !old_handle.indices.is_empty() {
-                    bail!("cannot replace relation since it has indices")
+                    return Err(StoredRelationSnafu {
+                        message: "cannot replace relation since it has indices",
+                    }
+                    .build()
+                    .into());
                 }
                 if old_handle.access_level < AccessLevel::Normal {
-                    bail!("Insufficient access level for this operation");
+                    return Err(InsufficientAccessSnafu {
+                        message: "Insufficient access level for this operation",
+                    }
+                    .build()
+                    .into());
                 }
                 if old_handle.has_triggers() {
                     replaced_old_triggers = Some((old_handle.put_triggers, old_handle.rm_triggers))
@@ -198,7 +209,11 @@ impl<'a> SessionTx<'a> {
             callback_targets.contains(&relation_store.name) || force_collect == relation_store.name;
 
         if relation_store.access_level < AccessLevel::Protected {
-            bail!("Insufficient access level for this operation");
+            return Err(InsufficientAccessSnafu {
+                message: "Insufficient access level for this operation",
+            }
+            .build()
+            .into());
         }
 
         let mut key_extractors = make_extractors(
@@ -256,11 +271,14 @@ impl<'a> SessionTx<'a> {
                 };
 
                 if already_exists {
-                    bail!(TransactAssertionFailure {
-                        relation: relation_store.name.to_string(),
-                        key: extracted,
-                        notice: "key exists in database".to_string()
-                    });
+                    return Err(StoredRelationSnafu {
+                        message: format!(
+                            "assertion failure for {:?} of {}: key exists in database",
+                            extracted, relation_store.name
+                        ),
+                    }
+                    .build()
+                    .into());
                 }
             }
 
@@ -438,7 +456,12 @@ impl<'a> SessionTx<'a> {
                 .get(name, &manifest.tokenizer, &manifest.filters)?;
 
             let parsed = DatalogParser::parse(Rule::expr, &manifest.extractor)
-                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                .map_err(|e| {
+                    CompilationFailedSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?
                 .next()
                 .unwrap();
             let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -453,7 +476,12 @@ impl<'a> SessionTx<'a> {
                 .get(name, &manifest.tokenizer, &manifest.filters)?;
 
             let parsed = DatalogParser::parse(Rule::expr, &manifest.extractor)
-                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                .map_err(|e| {
+                    CompilationFailedSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?
                 .next()
                 .unwrap();
             let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -472,7 +500,12 @@ impl<'a> SessionTx<'a> {
         for (name, (_, manifest)) in relation_store.hnsw_indices.iter() {
             if let Some(f_code) = &manifest.index_filter {
                 let parsed = DatalogParser::parse(Rule::expr, f_code)
-                    .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+                    .map_err(|e| {
+                        CompilationFailedSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?
                     .next()
                     .unwrap();
                 let mut code_expr = build_expr(parsed, &Default::default())?;
@@ -504,7 +537,11 @@ impl<'a> SessionTx<'a> {
             callback_targets.contains(&relation_store.name) || force_collect == relation_store.name;
 
         if relation_store.access_level < AccessLevel::Protected {
-            bail!("Insufficient access level for this operation");
+            return Err(InsufficientAccessSnafu {
+                message: "Insufficient access level for this operation",
+            }
+            .build()
+            .into());
         }
 
         let key_extractors = make_extractors(
@@ -551,11 +588,14 @@ impl<'a> SessionTx<'a> {
             };
             let original_val: Tuple = match original_val_bytes {
                 None => {
-                    bail!(TransactAssertionFailure {
-                        relation: relation_store.name.to_string(),
-                        key: new_kv,
-                        notice: "key to update does not exist".to_string()
-                    })
+                    return Err(StoredRelationSnafu {
+                        message: format!(
+                            "assertion failure for {:?} of {}: key to update does not exist",
+                            new_kv, relation_store.name
+                        ),
+                    }
+                    .build()
+                    .into());
                 }
                 Some(v) => rmp_serde::from_slice(&v[ENCODED_KEY_MIN_LEN..])
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?,
@@ -762,7 +802,11 @@ impl<'a> SessionTx<'a> {
         span: SourceSpan,
     ) -> Result<()> {
         if relation_store.access_level < AccessLevel::ReadOnly {
-            bail!("Insufficient access level for this operation");
+            return Err(InsufficientAccessSnafu {
+                message: "Insufficient access level for this operation",
+            }
+            .build()
+            .into());
         }
 
         let key_extractors = make_extractors(
@@ -784,11 +828,14 @@ impl<'a> SessionTx<'a> {
                 self.store_tx.exists(&key, true)?
             };
             if already_exists {
-                bail!(TransactAssertionFailure {
-                    relation: relation_store.name.to_string(),
-                    key: extracted,
-                    notice: "key exists in database".to_string()
-                })
+                return Err(StoredRelationSnafu {
+                    message: format!(
+                        "assertion failure for {:?} of {}: key exists in database",
+                        extracted, relation_store.name
+                    ),
+                }
+                .build()
+                .into());
             }
         }
         Ok(())
@@ -805,7 +852,11 @@ impl<'a> SessionTx<'a> {
         span: SourceSpan,
     ) -> Result<()> {
         if relation_store.access_level < AccessLevel::ReadOnly {
-            bail!("Insufficient access level for this operation");
+            return Err(InsufficientAccessSnafu {
+                message: "Insufficient access level for this operation",
+            }
+            .build()
+            .into());
         }
 
         let mut key_extractors = make_extractors(
@@ -839,19 +890,25 @@ impl<'a> SessionTx<'a> {
             };
             match existing {
                 None => {
-                    bail!(TransactAssertionFailure {
-                        relation: relation_store.name.to_string(),
-                        key: extracted,
-                        notice: "key does not exist in database".to_string()
-                    })
+                    return Err(StoredRelationSnafu {
+                        message: format!(
+                            "assertion failure for {:?} of {}: key does not exist in database",
+                            extracted, relation_store.name
+                        ),
+                    }
+                    .build()
+                    .into());
                 }
                 Some(v) => {
                     if &v as &[u8] != &val as &[u8] {
-                        bail!(TransactAssertionFailure {
-                            relation: relation_store.name.to_string(),
-                            key: extracted,
-                            notice: "key exists in database, but value does not match".to_string()
-                        })
+                        return Err(StoredRelationSnafu {
+                            message: format!(
+                                "assertion failure for {:?} of {}: key exists in database, but value does not match",
+                                extracted, relation_store.name
+                            ),
+                        }
+                        .build()
+                        .into());
                     }
                 }
             }
@@ -880,7 +937,11 @@ impl<'a> SessionTx<'a> {
             callback_targets.contains(&relation_store.name) || force_collect == relation_store.name;
 
         if relation_store.access_level < AccessLevel::Protected {
-            bail!("Insufficient access level for this operation");
+            return Err(InsufficientAccessSnafu {
+                message: "Insufficient access level for this operation",
+            }
+            .build()
+            .into());
         }
         let key_extractors = make_extractors(
             &relation_store.metadata.keys,
@@ -915,11 +976,14 @@ impl<'a> SessionTx<'a> {
                     self.store_tx.exists(&key, false)?
                 };
                 if !exists {
-                    bail!(TransactAssertionFailure {
-                        relation: relation_store.name.to_string(),
-                        key: extracted,
-                        notice: "key does not exists in database".to_string()
-                    });
+                    return Err(StoredRelationSnafu {
+                        message: format!(
+                            "assertion failure for {:?} of {}: key does not exists in database",
+                            extracted, relation_store.name
+                        ),
+                    }
+                    .build()
+                    .into());
                 }
             }
             if need_to_collect
@@ -1049,14 +1113,6 @@ impl<'a> SessionTx<'a> {
     }
 }
 
-#[derive(Debug, Snafu)]
-#[snafu(display("Assertion failure for {key:?} of {relation}: {notice}"))]
-struct TransactAssertionFailure {
-    relation: String,
-    key: Vec<DataValue>,
-    notice: String,
-}
-
 enum DataExtractor {
     DefaultExtractor(Expr, NullableColType),
     IndexExtractor(usize, NullableColType),
@@ -1068,15 +1124,17 @@ impl DataExtractor {
             DataExtractor::DefaultExtractor(expr, typ) => typ
                 .coerce(expr.clone().eval_to_const()?, cur_vld)
                 .map_err(|e| {
-                    crate::engine::error::AdhocError(format!(
-                        "{e}: when processing tuple {tuple:?}"
-                    ))
+                    EvalFailedSnafu {
+                        message: format!("{e}: when processing tuple {tuple:?}"),
+                    }
+                    .build()
                 })?,
             DataExtractor::IndexExtractor(i, typ) => {
                 typ.coerce(tuple[*i].clone(), cur_vld).map_err(|e| {
-                    crate::engine::error::AdhocError(format!(
-                        "{e}: when processing tuple {tuple:?}"
-                    ))
+                    EvalFailedSnafu {
+                        message: format!("{e}: when processing tuple {tuple:?}"),
+                    }
+                    .build()
                 })?
             }
         })
@@ -1134,10 +1192,11 @@ fn make_extractor(
             stored.typing.clone(),
         ))
     } else {
-        Err(Box::new(crate::engine::error::AdhocError(
-            "cannot make extractor for column".to_string(),
-        ))
-            as Box<dyn std::error::Error + Send + Sync + 'static>)
+        Err(StoredRelationSnafu {
+            message: "cannot make extractor for column",
+        }
+        .build()
+        .into())
     }
 }
 

@@ -2,9 +2,9 @@
 use std::collections::BTreeSet;
 use std::mem;
 
-use crate::bail;
 use crate::engine::data::program::{NormalFormAtom, NormalFormInlineRule};
 use crate::engine::error::DbResult as Result;
+use crate::engine::query::error::*;
 
 impl NormalFormInlineRule {
     pub(crate) fn convert_to_well_ordered_rule(self) -> Result<Self> {
@@ -180,30 +180,44 @@ impl NormalFormInlineRule {
                         if r.args.iter().any(|a| seen_variables.contains(a)) {
                             collected.push(NormalFormAtom::NegatedRule(r.clone()));
                         } else {
-                            bail!("Encountered unsafe negation, or empty rule definition");
+                            return Err(UnsafeRuleSnafu {
+                            message: "encountered unsafe negation, or empty rule definition",
+                        }.build().into());
                         }
                     }
                     NormalFormAtom::NegatedRelation(v) => {
                         if v.args.iter().any(|a| seen_variables.contains(a)) {
                             collected.push(NormalFormAtom::NegatedRelation(v.clone()));
                         } else {
-                            bail!("Encountered unsafe negation, or empty rule definition");
+                            return Err(UnsafeRuleSnafu {
+                            message: "encountered unsafe negation, or empty rule definition",
+                        }.build().into());
                         }
                     }
                     NormalFormAtom::Predicate(_p) => {
-                        bail!("Atom contains unbound variable, or rule contains no variable at all")
+                        return Err(UnboundVariableSnafu {
+                        message: "atom contains unbound variable, or rule contains no variable at all",
+                    }.build().into())
                     }
                     NormalFormAtom::Unification(_u) => {
-                        bail!("Atom contains unbound variable, or rule contains no variable at all")
+                        return Err(UnboundVariableSnafu {
+                        message: "atom contains unbound variable, or rule contains no variable at all",
+                    }.build().into())
                     }
                     NormalFormAtom::HnswSearch(_s) => {
-                        bail!("Atom contains unbound variable, or rule contains no variable at all")
+                        return Err(UnboundVariableSnafu {
+                        message: "atom contains unbound variable, or rule contains no variable at all",
+                    }.build().into())
                     }
                     NormalFormAtom::FtsSearch(_s) => {
-                        bail!("Atom contains unbound variable, or rule contains no variable at all")
+                        return Err(UnboundVariableSnafu {
+                        message: "atom contains unbound variable, or rule contains no variable at all",
+                    }.build().into())
                     }
                     NormalFormAtom::LshSearch(_s) => {
-                        bail!("Atom contains unbound variable, or rule contains no variable at all")
+                        return Err(UnboundVariableSnafu {
+                        message: "atom contains unbound variable, or rule contains no variable at all",
+                    }.build().into())
                     }
                 }
             }
