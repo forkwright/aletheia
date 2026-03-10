@@ -336,6 +336,10 @@ impl KnowledgeStore {
         Ok(std::sync::Arc::new(store))
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "schema init is a single linear sequence"
+    )]
     fn init_schema(&self) -> crate::error::Result<()> {
         use crate::engine::ScriptMutability;
         use std::collections::BTreeMap;
@@ -398,6 +402,20 @@ impl KnowledgeStore {
         let fts = fts_ddl();
         self.db
             .run(fts, BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+
+        // Graph scores relation (PageRank + Louvain cache)
+        self.db
+            .run(
+                crate::graph_intelligence::GRAPH_SCORES_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
                     message: e.to_string(),
@@ -1980,6 +1998,20 @@ impl KnowledgeStore {
                     .build()
                 })?;
         }
+
+        // Add graph_scores relation for PageRank + Louvain cache
+        self.db
+            .run(
+                crate::graph_intelligence::GRAPH_SCORES_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v3->v4 create graph_scores: {e}"),
+                }
+                .build()
+            })?;
 
         // Update schema version
         let mut params = BTreeMap::new();
