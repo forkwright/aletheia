@@ -86,7 +86,7 @@ impl StopWordFilter {
                         message: format!("Unsupported stop word language: {}", language),
                     }
                     .build(),
-                ))
+                ));
             }
         };
 

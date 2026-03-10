@@ -105,7 +105,6 @@ impl NgramTokenizer {
             prefix_only,
         }
     }
-
 }
 
 /// TokenStream associate to the `NgramTokenizer`

@@ -73,7 +73,10 @@ impl FtsExpr {
                     }
                 }
                 if flattened.len() == 1 {
-                    flattened.into_iter().next().expect("len == 1 checked above")
+                    flattened
+                        .into_iter()
+                        .next()
+                        .expect("len == 1 checked above")
                 } else {
                     FtsExpr::And(flattened)
                 }
@@ -91,7 +94,10 @@ impl FtsExpr {
                     }
                 }
                 if flattened.len() == 1 {
-                    flattened.into_iter().next().expect("len == 1 checked above")
+                    flattened
+                        .into_iter()
+                        .next()
+                        .expect("len == 1 checked above")
                 } else {
                     FtsExpr::Or(flattened)
                 }

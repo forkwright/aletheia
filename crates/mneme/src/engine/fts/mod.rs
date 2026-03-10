@@ -129,7 +129,7 @@ impl TokenizerConfig {
                         message: format!("Unknown tokenizer: {}", self.name),
                     }
                     .build(),
-                ))
+                ));
             }
         })
     }
@@ -174,10 +174,12 @@ impl TokenizerConfig {
                     _ => {
                         return Err(Box::new(
                             TokenizationFailedSnafu {
-                                message: "First argument `compound_words_list` must be a list of strings".to_string(),
+                                message:
+                                    "First argument `compound_words_list` must be a list of strings"
+                                        .to_string(),
                             }
                             .build(),
-                        ))
+                        ));
                     }
                 }
                 SplitCompoundWords::from_dictionary(list_values)
@@ -231,7 +233,7 @@ impl TokenizerConfig {
                                 message: format!("Unsupported language: {}", lang),
                             }
                             .build(),
-                        ))
+                        ));
                     }
                 };
                 Stemmer::new(language).into()
@@ -263,10 +265,12 @@ impl TokenizerConfig {
                     _ => {
                         return Err(Box::new(
                             TokenizationFailedSnafu {
-                                message: "Filter Stopwords requires language name or a list of stopwords".to_string(),
+                                message:
+                                    "Filter Stopwords requires language name or a list of stopwords"
+                                        .to_string(),
                             }
                             .build(),
-                        ))
+                        ));
                     }
                 }
             }
@@ -276,12 +280,11 @@ impl TokenizerConfig {
                         message: format!("Unknown token filter: {:?}", self.name),
                     }
                     .build(),
-                ))
+                ));
             }
         })
     }
 }
-
 
 #[derive(Default)]
 pub(crate) struct TokenizerCache {

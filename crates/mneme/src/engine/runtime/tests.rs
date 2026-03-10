@@ -240,8 +240,7 @@ fn do_not_unify_underscore() {
 }
 
 #[test]
-fn imperative_script() {
-}
+fn imperative_script() {}
 
 #[test]
 fn returning_relations() {

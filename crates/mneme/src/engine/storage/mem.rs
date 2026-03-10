@@ -295,7 +295,9 @@ where
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take()
+                    let (k, cv) = self
+                        .change_cache
+                        .take()
                         .expect("change_cache present: matched Some(_) arm");
                     match cv {
                         None => continue,
@@ -303,13 +305,17 @@ where
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take()
+                    let (k, v) = self
+                        .db_cache
+                        .take()
                         .expect("db_cache present: matched Some(_) arm");
                     return Ok(Some((k.clone(), v.clone())));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.cmp(dk) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take()
+                        let (k, sv) = self
+                            .change_cache
+                            .take()
                             .expect("change_cache present: matched Some(_) arm");
                         match sv {
                             None => continue,
@@ -317,7 +323,9 @@ where
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take()
+                        let (k, v) = self
+                            .db_cache
+                            .take()
                             .expect("db_cache present: matched Some(_) arm");
                         return Ok(Some((k.clone(), v.clone())));
                     }
@@ -376,7 +384,9 @@ impl CacheIter<'_> {
             match (&self.change_cache, &self.db_cache) {
                 (None, None) => return Ok(None),
                 (Some(_), None) => {
-                    let (k, cv) = self.change_cache.take()
+                    let (k, cv) = self
+                        .change_cache
+                        .take()
                         .expect("change_cache present: matched Some(_) arm");
                     match cv {
                         None => continue,
@@ -384,13 +394,17 @@ impl CacheIter<'_> {
                     }
                 }
                 (None, Some(_)) => {
-                    let (k, v) = self.db_cache.take()
+                    let (k, v) = self
+                        .db_cache
+                        .take()
                         .expect("db_cache present: matched Some(_) arm");
                     return Ok(Some(decode_tuple_from_kv(k, v, None)));
                 }
                 (Some((ck, _)), Some((dk, _))) => match ck.cmp(dk) {
                     Ordering::Less => {
-                        let (k, sv) = self.change_cache.take()
+                        let (k, sv) = self
+                            .change_cache
+                            .take()
                             .expect("change_cache present: matched Some(_) arm");
                         match sv {
                             None => continue,
@@ -398,7 +412,9 @@ impl CacheIter<'_> {
                         }
                     }
                     Ordering::Greater => {
-                        let (k, v) = self.db_cache.take()
+                        let (k, v) = self
+                            .db_cache
+                            .take()
                             .expect("db_cache present: matched Some(_) arm");
                         return Ok(Some(decode_tuple_from_kv(k, v, None)));
                     }
