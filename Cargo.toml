@@ -120,6 +120,9 @@ flate2 = "1"
 rcgen = "0.14"
 regex = "1"
 
+# String similarity
+strsim = "0.11"
+
 # Testing
 proptest = "1"
 static_assertions = "1.1"
