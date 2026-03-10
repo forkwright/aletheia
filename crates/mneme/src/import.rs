@@ -473,8 +473,7 @@ mod tests {
     fn import_skips_existing_without_force() {
         let store = test_store();
         let dir = tempfile::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("notes.md"), "original")
-            .expect("write existing notes.md");
+        std::fs::write(dir.path().join("notes.md"), "original").expect("write existing notes.md");
 
         let agent = minimal_agent_file();
         let id_gen = counter_id_gen();
@@ -500,8 +499,7 @@ mod tests {
     fn import_overwrites_with_force() {
         let store = test_store();
         let dir = tempfile::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("notes.md"), "original")
-            .expect("write existing notes.md");
+        std::fs::write(dir.path().join("notes.md"), "original").expect("write existing notes.md");
 
         let agent = minimal_agent_file();
         let id_gen = counter_id_gen();
@@ -688,8 +686,7 @@ mod tests {
             .expect("add note");
 
         let dir = tempfile::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("readme.md"), "# Hello")
-            .expect("write readme.md");
+        std::fs::write(dir.path().join("readme.md"), "# Hello").expect("write readme.md");
 
         let exported = export_agent(
             "eve",
@@ -703,8 +700,8 @@ mod tests {
         .expect("export_agent should succeed");
 
         // Serialize and deserialize to simulate file I/O
-        let json = serde_json::to_string_pretty(&exported)
-            .expect("serialize exported agent to JSON");
+        let json =
+            serde_json::to_string_pretty(&exported).expect("serialize exported agent to JSON");
         let imported: AgentFile =
             serde_json::from_str(&json).expect("deserialize agent file from JSON");
 
@@ -811,8 +808,7 @@ mod tests {
             "sessions": []
         }"#;
 
-        let agent: AgentFile =
-            serde_json::from_str(json).expect("parse minimal agent file JSON");
+        let agent: AgentFile = serde_json::from_str(json).expect("parse minimal agent file JSON");
         assert!(agent.nous.name.is_none());
         assert!(agent.nous.model.is_none());
         assert!(agent.memory.is_none());
@@ -860,8 +856,7 @@ mod tests {
         let orig_msg_ts = exported.sessions[0].messages[0].created_at.clone();
 
         let json = serde_json::to_string(&exported).expect("serialize exported agent");
-        let restored: AgentFile =
-            serde_json::from_str(&json).expect("deserialize agent file");
+        let restored: AgentFile = serde_json::from_str(&json).expect("deserialize agent file");
 
         let import_store = test_store();
         let import_dir = tempfile::tempdir().expect("create import temp dir");
@@ -908,8 +903,7 @@ mod tests {
             .expect("add unicode note");
 
         let dir = tempfile::tempdir().expect("create temp dir");
-        std::fs::write(dir.path().join("unicode.txt"), &combined)
-            .expect("write unicode.txt");
+        std::fs::write(dir.path().join("unicode.txt"), &combined).expect("write unicode.txt");
 
         let exported = export_agent(
             "uni",
@@ -922,8 +916,8 @@ mod tests {
         )
         .expect("export_agent should succeed");
 
-        let json = serde_json::to_string_pretty(&exported)
-            .expect("serialize exported agent to JSON");
+        let json =
+            serde_json::to_string_pretty(&exported).expect("serialize exported agent to JSON");
         let restored: AgentFile =
             serde_json::from_str(&json).expect("deserialize agent file from JSON");
 

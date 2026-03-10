@@ -238,7 +238,8 @@ mod tests {
             SessionStatus::Distilled,
         ] {
             let json = serde_json::to_string(&status).expect("SessionStatus is serializable");
-            let back: SessionStatus = serde_json::from_str(&json).expect("round-trip JSON is valid");
+            let back: SessionStatus =
+                serde_json::from_str(&json).expect("round-trip JSON is valid");
             assert_eq!(status, back);
         }
     }

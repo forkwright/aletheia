@@ -413,8 +413,7 @@ mod tests {
             weight: 0.85,
             created_at: test_timestamp("2026-02-28T00:00:00Z"),
         };
-        let json =
-            serde_json::to_string(&rel).expect("Relationship serialization is infallible");
+        let json = serde_json::to_string(&rel).expect("Relationship serialization is infallible");
         let back: Relationship =
             serde_json::from_str(&json).expect("Relationship should deserialize from its own JSON");
         assert_eq!(rel.src, back.src);
@@ -506,8 +505,8 @@ mod tests {
             forgotten_at: None,
             forget_reason: None,
         };
-        let json =
-            serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");
+        let json = serde_json::to_string(&fact)
+            .expect("Fact with unicode content serializes successfully");
         let back: Fact = serde_json::from_str(&json)
             .expect("Fact with unicode content should deserialize from its own JSON");
         assert_eq!(fact.content, back.content);
@@ -818,8 +817,8 @@ mod tests {
 
     #[test]
     fn format_timestamp_roundtrip() {
-        let ts = parse_timestamp("2026-03-01T12:30:00Z")
-            .expect("valid ISO 8601 timestamp should parse");
+        let ts =
+            parse_timestamp("2026-03-01T12:30:00Z").expect("valid ISO 8601 timestamp should parse");
         let s = format_timestamp(&ts);
         assert_eq!(s, "2026-03-01T12:30:00Z");
         let back = parse_timestamp(&s).expect("formatted timestamp should parse back");

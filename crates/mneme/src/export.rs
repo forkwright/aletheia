@@ -513,7 +513,8 @@ mod tests {
 
     #[test]
     fn scan_missing_workspace() {
-        let ws = scan_workspace(Path::new("/nonexistent/path")).expect("scan missing workspace returns empty");
+        let ws = scan_workspace(Path::new("/nonexistent/path"))
+            .expect("scan missing workspace returns empty");
         assert!(ws.files.is_empty());
         assert!(ws.binary_files.is_empty());
     }
@@ -524,7 +525,8 @@ mod tests {
         std::fs::write(dir.path().join("notes.md"), "# Notes").expect("write notes.md");
         std::fs::write(dir.path().join("data.bin"), b"\x00binary\x00").expect("write data.bin");
         std::fs::create_dir(dir.path().join(".git")).expect("create .git dir");
-        std::fs::write(dir.path().join(".git/HEAD"), "ref: refs/heads/main").expect("write .git/HEAD");
+        std::fs::write(dir.path().join(".git/HEAD"), "ref: refs/heads/main")
+            .expect("write .git/HEAD");
 
         let ws = scan_workspace(dir.path()).expect("scan workspace");
         assert_eq!(ws.files.len(), 1);
@@ -537,7 +539,8 @@ mod tests {
     fn scan_skips_ignored_dirs() {
         let dir = tempfile::tempdir().expect("create tempdir");
         std::fs::create_dir(dir.path().join("node_modules")).expect("create node_modules dir");
-        std::fs::write(dir.path().join("node_modules/package.json"), "{}").expect("write package.json");
+        std::fs::write(dir.path().join("node_modules/package.json"), "{}")
+            .expect("write package.json");
         std::fs::write(dir.path().join("readme.md"), "hello").expect("write readme.md");
 
         let ws = scan_workspace(dir.path()).expect("scan workspace");
@@ -557,7 +560,9 @@ mod tests {
         store
             .append_message("ses-1", Role::Assistant, "hi", None, None, 40)
             .expect("append assistant message");
-        store.add_note("ses-1", "alice", "task", "testing").expect("add note");
+        store
+            .add_note("ses-1", "alice", "task", "testing")
+            .expect("add note");
 
         let dir = tempfile::tempdir().expect("create tempdir");
         std::fs::write(dir.path().join("notes.md"), "# Test").expect("write notes.md");
@@ -639,7 +644,9 @@ mod tests {
         store
             .append_message("ses-1", Role::User, "new", None, None, 50)
             .expect("append new message");
-        store.mark_messages_distilled("ses-1", &[1]).expect("mark messages distilled");
+        store
+            .mark_messages_distilled("ses-1", &[1])
+            .expect("mark messages distilled");
 
         let dir = tempfile::tempdir().expect("create tempdir");
         let opts = ExportOptions::default();
@@ -751,7 +758,8 @@ mod tests {
         );
 
         let json = serde_json::to_string(&agent).expect("serialize agent to JSON");
-        let restored: crate::portability::AgentFile = serde_json::from_str(&json).expect("deserialize agent from JSON");
+        let restored: crate::portability::AgentFile =
+            serde_json::from_str(&json).expect("deserialize agent from JSON");
         assert_eq!(restored.sessions[0].created_at, session.created_at);
         assert_eq!(restored.sessions[0].updated_at, session.updated_at);
         assert_eq!(
@@ -799,7 +807,8 @@ mod tests {
         assert_eq!(agent.nous.name.as_deref(), Some("Ünïcödé Àgënt"));
 
         let json = serde_json::to_string_pretty(&agent).expect("serialize unicode agent to JSON");
-        let restored: crate::portability::AgentFile = serde_json::from_str(&json).expect("deserialize unicode agent from JSON");
+        let restored: crate::portability::AgentFile =
+            serde_json::from_str(&json).expect("deserialize unicode agent from JSON");
         assert_eq!(restored.sessions[0].messages[0].content, mixed);
         assert_eq!(restored.sessions[0].notes[0].content, mixed);
     }
@@ -825,7 +834,8 @@ mod tests {
         assert_eq!(agent.nous.id, "empty-agent");
 
         let json = serde_json::to_string(&agent).expect("serialize agent to JSON");
-        let restored: crate::portability::AgentFile = serde_json::from_str(&json).expect("deserialize agent from JSON");
+        let restored: crate::portability::AgentFile =
+            serde_json::from_str(&json).expect("deserialize agent from JSON");
         assert_eq!(restored.sessions.len(), 0);
     }
 

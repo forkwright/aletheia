@@ -308,16 +308,25 @@ mod tests {
         let export_dir = dir.path().join("export");
         let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
 
-        let result = manager.export_sessions_json(&export_dir).expect("export sessions as JSON");
+        let result = manager
+            .export_sessions_json(&export_dir)
+            .expect("export sessions as JSON");
         assert_eq!(result.sessions_exported, 1);
         assert_eq!(result.files_written, 1);
 
         let json_path = export_dir.join("ses-1.json");
         assert!(json_path.exists());
         let contents = std::fs::read_to_string(&json_path).expect("read exported JSON file");
-        let parsed: serde_json::Value = serde_json::from_str(&contents).expect("parse exported JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&contents).expect("parse exported JSON");
         assert_eq!(parsed["session"]["id"], "ses-1");
-        assert_eq!(parsed["messages"].as_array().expect("messages is array").len(), 1);
+        assert_eq!(
+            parsed["messages"]
+                .as_array()
+                .expect("messages is array")
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -327,7 +336,8 @@ mod tests {
 
         // Need a file-based DB for VACUUM INTO
         let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
-        conn.execute_batch("PRAGMA foreign_keys = ON;").expect("enable foreign keys");
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
         migration::run_migrations(&conn).expect("run migrations");
         conn.execute(
             "INSERT INTO sessions (id, nous_id, session_key) VALUES ('s1', 'syn', 'main')",
@@ -385,7 +395,8 @@ mod tests {
         let backup_dir = dir.path().join("backups");
         std::fs::create_dir_all(&backup_dir).expect("create backup dir");
 
-        std::fs::write(backup_dir.join("sessions_20260101T120000.db"), "test data").expect("write backup file");
+        std::fs::write(backup_dir.join("sessions_20260101T120000.db"), "test data")
+            .expect("write backup file");
         // Non-matching file should be ignored
         std::fs::write(backup_dir.join("other.txt"), "ignored").expect("write non-matching file");
 
@@ -402,7 +413,9 @@ mod tests {
     fn list_backups_empty_when_no_dir() {
         let conn = Connection::open_in_memory().expect("open in-memory SQLite connection");
         let manager = BackupManager::new(&conn, "/nonexistent/path");
-        let backups = manager.list_backups().expect("list backups for nonexistent dir");
+        let backups = manager
+            .list_backups()
+            .expect("list backups for nonexistent dir");
         assert!(backups.is_empty());
     }
 
@@ -454,7 +467,8 @@ mod tests {
         let db_path = dir.path().join("sessions.db");
 
         let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
-        conn.execute_batch("PRAGMA foreign_keys = ON;").expect("enable foreign keys");
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
         migration::run_migrations(&conn).expect("run migrations");
 
         conn.execute(
@@ -692,20 +706,29 @@ mod tests {
         let dir = tempfile::tempdir().expect("create temp dir");
         let export_dir = dir.path().join("export");
         let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
-        let result = manager.export_sessions_json(&export_dir).expect("export sessions as JSON");
+        let result = manager
+            .export_sessions_json(&export_dir)
+            .expect("export sessions as JSON");
 
         assert_eq!(result.sessions_exported, 1);
         assert_eq!(result.files_written, 1);
 
         let json_path = export_dir.join("ses-export.json");
         let contents = std::fs::read_to_string(&json_path).expect("read exported JSON file");
-        let parsed: serde_json::Value = serde_json::from_str(&contents).expect("parse exported JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&contents).expect("parse exported JSON");
 
         assert!(parsed.is_object());
         assert!(parsed["session"].is_object());
         assert!(parsed["messages"].is_array());
         assert!(parsed["exported_at"].is_string());
-        assert_eq!(parsed["messages"].as_array().expect("messages is array").len(), 2);
+        assert_eq!(
+            parsed["messages"]
+                .as_array()
+                .expect("messages is array")
+                .len(),
+            2
+        );
         assert_eq!(parsed["messages"][0]["role"], "user");
     }
 
@@ -715,12 +738,15 @@ mod tests {
         let db_path = dir.path().join("empty.db");
 
         let conn = Connection::open(&db_path).expect("open file-based SQLite connection");
-        conn.execute_batch("PRAGMA foreign_keys = ON;").expect("enable foreign keys");
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
         migration::run_migrations(&conn).expect("run migrations");
 
         let backup_dir = dir.path().join("backups");
         let manager = BackupManager::new(&conn, &backup_dir);
-        let result = manager.create_backup().expect("create backup of empty store");
+        let result = manager
+            .create_backup()
+            .expect("create backup of empty store");
 
         assert!(result.path.exists());
         assert!(result.size_bytes > 0);
@@ -790,7 +816,9 @@ mod tests {
         let removed = manager.prune_backups(0).expect("prune all backups");
         assert_eq!(removed, 4);
 
-        let remaining = manager.list_backups().expect("list remaining backups after prune");
+        let remaining = manager
+            .list_backups()
+            .expect("list remaining backups after prune");
         assert!(remaining.is_empty(), "keep=0 should remove all backups");
     }
 
@@ -817,7 +845,9 @@ mod tests {
         let export_dir = dir.path().join("export");
         let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
 
-        let result = manager.export_sessions_json(&export_dir).expect("export empty store as JSON");
+        let result = manager
+            .export_sessions_json(&export_dir)
+            .expect("export empty store as JSON");
         assert_eq!(result.sessions_exported, 0);
         assert_eq!(result.files_written, 0);
         assert!(
@@ -825,7 +855,9 @@ mod tests {
             "output dir should be created even when empty"
         );
 
-        let entries: Vec<_> = std::fs::read_dir(&export_dir).expect("read export dir").collect();
+        let entries: Vec<_> = std::fs::read_dir(&export_dir)
+            .expect("read export dir")
+            .collect();
         assert!(entries.is_empty(), "no JSON files should be written");
     }
 
@@ -833,7 +865,8 @@ mod tests {
     fn restore_from_corrupt_file_errors() {
         let dir = tempfile::tempdir().expect("create temp dir");
         let corrupt_path = dir.path().join("corrupt.db");
-        std::fs::write(&corrupt_path, b"this is not a sqlite database").expect("write corrupt file");
+        std::fs::write(&corrupt_path, b"this is not a sqlite database")
+            .expect("write corrupt file");
 
         if let Ok(c) = Connection::open(&corrupt_path) {
             let result = c.query_row("SELECT COUNT(*) FROM sessions", [], |row| {

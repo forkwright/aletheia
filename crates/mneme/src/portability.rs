@@ -207,7 +207,8 @@ mod tests {
     #[test]
     fn camel_case_json_keys() {
         let agent = sample_agent_file();
-        let value: serde_json::Value = serde_json::to_value(&agent).expect("AgentFile is serializable");
+        let value: serde_json::Value =
+            serde_json::to_value(&agent).expect("AgentFile is serializable");
 
         // Top-level keys
         assert!(value.get("exportedAt").is_some(), "missing exportedAt");
@@ -309,7 +310,8 @@ mod tests {
             }]),
             graph: None,
         });
-        let value: serde_json::Value = serde_json::to_value(&agent).expect("AgentFile is serializable");
+        let value: serde_json::Value =
+            serde_json::to_value(&agent).expect("AgentFile is serializable");
         let mem = value.get("memory").expect("memory key must exist when set");
         assert!(mem.get("vectors").is_some());
         assert!(

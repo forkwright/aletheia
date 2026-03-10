@@ -231,8 +231,7 @@ mod tests {
         let conn = fresh_conn();
         run_migrations(&conn).expect("first migration run should succeed");
 
-        let result =
-            run_migrations(&conn).expect("second migration run on same DB should succeed");
+        let result = run_migrations(&conn).expect("second migration run on same DB should succeed");
         assert!(!result.was_fresh);
         assert!(result.applied.is_empty());
         assert_eq!(result.current_version, 3);
@@ -330,7 +329,8 @@ mod tests {
     fn run_migrations_idempotent() {
         let conn = fresh_conn();
         let first = run_migrations(&conn).expect("first migration run should succeed");
-        let second = run_migrations(&conn).expect("second migration run should succeed idempotently");
+        let second =
+            run_migrations(&conn).expect("second migration run should succeed idempotently");
         assert_eq!(first.current_version, second.current_version);
         assert!(second.applied.is_empty());
     }
@@ -364,13 +364,14 @@ mod tests {
             )",
         )
         .expect("creating legacy schema_version table should succeed");
-        conn.execute_batch(DDL).expect("applying base DDL to simulate v1 database should succeed");
+        conn.execute_batch(DDL)
+            .expect("applying base DDL to simulate v1 database should succeed");
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
             .expect("inserting v1 schema_version record should succeed");
 
         // Running migrations should detect existing v1 and apply v2+v3
-        let result = run_migrations(&conn)
-            .expect("migrations should apply v2 and v3 to a v1 database");
+        let result =
+            run_migrations(&conn).expect("migrations should apply v2 and v3 to a v1 database");
         assert!(!result.was_fresh);
         assert_eq!(result.applied, vec![2, 3]);
         assert_eq!(result.current_version, 3);

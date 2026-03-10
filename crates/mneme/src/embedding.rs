@@ -461,15 +461,21 @@ mod tests {
     #[test]
     fn mock_provider_produces_correct_dimension() {
         let provider = MockEmbeddingProvider::new(384);
-        let vec = provider.embed("hello world").expect("mock embed should not fail");
+        let vec = provider
+            .embed("hello world")
+            .expect("mock embed should not fail");
         assert_eq!(vec.len(), 384);
     }
 
     #[test]
     fn mock_provider_is_deterministic() {
         let provider = MockEmbeddingProvider::new(64);
-        let v1 = provider.embed("test input").expect("mock embed deterministic v1");
-        let v2 = provider.embed("test input").expect("mock embed deterministic v2");
+        let v1 = provider
+            .embed("test input")
+            .expect("mock embed deterministic v1");
+        let v2 = provider
+            .embed("test input")
+            .expect("mock embed deterministic v2");
         assert_eq!(v1, v2);
     }
 
@@ -484,7 +490,9 @@ mod tests {
     #[test]
     fn mock_provider_is_normalized() {
         let provider = MockEmbeddingProvider::new(128);
-        let vec = provider.embed("normalize me").expect("mock embed for normalization check");
+        let vec = provider
+            .embed("normalize me")
+            .expect("mock embed for normalization check");
         let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 0.01, "expected unit norm, got {norm}");
     }
@@ -493,9 +501,13 @@ mod tests {
     fn batch_embed_matches_individual() {
         let provider = MockEmbeddingProvider::new(64);
         let texts = ["hello", "world", "test"];
-        let batch = provider.embed_batch(&texts).expect("batch embed should not fail");
+        let batch = provider
+            .embed_batch(&texts)
+            .expect("batch embed should not fail");
         for (i, text) in texts.iter().enumerate() {
-            let individual = provider.embed(text).expect("individual embed should not fail");
+            let individual = provider
+                .embed(text)
+                .expect("individual embed should not fail");
             assert_eq!(batch[i], individual);
         }
     }
@@ -586,7 +598,9 @@ mod tests {
         let provider = create_provider(&config).expect("create custom dimension mock provider");
         assert_eq!(provider.dimension(), 512);
 
-        let vec = provider.embed("custom dim").expect("embed with custom dimension provider");
+        let vec = provider
+            .embed("custom dim")
+            .expect("embed with custom dimension provider");
         assert_eq!(vec.len(), 512);
     }
 
@@ -595,14 +609,20 @@ mod tests {
         let provider = MockEmbeddingProvider::new(64);
         let result = provider.embed_batch(&[]);
         assert!(result.is_ok());
-        assert!(result.expect("batch embed of empty slice should not fail").is_empty());
+        assert!(
+            result
+                .expect("batch embed of empty slice should not fail")
+                .is_empty()
+        );
     }
 
     #[test]
     fn mock_provider_consistent_dimension() {
         let provider = MockEmbeddingProvider::new(256);
         assert_eq!(provider.dimension(), 256);
-        let vec = provider.embed("consistency check").expect("mock embed for consistency check");
+        let vec = provider
+            .embed("consistency check")
+            .expect("mock embed for consistency check");
         assert_eq!(
             vec.len(),
             provider.dimension(),
@@ -613,7 +633,9 @@ mod tests {
     #[test]
     fn mock_provider_batch_empty() {
         let provider = MockEmbeddingProvider::new(128);
-        let result = provider.embed_batch(&[]).expect("batch embed of empty should succeed");
+        let result = provider
+            .embed_batch(&[])
+            .expect("batch embed of empty should succeed");
         assert!(result.is_empty(), "batch of empty slice returns empty vec");
     }
 
@@ -622,7 +644,9 @@ mod tests {
         let provider = MockEmbeddingProvider::new(96);
         let inputs = ["alpha", "beta", "gamma", "delta", ""];
         for input in &inputs {
-            let vec = provider.embed(input).expect("mock embed for dimension check");
+            let vec = provider
+                .embed(input)
+                .expect("mock embed for dimension check");
             assert_eq!(
                 vec.len(),
                 96,
@@ -642,7 +666,9 @@ mod tests {
         let provider = create_provider(&config).expect("create mock provider with full config");
         assert_eq!(provider.dimension(), 768);
         assert_eq!(provider.model_name(), "mock-embedding");
-        let vec = provider.embed("test").expect("embed with full config mock provider");
+        let vec = provider
+            .embed("test")
+            .expect("embed with full config mock provider");
         assert_eq!(vec.len(), 768);
     }
 
@@ -664,7 +690,9 @@ mod tests {
     fn embed_batch_single_item() {
         let provider = MockEmbeddingProvider::new(64);
         let single = provider.embed("solo").expect("single embed for 'solo'");
-        let batch = provider.embed_batch(&["solo"]).expect("batch of single item for 'solo'");
+        let batch = provider
+            .embed_batch(&["solo"])
+            .expect("batch of single item for 'solo'");
         assert_eq!(batch.len(), 1);
         assert_eq!(
             batch[0], single,
@@ -677,7 +705,9 @@ mod tests {
         let provider = MockEmbeddingProvider::new(256);
         let inputs = ["alpha", "bravo", "charlie delta echo"];
         for input in &inputs {
-            let vec = provider.embed(input).expect("mock embed for normalization magnitude check");
+            let vec = provider
+                .embed(input)
+                .expect("mock embed for normalization magnitude check");
             let magnitude: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
             assert!(
                 (magnitude - 1.0).abs() < 0.001,
@@ -690,10 +720,14 @@ mod tests {
     fn mock_embed_batch_matches_single() {
         let provider = MockEmbeddingProvider::new(128);
         let texts = ["foo bar", "baz qux", "hello world", "rust lang", ""];
-        let batch = provider.embed_batch(&texts).expect("batch embed must succeed");
+        let batch = provider
+            .embed_batch(&texts)
+            .expect("batch embed must succeed");
         assert_eq!(batch.len(), texts.len());
         for (i, text) in texts.iter().enumerate() {
-            let single = provider.embed(text).expect("single embed in batch comparison must succeed");
+            let single = provider
+                .embed(text)
+                .expect("single embed in batch comparison must succeed");
             assert_eq!(
                 batch[i], single,
                 "batch[{i}] must equal single embed for {text:?}"
@@ -788,21 +822,29 @@ mod tests {
 
         #[test]
         fn candle_embed_produces_correct_dimension() {
-            let vec = PROVIDER.embed("hello world").expect("candle embed for dimension check");
+            let vec = PROVIDER
+                .embed("hello world")
+                .expect("candle embed for dimension check");
             assert_eq!(vec.len(), 384);
         }
 
         #[test]
         fn candle_embed_is_normalized() {
-            let vec = PROVIDER.embed("normalize me").expect("candle embed for normalization check");
+            let vec = PROVIDER
+                .embed("normalize me")
+                .expect("candle embed for normalization check");
             let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
             assert!((norm - 1.0).abs() < 0.01, "expected unit norm, got {norm}");
         }
 
         #[test]
         fn candle_embed_deterministic() {
-            let v1 = PROVIDER.embed("test input").expect("candle embed deterministic v1");
-            let v2 = PROVIDER.embed("test input").expect("candle embed deterministic v2");
+            let v1 = PROVIDER
+                .embed("test input")
+                .expect("candle embed deterministic v1");
+            let v2 = PROVIDER
+                .embed("test input")
+                .expect("candle embed deterministic v2");
             assert_eq!(v1, v2);
         }
 
@@ -818,7 +860,9 @@ mod tests {
             let texts = ["hello", "world", "test"];
             let batch = PROVIDER.embed_batch(&texts).expect("candle batch embed");
             for (i, text) in texts.iter().enumerate() {
-                let individual = PROVIDER.embed(text).expect("candle individual embed in batch comparison");
+                let individual = PROVIDER
+                    .embed(text)
+                    .expect("candle individual embed in batch comparison");
                 assert_eq!(batch[i], individual);
             }
         }

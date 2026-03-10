@@ -496,7 +496,8 @@ When you need company intelligence.
 
     #[test]
     fn parse_skill_with_frontmatter() {
-        let skill = parse_skill_md(SAMPLE_WITH_FRONTMATTER, "web-intel").expect("valid frontmatter skill md");
+        let skill = parse_skill_md(SAMPLE_WITH_FRONTMATTER, "web-intel")
+            .expect("valid frontmatter skill md");
         assert_eq!(skill.tools_used, vec!["web_fetch", "web_search"]);
         assert_eq!(skill.domain_tags, vec!["research", "writing"]);
         assert_eq!(skill.steps.len(), 2);
@@ -504,7 +505,8 @@ When you need company intelligence.
 
     #[test]
     fn parse_skill_derives_domain_tags_from_slug() {
-        let skill = parse_skill_md(SAMPLE_SKILL, "docker-network-diagnostics").expect("valid skill md for domain tag derivation");
+        let skill = parse_skill_md(SAMPLE_SKILL, "docker-network-diagnostics")
+            .expect("valid skill md for domain tag derivation");
         assert_eq!(skill.domain_tags, vec!["docker", "network", "diagnostics"]);
     }
 
@@ -524,14 +526,16 @@ When you need company intelligence.
     #[test]
     fn parse_skill_no_description_uses_when_to_use() {
         let md = "# Skill\n\n## When to Use\nWhen you need to do things.\n\n## Steps\n1. Do it\n";
-        let skill = parse_skill_md(md, "fallback").expect("skill with when-to-use fallback description should parse");
+        let skill = parse_skill_md(md, "fallback")
+            .expect("skill with when-to-use fallback description should parse");
         assert!(skill.description.contains("When you need to do things"));
     }
 
     #[test]
     fn parse_skill_no_description_at_all_fails() {
         let md = "# Skill\n\n## Steps\n1. Do it\n";
-        let err = parse_skill_md(md, "no-desc").expect_err("skill without any description must fail to parse");
+        let err = parse_skill_md(md, "no-desc")
+            .expect_err("skill without any description must fail to parse");
         assert!(err.reason.contains("no description"));
     }
 
@@ -546,7 +550,8 @@ When you need company intelligence.
             origin: "manual".to_owned(),
         };
         let json = serde_json::to_string(&skill).expect("SkillContent serializes to JSON");
-        let back: SkillContent = serde_json::from_str(&json).expect("SkillContent deserializes from JSON");
+        let back: SkillContent =
+            serde_json::from_str(&json).expect("SkillContent deserializes from JSON");
         assert_eq!(skill, back);
     }
 
@@ -810,7 +815,8 @@ When you need company intelligence.
         python_skill.domain_tags = vec!["python".to_owned(), "testing".to_owned()];
 
         let skills = vec![rust_skill, python_skill];
-        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["rust"])).expect("export with domain filter");
+        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["rust"]))
+            .expect("export with domain filter");
 
         assert_eq!(exported.len(), 1);
         assert_eq!(exported[0].slug, "rust-error-handling");
@@ -819,7 +825,8 @@ When you need company intelligence.
     #[test]
     fn export_no_skills_produces_empty_result() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let exported = export_skills_to_cc(&[], dir.path(), None).expect("export empty skills list");
+        let exported =
+            export_skills_to_cc(&[], dir.path(), None).expect("export empty skills list");
         assert!(exported.is_empty());
     }
 
@@ -831,7 +838,8 @@ When you need company intelligence.
         docker_skill.domain_tags = vec!["docker".to_owned()];
 
         let skills = vec![export_skill(), docker_skill];
-        let exported = export_skills_to_cc(&skills, dir.path(), None).expect("export multiple skills");
+        let exported =
+            export_skills_to_cc(&skills, dir.path(), None).expect("export multiple skills");
 
         assert_eq!(exported.len(), 2);
         assert!(
@@ -852,13 +860,15 @@ When you need company intelligence.
     fn export_roundtrip_content_preserved() {
         let dir = tempfile::tempdir().expect("create temp dir");
         let original = export_skill();
-        export_skills_to_cc(std::slice::from_ref(&original), dir.path(), None).expect("export skill for roundtrip");
+        export_skills_to_cc(std::slice::from_ref(&original), dir.path(), None)
+            .expect("export skill for roundtrip");
 
         // Read back and parse
         let exported_md =
             std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
                 .expect("read back exported SKILL.md");
-        let parsed = parse_skill_md(&exported_md, "rust-error-handling").expect("re-parse exported skill md");
+        let parsed = parse_skill_md(&exported_md, "rust-error-handling")
+            .expect("re-parse exported skill md");
 
         assert_eq!(parsed.name, original.name);
         assert_eq!(parsed.description, original.description);
@@ -871,7 +881,8 @@ When you need company intelligence.
         let dir = tempfile::tempdir().expect("create temp dir");
         let mut skill = export_skill();
         skill.name = "C++ Template (Meta)".to_owned();
-        let exported = export_skills_to_cc(&[skill], dir.path(), None).expect("export skill with special chars in name");
+        let exported = export_skills_to_cc(&[skill], dir.path(), None)
+            .expect("export skill with special chars in name");
 
         assert_eq!(exported[0].slug, "c-template-meta");
         assert!(dir.path().join("c-template-meta").join("SKILL.md").exists());
@@ -882,12 +893,14 @@ When you need company intelligence.
         let dir = tempfile::tempdir().expect("create temp dir");
         let skill_dir = dir.path().join("rust-error-handling");
         std::fs::create_dir_all(&skill_dir).expect("create pre-existing skill dir");
-        std::fs::write(skill_dir.join("SKILL.md"), "old content").expect("write pre-existing SKILL.md");
+        std::fs::write(skill_dir.join("SKILL.md"), "old content")
+            .expect("write pre-existing SKILL.md");
 
         let skills = vec![export_skill()];
         export_skills_to_cc(&skills, dir.path(), None).expect("overwrite existing skill");
 
-        let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).expect("read overwritten SKILL.md");
+        let content =
+            std::fs::read_to_string(skill_dir.join("SKILL.md")).expect("read overwritten SKILL.md");
         assert!(
             content.contains("## When to Use"),
             "should have new content"
@@ -899,7 +912,8 @@ When you need company intelligence.
     fn export_domain_filter_with_no_matches_returns_empty() {
         let dir = tempfile::tempdir().expect("create temp dir");
         let skills = vec![export_skill()]; // domain_tags: ["rust", "errors"]
-        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["python"])).expect("export with non-matching domain filter");
+        let exported = export_skills_to_cc(&skills, dir.path(), Some(&["python"]))
+            .expect("export with non-matching domain filter");
         assert!(exported.is_empty());
     }
 }

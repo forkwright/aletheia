@@ -497,13 +497,15 @@ mod tests {
 
     #[test]
     fn parse_valid_response() {
-        let variants = parse_rewrite_response(r#"["a", "b", "c"]"#).expect("valid JSON array parses");
+        let variants =
+            parse_rewrite_response(r#"["a", "b", "c"]"#).expect("valid JSON array parses");
         assert_eq!(variants, vec!["a", "b", "c"]);
     }
 
     #[test]
     fn parse_response_with_fences() {
-        let variants = parse_rewrite_response("```json\n[\"a\", \"b\"]\n```").expect("JSON array with code fences parses");
+        let variants = parse_rewrite_response("```json\n[\"a\", \"b\"]\n```")
+            .expect("JSON array with code fences parses");
         assert_eq!(variants, vec!["a", "b"]);
     }
 
@@ -521,7 +523,8 @@ mod tests {
 
     #[test]
     fn parse_filters_empty_strings() {
-        let variants = parse_rewrite_response(r#"["a", "", "b"]"#).expect("JSON array with empty strings parses");
+        let variants = parse_rewrite_response(r#"["a", "", "b"]"#)
+            .expect("JSON array with empty strings parses");
         assert_eq!(variants, vec!["a", "b"]);
     }
 

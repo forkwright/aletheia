@@ -783,7 +783,9 @@ mod tests {
     #[test]
     fn find_session_returns_none_for_missing() {
         let store = test_store();
-        let found = store.find_session("syn", "nonexistent").expect("find session");
+        let found = store
+            .find_session("syn", "nonexistent")
+            .expect("find session");
         assert!(found.is_none());
     }
 
@@ -863,7 +865,10 @@ mod tests {
             .append_message("ses-1", Role::Assistant, "world", None, None, 200)
             .expect("append message");
 
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.message_count, 2);
         assert_eq!(session.token_count_estimate, 300);
     }
@@ -904,7 +909,9 @@ mod tests {
             .append_message("ses-1", Role::User, "new", None, None, 100)
             .expect("append message");
 
-        let history = store.get_history_with_budget("ses-1", 200).expect("get history with budget");
+        let history = store
+            .get_history_with_budget("ses-1", 200)
+            .expect("get history with budget");
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].content, "mid");
         assert_eq!(history[1].content, "new");
@@ -928,7 +935,9 @@ mod tests {
             .expect("append message");
 
         // Distill the first two messages
-        store.mark_messages_distilled("ses-1", &[1, 2]).expect("mark messages distilled");
+        store
+            .mark_messages_distilled("ses-1", &[1, 2])
+            .expect("mark messages distilled");
 
         // History should only return undistilled
         let history = store.get_history("ses-1", None).expect("get history");
@@ -936,7 +945,10 @@ mod tests {
         assert_eq!(history[0].content, "keep this");
 
         // Session counts should be recalculated
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.message_count, 1);
         assert_eq!(session.token_count_estimate, 50);
     }
@@ -1104,7 +1116,9 @@ mod tests {
         store
             .append_message("ses-1", Role::User, "keep", None, None, 10)
             .expect("append message");
-        store.mark_messages_distilled("ses-1", &[]).expect("mark messages distilled");
+        store
+            .mark_messages_distilled("ses-1", &[])
+            .expect("mark messages distilled");
         let history = store.get_history("ses-1", None).expect("append message");
         assert_eq!(history.len(), 1);
     }
@@ -1144,7 +1158,9 @@ mod tests {
         store
             .append_message("ses-1", Role::User, "big", None, None, 999_999)
             .expect("append message");
-        let history = store.get_history_with_budget("ses-1", 1).expect("get history with budget");
+        let history = store
+            .get_history_with_budget("ses-1", 1)
+            .expect("get history with budget");
         assert_eq!(history.len(), 1);
     }
 
@@ -1157,7 +1173,10 @@ mod tests {
             .blackboard_write("goal", "finish M0b", "syn", 3600)
             .expect("blackboard write");
 
-        let entry = store.blackboard_read("goal").expect("query succeeds").expect("entry must exist");
+        let entry = store
+            .blackboard_read("goal")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(entry.key, "goal");
         assert_eq!(entry.value, "finish M0b");
         assert_eq!(entry.author_nous_id, "syn");
@@ -1165,7 +1184,9 @@ mod tests {
         let list = store.blackboard_list().expect("blackboard list");
         assert_eq!(list.len(), 1);
 
-        let deleted = store.blackboard_delete("goal", "syn").expect("blackboard delete");
+        let deleted = store
+            .blackboard_delete("goal", "syn")
+            .expect("blackboard delete");
         assert!(deleted);
 
         let gone = store.blackboard_read("goal").expect("blackboard delete");
@@ -1182,7 +1203,10 @@ mod tests {
             .blackboard_write("status", "running", "syn", 3600)
             .expect("blackboard write");
 
-        let entry = store.blackboard_read("status").expect("query succeeds").expect("entry must exist");
+        let entry = store
+            .blackboard_read("status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(entry.value, "running");
 
         let list = store.blackboard_list().expect("blackboard list");
@@ -1196,7 +1220,9 @@ mod tests {
             .blackboard_write("secret", "value", "syn", 3600)
             .expect("blackboard write");
 
-        let deleted = store.blackboard_delete("secret", "other-agent").expect("blackboard write");
+        let deleted = store
+            .blackboard_delete("secret", "other-agent")
+            .expect("blackboard write");
         assert!(!deleted);
 
         let still_there = store.blackboard_read("secret").expect("blackboard delete");
@@ -1206,14 +1232,18 @@ mod tests {
     #[test]
     fn blackboard_read_missing_returns_none() {
         let store = test_store();
-        let result = store.blackboard_read("nonexistent").expect("blackboard read");
+        let result = store
+            .blackboard_read("nonexistent")
+            .expect("blackboard read");
         assert!(result.is_none());
     }
 
     #[test]
     fn blackboard_expiry_filtered() {
         let store = test_store();
-        store.blackboard_write("temp", "data", "syn", 3600).expect("blackboard write");
+        store
+            .blackboard_write("temp", "data", "syn", 3600)
+            .expect("blackboard write");
 
         // Manually set expires_at to the past
         store
@@ -1238,7 +1268,10 @@ mod tests {
             .create_session("ses-1", "syn", "main", None, None)
             .expect("create session");
 
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.distillation_count, 0);
         assert!(session.last_distilled_at.is_none());
 
@@ -1246,7 +1279,10 @@ mod tests {
             .record_distillation("ses-1", 20, 5, 50000, 2000, Some("sonnet"))
             .expect("record distillation");
 
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.distillation_count, 1);
         assert!(session.last_distilled_at.is_some());
 
@@ -1254,7 +1290,10 @@ mod tests {
             .record_distillation("ses-1", 15, 3, 30000, 1500, None)
             .expect("record distillation");
 
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.distillation_count, 2);
     }
 
@@ -1267,7 +1306,9 @@ mod tests {
             .create_session("tbl-check", "syn", "main", None, None)
             .expect("create session");
         assert_eq!(session.id, "tbl-check");
-        let found = store.find_session_by_id("tbl-check").expect("create session");
+        let found = store
+            .find_session_by_id("tbl-check")
+            .expect("create session");
         assert!(found.is_some());
     }
 
@@ -1287,14 +1328,18 @@ mod tests {
     #[test]
     fn find_session_nonexistent() {
         let store = test_store();
-        let found = store.find_session("no-such-nous", "no-such-key").expect("find session");
+        let found = store
+            .find_session("no-such-nous", "no-such-key")
+            .expect("find session");
         assert!(found.is_none());
     }
 
     #[test]
     fn find_session_by_id_nonexistent() {
         let store = test_store();
-        let found = store.find_session_by_id("non-existent-id-999").expect("find session by id");
+        let found = store
+            .find_session_by_id("non-existent-id-999")
+            .expect("find session by id");
         assert!(found.is_none());
     }
 
@@ -1316,7 +1361,9 @@ mod tests {
             .expect("create session");
         let history = store.get_history("empty-ses", None).expect("get history");
         assert!(history.is_empty());
-        let history_limited = store.get_history("empty-ses", Some(10)).expect("get history");
+        let history_limited = store
+            .get_history("empty-ses", Some(10))
+            .expect("get history");
         assert!(history_limited.is_empty());
     }
 
@@ -1324,13 +1371,18 @@ mod tests {
     fn blackboard_write_read_delete_cycle() {
         let store = test_store();
 
-        let read_before = store.blackboard_read("cycle-key").expect("blackboard write");
+        let read_before = store
+            .blackboard_read("cycle-key")
+            .expect("blackboard write");
         assert!(read_before.is_none());
 
         store
             .blackboard_write("cycle-key", "value-1", "agent-alice", 7200)
             .expect("blackboard write");
-        let entry = store.blackboard_read("cycle-key").expect("query succeeds").expect("entry must exist");
+        let entry = store
+            .blackboard_read("cycle-key")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(entry.value, "value-1");
         assert_eq!(entry.author_nous_id, "agent-alice");
         assert_eq!(entry.ttl_seconds, 7200);
@@ -1338,14 +1390,21 @@ mod tests {
         store
             .blackboard_write("cycle-key", "value-2", "agent-alice", 3600)
             .expect("blackboard write");
-        let updated = store.blackboard_read("cycle-key").expect("query succeeds").expect("entry must exist");
+        let updated = store
+            .blackboard_read("cycle-key")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(updated.value, "value-2");
         assert_eq!(updated.ttl_seconds, 3600);
 
-        let deleted = store.blackboard_delete("cycle-key", "agent-alice").expect("blackboard delete");
+        let deleted = store
+            .blackboard_delete("cycle-key", "agent-alice")
+            .expect("blackboard delete");
         assert!(deleted);
 
-        let after_delete = store.blackboard_read("cycle-key").expect("blackboard delete");
+        let after_delete = store
+            .blackboard_read("cycle-key")
+            .expect("blackboard delete");
         assert!(after_delete.is_none());
 
         let list = store.blackboard_list().expect("blackboard list");
@@ -1372,25 +1431,37 @@ mod tests {
             .create_session("ses-status", "syn", "main", None, None)
             .expect("create session");
 
-        let session = store.find_session_by_id("ses-status").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.status, SessionStatus::Active);
 
         store
             .update_session_status("ses-status", SessionStatus::Archived)
             .expect("update session status");
-        let session = store.find_session_by_id("ses-status").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.status, SessionStatus::Archived);
 
         store
             .update_session_status("ses-status", SessionStatus::Distilled)
             .expect("update session status");
-        let session = store.find_session_by_id("ses-status").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.status, SessionStatus::Distilled);
 
         store
             .update_session_status("ses-status", SessionStatus::Active)
             .expect("update session status");
-        let session = store.find_session_by_id("ses-status").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-status")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.status, SessionStatus::Active);
     }
 
@@ -1413,7 +1484,9 @@ mod tests {
             .expect("append message");
 
         // Mark first two as distilled
-        store.mark_messages_distilled("ses-1", &[1, 2]).expect("mark messages distilled");
+        store
+            .mark_messages_distilled("ses-1", &[1, 2])
+            .expect("mark messages distilled");
 
         // Insert summary (should also delete distilled messages)
         store
@@ -1428,7 +1501,10 @@ mod tests {
         assert_eq!(history[1].content, "msg3");
 
         // Session counts should reflect new state
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.message_count, 2);
     }
 
@@ -1516,7 +1592,9 @@ mod tests {
             .create_session("ses-c", "agent-x", "prosoche-wake", None, None)
             .expect("create session");
 
-        let sessions = store.list_sessions(Some("agent-x")).expect("create session");
+        let sessions = store
+            .list_sessions(Some("agent-x"))
+            .expect("create session");
         assert_eq!(sessions.len(), 3);
 
         let keys: Vec<&str> = sessions.iter().map(|s| s.session_key.as_str()).collect();
@@ -1528,7 +1606,9 @@ mod tests {
     #[test]
     fn blackboard_read_nonexistent_key() {
         let store = test_store();
-        let result = store.blackboard_read("does-not-exist-key").expect("blackboard read");
+        let result = store
+            .blackboard_read("does-not-exist-key")
+            .expect("blackboard read");
         assert!(result.is_none());
     }
 
@@ -1586,7 +1666,9 @@ mod tests {
             .append_message("ses-dist", Role::User, "keep me", None, None, 30)
             .expect("append message");
 
-        store.mark_messages_distilled("ses-dist", &[1, 2]).expect("mark messages distilled");
+        store
+            .mark_messages_distilled("ses-dist", &[1, 2])
+            .expect("mark messages distilled");
 
         let history = store.get_history("ses-dist", None).expect("get history");
         assert_eq!(history.len(), 1, "distilled messages excluded from history");
@@ -1640,7 +1722,10 @@ mod tests {
             .blackboard_write("overwrite-key", "value-two", "syn", 3600)
             .expect("blackboard write");
 
-        let entry = store.blackboard_read("overwrite-key").expect("query succeeds").expect("entry must exist");
+        let entry = store
+            .blackboard_read("overwrite-key")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(entry.value, "value-two", "second write must win");
 
         let list = store.blackboard_list().expect("blackboard list");
@@ -1679,12 +1764,20 @@ mod tests {
             .create_session("ses-1", "syn", "main", None, None)
             .expect("create session");
 
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert!(session.display_name.is_none());
 
-        store.update_display_name("ses-1", "My Chat").expect("find session by id");
+        store
+            .update_display_name("ses-1", "My Chat")
+            .expect("find session by id");
 
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.display_name.as_deref(), Some("My Chat"));
     }
 
@@ -1695,10 +1788,17 @@ mod tests {
             .create_session("ses-1", "syn", "main", None, None)
             .expect("create session");
 
-        store.update_display_name("ses-1", "First").expect("create session");
-        store.update_display_name("ses-1", "Second").expect("update display name");
+        store
+            .update_display_name("ses-1", "First")
+            .expect("create session");
+        store
+            .update_display_name("ses-1", "Second")
+            .expect("update display name");
 
-        let session = store.find_session_by_id("ses-1").expect("query succeeds").expect("entry must exist");
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("query succeeds")
+            .expect("entry must exist");
         assert_eq!(session.display_name.as_deref(), Some("Second"));
     }
 }
