@@ -7,9 +7,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::App;
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
-pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     if app.tab_bar.tabs.is_empty() || area.width < 4 {
         return;
     }
@@ -52,13 +52,13 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePale
 
         let style = if is_active {
             Style::default()
-                .fg(theme.fg)
-                .bg(theme.surface)
+                .fg(theme.text.fg)
+                .bg(theme.colors.surface)
                 .add_modifier(Modifier::BOLD)
         } else if tab.unread {
-            Style::default().fg(theme.selected).bg(theme.surface_dim)
+            Style::default().fg(theme.borders.selected).bg(theme.colors.surface_dim)
         } else {
-            Style::default().fg(theme.fg_dim).bg(theme.surface_dim)
+            Style::default().fg(theme.text.fg_dim).bg(theme.colors.surface_dim)
         };
 
         spans.push(Span::styled(prefix, style));
@@ -66,24 +66,24 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePale
         spans.push(Span::styled(" ", style));
 
         if idx < total_tabs - 1 {
-            spans.push(Span::styled("\u{2502}", Style::default().fg(theme.fg_dim)));
+            spans.push(Span::styled("\u{2502}", Style::default().fg(theme.text.fg_dim)));
         }
     }
 
     // "+" button
-    spans.push(Span::styled(plus_label, Style::default().fg(theme.fg_dim)));
+    spans.push(Span::styled(plus_label, Style::default().fg(theme.text.fg_dim)));
 
     // Pad remaining width
     let rendered_width: usize = spans.iter().map(|s| s.width()).sum();
     if rendered_width < width {
         spans.push(Span::styled(
             " ".repeat(width - rendered_width),
-            Style::default().bg(theme.surface_dim),
+            Style::default().bg(theme.colors.surface_dim),
         ));
     }
 
     let line = Line::from(spans);
-    let bar = Paragraph::new(line).style(Style::default().bg(theme.surface_dim));
+    let bar = Paragraph::new(line).style(Style::default().bg(theme.colors.surface_dim));
     frame.render_widget(bar, area);
 }
 

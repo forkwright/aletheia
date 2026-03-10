@@ -5,16 +5,16 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let is_streaming = app.active_turn_id.is_some();
 
     let prompt_str = if is_streaming { "queued › " } else { "› " };
     let prompt_color = if is_streaming {
-        theme.warning
+        theme.status.warning
     } else {
-        theme.accent
+        theme.colors.accent
     };
 
     let prompt = Span::styled(prompt_str, Style::default().fg(prompt_color));
@@ -24,7 +24,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 
     let block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme.separator));
+        .border_style(Style::default().fg(theme.borders.separator));
 
     let paragraph = Paragraph::new(line).block(block).wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);

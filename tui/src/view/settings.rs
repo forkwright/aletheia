@@ -8,9 +8,9 @@ use ratatui::widgets::{
 };
 
 use crate::state::settings::{FieldType, SaveStatus, SettingsOverlay};
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
-pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &Theme) {
     let popup = centered_rect(70, 85, area);
     frame.render_widget(Clear, popup);
 
@@ -21,7 +21,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
             format!("  {}", section.name),
-            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::raw(""));
 
@@ -32,7 +32,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
 
             let label_style = if selected {
                 Style::default()
-                    .fg(theme.accent)
+                    .fg(theme.colors.accent)
                     .add_modifier(Modifier::BOLD)
             } else {
                 theme.style_fg()
@@ -41,7 +41,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
             let value_str = format_value(&field.value);
             let value_style = if changed {
                 Style::default()
-                    .fg(theme.warning)
+                    .fg(theme.status.warning)
                     .add_modifier(Modifier::BOLD)
             } else {
                 theme.style_dim()
@@ -68,10 +68,10 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
                     Span::styled(
                         &edit.buffer,
                         Style::default()
-                            .fg(theme.accent)
+                            .fg(theme.colors.accent)
                             .add_modifier(Modifier::UNDERLINED),
                     ),
-                    Span::styled("▎", Style::default().fg(theme.accent)),
+                    Span::styled("▎", Style::default().fg(theme.colors.accent)),
                 ]));
             } else {
                 lines.push(Line::from(vec![
@@ -79,7 +79,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
                     Span::styled(format!("{:<28}", field.label), label_style),
                     Span::styled(format!("{:<12}", value_str), value_style),
                     Span::styled(tag, tag_style),
-                    Span::styled(restart, Style::default().fg(theme.warning)),
+                    Span::styled(restart, Style::default().fg(theme.status.warning)),
                 ]));
             }
 
@@ -93,13 +93,13 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         SaveStatus::Saving => {
             lines.push(Line::from(Span::styled(
                 "  Saving...",
-                Style::default().fg(theme.spinner),
+                Style::default().fg(theme.status.spinner),
             )));
         }
         SaveStatus::Success => {
             lines.push(Line::from(Span::styled(
                 "  Config saved and reloaded",
-                Style::default().fg(theme.success),
+                Style::default().fg(theme.status.success),
             )));
         }
         SaveStatus::Error(msg) => {
@@ -118,21 +118,21 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         Span::styled(
             "[S]",
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled("ave  ", theme.style_muted()),
         Span::styled(
             "[R]",
             Style::default()
-                .fg(theme.fg_dim)
+                .fg(theme.text.fg_dim)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled("eset  ", theme.style_muted()),
         Span::styled(
             "[Esc]",
             Style::default()
-                .fg(theme.fg_dim)
+                .fg(theme.text.fg_dim)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" cancel", theme.style_muted()),
@@ -146,7 +146,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         .borders(Borders::ALL)
         .border_set(symbols::border::ROUNDED)
         .border_style(theme.style_border())
-        .style(Style::default().bg(theme.surface));
+        .style(Style::default().bg(theme.colors.surface));
 
     let inner = block.inner(popup);
     let visible_height = inner.height as usize;

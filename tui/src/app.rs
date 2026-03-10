@@ -12,7 +12,7 @@ use crate::hyperlink::OscLink;
 use crate::id::{NousId, SessionId, TurnId};
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
-use crate::theme::ThemePalette;
+use crate::theme::{Theme, THEME};
 use crate::update::extract_text_content;
 use crate::view;
 
@@ -33,7 +33,7 @@ pub use crate::state::{
 pub struct App {
     pub config: Config,
     pub client: ApiClient,
-    pub theme: ThemePalette,
+    pub theme: Theme,
     pub highlighter: crate::highlight::Highlighter,
     pub should_quit: bool,
 
@@ -129,7 +129,7 @@ impl App {
     pub async fn init(config: Config) -> Result<Self> {
         let client = ApiClient::new(&config.url, config.token.clone())?;
 
-        let theme = ThemePalette::detect();
+        let theme = THEME.clone();
         tracing::info!("detected color depth: {:?}", theme.depth);
 
         let mut app = Self {
@@ -497,7 +497,7 @@ pub(crate) mod test_helpers {
             default_session: None,
         };
         let client = ApiClient::new(&config.url, config.token.clone()).unwrap();
-        let theme = ThemePalette::detect();
+        let theme = THEME.clone();
 
         App {
             config,

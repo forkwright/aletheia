@@ -8,10 +8,10 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
 use crate::state::memory::{MemoryInspectorState, MemoryTab};
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
 /// Render the main memory inspector view (fact browser, graph, timeline tabs).
-pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -33,7 +33,7 @@ pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: 
 }
 
 /// Render the fact detail view.
-pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
@@ -209,7 +209,7 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
     frame.render_widget(paragraph, area);
 }
 
-fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let tabs = [MemoryTab::Facts, MemoryTab::Graph, MemoryTab::Timeline];
     let mut spans: Vec<Span> = vec![Span::raw(" ")];
 
@@ -264,7 +264,7 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette
     frame.render_widget(paragraph, area);
 }
 
-fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
     // Column header
@@ -329,7 +329,7 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePal
             let is_selected = original_idx == app.memory.selected;
             let marker = if is_selected { "▸ " } else { "  " };
             let marker_style = if is_selected {
-                Style::default().fg(theme.selected)
+                Style::default().fg(theme.borders.selected)
             } else {
                 Style::default()
             };
@@ -366,7 +366,7 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePal
     frame.render_widget(paragraph, area);
 }
 
-fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
@@ -416,7 +416,7 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePale
                 Span::styled(
                     marker,
                     if is_selected {
-                        Style::default().fg(theme.selected)
+                        Style::default().fg(theme.borders.selected)
                     } else {
                         Style::default()
                     },
@@ -455,7 +455,7 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePale
     frame.render_widget(paragraph, area);
 }
 
-fn render_timeline_view(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+fn render_timeline_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
@@ -497,7 +497,7 @@ fn render_timeline_view(app: &App, frame: &mut Frame, area: Rect, theme: &ThemeP
                 Span::styled(
                     marker,
                     if is_selected {
-                        Style::default().fg(theme.selected)
+                        Style::default().fg(theme.borders.selected)
                     } else {
                         Style::default()
                     },
@@ -519,7 +519,7 @@ fn render_timeline_view(app: &App, frame: &mut Frame, area: Rect, theme: &ThemeP
     frame.render_widget(paragraph, area);
 }
 
-fn render_memory_status(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+fn render_memory_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let total = app.memory.total_facts;
     let visible = app.memory.facts.len();
     let sel = app.memory.selected + 1;
@@ -552,7 +552,7 @@ fn render_memory_status(app: &App, frame: &mut Frame, area: Rect, theme: &ThemeP
     frame.render_widget(paragraph, area);
 }
 
-fn meta_line<'a>(theme: &'a ThemePalette, label: &'a str, value: &str) -> Line<'a> {
+fn meta_line<'a>(theme: &'a Theme, label: &'a str, value: &str) -> Line<'a> {
     Line::from(vec![
         Span::raw("  "),
         Span::styled(format!("{label}: "), theme.style_dim()),
@@ -560,7 +560,7 @@ fn meta_line<'a>(theme: &'a ThemePalette, label: &'a str, value: &str) -> Line<'
     ])
 }
 
-fn confidence_style(theme: &ThemePalette, conf: f64) -> Style {
+fn confidence_style(theme: &Theme, conf: f64) -> Style {
     if conf >= 0.8 {
         theme.style_success()
     } else if conf >= 0.5 {
@@ -570,7 +570,7 @@ fn confidence_style(theme: &ThemePalette, conf: f64) -> Style {
     }
 }
 
-fn tier_style(theme: &ThemePalette, tier: &str) -> Style {
+fn tier_style(theme: &Theme, tier: &str) -> Style {
     match tier {
         "verified" => theme.style_success(),
         "inferred" => theme.style_warning(),
@@ -579,7 +579,7 @@ fn tier_style(theme: &ThemePalette, tier: &str) -> Style {
     }
 }
 
-fn event_type_style(theme: &ThemePalette, event_type: &str) -> Style {
+fn event_type_style(theme: &Theme, event_type: &str) -> Style {
     match event_type {
         "created" => theme.style_success(),
         "modified" => theme.style_warning(),
@@ -615,52 +615,52 @@ mod tests {
 
     #[test]
     fn confidence_style_high() {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         let style = confidence_style(&theme, 0.95);
         assert_eq!(style, theme.style_success());
     }
 
     #[test]
     fn confidence_style_medium() {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         let style = confidence_style(&theme, 0.6);
         assert_eq!(style, theme.style_warning());
     }
 
     #[test]
     fn confidence_style_low() {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         let style = confidence_style(&theme, 0.3);
         assert_eq!(style, theme.style_error());
     }
 
     #[test]
     fn tier_style_verified() {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         assert_eq!(tier_style(&theme, "verified"), theme.style_success());
     }
 
     #[test]
     fn tier_style_inferred() {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         assert_eq!(tier_style(&theme, "inferred"), theme.style_warning());
     }
 
     #[test]
     fn tier_style_unknown() {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         assert_eq!(tier_style(&theme, "other"), theme.style_dim());
     }
 
     #[test]
     fn event_type_style_created() {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         assert_eq!(event_type_style(&theme, "created"), theme.style_success());
     }
 
     #[test]
     fn event_type_style_forgotten() {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         assert_eq!(event_type_style(&theme, "forgotten"), theme.style_error());
     }
 }

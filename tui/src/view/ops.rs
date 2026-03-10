@@ -7,21 +7,21 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
 use crate::state::ops::{FocusedPane, OpsToolStatus};
-use crate::theme::{self, ThemePalette};
+use crate::theme::{self, Theme};
 
 const THINKING_TRUNCATE_LINES: usize = 20;
 const TOOL_OUTPUT_TRUNCATE_LINES: usize = 15;
 const JSON_TRUNCATE_BYTES: usize = 300;
 const MS_PER_SECOND: u64 = 1000;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let ops = &app.ops;
     let focused = ops.focused_pane == FocusedPane::Operations;
 
     let border_style = if focused {
-        Style::default().fg(theme.border_focused)
+        Style::default().fg(theme.borders.focused)
     } else {
-        Style::default().fg(theme.border)
+        Style::default().fg(theme.borders.normal)
     };
 
     let block = Block::default()
@@ -121,13 +121,13 @@ fn render_thinking_block(
     thinking: &crate::state::ops::OpsThinkingBlock,
     lines: &mut Vec<Line<'static>>,
     inner_width: usize,
-    theme: &ThemePalette,
+    theme: &Theme,
     is_selected: bool,
     tick_count: u64,
 ) {
     let marker = if is_selected { "▸" } else { " " };
     let marker_style = if is_selected {
-        Style::default().fg(theme.selected)
+        Style::default().fg(theme.borders.selected)
     } else {
         Style::default()
     };
@@ -140,7 +140,7 @@ fn render_thinking_block(
         Span::styled(
             format!(" {} thinking", collapse_icon),
             Style::default()
-                .fg(theme.thinking)
+                .fg(theme.thinking.fg)
                 .add_modifier(Modifier::ITALIC),
         ),
     ]));
@@ -158,7 +158,7 @@ fn render_thinking_block(
             Span::raw("   "),
             Span::styled(
                 format!("{preview_line}..."),
-                Style::default().fg(theme.thinking),
+                Style::default().fg(theme.thinking.fg),
             ),
         ]));
     } else {
@@ -181,7 +181,7 @@ fn render_thinking_block(
                 Span::styled(
                     display.to_string(),
                     Style::default()
-                        .fg(theme.thinking)
+                        .fg(theme.thinking.fg)
                         .add_modifier(Modifier::ITALIC),
                 ),
             ]));
@@ -207,7 +207,7 @@ fn render_thinking_block(
             Span::styled(
                 ch.to_string(),
                 Style::default()
-                    .fg(theme.spinner)
+                    .fg(theme.status.spinner)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
@@ -220,13 +220,13 @@ fn render_tool_call(
     tc: &crate::state::ops::OpsToolCall,
     lines: &mut Vec<Line<'static>>,
     inner_width: usize,
-    theme: &ThemePalette,
+    theme: &Theme,
     is_selected: bool,
     tick_count: u64,
 ) {
     let marker = if is_selected { "▸" } else { " " };
     let marker_style = if is_selected {
-        Style::default().fg(theme.selected)
+        Style::default().fg(theme.borders.selected)
     } else {
         Style::default()
     };
@@ -238,7 +238,7 @@ fn render_tool_call(
             (
                 ch.to_string(),
                 Style::default()
-                    .fg(theme.spinner)
+                    .fg(theme.status.spinner)
                     .add_modifier(Modifier::BOLD),
             )
         }
@@ -267,7 +267,7 @@ fn render_tool_call(
         Span::styled(format!(" {status_icon}"), status_style),
         Span::styled(
             format!(" {}", tc.name),
-            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD),
         ),
     ];
 
@@ -347,7 +347,7 @@ fn render_tool_call(
 fn render_diff(
     diff: &crate::state::ops::OpsDiffEntry,
     lines: &mut Vec<Line<'static>>,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     // File path header
     lines.push(Line::from(vec![
@@ -362,7 +362,7 @@ fn render_diff(
     for del in &diff.deletions {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(format!("- {del}"), Style::default().fg(theme.error)),
+            Span::styled(format!("- {del}"), Style::default().fg(theme.status.error)),
         ]));
     }
 
@@ -370,7 +370,7 @@ fn render_diff(
     for add in &diff.additions {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(format!("+ {add}"), Style::default().fg(theme.success)),
+            Span::styled(format!("+ {add}"), Style::default().fg(theme.status.success)),
         ]));
     }
 }

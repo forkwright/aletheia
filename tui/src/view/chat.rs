@@ -8,19 +8,19 @@ use crate::app::{App, ToolCallInfo};
 use crate::hyperlink::{self, OscLink};
 use crate::markdown;
 use crate::state::FilterScope;
-use crate::theme::{self, ThemePalette};
+use crate::theme::{self, Theme};
 
 const MS_PER_SECOND: u64 = 1000;
 
 struct MessageCtx<'a> {
     inner_width: usize,
-    theme: &'a ThemePalette,
+    theme: &'a Theme,
     selected: bool,
     highlight: Option<&'a str>,
     agent_name: &'a str,
 }
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) -> Vec<OscLink> {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<OscLink> {
     let inner_width = area.width.saturating_sub(2) as usize;
     let wrap_width = area.width.saturating_sub(2).max(1);
     let visible_height = area.height.saturating_sub(2);
@@ -143,14 +143,14 @@ fn resolve_osc_links(
     area: Rect,
     scroll: u16,
     wrap_width: usize,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) -> Vec<OscLink> {
     if !hyperlink::supports_hyperlinks() || para_links.is_empty() {
         return Vec::new();
     }
 
     // Extract accent RGB — fall back to a sensible default for non-Rgb variants.
-    let accent = match theme.accent {
+    let accent = match theme.colors.accent {
         ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
         _ => (120, 180, 255),
     };
@@ -212,7 +212,7 @@ fn render_virtual_messages(
     inner_width: usize,
     wrap_width: u16,
     visible_height: u16,
-    theme: &ThemePalette,
+    theme: &Theme,
     agent_name: &str,
     para_links: &mut Vec<(usize, u16, String, String)>,
 ) {
@@ -268,7 +268,7 @@ fn render_filtered_messages(
     app: &App,
     lines: &mut Vec<Line<'static>>,
     inner_width: usize,
-    theme: &ThemePalette,
+    theme: &Theme,
     agent_name: &str,
     pattern: &str,
     inverted: bool,
@@ -338,7 +338,7 @@ fn render_message(
     // Selection indicator prefix
     let marker = if ctx.selected { "▸" } else { " " };
     let marker_style = if ctx.selected {
-        Style::default().fg(theme.selected)
+        Style::default().fg(theme.borders.selected)
     } else {
         Style::default()
     };
@@ -383,12 +383,12 @@ fn render_message(
     let content_prefix = if ctx.selected { "│" } else { " " };
     let prefix_width: u16 = content_prefix.len() as u16; // always 1 byte for these strings
     let prefix_style = if ctx.selected {
-        Style::default().fg(theme.selected)
+        Style::default().fg(theme.borders.selected)
     } else {
         Style::default()
     };
 
-    let highlight_bg = Style::default().bg(theme.accent_dim);
+    let highlight_bg = Style::default().bg(theme.colors.accent_dim);
 
     // Offset: paragraph line index of the first markdown line for this message.
     // +1 for the header line; +1 more if tool calls were rendered.
@@ -463,7 +463,7 @@ fn highlight_span(
 fn render_tool_summary(
     tools: &[ToolCallInfo],
     lines: &mut Vec<Line<'static>>,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     let mut spans: Vec<Span> = vec![Span::raw("  "), Span::styled("╰─ ", theme.style_dim())];
 
@@ -473,9 +473,9 @@ fn render_tool_summary(
         }
 
         let color = if tc.is_error {
-            theme.error
+            theme.status.error
         } else {
-            theme.fg_dim
+            theme.text.fg_dim
         };
         let icon = if tc.is_error { "✗ " } else { "" };
 
@@ -504,30 +504,30 @@ fn render_streaming(
     app: &App,
     lines: &mut Vec<Line<'static>>,
     inner_width: usize,
-    theme: &ThemePalette,
+    theme: &Theme,
     name: &str,
 ) {
     // Thinking block (if visible)
     if app.thinking_expanded && !app.streaming_thinking.is_empty() {
         lines.push(Line::from(vec![
             Span::raw(" "),
-            Span::styled("─── thinking ", Style::default().fg(theme.thinking_border)),
+            Span::styled("─── thinking ", Style::default().fg(theme.thinking.border)),
             Span::styled(
                 "─".repeat(inner_width.saturating_sub(16).min(40)),
-                Style::default().fg(theme.thinking_border),
+                Style::default().fg(theme.thinking.border),
             ),
         ]));
         for line in app.streaming_thinking.lines() {
             lines.push(Line::from(vec![
                 Span::raw(" "),
-                Span::styled(line.to_string(), Style::default().fg(theme.thinking)),
+                Span::styled(line.to_string(), Style::default().fg(theme.thinking.fg)),
             ]));
         }
         lines.push(Line::from(vec![
             Span::raw(" "),
             Span::styled(
                 "─".repeat(inner_width.saturating_sub(4).min(40)),
-                Style::default().fg(theme.thinking_border),
+                Style::default().fg(theme.thinking.border),
             ),
         ]));
     }
@@ -545,9 +545,9 @@ fn render_streaming(
             if tc.duration_ms.is_some() {
                 // Completed tool
                 let color = if tc.is_error {
-                    theme.error
+                    theme.status.error
                 } else {
-                    theme.fg_dim
+                    theme.text.fg_dim
                 };
                 let icon = if tc.is_error { "✗ " } else { "" };
                 let label = if let Some(ms) = tc.duration_ms {
@@ -570,7 +570,7 @@ fn render_streaming(
                 let ch = theme::spinner_frame(app.tick_count);
                 tool_spans.push(Span::styled(
                     format!("{} {}", ch, tc.name),
-                    Style::default().fg(theme.spinner),
+                    Style::default().fg(theme.status.spinner),
                 ));
             }
         }
@@ -611,7 +611,7 @@ fn render_streaming(
             Span::styled(
                 ch.to_string(),
                 Style::default()
-                    .fg(theme.streaming)
+                    .fg(theme.status.streaming)
                     .add_modifier(Modifier::BOLD),
             ),
         ]));

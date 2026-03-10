@@ -5,9 +5,9 @@ use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::App;
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let width = area.width as usize;
 
     let cursor_char = if app.tick_count % 6 < 3 { "█" } else { " " };

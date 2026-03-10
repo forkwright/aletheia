@@ -6,9 +6,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::{AgentStatus, App};
-use crate::theme::{self, ThemePalette};
+use crate::theme::{self, Theme};
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
     // Small top padding
@@ -21,18 +21,18 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
             AgentStatus::Idle => Span::styled("○", theme.style_dim()),
             AgentStatus::Working => {
                 let ch = theme::spinner_frame(app.tick_count);
-                Span::styled(ch.to_string(), Style::default().fg(theme.spinner))
+                Span::styled(ch.to_string(), Style::default().fg(theme.status.spinner))
             }
-            AgentStatus::Streaming => Span::styled("●", Style::default().fg(theme.streaming)),
-            AgentStatus::Compacting => Span::styled("◉", Style::default().fg(theme.compacting)),
+            AgentStatus::Streaming => Span::styled("●", Style::default().fg(theme.status.streaming)),
+            AgentStatus::Compacting => Span::styled("◉", Style::default().fg(theme.status.compacting)),
         };
 
         let name_style = if is_focused {
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme.fg)
+            Style::default().fg(theme.text.fg)
         };
 
         let emoji = agent.emoji.as_deref().unwrap_or("");
@@ -52,7 +52,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 
         // Notification dot — shows when an unfocused agent completed a turn
         if !is_focused && agent.has_notification {
-            spans.push(Span::styled(" ●", Style::default().fg(theme.accent)));
+            spans.push(Span::styled(" ●", Style::default().fg(theme.colors.accent)));
         }
 
         lines.push(Line::from(spans));
@@ -79,7 +79,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
                 Span::raw("     "),
                 Span::styled(
                     format!("↻ {}", stage),
-                    Style::default().fg(theme.compacting),
+                    Style::default().fg(theme.status.compacting),
                 ),
             ]));
         }
@@ -88,7 +88,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
     let block = Block::default()
         .borders(Borders::RIGHT)
         .border_set(symbols::border::PLAIN)
-        .border_style(Style::default().fg(theme.separator));
+        .border_style(Style::default().fg(theme.borders.separator));
 
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);

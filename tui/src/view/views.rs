@@ -9,10 +9,10 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use crate::app::App;
 use crate::hyperlink::OscLink;
 use crate::state::view_stack::View;
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
 /// Render the sessions list for a specific agent.
-pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
@@ -45,7 +45,7 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
 
                 let marker = if is_focused { "▸" } else { " " };
                 let marker_style = if is_focused {
-                    Style::default().fg(theme.selected)
+                    Style::default().fg(theme.borders.selected)
                 } else {
                     Style::default()
                 };
@@ -110,7 +110,7 @@ pub(crate) fn render_message_detail(
     app: &App,
     frame: &mut Frame,
     area: Rect,
-    theme: &ThemePalette,
+    theme: &Theme,
     message_index: usize,
 ) {
     let mut lines: Vec<Line> = Vec::new();
@@ -163,9 +163,9 @@ pub(crate) fn render_message_detail(
                     .map(|ms| format!(" ({ms}ms)"))
                     .unwrap_or_default();
                 let color = if tc.is_error {
-                    theme.error
+                    theme.status.error
                 } else {
-                    theme.fg_dim
+                    theme.text.fg_dim
                 };
                 lines.push(Line::from(vec![
                     Span::raw("    "),
@@ -234,7 +234,7 @@ pub(crate) fn render_for_view(
     app: &App,
     frame: &mut Frame,
     area: Rect,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) -> Vec<OscLink> {
     match app.view_stack.current() {
         View::Home => {

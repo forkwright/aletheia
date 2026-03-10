@@ -4,7 +4,7 @@ use ratatui::text::{Line, Span};
 
 use crate::highlight::Highlighter;
 use crate::hyperlink::{self, MdLink};
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
 /// Render markdown text into ratatui Lines, also returning any hyperlinks found.
 ///
@@ -20,7 +20,7 @@ use crate::theme::ThemePalette;
 pub fn render(
     text: &str,
     _width: usize,
-    theme: &ThemePalette,
+    theme: &Theme,
     highlighter: &Highlighter,
 ) -> (Vec<Line<'static>>, Vec<MdLink>) {
     let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
@@ -32,7 +32,7 @@ pub fn render(
     // Byte length is used intentionally — this matches the scroll calculation in
     // view/chat.rs which also uses `span.content.len()` for line-width estimation.
     let mut current_col: u16 = 0;
-    let mut style_stack: Vec<Style> = vec![Style::default().fg(theme.fg)];
+    let mut style_stack: Vec<Style> = vec![Style::default().fg(theme.text.fg)];
     let mut in_code_block = false;
     let mut code_block_lines: Vec<String> = Vec::new();
     let mut code_block_lang: Option<String> = None;
@@ -128,7 +128,7 @@ pub fn render(
                         push_span(
                             &mut current_spans,
                             &mut current_col,
-                            Span::styled("│ ".to_string(), Style::default().fg(theme.border)),
+                            Span::styled("│ ".to_string(), Style::default().fg(theme.borders.normal)),
                         );
                     }
                 }
@@ -148,7 +148,7 @@ pub fn render(
                     link_text_buf.clear();
                     let style = current_style(&style_stack)
                         .add_modifier(Modifier::UNDERLINED)
-                        .fg(theme.accent);
+                        .fg(theme.colors.accent);
                     style_stack.push(style);
                 }
                 Tag::Image { dest_url, .. } => {
@@ -190,14 +190,14 @@ pub fn render(
                         lines.push(Line::from(vec![
                             Span::styled(
                                 format!(" ╭─ {} ", lang_str),
-                                Style::default().fg(theme.code_lang),
+                                Style::default().fg(theme.code.lang),
                             ),
-                            Span::styled("─".repeat(20), Style::default().fg(theme.code_lang)),
+                            Span::styled("─".repeat(20), Style::default().fg(theme.code.lang)),
                         ]));
                     } else {
                         lines.push(Line::from(Span::styled(
                             " ╭──────────────────────",
-                            Style::default().fg(theme.code_lang),
+                            Style::default().fg(theme.code.lang),
                         )));
                     }
 
@@ -205,14 +205,14 @@ pub fn render(
                     let highlighted = highlighter.highlight(&full_code, lang_str);
                     for hl_line in highlighted {
                         let mut spans =
-                            vec![Span::styled(" │ ", Style::default().fg(theme.code_lang))];
+                            vec![Span::styled(" │ ", Style::default().fg(theme.code.lang))];
                         spans.extend(hl_line.spans);
                         lines.push(Line::from(spans));
                     }
 
                     lines.push(Line::from(Span::styled(
                         " ╰──────────────────────",
-                        Style::default().fg(theme.code_lang),
+                        Style::default().fg(theme.code.lang),
                     )));
 
                     in_code_block = false;
@@ -393,11 +393,11 @@ fn linkify_text(
     md_links: &mut Vec<MdLink>,
     line_idx: usize,
     base_style: Style,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     let link_style = base_style
         .add_modifier(Modifier::UNDERLINED)
-        .fg(theme.accent);
+        .fg(theme.colors.accent);
 
     let mut last = 0usize;
     for &(start, end, url) in urls {
@@ -429,7 +429,7 @@ fn linkify_text(
 }
 
 /// Render a table with box-drawing characters.
-fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &ThemePalette) {
+fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Theme) {
     if rows.is_empty() {
         return;
     }
@@ -450,9 +450,9 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
         *w = (*w).min(40);
     }
 
-    let border_style = Style::default().fg(theme.border);
+    let border_style = Style::default().fg(theme.borders.normal);
     let header_style = theme.style_accent_bold();
-    let cell_style = Style::default().fg(theme.fg);
+    let cell_style = Style::default().fg(theme.text.fg);
 
     // Top border
     let top = format!(
@@ -524,27 +524,27 @@ mod tests {
     use ratatui::style::{Color, Modifier};
 
     use crate::highlight::Highlighter;
-    use crate::theme::ThemePalette;
+    use crate::theme::Theme;
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     fn test_render(md: &str) -> Vec<Line<'static>> {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         let hl = Highlighter::new();
         let (lines, _) = render(md, 80, &theme, &hl);
         lines
     }
 
     fn mk_render(md: &str) -> (Vec<Line<'static>>, Vec<MdLink>) {
-        let theme = ThemePalette::detect();
+        let theme = Theme::detect();
         let hl = Highlighter::new();
         render(md, 80, &theme, &hl)
     }
 
     /// Render and return both the lines and the theme so callers can assert
     /// against theme-derived colors rather than hardcoding Rgb values.
-    fn test_render_with_theme(md: &str) -> (Vec<Line<'static>>, ThemePalette) {
-        let theme = ThemePalette::detect();
+    fn test_render_with_theme(md: &str) -> (Vec<Line<'static>>, Theme) {
+        let theme = Theme::detect();
         let hl = Highlighter::new();
         let (lines, _) = render(md, 80, &theme, &hl);
         (lines, theme)
@@ -757,9 +757,9 @@ mod tests {
             all.contains("`std::mem::take`"),
             "inline code must appear with backticks"
         );
-        // Inline code uses theme.warning as fg
+        // Inline code uses theme.status.warning as fg
         assert!(
-            any_line_has_fg(&lines, "`std::mem::take`", theme.warning),
+            any_line_has_fg(&lines, "`std::mem::take`", theme.status.warning),
             "inline code must have warning fg color"
         );
     }
@@ -843,7 +843,7 @@ mod tests {
             "heading prefix must be BOLD"
         );
         assert!(
-            any_line_has_fg(&lines, "# ", theme.accent),
+            any_line_has_fg(&lines, "# ", theme.colors.accent),
             "heading prefix must use accent color"
         );
         assert!(
@@ -1025,11 +1025,11 @@ mod tests {
 
     #[test]
     fn test_blockquote_border_fg() {
-        // The │ border span must use theme.border color.
+        // The │ border span must use theme.borders.normal color.
         let (lines, theme) = test_render_with_theme("> check color");
         assert!(
-            any_line_has_fg(&lines, "│ ", theme.border),
-            "blockquote border │ must use theme.border color"
+            any_line_has_fg(&lines, "│ ", theme.borders.normal),
+            "blockquote border │ must use theme.borders.normal color"
         );
     }
 
@@ -1102,7 +1102,7 @@ mod tests {
     fn test_link_url_uses_dim_style() {
         let (lines, theme) = test_render_with_theme("[click](https://example.com)");
         assert!(
-            any_line_has_fg(&lines, "https://example.com", theme.fg_dim),
+            any_line_has_fg(&lines, "https://example.com", theme.text.fg_dim),
             "link URL must use dim (fg_dim) color"
         );
     }
@@ -1160,7 +1160,7 @@ mod tests {
             "table header must be BOLD"
         );
         assert!(
-            any_line_has_fg(&lines, "Head", theme.accent),
+            any_line_has_fg(&lines, "Head", theme.colors.accent),
             "table header must use accent color"
         );
     }
@@ -1215,7 +1215,7 @@ mod tests {
         let rule_line = lines.iter().find(|l| line_text(l).contains('─'));
         assert!(rule_line.is_some());
         assert!(
-            span_has_fg(rule_line.unwrap(), "─", theme.fg_dim),
+            span_has_fg(rule_line.unwrap(), "─", theme.text.fg_dim),
             "horizontal rule must use dim (fg_dim) color"
         );
     }
@@ -1390,7 +1390,7 @@ mod tests {
         let header = lines.iter().find(|l| line_text(l).contains("python"));
         assert!(header.is_some(), "python language label must appear");
         assert!(
-            span_has_fg(header.unwrap(), "python", theme.code_lang),
+            span_has_fg(header.unwrap(), "python", theme.code.lang),
             "language label must use code_lang color"
         );
     }
@@ -1400,7 +1400,7 @@ mod tests {
         // Text inside blockquote must use the muted style
         let (lines, theme) = test_render_with_theme("> muted content");
         assert!(
-            any_line_has_fg(&lines, "muted content", theme.fg_muted),
+            any_line_has_fg(&lines, "muted content", theme.text.fg_muted),
             "blockquote text must use fg_muted color"
         );
     }
@@ -1417,12 +1417,12 @@ mod tests {
         let span = code_span.unwrap();
         assert_eq!(
             span.style.fg,
-            Some(theme.warning),
+            Some(theme.status.warning),
             "inline code fg must be warning color"
         );
         assert_eq!(
             span.style.bg,
-            Some(theme.code_bg),
+            Some(theme.code.bg),
             "inline code bg must be code_bg color"
         );
     }

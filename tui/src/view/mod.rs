@@ -92,7 +92,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
             ratatui::text::Span::styled(&toast.message, theme.style_error()),
         ]);
         let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
-            .style(ratatui::style::Style::default().bg(theme.surface_dim));
+            .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
         frame.render_widget(toast_widget, vertical[toast_idx]);
     }
 
@@ -204,7 +204,7 @@ fn render_chat_area(
     app: &App,
     frame: &mut Frame,
     area: Rect,
-    theme: &crate::theme::ThemePalette,
+    theme: &crate::theme::Theme,
 ) -> Vec<OscLink> {
     // Dynamically size input area based on text length (wrapping)
     let prompt_len: u16 = if app.active_turn_id.is_some() { 9 } else { 2 };

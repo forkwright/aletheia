@@ -8,9 +8,9 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use crate::app::{AgentStatus, App, ContextActionsOverlay, Overlay};
 use crate::diff;
 use crate::keybindings;
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
-pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let overlay = match &app.overlay {
         Some(o) => o,
         None => return,
@@ -48,21 +48,21 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
 }
 
 /// Standard overlay block with rounded borders.
-fn overlay_block<'a>(title: &str, theme: &ThemePalette) -> Block<'a> {
+fn overlay_block<'a>(title: &str, theme: &Theme) -> Block<'a> {
     Block::default()
         .title(format!(" {} ", title.trim()))
         .title_style(theme.style_accent_bold())
         .borders(Borders::ALL)
         .border_set(symbols::border::ROUNDED)
         .border_style(theme.style_border())
-        .style(Style::default().bg(theme.surface))
+        .style(Style::default().bg(theme.colors.surface))
 }
 
 /// Highlighted overlay block (for warnings/approvals).
 fn overlay_block_accent(
     title: &str,
     accent_color: ratatui::style::Color,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) -> Block<'static> {
     Block::default()
         .title(format!(" {} ", title.trim()))
@@ -74,15 +74,15 @@ fn overlay_block_accent(
         .borders(Borders::ALL)
         .border_set(symbols::border::ROUNDED)
         .border_style(Style::default().fg(accent_color))
-        .style(Style::default().bg(theme.surface))
+        .style(Style::default().bg(theme.colors.surface))
 }
 
-fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let key_style = Style::default()
-        .fg(theme.accent)
+        .fg(theme.colors.accent)
         .add_modifier(Modifier::BOLD);
     let desc_style = theme.style_fg();
-    let section_style = Style::default().fg(theme.fg).add_modifier(Modifier::BOLD);
+    let section_style = Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD);
 
     let contexts = keybindings::current_contexts(app);
     let groups = keybindings::grouped_keybindings(&contexts);
@@ -120,7 +120,7 @@ fn render_agent_picker(
     frame: &mut Frame,
     area: Rect,
     cursor: usize,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
@@ -132,7 +132,7 @@ fn render_agent_picker(
 
         let style = if selected {
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
             theme.style_fg()
@@ -151,14 +151,14 @@ fn render_agent_picker(
         Span::styled(
             "Enter",
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" select  ", theme.style_muted()),
         Span::styled(
             "Esc",
             Style::default()
-                .fg(theme.fg_dim)
+                .fg(theme.text.fg_dim)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" cancel", theme.style_muted()),
@@ -174,7 +174,7 @@ fn render_session_picker(
     frame: &mut Frame,
     area: Rect,
     picker: &crate::state::SessionPickerOverlay,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     let agent_id = app.focused_agent.as_ref();
     let agent = agent_id.and_then(|id| app.agents.iter().find(|a| &a.id == id));
@@ -207,10 +207,10 @@ fn render_session_picker(
 
         let style = if selected {
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD)
         } else if is_current {
-            Style::default().fg(theme.accent)
+            Style::default().fg(theme.colors.accent)
         } else {
             theme.style_fg()
         };
@@ -239,28 +239,28 @@ fn render_session_picker(
         Span::styled(
             "Enter",
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" switch  ", theme.style_muted()),
         Span::styled(
             "n",
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled("ew  ", theme.style_muted()),
         Span::styled(
             "d",
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled("elete  ", theme.style_muted()),
         Span::styled(
             "Esc",
             Style::default()
-                .fg(theme.fg_dim)
+                .fg(theme.text.fg_dim)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" cancel", theme.style_muted()),
@@ -281,7 +281,7 @@ fn render_tool_approval(
     frame: &mut Frame,
     area: Rect,
     approval: &crate::app::ToolApprovalOverlay,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     let mut lines = vec![
         Line::raw(""),
@@ -290,7 +290,7 @@ fn render_tool_approval(
             Span::styled(
                 &approval.tool_name,
                 Style::default()
-                    .fg(theme.warning)
+                    .fg(theme.status.warning)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),
@@ -305,7 +305,7 @@ fn render_tool_approval(
         Line::raw(""),
         Line::from(Span::styled(
             "  Input:",
-            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD),
         )),
     ];
 
@@ -331,13 +331,13 @@ fn render_tool_approval(
         Span::styled(
             "[Esc]",
             Style::default()
-                .fg(theme.fg_dim)
+                .fg(theme.text.fg_dim)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" cancel", theme.style_muted()),
     ]));
 
-    let block = overlay_block_accent("⚠ Tool Approval Required", theme.warning, theme);
+    let block = overlay_block_accent("⚠ Tool Approval Required", theme.status.warning, theme);
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false });
@@ -348,7 +348,7 @@ fn render_plan_approval(
     frame: &mut Frame,
     area: Rect,
     plan: &crate::app::PlanApprovalOverlay,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     let cost = format!("${:.2}", plan.total_cost_cents as f64 / 100.0);
     let title = format!("Plan ({} steps, ~{})", plan.steps.len(), cost);
@@ -368,7 +368,7 @@ fn render_plan_approval(
 
         let style = if selected {
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
             theme.style_fg()
@@ -391,7 +391,7 @@ fn render_plan_approval(
         Span::styled(
             "[Space]",
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" toggle  ", theme.style_muted()),
@@ -399,22 +399,22 @@ fn render_plan_approval(
         Span::styled("ancel", theme.style_muted()),
     ]));
 
-    let block = overlay_block_accent(&title, theme.accent, theme);
+    let block = overlay_block_accent(&title, theme.colors.accent, theme);
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 }
 
-fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &ThemePalette) {
+fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines = vec![Line::raw("")];
-    let section_style = Style::default().fg(theme.fg).add_modifier(Modifier::BOLD);
+    let section_style = Style::default().fg(theme.text.fg).add_modifier(Modifier::BOLD);
 
     // Connection status
     lines.push(Line::from(Span::styled("  Connection", section_style)));
     lines.push(Line::raw(""));
     let sse_status = if app.sse_connected {
-        Span::styled("  SSE: connected ●", Style::default().fg(theme.success))
+        Span::styled("  SSE: connected ●", Style::default().fg(theme.status.success))
     } else {
-        Span::styled("  SSE: disconnected ○", Style::default().fg(theme.error))
+        Span::styled("  SSE: disconnected ○", Style::default().fg(theme.status.error))
     };
     lines.push(Line::from(sse_status));
     lines.push(Line::from(Span::styled(
@@ -434,15 +434,15 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &ThemeP
     for agent in &app.agents {
         let status_str = match agent.status {
             AgentStatus::Idle => Span::styled("idle", theme.style_dim()),
-            AgentStatus::Working => Span::styled("working", Style::default().fg(theme.spinner)),
+            AgentStatus::Working => Span::styled("working", Style::default().fg(theme.status.spinner)),
             AgentStatus::Streaming => {
-                Span::styled("streaming", Style::default().fg(theme.streaming))
+                Span::styled("streaming", Style::default().fg(theme.status.streaming))
             }
             AgentStatus::Compacting => {
                 let stage = agent.compaction_stage.as_deref().unwrap_or("...");
                 Span::styled(
                     format!("compacting ({})", stage),
-                    Style::default().fg(theme.compacting),
+                    Style::default().fg(theme.status.compacting),
                 )
             }
         };
@@ -481,7 +481,7 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &ThemeP
         Span::styled(
             "Esc",
             Style::default()
-                .fg(theme.fg_dim)
+                .fg(theme.text.fg_dim)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" close", theme.style_muted()),
@@ -498,7 +498,7 @@ fn render_context_actions(
     frame: &mut Frame,
     area: Rect,
     ctx: &ContextActionsOverlay,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     let mut lines = vec![Line::raw("")];
 
@@ -508,7 +508,7 @@ fn render_context_actions(
 
         let style = if selected {
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
             theme.style_fg()
@@ -526,14 +526,14 @@ fn render_context_actions(
         Span::styled(
             "Enter",
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.colors.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" select  ", theme.style_muted()),
         Span::styled(
             "Esc",
             Style::default()
-                .fg(theme.fg_dim)
+                .fg(theme.text.fg_dim)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" cancel", theme.style_muted()),
@@ -548,7 +548,7 @@ fn render_diff_view(
     diff_state: &diff::DiffViewState,
     frame: &mut Frame,
     area: Rect,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) {
     // Render diff lines (without mutation — we compute total_lines here for scroll clamping)
     let inner_area = Rect::new(

@@ -5,7 +5,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use similar::{ChangeTag, TextDiff};
 
-use crate::theme::ThemePalette;
+use crate::theme::Theme;
 
 /// Display mode for the diff viewer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,7 +175,7 @@ pub(crate) fn collapse_to_replacements(hunks: &[DiffHunk]) -> Vec<DiffHunk> {
 }
 
 /// Render hunks in unified diff format.
-pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<'static>> {
+pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     // File header
@@ -186,7 +186,7 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<
     lines.push(Line::from(vec![Span::styled(
         format!("+++ b/{}", file.path),
         Style::default()
-            .fg(theme.success)
+            .fg(theme.status.success)
             .add_modifier(Modifier::BOLD),
     )]));
 
@@ -215,7 +215,7 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<
                 "@@ -{},{} +{},{} @@",
                 hunk.old_start, old_count, hunk.new_start, new_count
             ),
-            Style::default().fg(theme.info),
+            Style::default().fg(theme.status.info),
         )]));
 
         for change in &hunk.changes {
@@ -233,7 +233,7 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<
                     let display = text.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(format!("-{display}"), Style::default().fg(theme.error)),
+                        Span::styled(format!("-{display}"), Style::default().fg(theme.status.error)),
                     ]));
                     old_line += 1;
                 }
@@ -241,7 +241,7 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<
                     let display = text.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(format!("+{display}"), Style::default().fg(theme.success)),
+                        Span::styled(format!("+{display}"), Style::default().fg(theme.status.success)),
                     ]));
                     new_line += 1;
                 }
@@ -250,12 +250,12 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<
                     let new_disp = new.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(format!("-{old_disp}"), Style::default().fg(theme.error)),
+                        Span::styled(format!("-{old_disp}"), Style::default().fg(theme.status.error)),
                     ]));
                     old_line += 1;
                     lines.push(Line::from(vec![
                         Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(format!("+{new_disp}"), Style::default().fg(theme.success)),
+                        Span::styled(format!("+{new_disp}"), Style::default().fg(theme.status.success)),
                     ]));
                     new_line += 1;
                 }
@@ -270,7 +270,7 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<
 pub(crate) fn render_side_by_side(
     file: &FileDiff,
     width: u16,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let half_width = (width as usize) / 2;
@@ -318,7 +318,7 @@ pub(crate) fn render_side_by_side(
                     .filter(|c| matches!(c, DiffChange::Equal(_) | DiffChange::Insert(_)))
                     .count(),
             ),
-            Style::default().fg(theme.info),
+            Style::default().fg(theme.status.info),
         )]));
 
         for change in &hunk.changes {
@@ -342,7 +342,7 @@ pub(crate) fn render_side_by_side(
                     let left = format!("{old_line:>4} {truncated:<content_width$} ");
                     let right = format!("{:>4} {:<content_width$}", "", "");
                     lines.push(Line::from(vec![
-                        Span::styled(pad_to(left, half_width), Style::default().fg(theme.error)),
+                        Span::styled(pad_to(left, half_width), Style::default().fg(theme.status.error)),
                         Span::styled("│", theme.style_dim()),
                         Span::styled(right, theme.style_dim()),
                     ]));
@@ -356,7 +356,7 @@ pub(crate) fn render_side_by_side(
                     lines.push(Line::from(vec![
                         Span::styled(pad_to(left, half_width), theme.style_dim()),
                         Span::styled("│", theme.style_dim()),
-                        Span::styled(right, Style::default().fg(theme.success)),
+                        Span::styled(right, Style::default().fg(theme.status.success)),
                     ]));
                     new_line += 1;
                 }
@@ -366,9 +366,9 @@ pub(crate) fn render_side_by_side(
                     let left = format!("{old_line:>4} {old_disp:<content_width$} ");
                     let right = format!("{new_line:>4} {new_disp:<content_width$}");
                     lines.push(Line::from(vec![
-                        Span::styled(pad_to(left, half_width), Style::default().fg(theme.error)),
+                        Span::styled(pad_to(left, half_width), Style::default().fg(theme.status.error)),
                         Span::styled("│", theme.style_dim()),
-                        Span::styled(right, Style::default().fg(theme.success)),
+                        Span::styled(right, Style::default().fg(theme.status.success)),
                     ]));
                     old_line += 1;
                     new_line += 1;
@@ -381,7 +381,7 @@ pub(crate) fn render_side_by_side(
 }
 
 /// Render hunks with inline word-level highlighting.
-pub(crate) fn render_word_diff(file: &FileDiff, theme: &ThemePalette) -> Vec<Line<'static>> {
+pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     // File header
@@ -401,7 +401,7 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &ThemePalette) -> Vec<Lin
         // Hunk header
         lines.push(Line::from(vec![Span::styled(
             format!("@@ -{} +{} @@", hunk.old_start, hunk.new_start),
-            Style::default().fg(theme.info),
+            Style::default().fg(theme.status.info),
         )]));
 
         for change in &hunk.changes {
@@ -419,7 +419,7 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &ThemePalette) -> Vec<Lin
                     let display = text.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(format!("-{display}"), Style::default().fg(theme.error)),
+                        Span::styled(format!("-{display}"), Style::default().fg(theme.status.error)),
                     ]));
                     old_line += 1;
                 }
@@ -427,7 +427,7 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &ThemePalette) -> Vec<Lin
                     let display = text.trim_end_matches('\n');
                     lines.push(Line::from(vec![
                         Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(format!("+{display}"), Style::default().fg(theme.success)),
+                        Span::styled(format!("+{display}"), Style::default().fg(theme.status.success)),
                     ]));
                     new_line += 1;
                 }
@@ -439,7 +439,7 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &ThemePalette) -> Vec<Lin
 
                     let mut spans = vec![
                         Span::styled(format!("{old_line:>4} {new_line:>4} "), theme.style_dim()),
-                        Span::styled("~", Style::default().fg(theme.warning)),
+                        Span::styled("~", Style::default().fg(theme.status.warning)),
                     ];
 
                     for change_op in word_diff.iter_all_changes() {
@@ -453,14 +453,14 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &ThemePalette) -> Vec<Lin
                                     val,
                                     Style::default()
                                         .fg(Color::White)
-                                        .bg(theme.error)
+                                        .bg(theme.status.error)
                                         .add_modifier(Modifier::CROSSED_OUT),
                                 ));
                             }
                             ChangeTag::Insert => {
                                 spans.push(Span::styled(
                                     val,
-                                    Style::default().fg(Color::White).bg(theme.success),
+                                    Style::default().fg(Color::White).bg(theme.status.success),
                                 ));
                             }
                         }
@@ -486,7 +486,7 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &ThemePalette) -> Vec<Lin
 pub(crate) fn render_diff_view(
     state: &mut DiffViewState,
     area: Rect,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut all_lines: Vec<Line<'static>> = Vec::new();
 
@@ -498,7 +498,7 @@ pub(crate) fn render_diff_view(
         ),
         Span::styled(
             format!("[{}]", state.mode.label()),
-            Style::default().fg(theme.info),
+            Style::default().fg(theme.status.info),
         ),
         Span::styled("  m", theme.style_accent()),
         Span::styled(": cycle mode  ", theme.style_dim()),
@@ -543,7 +543,7 @@ pub(crate) fn render_diff_view(
 pub(crate) fn render_diff_view_immutable(
     state: &DiffViewState,
     area: Rect,
-    theme: &ThemePalette,
+    theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut all_lines: Vec<Line<'static>> = Vec::new();
 
@@ -555,7 +555,7 @@ pub(crate) fn render_diff_view_immutable(
         ),
         Span::styled(
             format!("[{}]", state.mode.label()),
-            Style::default().fg(theme.info),
+            Style::default().fg(theme.status.info),
         ),
         Span::styled("  m", theme.style_accent()),
         Span::styled(": cycle mode  ", theme.style_dim()),
@@ -743,8 +743,8 @@ fn pad_to(s: String, width: usize) -> String {
 mod tests {
     use super::*;
 
-    fn test_theme() -> ThemePalette {
-        ThemePalette::detect()
+    fn test_theme() -> Theme {
+        Theme::detect()
     }
 
     // --- DiffMode ---
@@ -1130,8 +1130,8 @@ diff --git a/b.rs b/b.rs
         let diff = compute_diff("src/important.rs", "old\n", "new\n");
 
         for render_fn in [
-            |f: &FileDiff, t: &ThemePalette| render_unified(f, t),
-            |f: &FileDiff, t: &ThemePalette| render_word_diff(f, t),
+            |f: &FileDiff, t: &Theme| render_unified(f, t),
+            |f: &FileDiff, t: &Theme| render_word_diff(f, t),
         ] {
             let lines = render_fn(&diff, &theme);
             let all_text: String = lines
