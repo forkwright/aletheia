@@ -437,6 +437,121 @@ impl KnowledgeStore {
         self.run_mut(&queries::upsert_fact(), params)
     }
 
+    /// Supersede an existing fact with a new one.
+    ///
+    /// Sets `valid_to` on the old fact to `now` and `superseded_by` to the new
+    /// fact's ID, then inserts the new fact.
+    #[instrument(skip(self, old_fact, new_fact), fields(old_id = %old_fact.id, new_id = %new_fact.id))]
+    pub fn supersede_fact(
+        &self,
+        old_fact: &crate::knowledge::Fact,
+        new_fact: &crate::knowledge::Fact,
+    ) -> crate::error::Result<()> {
+        use crate::engine::DataValue;
+        use crate::knowledge::format_timestamp;
+        use std::collections::BTreeMap;
+
+        let now = jiff::Timestamp::now();
+        let now_str = format_timestamp(&now);
+
+        let mut params = BTreeMap::new();
+        // Old fact params
+        params.insert(
+            "old_id".to_owned(),
+            DataValue::Str(old_fact.id.as_str().into()),
+        );
+        params.insert(
+            "old_valid_from".to_owned(),
+            DataValue::Str(format_timestamp(&old_fact.valid_from).into()),
+        );
+        params.insert(
+            "old_content".to_owned(),
+            DataValue::Str(old_fact.content.as_str().into()),
+        );
+        params.insert(
+            "nous_id".to_owned(),
+            DataValue::Str(old_fact.nous_id.as_str().into()),
+        );
+        params.insert(
+            "old_confidence".to_owned(),
+            DataValue::from(old_fact.confidence),
+        );
+        params.insert(
+            "old_tier".to_owned(),
+            DataValue::Str(old_fact.tier.as_str().into()),
+        );
+        params.insert("now".to_owned(), DataValue::Str(now_str.as_str().into()));
+        params.insert(
+            "new_id".to_owned(),
+            DataValue::Str(new_fact.id.as_str().into()),
+        );
+        params.insert(
+            "old_source".to_owned(),
+            DataValue::Str(old_fact.source_session_id.as_deref().unwrap_or("").into()),
+        );
+        params.insert(
+            "old_recorded".to_owned(),
+            DataValue::Str(format_timestamp(&old_fact.recorded_at).into()),
+        );
+        params.insert(
+            "old_access_count".to_owned(),
+            DataValue::from(i64::from(old_fact.access_count)),
+        );
+        params.insert(
+            "old_last_accessed_at".to_owned(),
+            DataValue::Str(
+                old_fact
+                    .last_accessed_at
+                    .as_ref()
+                    .map(|t| format_timestamp(t))
+                    .unwrap_or_default()
+                    .into(),
+            ),
+        );
+        params.insert(
+            "old_stability_hours".to_owned(),
+            DataValue::from(old_fact.stability_hours),
+        );
+        params.insert(
+            "old_fact_type".to_owned(),
+            DataValue::Str(old_fact.fact_type.as_str().into()),
+        );
+        params.insert(
+            "old_is_forgotten".to_owned(),
+            DataValue::Bool(old_fact.is_forgotten),
+        );
+        params.insert("old_forgotten_at".to_owned(), DataValue::Null);
+        params.insert("old_forget_reason".to_owned(), DataValue::Null);
+
+        // New fact params
+        params.insert(
+            "new_content".to_owned(),
+            DataValue::Str(new_fact.content.as_str().into()),
+        );
+        params.insert(
+            "new_confidence".to_owned(),
+            DataValue::from(new_fact.confidence),
+        );
+        params.insert(
+            "new_tier".to_owned(),
+            DataValue::Str(new_fact.tier.as_str().into()),
+        );
+        params.insert(
+            "source_session_id".to_owned(),
+            DataValue::Str(new_fact.source_session_id.as_deref().unwrap_or("").into()),
+        );
+        params.insert(
+            "stability_hours".to_owned(),
+            DataValue::from(new_fact.stability_hours),
+        );
+        params.insert(
+            "fact_type".to_owned(),
+            DataValue::Str(new_fact.fact_type.as_str().into()),
+        );
+
+        self.run_mut(&queries::supersede_fact(), params)
+    }
+
     /// Query current facts for a nous at a given time, up to limit results.
     #[instrument(skip(self))]
     pub fn query_facts(

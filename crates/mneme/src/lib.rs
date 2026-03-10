@@ -22,6 +22,8 @@ pub mod engine;
 /// Database backup and JSON export for session data.
 #[cfg(feature = "sqlite")]
 pub mod backup;
+/// Conflict detection pipeline for fact insertion.
+pub mod conflict;
 /// Embedding provider trait and implementations (candle, mock).
 pub mod embedding;
 /// Mneme-specific error types and result alias.
