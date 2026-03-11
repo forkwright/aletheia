@@ -34,4 +34,4 @@ ulid = { workspace = true }
 [dev-dependencies]
 indexmap = { workspace = true }
 static_assertions = { workspace = true }
-tempfile = "3"
+tempfile = { workspace = true }

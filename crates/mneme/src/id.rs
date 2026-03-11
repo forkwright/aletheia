@@ -42,6 +42,9 @@ macro_rules! define_id {
             /// Create without validation — for internal row parsing where
             /// the ID was already validated on insert.
             #[must_use]
+            // `#[expect]` cannot be used: the macro is invoked for multiple ID types; some
+            // invocations have callers (fulfilling the lint) while others don't (unfulfilled
+            // expectation). `#[allow]` applies to all invocations uniformly.
             #[allow(dead_code, reason = "used by row parsers and tests; not all ID types have production callers yet")]
             pub(crate) fn new_unchecked(id: impl Into<String>) -> Self {
                 Self(id.into())

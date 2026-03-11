@@ -60,6 +60,6 @@ jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 reqwest = { workspace = true }
 secrecy = { workspace = true }
 static_assertions = { workspace = true }
-tempfile = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "test-util"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true }

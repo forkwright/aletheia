@@ -40,29 +40,23 @@ pub(crate) type Pairs<'a> = pest::iterators::Pairs<'a, Rule>;
 /// A parsed datalog script, as returned by `parse_script`.
 #[derive(Debug)]
 pub enum DatalogScript {
-    #[allow(missing_docs)]
     Single(InputProgram),
-    #[allow(missing_docs)]
     Imperative(ImperativeProgram),
-    #[allow(missing_docs)]
     Sys(SysOp),
 }
 
-#[allow(missing_docs)]
 #[derive(Debug)]
 pub struct ImperativeStmtClause {
     pub prog: InputProgram,
     pub store_as: Option<CompactString>,
 }
 
-#[allow(missing_docs)]
 #[derive(Debug)]
 pub struct ImperativeSysop {
     pub sysop: SysOp,
     pub store_as: Option<CompactString>,
 }
 
-#[allow(missing_docs)]
 #[derive(Debug)]
 pub enum ImperativeStmt {
     Break {

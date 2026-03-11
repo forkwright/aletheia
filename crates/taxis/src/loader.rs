@@ -63,7 +63,10 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::result_large_err)]
+#[expect(
+    clippy::result_large_err,
+    reason = "figment::Jail closures return Box<dyn Error>; test error size doesn't matter"
+)]
 mod tests {
     use super::*;
 
