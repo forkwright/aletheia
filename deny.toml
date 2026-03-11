@@ -11,6 +11,7 @@ ignore = [
     { id = "RUSTSEC-2024-0320", reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
     { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained (dtolnay archived) — transitive via tokenizers, no safe upgrade" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained — transitive via tonic → qdrant-client (migrate-qdrant feature); no safe upgrade, tonic has not migrated" },
 ]
 
 [licenses]
@@ -95,6 +96,45 @@ skip = [
 
     # winnow 0.6 — cron 0.15 (used by oikonomos/daemon) has not migrated to winnow 0.7.
     { name = "winnow", version = "=0.6.26" },
+
+    # qdrant-client pulls tonic 0.12 which depends on axum 0.7 — version split vs our axum 0.8.
+    # No safe upgrade until qdrant-client migrates to tonic 1.x.
+    { name = "axum", version = "=0.7.9" },
+    { name = "axum-core", version = "=0.4.5" },
+
+    # core-foundation 0.9 — qdrant-client transitive deps have not migrated to 0.10.
+    { name = "core-foundation", version = "=0.9.4" },
+
+    # foldhash — 0.1 from older hashmap ecosystem, 0.2 from current; qdrant-client pulls 0.1.
+    { name = "foldhash", version = "=0.1.5" },
+
+    # hashbrown — four versions coexist: 0.12 from indexmap 1.x (qdrant/tonic era),
+    # 0.14 from mid-cycle deps, 0.15 from near-current; 0.16 is canonical.
+    { name = "hashbrown", version = "=0.12.3" },
+    { name = "hashbrown", version = "=0.14.5" },
+    { name = "hashbrown", version = "=0.15.5" },
+
+    # indexmap 1.x — qdrant-client/tonic transitively depend on indexmap 1.x.
+    { name = "indexmap", version = "=1.9.3" },
+
+    # matchit 0.7 — tonic/axum 0.7 (via qdrant-client) use matchit 0.7; axum 0.8 uses 0.8.
+    { name = "matchit", version = "=0.7.3" },
+
+    # socket2 0.5 — qdrant-client transitive deps have not migrated to socket2 0.6.
+    { name = "socket2", version = "=0.5.10" },
+
+    # tower 0.4 — tonic 0.12 (via qdrant-client) depends on tower 0.4; tower 0.5 is canonical.
+    { name = "tower", version = "=0.4.13" },
+
+    # windows-targets/subcomponents 0.48 — qdrant-client/tonic era; 0.52 already skipped above.
+    { name = "windows-targets", version = "=0.48.5" },
+    { name = "windows_aarch64_gnullvm", version = "=0.48.5" },
+    { name = "windows_aarch64_msvc", version = "=0.48.5" },
+    { name = "windows_i686_gnu", version = "=0.48.5" },
+    { name = "windows_i686_msvc", version = "=0.48.5" },
+    { name = "windows_x86_64_gnu", version = "=0.48.5" },
+    { name = "windows_x86_64_gnullvm", version = "=0.48.5" },
+    { name = "windows_x86_64_msvc", version = "=0.48.5" },
 ]
 
 [sources]
