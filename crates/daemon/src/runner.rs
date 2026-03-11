@@ -1365,7 +1365,9 @@ mod tests {
             "hung-task".to_owned(),
             InFlightTask {
                 handle,
-                started_at: Instant::now().checked_sub(Duration::from_millis(150)).unwrap(),
+                started_at: Instant::now()
+                    .checked_sub(Duration::from_millis(150))
+                    .unwrap(),
                 timeout: Duration::from_millis(50),
                 warned: false,
             },
