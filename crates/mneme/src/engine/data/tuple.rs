@@ -1,6 +1,6 @@
 //! Tuple encoding and decoding.
 use crate::engine::data::functions::TERMINAL_VALIDITY;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use std::cmp::Reverse;
 
 use crate::engine::data::memcmp::MemCmpEncoder;

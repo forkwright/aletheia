@@ -2,7 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::error::{InvalidOperationSnafu, ReadOnlyViolationSnafu};
 use compact_str::CompactString;
 use either::{Either, Left, Right};

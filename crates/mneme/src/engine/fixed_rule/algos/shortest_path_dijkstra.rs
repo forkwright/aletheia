@@ -1,5 +1,5 @@
 //! Weighted shortest path (Dijkstra).
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, BTreeSet};

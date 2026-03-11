@@ -6,7 +6,7 @@ use itertools::Itertools;
 
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::ValidityTs;
-use crate::engine::error::DbResult;
+use crate::engine::error::InternalResult;
 use crate::engine::runtime::relation::decode_tuple_from_kv;
 
 #[cfg(feature = "storage-fjall")]
@@ -84,12 +84,12 @@ pub trait StoreTx<'s>: Sync {
     /// The implementation must call [`decode_tuple_from_kv`](crate::engine::decode_tuple_from_kv) to obtain
     /// a decoded tuple in the loop of the iterator.
     ///
-    /// Iterator items use [`DbResult`] for compatibility with engine-internal callers.
+    /// Iterator items use [`InternalResult`] for compatibility with engine-internal callers.
     fn range_scan_tuple<'a>(
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a>
     where
         's: 'a,
     {
@@ -114,23 +114,23 @@ pub trait StoreTx<'s>: Sync {
     /// in which case the database with the engine does not support time travelling.
     /// You should indicate this clearly in your error message.
     ///
-    /// Iterator items use [`DbResult`] for compatibility with engine-internal callers.
+    /// Iterator items use [`InternalResult`] for compatibility with engine-internal callers.
     fn range_skip_scan_tuple<'a>(
         &'a self,
         lower: &[u8],
         upper: &[u8],
         valid_at: ValidityTs,
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a>;
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a>;
 
     /// Scan on a range and return the raw results.
     /// `lower` is inclusive whereas `upper` is exclusive.
     ///
-    /// Iterator items use [`DbResult`] for compatibility with engine-internal callers.
+    /// Iterator items use [`InternalResult`] for compatibility with engine-internal callers.
     fn range_scan<'a>(
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<(Vec<u8>, Vec<u8>)>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<(Vec<u8>, Vec<u8>)>> + 'a>
     where
         's: 'a;
 

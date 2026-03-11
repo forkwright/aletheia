@@ -5,7 +5,7 @@ use snafu::Snafu;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
-pub(crate) enum StorageError {
+pub enum StorageError {
     /// A storage backend operation failed (e.g., begin_write, open_table, commit).
     #[snafu(display("transaction failed ({backend}): {message}"))]
     TransactionFailed {

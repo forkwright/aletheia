@@ -1,7 +1,7 @@
 //! Random walk over graphs.
 use std::collections::BTreeMap;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use itertools::Itertools;
 use rand::distr::weighted::WeightedIndex;
@@ -50,14 +50,15 @@ impl FixedRule for RandomWalk {
         for start_node in starting.iter()? {
             let start_node = start_node?;
             let start_node_key = &start_node[0];
-            let starting_tuple =
-                nodes
-                    .prefix_iter(start_node_key)?
-                    .next()
-                    .ok_or_else(|| NodeNotFoundError {
+            let starting_tuple = nodes.prefix_iter(start_node_key)?.next().ok_or_else(
+                || -> crate::engine::error::InternalError {
+                    NodeNotFoundError {
                         missing: start_node_key.clone(),
                         span: starting.span(),
-                    })??;
+                    }
+                    .into()
+                },
+            )??;
             for _ in 0..iterations {
                 counter += 1;
                 let mut current_tuple = starting_tuple.clone();
@@ -78,20 +79,22 @@ impl FixedRule for RandomWalk {
                                     DataValue::Num(n) => {
                                         let f = n.get_float();
                                         if f < 0. {
-                                            return Err(Box::new(BadExprValueError(
+                                            return Err(BadExprValueError(
                                                 DataValue::from(f),
                                                 "'weight' must evaluate to a non-negative number"
                                                     .to_string(),
-                                            )));
+                                            )
+                                            .into());
                                         }
                                         f
                                     }
                                     v => {
-                                        return Err(Box::new(BadExprValueError(
+                                        return Err(BadExprValueError(
                                             v,
                                             "'weight' must evaluate to a non-negative number"
                                                 .to_string(),
-                                        )));
+                                        )
+                                        .into());
                                     }
                                 })
                             })
@@ -103,12 +106,15 @@ impl FixedRule for RandomWalk {
                     };
                     let next_node = &next_step[1];
                     path.push(next_node.clone());
-                    current_tuple = nodes.prefix_iter(next_node)?.next().ok_or_else(|| {
-                        NodeNotFoundError {
-                            missing: next_node.clone(),
-                            span: nodes.span(),
-                        }
-                    })??;
+                    current_tuple = nodes.prefix_iter(next_node)?.next().ok_or_else(
+                        || -> crate::engine::error::InternalError {
+                            NodeNotFoundError {
+                                missing: next_node.clone(),
+                                span: nodes.span(),
+                            }
+                            .into()
+                        },
+                    )??;
                     poison.check()?;
                 }
                 out.put(vec![

@@ -3,16 +3,15 @@
 //! [`ParseError`] is the structured error enum for all parse-time failures.
 //! It implements [`std::error::Error`] + [`Send`] + [`Sync`] + `'static`, so
 //! the standard-library blanket impl provides
-//! `From<ParseError> for Box<dyn Error + Send + Sync + 'static>` (`BoxErr`),
-//! allowing `?`-based propagation into engine-internal `DbResult<T>` contexts
-//! without any hand-written bridge.
+//! `From<ParseError> for InternalError` (via `#[snafu(context(false))]`),
+//! allowing `?`-based propagation into engine-internal `InternalResult<T>` contexts.
 use snafu::Snafu;
 
 /// Structured error for all Datalog parse failures.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
-pub(crate) enum ParseError {
+pub enum ParseError {
     /// Pest-level syntax error: unexpected token or end-of-input.
     #[snafu(display("syntax error at {span}: {message}"))]
     Syntax {

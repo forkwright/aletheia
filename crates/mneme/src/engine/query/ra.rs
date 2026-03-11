@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter, Write};
 use std::iter;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::query::error::*;
 use compact_str::CompactString;
 use either::{Left, Right};
@@ -423,7 +423,6 @@ impl RelAlgebra {
                         message: "relation has no key columns",
                     }
                     .build()
-                    .into_box_err()
                 })?;
                 if last_key.typing
                     != (NullableColType {
@@ -821,7 +820,7 @@ impl InlineFixedRA {
 }
 
 pub(crate) fn flatten_err<T>(
-    v: std::result::Result<Result<T>, crate::engine::error::BoxErr>,
+    v: std::result::Result<Result<T>, crate::engine::error::InternalError>,
 ) -> Result<T> {
     match v {
         Err(e) => Err(e),

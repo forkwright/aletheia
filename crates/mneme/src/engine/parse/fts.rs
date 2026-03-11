@@ -1,7 +1,7 @@
 //! Full-text search clause parsing.
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
-use crate::engine::parse::error::SyntaxSnafu;
+use crate::engine::parse::error::{InvalidQuerySnafu, SyntaxSnafu};
 use crate::engine::parse::expr::parse_string;
 use crate::engine::parse::{DatalogParser, Pair, Rule, SourceSpan};
 use compact_str::CompactString;
@@ -74,11 +74,12 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
             for pair in pair.into_inner() {
                 match pair.as_rule() {
                     Rule::pos_int => {
-                        let i = pair
-                            .as_str()
-                            .replace('_', "")
-                            .parse::<i64>()
-                            .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+                        let i = pair.as_str().replace('_', "").parse::<i64>().map_err(|e| {
+                            InvalidQuerySnafu {
+                                message: e.to_string(),
+                            }
+                            .build()
+                        })?;
                         distance = i as u32;
                     }
                     _ => literals.push(build_phrase(pair)?),
@@ -115,7 +116,12 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
                             .as_str()
                             .replace('_', "")
                             .parse::<f64>()
-                            .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+                            .map_err(|e| {
+                                InvalidQuerySnafu {
+                                    message: e.to_string(),
+                                }
+                                .build()
+                            })?;
                         booster = f;
                     }
                     Rule::int => {
@@ -123,7 +129,12 @@ fn build_phrase(pair: Pair<'_>) -> Result<FtsLiteral> {
                             .as_str()
                             .replace('_', "")
                             .parse::<i64>()
-                            .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+                            .map_err(|e| {
+                                InvalidQuerySnafu {
+                                    message: e.to_string(),
+                                }
+                                .build()
+                            })?;
                         booster = i as f64;
                     }
                     _ => unreachable!("unexpected rule: {:?}", boosted.as_rule()),

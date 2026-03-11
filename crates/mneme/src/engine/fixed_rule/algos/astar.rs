@@ -2,8 +2,7 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
-use crate::engine::error::DbResult as Result;
-use crate::ensure;
+use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
@@ -85,10 +84,13 @@ fn astar(
         let cost = cost_val
             .get_float()
             .ok_or_else(|| BadExprValueError(cost_val, "a number is required".to_string()))?;
-        ensure!(
-            !cost.is_nan(),
-            BadExprValueError(DataValue::from(cost), "a number is required".to_string(),)
-        );
+        if cost.is_nan() {
+            return Err(BadExprValueError(
+                DataValue::from(cost),
+                "a number is required".to_string(),
+            )
+            .into());
+        }
         Ok(cost)
     };
     let mut back_trace: BTreeMap<DataValue, DataValue> = Default::default();
@@ -120,10 +122,13 @@ fn astar(
                     BadExprValueError(edge_dst.clone(), "edge cost must be a number".to_string())
                 })?,
             };
-            ensure!(
-                !edge_cost.is_nan(),
-                BadExprValueError(edge_dst.clone(), "edge cost must be a number".to_string(),)
-            );
+            if edge_cost.is_nan() {
+                return Err(BadExprValueError(
+                    edge_dst.clone(),
+                    "edge cost must be a number".to_string(),
+                )
+                .into());
+            }
 
             let cost_to_src = g_score.get(&node).cloned().unwrap_or(f64::INFINITY);
             let tentative_cost_to_dst = cost_to_src + edge_cost;
@@ -132,14 +137,15 @@ fn astar(
                 back_trace.insert(edge_dst.clone(), node.clone());
                 g_score.insert(edge_dst.clone(), tentative_cost_to_dst);
 
-                let edge_dst_tuple =
-                    nodes
-                        .prefix_iter(edge_dst)?
-                        .next()
-                        .ok_or_else(|| NodeNotFoundError {
+                let edge_dst_tuple = nodes.prefix_iter(edge_dst)?.next().ok_or_else(
+                    || -> crate::engine::error::InternalError {
+                        NodeNotFoundError {
                             missing: edge_dst.clone(),
                             span: nodes.span(),
-                        })??;
+                        }
+                        .into()
+                    },
+                )??;
 
                 let heuristic_cost = eval_heuristic(&edge_dst_tuple)?;
                 sub_priority += 1;

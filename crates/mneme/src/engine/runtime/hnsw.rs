@@ -1,12 +1,12 @@
 //! Hierarchical Navigable Small World vector index.
-use crate::bail;
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::engine::data::program::HnswSearch;
 use crate::engine::data::relation::VecElementType;
 use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple};
 use crate::engine::data::value::Vector;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::sys::HnswDistance;
+use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, SourceSpan};
@@ -87,7 +87,14 @@ impl VectorCache {
                         acc + d * d
                     }))
                 }
-                _ => bail!("Cannot compute L2 distance between {:?} and {:?}", v1, v2),
+                _ => {
+                    return Err(InvalidOperationSnafu {
+                        op: "hnsw_l2",
+                        reason: format!("Cannot compute L2 distance between {:?} and {:?}", v1, v2),
+                    }
+                    .build()
+                    .into());
+                }
             },
             HnswDistance::Cosine => match (v1, v2) {
                 (Vector::F32(a), Vector::F32(b)) => {
@@ -106,11 +113,17 @@ impl VectorCache {
                         });
                     Ok(1.0 - dot / (a_norm * b_norm).sqrt())
                 }
-                _ => bail!(
-                    "Cannot compute cosine distance between {:?} and {:?}",
-                    v1,
-                    v2
-                ),
+                _ => {
+                    return Err(InvalidOperationSnafu {
+                        op: "hnsw_cosine",
+                        reason: format!(
+                            "Cannot compute cosine distance between {:?} and {:?}",
+                            v1, v2
+                        ),
+                    }
+                    .build()
+                    .into());
+                }
             },
             HnswDistance::InnerProduct => match (v1, v2) {
                 (Vector::F32(a), Vector::F32(b)) => {
@@ -121,7 +134,17 @@ impl VectorCache {
                     let dot = a.dot(b);
                     Ok(1. - dot)
                 }
-                _ => bail!("Cannot compute inner product between {:?} and {:?}", v1, v2),
+                _ => {
+                    return Err(InvalidOperationSnafu {
+                        op: "hnsw_ip",
+                        reason: format!(
+                            "Cannot compute inner product between {:?} and {:?}",
+                            v1, v2
+                        ),
+                    }
+                    .build()
+                    .into());
+                }
             },
         }
     }
@@ -170,17 +193,38 @@ impl VectorCache {
                             DataValue::List(l) => {
                                 field = &l[key.2 as usize];
                             }
-                            _ => bail!("Cannot interpret {} as list", field),
+                            _ => {
+                                return Err(InvalidOperationSnafu {
+                                    op: "hnsw_index",
+                                    reason: format!("Cannot interpret {} as list", field),
+                                }
+                                .build()
+                                .into());
+                            }
                         }
                     }
                     match field {
                         DataValue::Vec(v) => {
                             self.cache.put(key.clone(), v.clone());
                         }
-                        _ => bail!("Cannot interpret {} as vector", field),
+                        _ => {
+                            return Err(InvalidOperationSnafu {
+                                op: "hnsw_index",
+                                reason: format!("Cannot interpret {} as vector", field),
+                            }
+                            .build()
+                            .into());
+                        }
                     }
                 }
-                None => bail!("Cannot find compound key for HNSW: {:?}", key),
+                None => {
+                    return Err(InvalidOperationSnafu {
+                        op: "hnsw_index",
+                        reason: format!("Cannot find compound key for HNSW: {:?}", key),
+                    }
+                    .build()
+                    .into());
+                }
             }
         }
         Ok(())
@@ -381,13 +425,20 @@ impl<'a> SessionTx<'a> {
                         .get(&target_self_key_bytes, false)?
                     {
                         Some(bytes) => bytes,
-                        None => bail!(
-                            "Indexed vector not found, this signifies a bug in the index implementation"
-                        ),
+                        None => return Err(InvalidOperationSnafu {
+                            op: "hnsw_index",
+                            reason: "Indexed vector not found, this signifies a bug in the index implementation".to_string(),
+                        }.build().into()),
                     };
                     let mut target_self_val: Vec<DataValue> =
                         rmp_serde::from_slice(&target_self_val_bytes[ENCODED_KEY_MIN_LEN..])
-                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                            .map_err(|e| crate::engine::error::InternalError::Runtime {
+                                source: InvalidOperationSnafu {
+                                    op: "hnsw_index",
+                                    reason: e.to_string(),
+                                }
+                                .build(),
+                            })?;
                     let mut target_degree = target_self_val[0]
                         .get_float()
                         .expect("HNSW index stores floats at this position")
@@ -502,14 +553,22 @@ impl<'a> SessionTx<'a> {
                 let old_existing_val = match self.store_tx.get(&old_key_bytes, false)? {
                     Some(bytes) => bytes,
                     None => {
-                        bail!(
-                            "Indexed vector not found, this signifies a bug in the index implementation"
-                        )
+                        return Err(InvalidOperationSnafu {
+                            op: "hnsw_index",
+                            reason: "Indexed vector not found, this signifies a bug in the index implementation".to_string(),
+                        }.build().into())
                     }
                 };
-                let old_existing_val: Vec<DataValue> =
-                    rmp_serde::from_slice(&old_existing_val[ENCODED_KEY_MIN_LEN..])
-                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                let old_existing_val: Vec<DataValue> = rmp_serde::from_slice(
+                    &old_existing_val[ENCODED_KEY_MIN_LEN..],
+                )
+                .map_err(|e| crate::engine::error::InternalError::Runtime {
+                    source: InvalidOperationSnafu {
+                        op: "hnsw_index",
+                        reason: e.to_string(),
+                    }
+                    .build(),
+                })?;
                 if old_existing_val[2]
                     .get_bool()
                     .expect("HNSW index stores bools at this position")
@@ -884,18 +943,28 @@ impl<'a> SessionTx<'a> {
                     neighbour_self_key.push(DataValue::from(neighbour_key.1 as i64));
                     neighbour_self_key.push(DataValue::from(neighbour_key.2 as i64));
                 }
-                let neighbour_val_bytes = match self.store_tx.get(
-                    &idx_table.encode_key_for_store(&neighbour_self_key, Default::default())?,
-                    false,
-                )? {
+                let neighbour_val_bytes = match self
+                    .store_tx
+                    .get(
+                        &idx_table.encode_key_for_store(&neighbour_self_key, Default::default())?,
+                        false,
+                    )? {
                     Some(bytes) => bytes,
-                    None => bail!(
-                        "HNSW neighbour self-key not found during removal, index may be corrupted"
-                    ),
+                    None => return Err(InvalidOperationSnafu {
+                        op: "hnsw_remove",
+                        reason: "HNSW neighbour self-key not found during removal, index may be corrupted".to_string(),
+                    }.build().into()),
                 };
-                let mut neighbour_val: Vec<DataValue> =
-                    rmp_serde::from_slice(&neighbour_val_bytes[ENCODED_KEY_MIN_LEN..])
-                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                let mut neighbour_val: Vec<DataValue> = rmp_serde::from_slice(
+                    &neighbour_val_bytes[ENCODED_KEY_MIN_LEN..],
+                )
+                .map_err(|e| crate::engine::error::InternalError::Runtime {
+                    source: InvalidOperationSnafu {
+                        op: "hnsw_index",
+                        reason: e.to_string(),
+                    }
+                    .build(),
+                })?;
                 neighbour_val[0] = DataValue::from(
                     neighbour_val[0]
                         .get_float()
@@ -960,7 +1029,12 @@ impl<'a> SessionTx<'a> {
         stack: &mut Vec<DataValue>,
     ) -> Result<Vec<Tuple>> {
         if q.len() != config.manifest.vec_dim {
-            bail!("query vector dimension mismatch");
+            return Err(InvalidOperationSnafu {
+                op: "hnsw_query",
+                reason: "query vector dimension mismatch".to_string(),
+            }
+            .build()
+            .into());
         }
         let q = match (q, config.manifest.dtype) {
             (v @ Vector::F32(_), VecElementType::F32) => v,
@@ -1044,7 +1118,13 @@ impl<'a> SessionTx<'a> {
 
                 let mut cand_tuple =
                     config.base_handle.get(self, &cand_key.0)?.ok_or_else(|| {
-                        crate::engine::error::AdhocError("corrupted index".to_string())
+                        crate::engine::error::InternalError::Runtime {
+                            source: InvalidOperationSnafu {
+                                op: "hnsw_query",
+                                reason: "corrupted index",
+                            }
+                            .build(),
+                        }
                     })?;
 
                 // make sure the order is the same as in all_bindings()!!!
@@ -1075,7 +1155,14 @@ impl<'a> SessionTx<'a> {
                     } else {
                         match &cand_tuple[cand_key.1] {
                             DataValue::List(v) => v[cand_key.2 as usize].clone(),
-                            v => bail!("corrupted index value {:?}", v),
+                            v => {
+                                return Err(InvalidOperationSnafu {
+                                    op: "hnsw_index",
+                                    reason: format!("corrupted index value {:?}", v),
+                                }
+                                .build()
+                                .into());
+                            }
                         }
                     };
                     cand_tuple.push(vec);

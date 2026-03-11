@@ -133,25 +133,3 @@ pub(crate) enum QueryError {
 }
 
 pub(crate) type QueryResult<T> = std::result::Result<T, QueryError>;
-
-impl QueryError {
-    /// Convert into the engine's `BoxErr` for cross-module boundaries.
-    ///
-    /// This bridge exists during the migration period. The standard library
-    /// blanket impl `From<E: Error> for Box<dyn Error + Send + Sync>` already
-    /// provides automatic `?`-based conversion in `DbResult` contexts.
-    pub(crate) fn into_box_err(self) -> crate::engine::error::BoxErr {
-        Box::new(self)
-    }
-}
-
-/// Extension trait to convert `QueryResult<T>` into `DbResult<T>` at module boundaries.
-pub(crate) trait IntoDbResult<T> {
-    fn into_db_result(self) -> crate::engine::error::DbResult<T>;
-}
-
-impl<T> IntoDbResult<T> for QueryResult<T> {
-    fn into_db_result(self) -> crate::engine::error::DbResult<T> {
-        self.map_err(|e| e.into_box_err())
-    }
-}

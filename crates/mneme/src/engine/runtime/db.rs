@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::error::{
     AssertionFailedSnafu, InsufficientAccessSnafu, InvalidOperationSnafu, QueryKilledSnafu,
     ReadOnlyViolationSnafu, RelationAlreadyExistsSnafu, RelationNotFoundSnafu, UnsupportedSnafu,
@@ -170,37 +170,72 @@ impl NamedRows {
     }
     /// Make named rows from JSON
     pub fn from_json(value: &JsonValue) -> Result<Self> {
-        let headers = value.get("headers").ok_or_else(|| {
-            crate::engine::error::AdhocError("NamedRows requires 'headers' field".to_string())
-        })?;
-        let headers = headers.as_array().ok_or_else(|| {
-            crate::engine::error::AdhocError("'headers' field must be an array".to_string())
-        })?;
+        let headers =
+            value
+                .get("headers")
+                .ok_or_else(|| crate::engine::error::InternalError::Runtime {
+                    source: InvalidOperationSnafu {
+                        op: "import",
+                        reason: "NamedRows requires 'headers' field",
+                    }
+                    .build(),
+                })?;
+        let headers =
+            headers
+                .as_array()
+                .ok_or_else(|| crate::engine::error::InternalError::Runtime {
+                    source: InvalidOperationSnafu {
+                        op: "import",
+                        reason: "'headers' field must be an array",
+                    }
+                    .build(),
+                })?;
         let headers = headers
             .iter()
             .map(|h| -> Result<String> {
-                let h = h.as_str().ok_or_else(|| {
-                    crate::engine::error::AdhocError(
-                        "'headers' field must be an array of strings".to_string(),
-                    )
-                })?;
+                let h = h
+                    .as_str()
+                    .ok_or_else(|| crate::engine::error::InternalError::Runtime {
+                        source: InvalidOperationSnafu {
+                            op: "import",
+                            reason: "'headers' field must be an array of strings",
+                        }
+                        .build(),
+                    })?;
                 Ok(h.to_string())
             })
             .try_collect()?;
-        let rows = value.get("rows").ok_or_else(|| {
-            crate::engine::error::AdhocError("NamedRows requires 'rows' field".to_string())
-        })?;
-        let rows = rows.as_array().ok_or_else(|| {
-            crate::engine::error::AdhocError("'rows' field must be an array".to_string())
-        })?;
+        let rows =
+            value
+                .get("rows")
+                .ok_or_else(|| crate::engine::error::InternalError::Runtime {
+                    source: InvalidOperationSnafu {
+                        op: "import",
+                        reason: "NamedRows requires 'rows' field",
+                    }
+                    .build(),
+                })?;
+        let rows = rows
+            .as_array()
+            .ok_or_else(|| crate::engine::error::InternalError::Runtime {
+                source: InvalidOperationSnafu {
+                    op: "import",
+                    reason: "'rows' field must be an array",
+                }
+                .build(),
+            })?;
         let rows = rows
             .iter()
             .map(|row| -> Result<Vec<DataValue>> {
-                let row = row.as_array().ok_or_else(|| {
-                    crate::engine::error::AdhocError(
-                        "'rows' field must be an array of arrays".to_string(),
-                    )
-                })?;
+                let row =
+                    row.as_array()
+                        .ok_or_else(|| crate::engine::error::InternalError::Runtime {
+                            source: InvalidOperationSnafu {
+                                op: "import",
+                                reason: "'rows' field must be an array of arrays",
+                            }
+                            .build(),
+                        })?;
                 Ok(row.iter().map(DataValue::from).collect_vec())
             })
             .try_collect()?;
@@ -528,10 +563,16 @@ impl<'s, S: Storage<'s>> Db<S> {
                 .iter()
                 .map(|col| -> Result<(usize, &ColumnDef)> {
                     let idx = header2idx.get(&col.name as &str).ok_or_else(|| {
-                        crate::engine::error::AdhocError(format!(
-                            "required header {} not found for relation {}",
-                            col.name, relation
-                        ))
+                        crate::engine::error::InternalError::Runtime {
+                            source: InvalidOperationSnafu {
+                                op: "import",
+                                reason: format!(
+                                    "required header {} not found for relation {}",
+                                    col.name, relation
+                                ),
+                            }
+                            .build(),
+                        }
                     })?;
                     Ok((*idx, col))
                 })
@@ -546,10 +587,16 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .iter()
                     .map(|col| -> Result<(usize, &ColumnDef)> {
                         let idx = header2idx.get(&col.name as &str).ok_or_else(|| {
-                            crate::engine::error::AdhocError(format!(
-                                "required header {} not found for relation {}",
-                                col.name, relation
-                            ))
+                            crate::engine::error::InternalError::Runtime {
+                                source: InvalidOperationSnafu {
+                                    op: "import",
+                                    reason: format!(
+                                        "required header {} not found for relation {}",
+                                        col.name, relation
+                                    ),
+                                }
+                                .build(),
+                            }
                         })?;
                         Ok((*idx, col))
                     })
@@ -561,11 +608,23 @@ impl<'s, S: Storage<'s>> Db<S> {
                     .iter()
                     .map(|(i, col)| -> Result<DataValue> {
                         let v = row.get(*i).ok_or_else(|| {
-                            crate::engine::error::AdhocError(format!("row too short: {:?}", row))
+                            crate::engine::error::InternalError::Runtime {
+                                source: InvalidOperationSnafu {
+                                    op: "import",
+                                    reason: format!("row too short: {:?}", row),
+                                }
+                                .build(),
+                            }
                         })?;
-                        col.typing.coerce(v.clone(), cur_vld).map_err(
-                            |e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) },
-                        )
+                        col.typing.coerce(v.clone(), cur_vld).map_err(|e| {
+                            crate::engine::error::InternalError::Runtime {
+                                source: InvalidOperationSnafu {
+                                    op: "import",
+                                    reason: e.to_string(),
+                                }
+                                .build(),
+                            }
+                        })
                     })
                     .try_collect()?;
                 let k_store = handle.encode_key_for_store(&keys, Default::default())?;
@@ -591,14 +650,23 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .iter()
                         .map(|(i, col)| -> Result<DataValue> {
                             let v = row.get(*i).ok_or_else(|| {
-                                crate::engine::error::AdhocError(format!(
-                                    "row too short: {:?}",
-                                    row
-                                ))
+                                crate::engine::error::InternalError::Runtime {
+                                    source: InvalidOperationSnafu {
+                                        op: "import",
+                                        reason: format!("row too short: {:?}", row),
+                                    }
+                                    .build(),
+                                }
                             })?;
-                            col.typing.coerce(v.clone(), cur_vld).map_err(
-                                |e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) },
-                            )
+                            col.typing.coerce(v.clone(), cur_vld).map_err(|e| {
+                                crate::engine::error::InternalError::Runtime {
+                                    source: InvalidOperationSnafu {
+                                        op: "import",
+                                        reason: e.to_string(),
+                                    }
+                                    .build(),
+                                }
+                            })
                         })
                         .try_collect()?;
                     let v_store = handle.encode_val_only_for_store(&vals, Default::default())?;
@@ -1534,11 +1602,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                             ""
                         },
                     )
-                    .map_err(|e| {
-                        crate::engine::error::AdhocError(format!(
-                            "{e}: when executing against relation '{}'",
-                            meta.name
-                        ))
+                    .map_err(|e| crate::engine::error::InternalError::Runtime {
+                        source: InvalidOperationSnafu {
+                            op: "transaction",
+                            reason: format!("{e}: when executing against relation '{}'", meta.name),
+                        }
+                        .build(),
                     })?;
                 clean_ups.extend(to_clear);
                 let returned_rows =
@@ -1595,11 +1664,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                             ""
                         },
                     )
-                    .map_err(|e| {
-                        crate::engine::error::AdhocError(format!(
-                            "{e}: when executing against relation '{}'",
-                            meta.name
-                        ))
+                    .map_err(|e| crate::engine::error::InternalError::Runtime {
+                        source: InvalidOperationSnafu {
+                            op: "transaction",
+                            reason: format!("{e}: when executing against relation '{}'", meta.name),
+                        }
+                        .build(),
                     })?;
                 clean_ups.extend(to_clear);
                 let returned_rows =
@@ -1856,7 +1926,13 @@ pub(crate) fn seconds_since_the_epoch() -> Result<f64> {
     #[cfg(not(target_arch = "wasm32"))]
     return Ok(now
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?
+        .map_err(|e| crate::engine::error::InternalError::Runtime {
+            source: InvalidOperationSnafu {
+                op: "timestamp",
+                reason: e.to_string(),
+            }
+            .build(),
+        })?
         .as_secs_f64());
 
     #[cfg(target_arch = "wasm32")]

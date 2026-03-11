@@ -180,24 +180,3 @@ pub(crate) enum DataError {
 }
 
 pub(crate) type DataResult<T> = std::result::Result<T, DataError>;
-
-impl DataError {
-    /// Convert into the engine's `BoxErr` for cross-module boundaries.
-    ///
-    /// This bridge exists during the migration period. It will be removed
-    /// once all engine modules use typed errors.
-    pub(crate) fn into_box_err(self) -> crate::engine::error::BoxErr {
-        Box::new(self)
-    }
-}
-
-/// Extension trait to convert `DataResult<T>` into `DbResult<T>` at module boundaries.
-pub(crate) trait IntoDbResult<T> {
-    fn into_db_result(self) -> crate::engine::error::DbResult<T>;
-}
-
-impl<T> IntoDbResult<T> for DataResult<T> {
-    fn into_db_result(self) -> crate::engine::error::DbResult<T> {
-        self.map_err(|e| e.into_box_err())
-    }
-}
