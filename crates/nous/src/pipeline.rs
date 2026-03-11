@@ -1,7 +1,7 @@
 //! Message processing pipeline.
 
 use std::collections::VecDeque;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 
@@ -332,6 +332,13 @@ pub async fn run_pipeline(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
 ) -> error::Result<TurnResult> {
     let pipeline_start = Instant::now();
+    let total_timeout = if pipeline_config.stage_budget.total_secs > 0 {
+        Some(Duration::from_secs(u64::from(
+            pipeline_config.stage_budget.total_secs,
+        )))
+    } else {
+        None
+    };
     let pipeline_span = info_span!("pipeline",
         nous_id = %config.id,
         session_id = %input.session.id,
@@ -378,6 +385,7 @@ pub async fn run_pipeline(
         );
         let _guard = span.enter();
         let start = Instant::now();
+        let recall_timeout_secs = pipeline_config.stage_budget.recall_secs;
         if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
             let recall_config = crate::recall::RecallConfig::default();
             let recall_stage = crate::recall::RecallStage::new(recall_config);
@@ -386,24 +394,51 @@ pub async fn run_pipeline(
                 reason = "remaining_tokens is positive after context assembly"
             )]
             let budget = ctx.remaining_tokens.max(0) as u64;
-            match recall_stage.run(&input.content, &config.id, ep, vs, budget) {
-                Ok(recall_result) => {
-                    if let Some(ref section) = recall_result.recall_section {
-                        if let Some(ref mut prompt) = ctx.system_prompt {
-                            prompt.push_str("\n\n");
-                            prompt.push_str(section);
-                        }
-                        #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
-                        {
-                            ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
-                        }
+
+            let recall_result_opt = if recall_timeout_secs > 0 {
+                match tokio::time::timeout(
+                    Duration::from_secs(u64::from(recall_timeout_secs)),
+                    async { recall_stage.run(&input.content, &config.id, ep, vs, budget) },
+                )
+                .await
+                {
+                    Ok(result) => Some(result),
+                    Err(_elapsed) => {
+                        warn!(
+                            timeout_secs = recall_timeout_secs,
+                            "recall stage timed out, continuing without recalled knowledge"
+                        );
+                        span.record("status", "timeout");
+                        None
                     }
-                    ctx.recall_result = Some(recall_result);
-                    span.record("status", "ok");
                 }
-                Err(e) => {
-                    warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
-                    span.record("status", "error");
+            } else {
+                Some(recall_stage.run(&input.content, &config.id, ep, vs, budget))
+            };
+
+            if let Some(result) = recall_result_opt {
+                match result {
+                    Ok(recall_result) => {
+                        if let Some(ref section) = recall_result.recall_section {
+                            if let Some(ref mut prompt) = ctx.system_prompt {
+                                prompt.push_str("\n\n");
+                                prompt.push_str(section);
+                            }
+                            #[expect(
+                                clippy::cast_possible_wrap,
+                                reason = "recall tokens fit in i64"
+                            )]
+                            {
+                                ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
+                            }
+                        }
+                        ctx.recall_result = Some(recall_result);
+                        span.record("status", "ok");
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
+                        span.record("status", "error");
+                    }
                 }
             }
         } else {
@@ -527,21 +562,56 @@ pub async fn run_pipeline(
         );
         let _guard = span.enter();
         let start = Instant::now();
-        result = if let Some(tx) = stream_tx {
-            crate::execute::execute_streaming(
-                &ctx,
-                &input.session,
-                config,
-                providers,
-                tools,
-                tool_ctx,
-                tx,
-            )
-            .await?
-        } else {
-            crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx)
-                .await?
+
+        // Compute the effective execute timeout: prefer per-stage budget, fall
+        // back to remaining time from total pipeline budget, whichever is tighter.
+        let execute_secs = pipeline_config.stage_budget.execute_secs;
+        let effective_execute_timeout = match (execute_secs > 0, total_timeout) {
+            (true, Some(total)) => {
+                let stage = Duration::from_secs(u64::from(execute_secs));
+                let remaining = total.saturating_sub(pipeline_start.elapsed());
+                Some(stage.min(remaining))
+            }
+            (true, None) => Some(Duration::from_secs(u64::from(execute_secs))),
+            (false, Some(total)) => Some(total.saturating_sub(pipeline_start.elapsed())),
+            (false, None) => None,
         };
+
+        let execute_fut = async {
+            if let Some(tx) = stream_tx {
+                crate::execute::execute_streaming(
+                    &ctx,
+                    &input.session,
+                    config,
+                    providers,
+                    tools,
+                    tool_ctx,
+                    tx,
+                )
+                .await
+            } else {
+                crate::execute::execute(&ctx, &input.session, config, providers, tools, tool_ctx)
+                    .await
+            }
+        };
+
+        result = if let Some(timeout_dur) = effective_execute_timeout {
+            match tokio::time::timeout(timeout_dur, execute_fut).await {
+                Ok(res) => res?,
+                Err(_elapsed) => {
+                    let secs = execute_secs.max(pipeline_config.stage_budget.total_secs);
+                    span.record("status", "timeout");
+                    return Err(error::PipelineTimeoutSnafu {
+                        stage: "execute",
+                        timeout_secs: secs,
+                    }
+                    .build());
+                }
+            }
+        } else {
+            execute_fut.await?
+        };
+
         #[expect(
             clippy::cast_possible_truncation,
             reason = "stage duration fits in u64"

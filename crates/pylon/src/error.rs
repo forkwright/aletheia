@@ -127,6 +127,14 @@ impl IntoResponse for ApiError {
             ),
         };
 
+        // Extract retry-after value before moving self for Display
+        let retry_after_secs = if let Self::RateLimited { retry_after_ms, .. } = &self {
+            // Convert ms to seconds (ceiling division so 1500ms → 2s)
+            Some(retry_after_ms.div_ceil(1000))
+        } else {
+            None
+        };
+
         let body = ErrorResponse {
             error: ErrorBody {
                 code: code.to_owned(),
@@ -135,7 +143,18 @@ impl IntoResponse for ApiError {
             },
         };
 
-        (status, Json(body)).into_response()
+        let mut response = (status, Json(body)).into_response();
+
+        // RFC 6585: 429 responses SHOULD include a Retry-After header.
+        if let Some(secs) = retry_after_secs {
+            response.headers_mut().insert(
+                axum::http::header::RETRY_AFTER,
+                axum::http::HeaderValue::from_str(&secs.to_string())
+                    .unwrap_or_else(|_| axum::http::HeaderValue::from_static("60")),
+            );
+        }
+
+        response
     }
 }
 
@@ -195,6 +214,14 @@ impl From<aletheia_nous::error::Error> for ApiError {
                 message: reason,
                 location: snafu::Location::default(),
             },
+            Error::PipelineTimeout {
+                stage,
+                timeout_secs,
+                ..
+            } => Self::ServiceUnavailable {
+                message: format!("pipeline stage '{stage}' timed out after {timeout_secs}s"),
+                location: snafu::Location::default(),
+            },
             Error::Llm { source, .. } => Self::from(source),
             _ => Self::Internal {
                 message: err.to_string(),
@@ -211,5 +238,96 @@ impl From<tokio::task::JoinError> for ApiError {
             message: format!("task join failed: {err}"),
             location: snafu::Location::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[test]
+    fn rate_limited_includes_retry_after_header() {
+        let err = ApiError::RateLimited {
+            retry_after_ms: 5000,
+            location: snafu::Location::default(),
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let retry = response
+            .headers()
+            .get(axum::http::header::RETRY_AFTER)
+            .expect("should have Retry-After header");
+        assert_eq!(retry.to_str().unwrap(), "5");
+    }
+
+    #[test]
+    fn rate_limited_zero_ms_has_retry_after() {
+        let err = ApiError::RateLimited {
+            retry_after_ms: 0,
+            location: snafu::Location::default(),
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let retry = response
+            .headers()
+            .get(axum::http::header::RETRY_AFTER)
+            .expect("should have Retry-After header");
+        assert_eq!(retry.to_str().unwrap(), "0");
+    }
+
+    #[test]
+    fn non_rate_limited_no_retry_after() {
+        let err = ApiError::Internal {
+            message: "test".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(
+            response
+                .headers()
+                .get(axum::http::header::RETRY_AFTER)
+                .is_none(),
+            "non-429 should not have Retry-After"
+        );
+    }
+
+    #[test]
+    fn session_not_found_returns_404() {
+        let err = ApiError::SessionNotFound {
+            id: "ses-123".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn pipeline_timeout_maps_to_service_unavailable() {
+        let err = aletheia_nous::error::Error::PipelineTimeout {
+            stage: "execute".to_owned(),
+            timeout_secs: 300,
+            location: snafu::Location::default(),
+        };
+        let api_err = ApiError::from(err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn guard_rejected_maps_to_forbidden() {
+        let err = aletheia_nous::error::Error::GuardRejected {
+            reason: "safety check".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let api_err = ApiError::from(err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn api_error_is_send_sync() {
+        static_assertions::assert_impl_all!(ApiError: Send, Sync);
     }
 }
