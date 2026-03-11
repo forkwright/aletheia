@@ -2,9 +2,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 
-use crate::bail;
 use crate::engine::data::program::ReturnMutation;
 use crate::engine::error::DbResult as Result;
+use crate::engine::runtime::error::StorageVersionSnafu;
 
 use crate::engine::data::tuple::TupleT;
 use crate::engine::data::value::DataValue;
@@ -108,17 +108,20 @@ impl<'a> SessionTx<'a> {
                 let version_found = self.store_tx.get(&storage_version_key, false)?;
                 match version_found {
                     None => {
-                        bail!(
-                            "Storage is used but un-versioned, probably created by an incompatible version."
-                        )
+                        StorageVersionSnafu {
+                            message: "Storage is used but un-versioned, probably created by an incompatible version.",
+                        }
+                        .fail()?
                     }
                     Some(v) => {
                         if v != CURRENT_STORAGE_VERSION {
-                            bail!(
-                                "Version mismatch: expect storage version {:?}, got {:?}",
-                                CURRENT_STORAGE_VERSION,
-                                v
-                            )
+                            StorageVersionSnafu {
+                                message: format!(
+                                    "Version mismatch: expect storage version {:?}, got {:?}",
+                                    CURRENT_STORAGE_VERSION, v
+                                ),
+                            }
+                            .fail()?
                         }
                     }
                 }

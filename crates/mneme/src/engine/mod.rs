@@ -34,13 +34,19 @@ pub(crate) mod fixed_rule;
 pub(crate) mod fts;
 pub(crate) mod parse;
 pub(crate) mod query;
-#[allow(clippy::all, clippy::restriction, unused_assignments)]
 pub(crate) mod runtime;
 pub(crate) mod storage;
 pub(crate) mod utils;
 
-/// Convert an internal BoxErr to the public Error type, detecting ProcessKilled for typed matching.
+/// Convert an internal BoxErr to the public Error type, detecting query cancellation for typed matching.
 fn convert_err(e: crate::engine::error::BoxErr) -> Error {
+    // Check for RuntimeError::QueryKilled (new snafu path)
+    if e.downcast_ref::<crate::engine::runtime::error::RuntimeError>()
+        .is_some_and(|re| matches!(re, crate::engine::runtime::error::RuntimeError::QueryKilled { .. }))
+    {
+        return error::QueryKilledSnafu.build();
+    }
+    // Legacy path: ProcessKilled struct (used by hnsw.rs/minhash_lsh.rs still using bail!)
     if e.downcast_ref::<crate::engine::runtime::db::ProcessKilled>()
         .is_some()
     {
