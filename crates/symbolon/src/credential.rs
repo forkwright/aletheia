@@ -144,9 +144,17 @@ fn default_expires_in() -> u64 {
 // EnvCredentialProvider
 // ---------------------------------------------------------------------------
 
+/// OAuth token prefix used by Claude Code for OAuth access tokens.
+const OAUTH_TOKEN_PREFIX: &str = "sk-ant-oat";
+
 /// Reads a credential from an environment variable.
+///
+/// Automatically detects OAuth tokens by the `sk-ant-oat` prefix and
+/// returns [`CredentialSource::OAuth`] so callers use `Bearer` auth.
 pub struct EnvCredentialProvider {
     var_name: String,
+    /// Force the credential source (e.g. OAuth for `ANTHROPIC_AUTH_TOKEN`).
+    force_source: Option<CredentialSource>,
 }
 
 impl EnvCredentialProvider {
@@ -154,6 +162,16 @@ impl EnvCredentialProvider {
     pub fn new(var_name: impl Into<String>) -> Self {
         Self {
             var_name: var_name.into(),
+            force_source: None,
+        }
+    }
+
+    /// Create a provider that always returns the given source type.
+    #[must_use]
+    pub fn with_source(var_name: impl Into<String>, source: CredentialSource) -> Self {
+        Self {
+            var_name: var_name.into(),
+            force_source: Some(source),
         }
     }
 }
@@ -164,10 +182,14 @@ impl CredentialProvider for EnvCredentialProvider {
             if v.is_empty() {
                 None
             } else {
-                Some(Credential {
-                    secret: v,
-                    source: CredentialSource::Environment,
-                })
+                let source = self.force_source.clone().unwrap_or_else(|| {
+                    if v.starts_with(OAUTH_TOKEN_PREFIX) {
+                        CredentialSource::OAuth
+                    } else {
+                        CredentialSource::Environment
+                    }
+                });
+                Some(Credential { secret: v, source })
             }
         })
     }
@@ -651,6 +673,42 @@ mod tests {
     fn env_provider_name() {
         let provider = EnvCredentialProvider::new("MY_VAR");
         assert_eq!(provider.name(), "MY_VAR");
+    }
+
+    #[test]
+    #[expect(unsafe_code, reason = "test-only env var manipulation")]
+    fn env_provider_detects_oauth_by_prefix() {
+        let var = "ALETHEIA_TEST_OAUTH_PREFIX_748";
+        // SAFETY: test uses unique var name, no concurrent access
+        unsafe { std::env::set_var(var, "sk-ant-oat-test-token-value") };
+        let provider = EnvCredentialProvider::new(var);
+        let cred = provider.get_credential().unwrap();
+        assert_eq!(cred.source, CredentialSource::OAuth);
+        unsafe { std::env::remove_var(var) };
+    }
+
+    #[test]
+    #[expect(unsafe_code, reason = "test-only env var manipulation")]
+    fn env_provider_api_key_stays_environment() {
+        let var = "ALETHEIA_TEST_APIKEY_748";
+        // SAFETY: test uses unique var name, no concurrent access
+        unsafe { std::env::set_var(var, "sk-ant-api-test-key") };
+        let provider = EnvCredentialProvider::new(var);
+        let cred = provider.get_credential().unwrap();
+        assert_eq!(cred.source, CredentialSource::Environment);
+        unsafe { std::env::remove_var(var) };
+    }
+
+    #[test]
+    #[expect(unsafe_code, reason = "test-only env var manipulation")]
+    fn env_provider_with_source_forces_oauth() {
+        let var = "ALETHEIA_TEST_FORCE_OAUTH_748";
+        // SAFETY: test uses unique var name, no concurrent access
+        unsafe { std::env::set_var(var, "any-token-value") };
+        let provider = EnvCredentialProvider::with_source(var, CredentialSource::OAuth);
+        let cred = provider.get_credential().unwrap();
+        assert_eq!(cred.source, CredentialSource::OAuth);
+        unsafe { std::env::remove_var(var) };
     }
 
     // --- FileCredentialProvider ---

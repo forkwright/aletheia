@@ -31,7 +31,7 @@ use aletheia_agora::semeion::client::SignalClient;
 use aletheia_agora::types::ChannelProvider;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
-use aletheia_koina::credential::CredentialProvider;
+use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -1061,6 +1061,12 @@ fn build_provider_registry(
         }
     }
 
+    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention — always treat as OAuth
+    chain.push(Box::new(EnvCredentialProvider::with_source(
+        "ANTHROPIC_AUTH_TOKEN",
+        CredentialSource::OAuth,
+    )));
+    // ANTHROPIC_API_KEY: auto-detects OAuth tokens by sk-ant-oat prefix
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
 
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));

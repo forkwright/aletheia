@@ -47,6 +47,12 @@ pub struct FinalizeResult {
 ///
 /// Errors from the store are propagated but callers should treat them as
 /// non-fatal — the user already has their response.
+///
+/// # Session guarantee
+///
+/// The nous actor creates sessions in memory (not in `SQLite`). Before
+/// appending messages we ensure the session record exists in the store,
+/// avoiding a FOREIGN KEY constraint violation on the `messages` table.
 #[instrument(skip_all, fields(session_id = %session.id))]
 pub fn finalize(
     store: &SessionStore,
@@ -58,6 +64,19 @@ pub fn finalize(
     let mut messages_persisted = 0usize;
 
     if config.persist_messages {
+        // Ensure session record exists before inserting child messages.
+        // The nous actor creates sessions in memory; the SQLite store may
+        // not have a matching row yet, which would cause a FOREIGN KEY
+        // constraint failure on the messages table.
+        store
+            .find_or_create_session(
+                &session.id,
+                &session.nous_id,
+                &session.session_key,
+                Some(&session.model),
+                None,
+            )
+            .context(error::StoreSnafu)?;
         // User message
         #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
         let input_token_estimate = input_content.len() as i64 / 4;
@@ -261,6 +280,32 @@ mod tests {
 
         let history = store.get_history("ses-1", None).expect("history");
         assert!(history.is_empty());
+    }
+
+    /// Regression test for #747: finalize must succeed even when the session
+    /// record does not yet exist in `SQLite`. The nous actor creates sessions in
+    /// memory, so the first call to finalize is responsible for ensuring the
+    /// row exists before inserting child messages (FOREIGN KEY constraint).
+    #[test]
+    fn finalize_creates_session_if_missing() {
+        let store = SessionStore::open_in_memory().expect("in-memory store");
+        // Do NOT call store.create_session — the actor wouldn't have done so.
+        let config_nous = NousConfig {
+            id: "test-nous".to_owned(),
+            model: "test-model".to_owned(),
+            ..NousConfig::default()
+        };
+        let session = SessionState::new("ses-orphan".to_owned(), "main".to_owned(), &config_nous);
+        let result = simple_result();
+        let config = FinalizeConfig::default();
+
+        // This would previously fail with FOREIGN KEY constraint error
+        finalize(&store, &session, "Hi from orphan", &result, &config).expect("finalize");
+
+        let history = store.get_history("ses-orphan", None).expect("history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].role, Role::User);
+        assert_eq!(history[1].role, Role::Assistant);
     }
 
     #[test]
