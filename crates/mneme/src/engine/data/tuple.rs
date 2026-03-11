@@ -57,24 +57,36 @@ pub fn check_key_for_validity(
 ) -> (Option<Tuple>, Vec<u8>) {
     let mut decoded = decode_tuple_from_key(key, size_hint.unwrap_or(DEFAULT_SIZE_HINT));
     let rel_id = RelationId::raw_decode(key);
-    let vld = match decoded.last().unwrap() {
+    let vld = match decoded
+        .last()
+        .expect("decoded tuple always has validity as its last element")
+    {
         DataValue::Validity(vld) => vld,
         _ => unreachable!(),
     };
     if vld.timestamp < valid_at {
-        *decoded.last_mut().unwrap() = DataValue::Validity(Validity {
-            timestamp: valid_at,
-            is_assert: Reverse(true),
-        });
+        *decoded
+            .last_mut()
+            .expect("decoded tuple always has validity as its last element") =
+            DataValue::Validity(Validity {
+                timestamp: valid_at,
+                is_assert: Reverse(true),
+            });
         let nxt_seek = decoded.encode_as_key(rel_id);
         (None, nxt_seek)
     } else if !vld.is_assert.0 {
-        *decoded.last_mut().unwrap() = DataValue::Validity(TERMINAL_VALIDITY);
+        *decoded
+            .last_mut()
+            .expect("decoded tuple always has validity as its last element") =
+            DataValue::Validity(TERMINAL_VALIDITY);
         let nxt_seek = decoded.encode_as_key(rel_id);
         (None, nxt_seek)
     } else {
         let ret = decoded.clone();
-        *decoded.last_mut().unwrap() = DataValue::Validity(TERMINAL_VALIDITY);
+        *decoded
+            .last_mut()
+            .expect("decoded tuple always has validity as its last element") =
+            DataValue::Validity(TERMINAL_VALIDITY);
         let nxt_seek = decoded.encode_as_key(rel_id);
         (Some(ret), nxt_seek)
     }

@@ -152,7 +152,7 @@ fn get_json_path<'a>(
                     arr.resize_with(key + 1, || JsonValue::Null);
                 }
 
-                let val = arr.get_mut(key).unwrap();
+                let val = arr.get_mut(key).expect("arr resized to key+1 above");
                 pointer = val;
             }
             _ => {
@@ -446,7 +446,9 @@ fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
     if args.len() == 1 {
         return Ok(args[0].clone());
     }
-    let (last, first) = args.split_last().unwrap();
+    let (last, first) = args
+        .split_last()
+        .expect("args is non-empty, len==1 case returned early");
     let first = add_vecs(first)?;
     match (first, last) {
         (DataValue::Vec(a), DataValue::Vec(b)) => {
@@ -648,7 +650,9 @@ fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
     if args.len() == 1 {
         return Ok(args[0].clone());
     }
-    let (last, first) = args.split_last().unwrap();
+    let (last, first) = args
+        .split_last()
+        .expect("args is non-empty, len==1 case returned early");
     let first = add_vecs(first)?;
     match (first, last) {
         (DataValue::Vec(a), DataValue::Vec(b)) => {
@@ -1550,7 +1554,9 @@ pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
                     if *b {
                         let chunk = i.div(&8);
                         let idx = i % 8;
-                        let target = res.get_mut(chunk).unwrap();
+                        let target = res
+                            .get_mut(chunk)
+                            .expect("chunk index bounded by ceil(v.len()/8) == res.len()");
                         match idx {
                             0 => *target |= 0b10000000,
                             1 => *target |= 0b01000000,
@@ -2668,42 +2674,45 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
     };
 
     match &args[0] {
-        DataValue::Json(j) => match t {
-            VecElementType::F32 => {
-                let mut res_arr = ndarray::Array1::zeros(j.0.as_array().unwrap().len());
-                for (mut row, el) in res_arr
-                    .axis_iter_mut(ndarray::Axis(0))
-                    .zip(j.0.as_array().unwrap().iter())
-                {
-                    let f = el.as_f64().ok_or_else(|| {
-                        TypeMismatchSnafu {
-                            op: "vec",
-                            expected: "a list of numbers",
-                        }
-                        .build()
-                    })?;
-                    row.fill(f as f32);
+        DataValue::Json(j) => {
+            let arr = j.0.as_array().ok_or_else(|| {
+                TypeMismatchSnafu {
+                    op: "vec",
+                    expected: "a JSON array",
                 }
-                Ok(DataValue::Vec(Vector::F32(res_arr)))
-            }
-            VecElementType::F64 => {
-                let mut res_arr = ndarray::Array1::zeros(j.0.as_array().unwrap().len());
-                for (mut row, el) in res_arr
-                    .axis_iter_mut(ndarray::Axis(0))
-                    .zip(j.0.as_array().unwrap().iter())
-                {
-                    let f = el.as_f64().ok_or_else(|| {
-                        TypeMismatchSnafu {
-                            op: "vec",
-                            expected: "a list of numbers",
-                        }
-                        .build()
-                    })?;
-                    row.fill(f);
+                .build()
+            })?;
+            match t {
+                VecElementType::F32 => {
+                    let mut res_arr = ndarray::Array1::zeros(arr.len());
+                    for (mut row, el) in res_arr.axis_iter_mut(ndarray::Axis(0)).zip(arr.iter()) {
+                        let f = el.as_f64().ok_or_else(|| {
+                            TypeMismatchSnafu {
+                                op: "vec",
+                                expected: "a list of numbers",
+                            }
+                            .build()
+                        })?;
+                        row.fill(f as f32);
+                    }
+                    Ok(DataValue::Vec(Vector::F32(res_arr)))
                 }
-                Ok(DataValue::Vec(Vector::F64(res_arr)))
+                VecElementType::F64 => {
+                    let mut res_arr = ndarray::Array1::zeros(arr.len());
+                    for (mut row, el) in res_arr.axis_iter_mut(ndarray::Axis(0)).zip(arr.iter()) {
+                        let f = el.as_f64().ok_or_else(|| {
+                            TypeMismatchSnafu {
+                                op: "vec",
+                                expected: "a list of numbers",
+                            }
+                            .build()
+                        })?;
+                        row.fill(f);
+                    }
+                    Ok(DataValue::Vec(Vector::F64(res_arr)))
+                }
             }
-        },
+        }
         DataValue::List(l) => match t {
             VecElementType::F32 => {
                 let mut res_arr = ndarray::Array1::zeros(l.len());
@@ -3290,7 +3299,9 @@ pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
 pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     let now = SystemTime::now();
     Ok(DataValue::from(
-        now.duration_since(UNIX_EPOCH).unwrap().as_secs_f64(),
+        now.duration_since(UNIX_EPOCH)
+            .expect("SystemTime::now() is always after UNIX_EPOCH")
+            .as_secs_f64(),
     ))
 }
 
@@ -3298,7 +3309,9 @@ pub(crate) fn current_validity() -> ValidityTs {
     #[cfg(not(target_arch = "wasm32"))]
     let ts_micros = {
         let now = SystemTime::now();
-        now.duration_since(UNIX_EPOCH).unwrap().as_micros() as i64
+        now.duration_since(UNIX_EPOCH)
+            .expect("SystemTime::now() is always after UNIX_EPOCH")
+            .as_micros() as i64
     };
     #[cfg(target_arch = "wasm32")]
     let ts_micros = { (Date::now() * 1000.) as i64 };
@@ -3406,7 +3419,9 @@ pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
     #[cfg(not(target_arch = "wasm32"))]
     let ts = {
         let now = SystemTime::now();
-        let since_epoch = now.duration_since(UNIX_EPOCH).unwrap();
+        let since_epoch = now
+            .duration_since(UNIX_EPOCH)
+            .expect("SystemTime::now() is always after UNIX_EPOCH");
         Timestamp::from_unix(uuid_ctx, since_epoch.as_secs(), since_epoch.subsec_nanos())
     };
     let mut rand_vals = [0u8; 6];
