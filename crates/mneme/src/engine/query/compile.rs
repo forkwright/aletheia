@@ -2,7 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::engine::query::error::*;
 use itertools::Itertools;
 
 use crate::engine::data::aggr::Aggregation;
@@ -119,9 +119,11 @@ impl<'a> SessionTx<'a> {
                                     let mut relation =
                                         self.compile_magic_rule_body(rule, &k, &store_arities, header)?;
                                     relation.fill_binding_indices_and_compile().map_err(|e| {
-                                        crate::engine::error::AdhocError(format!(
-                                            "{e}: error encountered when filling binding indices for {relation:#?}"
-                                        ))
+                                        CompilationFailedSnafu {
+                                            message: format!(
+                                                "{e}: error encountered when filling binding indices for {relation:#?}"
+                                            ),
+                                        }.build()
                                     })?;
                                     collected.push(CompiledRule {
                                         aggr: rule.aggr.clone(),
@@ -161,15 +163,18 @@ impl<'a> SessionTx<'a> {
             match atom {
                 MagicAtom::Rule(rule_app) => {
                     let store_arity = store_arities.get(&rule_app.name).ok_or_else(|| {
-                        crate::engine::error::AdhocError(format!(
-                            "Requested rule '{}' not found",
-                            rule_app.name.symbol()
-                        ))
+                        InvalidRelationSnafu {
+                            name: rule_app.name.symbol().to_string(),
+                            reason: "requested rule not found".to_string(),
+                        }
+                        .build()
                     })?;
 
-                    ensure!(
+                    snafu::ensure!(
                         *store_arity == rule_app.args.len(),
-                        "Arity mismatch for rule application"
+                        ArityMismatchSnafu {
+                            message: "arity mismatch for rule application",
+                        }
                     );
                     let mut prev_joiner_vars = vec![];
                     let mut right_joiner_vars = vec![];
@@ -195,11 +200,17 @@ impl<'a> SessionTx<'a> {
                 MagicAtom::Relation(rel_app) => {
                     let store = self.get_relation(&rel_app.name, false)?;
                     if store.access_level < AccessLevel::ReadOnly {
-                        bail!("Insufficient access level for this operation");
+                        return Err(InsufficientAccessSnafu {
+                            message: "insufficient access level for this operation",
+                        }
+                        .build()
+                        .into());
                     }
-                    ensure!(
+                    snafu::ensure!(
                         store.arity() == rel_app.args.len(),
-                        "Arity mismatch for relation application"
+                        ArityMismatchSnafu {
+                            message: "arity mismatch for relation application",
+                        }
                     );
                     // already existing vars
                     let mut prev_joiner_vars = vec![];
@@ -342,14 +353,17 @@ impl<'a> SessionTx<'a> {
                 }
                 MagicAtom::NegatedRule(rule_app) => {
                     let store_arity = store_arities.get(&rule_app.name).ok_or_else(|| {
-                        crate::engine::error::AdhocError(format!(
-                            "Requested rule '{}' not found",
-                            rule_app.name.symbol()
-                        ))
+                        InvalidRelationSnafu {
+                            name: rule_app.name.symbol().to_string(),
+                            reason: "requested rule not found".to_string(),
+                        }
+                        .build()
                     })?;
-                    ensure!(
+                    snafu::ensure!(
                         *store_arity == rule_app.args.len(),
-                        "Arity mismatch for negated rule application"
+                        ArityMismatchSnafu {
+                            message: "arity mismatch for negated rule application",
+                        }
                     );
 
                     let mut prev_joiner_vars = vec![];
@@ -374,9 +388,11 @@ impl<'a> SessionTx<'a> {
                 }
                 MagicAtom::NegatedRelation(rel_app) => {
                     let store = self.get_relation(&rel_app.name, false)?;
-                    ensure!(
+                    snafu::ensure!(
                         store.arity() == rel_app.args.len(),
-                        "Arity mismatch for relation application"
+                        ArityMismatchSnafu {
+                            message: "arity mismatch for relation application",
+                        }
                     );
 
                     // already existing vars
@@ -602,7 +618,11 @@ impl<'a> SessionTx<'a> {
 
         if cur_ret_set != ret_vars_set {
             let unbound = ret_vars_set.difference(&cur_ret_set).next().unwrap();
-            bail!("Symbol '{}' in rule head is unbound", unbound);
+            return Err(UnboundVariableSnafu {
+                message: format!("symbol '{unbound}' in rule head is unbound"),
+            }
+            .build()
+            .into());
         }
         let cur_ret_bindings = ret.bindings_after_eliminate();
         if ret_vars != cur_ret_bindings {

@@ -123,7 +123,10 @@ impl<'a> SessionTx<'a> {
             let mut to_merge = BTreeMap::new();
             let borrowed_stores = stores as &BTreeMap<_, _>;
             if epoch == 0 {
-                #[allow(clippy::needless_borrow)]
+                #[expect(
+                    clippy::needless_borrow,
+                    reason = "closure borrows &ruleset from pattern match binding"
+                )]
                 let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| -> Result<_> {
                     let new_store = match compiled_ruleset {
                         CompiledRuleSet::Rules(ruleset) => match compiled_ruleset.aggr_kind() {
@@ -207,7 +210,10 @@ impl<'a> SessionTx<'a> {
                 }
             } else {
                 // Follow up epoch > 0
-                #[allow(clippy::needless_borrow)]
+                #[expect(
+                    clippy::needless_borrow,
+                    reason = "closure borrows &ruleset from pattern match binding"
+                )]
                 let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| -> Result<_> {
                     let new_store = match compiled_ruleset {
                         CompiledRuleSet::Rules(ruleset) => {

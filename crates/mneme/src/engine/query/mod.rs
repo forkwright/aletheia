@@ -1,5 +1,6 @@
 //! Query planning, optimization, and evaluation.
 pub(crate) mod compile;
+pub(crate) mod error;
 pub(crate) mod eval;
 pub(crate) mod graph;
 pub(crate) mod logical;

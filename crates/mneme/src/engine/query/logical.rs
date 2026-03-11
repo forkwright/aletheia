@@ -2,17 +2,14 @@
 use std::collections::BTreeSet;
 
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::engine::query::error::*;
 use itertools::Itertools;
-use snafu::Snafu;
 
 use crate::engine::data::expr::Expr;
 use crate::engine::data::program::{
     InputAtom, InputNamedFieldRelationApplyAtom, InputRelationApplyAtom, InputRuleApplyAtom,
     NormalFormAtom, NormalFormRelationApplyAtom, NormalFormRuleApplyAtom, TempSymbGen, Unification,
 };
-use crate::engine::parse::SourceSpan;
-
 use crate::engine::runtime::transact::SessionTx;
 
 #[derive(Debug)]
@@ -113,10 +110,18 @@ impl InputAtom {
                     span,
                 },
                 InputAtom::Unification { inner: _ } => {
-                    bail!("Unsafe negation in rule")
+                    return Err(UnsafeRuleSnafu {
+                        message: "unsafe negation in rule",
+                    }
+                    .build()
+                    .into());
                 }
                 InputAtom::Search { inner: _ } => {
-                    bail!("Unsafe negation in rule")
+                    return Err(UnsafeRuleSnafu {
+                        message: "unsafe negation in rule",
+                    }
+                    .build()
+                    .into());
                 }
             },
             InputAtom::Search { inner } => InputAtom::Search { inner },
@@ -148,12 +153,11 @@ impl InputAtom {
             .map(|col| &col.name)
             .collect();
         for k in args.keys() {
-            ensure!(
+            snafu::ensure!(
                 fields.contains(k),
-                NamedFieldNotFound {
+                FieldNotFoundSnafu {
                     relation: name.to_string(),
                     field: k.to_string(),
-                    span
                 }
             );
         }
@@ -199,9 +203,15 @@ impl InputAtom {
                 let mut args = args
                     .into_iter()
                     .map(|a| a.do_disjunctive_normal_form(r#gen, tx));
-                let mut result = args.next().ok_or_else(|| {
-                    crate::engine::error::AdhocError("empty conjunction".to_string())
-                })??;
+                let mut result =
+                    args.next()
+                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                            CompilationFailedSnafu {
+                                message: "empty conjunction",
+                            }
+                            .build()
+                            .into()
+                        })??;
                 for a in args {
                     result = result.conjunctive_to_disjunctive_de_morgen(a?)
                 }
@@ -354,12 +364,4 @@ impl InputRelationApplyAtom {
         });
         Disjunction::conj(ret)
     }
-}
-
-#[derive(Debug, Snafu)]
-#[snafu(display("stored relation '{relation}' does not have field '{field}'"))]
-pub(crate) struct NamedFieldNotFound {
-    pub(crate) relation: String,
-    pub(crate) field: String,
-    pub(crate) span: SourceSpan,
 }

@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter, Write};
 use std::iter;
 
-use crate::bail;
 use crate::engine::error::DbResult as Result;
+use crate::engine::query::error::*;
 use compact_str::CompactString;
 use either::{Left, Right};
 use itertools::Itertools;
@@ -128,7 +128,10 @@ impl UnificationRA {
                 .map_ok(move |tuple| -> Result<Vec<Tuple>> {
                     let result_list = eval_bytecode(&self.expr_bytecode, &tuple, &mut stack)?;
                     let result_list = result_list.get_slice().ok_or_else(|| {
-                        crate::engine::error::AdhocError("Invalid spread unification".to_string())
+                        EvalFailedSnafu {
+                            message: "Invalid spread unification",
+                        }
+                        .build()
                     })?;
                     let mut coll = vec![];
                     for result in result_list {
@@ -421,7 +424,11 @@ impl RelAlgebra {
                         nullable: false,
                     })
                 {
-                    bail!("Invalid time travel on relation");
+                    return Err(InvalidTimeTravelSnafu {
+                        message: "Invalid time travel on relation",
+                    }
+                    .build()
+                    .into());
                 };
                 Ok(Self::StoredWithValidity(StoredWithValidityRA {
                     bindings,
@@ -1011,12 +1018,28 @@ impl FtsSearchRA {
                                     }
                                     coll.write_str(&s).unwrap();
                                 }
-                                d => bail!("Expected string for FTS search, got {:?}", d),
+                                d => {
+                                    return Err(TypeSnafu {
+                                        expected: "string",
+                                        got: format!("{d:?}"),
+                                        context: "FTS search",
+                                    }
+                                    .build()
+                                    .into());
+                                }
                             }
                         }
                         coll
                     }
-                    d => bail!("Expected string for FTS search, got {:?}", d),
+                    d => {
+                        return Err(TypeSnafu {
+                            expected: "string",
+                            got: format!("{d:?}"),
+                            context: "FTS search",
+                        }
+                        .build()
+                        .into());
+                    }
                 };
 
                 let res = tx.fts_search(
@@ -1078,7 +1101,15 @@ impl HnswSearchRA {
             .map_ok(move |tuple| -> Result<_> {
                 let v = match tuple[bind_idx].clone() {
                     DataValue::Vec(v) => v,
-                    d => bail!("Expected vector, got {:?}", d),
+                    d => {
+                        return Err(TypeSnafu {
+                            expected: "vector",
+                            got: format!("{d:?}"),
+                            context: "HNSW search",
+                        }
+                        .build()
+                        .into());
+                    }
                 };
 
                 let res = tx.hnsw_knn(v, &config, &filter_code, &mut stack)?;
