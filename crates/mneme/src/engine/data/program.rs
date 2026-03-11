@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
 use super::error::*;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::{InternalError, InternalResult as Result};
 use compact_str::CompactString;
 use smallvec::SmallVec;
 
@@ -328,18 +328,17 @@ impl MagicFixedRuleApply {
         self.rule_args.len()
     }
     pub(crate) fn relation(&self, idx: usize) -> Result<&MagicFixedRuleRuleArg> {
-        self.rule_args
-            .get(idx)
-            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+        self.rule_args.get(idx).ok_or_else(|| {
+            InternalError::from(
                 ProgramConstraintSnafu {
                     message: format!(
                         "Cannot find a required positional argument at index {} for '{}'",
                         idx, self.fixed_handle.name
                     ),
                 }
-                .build()
-                .into()
-            })
+                .build(),
+            )
+        })
     }
 }
 impl Debug for MagicFixedRuleApply {
@@ -608,7 +607,14 @@ impl InputProgram {
                 }
                 InputInlineRulesOrFixed::Fixed { fixed } => {
                     if fixed.head.is_empty() {
-                        Err(EntryHeadNotExplicitlyDefinedError(entry.first_span()).into())
+                        Err(ProgramConstraintSnafu {
+                            message: format!(
+                                "entry head is not explicitly defined at {:?}",
+                                entry.first_span()
+                            ),
+                        }
+                        .build()
+                        .into())
                     } else {
                         Ok(fixed.head.to_vec())
                     }
@@ -1075,15 +1081,14 @@ impl SearchInput {
             .into());
         }
 
-        let query = match self.parameters.remove("query").ok_or_else(
-            || -> Box<dyn std::error::Error + Send + Sync> {
+        let query = match self.parameters.remove("query").ok_or_else(|| {
+            InternalError::from(
                 FieldNotFoundSnafu {
                     message: "Field `query` is required for LSH search".to_string(),
                 }
-                .build()
-                .into()
-            },
-        )? {
+                .build(),
+            )
+        })? {
             Expr::Binding { var, .. } => var,
             expr => {
                 let span = expr.span();
@@ -1103,15 +1108,14 @@ impl SearchInput {
             None => None,
             Some(k_expr) => {
                 let k = k_expr.eval_to_const()?;
-                let k =
-                    k.get_int()
-                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                            InvalidValueSnafu {
-                                message: "Expected positive integer for `k`".to_string(),
-                            }
-                            .build()
-                            .into()
-                        })?;
+                let k = k.get_int().ok_or_else(|| {
+                    InternalError::from(
+                        InvalidValueSnafu {
+                            message: "Expected positive integer for `k`".to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
                 if k <= 0 {
                     return Err(InvalidValueSnafu {
                         message: "Expected positive integer for `k`".to_string(),
@@ -1218,15 +1222,14 @@ impl SearchInput {
             .into());
         }
 
-        let query = match self.parameters.remove("query").ok_or_else(
-            || -> Box<dyn std::error::Error + Send + Sync> {
+        let query = match self.parameters.remove("query").ok_or_else(|| {
+            InternalError::from(
                 FieldNotFoundSnafu {
                     message: "Field `query` is required for FTS search".to_string(),
                 }
-                .build()
-                .into()
-            },
-        )? {
+                .build(),
+            )
+        })? {
             Expr::Binding { var, .. } => var,
             expr => {
                 let span = expr.span();
@@ -1242,25 +1245,23 @@ impl SearchInput {
             }
         };
 
-        let k_expr = self.parameters.remove("k").ok_or_else(
-            || -> Box<dyn std::error::Error + Send + Sync> {
+        let k_expr = self.parameters.remove("k").ok_or_else(|| {
+            InternalError::from(
                 FieldNotFoundSnafu {
                     message: "Field `k` is required for FTS search".to_string(),
                 }
-                .build()
-                .into()
-            },
-        )?;
+                .build(),
+            )
+        })?;
         let k = k_expr.eval_to_const()?;
-        let k = k
-            .get_int()
-            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+        let k = k.get_int().ok_or_else(|| {
+            InternalError::from(
                 InvalidValueSnafu {
                     message: "Expected positive integer for `k`".to_string(),
                 }
-                .build()
-                .into()
-            })?;
+                .build(),
+            )
+        })?;
         if k <= 0 {
             return Err(InvalidValueSnafu {
                 message: "Expected positive integer for `k`".to_string(),
@@ -1273,15 +1274,14 @@ impl SearchInput {
         let score_kind = match score_kind_expr {
             Some(expr) => {
                 let r = expr.eval_to_const()?;
-                let r =
-                    r.get_str()
-                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                            InvalidValueSnafu {
-                                message: "Score kind for FTS must be a string".to_string(),
-                            }
-                            .build()
-                            .into()
-                        })?;
+                let r = r.get_str().ok_or_else(|| {
+                    InternalError::from(
+                        InvalidValueSnafu {
+                            message: "Score kind for FTS must be a string".to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
 
                 match r {
                     "tf_idf" => FtsScoreKind::TfIdf,
@@ -1416,15 +1416,14 @@ impl SearchInput {
             .into());
         }
 
-        let query = match self.parameters.remove("query").ok_or_else(
-            || -> Box<dyn std::error::Error + Send + Sync> {
+        let query = match self.parameters.remove("query").ok_or_else(|| {
+            InternalError::from(
                 FieldNotFoundSnafu {
                     message: "Field `query` is required for HNSW search".to_string(),
                 }
-                .build()
-                .into()
-            },
-        )? {
+                .build(),
+            )
+        })? {
             Expr::Binding { var, .. } => var,
             expr => {
                 let span = expr.span();
@@ -1440,25 +1439,23 @@ impl SearchInput {
             }
         };
 
-        let k_expr = self.parameters.remove("k").ok_or_else(
-            || -> Box<dyn std::error::Error + Send + Sync> {
+        let k_expr = self.parameters.remove("k").ok_or_else(|| {
+            InternalError::from(
                 FieldNotFoundSnafu {
                     message: "Field `k` is required for HNSW search".to_string(),
                 }
-                .build()
-                .into()
-            },
-        )?;
+                .build(),
+            )
+        })?;
         let k = k_expr.eval_to_const()?;
-        let k = k
-            .get_int()
-            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+        let k = k.get_int().ok_or_else(|| {
+            InternalError::from(
                 InvalidValueSnafu {
                     message: "Expected positive integer for `k`".to_string(),
                 }
-                .build()
-                .into()
-            })?;
+                .build(),
+            )
+        })?;
         if k <= 0 {
             return Err(InvalidValueSnafu {
                 message: "Expected positive integer for `k`".to_string(),
@@ -1467,25 +1464,23 @@ impl SearchInput {
             .into());
         }
 
-        let ef_expr = self.parameters.remove("ef").ok_or_else(
-            || -> Box<dyn std::error::Error + Send + Sync> {
+        let ef_expr = self.parameters.remove("ef").ok_or_else(|| {
+            InternalError::from(
                 FieldNotFoundSnafu {
                     message: "Field `ef` is required for HNSW search".to_string(),
                 }
-                .build()
-                .into()
-            },
-        )?;
+                .build(),
+            )
+        })?;
         let ef = ef_expr.eval_to_const()?;
-        let ef = ef
-            .get_int()
-            .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+        let ef = ef.get_int().ok_or_else(|| {
+            InternalError::from(
                 InvalidValueSnafu {
                     message: "Expected positive integer for `ef`".to_string(),
                 }
-                .build()
-                .into()
-            })?;
+                .build(),
+            )
+        })?;
         if ef <= 0 {
             return Err(InvalidValueSnafu {
                 message: "Expected positive integer for `ef`".to_string(),
@@ -1498,15 +1493,14 @@ impl SearchInput {
         let radius = match radius_expr {
             Some(expr) => {
                 let r = expr.eval_to_const()?;
-                let r =
-                    r.get_float()
-                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                            InvalidValueSnafu {
-                                message: "Expected positive float for `radius`".to_string(),
-                            }
-                            .build()
-                            .into()
-                        })?;
+                let r = r.get_float().ok_or_else(|| {
+                    InternalError::from(
+                        InvalidValueSnafu {
+                            message: "Expected positive float for `radius`".to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
                 if r <= 0.0 || r.is_nan() {
                     return Err(InvalidValueSnafu {
                         message: "Expected positive float for `radius`".to_string(),

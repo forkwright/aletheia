@@ -4,8 +4,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::bail;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use either::{Left, Right};
@@ -61,22 +60,22 @@ pub(crate) fn parse_query(
                                     .first()
                                     .expect("rules vec always has at least one element");
                                 if prev.aggr != rule.aggr {
-                                    bail!(InvalidQuerySnafu {
+                                    return Err(InvalidQuerySnafu {
                                         message: format!("Rule {key} has multiple definitions with conflicting heads")
                                     }
-                                    .build());
+                                    .build().into());
                                 }
 
                                 rs.push(rule);
                             }
                             InputInlineRulesOrFixed::Fixed { .. } => {
-                                bail!(InvalidQuerySnafu {
+                                return Err(InvalidQuerySnafu {
                                     message: format!(
                                         "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
                                         e.key().name
                                     )
                                 }
-                                .build())
+                                .build().into())
                             }
                         }
                     }
@@ -91,12 +90,12 @@ pub(crate) fn parse_query(
                     }
                     Entry::Occupied(e) => {
                         let found_name = e.key().name.to_string();
-                        bail!(InvalidQuerySnafu {
+                        return Err(InvalidQuerySnafu {
                             message: format!(
                                 "The rule '{found_name}' cannot have multiple definitions since it contains non-Horn clauses"
                             )
                         }
-                        .build());
+                        .build().into());
                     }
                 }
             }
@@ -107,24 +106,23 @@ pub(crate) fn parse_query(
                     parse_rule_head(src.next().expect("pest guarantees rule head"), param_pool)?;
 
                 if progs.contains_key(&name) {
-                    bail!(InvalidQuerySnafu {
+                    return Err(InvalidQuerySnafu {
                         message: format!(
                             "The rule '{}' cannot have multiple definitions since it contains non-Horn clauses",
                             name.name
                         )
                     }
-                    .build());
+                    .build().into());
                 }
 
                 for (a, _v) in aggr.iter().zip(head.iter()) {
                     if a.is_some() {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "Constant rules cannot have aggregation application"
-                                    .to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "Constant rules cannot have aggregation application"
+                                .to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                 }
                 let data_part = src
@@ -142,20 +140,18 @@ pub(crate) fn parse_query(
                 let arity = fixed_impl.arity(&options, &head, span)?;
 
                 if arity == 0 {
-                    bail!(
-                        InvalidQuerySnafu {
-                            message: "Encountered empty row for constant rule".to_string()
-                        }
-                        .build()
-                    );
+                    return Err(InvalidQuerySnafu {
+                        message: "Encountered empty row for constant rule".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
                 if !head.is_empty() && arity != head.len() {
-                    bail!(
-                        InvalidQuerySnafu {
-                            message: "Fixed rule head arity mismatch".to_string()
-                        }
-                        .build()
-                    );
+                    return Err(InvalidQuerySnafu {
+                        message: "Fixed rule head arity mismatch".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
                 if head.is_empty() && name.is_prog_entry() {
                     if let Ok(mut datalist) = DatalogParser::parse(Rule::param_list, data_part_str)
@@ -200,14 +196,18 @@ pub(crate) fn parse_query(
                 let timeout = build_expr(pair, param_pool)?
                     .eval_to_const()
                     .map_err(|_err| {
-                        crate::engine::error::AdhocError(
-                            "Query option {} is not constant".to_string(),
-                        )
+                        InvalidQuerySnafu {
+                            message: "Query option is not constant".to_string(),
+                        }
+                        .build()
                     })?
                     .get_float()
-                    .ok_or(crate::engine::error::AdhocError(
-                        "Query option {} requires a non-negative integer".to_string(),
-                    ))?;
+                    .ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "Query option requires a non-negative number".to_string(),
+                        }
+                        .build()
+                    })?;
                 if timeout > 0. {
                     out_opts.timeout = Some(timeout);
                 } else {
@@ -216,12 +216,11 @@ pub(crate) fn parse_query(
             }
             Rule::sleep_option => {
                 #[cfg(target_arch = "wasm32")]
-                bail!(
-                    InvalidQuerySnafu {
-                        message: ":sleep is not supported under WASM".to_string()
-                    }
-                    .build()
-                );
+                return Err(InvalidQuerySnafu {
+                    message: ":sleep is not supported under WASM".to_string(),
+                }
+                .build()
+                .into());
 
                 #[cfg(not(target_arch = "wasm32"))]
                 {
@@ -233,22 +232,24 @@ pub(crate) fn parse_query(
                     let sleep = build_expr(pair, param_pool)?
                         .eval_to_const()
                         .map_err(|_err| {
-                            crate::engine::error::AdhocError(
-                                "Query option {} is not constant".to_string(),
-                            )
-                        })?
-                        .get_float()
-                        .ok_or(crate::engine::error::AdhocError(
-                            "Query option {} requires a non-negative integer".to_string(),
-                        ))?;
-                    if sleep <= 0. {
-                        bail!(
                             InvalidQuerySnafu {
-                                message: "Query option :sleep requires a positive integer"
-                                    .to_string()
+                                message: "Query option is not constant".to_string(),
                             }
                             .build()
-                        );
+                        })?
+                        .get_float()
+                        .ok_or_else(|| {
+                            InvalidQuerySnafu {
+                                message: "Query option requires a non-negative number".to_string(),
+                            }
+                            .build()
+                        })?;
+                    if sleep <= 0. {
+                        return Err(InvalidQuerySnafu {
+                            message: "Query option :sleep requires a positive integer".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     out_opts.sleep = Some(sleep);
                 }
@@ -262,14 +263,18 @@ pub(crate) fn parse_query(
                 let limit = build_expr(pair, param_pool)?
                     .eval_to_const()
                     .map_err(|_err| {
-                        crate::engine::error::AdhocError(
-                            "Query option {} is not constant".to_string(),
-                        )
+                        InvalidQuerySnafu {
+                            message: "Query option is not constant".to_string(),
+                        }
+                        .build()
                     })?
                     .get_non_neg_int()
-                    .ok_or(crate::engine::error::AdhocError(
-                        "Query option {} requires a non-negative integer".to_string(),
-                    ))?;
+                    .ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "Query option requires a non-negative integer".to_string(),
+                        }
+                        .build()
+                    })?;
                 out_opts.limit = Some(limit as usize);
             }
             Rule::offset_option => {
@@ -281,14 +286,18 @@ pub(crate) fn parse_query(
                 let offset = build_expr(pair, param_pool)?
                     .eval_to_const()
                     .map_err(|_err| {
-                        crate::engine::error::AdhocError(
-                            "Query option {} is not constant".to_string(),
-                        )
+                        InvalidQuerySnafu {
+                            message: "Query option is not constant".to_string(),
+                        }
+                        .build()
                     })?
                     .get_non_neg_int()
-                    .ok_or(crate::engine::error::AdhocError(
-                        "Query option {} requires a non-negative integer".to_string(),
-                    ))?;
+                    .ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "Query option requires a non-negative integer".to_string(),
+                        }
+                        .build()
+                    })?;
                 out_opts.offset = Some(offset as usize);
             }
             Rule::sort_option => {
@@ -357,23 +366,21 @@ pub(crate) fn parse_query(
             }
             Rule::assert_none_option => {
                 if out_opts.assertion.is_some() {
-                    bail!(
-                        InvalidQuerySnafu {
-                            message: "Multiple query output assertions defined".to_string()
-                        }
-                        .build()
-                    );
+                    return Err(InvalidQuerySnafu {
+                        message: "Multiple query output assertions defined".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
                 out_opts.assertion = Some(QueryAssertion::AssertNone(pair.extract_span()))
             }
             Rule::assert_some_option => {
                 if out_opts.assertion.is_some() {
-                    bail!(
-                        InvalidQuerySnafu {
-                            message: "Multiple query output assertions defined".to_string()
-                        }
-                        .build()
-                    );
+                    return Err(InvalidQuerySnafu {
+                        message: "Multiple query output assertions defined".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
                 out_opts.assertion = Some(QueryAssertion::AssertSome(pair.extract_span()))
             }
@@ -386,12 +393,18 @@ pub(crate) fn parse_query(
                 let val = build_expr(pair, param_pool)?
                     .eval_to_const()
                     .map_err(|_err| {
-                        crate::engine::error::AdhocError("Query option is not constant".to_string())
+                        InvalidQuerySnafu {
+                            message: "Query option is not constant".to_string(),
+                        }
+                        .build()
                     })?
                     .get_bool()
-                    .ok_or(crate::engine::error::AdhocError(
-                        "Query option requires a boolean".to_string(),
-                    ))?;
+                    .ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "Query option requires a boolean".to_string(),
+                        }
+                        .build()
+                    })?;
                 disable_magic_rewrite = val;
             }
             Rule::EOI => break,
@@ -470,12 +483,11 @@ pub(crate) fn parse_query(
 
         for (sorter, _) in &prog.out_opts.sorters {
             if !head_args.contains(sorter) {
-                bail!(
-                    InvalidQuerySnafu {
-                        message: "Sort key not found".to_string()
-                    }
-                    .build()
-                );
+                return Err(InvalidQuerySnafu {
+                    message: "Sort key not found".to_string(),
+                }
+                .build()
+                .into());
             }
         }
     }
@@ -487,12 +499,11 @@ pub(crate) fn parse_query(
                 if handle.dep_bindings.is_empty() {
                     true
                 } else {
-                    bail!(
-                        InvalidQuerySnafu {
-                            message: "Input relation has no keys".to_string()
-                        }
-                        .build()
-                    );
+                    return Err(InvalidQuerySnafu {
+                        message: "Input relation has no keys".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
             } else {
                 false
@@ -504,12 +515,11 @@ pub(crate) fn parse_query(
         let head_args = prog.get_entry_out_head()?;
         if let Some((handle, _, _)) = &mut prog.out_opts.store_relation {
             if head_args.is_empty() {
-                bail!(
-                    InvalidQuerySnafu {
-                        message: "Input relation has no keys".to_string()
-                    }
-                    .build()
-                );
+                return Err(InvalidQuerySnafu {
+                    message: "Input relation has no keys".to_string(),
+                }
+                .build()
+                .into());
             }
             handle.key_bindings = head_args.clone();
             handle.metadata.keys = head_args
@@ -543,12 +553,11 @@ fn parse_rule(
     let (name, head, aggr) = parse_rule_head(head, param_pool)?;
 
     if head.is_empty() {
-        bail!(
-            InvalidQuerySnafu {
-                message: "Horn-clause rule cannot have empty rule head".to_string()
-            }
-            .build()
-        );
+        return Err(InvalidQuerySnafu {
+            message: "Horn-clause rule cannot have empty rule head".to_string(),
+        }
+        .build()
+        .into());
     }
     let body = src.next().expect("pest guarantees rule body after head");
     let mut body_clauses = vec![];
@@ -734,13 +743,12 @@ fn parse_atom(
             let name_segs = name_p.as_str().split(':').collect_vec();
 
             if name_segs.len() != 2 {
-                bail!(
-                    InvalidQuerySnafu {
-                        message: "Search head must be of the form `relation_name:index_name`"
-                            .to_string()
-                    }
-                    .build()
-                );
+                return Err(InvalidQuerySnafu {
+                    message: "Search head must be of the form `relation_name:index_name`"
+                        .to_string(),
+                }
+                .build()
+                .into());
             }
             let relation = Symbol::new(name_segs[0], name_p.extract_span());
             let index = Symbol::new(name_segs[1], name_p.extract_span());
@@ -863,9 +871,10 @@ fn parse_rule_head_arg(
                 Some((
                     parse_aggr(aggr_name)
                         .ok_or_else(|| {
-                            crate::engine::error::AdhocError(format!(
-                                "Aggregation '{aggr_name}' not found"
-                            ))
+                            InvalidQuerySnafu {
+                                message: format!("Aggregation '{aggr_name}' not found"),
+                            }
+                            .build()
                         })?
                         .clone(),
                     args,
@@ -890,12 +899,11 @@ fn parse_fixed_rule(
 
     for (a, _v) in aggr.iter().zip(head.iter()) {
         if a.is_some() {
-            bail!(
-                InvalidQuerySnafu {
-                    message: "fixed rule cannot be combined with aggregation".to_string()
-                }
-                .build()
-            );
+            return Err(InvalidQuerySnafu {
+                message: "fixed rule cannot be combined with aggregation".to_string(),
+            }
+            .build()
+            .into());
         }
     }
 
@@ -931,13 +939,12 @@ fn parse_fixed_rule(
                                 bindings.push(symb);
                             } else {
                                 if !seen_bindings.insert(s) {
-                                    bail!(
-                                        InvalidQuerySnafu {
-                                            message: "fixed rule cannot have duplicate bindings"
-                                                .to_string()
-                                        }
-                                        .build()
-                                    );
+                                    return Err(InvalidQuerySnafu {
+                                        message: "fixed rule cannot have duplicate bindings"
+                                            .to_string(),
+                                    }
+                                    .build()
+                                    .into());
                                 }
                                 let symb = Symbol::new(s, v.extract_span());
                                 bindings.push(symb);
@@ -967,14 +974,13 @@ fn parse_fixed_rule(
                                         bindings.push(symb);
                                     } else {
                                         if !seen_bindings.insert(s) {
-                                            bail!(
-                                                InvalidQuerySnafu {
-                                                    message:
-                                                        "fixed rule cannot have duplicate bindings"
-                                                            .to_string()
-                                                }
-                                                .build()
-                                            );
+                                            return Err(InvalidQuerySnafu {
+                                                message:
+                                                    "fixed rule cannot have duplicate bindings"
+                                                        .to_string(),
+                                            }
+                                            .build()
+                                            .into());
                                         }
                                         bindings.push(Symbol::new(v.as_str(), v.extract_span()))
                                     }
@@ -1018,19 +1024,25 @@ fn parse_fixed_rule(
                                     let v = match vs.next() {
                                         Some(vp) => {
                                             if !seen_bindings.insert(vp.as_str()) {
-                                                bail!(InvalidQuerySnafu {
-                                                    message: "fixed rule cannot have duplicate bindings".to_string()
+                                                return Err(InvalidQuerySnafu {
+                                                    message:
+                                                        "fixed rule cannot have duplicate bindings"
+                                                            .to_string(),
                                                 }
-                                                .build());
+                                                .build()
+                                                .into());
                                             }
                                             Symbol::new(vp.as_str(), vp.extract_span())
                                         }
                                         None => {
                                             if !seen_bindings.insert(kp.as_str()) {
-                                                bail!(InvalidQuerySnafu {
-                                                    message: "fixed rule cannot have duplicate bindings".to_string()
+                                                return Err(InvalidQuerySnafu {
+                                                    message:
+                                                        "fixed rule cannot have duplicate bindings"
+                                                            .to_string(),
                                                 }
-                                                .build());
+                                                .build()
+                                                .into());
                                             }
                                             Symbol::new(k.clone(), kp.extract_span())
                                         }
@@ -1078,18 +1090,20 @@ fn parse_fixed_rule(
     let fixed = FixedRuleHandle::new(fixed_name, name_pair.extract_span());
 
     let fixed_impl = fixed_rules.get(&fixed.name as &str).ok_or_else(|| {
-        crate::engine::error::AdhocError(format!("Fixed rule '{}' not found", fixed.name))
+        InvalidQuerySnafu {
+            message: format!("Fixed rule '{}' not found", fixed.name),
+        }
+        .build()
     })?;
     fixed_impl.init_options(&mut options, args_list_span)?;
     let arity = fixed_impl.arity(&options, &head, name_pair.extract_span())?;
 
     if !head.is_empty() && arity != head.len() {
-        bail!(
-            InvalidQuerySnafu {
-                message: "Fixed rule head arity mismatch".to_string()
-            }
-            .build()
-        );
+        return Err(InvalidQuerySnafu {
+            message: "Fixed rule head arity mismatch".to_string(),
+        }
+        .build()
+        .into());
     }
 
     Ok((
@@ -1138,25 +1152,30 @@ fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityTs> {
     let _vld_span = expr.span();
     match expr.eval_to_const()? {
         DataValue::Num(n) => {
-            let microseconds = n.get_int().ok_or(crate::engine::error::AdhocError(
-                "bad specification of validity".to_string(),
-            ))?;
+            let microseconds = n.get_int().ok_or_else(|| {
+                InvalidQuerySnafu {
+                    message: "bad specification of validity".to_string(),
+                }
+                .build()
+            })?;
             Ok(ValidityTs(Reverse(microseconds)))
         }
         DataValue::Str(s) => match &s as &str {
             "NOW" => Ok(cur_vld),
             "END" => Ok(MAX_VALIDITY_TS),
             s => Ok(str2vld(s).map_err(|e| {
-                crate::engine::error::AdhocError(format!("bad specification of validity: {e}"))
+                InvalidQuerySnafu {
+                    message: format!("bad specification of validity: {e}"),
+                }
+                .build()
             })?),
         },
         _ => {
-            bail!(
-                InvalidQuerySnafu {
-                    message: "bad specification of validity".to_string()
-                }
-                .build()
-            )
+            return Err(InvalidQuerySnafu {
+                message: "bad specification of validity".to_string(),
+            }
+            .build()
+            .into());
         }
     }
 }

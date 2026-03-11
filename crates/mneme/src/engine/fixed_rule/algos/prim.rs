@@ -1,5 +1,5 @@
 //! Minimum spanning tree (Prim).
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
@@ -34,15 +34,19 @@ impl FixedRule for MinimumSpanningTreePrim {
             Err(_) => 0,
             Ok(rel) => {
                 let tuple = rel.iter()?.next().ok_or_else(|| {
-                    crate::engine::error::AdhocError(
-                        "The provided starting nodes relation is empty".to_string(),
-                    )
+                    crate::engine::fixed_rule::error::InvalidInputSnafu {
+                        rule: "MinimumSpanningTreePrim",
+                        message: "The provided starting nodes relation is empty".to_string(),
+                    }
+                    .build()
                 })??;
                 let dv = &tuple[0];
                 *inv_indices.get(dv).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!(
-                        "The requested starting node {dv:?} is not found"
-                    ))
+                    crate::engine::fixed_rule::error::InvalidInputSnafu {
+                        rule: "MinimumSpanningTreePrim",
+                        message: format!("The requested starting node {dv:?} is not found"),
+                    }
+                    .build()
                 })?
             }
         };

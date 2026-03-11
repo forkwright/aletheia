@@ -8,7 +8,7 @@
 //! The k-value assigned to each node is the largest k at which it survived.
 use std::collections::BTreeMap;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use itertools::Itertools;
 

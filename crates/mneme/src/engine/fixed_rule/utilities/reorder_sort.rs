@@ -1,8 +1,8 @@
 //! Reorder and sort fixed rule.
 use std::collections::BTreeMap;
 
-use crate::engine::error::DbResult as Result;
-use crate::engine::fixed_rule::error::FixedRuleError;
+use crate::engine::error::InternalResult as Result;
+use crate::engine::fixed_rule::error::{ConfigSnafu, FixedRuleError};
 use compact_str::CompactString;
 use itertools::Itertools;
 
@@ -40,12 +40,13 @@ impl FixedRule for ReorderSort {
                 .collect_vec(),
             Expr::Apply { op, args, .. } if *op == OP_LIST => args.to_vec(),
             _ => {
-                return Err(Box::new(WrongFixedRuleOptionError {
+                return Err(WrongFixedRuleOptionError {
                     name: "out".to_string(),
                     span: payload.span(),
                     rule_name: payload.name().to_string(),
                     help: "This option must evaluate to a list".to_string(),
-                }));
+                }
+                .into());
             }
         };
 
@@ -125,7 +126,12 @@ impl FixedRule for ReorderSort {
         _span: SourceSpan,
     ) -> Result<usize> {
         let out_opts = opts.get("out").ok_or_else(|| {
-            crate::engine::error::AdhocError("ReorderSort: option 'out' not provided".to_string())
+            ConfigSnafu {
+                rule: "ReorderSort",
+                param: "out",
+                message: "option 'out' not provided",
+            }
+            .build()
         })?;
         Ok(match out_opts {
             Expr::Const {
@@ -134,12 +140,13 @@ impl FixedRule for ReorderSort {
             } => l.len() + 1,
             Expr::Apply { op, args, .. } if **op == OP_LIST => args.len() + 1,
             _ => {
-                return Err(Box::new(FixedRuleError::Config {
+                return Err(FixedRuleError::Config {
                     rule: "ReorderSort".to_string(),
                     param: "out".to_string(),
                     message: "invalid option 'out' given, expect a list".to_string(),
                     location: snafu::location!(),
-                }));
+                }
+                .into());
             }
         })
     }

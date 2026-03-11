@@ -1,10 +1,7 @@
 //! Error types for the Datalog engine.
 use snafu::Snafu;
 
-/// Top-level error type for the mneme-engine public API.
-///
-/// Internal modules use `DbResult<T>` (see below). The public `Db` facade
-/// converts internal errors to this type at the boundary.
+/// Public error type for consumers of the engine.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 #[non_exhaustive]
@@ -18,11 +15,24 @@ pub enum Error {
     },
 
     /// A running query was cancelled via poison/timeout.
-    ///
-    /// Replaces fragile string-matching on "killed before completion".
-    /// Consumers can match this variant instead of parsing error messages.
     #[snafu(display("Running query was killed before completion"))]
     QueryKilled {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A parse error (query syntax).
+    #[snafu(display("parse error: {source}"))]
+    Parse {
+        source: crate::engine::parse::error::ParseError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A storage error.
+    #[snafu(display("storage error: {source}"))]
+    Storage {
+        source: crate::engine::storage::error::StorageError,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -30,84 +40,151 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Internal error type replacing `miette::Box<dyn std::error::Error + Send + Sync>`.
+/// Internal error enum composing all module error types.
 ///
-/// All engine-internal modules use this for `?`-based error propagation.
-/// At the public `Db` facade boundary, this is converted to `Error::Engine`.
-pub(crate) type BoxErr = Box<dyn std::error::Error + Send + Sync + 'static>;
-pub(crate) type DbResult<T> = std::result::Result<T, BoxErr>;
+/// Used for engine-internal error propagation. At the public boundary,
+/// `InternalError` is converted to `Error` via `convert_internal()`.
+///
+/// Each variant uses `#[snafu(context(false))]` so that `From<ModuleError>`
+/// impls are generated, allowing `?`-based propagation from any module result.
+#[derive(Debug, Snafu)]
+pub(crate) enum InternalError {
+    #[snafu(display("{source}"))]
+    #[snafu(context(false))]
+    Data {
+        source: crate::engine::data::error::DataError,
+    },
 
-/// Ad-hoc string error, replaces `bail!("message")` at internal call sites.
-#[derive(Debug)]
-pub(crate) struct AdhocError(pub(crate) String);
+    #[snafu(display("{source}"))]
+    #[snafu(context(false))]
+    Parse {
+        source: crate::engine::parse::error::ParseError,
+    },
 
-impl std::fmt::Display for AdhocError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+    #[snafu(display("{source}"))]
+    #[snafu(context(false))]
+    Query {
+        source: crate::engine::query::error::QueryError,
+    },
+
+    #[snafu(display("{source}"))]
+    #[snafu(context(false))]
+    Runtime {
+        source: crate::engine::runtime::error::RuntimeError,
+    },
+
+    #[snafu(display("{source}"))]
+    #[snafu(context(false))]
+    Storage {
+        source: crate::engine::storage::error::StorageError,
+    },
+
+    #[snafu(display("{source}"))]
+    #[snafu(context(false))]
+    Fts {
+        source: crate::engine::fts::error::FtsError,
+    },
+
+    #[snafu(display("{source}"))]
+    #[snafu(context(false))]
+    FixedRule {
+        source: crate::engine::fixed_rule::error::FixedRuleError,
+    },
+}
+
+pub(crate) type InternalResult<T> = std::result::Result<T, InternalError>;
+
+// --- From impls for small error structs that aren't part of module error enums ---
+
+impl From<crate::engine::data::program::FixedRuleOptionNotFoundError> for InternalError {
+    fn from(e: crate::engine::data::program::FixedRuleOptionNotFoundError) -> Self {
+        InternalError::FixedRule {
+            source: crate::engine::fixed_rule::error::ConfigSnafu {
+                rule: e.rule_name,
+                param: e.name,
+                message: "required option not found",
+            }
+            .build(),
+        }
     }
 }
 
-impl std::error::Error for AdhocError {}
-
-/// Compatibility `bail!` macro for engine-internal error propagation.
-///
-/// Supports both string-format form (`bail!("msg")`, `bail!("fmt {}", val)`)
-/// and struct form (`bail!(SomeErrorStruct { ... })`).
-#[macro_export]
-macro_rules! bail {
-    // String literal with format args
-    ($fmt:literal, $($arg:tt)+) => {
-        return Err(Box::new($crate::engine::error::AdhocError(format!($fmt, $($arg)+)))
-            as Box<dyn std::error::Error + Send + Sync + 'static>)
-    };
-    // String literal alone (optional trailing comma)
-    ($msg:literal $(,)?) => {
-        return Err(Box::new($crate::engine::error::AdhocError($msg.to_string()))
-            as Box<dyn std::error::Error + Send + Sync + 'static>)
-    };
-    // Struct/enum expression form
-    ($e:expr) => {
-        return Err(Box::new($e) as Box<dyn std::error::Error + Send + Sync + 'static>)
-    };
+impl From<crate::engine::data::program::WrongFixedRuleOptionError> for InternalError {
+    fn from(e: crate::engine::data::program::WrongFixedRuleOptionError) -> Self {
+        InternalError::FixedRule {
+            source: crate::engine::fixed_rule::error::ConfigSnafu {
+                rule: e.rule_name,
+                param: e.name,
+                message: e.help,
+            }
+            .build(),
+        }
+    }
 }
 
-/// Compatibility `miette!` macro: creates a `BoxErr` from a format string or struct expression.
-///
-/// Creates a `BoxErr` from a format string or struct expression.
-#[macro_export]
-macro_rules! miette {
-    ($fmt:literal, $($arg:tt)+) => {
-        Box::new($crate::engine::error::AdhocError(format!($fmt, $($arg)+)))
-            as Box<dyn std::error::Error + Send + Sync + 'static>
-    };
-    ($msg:literal $(,)?) => {
-        Box::new($crate::engine::error::AdhocError($msg.to_string()))
-            as Box<dyn std::error::Error + Send + Sync + 'static>
-    };
-    ($e:expr) => {
-        Box::new($e) as Box<dyn std::error::Error + Send + Sync + 'static>
-    };
+impl From<crate::engine::fixed_rule::BadExprValueError> for InternalError {
+    fn from(e: crate::engine::fixed_rule::BadExprValueError) -> Self {
+        InternalError::FixedRule {
+            source: crate::engine::fixed_rule::error::InvalidInputSnafu {
+                rule: "expression",
+                message: format!("bad expression value {:?}: {}", e.0, e.1),
+            }
+            .build(),
+        }
+    }
 }
 
-/// Compatibility `ensure!` macro for engine-internal error propagation.
-#[macro_export]
-macro_rules! ensure {
-    // Format string with args (optional trailing comma)
-    ($cond:expr, $fmt:literal, $($arg:tt)+) => {
-        if !($cond) {
-            $crate::bail!($fmt, $($arg)+)
+impl From<crate::engine::data::program::NoEntryError> for InternalError {
+    fn from(e: crate::engine::data::program::NoEntryError) -> Self {
+        InternalError::Data {
+            source: crate::engine::data::error::ProgramConstraintSnafu {
+                message: e.to_string(),
+            }
+            .build(),
         }
-    };
-    // String literal alone (optional trailing comma)
-    ($cond:expr, $msg:literal $(,)?) => {
-        if !($cond) {
-            $crate::bail!($msg)
+    }
+}
+
+impl From<crate::engine::runtime::relation::StoredRelArityMismatch> for InternalError {
+    fn from(e: crate::engine::runtime::relation::StoredRelArityMismatch) -> Self {
+        InternalError::Runtime {
+            source: crate::engine::runtime::error::InvalidOperationSnafu {
+                op: "stored relation",
+                reason: e.to_string(),
+            }
+            .build(),
         }
-    };
-    // Struct/enum expression form
-    ($cond:expr, $e:expr) => {
-        if !($cond) {
-            $crate::bail!($e)
+    }
+}
+
+impl From<crate::engine::runtime::db::ProcessKilled> for InternalError {
+    fn from(_: crate::engine::runtime::db::ProcessKilled) -> Self {
+        InternalError::Runtime {
+            source: crate::engine::runtime::error::QueryKilledSnafu.build(),
         }
-    };
+    }
+}
+
+impl From<crate::engine::fixed_rule::NodeNotFoundError> for InternalError {
+    fn from(e: crate::engine::fixed_rule::NodeNotFoundError) -> Self {
+        InternalError::FixedRule {
+            source: crate::engine::fixed_rule::error::InvalidInputSnafu {
+                rule: "graph",
+                message: format!("required node with key {:?} not found", e.missing),
+            }
+            .build(),
+        }
+    }
+}
+
+impl From<crate::engine::fixed_rule::BadEdgeWeightError> for InternalError {
+    fn from(e: crate::engine::fixed_rule::BadEdgeWeightError) -> Self {
+        InternalError::FixedRule {
+            source: crate::engine::fixed_rule::error::InvalidInputSnafu {
+                rule: "graph",
+                message: format!("value {:?} cannot be interpreted as edge weight", e.val),
+            }
+            .build(),
+        }
+    }
 }

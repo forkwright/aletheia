@@ -38,29 +38,24 @@ pub(crate) mod runtime;
 pub(crate) mod storage;
 pub(crate) mod utils;
 
-/// Convert an internal BoxErr to the public Error type, detecting query cancellation for typed matching.
-fn convert_err(e: crate::engine::error::BoxErr) -> Error {
-    // Check for RuntimeError::QueryKilled (new snafu path)
-    if e.downcast_ref::<crate::engine::runtime::error::RuntimeError>()
-        .is_some_and(|re| {
-            matches!(
-                re,
-                crate::engine::runtime::error::RuntimeError::QueryKilled { .. }
-            )
-        })
-    {
-        return error::QueryKilledSnafu.build();
+/// Convert an `InternalError` to the public `Error` type.
+///
+/// Specific internal error types map to typed public variants where possible.
+/// Everything else falls back to `Error::Engine { message }`.
+fn convert_internal(e: crate::engine::error::InternalError) -> Error {
+    use crate::engine::error::InternalError;
+    use snafu::IntoError;
+    match e {
+        InternalError::Runtime {
+            source: crate::engine::runtime::error::RuntimeError::QueryKilled { .. },
+        } => error::QueryKilledSnafu.build(),
+        InternalError::Parse { source } => error::ParseSnafu.into_error(source),
+        InternalError::Storage { source } => error::StorageSnafu.into_error(source),
+        other => error::EngineSnafu {
+            message: other.to_string(),
+        }
+        .build(),
     }
-    // Legacy path: ProcessKilled struct (used by hnsw.rs/minhash_lsh.rs still using bail!)
-    if e.downcast_ref::<crate::engine::runtime::db::ProcessKilled>()
-        .is_some()
-    {
-        return error::QueryKilledSnafu.build();
-    }
-    error::EngineSnafu {
-        message: e.to_string(),
-    }
-    .build()
 }
 
 /// Public facade replacing DbInstance. Dispatches to concrete storage implementations.
@@ -77,7 +72,7 @@ impl Db {
     pub fn open_mem() -> crate::engine::Result<Self> {
         crate::engine::storage::mem::new_mem_db()
             .map(Db::Mem)
-            .map_err(convert_err)
+            .map_err(convert_internal)
     }
 
     /// Open a fjall-backed database at the given path.
@@ -88,7 +83,7 @@ impl Db {
     pub fn open_fjall(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
         crate::engine::storage::fjall_backend::new_cozo_fjall(path)
             .map(Db::Fjall)
-            .map_err(convert_err)
+            .map_err(convert_internal)
     }
 
     /// Open a redb-backed database at the given path.
@@ -96,7 +91,7 @@ impl Db {
     pub fn open_redb(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
         crate::engine::storage::redb::new_cozo_redb(path)
             .map(Db::Redb)
-            .map_err(convert_err)
+            .map_err(convert_internal)
     }
 
     /// Execute a Datalog script.
@@ -113,7 +108,7 @@ impl Db {
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.run_script(script, params, mutability),
         };
-        result.map_err(convert_err)
+        result.map_err(convert_internal)
     }
 
     /// Execute a Datalog script in read-only mode.
@@ -137,7 +132,7 @@ impl Db {
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.backup_db(path),
         };
-        result.map_err(convert_err)
+        result.map_err(convert_internal)
     }
 
     /// Restore from an SQLite backup.
@@ -152,7 +147,7 @@ impl Db {
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.restore_backup(path),
         };
-        result.map_err(convert_err)
+        result.map_err(convert_internal)
     }
 
     /// Import data from relations in a backup file.
@@ -171,7 +166,7 @@ impl Db {
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.import_from_backup(path, relations),
         };
-        result.map_err(convert_err)
+        result.map_err(convert_internal)
     }
 
     /// Export relations for backup.
@@ -190,7 +185,7 @@ impl Db {
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.export_relations(relations),
         };
-        result.map_err(convert_err)
+        result.map_err(convert_internal)
     }
 
     /// Import relations from backup.
@@ -202,7 +197,7 @@ impl Db {
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.import_relations(data),
         };
-        result.map_err(convert_err)
+        result.map_err(convert_internal)
     }
 
     /// Register a custom fixed rule (graph algorithm).
@@ -218,7 +213,7 @@ impl Db {
             #[cfg(feature = "storage-redb")]
             Db::Redb(db) => db.register_fixed_rule(name, rule),
         };
-        result.map_err(convert_err)
+        result.map_err(convert_internal)
     }
 
     /// Register a callback for relation changes.
@@ -245,8 +240,8 @@ impl Db {
         let (app2db_send, app2db_recv): (Sender<TransactionPayload>, Receiver<TransactionPayload>) =
             bounded(1);
         let (db2app_send, db2app_recv): (
-            Sender<crate::engine::error::DbResult<NamedRows>>,
-            Receiver<crate::engine::error::DbResult<NamedRows>>,
+            Sender<crate::engine::error::InternalResult<NamedRows>>,
+            Receiver<crate::engine::error::InternalResult<NamedRows>>,
         ) = bounded(1);
         let db = self.clone_inner();
         rayon::spawn(move || db.run_multi_transaction_inner(write, app2db_recv, db2app_send));
@@ -281,7 +276,7 @@ impl DbInner {
         self,
         write: bool,
         payloads: Receiver<TransactionPayload>,
-        results: Sender<crate::engine::error::DbResult<NamedRows>>,
+        results: Sender<crate::engine::error::InternalResult<NamedRows>>,
     ) {
         match self {
             DbInner::Mem(db) => db.run_multi_transaction(write, payloads, results),
@@ -298,7 +293,7 @@ pub struct MultiTransaction {
     /// Commands can be sent into the transaction through this channel
     pub sender: Sender<TransactionPayload>,
     /// Results can be retrieved from the transaction from this channel
-    pub receiver: Receiver<crate::engine::error::DbResult<NamedRows>>,
+    pub receiver: Receiver<crate::engine::error::InternalResult<NamedRows>>,
 }
 
 /// A poison token used to cancel an in-progress operation.
@@ -310,14 +305,17 @@ impl DbInstance {
         crate::engine::storage::mem::new_mem_db().unwrap()
     }
 
-    pub(crate) fn run_default(&self, script: &str) -> crate::engine::error::DbResult<NamedRows> {
+    pub(crate) fn run_default(
+        &self,
+        script: &str,
+    ) -> crate::engine::error::InternalResult<NamedRows> {
         use crate::engine::runtime::db::ScriptMutability;
         self.run_script(script, Default::default(), ScriptMutability::Mutable)
     }
 
     pub(crate) fn multi_transaction_test(&self, write: bool) -> TestMultiTx {
         let (app_tx, app_rx) = bounded::<TransactionPayload>(1);
-        let (db_tx, db_rx) = bounded::<crate::engine::error::DbResult<NamedRows>>(1);
+        let (db_tx, db_rx) = bounded::<crate::engine::error::InternalResult<NamedRows>>(1);
         let db = self.clone();
         rayon::spawn(move || db.run_multi_transaction(write, app_rx, db_tx));
         TestMultiTx {
@@ -330,7 +328,7 @@ impl DbInstance {
 #[cfg(test)]
 pub(crate) struct TestMultiTx {
     pub(crate) sender: Sender<TransactionPayload>,
-    pub(crate) receiver: Receiver<crate::engine::error::DbResult<NamedRows>>,
+    pub(crate) receiver: Receiver<crate::engine::error::InternalResult<NamedRows>>,
 }
 
 #[cfg(test)]
@@ -339,19 +337,19 @@ impl TestMultiTx {
         &self,
         script: &str,
         params: BTreeMap<String, DataValue>,
-    ) -> crate::engine::error::DbResult<NamedRows> {
+    ) -> crate::engine::error::InternalResult<NamedRows> {
         self.sender
             .send(TransactionPayload::Query((script.to_string(), params)))
             .unwrap();
         self.receiver.recv().unwrap()
     }
 
-    pub(crate) fn commit(self) -> crate::engine::error::DbResult<()> {
+    pub(crate) fn commit(self) -> crate::engine::error::InternalResult<()> {
         self.sender.send(TransactionPayload::Commit).unwrap();
         self.receiver.recv().unwrap().map(|_| ())
     }
 
-    pub(crate) fn abort(self) -> crate::engine::error::DbResult<()> {
+    pub(crate) fn abort(self) -> crate::engine::error::InternalResult<()> {
         self.sender.send(TransactionPayload::Abort).unwrap();
         self.receiver.recv().unwrap().map(|_| ())
     }

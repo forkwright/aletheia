@@ -1,8 +1,7 @@
 //! Schema definition parsing.
 use std::collections::BTreeSet;
 
-use crate::bail;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use itertools::Itertools;
@@ -32,12 +31,11 @@ pub(crate) fn parse_schema(
         let _span = p.extract_span();
         let (col, ident) = parse_col(p)?;
         if !seen_names.insert(col.name.clone()) {
-            bail!(
-                InvalidQuerySnafu {
-                    message: "Column is defined multiple times".to_string()
-                }
-                .build()
-            );
+            return Err(InvalidQuerySnafu {
+                message: "Column is defined multiple times".to_string(),
+            }
+            .build()
+            .into());
         }
         keys.push(col);
         key_bindings.push(ident)
@@ -47,12 +45,11 @@ pub(crate) fn parse_schema(
             let _span = p.extract_span();
             let (col, ident) = parse_col(p)?;
             if !seen_names.insert(col.name.clone()) {
-                bail!(
-                    InvalidQuerySnafu {
-                        message: "Column is defined multiple times".to_string()
-                    }
-                    .build()
-                );
+                return Err(InvalidQuerySnafu {
+                    message: "Column is defined multiple times".to_string(),
+                }
+                .build()
+                .into());
             }
             dependents.push(col);
             dep_bindings.push(ident)
@@ -133,18 +130,19 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
                     let expr = build_expr(len_p, &Default::default())?;
                     let dv = expr.eval_to_const()?;
 
-                    let n = dv.get_int().ok_or(crate::engine::error::AdhocError(
-                        "Bad specification of list length in type".to_string(),
-                    ))?;
+                    let n = dv.get_int().ok_or_else(|| {
+                        InvalidQuerySnafu {
+                            message: "Bad specification of list length in type".to_string(),
+                        }
+                        .build()
+                    })?;
                     if n < 0 {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message:
-                                    "Bad specification of list length in type: negative length"
-                                        .to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "Bad specification of list length in type: negative length"
+                                .to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     Some(n as usize)
                 }
@@ -170,7 +168,12 @@ fn parse_type_inner(pair: Pair<'_>) -> Result<ColType> {
                 .as_str()
                 .replace('_', "")
                 .parse::<usize>()
-                .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+                .map_err(|e| {
+                    InvalidQuerySnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
             ColType::Vec { eltype, len }
         }
         Rule::tuple_type => {

@@ -2,8 +2,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::bail;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use itertools::Itertools;
@@ -106,7 +105,10 @@ pub(crate) fn parse_sys(
             let i_val = build_expr(i_expr, param_pool)?;
             let i_val = i_val.eval_to_const()?;
             let i_val = i_val.get_int().ok_or_else(|| {
-                crate::engine::error::AdhocError("Process ID must be an integer".to_string())
+                InvalidQuerySnafu {
+                    message: "Process ID must be an integer".to_string(),
+                }
+                .build()
             })?;
             SysOp::KillRunning(i_val as u64)
         }
@@ -257,9 +259,11 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 false_positive_weight = v.get_float().ok_or_else(|| {
-                                    crate::engine::error::AdhocError(
-                                        "false_positive_weight must be a float".to_string(),
-                                    )
+                                    InvalidQuerySnafu {
+                                        message: "false_positive_weight must be a float"
+                                            .to_string(),
+                                    }
+                                    .build()
                                 })?;
                             }
                             "false_negative_weight" => {
@@ -267,9 +271,11 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 false_negative_weight = v.get_float().ok_or_else(|| {
-                                    crate::engine::error::AdhocError(
-                                        "false_negative_weight must be a float".to_string(),
-                                    )
+                                    InvalidQuerySnafu {
+                                        message: "false_negative_weight must be a float"
+                                            .to_string(),
+                                    }
+                                    .build()
                                 })?;
                             }
                             "n_gram" => {
@@ -277,9 +283,10 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 n_gram = v.get_int().ok_or_else(|| {
-                                    crate::engine::error::AdhocError(
-                                        "n_gram must be an integer".to_string(),
-                                    )
+                                    InvalidQuerySnafu {
+                                        message: "n_gram must be an integer".to_string(),
+                                    }
+                                    .build()
                                 })? as usize;
                             }
                             "n_perm" => {
@@ -287,9 +294,10 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 n_perm = v.get_int().ok_or_else(|| {
-                                    crate::engine::error::AdhocError(
-                                        "n_perm must be an integer".to_string(),
-                                    )
+                                    InvalidQuerySnafu {
+                                        message: "n_perm must be an integer".to_string(),
+                                    }
+                                    .build()
                                 })? as usize;
                             }
                             "target_threshold" => {
@@ -297,9 +305,10 @@ pub(crate) fn parse_sys(
                                 expr.partial_eval()?;
                                 let v = expr.eval_to_const()?;
                                 target_threshold = v.get_float().ok_or_else(|| {
-                                    crate::engine::error::AdhocError(
-                                        "target_threshold must be a float".to_string(),
-                                    )
+                                    InvalidQuerySnafu {
+                                        message: "target_threshold must be a float".to_string(),
+                                    }
+                                    .build()
                                 })?;
                             }
                             "extractor" => {
@@ -329,9 +338,9 @@ pub(crate) fn parse_sys(
                                         tokenizer.name = var.name;
                                         tokenizer.args = vec![];
                                     }
-                                    _ => bail!(InvalidQuerySnafu {
+                                    _ => return Err(InvalidQuerySnafu {
                                         message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string()
-                                    }.build()),
+                                    }.build().into()),
                                 }
                             }
                             "filters" => {
@@ -340,13 +349,12 @@ pub(crate) fn parse_sys(
                                 match expr {
                                     Expr::Apply { op, args, .. } => {
                                         if op.name != "OP_LIST" {
-                                            bail!(
-                                                InvalidQuerySnafu {
-                                                    message: "Filters must be a list of filters"
-                                                        .to_string()
-                                                }
-                                                .build()
-                                            );
+                                            return Err(InvalidQuerySnafu {
+                                                message: "Filters must be a list of filters"
+                                                    .to_string(),
+                                            }
+                                            .build()
+                                            .into());
                                         }
                                         for arg in args.iter() {
                                             match arg {
@@ -367,69 +375,66 @@ pub(crate) fn parse_sys(
                                                         args: vec![],
                                                     })
                                                 }
-                                                _ => bail!(InvalidQuerySnafu {
+                                                _ => return Err(InvalidQuerySnafu {
                                                     message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string()
                                                 }
-                                                .build()),
+                                                .build().into()),
                                             }
                                         }
                                     }
-                                    _ => bail!(
-                                        InvalidQuerySnafu {
+                                    _ => {
+                                        return Err(InvalidQuerySnafu {
                                             message: "Filters must be a list of filters"
-                                                .to_string()
+                                                .to_string(),
                                         }
                                         .build()
-                                    ),
+                                        .into());
+                                    }
                                 }
                             }
-                            s => bail!(
-                                InvalidQuerySnafu {
-                                    message: format!("Unknown option {s} for LSH index")
+                            s => {
+                                return Err(InvalidQuerySnafu {
+                                    message: format!("Unknown option {s} for LSH index"),
                                 }
                                 .build()
-                            ),
+                                .into());
+                            }
                         }
                     }
                     if false_positive_weight <= 0. {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "false_positive_weight must be positive".to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "false_positive_weight must be positive".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     if false_negative_weight <= 0. {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "false_negative_weight must be positive".to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "false_negative_weight must be positive".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     if n_gram == 0 {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "n_gram must be positive".to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "n_gram must be positive".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     if n_perm == 0 {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "n_perm must be positive".to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "n_perm must be positive".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     if target_threshold <= 0. || target_threshold >= 1. {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "target_threshold must be between 0 and 1".to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "target_threshold must be between 0 and 1".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     let total_weights = false_positive_weight + false_negative_weight;
                     false_positive_weight /= total_weights;
@@ -516,10 +521,10 @@ pub(crate) fn parse_sys(
                                         tokenizer.name = var.name;
                                         tokenizer.args = vec![];
                                     }
-                                    _ => bail!(InvalidQuerySnafu {
+                                    _ => return Err(InvalidQuerySnafu {
                                         message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string()
                                     }
-                                    .build()),
+                                    .build().into()),
                                 }
                             }
                             "filters" => {
@@ -528,13 +533,12 @@ pub(crate) fn parse_sys(
                                 match expr {
                                     Expr::Apply { op, args, .. } => {
                                         if op.name != "OP_LIST" {
-                                            bail!(
-                                                InvalidQuerySnafu {
-                                                    message: "Filters must be a list of filters"
-                                                        .to_string()
-                                                }
-                                                .build()
-                                            );
+                                            return Err(InvalidQuerySnafu {
+                                                message: "Filters must be a list of filters"
+                                                    .to_string(),
+                                            }
+                                            .build()
+                                            .into());
                                         }
                                         for arg in args.iter() {
                                             match arg {
@@ -555,28 +559,30 @@ pub(crate) fn parse_sys(
                                                         args: vec![],
                                                     })
                                                 }
-                                                _ => bail!(InvalidQuerySnafu {
+                                                _ => return Err(InvalidQuerySnafu {
                                                     message: "Tokenizer must be a symbol or a call for an existing tokenizer".to_string()
                                                 }
-                                                .build()),
+                                                .build().into()),
                                             }
                                         }
                                     }
-                                    _ => bail!(
-                                        InvalidQuerySnafu {
+                                    _ => {
+                                        return Err(InvalidQuerySnafu {
                                             message: "Filters must be a list of filters"
-                                                .to_string()
+                                                .to_string(),
                                         }
                                         .build()
-                                    ),
+                                        .into());
+                                    }
                                 }
                             }
-                            s => bail!(
-                                InvalidQuerySnafu {
-                                    message: format!("Unknown option {s} for FTS index")
+                            s => {
+                                return Err(InvalidQuerySnafu {
+                                    message: format!("Unknown option {s} for FTS index"),
                                 }
                                 .build()
-                            ),
+                                .into());
+                            }
                         }
                     }
                     if !extract_filter.is_empty() {
@@ -637,17 +643,17 @@ pub(crate) fn parse_sys(
                                     .eval_to_const()?
                                     .get_int()
                                     .ok_or_else(|| {
-                                        crate::engine::error::AdhocError(format!(
-                                            "Invalid vec_dim: {opt_val_str}",
-                                        ))
-                                    })?;
-                                if v <= 0 {
-                                    bail!(
                                         InvalidQuerySnafu {
-                                            message: format!("Invalid vec_dim: {v}")
+                                            message: format!("Invalid vec_dim: {opt_val_str}"),
                                         }
                                         .build()
-                                    );
+                                    })?;
+                                if v <= 0 {
+                                    return Err(InvalidQuerySnafu {
+                                        message: format!("Invalid vec_dim: {v}"),
+                                    }
+                                    .build()
+                                    .into());
                                 }
                                 vec_dim = v as usize;
                             }
@@ -656,17 +662,19 @@ pub(crate) fn parse_sys(
                                     .eval_to_const()?
                                     .get_int()
                                     .ok_or_else(|| {
-                                        crate::engine::error::AdhocError(format!(
-                                            "Invalid ef_construction: {opt_val_str}",
-                                        ))
-                                    })?;
-                                if v <= 0 {
-                                    bail!(
                                         InvalidQuerySnafu {
-                                            message: format!("Invalid ef_construction: {v}")
+                                            message: format!(
+                                                "Invalid ef_construction: {opt_val_str}"
+                                            ),
                                         }
                                         .build()
-                                    );
+                                    })?;
+                                if v <= 0 {
+                                    return Err(InvalidQuerySnafu {
+                                        message: format!("Invalid ef_construction: {v}"),
+                                    }
+                                    .build()
+                                    .into());
                                 }
                                 ef_construction = v as usize;
                             }
@@ -675,17 +683,17 @@ pub(crate) fn parse_sys(
                                     .eval_to_const()?
                                     .get_int()
                                     .ok_or_else(|| {
-                                        crate::engine::error::AdhocError(format!(
-                                            "Invalid m_neighbours: {opt_val_str}",
-                                        ))
-                                    })?;
-                                if v <= 0 {
-                                    bail!(
                                         InvalidQuerySnafu {
-                                            message: format!("Invalid m_neighbours: {v}")
+                                            message: format!("Invalid m_neighbours: {opt_val_str}"),
                                         }
                                         .build()
-                                    );
+                                    })?;
+                                if v <= 0 {
+                                    return Err(InvalidQuerySnafu {
+                                        message: format!("Invalid m_neighbours: {v}"),
+                                    }
+                                    .build()
+                                    .into());
                                 }
                                 m_neighbours = v as usize;
                             }
@@ -693,12 +701,13 @@ pub(crate) fn parse_sys(
                                 dtype = match opt_val.as_str() {
                                     "F32" | "Float" => VecElementType::F32,
                                     "F64" | "Double" => VecElementType::F64,
-                                    s => bail!(
-                                        InvalidQuerySnafu {
-                                            message: format!("Invalid dtype: {s}")
+                                    s => {
+                                        return Err(InvalidQuerySnafu {
+                                            message: format!("Invalid dtype: {s}"),
                                         }
                                         .build()
-                                    ),
+                                        .into());
+                                    }
                                 }
                             }
                             "fields" => {
@@ -710,12 +719,13 @@ pub(crate) fn parse_sys(
                                     "L2" => HnswDistance::L2,
                                     "IP" => HnswDistance::InnerProduct,
                                     "Cosine" => HnswDistance::Cosine,
-                                    s => bail!(
-                                        InvalidQuerySnafu {
-                                            message: format!("Invalid distance: {s}")
+                                    s => {
+                                        return Err(InvalidQuerySnafu {
+                                            message: format!("Invalid distance: {s}"),
                                         }
                                         .build()
-                                    ),
+                                        .into());
+                                    }
                                 }
                             }
                             "filter" => {
@@ -727,29 +737,28 @@ pub(crate) fn parse_sys(
                             "keep_pruned_connections" => {
                                 keep_pruned_connections = opt_val.as_str().trim() == "true";
                             }
-                            s => bail!(
-                                InvalidQuerySnafu {
-                                    message: format!("Invalid option: {s}")
+                            s => {
+                                return Err(InvalidQuerySnafu {
+                                    message: format!("Invalid option: {s}"),
                                 }
                                 .build()
-                            ),
+                                .into());
+                            }
                         }
                     }
                     if ef_construction == 0 {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "ef_construction must be set".to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "ef_construction must be set".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     if m_neighbours == 0 {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "m_neighbours must be set".to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "m_neighbours must be set".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     SysOp::CreateVectorIndex(HnswIndexConfig {
                         base_relation: CompactString::from(rel.as_str()),
@@ -795,13 +804,11 @@ pub(crate) fn parse_sys(
                         .collect_vec();
 
                     if cols.is_empty() {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "index must have at least one column specified"
-                                    .to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "index must have at least one column specified".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     SysOp::CreateIndex(
                         Symbol::new(rel.as_str(), rel.extract_span()),

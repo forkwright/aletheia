@@ -2,7 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::query::error::*;
 use compact_str::CompactString;
 use itertools::Itertools;
@@ -474,13 +474,14 @@ impl<'a> SessionTx<'a> {
                 })?
                 .next()
                 .ok_or_else(|| {
-                    CompilationFailedSnafu {
-                        message: format!(
-                            "FTS extractor expression for '{name}' parsed to empty iterator"
-                        ),
-                    }
-                    .build()
-                    .into_box_err()
+                    crate::engine::error::InternalError::from(
+                        CompilationFailedSnafu {
+                            message: format!(
+                                "FTS extractor expression for '{name}' parsed to empty iterator"
+                            ),
+                        }
+                        .build(),
+                    )
                 })?;
             let mut code_expr = build_expr(parsed, &Default::default())?;
             let binding_map = relation_store.raw_binding_map();
@@ -502,13 +503,14 @@ impl<'a> SessionTx<'a> {
                 })?
                 .next()
                 .ok_or_else(|| {
-                    CompilationFailedSnafu {
-                        message: format!(
-                            "LSH extractor expression for '{name}' parsed to empty iterator"
-                        ),
-                    }
-                    .build()
-                    .into_box_err()
+                    crate::engine::error::InternalError::from(
+                        CompilationFailedSnafu {
+                            message: format!(
+                                "LSH extractor expression for '{name}' parsed to empty iterator"
+                            ),
+                        }
+                        .build(),
+                    )
                 })?;
             let mut code_expr = build_expr(parsed, &Default::default())?;
             let binding_map = relation_store.raw_binding_map();
@@ -534,13 +536,14 @@ impl<'a> SessionTx<'a> {
                     })?
                     .next()
                     .ok_or_else(|| {
-                        CompilationFailedSnafu {
-                            message: format!(
-                                "HNSW index filter for '{name}' parsed to empty iterator"
-                            ),
-                        }
-                        .build()
-                        .into_box_err()
+                        crate::engine::error::InternalError::from(
+                            CompilationFailedSnafu {
+                                message: format!(
+                                    "HNSW index filter for '{name}' parsed to empty iterator"
+                                ),
+                            }
+                            .build(),
+                        )
                     })?;
                 let mut code_expr = build_expr(parsed, &Default::default())?;
                 let binding_map = relation_store.raw_binding_map();
@@ -631,8 +634,12 @@ impl<'a> SessionTx<'a> {
                     .build()
                     .into());
                 }
-                Some(v) => rmp_serde::from_slice(&v[ENCODED_KEY_MIN_LEN..])
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?,
+                Some(v) => rmp_serde::from_slice(&v[ENCODED_KEY_MIN_LEN..]).map_err(|e| {
+                    EvalFailedSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?,
             };
             let mut old_kv = Vec::with_capacity(relation_store.arity());
             old_kv.extend_from_slice(&new_kv);

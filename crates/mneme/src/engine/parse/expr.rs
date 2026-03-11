@@ -1,8 +1,7 @@
 //! Expression parsing from Datalog source.
 use std::collections::BTreeMap;
 
-use crate::bail;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::parse::error::InvalidQuerySnafu;
 use compact_str::CompactString;
 use itertools::Itertools;
@@ -103,12 +102,11 @@ pub(crate) fn expr2bytecode(expr: &Expr, collector: &mut Vec<Bytecode>) -> Resul
 
 pub(crate) fn build_expr(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Result<Expr> {
     if pair.as_rule() != Rule::expr {
-        bail!(
-            InvalidQuerySnafu {
-                message: "Invalid expression encountered".to_string()
-            }
-            .build()
-        );
+        return Err(InvalidQuerySnafu {
+            message: "Invalid expression encountered".to_string(),
+        }
+        .build()
+        .into());
     }
 
     PRATT_PARSER
@@ -183,9 +181,10 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                 val: param_pool
                     .get(param_str)
                     .ok_or_else(|| {
-                        crate::engine::error::AdhocError(format!(
-                            "Required parameter {param_str} not found"
-                        ))
+                        InvalidQuerySnafu {
+                            message: format!("Required parameter {param_str} not found"),
+                        }
+                        .build()
                     })?
                     .clone(),
                 span,
@@ -193,7 +192,10 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
         }
         Rule::pos_int => {
             let i = pair.as_str().replace('_', "").parse::<i64>().map_err(|e| {
-                crate::engine::error::AdhocError(format!("Cannot parse integer: {e}"))
+                InvalidQuerySnafu {
+                    message: format!("Cannot parse integer: {e}"),
+                }
+                .build()
             })?;
             Expr::Const {
                 val: DataValue::from(i),
@@ -223,7 +225,10 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
         }
         Rule::dot_float | Rule::sci_float => {
             let f = pair.as_str().replace('_', "").parse::<f64>().map_err(|e| {
-                crate::engine::error::AdhocError(format!("Cannot parse float: {e}"))
+                InvalidQuerySnafu {
+                    message: format!("Cannot parse float: {e}"),
+                }
+                .build()
             })?;
             Expr::Const {
                 val: DataValue::from(f),
@@ -287,12 +292,11 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
             match ident {
                 "cond" => {
                     if args.is_empty() {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "'cond' cannot have empty body".to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "'cond' cannot have empty body".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                     if args.len() & 1 == 1 {
                         args.insert(
@@ -331,13 +335,11 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                 }
                 "if" => {
                     if args.len() != 2 && args.len() != 3 {
-                        bail!(
-                            InvalidQuerySnafu {
-                                message: "wrong number of arguments to if: 2 or 3 required"
-                                    .to_string()
-                            }
-                            .build()
-                        );
+                        return Err(InvalidQuerySnafu {
+                            message: "wrong number of arguments to if: 2 or 3 required".to_string(),
+                        }
+                        .build()
+                        .into());
                     }
 
                     let mut clauses = vec![];
@@ -368,22 +370,22 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
 
                         if op.vararg {
                             if op.min_arity > args.len() {
-                                bail!(InvalidQuerySnafu {
+                                return Err(InvalidQuerySnafu {
                                     message: format!(
                                         "Wrong number of arguments for function: need at least {} argument(s)",
                                         op.min_arity
                                     )
                                 }
-                                .build());
+                                .build().into());
                             }
                         } else if op.min_arity != args.len() {
-                            bail!(InvalidQuerySnafu {
+                            return Err(InvalidQuerySnafu {
                                 message: format!(
                                     "Wrong number of arguments for function: need exactly {} argument(s)",
                                     op.min_arity
                                 )
                             }
-                            .build());
+                            .build().into());
                         }
                         Expr::Apply {
                             op,
@@ -440,17 +442,19 @@ fn parse_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
             s if s.starts_with(r"\u") => {
                 let code = parse_int(s, 16) as u32;
                 let ch = char::from_u32(code).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!("invalid UTF8 code {code}"))
+                    InvalidQuerySnafu {
+                        message: format!("invalid UTF8 code {code}"),
+                    }
+                    .build()
                 })?;
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
-                bail!(
-                    InvalidQuerySnafu {
-                        message: format!("invalid escape sequence {s}")
-                    }
-                    .build()
-                );
+                return Err(InvalidQuerySnafu {
+                    message: format!("invalid escape sequence {s}"),
+                }
+                .build()
+                .into());
             }
             s => ret.push_str(s),
         }
@@ -479,17 +483,19 @@ fn parse_s_quoted_string(pair: Pair<'_>) -> Result<CompactString> {
             s if s.starts_with(r"\u") => {
                 let code = parse_int(s, 16) as u32;
                 let ch = char::from_u32(code).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!("invalid UTF8 code {code}"))
+                    InvalidQuerySnafu {
+                        message: format!("invalid UTF8 code {code}"),
+                    }
+                    .build()
                 })?;
                 ret.push(ch);
             }
             s if s.starts_with('\\') => {
-                bail!(
-                    InvalidQuerySnafu {
-                        message: format!("invalid escape sequence {s}")
-                    }
-                    .build()
-                );
+                return Err(InvalidQuerySnafu {
+                    message: format!("invalid escape sequence {s}"),
+                }
+                .build()
+                .into());
             }
             s => ret.push_str(s),
         }

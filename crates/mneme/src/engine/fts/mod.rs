@@ -1,7 +1,7 @@
 //! Full-text search subsystem.
 use crate::engine::data::memcmp::MemCmpEncoder;
 use crate::engine::data::value::DataValue;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fts::error::TokenizationFailedSnafu;
 use crate::engine::fts::tokenizer::{
     AlphaNumOnlyFilter, AsciiFoldingFilter, BoxTokenFilter, Language, LowerCaser, NgramTokenizer,
@@ -77,8 +77,11 @@ impl TokenizerConfig {
                     .unwrap_or(&DataValue::from(1))
                     .get_int()
                     .ok_or_else(|| {
-                        crate::engine::error::AdhocError(
-                            "First argument `min_gram` must be an integer".to_string(),
+                        crate::engine::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: "First argument `min_gram` must be an integer".to_string(),
+                            }
+                            .build(),
                         )
                     })?;
                 let max_gram = self
@@ -87,8 +90,12 @@ impl TokenizerConfig {
                     .unwrap_or(&DataValue::from(min_gram))
                     .get_int()
                     .ok_or_else(|| {
-                        crate::engine::error::AdhocError(
-                            "Second argument `max_gram` must be an integer".to_string(),
+                        crate::engine::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: "Second argument `max_gram` must be an integer"
+                                    .to_string(),
+                            }
+                            .build(),
                         )
                     })?;
                 let prefix_only = self
@@ -97,25 +104,27 @@ impl TokenizerConfig {
                     .unwrap_or(&DataValue::Bool(false))
                     .get_bool()
                     .ok_or_else(|| {
-                        crate::engine::error::AdhocError(
-                            "Third argument `prefix_only` must be a boolean".to_string(),
+                        crate::engine::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: "Third argument `prefix_only` must be a boolean"
+                                    .to_string(),
+                            }
+                            .build(),
                         )
                     })?;
                 if min_gram < 1 {
-                    return Err(Box::new(
-                        TokenizationFailedSnafu {
-                            message: "min_gram must be >= 1".to_string(),
-                        }
-                        .build(),
-                    ));
+                    return Err(TokenizationFailedSnafu {
+                        message: "min_gram must be >= 1".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
                 if max_gram < min_gram {
-                    return Err(Box::new(
-                        TokenizationFailedSnafu {
-                            message: "max_gram must be >= min_gram".to_string(),
-                        }
-                        .build(),
-                    ));
+                    return Err(TokenizationFailedSnafu {
+                        message: "max_gram must be >= min_gram".to_string(),
+                    }
+                    .build()
+                    .into());
                 }
                 Box::new(NgramTokenizer::new(
                     min_gram as usize,
@@ -124,12 +133,11 @@ impl TokenizerConfig {
                 ))
             }
             _ => {
-                return Err(Box::new(
-                    TokenizationFailedSnafu {
-                        message: format!("Unknown tokenizer: {}", self.name),
-                    }
-                    .build(),
-                ));
+                return Err(TokenizationFailedSnafu {
+                    message: format!("Unknown tokenizer: {}", self.name),
+                }
+                .build()
+                .into());
             }
         })
     }
@@ -142,14 +150,21 @@ impl TokenizerConfig {
                 self.args
                     .first()
                     .ok_or_else(|| {
-                        crate::engine::error::AdhocError(
-                            "Missing first argument `min_length`".to_string(),
+                        crate::engine::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: "Missing first argument `min_length`".to_string(),
+                            }
+                            .build(),
                         )
                     })?
                     .get_int()
                     .ok_or_else(|| {
-                        crate::engine::error::AdhocError(
-                            "First argument `min_length` must be an integer".to_string(),
+                        crate::engine::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: "First argument `min_length` must be an integer"
+                                    .to_string(),
+                            }
+                            .build(),
                         )
                     })? as usize,
             )
@@ -157,8 +172,11 @@ impl TokenizerConfig {
             "SplitCompoundWords" => {
                 let mut list_values = Vec::new();
                 match self.args.first().ok_or_else(|| {
-                    crate::engine::error::AdhocError(
-                        "Missing first argument `compound_words_list`".to_string(),
+                    crate::engine::error::InternalError::from(
+                        TokenizationFailedSnafu {
+                            message: "Missing first argument `compound_words_list`".to_string(),
+                        }
+                        .build(),
                     )
                 })? {
                     DataValue::List(l) => {
@@ -166,28 +184,29 @@ impl TokenizerConfig {
                             list_values.push(
                                 v.get_str()
                                     .ok_or_else(|| {
-                                        crate::engine::error::AdhocError("First argument `compound_words_list` must be a list of strings".to_string())
+                                        crate::engine::error::InternalError::from(TokenizationFailedSnafu { message: "First argument `compound_words_list` must be a list of strings".to_string() }.build())
                                     })?,
                             );
                         }
                     }
                     _ => {
-                        return Err(Box::new(
-                            TokenizationFailedSnafu {
-                                message:
-                                    "First argument `compound_words_list` must be a list of strings"
-                                        .to_string(),
-                            }
-                            .build(),
-                        ));
+                        return Err(TokenizationFailedSnafu {
+                            message:
+                                "First argument `compound_words_list` must be a list of strings"
+                                    .to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                 }
                 SplitCompoundWords::from_dictionary(list_values)
                     .map_err(|e| {
-                        crate::engine::error::AdhocError(format!(
-                            "Failed to load dictionary: {}",
-                            e
-                        ))
+                        crate::engine::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: format!("Failed to load dictionary: {}", e),
+                            }
+                            .build(),
+                        )
                     })?
                     .into()
             }
@@ -196,14 +215,21 @@ impl TokenizerConfig {
                     .args
                     .first()
                     .ok_or_else(|| {
-                        crate::engine::error::AdhocError(
-                            "Missing first argument `language` to Stemmer".to_string(),
+                        crate::engine::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: "Missing first argument `language` to Stemmer".to_string(),
+                            }
+                            .build(),
                         )
                     })?
                     .get_str()
                     .ok_or_else(|| {
-                        crate::engine::error::AdhocError(
-                            "First argument `language` to Stemmer must be a string".to_string(),
+                        crate::engine::error::InternalError::from(
+                            TokenizationFailedSnafu {
+                                message: "First argument `language` to Stemmer must be a string"
+                                    .to_string(),
+                            }
+                            .build(),
                         )
                     })?
                     .to_lowercase()
@@ -228,21 +254,24 @@ impl TokenizerConfig {
                     "tamil" => Language::Tamil,
                     "turkish" => Language::Turkish,
                     lang => {
-                        return Err(Box::new(
-                            TokenizationFailedSnafu {
-                                message: format!("Unsupported language: {}", lang),
-                            }
-                            .build(),
-                        ));
+                        return Err(TokenizationFailedSnafu {
+                            message: format!("Unsupported language: {}", lang),
+                        }
+                        .build()
+                        .into());
                     }
                 };
                 Stemmer::new(language).into()
             }
             "Stopwords" => {
                 match self.args.first().ok_or_else(|| {
-                    crate::engine::error::AdhocError(
-                        "Filter Stopwords requires language name or a list of stopwords"
-                            .to_string(),
+                    crate::engine::error::InternalError::from(
+                        TokenizationFailedSnafu {
+                            message:
+                                "Filter Stopwords requires language name or a list of stopwords"
+                                    .to_string(),
+                        }
+                        .build(),
                     )
                 })? {
                     DataValue::Str(name) => StopWordFilter::for_lang(name)?.into(),
@@ -252,10 +281,10 @@ impl TokenizerConfig {
                             stopwords.push(
                                 v.get_str()
                                     .ok_or_else(|| {
-                                        crate::engine::error::AdhocError(
-                                            "First argument `stopwords` must be a list of strings"
+                                        crate::engine::error::InternalError::from(TokenizationFailedSnafu {
+                                            message: "First argument `stopwords` must be a list of strings"
                                                 .to_string(),
-                                        )
+                                        }.build())
                                     })?
                                     .to_string(),
                             );
@@ -263,24 +292,22 @@ impl TokenizerConfig {
                         StopWordFilter::new(stopwords).into()
                     }
                     _ => {
-                        return Err(Box::new(
-                            TokenizationFailedSnafu {
-                                message:
-                                    "Filter Stopwords requires language name or a list of stopwords"
-                                        .to_string(),
-                            }
-                            .build(),
-                        ));
+                        return Err(TokenizationFailedSnafu {
+                            message:
+                                "Filter Stopwords requires language name or a list of stopwords"
+                                    .to_string(),
+                        }
+                        .build()
+                        .into());
                     }
                 }
             }
             _ => {
-                return Err(Box::new(
-                    TokenizationFailedSnafu {
-                        message: format!("Unknown token filter: {:?}", self.name),
-                    }
-                    .build(),
-                ));
+                return Err(TokenizationFailedSnafu {
+                    message: format!("Unknown token filter: {:?}", self.name),
+                }
+                .build()
+                .into());
             }
         })
     }

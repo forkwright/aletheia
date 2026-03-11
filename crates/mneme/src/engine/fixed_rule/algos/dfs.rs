@@ -1,7 +1,7 @@
 //! Depth-first search traversal.
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 
 use crate::engine::data::expr::{Expr, eval_bytecode_pred};
@@ -56,13 +56,15 @@ impl FixedRule for Dfs {
                 let cand_tuple = if skip_query_nodes {
                     vec![candidate.clone()]
                 } else {
-                    nodes
-                        .prefix_iter(&candidate)?
-                        .next()
-                        .ok_or_else(|| NodeNotFoundError {
-                            missing: candidate.clone(),
-                            span: nodes.span(),
-                        })??
+                    nodes.prefix_iter(&candidate)?.next().ok_or_else(
+                        || -> crate::engine::error::InternalError {
+                            NodeNotFoundError {
+                                missing: candidate.clone(),
+                                span: nodes.span(),
+                            }
+                            .into()
+                        },
+                    )??
                 };
 
                 if eval_bytecode_pred(&condition_bytecode, &cand_tuple, &mut stack, condition_span)?

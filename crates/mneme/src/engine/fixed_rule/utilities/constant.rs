@@ -1,7 +1,7 @@
 //! Constant-value fixed rule.
 use std::collections::BTreeMap;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::error::FixedRuleError;
 use compact_str::CompactString;
 
@@ -48,11 +48,12 @@ impl FixedRule for Constant {
         Ok(if data.is_empty() {
             match rule_head.len() {
                 0 => {
-                    return Err(Box::new(FixedRuleError::InvalidInput {
+                    return Err(FixedRuleError::InvalidInput {
                         rule: "Constant".to_string(),
                         message: "Constant rule does not have data".to_string(),
                         location: snafu::location!(),
-                    }));
+                    }
+                    .into());
                 }
                 i => i,
             }
@@ -77,12 +78,13 @@ impl FixedRule for Constant {
         let data = match data.clone().eval_to_const()? {
             DataValue::List(l) => l,
             _ => {
-                return Err(Box::new(WrongFixedRuleOptionError {
+                return Err(WrongFixedRuleOptionError {
                     name: "data".to_string(),
                     span: Default::default(),
                     rule_name: "Constant".to_string(),
                     help: "a list of lists is required".to_string(),
-                }));
+                }
+                .into());
             }
         };
 
@@ -93,23 +95,25 @@ impl FixedRule for Constant {
                 DataValue::List(tuple) => {
                     if let Some(l) = &last_len {
                         if *l != tuple.len() {
-                            return Err(Box::new(FixedRuleError::InvalidInput {
+                            return Err(FixedRuleError::InvalidInput {
                                 rule: "Constant".to_string(),
                                 message: "Constant head must have the same arity as the data given"
                                     .to_string(),
                                 location: snafu::location!(),
-                            }));
+                            }
+                            .into());
                         }
                     };
                     last_len = Some(tuple.len());
                     tuples.push(DataValue::List(tuple));
                 }
                 _row => {
-                    return Err(Box::new(FixedRuleError::InvalidInput {
+                    return Err(FixedRuleError::InvalidInput {
                         rule: "Constant".to_string(),
                         message: "Bad row for constant rule: {0:?}".to_string(),
                         location: snafu::location!(),
-                    }));
+                    }
+                    .into());
                 }
             }
         }

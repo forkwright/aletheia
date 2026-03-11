@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::engine::DbCore;
 use crate::engine::data::tuple::{Tuple, check_key_for_validity};
 use crate::engine::data::value::ValidityTs;
-use crate::engine::error::DbResult;
+use crate::engine::error::InternalResult;
 use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
 use crate::engine::storage::error::{
     IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
@@ -24,12 +24,12 @@ type Result<T> = StorageResult<T>;
 /// with native read-your-own-writes semantics.
 pub fn new_cozo_fjall(
     path: impl AsRef<Path>,
-) -> crate::engine::error::DbResult<DbCore<FjallStorage>> {
+) -> crate::engine::error::InternalResult<DbCore<FjallStorage>> {
     let path = path.as_ref();
     use snafu::ResultExt as _;
     fs::create_dir_all(path)
         .context(IoSnafu { backend: "fjall" })
-        .map_err(crate::engine::error::BoxErr::from)?;
+        .map_err(crate::engine::error::InternalError::from)?;
 
     let db = fjall::SingleWriterTxDatabase::builder(path)
         .open()
@@ -40,7 +40,7 @@ pub fn new_cozo_fjall(
             }
             .build()
         })
-        .map_err(crate::engine::error::BoxErr::from)?;
+        .map_err(crate::engine::error::InternalError::from)?;
 
     let keyspace = db
         .keyspace("data", fjall::KeyspaceCreateOptions::default)
@@ -51,7 +51,7 @@ pub fn new_cozo_fjall(
             }
             .build()
         })
-        .map_err(crate::engine::error::BoxErr::from)?;
+        .map_err(crate::engine::error::InternalError::from)?;
 
     let storage = FjallStorage {
         db: Arc::new(db),
@@ -274,7 +274,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a>
     where
         's: 'a,
     {
@@ -287,7 +287,9 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                             .into_iter()
                             .map(|(k, v)| Ok(decode_tuple_from_kv(&k, &v, None))),
                     ),
-                    Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                    Err(e) => Box::new(std::iter::once(Err(
+                        crate::engine::error::InternalError::from(e),
+                    ))),
                 }
             }
             FjallTx::Writer(w) => {
@@ -298,7 +300,9 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                             .into_iter()
                             .map(|(k, v)| Ok(decode_tuple_from_kv(&k, &v, None))),
                     ),
-                    Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                    Err(e) => Box::new(std::iter::once(Err(
+                        crate::engine::error::InternalError::from(e),
+                    ))),
                 }
             }
         }
@@ -309,7 +313,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         lower: &[u8],
         upper: &[u8],
         valid_at: ValidityTs,
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a> {
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a> {
         match self {
             FjallTx::Reader(r) => {
                 use fjall::Readable;
@@ -324,7 +328,9 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                         }
                         .map(Ok),
                     ),
-                    Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                    Err(e) => Box::new(std::iter::once(Err(
+                        crate::engine::error::InternalError::from(e),
+                    ))),
                 }
             }
             FjallTx::Writer(w) => {
@@ -340,7 +346,9 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                         }
                         .map(Ok),
                     ),
-                    Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                    Err(e) => Box::new(std::iter::once(Err(
+                        crate::engine::error::InternalError::from(e),
+                    ))),
                 }
             }
         }
@@ -350,7 +358,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<(Vec<u8>, Vec<u8>)>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<(Vec<u8>, Vec<u8>)>> + 'a>
     where
         's: 'a,
     {
@@ -359,14 +367,18 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                 use fjall::Readable;
                 match fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                    Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                    Err(e) => Box::new(std::iter::once(Err(
+                        crate::engine::error::InternalError::from(e),
+                    ))),
                 }
             }
             FjallTx::Writer(w) => {
                 use fjall::Readable;
                 match fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                    Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                    Err(e) => Box::new(std::iter::once(Err(
+                        crate::engine::error::InternalError::from(e),
+                    ))),
                 }
             }
         }
@@ -452,12 +464,12 @@ impl Iterator for CollectedSkipIterator {
 mod tests {
     use super::*;
     use crate::engine::data::value::{DataValue, Validity};
-    use crate::engine::error::DbResult;
+    use crate::engine::error::InternalResult;
     use crate::engine::runtime::db::ScriptMutability;
     use std::collections::BTreeMap;
     use tempfile::TempDir;
 
-    fn setup_test_db() -> DbResult<(TempDir, DbCore<FjallStorage>)> {
+    fn setup_test_db() -> InternalResult<(TempDir, DbCore<FjallStorage>)> {
         let temp_dir = TempDir::new()?;
         let db = new_cozo_fjall(temp_dir.path())?;
         db.run_script(
@@ -472,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn basic_operations() -> DbResult<()> {
+    fn basic_operations() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -500,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn time_travel() -> DbResult<()> {
+    fn time_travel() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -543,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn range_operations() -> DbResult<()> {
+    fn range_operations() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -572,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn persistence_across_restarts() -> DbResult<()> {
+    fn persistence_across_restarts() -> InternalResult<()> {
         let dir = TempDir::new()?;
 
         // Write data
@@ -609,7 +621,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_reads() -> DbResult<()> {
+    fn concurrent_reads() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -643,7 +655,7 @@ mod tests {
 
     /// Verify no delta buffer: fjall write tx reads its own writes natively.
     #[test]
-    fn read_your_own_writes() -> DbResult<()> {
+    fn read_your_own_writes() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         // Insert and query within the same script execution
