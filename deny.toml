@@ -124,9 +124,6 @@ skip = [
     # foldhash — 0.1 from older hashmap ecosystem, 0.2 from current; qdrant-client pulls 0.1.
     { name = "foldhash", version = "=0.1.5" },
 
-    # lru 0.14 — aletheia-mneme (HNSW remediation) pins lru 0.14; lru 0.16 is canonical.
-    { name = "lru", version = "=0.14.0" },
-
     # hashbrown — four versions coexist: 0.12 from indexmap 1.x (qdrant/tonic era),
     # 0.14 from mid-cycle deps, 0.15 from near-current; 0.16 is canonical.
     { name = "hashbrown", version = "=0.12.3" },
