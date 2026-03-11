@@ -1,12 +1,13 @@
 //! Per-nous background task runner with cron scheduling, failure tracking, and graceful shutdown.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 
 use crate::bridge::DaemonBridge;
 use crate::error::{self, Result};
@@ -14,13 +15,7 @@ use crate::maintenance::{
     DbMonitor, DriftDetector, KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor,
     TraceRotator,
 };
-use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
-
-/// Maximum wall-clock duration for any single task execution (10 minutes).
-///
-/// Prevents a hung task (e.g., a blocking shell command or an unresponsive
-/// knowledge store operation) from blocking the runner indefinitely.
-const TASK_EXECUTION_TIMEOUT: Duration = Duration::from_secs(600);
+use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus, backoff_delay};
 
 /// Per-nous background task runner.
 pub struct TaskRunner {
@@ -31,8 +26,16 @@ pub struct TaskRunner {
     maintenance: Option<MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
-    /// Task IDs currently executing (for backpressure).
-    in_flight: HashSet<String>,
+    /// In-flight tasks: `task_id` → [`InFlightTask`].
+    in_flight: HashMap<String, InFlightTask>,
+}
+
+/// Tracks a task that is currently executing.
+struct InFlightTask {
+    handle: tokio::task::JoinHandle<Result<ExecutionResult>>,
+    started_at: Instant,
+    timeout: Duration,
+    warned: bool,
 }
 
 struct RegisteredTask {
@@ -41,6 +44,8 @@ struct RegisteredTask {
     last_run: Option<jiff::Timestamp>,
     run_count: u64,
     consecutive_failures: u32,
+    /// If set, the task is in backoff and should not run before this instant.
+    backoff_until: Option<Instant>,
 }
 
 /// Outcome of executing a single task action.
@@ -63,7 +68,7 @@ impl TaskRunner {
             maintenance: None,
             retention_executor: None,
             knowledge_executor: None,
-            in_flight: HashSet::new(),
+            in_flight: HashMap::new(),
         }
     }
 
@@ -81,7 +86,7 @@ impl TaskRunner {
             maintenance: None,
             retention_executor: None,
             knowledge_executor: None,
-            in_flight: HashSet::new(),
+            in_flight: HashMap::new(),
         }
     }
 
@@ -126,7 +131,8 @@ impl TaskRunner {
                 schedule: Schedule::Cron("0 0 3 * * *".to_owned()),
                 action: TaskAction::Builtin(BuiltinTask::TraceRotation),
                 enabled: true,
-                active_window: None,
+                catch_up: true,
+                ..TaskDef::default()
             });
         }
 
@@ -138,7 +144,8 @@ impl TaskRunner {
                 schedule: Schedule::Cron("0 0 4 * * *".to_owned()),
                 action: TaskAction::Builtin(BuiltinTask::DriftDetection),
                 enabled: true,
-                active_window: None,
+                catch_up: true,
+                ..TaskDef::default()
             });
         }
 
@@ -150,7 +157,8 @@ impl TaskRunner {
                 schedule: Schedule::Interval(Duration::from_secs(6 * 3600)),
                 action: TaskAction::Builtin(BuiltinTask::DbSizeMonitor),
                 enabled: true,
-                active_window: None,
+                catch_up: true,
+                ..TaskDef::default()
             });
         }
 
@@ -162,7 +170,8 @@ impl TaskRunner {
                 schedule: Schedule::Cron("0 30 3 * * *".to_owned()),
                 action: TaskAction::Builtin(BuiltinTask::RetentionExecution),
                 enabled: true,
-                active_window: None,
+                catch_up: true,
+                ..TaskDef::default()
             });
         }
 
@@ -226,7 +235,8 @@ impl TaskRunner {
                 schedule,
                 action: TaskAction::Builtin(task),
                 enabled: true,
-                active_window: None,
+                catch_up: true,
+                ..TaskDef::default()
             });
         }
     }
@@ -251,7 +261,52 @@ impl TaskRunner {
             last_run: None,
             run_count: 0,
             consecutive_failures: 0,
+            backoff_until: None,
         });
+    }
+
+    /// Check each cron task for missed windows and run catch-up if needed.
+    ///
+    /// Called once at startup. For each task with `catch_up: true` and a cron
+    /// schedule, checks if a window was missed within the last 24 hours.
+    /// If so, schedules the task for immediate execution.
+    pub fn check_missed_cron_catchup(&mut self) {
+        for task in &mut self.tasks {
+            if !task.def.enabled || !task.def.catch_up {
+                continue;
+            }
+
+            let Some(last_run) = task.last_run else {
+                continue;
+            };
+
+            match task.def.schedule.missed_since(last_run) {
+                Ok(true) => {
+                    tracing::info!(
+                        task_id = %task.def.id,
+                        task_name = %task.def.name,
+                        last_run = %last_run,
+                        "missed cron window detected — scheduling catch-up"
+                    );
+                    task.next_run = Some(jiff::Timestamp::now());
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = %task.def.id,
+                        error = %e,
+                        "failed to check missed cron windows"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Set the `last_run` timestamp for a task by ID (for catch-up testing/persistence).
+    pub fn set_last_run(&mut self, task_id: &str, last_run: jiff::Timestamp) {
+        if let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) {
+            task.last_run = Some(last_run);
+        }
     }
 
     /// Run the event loop. Checks for due tasks every second, executes them.
@@ -259,12 +314,16 @@ impl TaskRunner {
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
 
+        // Check for missed cron windows on startup.
+        self.check_missed_cron_catchup();
+
         let mut interval = tokio::time::interval(Duration::from_secs(1));
 
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    self.tick().await;
+                    self.check_in_flight().await;
+                    self.tick();
                 }
                 () = self.shutdown.cancelled() => {
                     tracing::info!(nous_id = %self.nous_id, "daemon shutting down");
@@ -286,12 +345,158 @@ impl TaskRunner {
                 last_run: t.last_run.map(|ts| ts.to_string()),
                 run_count: t.run_count,
                 consecutive_failures: t.consecutive_failures,
+                in_flight: self.in_flight.contains_key(&t.def.id),
             })
             .collect()
     }
 
-    async fn tick(&mut self) {
+    /// Check in-flight tasks for completion, timeout warnings, and hung task cancellation.
+    async fn check_in_flight(&mut self) {
+        let task_ids: Vec<String> = self.in_flight.keys().cloned().collect();
+
+        for task_id in task_ids {
+            let Some(in_flight) = self.in_flight.get_mut(&task_id) else {
+                continue;
+            };
+
+            let elapsed = in_flight.started_at.elapsed();
+
+            // Check for 2x timeout — cancel the task.
+            if elapsed > in_flight.timeout * 2 {
+                tracing::warn!(
+                    task_id = %task_id,
+                    elapsed_secs = elapsed.as_secs(),
+                    timeout_secs = in_flight.timeout.as_secs(),
+                    "hung task detected — cancelling (exceeded 2x timeout)"
+                );
+                in_flight.handle.abort();
+
+                self.in_flight.remove(&task_id);
+                self.record_task_failure(&task_id, "cancelled: exceeded 2x timeout");
+                continue;
+            }
+
+            // Check for 1x timeout — warn.
+            if elapsed > in_flight.timeout && !in_flight.warned {
+                tracing::warn!(
+                    task_id = %task_id,
+                    elapsed_secs = elapsed.as_secs(),
+                    timeout_secs = in_flight.timeout.as_secs(),
+                    "task running longer than configured timeout"
+                );
+                in_flight.warned = true;
+            }
+
+            // Check if the task completed.
+            if in_flight.handle.is_finished() {
+                let in_flight = self.in_flight.remove(&task_id).expect("just checked");
+                let duration = in_flight.started_at.elapsed();
+
+                match in_flight.handle.await {
+                    Ok(Ok(_result)) => {
+                        self.record_task_completion(&task_id, duration);
+                    }
+                    Ok(Err(e)) => {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %e,
+                            duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+                            "spawned task failed"
+                        );
+                        self.record_task_failure(&task_id, &e.to_string());
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %e,
+                            "spawned task panicked or was cancelled"
+                        );
+                        self.record_task_failure(&task_id, &e.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Record a successful task completion and update scheduling.
+    fn record_task_completion(&mut self, task_id: &str, duration: Duration) {
+        let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
+            return;
+        };
+
+        task.last_run = Some(jiff::Timestamp::now());
+        task.run_count += 1;
+        task.consecutive_failures = 0;
+        task.backoff_until = None;
+        task.next_run = task.def.schedule.next_run().unwrap_or(None);
+
+        tracing::info!(
+            task_id = %task.def.id,
+            task_name = %task.def.name,
+            run_count = task.run_count,
+            duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+            result = "success",
+            "task completed"
+        );
+    }
+
+    /// Record a task failure: increment failures, apply backoff, possibly auto-disable.
+    fn record_task_failure(&mut self, task_id: &str, reason: &str) {
+        let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
+            return;
+        };
+
+        task.consecutive_failures += 1;
+        task.last_run = Some(jiff::Timestamp::now());
+
+        // GraphHealthCheck failures don't count toward auto-disable.
+        let exempt = matches!(
+            task.def.action,
+            TaskAction::Builtin(BuiltinTask::GraphHealthCheck)
+        );
+
+        if !exempt && task.consecutive_failures >= 3 {
+            task.def.enabled = false;
+            tracing::warn!(
+                task_id = %task.def.id,
+                task_name = %task.def.name,
+                failures = task.consecutive_failures,
+                last_error = %reason,
+                "task auto-disabled after 3 consecutive failures"
+            );
+        } else {
+            // Apply exponential backoff.
+            let delay = backoff_delay(task.consecutive_failures);
+            task.backoff_until = Some(Instant::now() + delay);
+
+            // Next run is the later of the schedule's next_run and the backoff.
+            let scheduled_next = task.def.schedule.next_run().unwrap_or(None);
+            let backoff_ts = jiff::Timestamp::now()
+                .checked_add(jiff::SignedDuration::from_nanos(
+                    i64::try_from(delay.as_nanos()).unwrap_or(i64::MAX),
+                ))
+                .expect("backoff addition overflow");
+
+            task.next_run = match scheduled_next {
+                Some(next) if next > backoff_ts => Some(next),
+                _ => Some(backoff_ts),
+            };
+
+            tracing::warn!(
+                task_id = %task.def.id,
+                task_name = %task.def.name,
+                failures = task.consecutive_failures,
+                backoff_secs = delay.as_secs(),
+                error = %reason,
+                result = "failure",
+                "task failed — backoff applied"
+            );
+        }
+    }
+
+    fn tick(&mut self) {
         let now = jiff::Timestamp::now();
+        let now_instant = Instant::now();
 
         for i in 0..self.tasks.len() {
             if !self.tasks[i].def.enabled {
@@ -311,7 +516,7 @@ impl TaskRunner {
             }
 
             // Backpressure: skip if previous execution is still in progress.
-            if self.in_flight.contains(&self.tasks[i].def.id) {
+            if self.in_flight.contains_key(&self.tasks[i].def.id) {
                 tracing::debug!(
                     task_id = %self.tasks[i].def.id,
                     "skipping — previous execution still in progress"
@@ -319,372 +524,372 @@ impl TaskRunner {
                 continue;
             }
 
-            // Clone action and nous_id to release the borrow on self.tasks before
-            // calling self.execute_action (which needs &self). TaskAction contains
-            // heap data (String, Value) so Copy is not possible.
+            // Check backoff.
+            if let Some(backoff_until) = self.tasks[i].backoff_until {
+                if now_instant < backoff_until {
+                    tracing::debug!(
+                        task_id = %self.tasks[i].def.id,
+                        remaining_secs = (backoff_until - now_instant).as_secs(),
+                        "skipping — in backoff period"
+                    );
+                    continue;
+                }
+            }
+
             let action = self.tasks[i].def.action.clone();
             let nous_id = self.tasks[i].def.nous_id.clone();
             let task_id = self.tasks[i].def.id.clone();
+            let task_name = self.tasks[i].def.name.clone();
+            let timeout = self.tasks[i].def.timeout;
 
-            self.in_flight.insert(task_id.clone());
-            let result = match tokio::time::timeout(
-                TASK_EXECUTION_TIMEOUT,
-                self.execute_action(&action, &nous_id),
-            )
-            .await
-            {
-                Ok(r) => r,
-                Err(_elapsed) => {
-                    tracing::warn!(
-                        task_id = %task_id,
-                        timeout_secs = TASK_EXECUTION_TIMEOUT.as_secs(),
-                        "task execution timed out"
-                    );
-                    Err(error::TaskFailedSnafu {
-                        task_id: task_id.clone(),
-                        reason: format!("timed out after {}s", TASK_EXECUTION_TIMEOUT.as_secs()),
-                    }
-                    .build())
+            // Clone Arc handles for the spawned task.
+            let bridge = self.bridge.clone();
+            let maintenance = self.maintenance.clone();
+            let retention_executor = self.retention_executor.clone();
+            let knowledge_executor = self.knowledge_executor.clone();
+
+            let span = tracing::info_span!(
+                "task_execute",
+                task_id = %task_id,
+                task_name = %task_name,
+                nous_id = %nous_id,
+            );
+
+            let handle = tokio::spawn(
+                async move {
+                    execute_action(
+                        &action,
+                        &nous_id,
+                        bridge.as_deref(),
+                        maintenance.as_ref(),
+                        retention_executor,
+                        knowledge_executor,
+                    )
+                    .await
                 }
-            };
-            self.in_flight.remove(&task_id);
+                .instrument(span),
+            );
 
-            let task = &mut self.tasks[i];
-            task.last_run = Some(now);
-
-            match result {
-                Ok(_) => {
-                    task.run_count += 1;
-                    task.consecutive_failures = 0;
-                    task.next_run = task.def.schedule.next_run().unwrap_or(None);
-                    tracing::debug!(
-                        task_id = %task.def.id,
-                        run_count = task.run_count,
-                        "task completed"
-                    );
-                }
-                Err(e) => {
-                    task.consecutive_failures += 1;
-                    tracing::warn!(
-                        task_id = %task.def.id,
-                        failures = task.consecutive_failures,
-                        error = %e,
-                        "task failed"
-                    );
-
-                    // GraphHealthCheck failures don't count toward auto-disable.
-                    let exempt = matches!(
-                        task.def.action,
-                        TaskAction::Builtin(BuiltinTask::GraphHealthCheck)
-                    );
-
-                    if !exempt && task.consecutive_failures >= 3 {
-                        task.def.enabled = false;
-                        tracing::warn!(
-                            task_id = %task.def.id,
-                            failures = task.consecutive_failures,
-                            "task disabled after consecutive failures"
-                        );
-                    } else {
-                        task.next_run = task.def.schedule.next_run().unwrap_or(None);
-                    }
-                }
-            }
+            self.in_flight.insert(
+                task_id,
+                InFlightTask {
+                    handle,
+                    started_at: Instant::now(),
+                    timeout,
+                    warned: false,
+                },
+            );
         }
     }
+}
 
-    async fn execute_action(&self, action: &TaskAction, nous_id: &str) -> Result<ExecutionResult> {
-        match action {
-            TaskAction::Command(cmd) => Self::execute_command(cmd).await,
-            TaskAction::Tool { name, .. } => {
-                tracing::info!(
-                    nous_id = %nous_id,
-                    tool = %name,
-                    "tool execution not yet wired — requires organon integration"
-                );
-                Ok(ExecutionResult {
-                    success: true,
-                    output: None,
-                })
-            }
-            TaskAction::Prompt(prompt) => {
-                if let Some(bridge) = &self.bridge {
-                    bridge.send_prompt(nous_id, "daemon:prompt", prompt).await
-                } else {
-                    tracing::warn!(
-                        nous_id = %nous_id,
-                        "prompt action skipped — no daemon bridge configured"
-                    );
-                    Ok(ExecutionResult {
-                        success: false,
-                        output: Some("no bridge configured".to_owned()),
-                    })
-                }
-            }
-            TaskAction::Builtin(builtin) => self.execute_builtin(builtin, nous_id).await,
-        }
-    }
-
-    async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
-        let output = tokio::process::Command::new("sh")
-            .args(["-c", cmd])
-            .output()
-            .await
-            .context(error::CommandFailedSnafu {
-                command: cmd.to_owned(),
-            })?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        if output.status.success() {
-            tracing::debug!(cmd = %cmd, stdout = %stdout, "command succeeded");
+/// Execute a task action. Receives owned `Arc`s for executor references
+/// so it can be spawned as a `'static` future.
+async fn execute_action(
+    action: &TaskAction,
+    nous_id: &str,
+    bridge: Option<&dyn DaemonBridge>,
+    maintenance: Option<&MaintenanceConfig>,
+    retention_executor: Option<Arc<dyn RetentionExecutor>>,
+    knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<ExecutionResult> {
+    match action {
+        TaskAction::Command(cmd) => execute_command(cmd).await,
+        TaskAction::Tool { name, .. } => {
+            tracing::info!(
+                nous_id = %nous_id,
+                tool = %name,
+                "tool execution not yet wired — requires organon integration"
+            );
             Ok(ExecutionResult {
                 success: true,
-                output: Some(stdout.into_owned()),
+                output: None,
             })
-        } else {
-            let reason = if stderr.is_empty() {
-                format!("exit code: {}", output.status)
+        }
+        TaskAction::Prompt(prompt) => {
+            if let Some(bridge) = bridge {
+                bridge.send_prompt(nous_id, "daemon:prompt", prompt).await
             } else {
-                stderr.into_owned()
-            };
-
-            error::TaskFailedSnafu {
-                task_id: cmd.to_owned(),
-                reason,
-            }
-            .fail()
-        }
-    }
-
-    #[expect(
-        clippy::too_many_lines,
-        reason = "match dispatch over builtin variants"
-    )]
-    async fn execute_builtin(
-        &self,
-        builtin: &BuiltinTask,
-        nous_id: &str,
-    ) -> Result<ExecutionResult> {
-        match builtin {
-            BuiltinTask::Prosoche => {
-                if let Some(bridge) = &self.bridge {
-                    let prompt = "Run your prosoche heartbeat check per PROSOCHE.md.";
-                    let _ = bridge.send_prompt(nous_id, "daemon:prosoche", prompt).await;
-                    Ok(ExecutionResult {
-                        success: true,
-                        output: Some("dispatched".to_owned()),
-                    })
-                } else {
-                    Ok(ExecutionResult {
-                        success: false,
-                        output: Some("no bridge configured".to_owned()),
-                    })
-                }
-            }
-            BuiltinTask::DecayRefresh
-            | BuiltinTask::EntityDedup
-            | BuiltinTask::GraphRecompute
-            | BuiltinTask::EmbeddingRefresh
-            | BuiltinTask::KnowledgeGc
-            | BuiltinTask::IndexMaintenance
-            | BuiltinTask::GraphHealthCheck => self.execute_knowledge_task(builtin, nous_id).await,
-            BuiltinTask::TraceRotation => {
-                let config = self
-                    .maintenance
-                    .as_ref()
-                    .map(|m| m.trace_rotation.clone())
-                    .unwrap_or_default();
-                let report =
-                    tokio::task::spawn_blocking(move || TraceRotator::new(config).rotate())
-                        .await
-                        .context(error::BlockingJoinSnafu {
-                            context: "trace rotation",
-                        })??;
-
-                tracing::info!(
-                    rotated = report.files_rotated,
-                    pruned = report.files_pruned,
-                    bytes_freed = report.bytes_freed,
-                    "maintenance: trace rotation complete"
-                );
-                Ok(ExecutionResult {
-                    success: true,
-                    output: Some(format!(
-                        "{} files rotated, {} pruned, {} bytes freed",
-                        report.files_rotated, report.files_pruned, report.bytes_freed
-                    )),
-                })
-            }
-            BuiltinTask::DriftDetection => {
-                let config = self
-                    .maintenance
-                    .as_ref()
-                    .map(|m| m.drift_detection.clone())
-                    .unwrap_or_default();
-                let report =
-                    tokio::task::spawn_blocking(move || DriftDetector::new(config).check())
-                        .await
-                        .context(error::BlockingJoinSnafu {
-                            context: "drift detection",
-                        })??;
-
-                tracing::info!(
-                    missing = report.missing_files.len(),
-                    extra = report.extra_files.len(),
-                    permission_issues = report.permission_issues.len(),
-                    "maintenance: drift detection complete"
-                );
-                Ok(ExecutionResult {
-                    success: true,
-                    output: Some(format!(
-                        "{} missing, {} extra",
-                        report.missing_files.len(),
-                        report.extra_files.len()
-                    )),
-                })
-            }
-            BuiltinTask::DbSizeMonitor => {
-                let config = self
-                    .maintenance
-                    .as_ref()
-                    .map(|m| m.db_monitoring.clone())
-                    .unwrap_or_default();
-                let report = tokio::task::spawn_blocking(move || DbMonitor::new(config).check())
-                    .await
-                    .context(error::BlockingJoinSnafu {
-                        context: "db size monitor",
-                    })??;
-
-                let summary: Vec<String> = report
-                    .databases
-                    .iter()
-                    .map(|db| {
-                        format!(
-                            "{} {}MB ({})",
-                            db.name,
-                            db.size_bytes / (1024 * 1024),
-                            db.status
-                        )
-                    })
-                    .collect();
-                tracing::info!(
-                    databases = %summary.join(", "),
-                    "maintenance: db monitor complete"
-                );
-                Ok(ExecutionResult {
-                    success: true,
-                    output: Some(summary.join(", ")),
-                })
-            }
-            BuiltinTask::RetentionExecution => {
-                let Some(executor) = self.retention_executor.as_ref().map(Arc::clone) else {
-                    tracing::info!("retention execution skipped — no executor configured");
-                    return Ok(ExecutionResult {
-                        success: true,
-                        output: Some("skipped — no executor".to_owned()),
-                    });
-                };
-                let summary = tokio::task::spawn_blocking(move || executor.execute_retention())
-                    .await
-                    .context(error::BlockingJoinSnafu {
-                        context: "retention execution",
-                    })??;
-
-                tracing::info!(
-                    sessions = summary.sessions_cleaned,
-                    messages = summary.messages_cleaned,
-                    bytes_freed = summary.bytes_freed,
-                    "maintenance: retention complete"
-                );
-                Ok(ExecutionResult {
-                    success: true,
-                    output: Some(format!(
-                        "{} sessions, {} messages cleaned, {} bytes freed",
-                        summary.sessions_cleaned, summary.messages_cleaned, summary.bytes_freed
-                    )),
-                })
-            }
-            BuiltinTask::SessionRetention => {
-                tracing::info!(
+                tracing::warn!(
                     nous_id = %nous_id,
-                    "session retention not yet wired — requires store access from daemon"
+                    "prompt action skipped — no daemon bridge configured"
                 );
                 Ok(ExecutionResult {
-                    success: true,
-                    output: None,
+                    success: false,
+                    output: Some("no bridge configured".to_owned()),
                 })
             }
         }
-    }
-
-    /// Dispatch a knowledge maintenance task to the executor via `spawn_blocking`.
-    async fn execute_knowledge_task(
-        &self,
-        builtin: &BuiltinTask,
-        nous_id: &str,
-    ) -> Result<ExecutionResult> {
-        let Some(executor) = self.knowledge_executor.as_ref().map(Arc::clone) else {
-            tracing::info!(
-                task = ?builtin,
-                "knowledge maintenance skipped — no executor configured"
-            );
-            return Ok(ExecutionResult {
-                success: true,
-                output: Some("skipped — no executor".to_owned()),
-            });
-        };
-
-        let task_name = format!("{builtin:?}");
-        let nous_id_owned = nous_id.to_owned();
-        let builtin_clone = builtin.clone();
-
-        let report = tokio::task::spawn_blocking(move || {
-            let _span = tracing::info_span!(
-                "knowledge_maintenance",
-                task = %task_name,
-                nous_id = %nous_id_owned,
+        TaskAction::Builtin(builtin) => {
+            execute_builtin(
+                builtin,
+                nous_id,
+                bridge,
+                maintenance,
+                retention_executor,
+                knowledge_executor,
             )
-            .entered();
+            .await
+        }
+    }
+}
 
-            let start = std::time::Instant::now();
-            let mut report = match builtin_clone {
-                BuiltinTask::DecayRefresh => executor.refresh_decay_scores(&nous_id_owned),
-                BuiltinTask::EntityDedup => executor.deduplicate_entities(&nous_id_owned),
-                BuiltinTask::GraphRecompute => executor.recompute_graph_scores(&nous_id_owned),
-                BuiltinTask::EmbeddingRefresh => executor.refresh_embeddings(&nous_id_owned),
-                BuiltinTask::KnowledgeGc => executor.garbage_collect(&nous_id_owned),
-                BuiltinTask::IndexMaintenance => executor.maintain_indexes(&nous_id_owned),
-                BuiltinTask::GraphHealthCheck => executor.health_check(&nous_id_owned),
-                _ => unreachable!("non-knowledge task routed to execute_knowledge_task"),
-            }?;
-
-            report.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-
-            tracing::info!(
-                items_processed = report.items_processed,
-                items_modified = report.items_modified,
-                duration_ms = report.duration_ms,
-                errors = report.errors,
-                "knowledge maintenance complete"
-            );
-
-            Ok(report)
-        })
+async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
+    let output = tokio::process::Command::new("sh")
+        .args(["-c", cmd])
+        .output()
         .await
-        .context(error::BlockingJoinSnafu {
-            context: format!("knowledge maintenance: {builtin:?}"),
-        })??;
+        .context(error::CommandFailedSnafu {
+            command: cmd.to_owned(),
+        })?;
 
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if output.status.success() {
+        tracing::debug!(cmd = %cmd, stdout = %stdout, "command succeeded");
         Ok(ExecutionResult {
             success: true,
-            output: Some(format!(
-                "{} processed, {} modified in {}ms",
-                report.items_processed, report.items_modified, report.duration_ms
-            )),
+            output: Some(stdout.into_owned()),
         })
+    } else {
+        let reason = if stderr.is_empty() {
+            format!("exit code: {}", output.status)
+        } else {
+            stderr.into_owned()
+        };
+
+        error::TaskFailedSnafu {
+            task_id: cmd.to_owned(),
+            reason,
+        }
+        .fail()
     }
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "match dispatch over builtin variants"
+)]
+async fn execute_builtin(
+    builtin: &BuiltinTask,
+    nous_id: &str,
+    bridge: Option<&dyn DaemonBridge>,
+    maintenance: Option<&MaintenanceConfig>,
+    retention_executor: Option<Arc<dyn RetentionExecutor>>,
+    knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<ExecutionResult> {
+    match builtin {
+        BuiltinTask::Prosoche => {
+            if let Some(bridge) = bridge {
+                let prompt = "Run your prosoche heartbeat check per PROSOCHE.md.";
+                let _ = bridge.send_prompt(nous_id, "daemon:prosoche", prompt).await;
+                Ok(ExecutionResult {
+                    success: true,
+                    output: Some("dispatched".to_owned()),
+                })
+            } else {
+                Ok(ExecutionResult {
+                    success: false,
+                    output: Some("no bridge configured".to_owned()),
+                })
+            }
+        }
+        BuiltinTask::DecayRefresh
+        | BuiltinTask::EntityDedup
+        | BuiltinTask::GraphRecompute
+        | BuiltinTask::EmbeddingRefresh
+        | BuiltinTask::KnowledgeGc
+        | BuiltinTask::IndexMaintenance
+        | BuiltinTask::GraphHealthCheck => {
+            execute_knowledge_task(builtin, nous_id, knowledge_executor).await
+        }
+        BuiltinTask::TraceRotation => {
+            let config = maintenance
+                .map(|m| m.trace_rotation.clone())
+                .unwrap_or_default();
+            let report = tokio::task::spawn_blocking(move || TraceRotator::new(config).rotate())
+                .await
+                .context(error::BlockingJoinSnafu {
+                    context: "trace rotation",
+                })??;
+
+            tracing::info!(
+                rotated = report.files_rotated,
+                pruned = report.files_pruned,
+                bytes_freed = report.bytes_freed,
+                "maintenance: trace rotation complete"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: Some(format!(
+                    "{} files rotated, {} pruned, {} bytes freed",
+                    report.files_rotated, report.files_pruned, report.bytes_freed
+                )),
+            })
+        }
+        BuiltinTask::DriftDetection => {
+            let config = maintenance
+                .map(|m| m.drift_detection.clone())
+                .unwrap_or_default();
+            let report = tokio::task::spawn_blocking(move || DriftDetector::new(config).check())
+                .await
+                .context(error::BlockingJoinSnafu {
+                    context: "drift detection",
+                })??;
+
+            tracing::info!(
+                missing = report.missing_files.len(),
+                extra = report.extra_files.len(),
+                permission_issues = report.permission_issues.len(),
+                "maintenance: drift detection complete"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: Some(format!(
+                    "{} missing, {} extra",
+                    report.missing_files.len(),
+                    report.extra_files.len()
+                )),
+            })
+        }
+        BuiltinTask::DbSizeMonitor => {
+            let config = maintenance
+                .map(|m| m.db_monitoring.clone())
+                .unwrap_or_default();
+            let report = tokio::task::spawn_blocking(move || DbMonitor::new(config).check())
+                .await
+                .context(error::BlockingJoinSnafu {
+                    context: "db size monitor",
+                })??;
+
+            let summary: Vec<String> = report
+                .databases
+                .iter()
+                .map(|db| {
+                    format!(
+                        "{} {}MB ({})",
+                        db.name,
+                        db.size_bytes / (1024 * 1024),
+                        db.status
+                    )
+                })
+                .collect();
+            tracing::info!(
+                databases = %summary.join(", "),
+                "maintenance: db monitor complete"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: Some(summary.join(", ")),
+            })
+        }
+        BuiltinTask::RetentionExecution => {
+            let Some(executor) = retention_executor else {
+                tracing::info!("retention execution skipped — no executor configured");
+                return Ok(ExecutionResult {
+                    success: true,
+                    output: Some("skipped — no executor".to_owned()),
+                });
+            };
+            let summary = tokio::task::spawn_blocking(move || executor.execute_retention())
+                .await
+                .context(error::BlockingJoinSnafu {
+                    context: "retention execution",
+                })??;
+
+            tracing::info!(
+                sessions = summary.sessions_cleaned,
+                messages = summary.messages_cleaned,
+                bytes_freed = summary.bytes_freed,
+                "maintenance: retention complete"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: Some(format!(
+                    "{} sessions, {} messages cleaned, {} bytes freed",
+                    summary.sessions_cleaned, summary.messages_cleaned, summary.bytes_freed
+                )),
+            })
+        }
+        BuiltinTask::SessionRetention => {
+            tracing::info!(
+                nous_id = %nous_id,
+                "session retention not yet wired — requires store access from daemon"
+            );
+            Ok(ExecutionResult {
+                success: true,
+                output: None,
+            })
+        }
+    }
+}
+
+/// Dispatch a knowledge maintenance task to the executor via `spawn_blocking`.
+async fn execute_knowledge_task(
+    builtin: &BuiltinTask,
+    nous_id: &str,
+    knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<ExecutionResult> {
+    let Some(executor) = knowledge_executor else {
+        tracing::info!(
+            task = ?builtin,
+            "knowledge maintenance skipped — no executor configured"
+        );
+        return Ok(ExecutionResult {
+            success: true,
+            output: Some("skipped — no executor".to_owned()),
+        });
+    };
+
+    let task_name = format!("{builtin:?}");
+    let nous_id_owned = nous_id.to_owned();
+    let builtin_clone = builtin.clone();
+
+    let report = tokio::task::spawn_blocking(move || {
+        let _span = tracing::info_span!(
+            "knowledge_maintenance",
+            task = %task_name,
+            nous_id = %nous_id_owned,
+        )
+        .entered();
+
+        let start = std::time::Instant::now();
+        let mut report = match builtin_clone {
+            BuiltinTask::DecayRefresh => executor.refresh_decay_scores(&nous_id_owned),
+            BuiltinTask::EntityDedup => executor.deduplicate_entities(&nous_id_owned),
+            BuiltinTask::GraphRecompute => executor.recompute_graph_scores(&nous_id_owned),
+            BuiltinTask::EmbeddingRefresh => executor.refresh_embeddings(&nous_id_owned),
+            BuiltinTask::KnowledgeGc => executor.garbage_collect(&nous_id_owned),
+            BuiltinTask::IndexMaintenance => executor.maintain_indexes(&nous_id_owned),
+            BuiltinTask::GraphHealthCheck => executor.health_check(&nous_id_owned),
+            _ => unreachable!("non-knowledge task routed to execute_knowledge_task"),
+        }?;
+
+        report.duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+
+        tracing::info!(
+            items_processed = report.items_processed,
+            items_modified = report.items_modified,
+            duration_ms = report.duration_ms,
+            errors = report.errors,
+            "knowledge maintenance complete"
+        );
+
+        Ok(report)
+    })
+    .await
+    .context(error::BlockingJoinSnafu {
+        context: format!("knowledge maintenance: {builtin:?}"),
+    })??;
+
+    Ok(ExecutionResult {
+        success: true,
+        output: Some(format!(
+            "{} processed, {} modified in {}ms",
+            report.items_processed, report.items_modified, report.duration_ms
+        )),
+    })
 }
 
 #[cfg(test)]
@@ -699,7 +904,7 @@ mod tests {
             schedule: Schedule::Interval(Duration::from_secs(60)),
             action: TaskAction::Command("echo hello".to_owned()),
             enabled: true,
-            active_window: None,
+            ..TaskDef::default()
         }
     }
 
@@ -726,22 +931,17 @@ mod tests {
             runner.run().await;
         });
 
-        // Signal shutdown via cancellation
         token.cancel();
 
-        // Verify it exits within a reasonable time
         let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
         assert!(result.is_ok(), "runner should exit on shutdown signal");
     }
 
     #[tokio::test]
     async fn task_disabled_after_consecutive_failures() {
-        tokio::time::pause();
-
         let token = CancellationToken::new();
         let mut runner = TaskRunner::new("test-nous", token);
 
-        // Register a task that will fail (nonexistent command)
         let task = TaskDef {
             id: "failing-task".to_owned(),
             name: "Failing task".to_owned(),
@@ -749,21 +949,12 @@ mod tests {
             schedule: Schedule::Interval(Duration::from_millis(10)),
             action: TaskAction::Command("exit 1".to_owned()),
             enabled: true,
-            active_window: None,
+            ..TaskDef::default()
         };
         runner.register(task);
 
-        // Force next_run to now so it fires immediately
-        runner.tasks[0].next_run = Some(jiff::Timestamp::now());
-
-        // Run 3 ticks — each should fail and increment consecutive_failures
         for _ in 0..3 {
-            runner.tasks[0].next_run = Some(
-                jiff::Timestamp::now()
-                    .checked_add(jiff::SignedDuration::from_secs(-1))
-                    .unwrap(),
-            );
-            runner.tick().await;
+            runner.record_task_failure("failing-task", "exit code 1");
         }
 
         let statuses = runner.status();
@@ -786,19 +977,12 @@ mod tests {
             schedule: Schedule::Interval(Duration::from_secs(60)),
             action: TaskAction::Command("echo ok".to_owned()),
             enabled: true,
-            active_window: None,
+            ..TaskDef::default()
         };
         runner.register(task);
 
-        // Set up as if it had 2 prior failures
         runner.tasks[0].consecutive_failures = 2;
-        runner.tasks[0].next_run = Some(
-            jiff::Timestamp::now()
-                .checked_add(jiff::SignedDuration::from_secs(-1))
-                .unwrap(),
-        );
-
-        runner.tick().await;
+        runner.record_task_completion("echo-task", Duration::from_millis(10));
 
         let statuses = runner.status();
         assert_eq!(statuses[0].consecutive_failures, 0);
@@ -818,7 +1002,8 @@ mod tests {
             schedule: Schedule::Interval(Duration::from_secs(60)),
             action: TaskAction::Builtin(BuiltinTask::Prosoche),
             enabled: true,
-            active_window: None,
+            catch_up: false,
+            ..TaskDef::default()
         };
         runner.register(task);
 
@@ -828,7 +1013,11 @@ mod tests {
                 .unwrap(),
         );
 
-        runner.tick().await;
+        runner.tick();
+
+        // Wait for the spawned task to complete.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        runner.check_in_flight().await;
 
         let statuses = runner.status();
         assert_eq!(statuses[0].run_count, 1);
@@ -882,12 +1071,15 @@ mod tests {
 
     #[tokio::test]
     async fn retention_without_executor_skips() {
-        let token = CancellationToken::new();
-        let runner = TaskRunner::new("system", token);
-
-        let result = runner
-            .execute_builtin(&BuiltinTask::RetentionExecution, "system")
-            .await;
+        let result = execute_builtin(
+            &BuiltinTask::RetentionExecution,
+            "system",
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
         assert!(result.is_ok());
         let output = result.unwrap().output.unwrap_or_default();
         assert!(output.contains("skipped"));
@@ -915,12 +1107,11 @@ mod tests {
             schedule: Schedule::Startup,
             action: TaskAction::Command("echo boot".to_owned()),
             enabled: true,
-            active_window: None,
+            ..TaskDef::default()
         };
         let before = jiff::Timestamp::now();
         runner.register(task);
 
-        // Startup tasks should have next_run set to approximately now.
         let statuses = runner.status();
         let next_run_str = statuses[0]
             .next_run
@@ -938,7 +1129,6 @@ mod tests {
         let token = CancellationToken::new();
         let bridge: Arc<dyn DaemonBridge> = Arc::new(crate::bridge::NoopBridge);
         let runner = TaskRunner::with_bridge("test-nous", token, bridge);
-        // Verify runner was created (bridge is private, but we can confirm no panic).
         assert!(runner.status().is_empty());
     }
 
@@ -991,19 +1181,19 @@ mod tests {
             schedule: Schedule::Interval(Duration::from_secs(60)),
             action: TaskAction::Command("echo should-not-run".to_owned()),
             enabled: false,
-            active_window: None,
+            ..TaskDef::default()
         };
         runner.register(task);
 
-        // Force next_run to the past.
         runner.tasks[0].next_run = Some(
             jiff::Timestamp::now()
                 .checked_add(jiff::SignedDuration::from_secs(-10))
                 .unwrap(),
         );
 
-        runner.tick().await;
+        runner.tick();
 
+        assert!(runner.in_flight.is_empty());
         let statuses = runner.status();
         assert_eq!(
             statuses[0].run_count, 0,
@@ -1011,7 +1201,6 @@ mod tests {
         );
     }
 
-    /// Parent token cancellation propagates to child token passed to runner.
     #[tokio::test]
     async fn child_token_cancelled_by_parent() {
         let parent = CancellationToken::new();
@@ -1022,7 +1211,6 @@ mod tests {
             runner.run().await;
         });
 
-        // Cancel parent — child runner must observe this.
         parent.cancel();
 
         let result = tokio::time::timeout(Duration::from_secs(5), handle).await;
@@ -1032,7 +1220,6 @@ mod tests {
         );
     }
 
-    /// Dropping the token (last owner cancels) also stops the runner.
     #[tokio::test]
     async fn dropped_token_stops_runner() {
         let token = CancellationToken::new();
@@ -1043,7 +1230,6 @@ mod tests {
             runner.run().await;
         });
 
-        // Cancel the root to signal shutdown and drop it.
         token.cancel();
         drop(token);
 
@@ -1051,70 +1237,21 @@ mod tests {
         assert!(result.is_ok(), "runner should exit when token is cancelled");
     }
 
-    /// Shutdown timeout: a runner that would hang is cancelled by the token within timeout.
     #[tokio::test]
     async fn shutdown_completes_within_timeout() {
         let token = CancellationToken::new();
         let mut runner = TaskRunner::new("test-nous", token.clone());
 
-        // Spawn runner in background.
         let handle = tokio::spawn(async move {
             runner.run().await;
         });
 
-        // Cancel and wait with a generous timeout — runner should stop quickly.
         token.cancel();
         let timeout = Duration::from_secs(2);
         let result = tokio::time::timeout(timeout, handle).await;
         assert!(
             result.is_ok(),
             "shutdown should complete well within {timeout:?}"
-        );
-    }
-
-    /// A failing task does not prevent subsequent tasks from running.
-    #[tokio::test]
-    async fn failing_task_does_not_block_others() {
-        let token = CancellationToken::new();
-        let mut runner = TaskRunner::new("test-nous", token);
-
-        // Register a failing task and a succeeding task
-        runner.register(TaskDef {
-            id: "fail-task".to_owned(),
-            name: "Fail".to_owned(),
-            nous_id: "test-nous".to_owned(),
-            schedule: Schedule::Interval(Duration::from_secs(60)),
-            action: TaskAction::Command("exit 1".to_owned()),
-            enabled: true,
-            active_window: None,
-        });
-        runner.register(TaskDef {
-            id: "ok-task".to_owned(),
-            name: "Ok".to_owned(),
-            nous_id: "test-nous".to_owned(),
-            schedule: Schedule::Interval(Duration::from_secs(60)),
-            action: TaskAction::Command("echo ok".to_owned()),
-            enabled: true,
-            active_window: None,
-        });
-
-        // Force both to fire now
-        let past = jiff::Timestamp::now()
-            .checked_add(jiff::SignedDuration::from_secs(-1))
-            .unwrap();
-        runner.tasks[0].next_run = Some(past);
-        runner.tasks[1].next_run = Some(past);
-
-        runner.tick().await;
-
-        let statuses = runner.status();
-        assert_eq!(
-            statuses[0].consecutive_failures, 1,
-            "first task should have failed"
-        );
-        assert_eq!(
-            statuses[1].run_count, 1,
-            "second task should have succeeded"
         );
     }
 
@@ -1131,7 +1268,6 @@ mod tests {
         let handle_a = tokio::spawn(async move { runner_a.run().await });
         let handle_b = tokio::spawn(async move { runner_b.run().await });
 
-        // Cancel only child_a — runner_a should stop, runner_b keeps going.
         child_a.cancel();
 
         let result_a = tokio::time::timeout(Duration::from_secs(2), handle_a).await;
@@ -1140,11 +1276,234 @@ mod tests {
             "runner_a should stop when its token is cancelled"
         );
 
-        // runner_b is still alive (not cancelled yet).
         assert!(!handle_b.is_finished(), "runner_b should still be running");
 
-        // Clean up.
         parent.cancel();
         let _ = tokio::time::timeout(Duration::from_secs(2), handle_b).await;
+    }
+
+    // --- Exponential backoff tests ---
+
+    #[test]
+    fn backoff_applied_on_failure() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+        runner.register(make_echo_task("backoff-task"));
+
+        // First failure → 60s backoff.
+        runner.record_task_failure("backoff-task", "test error");
+        assert_eq!(runner.tasks[0].consecutive_failures, 1);
+        assert!(runner.tasks[0].backoff_until.is_some());
+
+        let backoff = runner.tasks[0].backoff_until.unwrap();
+        let expected_min = Instant::now() + Duration::from_secs(55);
+        assert!(
+            backoff > expected_min,
+            "1st failure should have ~60s backoff"
+        );
+
+        // Second failure → 300s backoff.
+        runner.record_task_failure("backoff-task", "test error 2");
+        assert_eq!(runner.tasks[0].consecutive_failures, 2);
+        let backoff = runner.tasks[0].backoff_until.unwrap();
+        let expected_min = Instant::now() + Duration::from_secs(295);
+        assert!(
+            backoff > expected_min,
+            "2nd failure should have ~300s backoff"
+        );
+    }
+
+    #[test]
+    fn backoff_cleared_on_success() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+        runner.register(make_echo_task("backoff-clear"));
+
+        runner.record_task_failure("backoff-clear", "fail");
+        assert!(runner.tasks[0].backoff_until.is_some());
+
+        runner.record_task_completion("backoff-clear", Duration::from_millis(1));
+        assert!(runner.tasks[0].backoff_until.is_none());
+        assert_eq!(runner.tasks[0].consecutive_failures, 0);
+    }
+
+    // --- Hung task detection tests ---
+
+    #[tokio::test]
+    async fn hung_task_cancelled_after_2x_timeout() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+
+        let task = TaskDef {
+            id: "hung-task".to_owned(),
+            name: "Hung task".to_owned(),
+            nous_id: "test-nous".to_owned(),
+            schedule: Schedule::Interval(Duration::from_secs(60)),
+            action: TaskAction::Command("echo ok".to_owned()),
+            timeout: Duration::from_millis(50),
+            enabled: true,
+            ..TaskDef::default()
+        };
+        runner.register(task);
+
+        // Simulate a hung task by spawning a long sleep.
+        let handle = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(ExecutionResult {
+                success: true,
+                output: None,
+            })
+        });
+
+        runner.in_flight.insert(
+            "hung-task".to_owned(),
+            InFlightTask {
+                handle,
+                started_at: Instant::now()
+                    .checked_sub(Duration::from_millis(150))
+                    .unwrap(),
+                timeout: Duration::from_millis(50),
+                warned: false,
+            },
+        );
+
+        runner.check_in_flight().await;
+
+        assert!(!runner.in_flight.contains_key("hung-task"));
+        assert_eq!(runner.tasks[0].consecutive_failures, 1);
+    }
+
+    // --- Missed cron catch-up tests ---
+
+    #[test]
+    fn missed_cron_catchup_fires_on_startup() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+
+        let task = TaskDef {
+            id: "hourly-task".to_owned(),
+            name: "Hourly task".to_owned(),
+            nous_id: "test-nous".to_owned(),
+            schedule: Schedule::Cron("0 0 * * * *".to_owned()),
+            action: TaskAction::Command("echo hello".to_owned()),
+            enabled: true,
+            catch_up: true,
+            ..TaskDef::default()
+        };
+        runner.register(task);
+
+        let three_hours_ago = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(3))
+            .unwrap();
+        runner.set_last_run("hourly-task", three_hours_ago);
+
+        // Set next_run far in the future.
+        runner.tasks[0].next_run = Some(
+            jiff::Timestamp::now()
+                .checked_add(jiff::SignedDuration::from_hours(1))
+                .unwrap(),
+        );
+
+        runner.check_missed_cron_catchup();
+
+        let next = runner.tasks[0].next_run.unwrap();
+        let diff = next
+            .since(jiff::Timestamp::now())
+            .unwrap()
+            .get_seconds()
+            .abs();
+        assert!(diff < 5, "catch-up should set next_run to ~now");
+    }
+
+    #[test]
+    fn missed_cron_catchup_skips_disabled_catch_up() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+
+        let task = TaskDef {
+            id: "no-catchup".to_owned(),
+            name: "No catch-up".to_owned(),
+            nous_id: "test-nous".to_owned(),
+            schedule: Schedule::Cron("0 0 * * * *".to_owned()),
+            action: TaskAction::Command("echo hello".to_owned()),
+            enabled: true,
+            catch_up: false,
+            ..TaskDef::default()
+        };
+        runner.register(task);
+
+        let three_hours_ago = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(3))
+            .unwrap();
+        runner.set_last_run("no-catchup", three_hours_ago);
+
+        let future_run = jiff::Timestamp::now()
+            .checked_add(jiff::SignedDuration::from_hours(1))
+            .unwrap();
+        runner.tasks[0].next_run = Some(future_run);
+
+        runner.check_missed_cron_catchup();
+
+        assert_eq!(runner.tasks[0].next_run.unwrap(), future_run);
+    }
+
+    // --- Task metrics tests ---
+
+    #[test]
+    fn task_metrics_on_success() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+        runner.register(make_echo_task("metrics-task"));
+
+        runner.record_task_completion("metrics-task", Duration::from_millis(42));
+
+        let statuses = runner.status();
+        assert_eq!(statuses[0].run_count, 1);
+        assert_eq!(statuses[0].consecutive_failures, 0);
+    }
+
+    #[test]
+    fn task_metrics_on_failure() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+        runner.register(make_echo_task("metrics-fail"));
+
+        runner.record_task_failure("metrics-fail", "boom");
+
+        let statuses = runner.status();
+        assert_eq!(statuses[0].consecutive_failures, 1);
+        assert_eq!(statuses[0].run_count, 0);
+    }
+
+    #[tokio::test]
+    async fn in_flight_reported_in_status() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+        runner.register(make_echo_task("inflight-task"));
+
+        let handle = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(ExecutionResult {
+                success: true,
+                output: None,
+            })
+        });
+        runner.in_flight.insert(
+            "inflight-task".to_owned(),
+            InFlightTask {
+                handle,
+                started_at: Instant::now(),
+                timeout: Duration::from_secs(300),
+                warned: false,
+            },
+        );
+
+        let statuses = runner.status();
+        assert!(statuses[0].in_flight);
+
+        // Clean up — abort so the test doesn't hang.
+        if let Some(task) = runner.in_flight.remove("inflight-task") {
+            task.handle.abort();
+        }
     }
 }

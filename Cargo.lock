@@ -157,6 +157,7 @@ dependencies = [
  "aletheia-thesauros",
  "axum 0.8.8",
  "jiff",
+ "jsonwebtoken",
  "reqwest 0.13.2",
  "rustls",
  "secrecy",
