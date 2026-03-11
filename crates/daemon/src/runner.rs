@@ -16,6 +16,12 @@ use crate::maintenance::{
 };
 use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 
+/// Maximum wall-clock duration for any single task execution (10 minutes).
+///
+/// Prevents a hung task (e.g., a blocking shell command or an unresponsive
+/// knowledge store operation) from blocking the runner indefinitely.
+const TASK_EXECUTION_TIMEOUT: Duration = Duration::from_secs(600);
+
 /// Per-nous background task runner.
 pub struct TaskRunner {
     nous_id: String,
@@ -321,7 +327,26 @@ impl TaskRunner {
             let task_id = self.tasks[i].def.id.clone();
 
             self.in_flight.insert(task_id.clone());
-            let result = self.execute_action(&action, &nous_id).await;
+            let result = match tokio::time::timeout(
+                TASK_EXECUTION_TIMEOUT,
+                self.execute_action(&action, &nous_id),
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(_elapsed) => {
+                    tracing::warn!(
+                        task_id = %task_id,
+                        timeout_secs = TASK_EXECUTION_TIMEOUT.as_secs(),
+                        "task execution timed out"
+                    );
+                    Err(error::TaskFailedSnafu {
+                        task_id: task_id.clone(),
+                        reason: format!("timed out after {}s", TASK_EXECUTION_TIMEOUT.as_secs()),
+                    }
+                    .build())
+                }
+            };
             self.in_flight.remove(&task_id);
 
             let task = &mut self.tasks[i];
@@ -1044,6 +1069,52 @@ mod tests {
         assert!(
             result.is_ok(),
             "shutdown should complete well within {timeout:?}"
+        );
+    }
+
+    /// A failing task does not prevent subsequent tasks from running.
+    #[tokio::test]
+    async fn failing_task_does_not_block_others() {
+        let token = CancellationToken::new();
+        let mut runner = TaskRunner::new("test-nous", token);
+
+        // Register a failing task and a succeeding task
+        runner.register(TaskDef {
+            id: "fail-task".to_owned(),
+            name: "Fail".to_owned(),
+            nous_id: "test-nous".to_owned(),
+            schedule: Schedule::Interval(Duration::from_secs(60)),
+            action: TaskAction::Command("exit 1".to_owned()),
+            enabled: true,
+            active_window: None,
+        });
+        runner.register(TaskDef {
+            id: "ok-task".to_owned(),
+            name: "Ok".to_owned(),
+            nous_id: "test-nous".to_owned(),
+            schedule: Schedule::Interval(Duration::from_secs(60)),
+            action: TaskAction::Command("echo ok".to_owned()),
+            enabled: true,
+            active_window: None,
+        });
+
+        // Force both to fire now
+        let past = jiff::Timestamp::now()
+            .checked_add(jiff::SignedDuration::from_secs(-1))
+            .unwrap();
+        runner.tasks[0].next_run = Some(past);
+        runner.tasks[1].next_run = Some(past);
+
+        runner.tick().await;
+
+        let statuses = runner.status();
+        assert_eq!(
+            statuses[0].consecutive_failures, 1,
+            "first task should have failed"
+        );
+        assert_eq!(
+            statuses[1].run_count, 1,
+            "second task should have succeeded"
         );
     }
 

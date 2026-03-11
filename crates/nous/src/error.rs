@@ -154,6 +154,15 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// A pipeline stage exceeded its time budget.
+    #[snafu(display("pipeline stage '{stage}' timed out after {timeout_secs}s"))]
+    PipelineTimeout {
+        stage: String,
+        timeout_secs: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].
@@ -296,6 +305,18 @@ mod tests {
         }
         .build();
         assert!(err.to_string().contains("session store"));
+    }
+
+    #[test]
+    fn error_display_pipeline_timeout() {
+        let err = PipelineTimeoutSnafu {
+            stage: "execute",
+            timeout_secs: 300u32,
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("execute"));
+        assert!(msg.contains("300s"));
     }
 
     #[test]

@@ -399,6 +399,17 @@ pub async fn send_message(
                         message: err.to_string(),
                     })
                     .await;
+                // Always send a completion marker so the client knows the
+                // stream is finished, even on error paths.
+                let _ = tx
+                    .send(SseEvent::MessageComplete {
+                        stop_reason: "error".to_owned(),
+                        usage: UsageData {
+                            input_tokens: 0,
+                            output_tokens: 0,
+                        },
+                    })
+                    .await;
             }
         }
     });
@@ -574,6 +585,23 @@ pub async fn stream_turn(
                 let _ = webchat_tx
                     .send(WebchatEvent::Error {
                         message: err.to_string(),
+                    })
+                    .await;
+                // Always send a completion marker so the TUI knows the stream
+                // is finished, even on error paths.
+                let _ = webchat_tx
+                    .send(WebchatEvent::TurnComplete {
+                        outcome: TurnOutcome {
+                            text: String::new(),
+                            nous_id: aid,
+                            session_id: sid,
+                            model,
+                            tool_calls: 0,
+                            input_tokens: 0,
+                            output_tokens: 0,
+                            cache_read_tokens: 0,
+                            cache_write_tokens: 0,
+                        },
                     })
                     .await;
             }
