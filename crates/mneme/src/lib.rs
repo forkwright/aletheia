@@ -24,6 +24,8 @@ pub mod engine;
 pub mod backup;
 /// Conflict detection pipeline for fact insertion.
 pub mod conflict;
+/// Entity deduplication pipeline for merging semantically identical entities.
+pub mod dedup;
 /// Embedding provider trait and implementations (candle, mock).
 pub mod embedding;
 /// Mneme-specific error types and result alias.
