@@ -37,10 +37,10 @@ impl<'a> SessionTx<'a> {
                             .into_iter()
                             .map(|chunk| match chunk {
                                 DataValue::Bytes(b) => b,
-                                _ => unreachable!(),
+                                other => panic!("LSH index invariant violated: expected Bytes, got {other:?}"),
                             })
                             .collect_vec(),
-                        _ => unreachable!(),
+                        other => bail!("LSH index invariant violated: expected List, got {:?}", other),
                     }
                 } else {
                     return Ok(());
@@ -79,10 +79,10 @@ impl<'a> SessionTx<'a> {
                     .into_iter()
                     .map(|chunk| match chunk {
                         DataValue::Bytes(b) => b,
-                        _ => unreachable!(),
+                        other => panic!("LSH index invariant violated: expected Bytes, got {other:?}"),
                     })
                     .collect_vec(),
-                _ => unreachable!(),
+                other => bail!("LSH index invariant violated: expected List, got {:?}", other),
             };
             self.del_lsh_index_item(tuple, Some(bytes), idx_handle, inv_idx_handle)?;
         }
