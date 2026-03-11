@@ -13,8 +13,6 @@ use crate::engine::storage::error::{
     IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
 };
 use crate::engine::storage::{Storage, StoreTx};
-use crate::engine::utils::swap_option_result;
-
 type Result<T> = StorageResult<T>;
 
 /// Opens or creates a fjall-backed database at the given path.
@@ -280,7 +278,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     {
         match self {
             FjallTx::Reader(r) => {
-                use fjall::Readable;
                 match fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(
                         pairs
@@ -293,7 +290,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                 }
             }
             FjallTx::Writer(w) => {
-                use fjall::Readable;
                 match fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(
                         pairs
@@ -316,7 +312,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a> {
         match self {
             FjallTx::Reader(r) => {
-                use fjall::Readable;
                 match fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(
                         CollectedSkipIterator {
@@ -334,7 +329,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                 }
             }
             FjallTx::Writer(w) => {
-                use fjall::Readable;
                 match fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(
                         CollectedSkipIterator {
@@ -364,7 +358,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     {
         match self {
             FjallTx::Reader(r) => {
-                use fjall::Readable;
                 match fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
                     Err(e) => Box::new(std::iter::once(Err(
@@ -373,7 +366,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                 }
             }
             FjallTx::Writer(w) => {
-                use fjall::Readable;
                 match fjall_collect_range(w.tx_ref(), &w.keyspace, lower, upper) {
                     Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
                     Err(e) => Box::new(std::iter::once(Err(
@@ -388,7 +380,6 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
     where
         's: 'a,
     {
-        use fjall::Readable;
         match self {
             FjallTx::Reader(r) => {
                 fjall_collect_range(&r.snapshot, &r.keyspace, lower, upper).map(|pairs| pairs.len())
@@ -470,7 +461,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn setup_test_db() -> InternalResult<(TempDir, DbCore<FjallStorage>)> {
-        let temp_dir = TempDir::new()?;
+        let temp_dir = TempDir::new().expect("failed to create temp dir");
         let db = new_cozo_fjall(temp_dir.path())?;
         db.run_script(
             r#"
@@ -585,7 +576,7 @@ mod tests {
 
     #[test]
     fn persistence_across_restarts() -> InternalResult<()> {
-        let dir = TempDir::new()?;
+        let dir = TempDir::new().expect("failed to create temp dir");
 
         // Write data
         {

@@ -107,22 +107,6 @@ pub(crate) enum QueryError {
         location: snafu::Location,
     },
 
-    /// Error propagated from the data layer.
-    #[snafu(display("{source}"))]
-    Data {
-        source: crate::engine::data::error::DataError,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Error propagated from the parse layer.
-    #[snafu(display("{source}"))]
-    Parse {
-        source: crate::engine::parse::error::ParseError,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     /// Stored relation operation error (create, replace, put, etc.).
     #[snafu(display("stored relation error: {message}"))]
     StoredRelation {
@@ -131,5 +115,3 @@ pub(crate) enum QueryError {
         location: snafu::Location,
     },
 }
-
-pub(crate) type QueryResult<T> = std::result::Result<T, QueryError>;

@@ -29,13 +29,75 @@ pub(crate) use crate::engine::storage::{Storage, StoreTx};
 pub(crate) type DbInstance =
     crate::engine::runtime::db::Db<crate::engine::storage::mem::MemStorage>;
 
+#[expect(
+    unsafe_code,
+    private_interfaces,
+    clippy::pedantic,
+    clippy::float_cmp,
+    clippy::mutable_key_type,
+    clippy::result_large_err,
+    reason = "vendored CozoDB engine — unsafe for DataValue layout, pedantic lints deferred"
+)]
 pub(crate) mod data;
+#[expect(
+    private_interfaces,
+    clippy::pedantic,
+    clippy::mutable_key_type,
+    clippy::result_large_err,
+    clippy::type_complexity,
+    reason = "vendored CozoDB engine — graph algorithm signatures are domain-inherent"
+)]
 pub(crate) mod fixed_rule;
+#[expect(
+    clippy::pedantic,
+    clippy::mutable_key_type,
+    clippy::result_large_err,
+    clippy::too_many_arguments,
+    reason = "vendored CozoDB engine — FTS tokenizer data files and Unicode tables"
+)]
 pub(crate) mod fts;
+#[expect(
+    private_interfaces,
+    clippy::pedantic,
+    clippy::needless_return,
+    clippy::result_large_err,
+    clippy::type_complexity,
+    reason = "vendored CozoDB engine — parser signatures are domain-inherent"
+)]
 pub(crate) mod parse;
+#[expect(
+    clippy::pedantic,
+    clippy::mutable_key_type,
+    clippy::result_large_err,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    reason = "vendored CozoDB engine — query planner complexity is inherent"
+)]
 pub(crate) mod query;
+#[expect(
+    unsafe_code,
+    private_interfaces,
+    clippy::pedantic,
+    clippy::mutable_key_type,
+    clippy::needless_return,
+    clippy::result_large_err,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    reason = "vendored CozoDB engine — runtime DB core with unsafe storage layer"
+)]
 pub(crate) mod runtime;
+#[expect(
+    clippy::pedantic,
+    clippy::redundant_closure,
+    clippy::result_large_err,
+    clippy::type_complexity,
+    reason = "vendored CozoDB engine — storage backend trait implementations"
+)]
 pub(crate) mod storage;
+#[expect(
+    clippy::pedantic,
+    reason = "vendored CozoDB engine — utility functions"
+)]
 pub(crate) mod utils;
 
 /// Convert an `InternalError` to the public `Error` type.
@@ -58,7 +120,7 @@ fn convert_internal(e: crate::engine::error::InternalError) -> Error {
     }
 }
 
-/// Public facade replacing DbInstance. Dispatches to concrete storage implementations.
+/// Public facade replacing `DbInstance`. Dispatches to concrete storage implementations.
 pub enum Db {
     Mem(crate::engine::runtime::db::Db<MemStorage>),
     #[cfg(feature = "storage-fjall")]
@@ -67,6 +129,10 @@ pub enum Db {
     Redb(crate::engine::runtime::db::Db<RedbStorage>),
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "engine Error carries structured context — boxing deferred to avoid API churn"
+)]
 impl Db {
     /// Open an in-memory database.
     pub fn open_mem() -> crate::engine::Result<Self> {
@@ -120,7 +186,7 @@ impl Db {
         self.run(script, params, ScriptMutability::Immutable)
     }
 
-    /// Backup the running database into an SQLite file.
+    /// Backup the running database into an `SQLite` file.
     ///
     /// Not currently supported — requires the removed `storage-sqlite` feature.
     pub fn backup_db(&self, out_file: impl AsRef<Path>) -> crate::engine::Result<()> {
@@ -135,7 +201,7 @@ impl Db {
         result.map_err(convert_internal)
     }
 
-    /// Restore from an SQLite backup.
+    /// Restore from an `SQLite` backup.
     ///
     /// Not currently supported — requires the removed `storage-sqlite` feature.
     pub fn restore_backup(&self, in_file: impl AsRef<Path>) -> crate::engine::Result<()> {
@@ -289,6 +355,10 @@ impl DbInner {
 }
 
 /// A multi-transaction handle.
+#[expect(
+    private_interfaces,
+    reason = "InternalResult is pub(crate) — MultiTransaction is consumed within the crate"
+)]
 pub struct MultiTransaction {
     /// Commands can be sent into the transaction through this channel
     pub sender: Sender<TransactionPayload>,
@@ -300,6 +370,7 @@ pub struct MultiTransaction {
 pub use crate::engine::runtime::db::Poison;
 
 #[cfg(test)]
+#[expect(clippy::result_large_err, reason = "test helpers — error size not critical")]
 impl DbInstance {
     pub(crate) fn default() -> Self {
         crate::engine::storage::mem::new_mem_db().unwrap()
@@ -310,7 +381,7 @@ impl DbInstance {
         script: &str,
     ) -> crate::engine::error::InternalResult<NamedRows> {
         use crate::engine::runtime::db::ScriptMutability;
-        self.run_script(script, Default::default(), ScriptMutability::Mutable)
+        self.run_script(script, BTreeMap::new(), ScriptMutability::Mutable)
     }
 
     pub(crate) fn multi_transaction_test(&self, write: bool) -> TestMultiTx {
@@ -332,6 +403,7 @@ pub(crate) struct TestMultiTx {
 }
 
 #[cfg(test)]
+#[expect(clippy::result_large_err, reason = "test helpers — error size not critical")]
 impl TestMultiTx {
     pub(crate) fn run_script(
         &self,
