@@ -126,25 +126,6 @@ impl Display for AccessLevel {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct InsufficientAccessLevel(
-    pub(crate) String,
-    pub(crate) String,
-    pub(crate) AccessLevel,
-);
-
-impl std::fmt::Display for InsufficientAccessLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Insufficient access to relation '{}' for {} (current level: {})",
-            self.0, self.1, self.2
-        )
-    }
-}
-
-impl std::error::Error for InsufficientAccessLevel {}
-
 #[derive(Debug, Snafu)]
 #[snafu(display(
     "Arity mismatch for stored relation {name}: expect {expect_arity}, got {actual_arity}"
@@ -194,10 +175,6 @@ impl RelationHandle {
                 .map(|col| col.name.to_string()),
         );
         Ok(NamedRows::new(headers, rows))
-    }
-    pub(crate) fn amend_key_prefix(&self, data: &mut [u8]) {
-        let prefix_bytes = self.id.0.to_be_bytes();
-        data[0..8].copy_from_slice(&prefix_bytes);
     }
     pub(crate) fn choose_index(
         &self,

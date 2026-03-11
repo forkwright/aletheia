@@ -1,25 +1,11 @@
 //! aletheia-mneme — session store and memory engine
 //!
 //! Mneme (Μνήμη) — "memory." Manages sessions, messages, and usage tracking
-//! via embedded `SQLite` (`rusqlite`) and the `CozoDB`-backed knowledge graph.
+//! via embedded `SQLite` and the Datalog knowledge engine.
 //!
 //! Depends on `aletheia-koina` for types and errors.
 
 #[cfg(feature = "mneme-engine")]
-#[expect(
-    unsafe_code,
-    dead_code,
-    private_interfaces,
-    unused_imports,
-    clippy::pedantic,
-    clippy::mutable_key_type,
-    clippy::type_complexity,
-    clippy::too_many_arguments,
-    clippy::result_large_err,
-    clippy::redundant_closure,
-    clippy::needless_return,
-    reason = "absorbed CozoDB engine code — refactoring deferred to Phase E"
-)]
 pub mod engine;
 
 /// Database backup and JSON export for session data.
