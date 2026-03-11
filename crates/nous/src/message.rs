@@ -1,6 +1,7 @@
 //! Actor message types, lifecycle state machine, and status snapshots.
 
 use std::fmt;
+use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
 
@@ -25,6 +26,8 @@ pub enum NousMessage {
     },
     /// Query current lifecycle state.
     Status { reply: oneshot::Sender<NousStatus> },
+    /// Liveness ping — actor replies immediately to prove it's alive.
+    Ping { reply: oneshot::Sender<()> },
     /// Transition to dormant (sleep).
     Sleep,
     /// Wake from dormant.
@@ -42,6 +45,8 @@ pub enum NousLifecycle {
     Idle,
     /// Paused, inbox buffered. Wakes on message or schedule.
     Dormant,
+    /// Too many panics — only accepts Status and Ping queries.
+    Degraded,
 }
 
 impl fmt::Display for NousLifecycle {
@@ -50,6 +55,7 @@ impl fmt::Display for NousLifecycle {
             Self::Active => write!(f, "active"),
             Self::Idle => write!(f, "idle"),
             Self::Dormant => write!(f, "dormant"),
+            Self::Degraded => write!(f, "degraded"),
         }
     }
 }
@@ -65,6 +71,21 @@ pub struct NousStatus {
     pub session_count: usize,
     /// Currently active session key, if any.
     pub active_session: Option<String>,
+    /// Number of panics caught by the panic boundary.
+    pub panic_count: u32,
+    /// How long the actor has been running.
+    pub uptime: Duration,
+}
+
+/// Health snapshot returned by the manager's periodic health check.
+#[derive(Debug, Clone)]
+pub struct ActorHealth {
+    /// Whether the actor responded to a ping in time.
+    pub alive: bool,
+    /// Number of panics caught since (re)start.
+    pub panic_count: u32,
+    /// Uptime since last (re)start.
+    pub uptime: Duration,
 }
 
 #[cfg(test)]
@@ -76,6 +97,7 @@ mod tests {
         assert_eq!(NousLifecycle::Active.to_string(), "active");
         assert_eq!(NousLifecycle::Idle.to_string(), "idle");
         assert_eq!(NousLifecycle::Dormant.to_string(), "dormant");
+        assert_eq!(NousLifecycle::Degraded.to_string(), "degraded");
     }
 
     #[test]
@@ -83,6 +105,7 @@ mod tests {
         assert_eq!(NousLifecycle::Active, NousLifecycle::Active);
         assert_ne!(NousLifecycle::Active, NousLifecycle::Idle);
         assert_ne!(NousLifecycle::Idle, NousLifecycle::Dormant);
+        assert_ne!(NousLifecycle::Dormant, NousLifecycle::Degraded);
     }
 
     #[test]
@@ -92,11 +115,14 @@ mod tests {
             lifecycle: NousLifecycle::Idle,
             session_count: 3,
             active_session: None,
+            panic_count: 0,
+            uptime: Duration::from_secs(60),
         };
         assert_eq!(status.id, "syn");
         assert_eq!(status.lifecycle, NousLifecycle::Idle);
         assert_eq!(status.session_count, 3);
         assert!(status.active_session.is_none());
+        assert_eq!(status.panic_count, 0);
     }
 
     #[test]
@@ -106,6 +132,8 @@ mod tests {
             lifecycle: NousLifecycle::Active,
             session_count: 1,
             active_session: Some("main".to_owned()),
+            panic_count: 0,
+            uptime: Duration::from_secs(0),
         };
         assert_eq!(status.lifecycle, NousLifecycle::Active);
         assert_eq!(status.active_session.as_deref(), Some("main"));
@@ -124,13 +152,26 @@ mod tests {
             NousLifecycle::Active,
             NousLifecycle::Idle,
             NousLifecycle::Dormant,
+            NousLifecycle::Degraded,
         ];
         let displays: Vec<String> = variants.iter().map(ToString::to_string).collect();
-        assert_eq!(displays.len(), 3);
+        assert_eq!(displays.len(), 4);
         // Ensure no duplicates
         let mut deduped = displays.clone();
         deduped.sort();
         deduped.dedup();
-        assert_eq!(deduped.len(), 3);
+        assert_eq!(deduped.len(), 4);
+    }
+
+    #[test]
+    fn actor_health_construction() {
+        let health = ActorHealth {
+            alive: true,
+            panic_count: 2,
+            uptime: Duration::from_secs(120),
+        };
+        assert!(health.alive);
+        assert_eq!(health.panic_count, 2);
+        assert_eq!(health.uptime.as_secs(), 120);
     }
 }

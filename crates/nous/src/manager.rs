@@ -11,12 +11,13 @@ use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 use aletheia_thesauros::loader::LoadedPack;
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{Instrument, debug, error, info, warn};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::embedding::EmbeddingProvider;
@@ -29,7 +30,7 @@ use crate::bootstrap::pack_sections_to_bootstrap;
 use crate::budget::CharEstimator;
 use crate::config::{NousConfig, PipelineConfig};
 use crate::handle::NousHandle;
-use crate::message::NousStatus;
+use crate::message::{ActorHealth, NousStatus};
 
 struct ActorEntry {
     handle: NousHandle,
@@ -37,7 +38,26 @@ struct ActorEntry {
     /// from a shared reference, await it, and confirm the actor has stopped.
     join: Mutex<Option<JoinHandle<()>>>,
     config: NousConfig,
+    pipeline_config: PipelineConfig,
+    /// Number of consecutive health-check misses.
+    consecutive_misses: u32,
+    /// Number of times this actor has been restarted.
+    restart_count: u32,
+    /// When the actor was last (re)started.
+    last_start: std::time::Instant,
 }
+
+/// Default interval between health polls (30 seconds).
+pub const DEFAULT_HEALTH_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Default ping timeout for liveness checks (5 seconds).
+pub const DEFAULT_PING_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Consecutive misses before declaring an actor dead.
+const DEAD_THRESHOLD: u32 = 3;
+
+/// Maximum backoff between restart attempts (5 minutes).
+const MAX_RESTART_BACKOFF: Duration = Duration::from_secs(300);
 
 /// Manages the lifecycle of all nous actors.
 pub struct NousManager {
@@ -143,6 +163,17 @@ impl NousManager {
             }
         }
 
+        self.spawn_inner(config, pipeline_config).await
+    }
+
+    /// Internal spawn that does not check for existing actors.
+    async fn spawn_inner(
+        &mut self,
+        config: NousConfig,
+        pipeline_config: PipelineConfig,
+    ) -> NousHandle {
+        let id = config.id.clone();
+
         // Filter and convert domain pack sections for this agent (by ID or domain tags)
         let extra_bootstrap = {
             let estimator = CharEstimator;
@@ -168,7 +199,7 @@ impl NousManager {
         let child_cancel = self.cancel.child_token();
         let (handle, join_handle) = actor::spawn(
             config.clone(),
-            pipeline_config,
+            pipeline_config.clone(),
             Arc::clone(&self.providers),
             Arc::clone(&self.tools),
             Arc::clone(&self.oikos),
@@ -190,6 +221,10 @@ impl NousManager {
                 handle: handle.clone(),
                 join: Mutex::new(Some(join_handle)),
                 config,
+                pipeline_config,
+                consecutive_misses: 0,
+                restart_count: 0,
+                last_start: std::time::Instant::now(),
             },
         );
         handle
@@ -211,6 +246,150 @@ impl NousManager {
     #[must_use]
     pub fn configs(&self) -> Vec<&NousConfig> {
         self.actors.values().map(|e| &e.config).collect()
+    }
+
+    /// Check liveness of all actors by sending a ping with a timeout.
+    ///
+    /// Returns a map of `nous_id → ActorHealth`.
+    pub async fn check_health(&self) -> BTreeMap<String, ActorHealth> {
+        let mut results = BTreeMap::new();
+        for (id, entry) in &self.actors {
+            let ping_result = entry.handle.ping(DEFAULT_PING_TIMEOUT).await;
+            let alive = ping_result.is_ok();
+
+            // Try to get status for panic_count and uptime
+            let (panic_count, uptime) = if let Ok(status) = entry.handle.status().await {
+                (status.panic_count, status.uptime)
+            } else {
+                (0, entry.last_start.elapsed())
+            };
+
+            results.insert(
+                id.clone(),
+                ActorHealth {
+                    alive,
+                    panic_count,
+                    uptime,
+                },
+            );
+        }
+        results
+    }
+
+    /// Run one health-check cycle: ping all actors, track misses, restart dead ones.
+    ///
+    /// Call this periodically from a background task.
+    pub async fn health_cycle(&mut self) {
+        let health = self.check_health().await;
+
+        // Collect IDs that need restart to avoid borrow issues
+        let mut to_restart: Vec<String> = Vec::new();
+
+        for (id, actor_health) in &health {
+            if let Some(entry) = self.actors.get_mut(id) {
+                if actor_health.alive {
+                    entry.consecutive_misses = 0;
+                } else {
+                    entry.consecutive_misses += 1;
+                    if entry.consecutive_misses == 1 {
+                        warn!(nous_id = %id, "actor missed health check");
+                    }
+                    if entry.consecutive_misses >= DEAD_THRESHOLD {
+                        error!(
+                            nous_id = %id,
+                            misses = entry.consecutive_misses,
+                            "actor declared dead — scheduling restart"
+                        );
+                        to_restart.push(id.clone());
+                    }
+                }
+            }
+        }
+
+        for id in to_restart {
+            self.restart_actor(&id).await;
+        }
+    }
+
+    /// Restart a dead actor with exponential backoff.
+    async fn restart_actor(&mut self, id: &str) {
+        let Some(entry) = self.actors.get(id) else {
+            return;
+        };
+
+        let restart_count = entry.restart_count;
+        let backoff = calculate_backoff(restart_count);
+
+        info!(
+            nous_id = %id,
+            restart_count = restart_count + 1,
+            backoff_secs = backoff.as_secs(),
+            "restarting dead actor after backoff"
+        );
+
+        tokio::time::sleep(backoff).await;
+
+        let config = entry.config.clone();
+        let pipeline_config = entry.pipeline_config.clone();
+        let prev_restart_count = entry.restart_count;
+
+        // Remove old entry
+        if let Some(old) = self.actors.remove(id) {
+            // Take join handle before any await
+            let join_opt = old.join.lock().expect("join mutex not poisoned").take();
+            if let Some(join) = join_opt {
+                // Don't wait too long for a dead actor
+                let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+            }
+        }
+
+        // Respawn
+        let handle = self
+            .spawn_inner(config.clone(), pipeline_config.clone())
+            .await;
+
+        // Update restart tracking
+        if let Some(entry) = self.actors.get_mut(id) {
+            entry.restart_count = prev_restart_count + 1;
+            entry.consecutive_misses = 0;
+        }
+
+        info!(
+            nous_id = %id,
+            restart_count = prev_restart_count + 1,
+            "actor restarted successfully"
+        );
+
+        drop(handle);
+    }
+
+    /// Spawn a background task that runs `health_cycle` on an interval.
+    ///
+    /// Returns a `JoinHandle` that can be used to track or cancel the poller.
+    /// The poller stops when the cancellation token fires.
+    pub fn start_health_poller(
+        manager: Arc<TokioMutex<Self>>,
+        interval: Duration,
+        cancel: CancellationToken,
+    ) -> JoinHandle<()> {
+        tokio::spawn(
+            async move {
+                debug!(interval_secs = interval.as_secs(), "health poller started");
+                loop {
+                    tokio::select! {
+                        () = tokio::time::sleep(interval) => {
+                            let mut mgr = manager.lock().await;
+                            mgr.health_cycle().await;
+                        }
+                        () = cancel.cancelled() => {
+                            debug!("health poller cancelled");
+                            break;
+                        }
+                    }
+                }
+            }
+            .instrument(tracing::info_span!("health_poller")),
+        )
     }
 
     /// Query status from all actors.
@@ -379,6 +558,14 @@ impl NousManager {
     pub fn count(&self) -> usize {
         self.actors.len()
     }
+}
+
+/// Calculate exponential backoff: 5s, 15s, 45s, 2min, 5min cap.
+fn calculate_backoff(restart_count: u32) -> Duration {
+    let base_secs: u64 = 5;
+    let multiplier = 3u64.saturating_pow(restart_count);
+    let secs = base_secs.saturating_mul(multiplier);
+    Duration::from_secs(secs).min(MAX_RESTART_BACKOFF)
 }
 
 #[cfg(test)]
@@ -722,5 +909,51 @@ mod tests {
 
         // 1-nanosecond timeout: drain will warn but must not panic.
         mgr.drain(Duration::from_nanos(1)).await;
+    }
+
+    // --- Resilience tests ---
+
+    #[tokio::test]
+    async fn check_health_reports_alive_actors() {
+        let (_dir, oikos) = test_oikos();
+        let mut mgr = test_manager(oikos);
+
+        mgr.spawn(syn_config(), PipelineConfig::default()).await;
+
+        let health = mgr.check_health().await;
+        assert_eq!(health.len(), 1);
+        let syn_health = health.get("syn").expect("syn health");
+        assert!(syn_health.alive, "healthy actor should be alive");
+        assert_eq!(syn_health.panic_count, 0);
+
+        mgr.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn check_health_detects_dead_actor() {
+        let (_dir, oikos) = test_oikos();
+        let mut mgr = test_manager(oikos);
+
+        let handle = mgr.spawn(syn_config(), PipelineConfig::default()).await;
+
+        // Kill the actor by sending shutdown directly
+        handle.shutdown().await.expect("shutdown");
+        // Wait for actor to stop
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let health = mgr.check_health().await;
+        let syn_health = health.get("syn").expect("syn health");
+        assert!(!syn_health.alive, "dead actor should not be alive");
+    }
+
+    #[test]
+    fn backoff_calculation() {
+        assert_eq!(super::calculate_backoff(0), Duration::from_secs(5));
+        assert_eq!(super::calculate_backoff(1), Duration::from_secs(15));
+        assert_eq!(super::calculate_backoff(2), Duration::from_secs(45));
+        assert_eq!(super::calculate_backoff(3), Duration::from_secs(135));
+        // After 4+ restarts, caps at 5 minutes
+        assert_eq!(super::calculate_backoff(4), Duration::from_secs(300));
+        assert_eq!(super::calculate_backoff(10), Duration::from_secs(300));
     }
 }
