@@ -375,8 +375,12 @@ pub fn render(
 }
 
 /// Push a span and advance the byte-based column counter.
+///
+/// Uses saturating addition to prevent overflow on pathologically long lines
+/// (>65 535 bytes without a newline). Link column positions may be slightly
+/// inaccurate in that extreme case, but the renderer will not panic.
 fn push_span(spans: &mut Vec<Span<'static>>, col: &mut u16, span: Span<'static>) {
-    *col += span.content.len() as u16;
+    *col = col.saturating_add(span.content.len().min(u16::MAX as usize) as u16);
     spans.push(span);
 }
 
@@ -1428,5 +1432,24 @@ mod tests {
             Some(theme.code.bg),
             "inline code bg must be code_bg color"
         );
+    }
+
+    #[test]
+    fn test_extremely_long_line_no_overflow() {
+        // A single line >65 535 bytes must not panic from u16 overflow in push_span.
+        let long = "x".repeat(70_000);
+        let lines = test_render(&long);
+        assert!(
+            !lines.is_empty(),
+            "extremely long line must produce output without panic"
+        );
+    }
+
+    #[test]
+    fn test_deeply_nested_blockquotes() {
+        // 50 levels of blockquote nesting must not stack overflow (iterative parser).
+        let md: String = (0..50).map(|_| "> ").collect::<String>() + "deeply nested";
+        let lines = test_render(&md);
+        assert!(!lines.is_empty());
     }
 }

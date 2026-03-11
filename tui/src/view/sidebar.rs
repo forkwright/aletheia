@@ -14,6 +14,17 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     // Small top padding
     lines.push(Line::raw(""));
 
+    if app.agents.is_empty() {
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("no agents", theme.style_dim()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("waiting for connection…", theme.style_muted()),
+        ]));
+    }
+
     for agent in &app.agents {
         let is_focused = app.focused_agent.as_ref() == Some(&agent.id);
 

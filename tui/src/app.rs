@@ -222,7 +222,17 @@ impl App {
         }
 
         // SAFETY: sanitized at ingestion — all agent fields from API are sanitized here.
-        let agents = self.client.agents().await?;
+        // Best-effort: if agent fetch fails, start with empty list and show error toast.
+        let agents = match self.client.agents().await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::error!("failed to load agents: {e}");
+                self.error_toast = Some(ErrorToast::new(format!(
+                    "Failed to load agents: {e}. Retry with :reconnect"
+                )));
+                Vec::new()
+            }
+        };
         self.agents = agents
             .into_iter()
             .map(|a| {
@@ -421,6 +431,7 @@ impl App {
             tab.state.active_turn_id = self.active_turn_id.clone();
             tab.state.cached_markdown_text = self.cached_markdown_text.clone();
             tab.state.cached_markdown_lines = self.cached_markdown_lines.clone();
+            tab.state.ops = self.ops.clone();
         }
     }
 
@@ -443,6 +454,7 @@ impl App {
             self.active_turn_id = tab.state.active_turn_id.clone();
             self.cached_markdown_text = tab.state.cached_markdown_text.clone();
             self.cached_markdown_lines = tab.state.cached_markdown_lines.clone();
+            self.ops = tab.state.ops.clone();
         }
     }
 
@@ -589,6 +601,7 @@ pub(crate) mod test_helpers {
 #[cfg(test)]
 mod tests {
     use super::test_helpers::*;
+    use crate::state::{ChatMessage, OpsState};
 
     #[test]
     fn test_app_constructs_with_defaults() {
@@ -625,5 +638,79 @@ mod tests {
         let mut app = test_app();
         assert!(app.take_stream().is_none());
         app.restore_stream(None);
+    }
+
+    #[test]
+    fn tab_state_save_restore_roundtrip() {
+        let mut app = test_app();
+        let agent = test_agent("syn", "Syn");
+        let agent_id = agent.id.clone();
+        app.agents.push(agent);
+        app.focused_agent = Some(agent_id.clone());
+
+        // Create two tabs
+        let idx0 = app.tab_bar.create_tab(agent_id.clone(), "tab0");
+        app.tab_bar.active = idx0;
+
+        // Set up state in tab0
+        app.messages = vec![ChatMessage {
+            role: "user".to_string(),
+            text: "hello from tab0".to_string(),
+            text_lower: "hello from tab0".to_string(),
+            timestamp: None,
+            model: None,
+            is_streaming: false,
+            tool_calls: Vec::new(),
+        }];
+        app.scroll_offset = 42;
+        app.auto_scroll = false;
+        app.input.text = "typing in tab0".to_string();
+        app.ops.thinking.text = "thinking in tab0".to_string();
+        app.ops.push_tool_start("read_file".to_string(), None);
+        app.save_to_active_tab();
+
+        // Create tab1 with different state
+        let idx1 = app.tab_bar.create_tab(agent_id, "tab1");
+        app.tab_bar.active = idx1;
+        app.messages = vec![ChatMessage {
+            role: "assistant".to_string(),
+            text: "hello from tab1".to_string(),
+            text_lower: "hello from tab1".to_string(),
+            timestamp: None,
+            model: None,
+            is_streaming: false,
+            tool_calls: Vec::new(),
+        }];
+        app.scroll_offset = 10;
+        app.auto_scroll = true;
+        app.input.text = "typing in tab1".to_string();
+        app.ops = OpsState::default();
+        app.save_to_active_tab();
+
+        // Switch back to tab0 and verify state restored
+        app.tab_bar.active = idx0;
+        app.restore_from_active_tab();
+
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].text, "hello from tab0");
+        assert_eq!(app.scroll_offset, 42);
+        assert!(!app.auto_scroll);
+        assert_eq!(app.input.text, "typing in tab0");
+        assert_eq!(app.ops.thinking.text, "thinking in tab0");
+        assert_eq!(app.ops.tool_calls.len(), 1);
+        assert_eq!(app.ops.tool_calls[0].name, "read_file");
+
+        // Switch to tab1 and verify its state
+        app.save_to_active_tab();
+        app.tab_bar.active = idx1;
+        app.restore_from_active_tab();
+
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].text, "hello from tab1");
+        assert_eq!(app.scroll_offset, 10);
+        assert!(app.auto_scroll);
+        assert_eq!(app.input.text, "typing in tab1");
+        assert!(app.ops.thinking.text.is_empty());
+        assert!(app.ops.tool_calls.is_empty());
     }
 }
