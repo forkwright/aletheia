@@ -266,7 +266,7 @@ pub async fn execute(
             ..Default::default()
         };
 
-        let response = match provider.complete(&request) {
+        let response = match provider.complete(&request).await {
             Ok(resp) => {
                 providers.record_success(provider.name());
                 resp
@@ -564,9 +564,12 @@ pub async fn execute_streaming(
         };
 
         let tx = stream_tx.clone();
-        let response = match streaming_provider.complete_streaming(&request, |event| {
-            let _ = tx.try_send(TurnStreamEvent::LlmDelta(event));
-        }) {
+        let response = match streaming_provider
+            .complete_streaming(&request, |event| {
+                let _ = tx.try_send(TurnStreamEvent::LlmDelta(event));
+            })
+            .await
+        {
             Ok(resp) => {
                 providers.record_success(provider.name());
                 resp
@@ -706,20 +709,29 @@ mod tests {
     }
 
     impl aletheia_hermeneus::provider::LlmProvider for MockProvider {
-        fn complete(
-            &self,
-            _request: &CompletionRequest,
-        ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-            #[expect(
-                clippy::expect_used,
-                reason = "test mock: poisoned lock means a test bug"
-            )]
-            let mut responses = self.responses.lock().expect("lock poisoned");
-            if responses.len() > 1 {
-                Ok(responses.remove(0))
-            } else {
-                Ok(responses[0].clone())
-            }
+        fn complete<'a>(
+            &'a self,
+            _request: &'a CompletionRequest,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
+                    > + Send
+                    + 'a,
+            >,
+        > {
+            Box::pin(async {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "test mock: poisoned lock means a test bug"
+                )]
+                let mut responses = self.responses.lock().expect("lock poisoned");
+                if responses.len() > 1 {
+                    Ok(responses.remove(0))
+                } else {
+                    Ok(responses[0].clone())
+                }
+            })
         }
 
         fn supported_models(&self) -> &[&str] {

@@ -5,6 +5,8 @@
 
 use std::any::Any;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
 use crate::anthropic::AnthropicProvider;
 use crate::error::{self, Result};
@@ -18,13 +20,17 @@ use crate::types::{CompletionRequest, CompletionResponse, TokenCount};
 /// [`types`](crate::types) and the wire format of the specific API.
 ///
 /// `Send + Sync` required for use in async contexts and across threads.
+/// Async methods return boxed futures to preserve `dyn LlmProvider` compatibility.
 pub trait LlmProvider: Send + Sync {
     /// Send a completion request and return the full response.
     ///
     /// # Errors
     /// Returns an error on network failure, authentication issues,
     /// rate limiting, or response parsing failure.
-    fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse>;
+    fn complete<'a>(
+        &'a self,
+        request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>>;
 
     /// List models supported by this provider.
     fn supported_models(&self) -> &[&str];
@@ -47,8 +53,11 @@ pub trait LlmProvider: Send + Sync {
 
     /// Count tokens for a request via the provider's API.
     /// Returns None if the provider doesn't support server-side counting.
-    fn count_tokens(&self, _request: &CompletionRequest) -> Result<Option<TokenCount>> {
-        Ok(None)
+    fn count_tokens<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<TokenCount>>> + Send + 'a>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// Whether this provider supports prompt caching.
@@ -195,6 +204,9 @@ impl ProviderRegistry {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::pin::Pin;
+
     use super::*;
     use crate::types::*;
 
@@ -212,20 +224,25 @@ mod tests {
     }
 
     impl LlmProvider for MockProvider {
-        fn complete(&self, _request: &CompletionRequest) -> Result<CompletionResponse> {
-            Ok(CompletionResponse {
-                id: "mock-response-1".to_owned(),
-                model: "mock-model-v1".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![ContentBlock::Text {
-                    text: "mock response".to_owned(),
-                    citations: None,
-                }],
-                usage: Usage {
-                    input_tokens: 100,
-                    output_tokens: 50,
-                    ..Usage::default()
-                },
+        fn complete<'a>(
+            &'a self,
+            _request: &'a CompletionRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
+            Box::pin(async {
+                Ok(CompletionResponse {
+                    id: "mock-response-1".to_owned(),
+                    model: "mock-model-v1".to_owned(),
+                    stop_reason: StopReason::EndTurn,
+                    content: vec![ContentBlock::Text {
+                        text: "mock response".to_owned(),
+                        citations: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 100,
+                        output_tokens: 50,
+                        ..Usage::default()
+                    },
+                })
             })
         }
 
@@ -246,8 +263,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn mock_provider_completes() {
+    #[tokio::test]
+    async fn mock_provider_completes() {
         let provider = MockProvider::new();
         let request = CompletionRequest {
             model: "mock-model-v1".to_owned(),
@@ -264,7 +281,7 @@ mod tests {
             ..Default::default()
         };
 
-        let response = provider.complete(&request).unwrap();
+        let response = provider.complete(&request).await.unwrap();
         assert_eq!(response.id, "mock-response-1");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
     }

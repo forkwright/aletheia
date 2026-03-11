@@ -51,11 +51,17 @@ impl MockProvider {
 }
 
 impl LlmProvider for MockProvider {
-    fn complete(
-        &self,
-        _request: &CompletionRequest,
-    ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-        Ok(self.response.clone())
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async { Ok(self.response.clone()) })
     }
 
     fn supported_models(&self) -> &[&str] {
@@ -100,19 +106,27 @@ impl CapturingMockProvider {
 }
 
 impl LlmProvider for CapturingMockProvider {
-    fn complete(
-        &self,
-        request: &CompletionRequest,
-    ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-        #[expect(
-            clippy::expect_used,
-            reason = "test mock: poisoned lock means a test bug"
-        )]
-        self.captured
-            .lock()
-            .expect("lock poisoned")
-            .push(request.clone());
-        Ok(self.response.clone())
+    fn complete<'a>(
+        &'a self,
+        request: &'a CompletionRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            #[expect(
+                clippy::expect_used,
+                reason = "test mock: poisoned lock means a test bug"
+            )]
+            self.captured
+                .lock()
+                .expect("lock poisoned")
+                .push(request.clone());
+            Ok(self.response.clone())
+        })
     }
 
     fn supported_models(&self) -> &[&str] {

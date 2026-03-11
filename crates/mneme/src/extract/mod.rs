@@ -140,8 +140,16 @@ impl Default for ExtractionConfig {
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full `LlmProvider` + `CompletionRequest` API.
+///
+/// Uses a boxed future return type to remain dyn-compatible (object-safe).
 pub trait ExtractionProvider: Send + Sync {
-    fn complete(&self, system: &str, user_message: &str) -> Result<String, ExtractionError>;
+    fn complete<'a>(
+        &'a self,
+        system: &'a str,
+        user_message: &'a str,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+    >;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,7 +282,7 @@ Rules:
 
     /// Run extraction end-to-end: build prompt, call provider, parse response.
     #[instrument(skip(self, provider))]
-    pub fn extract(
+    pub async fn extract(
         &self,
         messages: &[ConversationMessage],
         provider: &dyn ExtractionProvider,
@@ -289,7 +297,9 @@ Rules:
         }
 
         let prompt = self.build_prompt(messages);
-        let response = provider.complete(&prompt.system, &prompt.user_message)?;
+        let response = provider
+            .complete(&prompt.system, &prompt.user_message)
+            .await?;
         self.parse_response(&response)
     }
 
@@ -299,7 +309,7 @@ Rules:
     /// corrections, classifies fact types, applies quality filters, and boosts
     /// confidence where appropriate.
     #[instrument(skip(self, provider))]
-    pub fn extract_refined(
+    pub async fn extract_refined(
         &self,
         messages: &[ConversationMessage],
         provider: &dyn ExtractionProvider,
@@ -327,7 +337,9 @@ Rules:
 
         // Build prompt with turn-type-specific instructions
         let prompt = self.build_prompt_with_turn_type(messages, Some(turn_type));
-        let response = provider.complete(&prompt.system, &prompt.user_message)?;
+        let response = provider
+            .complete(&prompt.system, &prompt.user_message)
+            .await?;
         let mut extraction = self.parse_response(&response)?;
 
         // Detect corrections in source content
@@ -680,12 +692,18 @@ mod tests {
         assert!(matches!(err, ExtractionError::ParseResponse { .. }));
     }
 
-    #[test]
-    fn extract_skips_short_messages() {
+    #[tokio::test]
+    async fn extract_skips_short_messages() {
         struct NeverCallProvider;
         impl ExtractionProvider for NeverCallProvider {
-            fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
-                panic!("should not be called for short messages");
+            fn complete<'a>(
+                &'a self,
+                _: &'a str,
+                _: &'a str,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+            > {
+                Box::pin(async { panic!("should not be called for short messages") })
             }
         }
 
@@ -697,16 +715,25 @@ mod tests {
 
         let result = engine
             .extract(&messages, &NeverCallProvider)
+            .await
             .expect("short message should return empty extraction without error");
         assert!(result.entities.is_empty());
     }
 
-    #[test]
-    fn extract_calls_provider() {
+    #[tokio::test]
+    async fn extract_calls_provider() {
         struct MockProvider;
         impl ExtractionProvider for MockProvider {
-            fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
-                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"Dr. Chen","predicate":"studies","object":"neural networks","confidence":0.95}]}"#.to_owned())
+            fn complete<'a>(
+                &'a self,
+                _: &'a str,
+                _: &'a str,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+            > {
+                Box::pin(async {
+                    Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"Dr. Chen","predicate":"studies","object":"neural networks","confidence":0.95}]}"#.to_owned())
+                })
             }
         }
 
@@ -719,6 +746,7 @@ mod tests {
 
         let result = engine
             .extract(&messages, &MockProvider)
+            .await
             .expect("mock provider returns valid JSON, extraction should succeed");
         assert_eq!(result.facts.len(), 1);
         assert_eq!(result.facts[0].subject, "Dr. Chen");
@@ -956,15 +984,23 @@ mod tests {
         assert!(second_pos < third_pos);
     }
 
-    #[test]
-    fn extract_provider_error_propagates() {
+    #[tokio::test]
+    async fn extract_provider_error_propagates() {
         struct FailingProvider;
         impl ExtractionProvider for FailingProvider {
-            fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
-                LlmCallSnafu {
-                    message: "rate limited",
-                }
-                .fail()
+            fn complete<'a>(
+                &'a self,
+                _: &'a str,
+                _: &'a str,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+            > {
+                Box::pin(async {
+                    LlmCallSnafu {
+                        message: "rate limited",
+                    }
+                    .fail()
+                })
             }
         }
 
@@ -976,7 +1012,7 @@ mod tests {
                     .to_owned(),
         }];
 
-        let result = engine.extract(&messages, &FailingProvider);
+        let result = engine.extract(&messages, &FailingProvider).await;
         assert!(result.is_err());
         assert!(matches!(
             result.expect_err("failing provider should return LlmCall error"),
@@ -1297,12 +1333,20 @@ mod tests {
         assert!(extraction.facts.is_empty());
     }
 
-    #[test]
-    fn extract_min_length_boundary() {
+    #[tokio::test]
+    async fn extract_min_length_boundary() {
         struct EchoProvider;
         impl ExtractionProvider for EchoProvider {
-            fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
-                Ok(r#"{"entities":[],"relationships":[],"facts":[]}"#.to_owned())
+            fn complete<'a>(
+                &'a self,
+                _: &'a str,
+                _: &'a str,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+            > {
+                Box::pin(async {
+                    Ok(r#"{"entities":[],"relationships":[],"facts":[]}"#.to_owned())
+                })
             }
         }
 
@@ -1318,6 +1362,7 @@ mod tests {
         }];
         let result = engine
             .extract(&below, &EchoProvider)
+            .await
             .expect("extraction on below-threshold input should return empty without error");
         assert!(
             result.entities.is_empty(),
@@ -1330,6 +1375,7 @@ mod tests {
         }];
         let result = engine
             .extract(&exact, &EchoProvider)
+            .await
             .expect("extraction on exact-threshold input should call provider and return result");
         assert!(
             result.entities.is_empty(),
@@ -1342,6 +1388,7 @@ mod tests {
         }];
         let result = engine
             .extract(&above, &EchoProvider)
+            .await
             .expect("extraction on above-threshold input should call provider and return result");
         assert!(
             result.entities.is_empty(),
@@ -1349,18 +1396,25 @@ mod tests {
         );
     }
 
-    #[test]
-    fn extract_empty_messages() {
+    #[tokio::test]
+    async fn extract_empty_messages() {
         struct PanicProvider;
         impl ExtractionProvider for PanicProvider {
-            fn complete(&self, _: &str, _: &str) -> Result<String, ExtractionError> {
-                panic!("should not be called for empty messages");
+            fn complete<'a>(
+                &'a self,
+                _: &'a str,
+                _: &'a str,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+            > {
+                Box::pin(async { panic!("should not be called for empty messages") })
             }
         }
 
         let engine = ExtractionEngine::new(ExtractionConfig::default());
         let result = engine
             .extract(&[], &PanicProvider)
+            .await
             .expect("empty messages should return empty extraction without calling provider");
         assert!(result.entities.is_empty());
         assert!(result.relationships.is_empty());

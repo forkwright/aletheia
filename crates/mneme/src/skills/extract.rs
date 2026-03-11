@@ -47,9 +47,17 @@ pub enum SkillExtractionError {
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
 /// to the full provider API, just like [`crate::extract::ExtractionProvider`].
+///
+/// Uses a boxed future return type to remain dyn-compatible (object-safe).
 pub trait SkillExtractionProvider: Send + Sync {
     /// Send a system + user message to the LLM and return the text response.
-    fn complete(&self, system: &str, user_message: &str) -> Result<String, SkillExtractionError>;
+    fn complete<'a>(
+        &'a self,
+        system: &'a str,
+        user_message: &'a str,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<String, SkillExtractionError>> + Send + 'a>,
+    >;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,14 +124,14 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
     ///
     /// `tool_call_sequences` should contain the tool call sequences from each
     /// session where the pattern was observed (one vec per session).
-    pub fn extract_skill(
+    pub async fn extract_skill(
         &self,
         candidate: &SkillCandidate,
         tool_call_sequences: &[Vec<ToolCallRecord>],
     ) -> Result<ExtractedSkill, SkillExtractionError> {
         let system = EXTRACTION_SYSTEM_PROMPT;
         let user_message = build_extraction_prompt(candidate, tool_call_sequences);
-        let response = self.provider.complete(system, &user_message)?;
+        let response = self.provider.complete(system, &user_message).await?;
         parse_skill_response(&response)
     }
 }
@@ -339,16 +347,20 @@ mod tests {
     }
 
     impl SkillExtractionProvider for MockProvider {
-        fn complete(
-            &self,
-            _system: &str,
-            _user_message: &str,
-        ) -> Result<String, SkillExtractionError> {
-            self.response.as_ref().cloned().map_err(|_prev| {
-                LlmCallSnafu {
-                    message: "mock error".to_owned(),
-                }
-                .build()
+        fn complete<'a>(
+            &'a self,
+            _system: &'a str,
+            _user_message: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<String, SkillExtractionError>> + Send + 'a>,
+        > {
+            Box::pin(async {
+                self.response.as_ref().cloned().map_err(|_prev| {
+                    LlmCallSnafu {
+                        message: "mock error".to_owned(),
+                    }
+                    .build()
+                })
             })
         }
     }
@@ -549,8 +561,8 @@ mod tests {
 
     // -- Extractor end-to-end -------------------------------------------------
 
-    #[test]
-    fn extractor_returns_skill_on_valid_response() {
+    #[tokio::test]
+    async fn extractor_returns_skill_on_valid_response() {
         let provider = MockProvider::ok(&valid_json_response());
         let extractor = SkillExtractor::new(provider);
         let candidate = sample_candidate();
@@ -558,29 +570,30 @@ mod tests {
 
         let skill = extractor
             .extract_skill(&candidate, &seqs)
+            .await
             .expect("mock provider returns valid response");
         assert_eq!(skill.name, "test-driven-bug-fix");
     }
 
-    #[test]
-    fn extractor_returns_error_on_provider_failure() {
+    #[tokio::test]
+    async fn extractor_returns_error_on_provider_failure() {
         let provider = MockProvider::err("API rate limited");
         let extractor = SkillExtractor::new(provider);
         let candidate = sample_candidate();
         let seqs = sample_sequences();
 
-        let result = extractor.extract_skill(&candidate, &seqs);
+        let result = extractor.extract_skill(&candidate, &seqs).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn extractor_returns_error_on_malformed_response() {
+    #[tokio::test]
+    async fn extractor_returns_error_on_malformed_response() {
         let provider = MockProvider::ok("this is not json");
         let extractor = SkillExtractor::new(provider);
         let candidate = sample_candidate();
         let seqs = sample_sequences();
 
-        let result = extractor.extract_skill(&candidate, &seqs);
+        let result = extractor.extract_skill(&candidate, &seqs).await;
         assert!(result.is_err());
     }
 

@@ -461,7 +461,8 @@ impl NousActor {
                     &assistant,
                     #[cfg(feature = "knowledge-store")]
                     knowledge_store.as_ref(),
-                );
+                )
+                .await;
             }
             .instrument(span),
         );
@@ -549,7 +550,8 @@ impl NousActor {
                     &tracker,
                     #[cfg(feature = "knowledge-store")]
                     knowledge_store.as_ref(),
-                );
+                )
+                .await;
             }
             .instrument(span),
         );
@@ -668,7 +670,7 @@ impl NousActor {
 }
 
 /// Run extraction as a background task. Logs results, never panics.
-fn run_extraction(
+async fn run_extraction(
     config: &aletheia_mneme::extract::ExtractionConfig,
     providers: Arc<ProviderRegistry>,
     nous_id: &str,
@@ -692,7 +694,7 @@ fn run_extraction(
         },
     ];
 
-    match engine.extract_refined(&messages, &provider) {
+    match engine.extract_refined(&messages, &provider).await {
         Ok(refined) => {
             let entities = refined.extraction.entities.len();
             let relationships = refined.extraction.relationships.len();
@@ -733,7 +735,7 @@ fn run_extraction(
 }
 
 /// Run LLM skill extraction as a background task. Logs results, never panics.
-fn run_skill_extraction(
+async fn run_skill_extraction(
     model: &str,
     providers: Arc<ProviderRegistry>,
     nous_id: &str,
@@ -759,7 +761,7 @@ fn run_skill_extraction(
     // In a richer implementation, we'd collect sequences from all session_refs.
     let sequences = vec![tool_calls.to_vec()];
 
-    match extractor.extract_skill(candidate, &sequences) {
+    match extractor.extract_skill(candidate, &sequences).await {
         Ok(extracted) => {
             info!(
                 nous_id = %nous_id,
@@ -1051,15 +1053,24 @@ mod tests {
     }
 
     impl LlmProvider for MockProvider {
-        fn complete(
-            &self,
-            _request: &CompletionRequest,
-        ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-            #[expect(
-                clippy::expect_used,
-                reason = "test mock: poisoned lock means a test bug"
-            )]
-            Ok(self.response.lock().expect("lock poisoned").clone())
+        fn complete<'a>(
+            &'a self,
+            _request: &'a CompletionRequest,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
+                    > + Send
+                    + 'a,
+            >,
+        > {
+            Box::pin(async {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "test mock: poisoned lock means a test bug"
+                )]
+                Ok(self.response.lock().expect("lock poisoned").clone())
+            })
         }
 
         fn supported_models(&self) -> &[&str] {
