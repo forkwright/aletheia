@@ -4,7 +4,7 @@ use std::default::Default;
 
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::ValidityTs;
-use crate::engine::error::DbResult;
+use crate::engine::error::InternalResult;
 use crate::engine::runtime::relation::decode_tuple_from_kv;
 use crate::engine::storage::error::StorageResult;
 use crate::engine::storage::mem::SkipIterator;
@@ -79,7 +79,7 @@ impl<'s> StoreTx<'s> for TempTx {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a>
     where
         's: 'a,
     {
@@ -95,7 +95,7 @@ impl<'s> StoreTx<'s> for TempTx {
         lower: &[u8],
         upper: &[u8],
         valid_at: ValidityTs,
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a> {
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a> {
         Box::new(
             SkipIterator {
                 inner: &self.store,
@@ -112,7 +112,7 @@ impl<'s> StoreTx<'s> for TempTx {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<(Vec<u8>, Vec<u8>)>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<(Vec<u8>, Vec<u8>)>> + 'a>
     where
         's: 'a,
     {

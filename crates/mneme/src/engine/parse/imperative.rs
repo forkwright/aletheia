@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use either::{Left, Right};
 use itertools::Itertools;

@@ -1,11 +1,11 @@
 //! MinHash locality-sensitive hashing.
 
-use crate::bail;
 use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
 use crate::engine::data::tuple::Tuple;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fts::TokenizerConfig;
 use crate::engine::fts::tokenizer::TextAnalyzer;
+use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, Expr, SourceSpan, Symbol};
@@ -42,10 +42,17 @@ impl<'a> SessionTx<'a> {
                                 ),
                             })
                             .collect_vec(),
-                        other => bail!(
-                            "LSH index invariant violated: expected List, got {:?}",
-                            other
-                        ),
+                        other => {
+                            return Err(InvalidOperationSnafu {
+                                op: "lsh_index",
+                                reason: format!(
+                                    "LSH index invariant violated: expected List, got {:?}",
+                                    other
+                                ),
+                            }
+                            .build()
+                            .into());
+                        }
                     }
                 } else {
                     return Ok(());
@@ -89,10 +96,17 @@ impl<'a> SessionTx<'a> {
                         }
                     })
                     .collect_vec(),
-                other => bail!(
-                    "LSH index invariant violated: expected List, got {:?}",
-                    other
-                ),
+                other => {
+                    return Err(InvalidOperationSnafu {
+                        op: "lsh_index",
+                        reason: format!(
+                            "LSH index invariant violated: expected List, got {:?}",
+                            other
+                        ),
+                    }
+                    .build()
+                    .into());
+                }
             };
             self.del_lsh_index_item(tuple, Some(bytes), idx_handle, inv_idx_handle)?;
         }
@@ -104,7 +118,14 @@ impl<'a> SessionTx<'a> {
                 let n_grams = tokenizer.unique_ngrams(&s, manifest.n_gram);
                 HashValues::new(n_grams.iter(), hash_perms)
             }
-            _ => bail!("Cannot put value {:?} into a LSH index", to_index),
+            _ => {
+                return Err(InvalidOperationSnafu {
+                    op: "lsh_put",
+                    reason: format!("Cannot put value {:?} into a LSH index", to_index),
+                }
+                .build()
+                .into());
+            }
         };
         let bytes = min_hash.get_bytes();
 
@@ -157,7 +178,14 @@ impl<'a> SessionTx<'a> {
                 let n_grams = tokenizer.unique_ngrams(s, config.manifest.n_gram);
                 HashValues::new(n_grams.iter(), perms).get_bytes().to_vec()
             }
-            _ => bail!("Cannot search for value {:?} in a LSH index", q),
+            _ => {
+                return Err(InvalidOperationSnafu {
+                    op: "lsh_search",
+                    reason: format!("Cannot search for value {:?} in a LSH index", q),
+                }
+                .build()
+                .into());
+            }
         };
         let chunk_size = config.manifest.n_rows_in_band * std::mem::size_of::<u32>();
         let mut key_prefix = Vec::with_capacity(1);
@@ -186,7 +214,13 @@ impl<'a> SessionTx<'a> {
         let mut ret = vec![];
         for key in found_tuples {
             let orig_tuple = config.base_handle.get(self, &key)?.ok_or_else(|| {
-                crate::engine::error::AdhocError("Tuple not found in base LSH relation".to_string())
+                crate::engine::error::InternalError::Runtime {
+                    source: InvalidOperationSnafu {
+                        op: "lsh_search",
+                        reason: "Tuple not found in base LSH relation",
+                    }
+                    .build(),
+                }
             })?;
             if let Some((filter_code, span)) = filter_code {
                 if !eval_bytecode_pred(filter_code, &orig_tuple, stack, *span)? {
@@ -332,9 +366,13 @@ impl HashPermutations {
     // this is the inverse of `as_bytes`
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let perms: &[u32] = bytemuck::try_cast_slice(bytes).map_err(|e| {
-            crate::engine::error::AdhocError(format!(
-                "MinHash permutation bytes are misaligned: {e}"
-            ))
+            crate::engine::error::InternalError::Runtime {
+                source: InvalidOperationSnafu {
+                    op: "lsh_index",
+                    reason: format!("MinHash permutation bytes are misaligned: {e}"),
+                }
+                .build(),
+            }
         })?;
         Ok(Self(perms.to_vec()))
     }

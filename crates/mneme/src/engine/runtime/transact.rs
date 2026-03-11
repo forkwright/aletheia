@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 
 use crate::engine::data::program::ReturnMutation;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::error::StorageVersionSnafu;
 
 use crate::engine::data::tuple::TupleT;

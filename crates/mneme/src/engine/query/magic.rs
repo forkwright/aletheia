@@ -2,7 +2,7 @@
 use std::collections::BTreeSet;
 use std::mem;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::query::error::*;
 use compact_str::CompactString;
 use itertools::Itertools;
@@ -348,11 +348,12 @@ impl NormalFormProgram {
                                                         .keys
                                                         .last()
                                                         .ok_or_else(|| {
-                                                            InvalidTimeTravelSnafu {
-                                                                message: format!("relation '{name}' has no key columns"),
-                                                            }
-                                                            .build()
-                                                            .into_box_err()
+                                                            crate::engine::error::InternalError::from(
+                                                                InvalidTimeTravelSnafu {
+                                                                    message: format!("relation '{name}' has no key columns"),
+                                                                }
+                                                                .build()
+                                                            )
                                                         })?
                                                         .typing;
                                                     if *last_col_type
@@ -387,11 +388,12 @@ impl NormalFormProgram {
                                                         .keys
                                                         .last()
                                                         .ok_or_else(|| {
-                                                            InvalidTimeTravelSnafu {
-                                                                message: format!("relation '{name}' has no key columns"),
-                                                            }
-                                                            .build()
-                                                            .into_box_err()
+                                                            crate::engine::error::InternalError::from(
+                                                                InvalidTimeTravelSnafu {
+                                                                    message: format!("relation '{name}' has no key columns"),
+                                                                }
+                                                                .build()
+                                                            )
                                                         })?
                                                         .typing;
                                                     if *last_col_type
@@ -486,14 +488,15 @@ impl NormalFormProgram {
                 )
                 .rules()
                 .ok_or_else(|| {
-                    CompilationFailedSnafu {
-                        message: format!(
-                            "expected rules for '{}' but found fixed rule",
-                            head.as_plain_symbol()
-                        ),
-                    }
-                    .build()
-                    .into_box_err()
+                    crate::engine::error::InternalError::from(
+                        CompilationFailedSnafu {
+                            message: format!(
+                                "expected rules for '{}' but found fixed rule",
+                                head.as_plain_symbol()
+                            ),
+                        }
+                        .build(),
+                    )
                 })?;
             let adornment = head.magic_adornment();
             let mut adorned_rules = Vec::with_capacity(original_rules.len());

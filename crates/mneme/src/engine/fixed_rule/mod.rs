@@ -2,11 +2,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::bail;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 #[cfg(feature = "graph-algo")]
 use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
-use crate::ensure;
 use compact_str::CompactString;
 #[cfg(feature = "graph-algo")]
 use either::{Left, Right};
@@ -24,6 +22,7 @@ use crate::engine::data::tuple::TupleIter;
 use crate::engine::data::value::DataValue;
 #[cfg(feature = "graph-algo")]
 use crate::engine::fixed_rule::algos::*;
+use crate::engine::fixed_rule::error::InvalidInputSnafu;
 use crate::engine::fixed_rule::utilities::*;
 use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;
@@ -65,11 +64,12 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     pub fn ensure_min_len(self, len: usize) -> Result<Self> {
         let arity = self.arg_manifest.arity(self.tx, self.stores)?;
         if arity < len {
-            return Err(Box::new(error::FixedRuleError::InvalidInput {
+            return Err(error::FixedRuleError::InvalidInput {
                 rule: String::new(),
                 message: "Input relation to algorithm has insufficient arity".to_string(),
                 location: snafu::location!(),
-            }));
+            }
+            .into());
         }
         Ok(self)
     }
@@ -82,10 +82,11 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         Ok(match &self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = self.stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!(
-                        "The requested rule '{}' cannot be found",
-                        name.symbol()
-                    ))
+                    InvalidInputSnafu {
+                        rule: "fixed_rule",
+                        message: format!("The requested rule '{}' cannot be found", name.symbol()),
+                    }
+                    .build()
                 })?;
                 Box::new(store.all_iter().map(|t| Ok(t.into_tuple())))
             }
@@ -104,10 +105,11 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
         Ok(match self.arg_manifest {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = self.stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!(
-                        "The requested rule '{}' cannot be found",
-                        name.symbol()
-                    ))
+                    InvalidInputSnafu {
+                        rule: "fixed_rule",
+                        message: format!("The requested rule '{}' cannot be found", name.symbol()),
+                    }
+                    .build()
                 })?;
                 let t = vec![prefix.clone()];
                 Box::new(store.prefix_iter(&t).map(|t| Ok(t.into_tuple())))
@@ -140,24 +142,36 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     ) -> Result<(DirectedCsrGraph, Vec<DataValue>, BTreeMap<DataValue, u32>)> {
         let mut indices: Vec<DataValue> = vec![];
         let mut inv_indices: BTreeMap<DataValue, u32> = Default::default();
-        let mut error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
+        let mut error: Option<crate::engine::error::InternalError> = None;
         let it = self.iter()?.filter_map(|r_tuple| match r_tuple {
             Ok(tuple) => {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(Box::new(crate::engine::error::AdhocError(
-                            "The relation cannot be interpreted as an edge".to_string(),
-                        )));
+                        error = Some(
+                            InvalidInputSnafu {
+                                rule: "graph",
+                                message: "The relation cannot be interpreted as an edge"
+                                    .to_string(),
+                            }
+                            .build()
+                            .into(),
+                        );
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(Box::new(crate::engine::error::AdhocError(
-                            "The relation cannot be interpreted as an edge".to_string(),
-                        )));
+                        error = Some(
+                            InvalidInputSnafu {
+                                rule: "graph",
+                                message: "The relation cannot be interpreted as an edge"
+                                    .to_string(),
+                            }
+                            .build()
+                            .into(),
+                        );
                         return None;
                     }
                     Some(f) => f,
@@ -214,24 +228,36 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
     )> {
         let mut indices: Vec<DataValue> = vec![];
         let mut inv_indices: BTreeMap<DataValue, u32> = Default::default();
-        let mut error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
+        let mut error: Option<crate::engine::error::InternalError> = None;
         let it = self.iter()?.filter_map(|r_tuple| match r_tuple {
             Ok(tuple) => {
                 let mut tuple = tuple.into_iter();
                 let from = match tuple.next() {
                     None => {
-                        error = Some(Box::new(crate::engine::error::AdhocError(
-                            "The relation cannot be interpreted as an edge".to_string(),
-                        )));
+                        error = Some(
+                            InvalidInputSnafu {
+                                rule: "graph",
+                                message: "The relation cannot be interpreted as an edge"
+                                    .to_string(),
+                            }
+                            .build()
+                            .into(),
+                        );
                         return None;
                     }
                     Some(f) => f,
                 };
                 let to = match tuple.next() {
                     None => {
-                        error = Some(Box::new(crate::engine::error::AdhocError(
-                            "The relation cannot be interpreted as an edge".to_string(),
-                        )));
+                        error = Some(
+                            InvalidInputSnafu {
+                                rule: "graph",
+                                message: "The relation cannot be interpreted as an edge"
+                                    .to_string(),
+                            }
+                            .build()
+                            .into(),
+                        );
                         return None;
                     }
                     Some(f) => f,
@@ -441,12 +467,13 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     pub fn pos_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         let i = self.integer_option(name, default.map(|i| i as i64))?;
         if i <= 0 {
-            return Err(Box::new(WrongFixedRuleOptionError {
+            return Err(WrongFixedRuleOptionError {
                 name: name.to_string(),
                 span: self.option_span(name)?,
                 rule_name: self.manifest.fixed_handle.name.to_string(),
                 help: "a positive integer is required".to_string(),
-            }));
+            }
+            .into());
         }
         Ok(i as usize)
     }
@@ -454,12 +481,13 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     pub fn non_neg_integer_option(&self, name: &str, default: Option<usize>) -> Result<usize> {
         let i = self.integer_option(name, default.map(|i| i as i64))?;
         if i < 0 {
-            return Err(Box::new(WrongFixedRuleOptionError {
+            return Err(WrongFixedRuleOptionError {
                 name: name.to_string(),
                 span: self.option_span(name)?,
                 rule_name: self.manifest.fixed_handle.name.to_string(),
                 help: "a non-negative integer is required".to_string(),
-            }));
+            }
+            .into());
         }
         Ok(i as usize)
     }
@@ -494,12 +522,13 @@ impl<'a, 'b> FixedRulePayload<'a, 'b> {
     pub fn unit_interval_option(&self, name: &str, default: Option<f64>) -> Result<f64> {
         let f = self.float_option(name, default)?;
         if !(0. ..=1.).contains(&f) {
-            return Err(Box::new(WrongFixedRuleOptionError {
+            return Err(WrongFixedRuleOptionError {
                 name: name.to_string(),
                 span: self.option_span(name)?,
                 rule_name: self.manifest.fixed_handle.name.to_string(),
                 help: "a number between 0. and 1. is required".to_string(),
-            }));
+            }
+            .into());
         }
         Ok(f)
     }
@@ -711,9 +740,9 @@ impl FixedRuleHandle {
 #[snafu(display(
     "The value {val:?} at the third position in the relation cannot be interpreted as edge weights"
 ))]
-struct BadEdgeWeightError {
-    val: DataValue,
-    span: SourceSpan,
+pub(crate) struct BadEdgeWeightError {
+    pub(crate) val: DataValue,
+    pub(crate) span: SourceSpan,
 }
 
 #[derive(Debug, Snafu)]
@@ -743,10 +772,11 @@ impl MagicFixedRuleRuleArg {
         Ok(match self {
             MagicFixedRuleRuleArg::InMem { name, .. } => {
                 let store = stores.get(name).ok_or_else(|| {
-                    crate::engine::error::AdhocError(format!(
-                        "The requested rule '{}' cannot be found",
-                        name.symbol()
-                    ))
+                    InvalidInputSnafu {
+                        rule: "fixed_rule",
+                        message: format!("The requested rule '{}' cannot be found", name.symbol()),
+                    }
+                    .build()
                 })?;
                 store.arity
             }

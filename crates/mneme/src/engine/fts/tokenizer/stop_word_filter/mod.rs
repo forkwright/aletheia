@@ -4,7 +4,7 @@ mod stopwords;
 
 use std::sync::Arc;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fts::error::TokenizationFailedSnafu;
 use rustc_hash::FxHashSet;
 
@@ -81,12 +81,11 @@ impl StopWordFilter {
             "yo" => stopwords::YO,
             "zu" => stopwords::ZU,
             _ => {
-                return Err(Box::new(
-                    TokenizationFailedSnafu {
-                        message: format!("Unsupported stop word language: {}", language),
-                    }
-                    .build(),
-                ));
+                return Err(TokenizationFailedSnafu {
+                    message: format!("Unsupported stop word language: {}", language),
+                }
+                .build()
+                .into());
             }
         };
 

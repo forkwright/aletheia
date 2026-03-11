@@ -1,7 +1,7 @@
 //! Louvain community detection.
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use compact_str::CompactString;
 use itertools::Itertools;

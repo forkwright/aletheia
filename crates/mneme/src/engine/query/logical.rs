@@ -1,7 +1,7 @@
 //! Logical plan representation.
 use std::collections::BTreeSet;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::query::error::*;
 use itertools::Itertools;
 
@@ -203,15 +203,14 @@ impl InputAtom {
                 let mut args = args
                     .into_iter()
                     .map(|a| a.do_disjunctive_normal_form(r#gen, tx));
-                let mut result =
-                    args.next()
-                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                            CompilationFailedSnafu {
-                                message: "empty conjunction",
-                            }
-                            .build()
-                            .into()
-                        })??;
+                let mut result = args.next().ok_or_else(|| {
+                    crate::engine::error::InternalError::from(
+                        CompilationFailedSnafu {
+                            message: "empty conjunction",
+                        }
+                        .build(),
+                    )
+                })??;
                 for a in args {
                     result = result.conjunctive_to_disjunctive_de_morgen(a?)
                 }

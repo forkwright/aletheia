@@ -1,6 +1,6 @@
 //! Compound word splitting filter.
 use super::{BoxTokenStream, Token, TokenFilter, TokenStream};
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 
 /// A [`TokenFilter`] which splits compound words into their parts
@@ -57,7 +57,14 @@ impl SplitCompoundWords {
         let dict = AhoCorasickBuilder::new()
             .match_kind(MatchKind::LeftmostLongest)
             .build(dict)
-            .map_err(|e| crate::engine::error::AdhocError(e.to_string()))?;
+            .map_err(|e| {
+                crate::engine::error::InternalError::from(
+                    crate::engine::fts::error::TokenizationFailedSnafu {
+                        message: e.to_string(),
+                    }
+                    .build(),
+                )
+            })?;
 
         Ok(Self::from_automaton(dict))
     }

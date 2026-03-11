@@ -2,7 +2,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use itertools::Itertools;
 
 use crate::engine::data::program::SortDir;

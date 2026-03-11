@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use itertools::Itertools;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;

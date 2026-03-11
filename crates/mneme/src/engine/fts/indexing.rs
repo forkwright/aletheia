@@ -3,7 +3,7 @@ use crate::engine::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};
 use crate::engine::data::program::{FtsScoreKind, FtsSearch};
 use crate::engine::data::tuple::{ENCODED_KEY_MIN_LEN, Tuple, decode_tuple_from_key};
 use crate::engine::data::value::LARGEST_UTF_CHAR;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::engine::fts::error::TokenizationFailedSnafu;
 use crate::engine::fts::tokenizer::TextAnalyzer;
@@ -51,7 +51,14 @@ impl FtsCache {
                     let key_tuple = decode_tuple_from_key(&kvec, idx.metadata.keys.len());
                     let doc_key = key_tuple[1..].to_vec();
                     let vals: Vec<DataValue> = rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
-                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                        .map_err(|e| {
+                            crate::engine::error::InternalError::from(
+                                TokenizationFailedSnafu {
+                                    message: e.to_string(),
+                                }
+                                .build(),
+                            )
+                        })?;
                     let total_length = vals[3].get_int().unwrap_or(0) as u32;
                     doc_lengths
                         .entry(doc_key)
@@ -137,7 +144,14 @@ impl<'a> SessionTx<'a> {
             }
 
             let vals: Vec<DataValue> = rmp_serde::from_slice(&vvec[ENCODED_KEY_MIN_LEN..])
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+                .map_err(|e| {
+                    crate::engine::error::InternalError::from(
+                        TokenizationFailedSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
             let froms = vals[0]
                 .get_slice()
                 .expect("FTS index val[0] (froms) is always a list");
@@ -357,10 +371,14 @@ impl<'a> SessionTx<'a> {
 
         let mut ret = Vec::with_capacity(config.k);
         for (found_key, score) in result {
-            let mut cand_tuple = config
-                .base_handle
-                .get(self, &found_key)?
-                .ok_or_else(|| crate::engine::error::AdhocError("corrupted index".to_string()))?;
+            let mut cand_tuple = config.base_handle.get(self, &found_key)?.ok_or_else(|| {
+                crate::engine::error::InternalError::from(
+                    TokenizationFailedSnafu {
+                        message: "corrupted index".to_string(),
+                    }
+                    .build(),
+                )
+            })?;
 
             if config.bind_score.is_some() {
                 cand_tuple.push(DataValue::from(score));
@@ -392,12 +410,11 @@ impl<'a> SessionTx<'a> {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
             _val => {
-                return Err(Box::new(
-                    TokenizationFailedSnafu {
-                        message: "FTS index extractor must return a string".to_string(),
-                    }
-                    .build(),
-                ));
+                return Err(TokenizationFailedSnafu {
+                    message: "FTS index extractor must return a string".to_string(),
+                }
+                .build()
+                .into());
             }
         };
         let mut token_stream = tokenizer.token_stream(&to_index);
@@ -446,12 +463,11 @@ impl<'a> SessionTx<'a> {
             DataValue::Null => return Ok(()),
             DataValue::Str(s) => s,
             _val => {
-                return Err(Box::new(
-                    TokenizationFailedSnafu {
-                        message: "FTS index extractor must return a string".to_string(),
-                    }
-                    .build(),
-                ));
+                return Err(TokenizationFailedSnafu {
+                    message: "FTS index extractor must return a string".to_string(),
+                }
+                .build()
+                .into());
             }
         };
         let mut token_stream = tokenizer.token_stream(&to_index);

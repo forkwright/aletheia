@@ -5,8 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-use crate::bail;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 use either::{Either, Left};
 use pest::Parser;
@@ -194,13 +193,14 @@ impl ImperativeStmt {
 
 impl DatalogScript {
     pub(crate) fn get_single_program(self) -> Result<InputProgram> {
-        #[derive(Debug, Snafu)]
-        #[snafu(display("expect script to contain only a single program"))]
-        struct ExpectSingleProgram;
         match self {
             DatalogScript::Single(s) => Ok(s),
             DatalogScript::Imperative(_) | DatalogScript::Sys(_) => {
-                bail!(ExpectSingleProgram)
+                return Err(crate::engine::parse::error::InvalidQuerySnafu {
+                    message: "expect script to contain only a single program".to_string(),
+                }
+                .build()
+                .into());
             }
         }
     }

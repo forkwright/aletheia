@@ -6,7 +6,7 @@ use std::collections::btree_map::Entry;
 use std::mem;
 use std::ops::Bound::Excluded;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use either::{Left, Right};
 use itertools::Itertools;
 

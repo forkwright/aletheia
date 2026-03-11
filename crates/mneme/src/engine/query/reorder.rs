@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use std::mem;
 
 use crate::engine::data::program::{NormalFormAtom, NormalFormInlineRule};
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use crate::engine::query::error::*;
 
 impl NormalFormInlineRule {

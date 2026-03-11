@@ -13,7 +13,7 @@ use redb::{ReadableDatabase, ReadableTable};
 use crate::engine::DbCore;
 use crate::engine::data::tuple::{Tuple, check_key_for_validity};
 use crate::engine::data::value::ValidityTs;
-use crate::engine::error::DbResult;
+use crate::engine::error::InternalResult;
 use crate::engine::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
 use crate::engine::storage::error::{
     IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
@@ -39,12 +39,12 @@ const TABLE: redb::TableDefinition<'_, &[u8], &[u8]> = redb::TableDefinition::ne
 /// - redb flushes its WAL on `Database` drop; no manual flush is needed.
 pub fn new_cozo_redb(
     path: impl AsRef<Path>,
-) -> crate::engine::error::DbResult<DbCore<RedbStorage>> {
+) -> crate::engine::error::InternalResult<DbCore<RedbStorage>> {
     use snafu::ResultExt as _;
     let path = path.as_ref();
     fs::create_dir_all(path)
         .context(IoSnafu { backend: "redb" })
-        .map_err(crate::engine::error::BoxErr::from)?;
+        .map_err(|e| crate::engine::error::InternalError::from(e))?;
 
     let db_file = path.join("data.redb");
     let db = redb::Database::create(&db_file)
@@ -55,7 +55,7 @@ pub fn new_cozo_redb(
             }
             .build()
         })
-        .map_err(crate::engine::error::BoxErr::from)?;
+        .map_err(|e| crate::engine::error::InternalError::from(e))?;
 
     // Ensure the data table exists before any reads
     {
@@ -68,7 +68,7 @@ pub fn new_cozo_redb(
                 }
                 .build()
             })
-            .map_err(crate::engine::error::BoxErr::from)?;
+            .map_err(|e| crate::engine::error::InternalError::from(e))?;
         write_txn
             .open_table(TABLE)
             .map_err(|e| {
@@ -78,7 +78,7 @@ pub fn new_cozo_redb(
                 }
                 .build()
             })
-            .map_err(crate::engine::error::BoxErr::from)?;
+            .map_err(|e| crate::engine::error::InternalError::from(e))?;
         write_txn
             .commit()
             .map_err(|e| {
@@ -88,7 +88,7 @@ pub fn new_cozo_redb(
                 }
                 .build()
             })
-            .map_err(crate::engine::error::BoxErr::from)?;
+            .map_err(|e| crate::engine::error::InternalError::from(e))?;
     }
 
     let storage = RedbStorage { db: Arc::new(db) };
@@ -384,7 +384,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a>
     where
         's: 'a,
     {
@@ -395,7 +395,9 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                         .into_iter()
                         .map(|(k, v)| Ok(decode_tuple_from_kv(&k, &v, None))),
                 ),
-                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                Err(e) => Box::new(std::iter::once(Err(
+                    crate::engine::error::InternalError::from(e),
+                ))),
             },
             RedbTx::Writer(w) => match redb_collect_range(&w.snapshot, lower, upper) {
                 Ok(persisted) => Box::new(DeltaMergeIter {
@@ -404,7 +406,9 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                     change_cache: None,
                     db_cache: None,
                 }),
-                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                Err(e) => Box::new(std::iter::once(Err(
+                    crate::engine::error::InternalError::from(e),
+                ))),
             },
         }
     }
@@ -414,7 +418,7 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
         lower: &[u8],
         upper: &[u8],
         valid_at: ValidityTs,
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a> {
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a> {
         match self {
             RedbTx::Reader(r) => match redb_collect_range(&r.read_txn, lower, upper) {
                 Ok(pairs) => Box::new(
@@ -427,7 +431,9 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                     }
                     .map(Ok),
                 ),
-                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                Err(e) => Box::new(std::iter::once(Err(
+                    crate::engine::error::InternalError::from(e),
+                ))),
             },
             RedbTx::Writer(w) => match redb_collect_range(&w.snapshot, lower, upper) {
                 Ok(persisted) => {
@@ -444,7 +450,9 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                         .map(Ok),
                     )
                 }
-                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                Err(e) => Box::new(std::iter::once(Err(
+                    crate::engine::error::InternalError::from(e),
+                ))),
             },
         }
     }
@@ -453,14 +461,16 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<(Vec<u8>, Vec<u8>)>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<(Vec<u8>, Vec<u8>)>> + 'a>
     where
         's: 'a,
     {
         match self {
             RedbTx::Reader(r) => match redb_collect_range(&r.read_txn, lower, upper) {
                 Ok(pairs) => Box::new(pairs.into_iter().map(Ok)),
-                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                Err(e) => Box::new(std::iter::once(Err(
+                    crate::engine::error::InternalError::from(e),
+                ))),
             },
             RedbTx::Writer(w) => match redb_collect_range(&w.snapshot, lower, upper) {
                 Ok(persisted) => Box::new(DeltaMergeIterRaw {
@@ -469,7 +479,9 @@ impl<'s> StoreTx<'s> for RedbTx<'s> {
                     change_cache: None,
                     db_cache: None,
                 }),
-                Err(e) => Box::new(std::iter::once(Err(crate::engine::error::BoxErr::from(e)))),
+                Err(e) => Box::new(std::iter::once(Err(
+                    crate::engine::error::InternalError::from(e),
+                ))),
             },
         }
     }
@@ -539,7 +551,7 @@ where
     }
 
     #[inline]
-    fn next_inner(&mut self) -> DbResult<Option<(Vec<u8>, Vec<u8>)>> {
+    fn next_inner(&mut self) -> InternalResult<Option<(Vec<u8>, Vec<u8>)>> {
         loop {
             self.fill_cache();
             match (&self.change_cache, &self.db_cache) {
@@ -594,7 +606,7 @@ impl<'a, C> Iterator for DeltaMergeIterRaw<'a, C>
 where
     C: Iterator<Item = (&'a Vec<u8>, &'a Option<Vec<u8>>)> + 'a,
 {
-    type Item = DbResult<(Vec<u8>, Vec<u8>)>;
+    type Item = InternalResult<(Vec<u8>, Vec<u8>)>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -631,7 +643,7 @@ where
     }
 
     #[inline]
-    fn next_inner(&mut self) -> DbResult<Option<Tuple>> {
+    fn next_inner(&mut self) -> InternalResult<Option<Tuple>> {
         loop {
             self.fill_cache();
             match (&self.change_cache, &self.db_cache) {
@@ -685,7 +697,7 @@ impl<'a, C> Iterator for DeltaMergeIter<'a, C>
 where
     C: Iterator<Item = (&'a Vec<u8>, &'a Option<Vec<u8>>)> + 'a,
 {
-    type Item = DbResult<Tuple>;
+    type Item = InternalResult<Tuple>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -791,13 +803,14 @@ fn merge_with_delta(
 mod tests {
     use super::*;
     use crate::engine::data::value::{DataValue, Validity};
-    use crate::engine::error::DbResult;
+    use crate::engine::error::InternalResult;
     use crate::engine::runtime::db::ScriptMutability;
+    use snafu::ResultExt;
     use std::collections::BTreeMap;
     use tempfile::TempDir;
 
-    fn setup_test_db() -> DbResult<(TempDir, DbCore<RedbStorage>)> {
-        let temp_dir = TempDir::new()?;
+    fn setup_test_db() -> InternalResult<(TempDir, DbCore<RedbStorage>)> {
+        let temp_dir = TempDir::new().context(IoSnafu { backend: "test" })?;
         let db = new_cozo_redb(temp_dir.path())?;
         db.run_script(
             r#"
@@ -839,10 +852,10 @@ mod tests {
     /// Verify that data written and committed before dropping the Database
     /// is readable after reopening — confirming WAL flush on drop.
     #[test]
-    fn redb_flushes_wal_on_database_drop() -> DbResult<()> {
+    fn redb_flushes_wal_on_database_drop() -> InternalResult<()> {
         use crate::engine::runtime::db::ScriptMutability;
 
-        let dir = TempDir::new()?;
+        let dir = TempDir::new().context(IoSnafu { backend: "test" })?;
 
         // Write and commit data, then drop the Database.
         {
@@ -873,7 +886,7 @@ mod tests {
     }
 
     #[test]
-    fn basic_operations() -> DbResult<()> {
+    fn basic_operations() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -901,7 +914,7 @@ mod tests {
     }
 
     #[test]
-    fn time_travel() -> DbResult<()> {
+    fn time_travel() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -944,7 +957,7 @@ mod tests {
     }
 
     #[test]
-    fn range_operations() -> DbResult<()> {
+    fn range_operations() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();
@@ -973,8 +986,8 @@ mod tests {
     }
 
     #[test]
-    fn persistence_across_restarts() -> DbResult<()> {
-        let dir = TempDir::new()?;
+    fn persistence_across_restarts() -> InternalResult<()> {
+        let dir = TempDir::new().context(IoSnafu { backend: "test" })?;
 
         // Write data
         {
@@ -1010,7 +1023,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_reads() -> DbResult<()> {
+    fn concurrent_reads() -> InternalResult<()> {
         let (_dir, db) = setup_test_db()?;
 
         let mut to_import = BTreeMap::new();

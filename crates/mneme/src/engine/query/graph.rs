@@ -3,7 +3,7 @@ use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use itertools::Itertools;
 
 use crate::engine::runtime::db::Poison;

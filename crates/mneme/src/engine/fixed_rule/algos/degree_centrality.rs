@@ -1,7 +1,7 @@
 //! Degree centrality computation.
 use std::collections::BTreeMap;
 
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::InternalResult as Result;
 use compact_str::CompactString;
 
 use crate::engine::data::expr::Expr;

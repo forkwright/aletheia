@@ -3,10 +3,7 @@ use snafu::Snafu;
 
 /// Structured error type for the engine runtime module.
 ///
-/// Replaces ad-hoc `bail!("message")` strings with typed variants that carry
-/// context and can be matched by callers. Functions in this module still return
-/// `DbResult<T>` — `RuntimeError` auto-converts to `BoxErr` via the std blanket
-/// `From<E: Error + Send + Sync + 'static>` impl.
+/// Typed variants that carry context and can be matched by callers.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[non_exhaustive]
@@ -100,13 +97,4 @@ pub(crate) enum RuntimeError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-}
-
-/// Bridge: allows `RuntimeError` to be used in functions returning `DbResult<T>`
-/// via the `?` operator. The std blanket `From<E: Error + Send + Sync>` impl
-/// already handles this, but we provide an explicit method for clarity.
-impl RuntimeError {
-    pub(crate) fn into_box_err(self) -> crate::engine::error::BoxErr {
-        Box::new(self)
-    }
 }

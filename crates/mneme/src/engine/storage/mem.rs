@@ -1,5 +1,5 @@
 //! In-memory storage backend.
-use crate::engine::error::DbResult;
+use crate::engine::error::InternalResult;
 use crate::engine::storage::error::{StorageResult, WriteInReadTransactionSnafu};
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use std::cmp::Ordering;
@@ -24,7 +24,7 @@ type Result<T> = StorageResult<T>;
 /// Create a database backed by memory.
 /// This is the fastest storage, but non-persistent.
 /// Supports concurrent readers but only a single writer.
-pub fn new_mem_db() -> crate::engine::error::DbResult<crate::engine::DbCore<MemStorage>> {
+pub fn new_mem_db() -> crate::engine::error::InternalResult<crate::engine::DbCore<MemStorage>> {
     let ret = crate::engine::DbCore::new(MemStorage::default())?;
     ret.initialize()?;
     Ok(ret)
@@ -168,7 +168,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a>
     where
         's: 'a,
     {
@@ -191,7 +191,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         lower: &[u8],
         upper: &[u8],
         valid_at: ValidityTs,
-    ) -> Box<dyn Iterator<Item = DbResult<Tuple>> + 'a> {
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a> {
         match self {
             MemTx::Reader(stored) => Box::new(
                 SkipIterator {
@@ -220,7 +220,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
         &'a self,
         lower: &[u8],
         upper: &[u8],
-    ) -> Box<dyn Iterator<Item = DbResult<(Vec<u8>, Vec<u8>)>> + 'a>
+    ) -> Box<dyn Iterator<Item = InternalResult<(Vec<u8>, Vec<u8>)>> + 'a>
     where
         's: 'a,
     {
@@ -272,7 +272,7 @@ where
     T: Iterator<Item = (&'a Vec<u8>, &'a Vec<u8>)>,
 {
     #[inline]
-    fn fill_cache(&mut self) -> DbResult<()> {
+    fn fill_cache(&mut self) -> InternalResult<()> {
         if self.change_cache.is_none() {
             if let Some(kmv) = self.change_iter.next() {
                 self.change_cache = Some(kmv)
@@ -289,7 +289,7 @@ where
     }
 
     #[inline]
-    fn next_inner(&mut self) -> DbResult<Option<(Vec<u8>, Vec<u8>)>> {
+    fn next_inner(&mut self) -> InternalResult<Option<(Vec<u8>, Vec<u8>)>> {
         loop {
             self.fill_cache()?;
             match (&self.change_cache, &self.db_cache) {
@@ -344,7 +344,7 @@ where
     C: Iterator<Item = (&'a Vec<u8>, &'a Option<Vec<u8>>)> + 'a,
     T: Iterator<Item = (&'a Vec<u8>, &'a Vec<u8>)>,
 {
-    type Item = DbResult<(Vec<u8>, Vec<u8>)>;
+    type Item = InternalResult<(Vec<u8>, Vec<u8>)>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -361,7 +361,7 @@ struct CacheIter<'a> {
 
 impl CacheIter<'_> {
     #[inline]
-    fn fill_cache(&mut self) -> DbResult<()> {
+    fn fill_cache(&mut self) -> InternalResult<()> {
         if self.change_cache.is_none() {
             if let Some(kmv) = self.change_iter.next() {
                 self.change_cache = Some(kmv)
@@ -378,7 +378,7 @@ impl CacheIter<'_> {
     }
 
     #[inline]
-    fn next_inner(&mut self) -> DbResult<Option<Tuple>> {
+    fn next_inner(&mut self) -> InternalResult<Option<Tuple>> {
         loop {
             self.fill_cache()?;
             match (&self.change_cache, &self.db_cache) {
@@ -429,7 +429,7 @@ impl CacheIter<'_> {
 }
 
 impl Iterator for CacheIter<'_> {
-    type Item = DbResult<Tuple>;
+    type Item = InternalResult<Tuple>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {

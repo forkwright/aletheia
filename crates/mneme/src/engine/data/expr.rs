@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::mem;
 
 use super::error::*;
-use crate::engine::error::DbResult as Result;
+use crate::engine::error::{InternalError, InternalResult as Result};
 use compact_str::CompactString;
 use itertools::Itertools;
 use serde::de::{Error, Visitor};
@@ -107,8 +107,12 @@ pub fn eval_bytecode(
                     let val = bindings
                         .as_ref()
                         .get(*i)
-                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                            tuple_too_short_err(&var.name, *i, bindings.as_ref().len()).into()
+                        .ok_or_else(|| {
+                            InternalError::from(tuple_too_short_err(
+                                &var.name,
+                                *i,
+                                bindings.as_ref().len(),
+                            ))
                         })?
                         .clone();
                     stack.push(val);
@@ -131,16 +135,15 @@ pub fn eval_bytecode(
                 let val = stack
                     .pop()
                     .expect("JumpIfFalse bytecode guarantees a value on the stack");
-                let cond =
-                    val.get_bool()
-                        .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                            TypeMismatchSnafu {
-                                op: "predicate evaluation".to_string(),
-                                expected: format!("a boolean value, got {:?}", val),
-                            }
-                            .build()
-                            .into()
-                        })?;
+                let cond = val.get_bool().ok_or_else(|| {
+                    InternalError::from(
+                        TypeMismatchSnafu {
+                            op: "predicate evaluation".to_string(),
+                            expected: format!("a boolean value, got {:?}", val),
+                        }
+                        .build(),
+                    )
+                })?;
                 if cond {
                     pointer += 1;
                 } else {
@@ -326,15 +329,14 @@ impl Expr {
     ) -> Result<()> {
         match self {
             Expr::Binding { var, tuple_pos, .. } => {
-                let found_idx = *binding_map.get(var).ok_or_else(
-                    || -> Box<dyn std::error::Error + Send + Sync> {
+                let found_idx = *binding_map.get(var).ok_or_else(|| {
+                    InternalError::from(
                         UnboundVariableSnafu {
                             message: format!("Cannot find binding {}", var),
                         }
-                        .build()
-                        .into()
-                    },
-                )?;
+                        .build(),
+                    )
+                })?;
                 *tuple_pos = Some(found_idx)
             }
             Expr::Const { .. } => {}
@@ -468,8 +470,12 @@ impl Expr {
                 Some(i) => Ok(bindings
                     .as_ref()
                     .get(*i)
-                    .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                        tuple_too_short_err(&var.name, *i, bindings.as_ref().len()).into()
+                    .ok_or_else(|| {
+                        InternalError::from(tuple_too_short_err(
+                            &var.name,
+                            *i,
+                            bindings.as_ref().len(),
+                        ))
                     })?
                     .clone()),
             },
@@ -484,16 +490,15 @@ impl Expr {
             Expr::Cond { clauses, .. } => {
                 for (cond, val) in clauses {
                     let cond_val = cond.eval(bindings.as_ref())?;
-                    let cond_val = cond_val.get_bool().ok_or_else(
-                        || -> Box<dyn std::error::Error + Send + Sync> {
+                    let cond_val = cond_val.get_bool().ok_or_else(|| {
+                        InternalError::from(
                             TypeMismatchSnafu {
                                 op: "predicate evaluation".to_string(),
                                 expected: format!("a boolean value, got {:?}", cond_val),
                             }
-                            .build()
-                            .into()
-                        },
-                    )?;
+                            .build(),
+                        )
+                    })?;
 
                     if cond_val {
                         return val.eval(bindings.as_ref());
@@ -564,16 +569,15 @@ impl Expr {
                     if let Some(symb) = args[0].get_binding() {
                         if let Some(val) = args[1].get_const() {
                             if target == symb {
-                                let s = val.get_str().ok_or_else(
-                                    || -> Box<dyn std::error::Error + Send + Sync> {
+                                let s = val.get_str().ok_or_else(|| {
+                                    InternalError::from(
                                         TypeMismatchSnafu {
                                             op: "prefix scan".to_string(),
                                             expected: format!("a string value, got {:?}", val),
                                         }
-                                        .build()
-                                        .into()
-                                    },
-                                )?;
+                                        .build(),
+                                    )
+                                })?;
                                 let lower = DataValue::from(s);
                                 let mut upper = CompactString::from(s);
                                 upper.push(LARGEST_UTF_CHAR);
