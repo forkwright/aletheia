@@ -264,7 +264,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    const SCHEMA_VERSION: i64 = 4;
+    const SCHEMA_VERSION: i64 = 5;
 
     /// Open an in-memory knowledge store with default configuration.
     #[instrument]
@@ -365,6 +365,9 @@ impl KnowledgeStore {
             if current_version < 4 {
                 self.migrate_v3_to_v4()?;
             }
+            if current_version < 5 {
+                self.migrate_v4_to_v5()?;
+            }
             return Ok(());
         }
 
@@ -413,6 +416,20 @@ impl KnowledgeStore {
         self.db
             .run(
                 crate::graph_intelligence::GRAPH_SCORES_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+
+        // Consolidation audit relation
+        self.db
+            .run(
+                crate::consolidation::CONSOLIDATION_AUDIT_DDL,
                 BTreeMap::new(),
                 ScriptMutability::Mutable,
             )
@@ -2031,6 +2048,47 @@ impl KnowledgeStore {
             })?;
 
         tracing::info!("knowledge schema migration v3 -> v4 complete");
+        Ok(())
+    }
+
+    fn migrate_v4_to_v5(&self) -> crate::error::Result<()> {
+        use crate::engine::{DataValue, ScriptMutability};
+        use std::collections::BTreeMap;
+
+        tracing::info!("migrating knowledge schema v4 -> v5");
+
+        // Add consolidation_audit relation
+        self.db
+            .run(
+                crate::consolidation::CONSOLIDATION_AUDIT_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v4->v5 create consolidation_audit: {e}"),
+                }
+                .build()
+            })?;
+
+        // Update schema version
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        params.insert("version".to_owned(), DataValue::from(Self::SCHEMA_VERSION));
+        self.db
+            .run(
+                r"?[key, version] <- [[$key, $version]] :put schema_version { key => version }",
+                params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v4->v5 update version: {e}"),
+                }
+                .build()
+            })?;
+
+        tracing::info!("knowledge schema migration v4 -> v5 complete");
         Ok(())
     }
 
