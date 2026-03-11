@@ -225,6 +225,12 @@ impl TaskRunner {
                 Schedule::Cron("0 0 5 * * *".to_owned()),
                 BuiltinTask::GraphHealthCheck,
             ),
+            (
+                "skill-decay",
+                "Skill decay and retirement",
+                Schedule::Cron("0 0 6 * * *".to_owned()),
+                BuiltinTask::SkillDecay,
+            ),
         ];
 
         for (id, name, schedule, task) in tasks {
@@ -701,7 +707,8 @@ async fn execute_builtin(
         | BuiltinTask::EmbeddingRefresh
         | BuiltinTask::KnowledgeGc
         | BuiltinTask::IndexMaintenance
-        | BuiltinTask::GraphHealthCheck => {
+        | BuiltinTask::GraphHealthCheck
+        | BuiltinTask::SkillDecay => {
             execute_knowledge_task(builtin, nous_id, knowledge_executor).await
         }
         BuiltinTask::TraceRotation => {
@@ -863,6 +870,7 @@ async fn execute_knowledge_task(
             BuiltinTask::KnowledgeGc => executor.garbage_collect(&nous_id_owned),
             BuiltinTask::IndexMaintenance => executor.maintain_indexes(&nous_id_owned),
             BuiltinTask::GraphHealthCheck => executor.health_check(&nous_id_owned),
+            BuiltinTask::SkillDecay => executor.run_skill_decay(&nous_id_owned),
             _ => unreachable!("non-knowledge task routed to execute_knowledge_task"),
         }?;
 

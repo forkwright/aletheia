@@ -8,6 +8,75 @@
 
 use serde::{Deserialize, Serialize};
 
+// ── Skill quality lifecycle ─────────────────────────────────────────────────
+
+/// Decay score thresholds for skill lifecycle management.
+pub mod decay {
+    /// Skills below this score are flagged for review.
+    pub const NEEDS_REVIEW_THRESHOLD: f64 = 0.3;
+    /// Skills below this score are auto-retired.
+    pub const RETIRE_THRESHOLD: f64 = 0.1;
+    /// Default days of inactivity before decay reaches review threshold for low-usage skills.
+    pub const DEFAULT_STALE_DAYS: u32 = 28;
+    /// Usage count above which a skill is considered "high-usage" and decays 3× slower.
+    pub const HIGH_USAGE_THRESHOLD: u32 = 10;
+    /// Multiplier applied to decay half-life for high-usage skills.
+    pub const HIGH_USAGE_DECAY_FACTOR: f64 = 3.0;
+}
+
+/// Compute a decay score for a skill fact.
+///
+/// Score range: 0.0 (stale) to 1.0 (fully active).
+///
+/// Formula: `score = recency × usage_boost × confidence`
+/// - **recency**: exponential decay with configurable half-life
+/// - **`usage_boost`**: high-usage skills (>10 uses) decay 3× slower
+/// - **confidence**: fact confidence (0.0–1.0) acts as a ceiling
+///
+/// The half-life for low-usage skills is `stale_days` (default 28). For
+/// high-usage skills (>10 uses), it's `stale_days × 3`.
+#[must_use]
+pub fn skill_decay_score(days_since_last_use: f64, usage_count: u32, confidence: f64) -> f64 {
+    let half_life = if usage_count > decay::HIGH_USAGE_THRESHOLD {
+        f64::from(decay::DEFAULT_STALE_DAYS) * decay::HIGH_USAGE_DECAY_FACTOR
+    } else {
+        f64::from(decay::DEFAULT_STALE_DAYS)
+    };
+
+    // Exponential decay: 2^(-days / half_life)
+    let recency = 2_f64.powf(-days_since_last_use / half_life);
+
+    // Usage provides a floor boost: frequent use prevents total decay
+    let usage_floor = f64::from(usage_count.min(20)) / 100.0; // max 0.20
+
+    let raw = recency + usage_floor;
+    // Confidence acts as a ceiling
+    (raw * confidence.clamp(0.0, 1.0)).clamp(0.0, 1.0)
+}
+
+/// Skill health metrics for the quality dashboard.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SkillHealthMetrics {
+    /// Total active (non-forgotten) skills.
+    pub total_active: usize,
+    /// Total retired (forgotten with reason "stale") skills.
+    pub total_retired: usize,
+    /// Total skills flagged as needing review.
+    pub total_needs_review: usize,
+    /// Average usage count across active skills.
+    pub avg_usage_count: f64,
+    /// Median days since last use across active skills.
+    pub median_days_since_use: f64,
+    /// Top skills by usage count (name, `usage_count`).
+    pub top_skills: Vec<(String, u32)>,
+    /// Bottom skills by usage count (name, `usage_count`).
+    pub bottom_skills: Vec<(String, u32)>,
+    /// Dedup rate: candidates discarded / total candidates processed.
+    pub dedup_discard_count: u64,
+    /// Total candidates processed through the dedup pipeline.
+    pub dedup_total_count: u64,
+}
+
 /// Structured content stored as JSON in a skill fact's `content` field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillContent {
@@ -915,5 +984,107 @@ When you need company intelligence.
         let exported = export_skills_to_cc(&skills, dir.path(), Some(&["python"]))
             .expect("export with non-matching domain filter");
         assert!(exported.is_empty());
+    }
+
+    // ── skill_decay_score ───────────────────────────────────────────────────
+
+    #[test]
+    fn skill_decay_fresh_skill_scores_high() {
+        let score = skill_decay_score(0.0, 5, 0.9);
+        assert!(
+            score > 0.8,
+            "fresh skill with decent usage should score > 0.8, got {score}"
+        );
+    }
+
+    #[test]
+    fn skill_decay_unused_skill_decays_below_review() {
+        // 40 days unused, zero usage, moderate confidence
+        let score = skill_decay_score(40.0, 0, 0.7);
+        assert!(
+            score < decay::NEEDS_REVIEW_THRESHOLD,
+            "40-day unused skill should be below review threshold, got {score}"
+        );
+    }
+
+    #[test]
+    fn skill_decay_very_stale_skill_below_retire() {
+        // 90 days unused, zero usage, low confidence
+        let score = skill_decay_score(90.0, 0, 0.5);
+        assert!(
+            score < decay::RETIRE_THRESHOLD,
+            "90-day unused, low-usage skill should be below retire threshold, got {score}"
+        );
+    }
+
+    #[test]
+    fn skill_decay_high_usage_decays_slower() {
+        let low_usage_score = skill_decay_score(40.0, 2, 0.8);
+        let high_usage_score = skill_decay_score(40.0, 15, 0.8);
+        assert!(
+            high_usage_score > low_usage_score,
+            "high-usage skill should decay slower: high={high_usage_score} > low={low_usage_score}"
+        );
+    }
+
+    #[test]
+    fn skill_decay_high_usage_above_review_at_40_days() {
+        // High-usage skills with 3× slower decay should survive 40 days
+        let score = skill_decay_score(40.0, 15, 0.9);
+        assert!(
+            score >= decay::NEEDS_REVIEW_THRESHOLD,
+            "high-usage skill at 40 days should still be above review threshold, got {score}"
+        );
+    }
+
+    #[test]
+    fn skill_decay_score_range_zero_to_one() {
+        for days in [0.0, 1.0, 10.0, 28.0, 60.0, 120.0, 365.0] {
+            for usage in [0, 1, 5, 10, 20, 50] {
+                for conf in [0.0, 0.5, 1.0] {
+                    let score = skill_decay_score(days, usage, conf);
+                    assert!(
+                        (0.0..=1.0).contains(&score),
+                        "score out of range: {score} for days={days}, usage={usage}, conf={conf}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn skill_decay_zero_confidence_is_zero() {
+        let score = skill_decay_score(0.0, 10, 0.0);
+        assert!(
+            score < f64::EPSILON,
+            "zero confidence should produce zero score, got {score}"
+        );
+    }
+
+    #[test]
+    fn skill_health_metrics_default() {
+        let m = SkillHealthMetrics::default();
+        assert_eq!(m.total_active, 0);
+        assert_eq!(m.total_retired, 0);
+        assert_eq!(m.total_needs_review, 0);
+    }
+
+    #[test]
+    fn skill_health_metrics_serde_roundtrip() {
+        let m = SkillHealthMetrics {
+            total_active: 10,
+            total_retired: 2,
+            total_needs_review: 1,
+            avg_usage_count: 5.5,
+            median_days_since_use: 3.0,
+            top_skills: vec![("rust-errors".to_owned(), 15)],
+            bottom_skills: vec![("old-skill".to_owned(), 0)],
+            dedup_discard_count: 3,
+            dedup_total_count: 10,
+        };
+        let json = serde_json::to_string(&m).expect("serialize");
+        let back: SkillHealthMetrics = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.total_active, 10);
+        assert_eq!(back.top_skills.len(), 1);
     }
 }

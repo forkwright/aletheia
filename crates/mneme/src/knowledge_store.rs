@@ -1089,6 +1089,149 @@ impl KnowledgeStore {
         Ok(())
     }
 
+    // ── Skill quality lifecycle ────────────────────────────────────────────
+
+    /// Compute decay scores for all active skills of a nous and apply retirement.
+    ///
+    /// Returns `(active, needs_review, retired)` counts.
+    #[instrument(skip(self))]
+    pub fn run_skill_decay(&self, nous_id: &str) -> crate::error::Result<(usize, usize, usize)> {
+        let skills = self.find_skills_for_nous(nous_id, 10_000)?;
+        let now_secs = jiff::Timestamp::now().as_second();
+
+        let mut active = 0usize;
+        let mut needs_review = 0usize;
+        let mut retired = 0usize;
+
+        for fact in &skills {
+            let reference_secs = fact.last_accessed_at.unwrap_or(fact.valid_from).as_second();
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "age in seconds → days; sub-second precision unnecessary"
+            )]
+            let days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
+
+            let score = crate::skill::skill_decay_score(days, fact.access_count, fact.confidence);
+
+            if score < crate::skill::decay::RETIRE_THRESHOLD {
+                self.forget_fact(&fact.id, crate::knowledge::ForgetReason::Stale)?;
+                retired += 1;
+            } else if score < crate::skill::decay::NEEDS_REVIEW_THRESHOLD {
+                needs_review += 1;
+                active += 1;
+            } else {
+                active += 1;
+            }
+        }
+
+        Ok((active, needs_review, retired))
+    }
+
+    /// Gather skill health metrics for a nous.
+    #[instrument(skip(self))]
+    pub fn skill_quality_metrics(
+        &self,
+        nous_id: &str,
+    ) -> crate::error::Result<crate::skill::SkillHealthMetrics> {
+        let active_skills = self.find_skills_for_nous(nous_id, 10_000)?;
+        let now_secs = jiff::Timestamp::now().as_second();
+
+        let total_active = active_skills.len();
+
+        // Count retired skills (forgotten with reason "stale")
+        let total_retired = self.count_retired_skills(nous_id)?;
+
+        // Compute usage stats and needs_review count
+        let mut usage_counts: Vec<u32> = Vec::with_capacity(total_active);
+        let mut days_since_use: Vec<f64> = Vec::with_capacity(total_active);
+        let mut needs_review = 0usize;
+        let mut named_usage: Vec<(String, u32)> = Vec::with_capacity(total_active);
+
+        for fact in &active_skills {
+            usage_counts.push(fact.access_count);
+
+            let ref_secs = fact.last_accessed_at.unwrap_or(fact.valid_from).as_second();
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "days since use for display; precision loss is acceptable"
+            )]
+            let days = ((now_secs - ref_secs).max(0) as f64) / 86_400.0;
+            days_since_use.push(days);
+
+            let score = crate::skill::skill_decay_score(days, fact.access_count, fact.confidence);
+            if score < crate::skill::decay::NEEDS_REVIEW_THRESHOLD {
+                needs_review += 1;
+            }
+
+            let name = match serde_json::from_str::<crate::skill::SkillContent>(&fact.content) {
+                Ok(s) => s.name,
+                Err(_) => fact.id.to_string(),
+            };
+            named_usage.push((name, fact.access_count));
+        }
+
+        let avg_usage_count = if total_active > 0 {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "total_active is number of skills; far below f64 precision limit"
+            )]
+            {
+                usage_counts.iter().map(|&c| f64::from(c)).sum::<f64>() / total_active as f64
+            }
+        } else {
+            0.0
+        };
+
+        let median_days_since_use = if days_since_use.is_empty() {
+            0.0
+        } else {
+            days_since_use.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            days_since_use[days_since_use.len() / 2]
+        };
+
+        // Top 10 and bottom 10
+        named_usage.sort_by(|a, b| b.1.cmp(&a.1));
+        let top_skills: Vec<(String, u32)> = named_usage.iter().take(10).cloned().collect();
+        let bottom_skills: Vec<(String, u32)> =
+            named_usage.iter().rev().take(10).cloned().collect();
+
+        Ok(crate::skill::SkillHealthMetrics {
+            total_active,
+            total_retired,
+            total_needs_review: needs_review,
+            avg_usage_count,
+            median_days_since_use,
+            top_skills,
+            bottom_skills,
+            dedup_discard_count: 0,
+            dedup_total_count: 0,
+        })
+    }
+
+    /// Count skills that were retired (forgotten with reason "stale").
+    fn count_retired_skills(&self, nous_id: &str) -> crate::error::Result<usize> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+
+        let script = r"?[count(id)] :=
+            *facts{id, nous_id, fact_type, is_forgotten, forget_reason},
+            nous_id = $nous_id,
+            fact_type = 'skill',
+            is_forgotten == true,
+            forget_reason = 'stale'";
+
+        let rows = self.run_read(script, params)?;
+        if let Some(row) = rows.rows.first() {
+            if let Some(crate::engine::DataValue::Num(n)) = row.first() {
+                return Ok(usize::try_from(n.get_int().unwrap_or(0)).unwrap_or(0));
+            }
+        }
+        Ok(0)
+    }
+
     /// Check if a skill similar to the given content already exists.
     ///
     /// Compares by name similarity (exact match) and by content similarity
@@ -6256,6 +6399,115 @@ mod knowledge_store_tests {
         assert!(
             results.iter().any(|f| f.id.as_str() == "sk-docker"),
             "search should find docker skill"
+        );
+    }
+
+    // ── Skill quality lifecycle tests ──────────────────────────────────────
+
+    #[test]
+    fn skill_usage_tracking_via_increment_access() {
+        let store = make_store();
+        let skill = make_skill_fact("sk-usage", "alice", "usage-test", &["rust"]);
+        store.insert_fact(&skill).expect("insert skill");
+
+        store
+            .increment_access(&[crate::id::FactId::new_unchecked("sk-usage")])
+            .expect("increment");
+        store
+            .increment_access(&[crate::id::FactId::new_unchecked("sk-usage")])
+            .expect("increment again");
+
+        let results = store.find_skills_for_nous("alice", 100).expect("query");
+        let found = results
+            .iter()
+            .find(|f| f.id.as_str() == "sk-usage")
+            .expect("find skill");
+        assert_eq!(
+            found.access_count, 2,
+            "usage_count should be 2 after two increments"
+        );
+        assert!(
+            found.last_accessed_at.is_some(),
+            "last_accessed_at should be set"
+        );
+    }
+
+    #[test]
+    fn skill_decay_retires_stale_skills() {
+        let store = make_store();
+
+        // Insert a very old skill (valid_from far in the past, never accessed)
+        let mut stale = make_skill_fact("sk-stale", "alice", "stale-skill", &["test"]);
+        stale.valid_from = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(24 * 120))
+            .expect("subtract 120 days");
+        stale.confidence = 0.5;
+        stale.access_count = 0;
+        store.insert_fact(&stale).expect("insert stale skill");
+
+        // Insert a fresh skill
+        let fresh = make_skill_fact("sk-fresh", "alice", "fresh-skill", &["test"]);
+        store.insert_fact(&fresh).expect("insert fresh skill");
+
+        let (active, _needs_review, retired) =
+            store.run_skill_decay("alice").expect("run skill decay");
+
+        assert!(
+            retired >= 1,
+            "stale skill should be retired, got retired={retired}"
+        );
+        assert!(
+            active >= 1,
+            "fresh skill should still be active, got active={active}"
+        );
+    }
+
+    #[test]
+    fn skill_quality_metrics_returns_correct_counts() {
+        let store = make_store();
+
+        let skill1 = make_skill_fact("sk-m1", "alice", "skill-one", &["rust"]);
+        store.insert_fact(&skill1).expect("insert skill 1");
+
+        let mut skill2 = make_skill_fact("sk-m2", "alice", "skill-two", &["python"]);
+        skill2.access_count = 5;
+        store.insert_fact(&skill2).expect("insert skill 2");
+
+        let metrics = store.skill_quality_metrics("alice").expect("get metrics");
+        assert_eq!(metrics.total_active, 2);
+        assert!(metrics.avg_usage_count > 0.0);
+    }
+
+    #[test]
+    fn skill_decay_high_usage_survives_longer() {
+        let store = make_store();
+
+        let past = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(24 * 50))
+            .expect("subtract 50 days");
+
+        // Low-usage skill at 50 days
+        let mut low = make_skill_fact("sk-low-use", "alice", "low-usage", &["test"]);
+        low.valid_from = past;
+        low.access_count = 1;
+        low.confidence = 0.7;
+        store.insert_fact(&low).expect("insert low usage");
+
+        // High-usage skill at 50 days
+        let mut high = make_skill_fact("sk-high-use", "alice", "high-usage", &["test"]);
+        high.valid_from = past;
+        high.access_count = 15;
+        high.confidence = 0.7;
+        store.insert_fact(&high).expect("insert high usage");
+
+        let (active, _needs_review, retired) = store.run_skill_decay("alice").expect("run decay");
+
+        // High-usage skill should survive, low-usage may not
+        let remaining = store.find_skills_for_nous("alice", 100).expect("query");
+        let high_survived = remaining.iter().any(|f| f.id.as_str() == "sk-high-use");
+        assert!(
+            high_survived,
+            "high-usage skill should survive 50-day decay, active={active}, retired={retired}"
         );
     }
 

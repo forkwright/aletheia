@@ -107,6 +107,8 @@ pub enum BuiltinTask {
     IndexMaintenance,
     /// Run a diagnostic health check on the knowledge graph.
     GraphHealthCheck,
+    /// Compute decay scores for skills and retire stale ones.
+    SkillDecay,
 }
 
 impl Schedule {

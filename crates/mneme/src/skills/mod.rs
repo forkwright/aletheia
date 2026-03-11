@@ -19,7 +19,8 @@ pub mod signature;
 
 pub use candidate::{CandidateTracker, SkillCandidate, TrackResult};
 pub use extract::{
-    ExtractedSkill, PendingSkill, SkillExtractionError, SkillExtractionProvider, SkillExtractor,
+    DedupInput, DedupOutcome, ExtractedSkill, PendingSkill, SkillExtractionError,
+    SkillExtractionProvider, SkillExtractor, check_dedup,
 };
 pub use heuristics::{HeuristicScore, PatternType, score_sequence};
 pub use signature::{SequenceSignature, sequence_signature, signature_similarity};
