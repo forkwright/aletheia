@@ -604,6 +604,12 @@ pub async fn run_pipeline(
         stages_completed += 1;
     }
 
+    // Record tool observations for the instinct system (behavioral memory).
+    // This is non-blocking and does not affect the pipeline result.
+    if !result.tool_calls.is_empty() {
+        crate::instinct::record_observations(&result.tool_calls, &input.content, &config.id);
+    }
+
     #[expect(
         clippy::cast_possible_truncation,
         reason = "pipeline duration fits in u64"

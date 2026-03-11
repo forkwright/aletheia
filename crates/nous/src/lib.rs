@@ -25,6 +25,8 @@ pub mod finalize;
 pub mod handle;
 /// Conversation history retrieval and token-budgeted formatting.
 pub mod history;
+/// Instinct observation bridge — records tool usage for behavioral pattern learning.
+pub(crate) mod instinct;
 /// Lifecycle manager for spawning and addressing nous actors.
 pub mod manager;
 /// Actor inbox message types.
