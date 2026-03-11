@@ -42,7 +42,12 @@ pub(crate) mod utils;
 fn convert_err(e: crate::engine::error::BoxErr) -> Error {
     // Check for RuntimeError::QueryKilled (new snafu path)
     if e.downcast_ref::<crate::engine::runtime::error::RuntimeError>()
-        .is_some_and(|re| matches!(re, crate::engine::runtime::error::RuntimeError::QueryKilled { .. }))
+        .is_some_and(|re| {
+            matches!(
+                re,
+                crate::engine::runtime::error::RuntimeError::QueryKilled { .. }
+            )
+        })
     {
         return error::QueryKilledSnafu.build();
     }

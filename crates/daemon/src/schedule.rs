@@ -38,6 +38,28 @@ pub struct TaskDef {
     pub enabled: bool,
     /// Active time window (optional): `(start_hour, end_hour)` in local time.
     pub active_window: Option<(u8, u8)>,
+    /// Maximum duration a task may run before being considered hung.
+    /// Default: 5 minutes.
+    pub timeout: Duration,
+    /// Whether to catch up missed cron windows on startup (within last 24h).
+    /// Default: true for maintenance tasks, false for prosoche.
+    pub catch_up: bool,
+}
+
+impl Default for TaskDef {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            nous_id: String::new(),
+            schedule: Schedule::Startup,
+            action: TaskAction::Command(String::new()),
+            enabled: true,
+            active_window: None,
+            timeout: Duration::from_secs(300),
+            catch_up: true,
+        }
+    }
 }
 
 /// What a background task does.
@@ -123,6 +145,44 @@ impl Schedule {
         }
     }
 
+    /// Check if a cron schedule was missed since `last_run`.
+    ///
+    /// Returns `true` if there was at least one scheduled run between `last_run`
+    /// and `now` that was missed, and it's within the last 24 hours.
+    pub fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
+        let Self::Cron(expr) = self else {
+            return Ok(false);
+        };
+
+        let now = jiff::Timestamp::now();
+        let twenty_four_hours_ago = now
+            .checked_sub(jiff::SignedDuration::from_hours(24))
+            .expect("24h subtraction overflow");
+
+        // Don't catch up windows older than 24 hours.
+        if last_run < twenty_four_hours_ago {
+            return Ok(false);
+        }
+
+        let schedule = cron::Schedule::from_str(expr).context(error::InvalidCronSnafu {
+            expression: expr.clone(),
+        })?;
+
+        let last_run_chrono = chrono::DateTime::from_timestamp(last_run.as_second(), 0)
+            .expect("jiff timestamp in valid range");
+
+        // Check if there's any scheduled run between last_run and now.
+        let next_after_last = schedule.after(&last_run_chrono).next();
+        if let Some(next) = next_after_last {
+            let next_ts = jiff::Timestamp::from_second(next.timestamp())
+                .expect("chrono timestamp in valid range");
+            // If the next scheduled run after last_run is before now, we missed it.
+            Ok(next_ts < now)
+        } else {
+            Ok(false)
+        }
+    }
+
     /// Check if the current time is within the active window.
     ///
     /// `None` window means always active. Handles overnight windows (e.g., 22-06).
@@ -144,6 +204,21 @@ impl Schedule {
     }
 }
 
+/// Compute exponential backoff delay based on consecutive failure count.
+///
+/// Returns the delay to add before the next retry:
+/// - 1st failure: 1 minute
+/// - 2nd failure: 5 minutes
+/// - 3rd+ failure: 15 minutes (but task will be auto-disabled at 3)
+pub fn backoff_delay(consecutive_failures: u32) -> Duration {
+    match consecutive_failures {
+        0 => Duration::ZERO,
+        1 => Duration::from_secs(60),
+        2 => Duration::from_secs(300),
+        _ => Duration::from_secs(900),
+    }
+}
+
 /// Status snapshot of a registered task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskStatus {
@@ -161,6 +236,8 @@ pub struct TaskStatus {
     pub run_count: u64,
     /// Current streak of consecutive failures (resets on success).
     pub consecutive_failures: u32,
+    /// Whether the task is currently in flight.
+    pub in_flight: bool,
 }
 
 #[cfg(test)]
@@ -307,6 +384,7 @@ mod tests {
             last_run: None,
             run_count: 42,
             consecutive_failures: 0,
+            in_flight: false,
         };
         assert_eq!(status.id, "test-id");
         assert_eq!(status.name, "Test Task");
@@ -315,5 +393,51 @@ mod tests {
         assert!(status.last_run.is_none());
         assert_eq!(status.run_count, 42);
         assert_eq!(status.consecutive_failures, 0);
+    }
+
+    #[test]
+    fn backoff_delay_values() {
+        assert_eq!(backoff_delay(0), Duration::ZERO);
+        assert_eq!(backoff_delay(1), Duration::from_secs(60));
+        assert_eq!(backoff_delay(2), Duration::from_secs(300));
+        assert_eq!(backoff_delay(3), Duration::from_secs(900));
+        assert_eq!(backoff_delay(10), Duration::from_secs(900));
+    }
+
+    #[test]
+    fn missed_since_non_cron_returns_false() {
+        let schedule = Schedule::Interval(Duration::from_secs(60));
+        let last_run = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(1))
+            .unwrap();
+        assert!(!schedule.missed_since(last_run).expect("no error"));
+    }
+
+    #[test]
+    fn missed_since_stale_returns_false() {
+        // Last run more than 24h ago — too stale to catch up.
+        let schedule = Schedule::Cron("0 0 * * * *".to_owned());
+        let last_run = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(25))
+            .unwrap();
+        assert!(!schedule.missed_since(last_run).expect("no error"));
+    }
+
+    #[test]
+    fn missed_since_recent_cron_returns_true() {
+        // Hourly cron, last run 2 hours ago — should have missed at least one window.
+        let schedule = Schedule::Cron("0 0 * * * *".to_owned());
+        let last_run = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(2))
+            .unwrap();
+        assert!(schedule.missed_since(last_run).expect("no error"));
+    }
+
+    #[test]
+    fn task_def_default() {
+        let def = TaskDef::default();
+        assert_eq!(def.timeout, Duration::from_secs(300));
+        assert!(def.catch_up);
+        assert!(def.enabled);
     }
 }

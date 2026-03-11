@@ -1,7 +1,7 @@
 //! Runtime execution layer for the Datalog engine.
 pub(crate) mod callback;
-pub(crate) mod error;
 pub(crate) mod db;
+pub(crate) mod error;
 pub(crate) mod hnsw;
 pub(crate) mod imperative;
 pub(crate) mod minhash_lsh;
