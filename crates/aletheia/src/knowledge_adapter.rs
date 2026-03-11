@@ -237,29 +237,33 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         &self,
         fact_id: &str,
         reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, String>> + Send + '_>> {
         let fact_id = aletheia_mneme::id::FactId::from(fact_id);
         let reason = reason.to_owned();
         Box::pin(async move {
             let reason: aletheia_mneme::knowledge::ForgetReason =
                 reason.parse().map_err(|e: String| e)?;
-            self.store
+            let fact = self
+                .store
                 .forget_fact_async(fact_id, reason)
                 .await
-                .map_err(|e| format!("failed to forget fact: {e}"))
+                .map_err(|e| format!("failed to forget fact: {e}"))?;
+            Ok(fact_to_summary(fact))
         })
     }
 
     fn unforget_fact(
         &self,
         fact_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, String>> + Send + '_>> {
         let fact_id = aletheia_mneme::id::FactId::from(fact_id);
         Box::pin(async move {
-            self.store
+            let fact = self
+                .store
                 .unforget_fact_async(fact_id)
                 .await
-                .map_err(|e| format!("failed to unforget fact: {e}"))
+                .map_err(|e| format!("failed to unforget fact: {e}"))?;
+            Ok(fact_to_summary(fact))
         })
     }
 
@@ -303,6 +307,19 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 truncated,
             })
         })
+    }
+}
+
+fn fact_to_summary(f: Fact) -> FactSummary {
+    FactSummary {
+        id: f.id.to_string(),
+        content: f.content,
+        confidence: f.confidence,
+        tier: f.tier.to_string(),
+        recorded_at: aletheia_mneme::knowledge::format_timestamp(&f.recorded_at),
+        is_forgotten: f.is_forgotten,
+        forgotten_at: f.forgotten_at.map(|t| t.to_string()),
+        forget_reason: f.forget_reason.map(|r| r.to_string()),
     }
 }
 

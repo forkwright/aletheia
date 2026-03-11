@@ -22,10 +22,10 @@ pub mod engine;
 /// Database backup and JSON export for session data.
 #[cfg(feature = "sqlite")]
 pub mod backup;
-/// LLM-driven fact consolidation for knowledge maintenance.
-pub mod consolidation;
 /// Conflict detection pipeline for fact insertion.
 pub mod conflict;
+/// LLM-driven fact consolidation for knowledge maintenance.
+pub mod consolidation;
 /// Entity deduplication pipeline for merging semantically identical entities.
 pub mod dedup;
 /// Embedding provider trait and implementations (candle, mock).

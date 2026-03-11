@@ -155,8 +155,9 @@ impl ToolExecutor for MemoryForgetExecutor {
             let reason = extract_str(&input.arguments, "reason", &input.name)?;
 
             match knowledge.forget_fact(fact_id, reason).await {
-                Ok(()) => Ok(ToolResult::text(format!(
-                    "Fact {fact_id} forgotten (reason: {reason})."
+                Ok(summary) => Ok(ToolResult::text(format!(
+                    "Fact {} forgotten (reason: {reason}). Content: {}",
+                    summary.id, summary.content
                 ))),
                 Err(e) => Ok(ToolResult::error(format!("Failed to forget fact: {e}"))),
             }

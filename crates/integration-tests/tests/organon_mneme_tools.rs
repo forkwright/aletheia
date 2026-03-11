@@ -314,17 +314,41 @@ impl KnowledgeSearchService for StubKnowledgeService {
 
     fn forget_fact(
         &self,
-        _fact_id: &str,
-        _reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
-        Box::pin(std::future::ready(Ok(())))
+        fact_id: &str,
+        reason: &str,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<aletheia_organon::types::FactSummary, String>> + Send + '_>,
+    > {
+        let summary = aletheia_organon::types::FactSummary {
+            id: fact_id.to_owned(),
+            content: "mock fact".to_owned(),
+            confidence: 1.0,
+            tier: "established".to_owned(),
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            is_forgotten: true,
+            forgotten_at: Some("2026-01-02T00:00:00Z".to_owned()),
+            forget_reason: Some(reason.to_owned()),
+        };
+        Box::pin(std::future::ready(Ok(summary)))
     }
 
     fn unforget_fact(
         &self,
-        _fact_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
-        Box::pin(std::future::ready(Ok(())))
+        fact_id: &str,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<aletheia_organon::types::FactSummary, String>> + Send + '_>,
+    > {
+        let summary = aletheia_organon::types::FactSummary {
+            id: fact_id.to_owned(),
+            content: "mock fact".to_owned(),
+            confidence: 1.0,
+            tier: "established".to_owned(),
+            recorded_at: "2026-01-01T00:00:00Z".to_owned(),
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        };
+        Box::pin(std::future::ready(Ok(summary)))
     }
 
     fn datalog_query(

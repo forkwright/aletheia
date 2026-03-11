@@ -205,6 +205,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Attempted to operate on a fact that does not exist.
+    #[snafu(display("fact not found: {id}"))]
+    FactNotFound {
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// HNSW vector index operation failed.
     #[cfg(feature = "hnsw_rs")]
     #[snafu(display("HNSW index error: {message}"))]

@@ -187,7 +187,9 @@ fn magic_rewrite_ruleset(
                             .entry(sup_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .expect("entry is Rules variant: Default creates MagicRulesOrFixed::Rules");
+                            .expect(
+                                "entry is Rules variant: Default creates MagicRulesOrFixed::Rules",
+                            );
                         let mut sup_rule_atoms = vec![];
                         mem::swap(&mut sup_rule_atoms, &mut collected_atoms);
 
@@ -216,7 +218,9 @@ fn magic_rewrite_ruleset(
                             .entry(inp_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .expect("entry is Rules variant: Default creates MagicRulesOrFixed::Rules");
+                            .expect(
+                                "entry is Rules variant: Default creates MagicRulesOrFixed::Rules",
+                            );
                         let inp_args = r_app
                             .args
                             .iter()
@@ -476,8 +480,10 @@ impl NormalFormProgram {
             let original_rules = self
                 .prog
                 .get(head.as_plain_symbol())
-                .expect("adorned head always has a corresponding entry in prog: \
-                         pending_adornment is seeded from prog keys")
+                .expect(
+                    "adorned head always has a corresponding entry in prog: \
+                         pending_adornment is seeded from prog keys",
+                )
                 .rules()
                 .ok_or_else(|| {
                     CompilationFailedSnafu {
