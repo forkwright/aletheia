@@ -35,6 +35,8 @@ pub mod error;
 pub mod export;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub mod extract;
+/// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
+pub mod graph_intelligence;
 /// In-memory HNSW vector index backed by `hnsw_rs`.
 #[cfg(feature = "hnsw_rs")]
 pub mod hnsw_index;
