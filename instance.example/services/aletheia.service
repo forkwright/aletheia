@@ -5,9 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-Environment=ALETHEIA_HOME=__ALETHEIA_HOME__
-EnvironmentFile=-__ALETHEIA_HOME__/instance/config/env
-ExecStart=__ALETHEIA_HOME__/target/release/aletheia
+# %h expands to the user's home directory at runtime.
+# ALETHEIA_ROOT tells the binary where to find the instance directory.
+Environment=ALETHEIA_ROOT=%h/aletheia/instance
+# Optional: set API key here if not stored in instance/config/credentials/anthropic.json
+# Environment=ANTHROPIC_API_KEY=sk-ant-...
+# Load additional env vars from a file (silently ignored if the file does not exist).
+EnvironmentFile=-%h/aletheia/instance/config/env
+ExecStart=%h/.local/bin/aletheia
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -16,10 +21,27 @@ StandardError=journal
 [Install]
 WantedBy=default.target
 
-# Usage:
-#   mkdir -p ~/.config/systemd/user
-#   cp instance.example/services/aletheia.service ~/.config/systemd/user/
-#   # Edit ExecStart path to match your installation
-#   systemctl --user daemon-reload
-#   systemctl --user enable --now aletheia
-#   loginctl enable-linger
+# --- Quick install ---
+#
+# 1. Copy this file:
+#    mkdir -p ~/.config/systemd/user
+#    cp instance.example/services/aletheia.service ~/.config/systemd/user/aletheia.service
+#
+# 2. If your binary is not at ~/.local/bin/aletheia, edit ExecStart, e.g.:
+#    sed -i 's|%h/.local/bin/aletheia|/usr/local/bin/aletheia|' ~/.config/systemd/user/aletheia.service
+#
+# 3. If your instance is not at ~/aletheia/instance, edit ALETHEIA_ROOT, e.g.:
+#    sed -i 's|%h/aletheia/instance|/srv/aletheia/instance|' ~/.config/systemd/user/aletheia.service
+#
+# 4. Enable and start:
+#    systemctl --user daemon-reload
+#    systemctl --user enable --now aletheia
+#
+# 5. Persist across logout (run once per user):
+#    loginctl enable-linger
+#
+# 6. Check logs:
+#    journalctl --user -u aletheia -f
+#
+# 7. Verify:
+#    aletheia health

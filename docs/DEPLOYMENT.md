@@ -77,23 +77,40 @@ See [SHELL-COMPLETIONS.md](SHELL-COMPLETIONS.md) for setting up tab-completion i
 
 The instance directory holds all runtime state: config, databases, agent workspaces, logs. It is gitignored — the platform code ships without instance data.
 
+### Recommended: use the init wizard
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."   # or enter interactively
+aletheia init                            # interactive wizard, creates ./instance
+```
+
+The wizard prompts for API key, model, agent name, and bind address, then writes a fully valid `config/aletheia.yaml`. For non-interactive (CI/scripting) use:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... aletheia init --yes --instance-root /srv/aletheia/instance
+```
+
+### Manual: copy the example scaffold
+
 ```bash
 cp -r instance.example instance
 ```
+
+Then configure `instance/config/aletheia.yaml` (see below).
 
 This creates the full directory scaffold:
 
 ```text
 instance/
 ├── config/
-│   ├── aletheia.yaml       # Main config (from aletheia.yaml.example)
+│   ├── aletheia.yaml       # Main config
 │   ├── credentials/        # API keys, secrets
 │   └── tls/                # TLS certs (optional)
 ├── data/                   # SQLite databases, backups
 ├── logs/traces/            # Trace files
 ├── nous/                   # Agent workspaces
 │   └── _template/          # Template for new agents
-├── shared/                 # Shared tools, coordination, hooks
+├── shared/coordination/    # Cross-agent coordination state
 ├── theke/                  # Human + agent collaborative space
 ├── signal/                 # signal-cli data (if using Signal)
 ```
@@ -112,23 +129,22 @@ The binary finds the instance directory in this order:
 
 ## Configuration
 
-Copy and edit the example config:
-
-```bash
-cp instance/config/aletheia.yaml.example instance/config/aletheia.yaml
-```
-
-Minimal working config:
+The init wizard writes a complete `config/aletheia.yaml`. If you are setting up manually, create one:
 
 ```yaml
 gateway:
   port: 18789
-  bind: lan
+  bind: localhost
 
 agents:
+  defaults:
+    model:
+      primary: claude-sonnet-4-6
   list:
     - id: main
+      name: Main
       default: true
+      workspace: instance/nous/main
 ```
 
 The config cascade loads in order (later wins): compiled defaults, YAML file, `ALETHEIA_` environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference.
@@ -276,45 +292,40 @@ Exposes `nous_turn_duration_seconds`, `anthropic_requests_total`, `http_requests
 
 ## Systemd Service (Linux)
 
-Create a user service unit:
+A ready-to-use service template lives in `instance.example/services/aletheia.service`.
+It uses `%h` (systemd's `$HOME` specifier) so paths resolve automatically.
 
 ```bash
+# 1. Copy the template
 mkdir -p ~/.config/systemd/user
-```
+cp instance.example/services/aletheia.service ~/.config/systemd/user/aletheia.service
 
-```ini
-# ~/.config/systemd/user/aletheia.service
-[Unit]
-Description=Aletheia cognitive agent runtime
-After=network-online.target
-Wants=network-online.target
+# 2. Adjust paths if needed (binary not at ~/.local/bin/, instance not at ~/aletheia/instance/)
+#    Edit ~/.config/systemd/user/aletheia.service and update ExecStart and ALETHEIA_ROOT.
 
-[Service]
-Type=simple
-Environment=ALETHEIA_ROOT=/srv/aletheia/instance
-Environment=ANTHROPIC_API_KEY=sk-ant-...
-ExecStart=/usr/local/bin/aletheia
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=default.target
-```
-
-Enable and start:
-
-```bash
+# 3. Enable and start
 systemctl --user daemon-reload
 systemctl --user enable --now aletheia
-loginctl enable-linger    # services survive logout
+
+# 4. Persist across logout (run once per user)
+loginctl enable-linger
 ```
+
+The template sets `ALETHEIA_ROOT=%h/aletheia/instance` and loads an optional
+`EnvironmentFile` from `%h/aletheia/instance/config/env` (silently ignored if absent).
+If your API key is stored in `instance/config/credentials/anthropic.json` (written by
+`aletheia init`), no extra environment setup is needed.
 
 View logs:
 
 ```bash
 journalctl --user -u aletheia -f
+```
+
+Verify after start:
+
+```bash
+aletheia health
 ```
 
 ---

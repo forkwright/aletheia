@@ -175,7 +175,8 @@ impl<'a> TarjanScc<'a> {
                 self.low[at] = min(self.low[at], self.low[to]);
             }
         }
-        if self.ids[at].expect("ids[at] is Some: assigned on dfs() entry (line above recursive call)")
+        if self.ids[at]
+            .expect("ids[at] is Some: assigned on dfs() entry (line above recursive call)")
             == self.low[at]
         {
             while let Some(node) = self.stack.pop() {

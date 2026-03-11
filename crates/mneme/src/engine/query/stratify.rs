@@ -278,9 +278,9 @@ impl NormalFormProgram {
         for (name, ruleset) in self.prog {
             if let Some(scc_idx) = invert_indices.get(&name) {
                 if let Some(rev_stratum_idx) = invert_sort_result.get(scc_idx) {
-                    let target = ret
-                        .get_mut(*rev_stratum_idx)
-                        .expect("stratum index always valid: rev_stratum_idx derived from ret's range");
+                    let target = ret.get_mut(*rev_stratum_idx).expect(
+                        "stratum index always valid: rev_stratum_idx derived from ret's range",
+                    );
                     target.prog.insert(name, ruleset);
                 }
             }

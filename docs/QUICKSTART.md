@@ -14,6 +14,27 @@ cargo build --release
 cp target/release/aletheia ~/.local/bin/
 ```
 
+## Initialize
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # or enter it interactively
+aletheia init                          # creates instance/, prompts for settings
+```
+
+Accepts `--yes` for non-interactive setup (uses defaults + env var API key):
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... aletheia init --yes
+```
+
+## Run
+
+```bash
+aletheia              # start the server (gateway, agents, daemon)
+aletheia health       # check connectivity — prints OK or FAILED
+aletheia tui          # launch the terminal dashboard
+```
+
 ## Daily Use
 
 ```bash

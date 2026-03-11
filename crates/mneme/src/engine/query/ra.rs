@@ -2007,12 +2007,10 @@ impl NegJoin {
         let eliminate_indices = get_eliminate_indices(&bindings, &self.to_eliminate);
         match &self.right {
             RelAlgebra::TempStore(r) => {
-                let join_indices = self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    )?;
+                let join_indices = self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                )?;
                 r.neg_join(
                     self.left.iter(tx, delta_rule, stores)?,
                     join_indices,
@@ -2021,12 +2019,10 @@ impl NegJoin {
                 )
             }
             RelAlgebra::Stored(v) => {
-                let join_indices = self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    )?;
+                let join_indices = self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                )?;
                 v.neg_join(
                     tx,
                     self.left.iter(tx, delta_rule, stores)?,
@@ -2149,12 +2145,10 @@ impl InnerJoin {
         let eliminate_indices = get_eliminate_indices(&bindings, &self.to_eliminate);
         match &self.right {
             RelAlgebra::Fixed(f) => {
-                let join_indices = self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    )?;
+                let join_indices = self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                )?;
                 f.join(
                     self.left.iter(tx, delta_rule, stores)?,
                     join_indices,
@@ -2162,12 +2156,10 @@ impl InnerJoin {
                 )
             }
             RelAlgebra::TempStore(r) => {
-                let join_indices = self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    )?;
+                let join_indices = self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                )?;
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
                         self.left.iter(tx, delta_rule, stores)?,
@@ -2181,12 +2173,10 @@ impl InnerJoin {
                 }
             }
             RelAlgebra::Stored(r) => {
-                let join_indices = self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    )?;
+                let join_indices = self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                )?;
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
                         tx,
@@ -2199,12 +2189,10 @@ impl InnerJoin {
                 }
             }
             RelAlgebra::StoredWithValidity(r) => {
-                let join_indices = self
-                    .joiner
-                    .join_indices(
-                        &self.left.bindings_after_eliminate(),
-                        &self.right.bindings_after_eliminate(),
-                    )?;
+                let join_indices = self.joiner.join_indices(
+                    &self.left.bindings_after_eliminate(),
+                    &self.right.bindings_after_eliminate(),
+                )?;
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
                         tx,

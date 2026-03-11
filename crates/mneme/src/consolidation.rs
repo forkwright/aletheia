@@ -106,10 +106,7 @@ pub enum ConsolidationTrigger {
         fact_count: usize,
     },
     /// A Louvain community cluster accumulated more than the threshold of active facts.
-    CommunityOverflow {
-        cluster_id: i64,
-        fact_count: usize,
-    },
+    CommunityOverflow { cluster_id: i64, fact_count: usize },
 }
 
 impl ConsolidationTrigger {
@@ -204,11 +201,7 @@ pub struct ConsolidationAuditRecord {
 /// to the configured LLM provider.
 pub trait ConsolidationProvider: Send + Sync {
     /// Send a consolidation prompt and return the raw response.
-    fn consolidate(
-        &self,
-        system: &str,
-        user_message: &str,
-    ) -> Result<String, ConsolidationError>;
+    fn consolidate(&self, system: &str, user_message: &str) -> Result<String, ConsolidationError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -423,12 +416,12 @@ pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
 #[cfg(feature = "mneme-engine")]
 mod engine_impl {
     use crate::consolidation::{
+        CLUSTER_FACTS_FOR_CONSOLIDATION, COMMUNITY_OVERFLOW_CANDIDATES, CONSOLIDATION_AUDIT_DDL,
+        ConsolidatedFact, ConsolidationAuditRecord, ConsolidationCandidate, ConsolidationConfig,
+        ConsolidationError, ConsolidationProvider, ConsolidationResult, ConsolidationTrigger,
+        ENTITY_FACTS_FOR_CONSOLIDATION, ENTITY_OVERFLOW_CANDIDATES, RateLimitedSnafu, StoreSnafu,
         age_cutoff, batch_facts, consolidation_system_prompt, consolidation_user_message,
-        parse_consolidation_response, ConsolidatedFact, ConsolidationAuditRecord,
-        ConsolidationCandidate, ConsolidationConfig, ConsolidationError, ConsolidationProvider,
-        ConsolidationResult, ConsolidationTrigger, RateLimitedSnafu, StoreSnafu,
-        CLUSTER_FACTS_FOR_CONSOLIDATION, COMMUNITY_OVERFLOW_CANDIDATES,
-        CONSOLIDATION_AUDIT_DDL, ENTITY_FACTS_FOR_CONSOLIDATION, ENTITY_OVERFLOW_CANDIDATES,
+        parse_consolidation_response,
     };
     use crate::engine::DataValue;
     use crate::id::{EntityId, FactId};
@@ -471,7 +464,12 @@ mod engine_impl {
 
             let result = self
                 .run_query(ENTITY_OVERFLOW_CANDIDATES, params)
-                .map_err(|e| StoreSnafu { message: e.to_string() }.build())?;
+                .map_err(|e| {
+                    StoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
 
             let mut candidates = Vec::new();
             for row in &result.rows {
@@ -481,7 +479,12 @@ mod engine_impl {
 
                 let facts = self
                     .gather_entity_facts(nous_id, &entity_id, &cutoff)
-                    .map_err(|e| StoreSnafu { message: e.to_string() }.build())?;
+                    .map_err(|e| {
+                        StoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?;
 
                 let fact_ids: Vec<FactId> = facts.iter().map(|(id, _, _, _)| id.clone()).collect();
 
@@ -521,7 +524,12 @@ mod engine_impl {
 
             let result = self
                 .run_query(COMMUNITY_OVERFLOW_CANDIDATES, params)
-                .map_err(|e| StoreSnafu { message: e.to_string() }.build())?;
+                .map_err(|e| {
+                    StoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
 
             let mut candidates = Vec::new();
             for row in &result.rows {
@@ -530,7 +538,12 @@ mod engine_impl {
 
                 let facts = self
                     .gather_cluster_facts(nous_id, cluster_id, &cutoff)
-                    .map_err(|e| StoreSnafu { message: e.to_string() }.build())?;
+                    .map_err(|e| {
+                        StoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?;
 
                 let fact_ids: Vec<FactId> = facts.iter().map(|(id, _, _, _)| id.clone()).collect();
 
@@ -599,10 +612,20 @@ mod engine_impl {
             let facts = match &candidate.trigger {
                 ConsolidationTrigger::EntityOverflow { entity_id, .. } => self
                     .gather_entity_facts(nous_id, entity_id, &cutoff)
-                    .map_err(|e| StoreSnafu { message: e.to_string() }.build())?,
+                    .map_err(|e| {
+                        StoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?,
                 ConsolidationTrigger::CommunityOverflow { cluster_id, .. } => self
                     .gather_cluster_facts(nous_id, *cluster_id, &cutoff)
-                    .map_err(|e| StoreSnafu { message: e.to_string() }.build())?,
+                    .map_err(|e| {
+                        StoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?,
             };
 
             if facts.is_empty() {
@@ -652,15 +675,18 @@ mod engine_impl {
                     recorded_at: now,
                     access_count: 0,
                     last_accessed_at: None,
-                    stability_hours: crate::knowledge::FactType::Observation
-                        .base_stability_hours(),
+                    stability_hours: crate::knowledge::FactType::Observation.base_stability_hours(),
                     fact_type: "observation".to_owned(),
                     is_forgotten: false,
                     forgotten_at: None,
                     forget_reason: None,
                 };
-                self.insert_fact(&fact)
-                    .map_err(|e| StoreSnafu { message: e.to_string() }.build())?;
+                self.insert_fact(&fact).map_err(|e| {
+                    StoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
                 new_fact_ids.push(new_id);
             }
             Ok(new_fact_ids)
@@ -673,14 +699,16 @@ mod engine_impl {
             new_fact_ids: &[FactId],
         ) -> Result<(), ConsolidationError> {
             let now_str = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
-            let superseding_id = new_fact_ids
-                .first()
-                .map(FactId::as_str)
-                .unwrap_or_default();
+            let superseding_id = new_fact_ids.first().map(FactId::as_str).unwrap_or_default();
 
             for original_id in &result.superseded_fact_ids {
                 self.supersede_fact_by_id(original_id, superseding_id, &now_str)
-                    .map_err(|e| StoreSnafu { message: e.to_string() }.build())?;
+                    .map_err(|e| {
+                        StoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?;
             }
             Ok(())
         }
@@ -702,10 +730,9 @@ mod engine_impl {
                     .collect::<Vec<_>>(),
             )
             .unwrap_or_else(|_| "[]".to_owned());
-            let consolidated_ids_json = serde_json::to_string(
-                &new_fact_ids.iter().map(FactId::as_str).collect::<Vec<_>>(),
-            )
-            .unwrap_or_else(|_| "[]".to_owned());
+            let consolidated_ids_json =
+                serde_json::to_string(&new_fact_ids.iter().map(FactId::as_str).collect::<Vec<_>>())
+                    .unwrap_or_else(|_| "[]".to_owned());
 
             self.record_consolidation_audit(&ConsolidationAuditRecord {
                 id: audit_id,
@@ -717,7 +744,12 @@ mod engine_impl {
                 consolidated_fact_ids: consolidated_ids_json,
                 consolidated_at: now_str,
             })
-            .map_err(|e| StoreSnafu { message: e.to_string() }.build())
+            .map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
         }
 
         /// Mark a fact as superseded by ID, setting `valid_to` and `superseded_by`.
@@ -817,9 +849,12 @@ mod engine_impl {
 :sort -consolidated_at
 :limit 1
 ";
-            let result = self
-                .run_query(script, BTreeMap::new())
-                .map_err(|e| StoreSnafu { message: e.to_string() }.build())?;
+            let result = self.run_query(script, BTreeMap::new()).map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
             if let Some(row) = result.rows.first() {
                 Ok(Some(row[0].get_str().unwrap_or_default().to_owned()))
@@ -851,15 +886,15 @@ mod engine_impl {
             let mut results = Vec::new();
 
             for candidate in &self.find_entity_overflow_candidates(nous_id, config)? {
-                results.push(self.execute_consolidation(
-                    provider, candidate, nous_id, config, dry_run,
-                )?);
+                results.push(
+                    self.execute_consolidation(provider, candidate, nous_id, config, dry_run)?,
+                );
             }
 
             for candidate in &self.find_community_overflow_candidates(nous_id, config)? {
-                results.push(self.execute_consolidation(
-                    provider, candidate, nous_id, config, dry_run,
-                )?);
+                results.push(
+                    self.execute_consolidation(provider, candidate, nous_id, config, dry_run)?,
+                );
             }
 
             Ok(results)
@@ -875,8 +910,7 @@ mod engine_impl {
                 if let Some(last_ts) = crate::knowledge::parse_timestamp(&last_time) {
                     let now = jiff::Timestamp::now();
                     if let Ok(span) = now.since(last_ts) {
-                        let total_minutes =
-                            i64::from(span.get_hours()) * 60 + span.get_minutes();
+                        let total_minutes = i64::from(span.get_hours()) * 60 + span.get_minutes();
                         #[expect(
                             clippy::cast_precision_loss,
                             reason = "elapsed minutes as f64 is fine for rate limiting"
@@ -958,7 +992,9 @@ mod engine_impl {
 pub(crate) fn age_cutoff(min_age_days: u32) -> String {
     let now = jiff::Timestamp::now();
     let cutoff = now
-        .checked_sub(jiff::SignedDuration::from_hours(i64::from(min_age_days) * 24))
+        .checked_sub(jiff::SignedDuration::from_hours(
+            i64::from(min_age_days) * 24,
+        ))
         .unwrap_or(now);
     crate::knowledge::format_timestamp(&cutoff)
 }
@@ -1196,7 +1232,9 @@ Some trailing text."#;
     #[test]
     fn mock_provider_returns_response() {
         let provider = MockConsolidationProvider::new(r#"[{"content": "test"}]"#);
-        let result = provider.consolidate("system", "user").expect("should succeed");
+        let result = provider
+            .consolidate("system", "user")
+            .expect("should succeed");
         assert!(result.contains("test"));
     }
 
@@ -1232,9 +1270,7 @@ Some trailing text."#;
 
 #[cfg(all(test, feature = "mneme-engine"))]
 mod engine_tests {
-    use super::{
-        batch_facts, ConsolidationConfig, ConsolidationError, ConsolidationProvider,
-    };
+    use super::{ConsolidationConfig, ConsolidationError, ConsolidationProvider, batch_facts};
     use crate::id::{EntityId, FactId};
     use crate::knowledge::{self, EpistemicTier, Fact};
     use crate::knowledge_store::KnowledgeStore;
@@ -1244,7 +1280,13 @@ mod engine_tests {
         KnowledgeStore::open_mem().expect("open_mem")
     }
 
-    fn make_fact(id: &str, nous_id: &str, content: &str, tier: EpistemicTier, days_ago: i64) -> Fact {
+    fn make_fact(
+        id: &str,
+        nous_id: &str,
+        content: &str,
+        tier: EpistemicTier,
+        days_ago: i64,
+    ) -> Fact {
         let now = jiff::Timestamp::now();
         let recorded = now
             .checked_sub(jiff::SignedDuration::from_hours(days_ago * 24))
@@ -1270,17 +1312,10 @@ mod engine_tests {
         }
     }
 
-    fn insert_fact_with_entity(
-        store: &KnowledgeStore,
-        fact: &Fact,
-        entity_id: &str,
-    ) {
+    fn insert_fact_with_entity(store: &KnowledgeStore, fact: &Fact, entity_id: &str) {
         store.insert_fact(fact).expect("insert fact");
         store
-            .insert_fact_entity(
-                &fact.id,
-                &EntityId::from(entity_id),
-            )
+            .insert_fact_entity(&fact.id, &EntityId::from(entity_id))
             .expect("insert fact_entity");
     }
 
@@ -1402,7 +1437,10 @@ mod engine_tests {
             .find_entity_overflow_candidates(nous_id, &config)
             .expect("find candidates");
 
-        assert!(candidates.is_empty(), "recent facts should be excluded by age gate");
+        assert!(
+            candidates.is_empty(),
+            "recent facts should be excluded by age gate"
+        );
     }
 
     #[test]
@@ -1545,7 +1583,11 @@ mod engine_tests {
         let candidates_after = store
             .find_entity_overflow_candidates(nous_id, &config)
             .expect("find candidates after dry run");
-        assert_eq!(candidates_after.len(), 1, "dry run must not supersede facts");
+        assert_eq!(
+            candidates_after.len(),
+            1,
+            "dry run must not supersede facts"
+        );
         assert_eq!(candidates_after[0].fact_count, 12);
     }
 
@@ -1639,9 +1681,7 @@ mod engine_tests {
             .execute_consolidation(&provider, &candidates[0], nous_id, &config, false)
             .expect("execute");
 
-        let last_time = store
-            .last_consolidation_time(nous_id)
-            .expect("query audit");
+        let last_time = store.last_consolidation_time(nous_id).expect("query audit");
         assert!(last_time.is_some(), "audit record must be created");
     }
 

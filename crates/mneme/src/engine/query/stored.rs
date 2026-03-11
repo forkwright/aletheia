@@ -77,8 +77,8 @@ impl<'a> SessionTx<'a> {
                         trigger,
                         &Default::default(),
                         &db.fixed_rules
-                    .read()
-                    .expect("fixed_rules lock is not poisoned"),
+                            .read()
+                            .expect("fixed_rules lock is not poisoned"),
                         cur_vld,
                     )?
                     .get_single_program()?;
@@ -737,8 +737,8 @@ impl<'a> SessionTx<'a> {
                     trigger,
                     &Default::default(),
                     &db.fixed_rules
-                    .read()
-                    .expect("fixed_rules lock is not poisoned"),
+                        .read()
+                        .expect("fixed_rules lock is not poisoned"),
                     cur_vld,
                 )?
                 .get_single_program()?;
@@ -1085,8 +1085,8 @@ impl<'a> SessionTx<'a> {
                         trigger,
                         &Default::default(),
                         &db.fixed_rules
-                    .read()
-                    .expect("fixed_rules lock is not poisoned"),
+                            .read()
+                            .expect("fixed_rules lock is not poisoned"),
                         cur_vld,
                     )?
                     .get_single_program()?;

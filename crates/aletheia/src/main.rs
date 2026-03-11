@@ -953,7 +953,16 @@ async fn serve(cli: Cli) -> Result<()> {
     let bind_addr = format!("{bind_addr_str}:{port}");
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
-        .with_context(|| format!("failed to bind to {bind_addr}"))?;
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AddrInUse {
+                anyhow::anyhow!(
+                    "Port {port} is already in use.\n  \
+                     Use --port to choose another port, or stop the process using port {port}."
+                )
+            } else {
+                anyhow::anyhow!("failed to bind to {bind_addr}: {e}")
+            }
+        })?;
 
     info!(addr = %bind_addr, "pylon listening");
 
@@ -1058,7 +1067,10 @@ fn build_provider_registry(
     if let Some(cred) = credential_chain.get_credential() {
         info!(source = %cred.source, "credential resolved");
     } else {
-        warn!("no credential available — no LLM provider");
+        warn!(
+            "no credential found — server will start in degraded mode (no LLM)\n  \
+             Fix: set ANTHROPIC_API_KEY env var, or run `aletheia credential status`"
+        );
         return registry;
     }
 
@@ -1528,17 +1540,29 @@ async fn eval(
 
 async fn health(url: &str) -> Result<()> {
     let endpoint = format!("{url}/api/health");
-    let resp = reqwest::get(&endpoint)
-        .await
-        .with_context(|| format!("failed to connect to {endpoint}"))?;
+    let resp = reqwest::get(&endpoint).await.map_err(|e| {
+        if e.is_connect() {
+            anyhow::anyhow!(
+                "FAILED: cannot connect to {url}\n  \
+                 Is the server running? Start it with: aletheia"
+            )
+        } else {
+            anyhow::anyhow!("FAILED: {e}")
+        }
+    })?;
     let status = resp.status();
     let body: serde_json::Value = resp
         .json()
         .await
         .context("failed to parse health response")?;
-    println!("{}", serde_json::to_string_pretty(&body)?);
-    if !status.is_success() {
-        anyhow::bail!("health check returned {status}");
+    let health_status = body["status"].as_str().unwrap_or("unknown");
+    let version = body["version"].as_str().unwrap_or("unknown");
+    let uptime = body["uptime_seconds"].as_u64().unwrap_or(0);
+    if status.is_success() {
+        println!("OK — {health_status} | version {version} | uptime {uptime}s");
+    } else {
+        println!("{}", serde_json::to_string_pretty(&body)?);
+        anyhow::bail!("FAILED: health check returned HTTP {status}");
     }
     Ok(())
 }

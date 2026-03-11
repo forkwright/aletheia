@@ -49,7 +49,14 @@ pub(crate) fn run(root: PathBuf, non_interactive: bool, api_key: Option<String>)
 
     // Pre-check: existing instance
     let config_path = answers.root.join("config/aletheia.yaml");
-    if config_path.exists() && !non_interactive {
+    if config_path.exists() {
+        if non_interactive {
+            println!(
+                "Instance already exists at {}. Skipping (delete config/aletheia.yaml to re-initialize).",
+                answers.root.display()
+            );
+            return Ok(());
+        }
         let overwrite: bool = cliclack::confirm("Instance already exists. Overwrite?")
             .initial_value(false)
             .interact()?;
@@ -176,6 +183,8 @@ fn scaffold(answers: &Answers) -> Result<()> {
         root.join("config/credentials"),
         root.join(format!("nous/{}", answers.agent_id)),
         root.join("data"),
+        root.join("logs/traces"),
+        root.join("shared/coordination"),
     ];
     for dir in &dirs {
         std::fs::create_dir_all(dir)
@@ -383,6 +392,8 @@ mod tests {
         );
         assert!(dir.path().join("nous/main/SOUL.md").exists());
         assert!(dir.path().join("data").is_dir());
+        assert!(dir.path().join("logs/traces").is_dir());
+        assert!(dir.path().join("shared/coordination").is_dir());
 
         // Credential should contain the key
         let cred: serde_json::Value = serde_json::from_str(
