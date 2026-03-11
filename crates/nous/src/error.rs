@@ -163,6 +163,33 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Actor inbox is full and the send timed out.
+    #[snafu(display("actor '{nous_id}' inbox full after {timeout_secs}s"))]
+    InboxFull {
+        nous_id: String,
+        timeout_secs: u64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Actor is in degraded state after repeated panics.
+    #[snafu(display("actor '{nous_id}' is degraded after {panic_count} panics"))]
+    ServiceDegraded {
+        nous_id: String,
+        panic_count: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Pipeline stage panicked (caught by the panic boundary).
+    #[snafu(display("pipeline panic in actor '{nous_id}': {message}"))]
+    PipelinePanic {
+        nous_id: String,
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].
@@ -317,6 +344,42 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("execute"));
         assert!(msg.contains("300s"));
+    }
+
+    #[test]
+    fn error_display_inbox_full() {
+        let err = InboxFullSnafu {
+            nous_id: "syn",
+            timeout_secs: 30u64,
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("syn"));
+        assert!(msg.contains("inbox full"));
+    }
+
+    #[test]
+    fn error_display_service_degraded() {
+        let err = ServiceDegradedSnafu {
+            nous_id: "syn",
+            panic_count: 5u32,
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("degraded"));
+        assert!(msg.contains("5 panics"));
+    }
+
+    #[test]
+    fn error_display_pipeline_panic() {
+        let err = PipelinePanicSnafu {
+            nous_id: "syn",
+            message: "null pointer",
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("panic"));
+        assert!(msg.contains("null pointer"));
     }
 
     #[test]
