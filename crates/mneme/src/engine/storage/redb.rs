@@ -6,9 +6,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use itertools::Itertools;
-
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableDatabase;
 
 use crate::engine::DbCore;
 use crate::engine::data::tuple::{Tuple, check_key_for_validity};

@@ -30,5 +30,3 @@ pub(crate) enum FixedRuleError {
         location: snafu::Location,
     },
 }
-
-pub(crate) type FixedRuleResult<T> = std::result::Result<T, FixedRuleError>;

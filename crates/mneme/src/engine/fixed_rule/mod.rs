@@ -8,7 +8,6 @@ use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use compact_str::CompactString;
 #[cfg(feature = "graph-algo")]
 use either::{Left, Right};
-use itertools::Itertools;
 use snafu::Snafu;
 use std::sync::LazyLock;
 

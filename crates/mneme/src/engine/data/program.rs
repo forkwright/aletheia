@@ -265,6 +265,7 @@ pub(crate) struct MagicFixedRuleApply {
 #[derive(Debug)]
 pub(crate) struct FixedRuleOptionNotFoundError {
     pub(crate) name: String,
+    #[expect(dead_code, reason = "structural field preserved for diagnostic context")]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
 }
@@ -284,6 +285,7 @@ impl std::error::Error for FixedRuleOptionNotFoundError {}
 #[derive(Debug)]
 pub(crate) struct WrongFixedRuleOptionError {
     pub(crate) name: String,
+    #[expect(dead_code, reason = "structural field preserved for diagnostic context")]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
     pub(crate) help: String,
@@ -516,16 +518,6 @@ impl Display for InputProgram {
         Ok(())
     }
 }
-#[derive(Debug)]
-struct EntryHeadNotExplicitlyDefinedError(SourceSpan);
-
-impl std::fmt::Display for EntryHeadNotExplicitlyDefinedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Entry head is not explicitly defined at {:?}", self.0)
-    }
-}
-
-impl std::error::Error for EntryHeadNotExplicitlyDefinedError {}
 
 #[derive(Debug)]
 pub(crate) struct NoEntryError;
