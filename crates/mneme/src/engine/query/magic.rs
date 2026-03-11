@@ -187,7 +187,7 @@ fn magic_rewrite_ruleset(
                             .entry(sup_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .unwrap();
+                            .expect("entry is Rules variant: Default creates MagicRulesOrFixed::Rules");
                         let mut sup_rule_atoms = vec![];
                         mem::swap(&mut sup_rule_atoms, &mut collected_atoms);
 
@@ -216,7 +216,7 @@ fn magic_rewrite_ruleset(
                             .entry(inp_kw.clone())
                             .or_default()
                             .mut_rules()
-                            .unwrap();
+                            .expect("entry is Rules variant: Default creates MagicRulesOrFixed::Rules");
                         let inp_args = r_app
                             .args
                             .iter()
@@ -245,7 +245,7 @@ fn magic_rewrite_ruleset(
             .entry(rule_head.clone())
             .or_default()
             .mut_rules()
-            .unwrap();
+            .expect("entry is Rules variant: Default creates MagicRulesOrFixed::Rules");
         entry.push(MagicInlineRule {
             head: rule.head,
             aggr: rule.aggr,
@@ -343,7 +343,13 @@ impl NormalFormProgram {
                                                         .metadata
                                                         .keys
                                                         .last()
-                                                        .unwrap()
+                                                        .ok_or_else(|| {
+                                                            InvalidTimeTravelSnafu {
+                                                                message: format!("relation '{name}' has no key columns"),
+                                                            }
+                                                            .build()
+                                                            .into_box_err()
+                                                        })?
                                                         .typing;
                                                     if *last_col_type
                                                         != (NullableColType {
@@ -376,7 +382,13 @@ impl NormalFormProgram {
                                                         .metadata
                                                         .keys
                                                         .last()
-                                                        .unwrap()
+                                                        .ok_or_else(|| {
+                                                            InvalidTimeTravelSnafu {
+                                                                message: format!("relation '{name}' has no key columns"),
+                                                            }
+                                                            .build()
+                                                            .into_box_err()
+                                                        })?
                                                         .typing;
                                                     if *last_col_type
                                                         != (NullableColType {
@@ -464,9 +476,19 @@ impl NormalFormProgram {
             let original_rules = self
                 .prog
                 .get(head.as_plain_symbol())
-                .unwrap()
+                .expect("adorned head always has a corresponding entry in prog: \
+                         pending_adornment is seeded from prog keys")
                 .rules()
-                .unwrap();
+                .ok_or_else(|| {
+                    CompilationFailedSnafu {
+                        message: format!(
+                            "expected rules for '{}' but found fixed rule",
+                            head.as_plain_symbol()
+                        ),
+                    }
+                    .build()
+                    .into_box_err()
+                })?;
             let adornment = head.magic_adornment();
             let mut adorned_rules = Vec::with_capacity(original_rules.len());
             for rule in original_rules {

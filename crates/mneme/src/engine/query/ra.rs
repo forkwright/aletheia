@@ -250,7 +250,7 @@ impl Debug for RelAlgebra {
                 } else if r.data.len() == 1 {
                     f.debug_tuple("Singlet")
                         .field(&bindings)
-                        .field(r.data.first().unwrap())
+                        .field(r.data.first().expect("data.len() == 1 checked above"))
                         .finish()
                 } else {
                     f.debug_tuple("Fixed")
@@ -418,7 +418,14 @@ impl RelAlgebra {
                 span,
             })),
             Some(vld) => {
-                if storage.metadata.keys.last().unwrap().typing
+                let last_key = storage.metadata.keys.last().ok_or_else(|| {
+                    InvalidTimeTravelSnafu {
+                        message: "relation has no key columns",
+                    }
+                    .build()
+                    .into_box_err()
+                })?;
+                if last_key.typing
                     != (NullableColType {
                         coltype: ColType::Validity,
                         nullable: false,
@@ -1014,9 +1021,11 @@ impl FtsSearchRA {
                             match d {
                                 DataValue::Str(s) => {
                                     if !coll.is_empty() {
-                                        coll.write_str(" OR ").unwrap();
+                                        coll.write_str(" OR ")
+                                            .expect("write to CompactString is infallible");
                                     }
-                                    coll.write_str(&s).unwrap();
+                                    coll.write_str(&s)
+                                        .expect("write to CompactString is infallible");
                                 }
                                 d => {
                                     return Err(TypeSnafu {
@@ -1548,7 +1557,9 @@ impl TempStoreRA {
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
-        let storage = stores.get(&self.storage_key).unwrap();
+        let storage = stores
+            .get(&self.storage_key)
+            .expect("TempStoreRA storage_key always present in stores: inserted by compiler");
 
         let scan_epoch = match delta_rule {
             None => false,
@@ -1572,7 +1583,9 @@ impl TempStoreRA {
         eliminate_indices: BTreeSet<usize>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
-        let storage = stores.get(&self.storage_key).unwrap();
+        let storage = stores
+            .get(&self.storage_key)
+            .expect("StoredRA storage_key always present in stores: inserted by compiler");
         debug_assert!(!right_join_indices.is_empty());
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
         right_invert_indices.sort_by_key(|(_, b)| **b);
@@ -1671,7 +1684,9 @@ impl TempStoreRA {
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
-        let storage = stores.get(&self.storage_key).unwrap();
+        let storage = stores
+            .get(&self.storage_key)
+            .expect("StoredRA storage_key always present in stores: inserted by compiler");
 
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
         right_invert_indices.sort_by_key(|(_, b)| **b);
@@ -1809,8 +1824,12 @@ impl Joiner {
         let mut ret_l = Vec::with_capacity(self.left_keys.len());
         let mut ret_r = Vec::with_capacity(self.left_keys.len());
         for (l, r) in self.left_keys.iter().zip(self.right_keys.iter()) {
-            let l_pos = left_binding_map.get(l).unwrap();
-            let r_pos = right_binding_map.get(r).unwrap();
+            let l_pos = left_binding_map
+                .get(l)
+                .expect("left join key always present in left bindings: validated by compiler");
+            let r_pos = right_binding_map
+                .get(r)
+                .expect("right join key always present in right bindings: validated by compiler");
             ret_l.push(*l_pos);
             ret_r.push(*r_pos)
         }
@@ -1951,7 +1970,7 @@ impl NegJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .unwrap();
+                    .expect("join_indices always succeeds for validated plan");
                 if join_is_prefix(&join_indices.1) {
                     "mem_neg_prefix_join"
                 } else {
@@ -1965,7 +1984,7 @@ impl NegJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .unwrap();
+                    .expect("join_indices always succeeds for validated plan");
                 if join_is_prefix(&join_indices.1) {
                     "stored_neg_prefix_join"
                 } else {
@@ -1993,8 +2012,7 @@ impl NegJoin {
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap();
+                    )?;
                 r.neg_join(
                     self.left.iter(tx, delta_rule, stores)?,
                     join_indices,
@@ -2008,8 +2026,7 @@ impl NegJoin {
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap();
+                    )?;
                 v.neg_join(
                     tx,
                     self.left.iter(tx, delta_rule, stores)?,
@@ -2073,7 +2090,7 @@ impl InnerJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .unwrap();
+                    .expect("join_indices always succeeds for validated plan");
                 if join_is_prefix(&join_indices.1) {
                     "mem_prefix_join"
                 } else {
@@ -2087,7 +2104,7 @@ impl InnerJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .unwrap();
+                    .expect("join_indices always succeeds for validated plan");
                 if join_is_prefix(&join_indices.1) {
                     "stored_prefix_join"
                 } else {
@@ -2104,7 +2121,7 @@ impl InnerJoin {
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
                     )
-                    .unwrap();
+                    .expect("join_indices always succeeds for validated plan");
                 if join_is_prefix(&join_indices.1) {
                     "stored_prefix_join"
                 } else {
@@ -2137,8 +2154,7 @@ impl InnerJoin {
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap();
+                    )?;
                 f.join(
                     self.left.iter(tx, delta_rule, stores)?,
                     join_indices,
@@ -2151,8 +2167,7 @@ impl InnerJoin {
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap();
+                    )?;
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
                         self.left.iter(tx, delta_rule, stores)?,
@@ -2171,8 +2186,7 @@ impl InnerJoin {
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap();
+                    )?;
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
                         tx,
@@ -2190,8 +2204,7 @@ impl InnerJoin {
                     .join_indices(
                         &self.left.bindings_after_eliminate(),
                         &self.right.bindings_after_eliminate(),
-                    )
-                    .unwrap();
+                    )?;
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
                         tx,
@@ -2230,8 +2243,7 @@ impl InnerJoin {
         let right_bindings = self.right.bindings_after_eliminate();
         let (left_join_indices, right_join_indices) = self
             .joiner
-            .join_indices(&self.left.bindings_after_eliminate(), &right_bindings)
-            .unwrap();
+            .join_indices(&self.left.bindings_after_eliminate(), &right_bindings)?;
 
         let mut left_iter = self.left.iter(tx, delta_rule, stores)?;
         let left_cache = match left_iter.next() {

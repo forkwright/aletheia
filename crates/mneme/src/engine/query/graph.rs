@@ -105,7 +105,9 @@ pub(crate) fn generalized_kahn(
             }
             break;
         }
-        let removed = safe_pending.pop().unwrap();
+        let removed = safe_pending
+            .pop()
+            .expect("safe_pending is non-empty: checked by is_empty guard above");
         current_stratum.push(removed);
         if let Some(edges) = graph.get(&removed) {
             for (nxt, poisoned) in edges {
@@ -173,10 +175,12 @@ impl<'a> TarjanScc<'a> {
                 self.low[at] = min(self.low[at], self.low[to]);
             }
         }
-        if self.ids[at].unwrap() == self.low[at] {
+        if self.ids[at].expect("ids[at] is Some: assigned on dfs() entry (line above recursive call)")
+            == self.low[at]
+        {
             while let Some(node) = self.stack.pop() {
                 self.on_stack[node] = false;
-                self.low[node] = self.ids[at].unwrap();
+                self.low[node] = self.ids[at].expect("ids[at] is Some: same assignment as above");
                 if node == at {
                     break;
                 }

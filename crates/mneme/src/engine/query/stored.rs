@@ -76,7 +76,9 @@ impl<'a> SessionTx<'a> {
                     let program = parse_script(
                         trigger,
                         &Default::default(),
-                        &db.fixed_rules.read().unwrap(),
+                        &db.fixed_rules
+                    .read()
+                    .expect("fixed_rules lock is not poisoned"),
                         cur_vld,
                     )?
                     .get_single_program()?;
@@ -361,7 +363,9 @@ impl<'a> SessionTx<'a> {
         new_kv: &[DataValue],
     ) -> Result<()> {
         for (k, (idx_handle, _)) in rel_handle.fts_indices.iter() {
-            let (tokenizer, extractor) = processors.get(k).unwrap();
+            let (tokenizer, extractor) = processors
+                .get(k)
+                .expect("FTS processor always present: built from same fts_indices keys");
             self.put_fts_index_item(new_kv, extractor, stack, tokenizer, rel_handle, idx_handle)?;
         }
         Ok(())
@@ -375,7 +379,9 @@ impl<'a> SessionTx<'a> {
         old_kv: &[DataValue],
     ) -> Result<()> {
         for (k, (idx_handle, _)) in rel_handle.fts_indices.iter() {
-            let (tokenizer, extractor) = processors.get(k).unwrap();
+            let (tokenizer, extractor) = processors
+                .get(k)
+                .expect("FTS processor always present: built from same fts_indices keys");
             self.del_fts_index_item(old_kv, extractor, stack, tokenizer, rel_handle, idx_handle)?;
         }
         Ok(())
@@ -390,7 +396,9 @@ impl<'a> SessionTx<'a> {
         hash_perms_map: &BTreeMap<CompactString, HashPermutations>,
     ) -> Result<()> {
         for (k, (idx_handle, inv_idx_handle, manifest)) in rel_handle.lsh_indices.iter() {
-            let (tokenizer, extractor) = processors.get(k).unwrap();
+            let (tokenizer, extractor) = processors
+                .get(k)
+                .expect("LSH processor always present: built from same lsh_indices keys");
             self.put_lsh_index_item(
                 new_kv,
                 extractor,
@@ -400,7 +408,9 @@ impl<'a> SessionTx<'a> {
                 idx_handle,
                 inv_idx_handle,
                 manifest,
-                hash_perms_map.get(k).unwrap(),
+                hash_perms_map
+                    .get(k)
+                    .expect("hash_perms always present: built from same lsh_indices keys"),
             )?;
         }
         Ok(())
@@ -463,7 +473,15 @@ impl<'a> SessionTx<'a> {
                     .build()
                 })?
                 .next()
-                .unwrap();
+                .ok_or_else(|| {
+                    CompilationFailedSnafu {
+                        message: format!(
+                            "FTS extractor expression for '{name}' parsed to empty iterator"
+                        ),
+                    }
+                    .build()
+                    .into_box_err()
+                })?;
             let mut code_expr = build_expr(parsed, &Default::default())?;
             let binding_map = relation_store.raw_binding_map();
             code_expr.fill_binding_indices(&binding_map)?;
@@ -483,7 +501,15 @@ impl<'a> SessionTx<'a> {
                     .build()
                 })?
                 .next()
-                .unwrap();
+                .ok_or_else(|| {
+                    CompilationFailedSnafu {
+                        message: format!(
+                            "LSH extractor expression for '{name}' parsed to empty iterator"
+                        ),
+                    }
+                    .build()
+                    .into_box_err()
+                })?;
             let mut code_expr = build_expr(parsed, &Default::default())?;
             let binding_map = relation_store.raw_binding_map();
             code_expr.fill_binding_indices(&binding_map)?;
@@ -507,7 +533,15 @@ impl<'a> SessionTx<'a> {
                         .build()
                     })?
                     .next()
-                    .unwrap();
+                    .ok_or_else(|| {
+                        CompilationFailedSnafu {
+                            message: format!(
+                                "HNSW index filter for '{name}' parsed to empty iterator"
+                            ),
+                        }
+                        .build()
+                        .into_box_err()
+                    })?;
                 let mut code_expr = build_expr(parsed, &Default::default())?;
                 let binding_map = relation_store.raw_binding_map();
                 code_expr.fill_binding_indices(&binding_map)?;
@@ -702,7 +736,9 @@ impl<'a> SessionTx<'a> {
                 let mut program = parse_script(
                     trigger,
                     &Default::default(),
-                    &db.fixed_rules.read().unwrap(),
+                    &db.fixed_rules
+                    .read()
+                    .expect("fixed_rules lock is not poisoned"),
                     cur_vld,
                 )?
                 .get_single_program()?;
@@ -1048,7 +1084,9 @@ impl<'a> SessionTx<'a> {
                     let mut program = parse_script(
                         trigger,
                         &Default::default(),
-                        &db.fixed_rules.read().unwrap(),
+                        &db.fixed_rules
+                    .read()
+                    .expect("fixed_rules lock is not poisoned"),
                         cur_vld,
                     )?
                     .get_single_program()?;
