@@ -45,6 +45,8 @@ pub mod id;
 /// Agent import — restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
 pub mod import;
+/// Instinct system — behavioral memory from tool usage patterns.
+pub mod instinct;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
 pub mod knowledge;
 /// `CozoDB`-backed knowledge store for graph traversal and vector search.
