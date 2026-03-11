@@ -5,12 +5,9 @@ use std::default::Default;
 use std::fmt::{Debug, Formatter};
 use std::iter;
 use std::path::Path;
-#[expect(unused_imports, reason = "AtomicU32 used only on non-wasm targets")]
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-#[expect(unused_imports, reason = "thread used only on non-wasm targets")]
 use std::thread;
-#[expect(unused_imports, reason = "Duration/SystemTime used only on non-wasm targets")]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::engine::error::DbResult as Result;
@@ -23,7 +20,6 @@ use crossbeam::channel::{Receiver, Sender, bounded, unbounded};
 use crossbeam::sync::ShardedLock;
 use either::{Left, Right};
 use itertools::Itertools;
-#[expect(unused_imports, reason = "json! used only on non-wasm targets")]
 use serde_json::json;
 use snafu::Snafu;
 
@@ -42,7 +38,6 @@ use crate::engine::query::ra::{
     FilteredRA, FtsSearchRA, HnswSearchRA, InnerJoin, LshSearchRA, NegJoin, RelAlgebra, ReorderRA,
     StoredRA, StoredWithValidityRA, TempStoreRA, UnificationRA,
 };
-#[expect(unused_imports, reason = "CallbackDeclaration/EventCallbackRegistry used only on non-wasm targets")]
 use crate::engine::runtime::callback::{
     CallbackCollector, CallbackDeclaration, CallbackOp, EventCallbackRegistry,
 };
@@ -805,7 +800,6 @@ impl<'s, S: Storage<'s>> Db<S> {
         callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
     ) -> Result<NamedRows> {
-        #[expect(unused_variables, reason = "sleep_opt used only on non-wasm targets")]
         let sleep_opt = p.out_opts.sleep;
         let (q_res, q_cleanups) =
             self.run_query(tx, p, cur_vld, callback_targets, callback_collector, true)?;
