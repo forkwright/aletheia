@@ -781,6 +781,7 @@ pub mod queries {
                    access_count, last_accessed_at, stability_hours, fact_type,
                    is_forgotten, forgotten_at, forget_reason},
             nous_id = $nous_id,
+            is_forgotten == false,
             valid_from > $from_time,
             valid_from <= $to_time
     ";
@@ -797,10 +798,60 @@ pub mod queries {
                    access_count, last_accessed_at, stability_hours, fact_type,
                    is_forgotten, forgotten_at, forget_reason},
             nous_id = $nous_id,
+            is_forgotten == false,
             valid_to > $from_time,
             valid_to <= $to_time,
             valid_to != '9999-12-31'
     ";
+
+    /// Query returning only forgotten facts. Params: `$nous_id`, `$limit`.
+    pub fn forgotten_facts() -> String {
+        use FactsField::*;
+        QueryBuilder::new()
+            .scan(Relation::Facts)
+            .select(&[
+                Id,
+                Content,
+                Confidence,
+                Tier,
+                RecordedAt,
+                NousId,
+                ValidFrom,
+                ValidTo,
+                SupersededBy,
+                SourceSessionId,
+                AccessCount,
+                LastAccessedAt,
+                StabilityHours,
+                FactType,
+                IsForgotten,
+                ForgottenAt,
+                ForgetReason,
+            ])
+            .bind(Id)
+            .bind(ValidFrom)
+            .bind(Content)
+            .bind(NousId)
+            .bind(Confidence)
+            .bind(Tier)
+            .bind(ValidTo)
+            .bind(SupersededBy)
+            .bind(SourceSessionId)
+            .bind(RecordedAt)
+            .bind(AccessCount)
+            .bind(LastAccessedAt)
+            .bind(StabilityHours)
+            .bind(FactType)
+            .bind(IsForgotten)
+            .bind(ForgottenAt)
+            .bind(ForgetReason)
+            .filter("nous_id = $nous_id")
+            .filter("is_forgotten == true")
+            .order("-forgotten_at")
+            .limit("$limit")
+            .done()
+            .build_script()
+    }
 
     /// Audit query returning all facts regardless of forgotten/superseded/temporal state.
     /// Params: `$nous_id`, `$limit`.

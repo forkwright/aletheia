@@ -401,12 +401,12 @@ pub trait KnowledgeSearchService: Send + Sync {
         &self,
         fact_id: &str,
         reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, String>> + Send + '_>>;
 
     fn unforget_fact(
         &self,
         fact_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, String>> + Send + '_>>;
 
     fn datalog_query(
         &self,

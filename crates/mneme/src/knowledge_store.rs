@@ -1085,7 +1085,8 @@ impl KnowledgeStore {
         &self,
         pending_fact_id: &crate::id::FactId,
     ) -> crate::error::Result<()> {
-        self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Incorrect)
+        self.forget_fact(pending_fact_id, crate::knowledge::ForgetReason::Incorrect)?;
+        Ok(())
     }
 
     /// Check if a skill similar to the given content already exists.
@@ -1154,6 +1155,9 @@ impl KnowledgeStore {
         let script = build_hybrid_query(q);
         let rows = self.run_read(&script, params)?;
         let results = rows_to_hybrid_results(rows)?;
+
+        // Filter out forgotten facts — search indices don't carry is_forgotten.
+        let results = self.filter_forgotten_results(results)?;
 
         let fact_ids: Vec<crate::id::FactId> = results.iter().map(|r| r.id.clone()).collect();
         if let Err(e) = self.increment_access(&fact_ids) {
@@ -1409,12 +1413,23 @@ impl KnowledgeStore {
     }
 
     /// Soft-delete a fact: set `is_forgotten = true` with reason and timestamp.
+    ///
+    /// Returns the forgotten fact. Errors if the fact does not exist.
     #[instrument(skip(self))]
     pub fn forget_fact(
         &self,
         fact_id: &crate::id::FactId,
         reason: crate::knowledge::ForgetReason,
-    ) -> crate::error::Result<()> {
+    ) -> crate::error::Result<crate::knowledge::Fact> {
+        // Verify fact exists before mutating.
+        let existing = self.read_facts_by_id(fact_id.as_str())?;
+        if existing.is_empty() {
+            return Err(crate::error::FactNotFoundSnafu {
+                id: fact_id.as_str(),
+            }
+            .build());
+        }
+
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
@@ -1443,12 +1458,34 @@ impl KnowledgeStore {
             "reason".to_owned(),
             crate::engine::DataValue::Str(reason.as_str().into()),
         );
-        self.run_mut(script, params)
+        self.run_mut(script, params)?;
+
+        // Re-read the fact to return its updated state.
+        let facts = self.read_facts_by_id(fact_id.as_str())?;
+        facts.into_iter().next().ok_or_else(|| {
+            crate::error::FactNotFoundSnafu {
+                id: fact_id.as_str(),
+            }
+            .build()
+        })
     }
 
     /// Reverse a soft-delete: clear `is_forgotten`, `forgotten_at`, `forget_reason`.
+    ///
+    /// Returns the restored fact. Errors if the fact does not exist.
     #[instrument(skip(self))]
-    pub fn unforget_fact(&self, fact_id: &crate::id::FactId) -> crate::error::Result<()> {
+    pub fn unforget_fact(
+        &self,
+        fact_id: &crate::id::FactId,
+    ) -> crate::error::Result<crate::knowledge::Fact> {
+        let existing = self.read_facts_by_id(fact_id.as_str())?;
+        if existing.is_empty() {
+            return Err(crate::error::FactNotFoundSnafu {
+                id: fact_id.as_str(),
+            }
+            .build());
+        }
+
         let script = r"
             ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
               superseded_by, source_session_id, recorded_at,
@@ -1471,7 +1508,98 @@ impl KnowledgeStore {
             "id".to_owned(),
             crate::engine::DataValue::Str(fact_id.as_str().into()),
         );
-        self.run_mut(script, params)
+        self.run_mut(script, params)?;
+
+        let facts = self.read_facts_by_id(fact_id.as_str())?;
+        facts.into_iter().next().ok_or_else(|| {
+            crate::error::FactNotFoundSnafu {
+                id: fact_id.as_str(),
+            }
+            .build()
+        })
+    }
+
+    /// List only forgotten facts for a given agent, ordered by `forgotten_at`.
+    ///
+    /// Returns facts where `is_forgotten == true`, with their reasons and timestamps.
+    #[instrument(skip(self))]
+    pub fn list_forgotten(
+        &self,
+        nous_id: &str,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert("limit".to_owned(), DataValue::from(limit));
+        let rows = self.run_read(&queries::forgotten_facts(), params)?;
+        rows_to_facts(rows, nous_id)
+    }
+
+    /// Async `list_forgotten` — wraps sync call in `spawn_blocking`.
+    #[instrument(skip(self))]
+    pub async fn list_forgotten_async(
+        self: &std::sync::Arc<Self>,
+        nous_id: String,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.list_forgotten(&nous_id, limit))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
+    /// Filter hybrid search results to exclude forgotten facts.
+    fn filter_forgotten_results(
+        &self,
+        results: Vec<HybridResult>,
+    ) -> crate::error::Result<Vec<HybridResult>> {
+        if results.is_empty() {
+            return Ok(results);
+        }
+
+        // Batch-check which fact IDs are forgotten via a single query.
+        let forgotten_ids = self.forgotten_fact_ids(&results)?;
+        if forgotten_ids.is_empty() {
+            return Ok(results);
+        }
+
+        Ok(results
+            .into_iter()
+            .filter(|r| !forgotten_ids.contains(r.id.as_str()))
+            .collect())
+    }
+
+    /// Return the set of fact IDs (from the given results) that are currently forgotten.
+    fn forgotten_fact_ids(
+        &self,
+        results: &[HybridResult],
+    ) -> crate::error::Result<std::collections::HashSet<String>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        // Build a Datalog query that checks each ID.
+        let id_list: Vec<String> = results
+            .iter()
+            .map(|r| format!("'{}'", r.id.as_str().replace('\'', "''")))
+            .collect();
+        let script = format!(
+            r"?[id] := *facts{{id, is_forgotten}}, is_forgotten == true, id in [{}]",
+            id_list.join(", ")
+        );
+        let rows = self.run_read(&script, BTreeMap::<String, DataValue>::new())?;
+        let mut ids = std::collections::HashSet::new();
+        for row in rows.rows {
+            if let Some(val) = row.first() {
+                if let Ok(s) = extract_str(val) {
+                    ids.insert(s);
+                }
+            }
+        }
+        Ok(ids)
     }
 
     /// Query facts valid at a specific point in time.
@@ -1648,7 +1776,7 @@ impl KnowledgeStore {
         self: &std::sync::Arc<Self>,
         fact_id: crate::id::FactId,
         reason: crate::knowledge::ForgetReason,
-    ) -> crate::error::Result<()> {
+    ) -> crate::error::Result<crate::knowledge::Fact> {
         use snafu::ResultExt;
         let this = std::sync::Arc::clone(self);
         tokio::task::spawn_blocking(move || this.forget_fact(&fact_id, reason))
@@ -1661,7 +1789,7 @@ impl KnowledgeStore {
     pub async fn unforget_fact_async(
         self: &std::sync::Arc<Self>,
         fact_id: crate::id::FactId,
-    ) -> crate::error::Result<()> {
+    ) -> crate::error::Result<crate::knowledge::Fact> {
         use snafu::ResultExt;
         let this = std::sync::Arc::clone(self);
         tokio::task::spawn_blocking(move || this.unforget_fact(&fact_id))
@@ -4499,28 +4627,27 @@ mod knowledge_store_tests {
         let fact = make_fact("f1", "agent-a", "Secret fact");
         store.insert_fact(&fact).expect("insert fact");
 
-        store
+        let forgotten = store
             .forget_fact(
                 &crate::id::FactId::new_unchecked("f1"),
                 ForgetReason::UserRequested,
             )
             .expect("forget fact");
+        assert!(forgotten.is_forgotten);
+        assert_eq!(forgotten.forget_reason, Some(ForgetReason::UserRequested));
+        assert!(forgotten.forgotten_at.is_some());
 
         let results = store
             .query_facts("agent-a", "2026-06-01", 10)
             .expect("query facts");
-        // query_facts returns current, non-forgotten facts
         assert!(
-            results.is_empty()
-                || results
-                    .iter()
-                    .all(|f| f.id.as_str() != "f1" || !f.is_forgotten),
-            "forgotten fact should be excluded or marked"
+            results.is_empty(),
+            "forgotten fact must not appear in recall"
         );
     }
 
     #[test]
-    fn unforget_fact_restores_visibility() {
+    fn forget_fact_then_unforget_restores_recall() {
         let store = make_store();
         let fact = make_fact("f1", "agent-a", "Recoverable fact");
         store.insert_fact(&fact).expect("insert fact");
@@ -4531,18 +4658,27 @@ mod knowledge_store_tests {
                 ForgetReason::Outdated,
             )
             .expect("forget");
-        store
+
+        // Verify excluded from recall
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query");
+        assert!(results.is_empty(), "forgotten fact excluded from recall");
+
+        // Unforget
+        let restored = store
             .unforget_fact(&crate::id::FactId::new_unchecked("f1"))
             .expect("unforget");
+        assert!(!restored.is_forgotten);
+        assert!(restored.forgotten_at.is_none());
+        assert!(restored.forget_reason.is_none());
 
-        // After unforgetting, audit should show it as not forgotten
-        let all = store.audit_all_facts("agent-a", 100).expect("audit facts");
-        let found = all.iter().find(|f| f.id.as_str() == "f1");
-        assert!(found.is_some(), "fact should still exist");
-        assert!(
-            !found.expect("f1 must exist after unforget").is_forgotten,
-            "should not be forgotten"
-        );
+        // Verify returned to recall
+        let results = store
+            .query_facts("agent-a", "2026-06-01", 10)
+            .expect("query after unforget");
+        assert_eq!(results.len(), 1, "unforget must restore recall visibility");
+        assert_eq!(results[0].id.as_str(), "f1");
     }
 
     #[test]
@@ -4564,6 +4700,82 @@ mod knowledge_store_tests {
         let found = found.expect("f1 must appear in audit after forget");
         assert!(found.is_forgotten);
         assert_eq!(found.forget_reason, Some(ForgetReason::Privacy));
+    }
+
+    #[test]
+    fn forget_reason_roundtrips() {
+        let store = make_store();
+
+        let reasons = [
+            ("f-ur", ForgetReason::UserRequested),
+            ("f-od", ForgetReason::Outdated),
+            ("f-ic", ForgetReason::Incorrect),
+            ("f-pr", ForgetReason::Privacy),
+        ];
+
+        for (id, reason) in reasons {
+            let fact = make_fact(id, "agent-a", &format!("fact for {reason}"));
+            store.insert_fact(&fact).expect("insert");
+
+            let forgotten = store
+                .forget_fact(&crate::id::FactId::new_unchecked(id), reason)
+                .expect("forget");
+            assert_eq!(
+                forgotten.forget_reason,
+                Some(reason),
+                "reason must round-trip for {reason}"
+            );
+        }
+
+        // Verify all appear in list_forgotten
+        let forgotten_list = store
+            .list_forgotten("agent-a", 100)
+            .expect("list_forgotten");
+        assert_eq!(forgotten_list.len(), reasons.len());
+        for (id, reason) in reasons {
+            let found = forgotten_list
+                .iter()
+                .find(|f| f.id.as_str() == id)
+                .unwrap_or_else(|| panic!("missing {id} in list_forgotten"));
+            assert_eq!(found.forget_reason, Some(reason));
+        }
+    }
+
+    #[test]
+    fn forget_nonexistent_fact_errors() {
+        let store = make_store();
+        let result = store.forget_fact(
+            &crate::id::FactId::new_unchecked("nonexistent"),
+            ForgetReason::UserRequested,
+        );
+        assert!(result.is_err(), "forgetting non-existent fact must error");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("not found"),
+            "error should mention not found: {err}"
+        );
+    }
+
+    #[test]
+    fn forget_excluded_from_temporal_diff() {
+        let store = make_store();
+        let fact = make_fact("f-diff", "agent-a", "Temporal diff fact");
+        store.insert_fact(&fact).expect("insert");
+
+        store
+            .forget_fact(
+                &crate::id::FactId::new_unchecked("f-diff"),
+                ForgetReason::Incorrect,
+            )
+            .expect("forget");
+
+        let diff = store
+            .query_facts_diff("agent-a", "2025-01-01", "2027-01-01")
+            .expect("diff");
+        assert!(
+            !diff.added.iter().any(|f| f.id.as_str() == "f-diff"),
+            "forgotten fact must not appear in temporal diff added"
+        );
     }
 
     // ---- Increment Access ----
@@ -4882,15 +5094,13 @@ mod knowledge_store_tests {
     }
 
     #[test]
-    fn forget_nonexistent_fact_succeeds() {
-        // forget_fact on a missing ID should not panic (Datalog :put on empty match is a noop)
+    fn forget_nonexistent_fact_returns_error() {
         let store = make_store();
         let result = store.forget_fact(
             &crate::id::FactId::new_unchecked("nonexistent"),
             ForgetReason::UserRequested,
         );
-        // The behavior is either Ok (noop) or Err — neither should panic
-        let _ = result;
+        assert!(result.is_err(), "forgetting a non-existent fact must error");
     }
 
     #[test]
@@ -5084,13 +5294,15 @@ mod knowledge_store_tests {
         let fact = make_fact("f-forget-async", "agent-a", "Async forget");
         store.insert_fact_async(fact).await.expect("insert");
 
-        store
+        let forgotten = store
             .forget_fact_async(
                 crate::id::FactId::new_unchecked("f-forget-async"),
                 ForgetReason::Incorrect,
             )
             .await
             .expect("async forget");
+        assert!(forgotten.is_forgotten);
+        assert_eq!(forgotten.forget_reason, Some(ForgetReason::Incorrect));
 
         let all = store
             .audit_all_facts_async("agent-a".to_owned(), 100)
@@ -5624,12 +5836,13 @@ mod knowledge_store_tests {
     }
 
     #[test]
-    fn forget_nonexistent_fact() {
+    fn forget_nonexistent_fact_is_err() {
         let store = make_store();
-        let _ = store.forget_fact(
+        let result = store.forget_fact(
             &crate::id::FactId::new_unchecked("nonexistent"),
             ForgetReason::UserRequested,
         );
+        assert!(result.is_err());
     }
 
     #[test]
