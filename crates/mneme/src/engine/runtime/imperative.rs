@@ -2,8 +2,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 
-use crate::bail;
 use crate::engine::error::DbResult as Result;
+use crate::engine::runtime::error::{InvalidOperationSnafu, ReadOnlyViolationSnafu};
 use compact_str::CompactString;
 use either::{Either, Left, Right};
 use itertools::Itertools;
@@ -259,7 +259,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             p.needs_write_locks(&mut write_lock_names);
         }
         if readonly && !write_lock_names.is_empty() {
-            bail!("Read-only imperative program attempted to acquire write locks");
+            ReadOnlyViolationSnafu {
+                operation: "imperative program with write locks",
+            }
+            .fail()?;
         }
         let is_write = !write_lock_names.is_empty();
         let write_lock = self.obtain_relation_locks(write_lock_names.iter());
@@ -309,7 +312,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                         ret = res;
                     }
                     ControlCode::Break(_, _span) | ControlCode::Continue(_, _span) => {
-                        bail!("control flow has nowhere to go")
+                        return InvalidOperationSnafu {
+                            op: "imperative execution",
+                            reason: "control flow has nowhere to go",
+                        }
+                        .fail()
+                        .map_err(Into::into);
                     }
                 },
             }
@@ -342,10 +350,13 @@ impl SessionTx<'_> {
             let k = k.replace('(', "_").replace(')', "");
             let k = Symbol::new(k.clone(), Default::default());
             if key_bindings.contains(&k) {
-                bail!(
-                    "Duplicate variable name {}, please use distinct variables in `as` construct.",
-                    k
-                );
+                InvalidOperationSnafu {
+                    op: "store as relation",
+                    reason: format!(
+                        "Duplicate variable name {k}, please use distinct variables in `as` construct."
+                    ),
+                }
+                .fail()?;
             }
             key_bindings.push(k);
         }

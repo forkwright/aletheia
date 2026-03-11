@@ -5,24 +5,26 @@ use std::default::Default;
 use std::fmt::{Debug, Formatter};
 use std::iter;
 use std::path::Path;
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "AtomicU32 used only on non-wasm targets")]
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "thread used only on non-wasm targets")]
 use std::thread;
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "Duration/SystemTime used only on non-wasm targets")]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::engine::runtime::error::{
+    AssertionFailedSnafu, InsufficientAccessSnafu, InvalidOperationSnafu, QueryKilledSnafu,
+    ReadOnlyViolationSnafu, RelationAlreadyExistsSnafu, RelationNotFoundSnafu, UnsupportedSnafu,
+};
 use compact_str::CompactString;
 use crossbeam::channel::{Receiver, Sender, bounded, unbounded};
 use crossbeam::sync::ShardedLock;
 use either::{Left, Right};
 use itertools::Itertools;
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "json! used only on non-wasm targets")]
 use serde_json::json;
-#[allow(unused_imports)]
 use snafu::Snafu;
 
 use crate::engine::data::functions::current_validity;
@@ -40,7 +42,7 @@ use crate::engine::query::ra::{
     FilteredRA, FtsSearchRA, HnswSearchRA, InnerJoin, LshSearchRA, NegJoin, RelAlgebra, ReorderRA,
     StoredRA, StoredWithValidityRA, TempStoreRA, UnificationRA,
 };
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "CallbackDeclaration/EventCallbackRegistry used only on non-wasm targets")]
 use crate::engine::runtime::callback::{
     CallbackCollector, CallbackDeclaration, CallbackOp, EventCallbackRegistry,
 };
@@ -438,7 +440,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             let size_hint = handle.metadata.keys.len() + handle.metadata.non_keys.len();
 
             if handle.access_level < AccessLevel::ReadOnly {
-                bail!("Insufficient access level for this operation");
+                InsufficientAccessSnafu {
+                    operation: "export relation",
+                }
+                .fail()?;
             }
 
             let mut cols = handle
@@ -499,13 +504,20 @@ impl<'s, S: Storage<'s>> Db<S> {
                 }
             };
             if relation.contains(':') {
-                bail!("Cannot import data into relation as it is an index")
+                InvalidOperationSnafu {
+                    op: "import relations",
+                    reason: "cannot import data into relation as it is an index",
+                }
+                .fail()?;
             }
             let handle = tx.get_relation(relation, false)?;
             let has_indices = !handle.indices.is_empty();
 
             if handle.access_level < AccessLevel::Protected {
-                bail!("Insufficient access level for this operation");
+                InsufficientAccessSnafu {
+                    operation: "import into stored relation",
+                }
+                .fail()?;
             }
 
             let header2idx: BTreeMap<_, _> = in_data
@@ -616,13 +628,21 @@ impl<'s, S: Storage<'s>> Db<S> {
     ///
     /// Not currently supported — requires the removed `storage-sqlite` feature.
     pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
-        bail!("backup requires the removed 'storage-sqlite' feature")
+        UnsupportedSnafu {
+            operation: "backup",
+            reason: "requires the removed 'storage-sqlite' feature",
+        }
+        .fail()?
     }
     /// Restore from an Sqlite backup.
     ///
     /// Not currently supported — requires the removed `storage-sqlite` feature.
     pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
-        bail!("restore requires the removed 'storage-sqlite' feature")
+        UnsupportedSnafu {
+            operation: "restore",
+            reason: "requires the removed 'storage-sqlite' feature",
+        }
+        .fail()?
     }
     /// Import data from relations in a backup file.
     ///
@@ -632,7 +652,11 @@ impl<'s, S: Storage<'s>> Db<S> {
         _in_file: impl AsRef<Path>,
         _relations: &[String],
     ) -> Result<()> {
-        bail!("import_from_backup requires the removed 'storage-sqlite' feature")
+        UnsupportedSnafu {
+            operation: "import_from_backup",
+            reason: "requires the removed 'storage-sqlite' feature",
+        }
+        .fail()?
     }
     /// Register a custom fixed rule implementation.
     pub fn register_fixed_rule<R>(&self, name: String, rule_impl: R) -> Result<()>
@@ -645,19 +669,22 @@ impl<'s, S: Storage<'s>> Db<S> {
                 ent.insert(Arc::new(Box::new(rule_impl)));
                 Ok(())
             }
-            Entry::Occupied(ent) => {
-                bail!(
-                    "A fixed rule with the name {} is already registered",
-                    ent.key()
-                )
+            Entry::Occupied(ent) => InvalidOperationSnafu {
+                op: "register fixed rule",
+                reason: format!("a rule with the name '{}' is already registered", ent.key()),
             }
+            .fail()?,
         }
     }
 
     /// Unregister a custom fixed rule implementation.
     pub fn unregister_fixed_rule(&self, name: &str) -> Result<bool> {
         if DEFAULT_FIXED_RULES.contains_key(name) {
-            bail!("Cannot unregister builtin fixed rule {}", name);
+            InvalidOperationSnafu {
+                op: "unregister fixed rule",
+                reason: format!("cannot unregister builtin fixed rule '{name}'"),
+            }
+            .fail()?;
         }
         Ok(self.fixed_rules.write().unwrap().remove(name).is_some()) // INVARIANT: lock is not poisoned
     }
@@ -778,7 +805,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         callback_targets: &BTreeSet<CompactString>,
         callback_collector: &mut CallbackCollector,
     ) -> Result<NamedRows> {
-        #[allow(unused_variables)]
+        #[expect(unused_variables, reason = "sleep_opt used only on non-wasm targets")]
         let sleep_opt = p.out_opts.sleep;
         let (q_res, q_cleanups) =
             self.run_query(tx, p, cur_vld, callback_targets, callback_collector, true)?;
@@ -800,7 +827,10 @@ impl<'s, S: Storage<'s>> Db<S> {
         let write_lock_names = p.needs_write_lock();
         let is_write = write_lock_names.is_some();
         if read_only && is_write {
-            bail!("write lock required for read-only query");
+            ReadOnlyViolationSnafu {
+                operation: "query requiring write lock",
+            }
+            .fail()?;
         }
         let write_lock = self.obtain_relation_locks(write_lock_names.iter());
         let _write_lock_guards = if is_write {
@@ -1091,7 +1121,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::Compact => {
                 if read_only {
-                    bail!("Cannot compact in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "compact",
+                    }
+                    .fail()?;
                 }
                 self.compact_relation()?;
                 Ok(NamedRows::new(
@@ -1112,7 +1145,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::RemoveRelation(rel_names) => {
                 if read_only {
-                    bail!("Cannot remove relations in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "remove relations",
+                    }
+                    .fail()?;
                 }
                 let rel_name_strs = rel_names.iter().map(|n| &n.name);
                 let locks = if skip_locking {
@@ -1145,7 +1181,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::CreateIndex(rel_name, idx_name, cols) => {
                 if read_only {
-                    bail!("Cannot create index in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "create index",
+                    }
+                    .fail()?;
                 }
                 if skip_locking {
                     tx.create_index(rel_name, idx_name, cols)?;
@@ -1164,7 +1203,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::CreateVectorIndex(config) => {
                 if read_only {
-                    bail!("Cannot create vector index in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "create vector index",
+                    }
+                    .fail()?;
                 }
                 if skip_locking {
                     tx.create_hnsw_index(config)?;
@@ -1183,7 +1225,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::CreateFtsIndex(config) => {
                 if read_only {
-                    bail!("Cannot create fts index in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "create FTS index",
+                    }
+                    .fail()?;
                 }
                 if skip_locking {
                     tx.create_fts_index(config)?;
@@ -1202,7 +1247,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::CreateMinHashLshIndex(config) => {
                 if read_only {
-                    bail!("Cannot create minhash lsh index in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "create MinHash LSH index",
+                    }
+                    .fail()?;
                 }
                 if skip_locking {
                     tx.create_minhash_lsh_index(config)?;
@@ -1222,7 +1270,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::RemoveIndex(rel_name, idx_name) => {
                 if read_only {
-                    bail!("Cannot remove index in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "remove index",
+                    }
+                    .fail()?;
                 }
                 let bounds = if skip_locking {
                     tx.remove_index(rel_name, idx_name)?
@@ -1247,7 +1298,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             SysOp::ListIndices(rs) => self.list_indices(tx, rs),
             SysOp::RenameRelation(rename_pairs) => {
                 if read_only {
-                    bail!("Cannot rename relations in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "rename relations",
+                    }
+                    .fail()?;
                 }
                 let rel_names = rename_pairs.iter().flat_map(|(f, t)| [&f.name, &t.name]);
                 let locks = if skip_locking {
@@ -1304,7 +1358,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::SetTriggers(name, puts, rms, replaces) => {
                 if read_only {
-                    bail!("Cannot set triggers in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "set triggers",
+                    }
+                    .fail()?;
                 }
                 tx.set_relation_triggers(name, puts, rms, replaces)?;
                 Ok(NamedRows::new(
@@ -1314,7 +1371,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::SetAccessLevel(names, level) => {
                 if read_only {
-                    bail!("Cannot set access level in read-only mode");
+                    ReadOnlyViolationSnafu {
+                        operation: "set access level",
+                    }
+                    .fail()?;
                 }
                 for name in names {
                     tx.set_access_level(name, *level)?;
@@ -1352,14 +1412,21 @@ impl<'s, S: Storage<'s>> Db<S> {
         // Some checks in case the query specifies mutation
         if let Some((meta, op, _)) = &input_program.out_opts.store_relation {
             if *op == RelationOp::Create {
-                ensure!(
-                    !tx.relation_exists(&meta.name)?,
-                    "Stored relation conflicts with an existing one"
-                );
+                if tx.relation_exists(&meta.name)? {
+                    RelationAlreadyExistsSnafu {
+                        name: meta.name.name.to_string(),
+                    }
+                    .fail()?;
+                }
             } else if *op != RelationOp::Replace {
                 let existing = tx.get_relation(&meta.name, false)?;
 
-                ensure!(tx.relation_exists(&meta.name)?, "Stored relation not found");
+                if !tx.relation_exists(&meta.name)? {
+                    RelationNotFoundSnafu {
+                        name: meta.name.name.to_string(),
+                    }
+                    .fail()?;
+                }
 
                 existing.ensure_compatible(
                     meta,
@@ -1423,13 +1490,19 @@ impl<'s, S: Storage<'s>> Db<S> {
         if let Some(assertion) = &out_opts.assertion {
             match assertion {
                 QueryAssertion::AssertNone(_span) => {
-                    if let Some(_tuple) = result_store.all_iter().next() {
-                        bail!("The query is asserted to return no result, but a tuple was found")
+                    if result_store.all_iter().next().is_some() {
+                        AssertionFailedSnafu {
+                            message: "The query is asserted to return no result, but a tuple was found",
+                        }
+                        .fail()?;
                     }
                 }
                 QueryAssertion::AssertSome(_span) => {
                     if result_store.all_iter().next().is_none() {
-                        bail!("The query is asserted to return some results, but returned none")
+                        AssertionFailedSnafu {
+                            message: "The query is asserted to return some results, but returned none",
+                        }
+                        .fail()?;
                     }
                 }
             }
@@ -1760,13 +1833,17 @@ impl Poison {
     #[inline(always)]
     pub fn check(&self) -> Result<()> {
         if self.0.load(Ordering::Relaxed) {
-            bail!(ProcessKilled)
+            QueryKilledSnafu.fail()?;
         }
         Ok(())
     }
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn set_timeout(&self, _secs: f64) -> Result<()> {
-        bail!("Cannot set timeout when threading is disallowed");
+        UnsupportedSnafu {
+            operation: "set timeout",
+            reason: "threading is disallowed on this platform",
+        }
+        .fail()?
     }
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn set_timeout(&self, secs: f64) -> Result<()> {

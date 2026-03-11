@@ -4,7 +4,10 @@ use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::Ordering;
 
 use crate::engine::error::DbResult as Result;
-use crate::{bail, ensure};
+use crate::engine::runtime::error::{
+    IndexAlreadyExistsSnafu, IndexNotFoundSnafu, InsufficientAccessSnafu, InvalidOperationSnafu,
+    RelationAlreadyExistsSnafu,
+};
 use compact_str::CompactString;
 use itertools::Itertools;
 use pest::Parser;
@@ -146,7 +149,7 @@ impl std::error::Error for InsufficientAccessLevel {}
 #[snafu(display(
     "Arity mismatch for stored relation {name}: expect {expect_arity}, got {actual_arity}"
 ))]
-struct StoredRelArityMismatch {
+pub(crate) struct StoredRelArityMismatch {
     name: String,
     expect_arity: usize,
     actual_arity: usize,
@@ -253,15 +256,15 @@ impl RelationHandle {
         span: SourceSpan,
     ) -> Result<Vec<u8>> {
         let len = self.metadata.keys.len();
-        ensure!(
-            tuple.len() >= len,
-            StoredRelArityMismatch {
+        if tuple.len() < len {
+            StoredRelArityMismatchSnafu {
                 name: self.name.to_string(),
                 expect_arity: self.arity(),
                 actual_arity: tuple.len(),
-                span
+                span,
             }
-        );
+            .fail()?;
+        }
         let mut ret = self.encode_key_prefix(len);
         for val in &tuple[0..len] {
             ret.encode_datavalue(val);
@@ -568,11 +571,18 @@ impl<'a> SessionTx<'a> {
         replaces: &[String],
     ) -> Result<()> {
         if name.name.starts_with('_') {
-            bail!("Cannot set triggers for temp store")
+            InvalidOperationSnafu {
+                op: "set triggers",
+                reason: "cannot set triggers for temp store",
+            }
+            .fail()?;
         }
         let mut original = self.get_relation(name, true)?;
         if original.access_level < AccessLevel::Protected {
-            bail!("Insufficient access level for stored relation");
+            InsufficientAccessSnafu {
+                operation: "set triggers on stored relation",
+            }
+            .fail()?;
         }
         original.put_triggers = puts.to_vec();
         original.rm_triggers = rms.to_vec();
@@ -600,10 +610,16 @@ impl<'a> SessionTx<'a> {
 
         if is_temp {
             if self.store_tx.exists(&encoded, true)? {
-                bail!("Cannot create relation {} as one with the same name already exists")
+                RelationAlreadyExistsSnafu {
+                    name: input_meta.name.name.to_string(),
+                }
+                .fail()?;
             };
         } else if self.temp_store_tx.exists(&encoded, true)? {
-            bail!("Cannot create relation {} as one with the same name already exists")
+            RelationAlreadyExistsSnafu {
+                name: input_meta.name.name.to_string(),
+            }
+            .fail()?;
         }
 
         let metadata = input_meta.metadata.clone();
@@ -689,13 +705,17 @@ impl<'a> SessionTx<'a> {
 
         let store = self.get_relation(name, true)?;
         if !store.has_no_index() {
-            bail!(
-                "Cannot remove stored relation `{}` with indices attached.",
-                name
-            );
+            InvalidOperationSnafu {
+                op: "remove relation",
+                reason: format!("stored relation `{name}` has indices attached"),
+            }
+            .fail()?;
         }
         if store.access_level < AccessLevel::Normal {
-            bail!("Insufficient access level for stored relation");
+            InsufficientAccessSnafu {
+                operation: "remove stored relation",
+            }
+            .fail()?;
         }
 
         for k in store.hnsw_indices.keys() {
@@ -735,7 +755,11 @@ impl<'a> SessionTx<'a> {
 
         // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
-            bail!("index {} for relation {} already exists");
+            IndexAlreadyExistsSnafu {
+                index_name: config.index_name.to_string(),
+                relation_name: config.base_relation.to_string(),
+            }
+            .fail()?;
         }
 
         let inv_idx_keys = rel_handle.metadata.keys.clone();
@@ -862,7 +886,11 @@ impl<'a> SessionTx<'a> {
 
         // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
-            bail!("index {} for relation {} already exists");
+            IndexAlreadyExistsSnafu {
+                index_name: config.index_name.to_string(),
+                relation_name: config.base_relation.to_string(),
+            }
+            .fail()?;
         }
 
         // Build key columns definitions
@@ -1000,12 +1028,20 @@ impl<'a> SessionTx<'a> {
 
         // Check if index already exists
         if rel_handle.has_index(&config.index_name) {
-            bail!("index {} for relation {} already exists");
+            IndexAlreadyExistsSnafu {
+                index_name: config.index_name.to_string(),
+                relation_name: config.base_relation.to_string(),
+            }
+            .fail()?;
         }
 
         // Check that what we are indexing are really vectors
         if config.vec_fields.is_empty() {
-            bail!("Cannot create HNSW index without vector fields");
+            InvalidOperationSnafu {
+                op: "create HNSW index",
+                reason: "no vector fields specified",
+            }
+            .fail()?;
         }
         let mut vec_field_indices = vec![];
         for field in config.vec_fields.iter() {
@@ -1025,23 +1061,31 @@ impl<'a> SessionTx<'a> {
 
                     if let ColType::Vec { eltype, len } = col_type {
                         if eltype != config.dtype {
-                            bail!(
-                                "Cannot create HNSW index with field {} of type {:?} (expected {:?})",
-                                field,
-                                eltype,
-                                config.dtype
-                            );
+                            InvalidOperationSnafu {
+                                op: "create HNSW index",
+                                reason: format!(
+                                    "field {field} has type {eltype:?} (expected {:?})",
+                                    config.dtype
+                                ),
+                            }
+                            .fail()?;
                         }
                         if len != config.vec_dim {
-                            bail!(
-                                "Cannot create HNSW index with field {} of dimension {} (expected {})",
-                                field,
-                                len,
-                                config.vec_dim
-                            );
+                            InvalidOperationSnafu {
+                                op: "create HNSW index",
+                                reason: format!(
+                                    "field {field} has dimension {len} (expected {})",
+                                    config.vec_dim
+                                ),
+                            }
+                            .fail()?;
                         }
                     } else {
-                        bail!("Cannot create HNSW index with non-vector field {}", field)
+                        InvalidOperationSnafu {
+                            op: "create HNSW index",
+                            reason: format!("field {field} is not a vector type"),
+                        }
+                        .fail()?;
                     }
 
                     found = true;
@@ -1050,7 +1094,11 @@ impl<'a> SessionTx<'a> {
                 }
             }
             if !found {
-                bail!("Cannot create HNSW index with non-existent field {}", field);
+                InvalidOperationSnafu {
+                    op: "create HNSW index",
+                    reason: format!("field {field} does not exist"),
+                }
+                .fail()?;
             }
         }
 
@@ -1234,7 +1282,11 @@ impl<'a> SessionTx<'a> {
 
         // Check if index already exists
         if rel_handle.has_index(&idx_name.name) {
-            bail!("index {} for relation {} already exists");
+            IndexAlreadyExistsSnafu {
+                index_name: idx_name.name.to_string(),
+                relation_name: rel_name.name.to_string(),
+            }
+            .fail()?;
         }
 
         // Build column definitions
@@ -1252,7 +1304,14 @@ impl<'a> SessionTx<'a> {
                 }
             }
 
-            bail!("column {} in index {} for relation {} not found");
+            InvalidOperationSnafu {
+                op: "create index",
+                reason: format!(
+                    "column '{}' not found in relation '{}'",
+                    col.name, rel_name.name
+                ),
+            }
+            .fail()?;
         }
 
         'outer: for key in rel_handle.metadata.keys.iter() {
@@ -1366,7 +1425,10 @@ impl<'a> SessionTx<'a> {
             && rel.lsh_indices.remove(&idx_name.name).is_none()
             && rel.fts_indices.remove(&idx_name.name).is_none()
         {
-            bail!("index for relation not found");
+            IndexNotFoundSnafu {
+                relation_name: rel_name.name.to_string(),
+            }
+            .fail()?;
         }
 
         let mut to_clean =
@@ -1388,13 +1450,20 @@ impl<'a> SessionTx<'a> {
 
     pub(crate) fn rename_relation(&mut self, old: &Symbol, new: &Symbol) -> Result<()> {
         if old.name.starts_with('_') || new.name.starts_with('_') {
-            bail!("Bad name given");
+            InvalidOperationSnafu {
+                op: "rename relation",
+                reason: "temp store names (starting with '_') cannot be renamed",
+            }
+            .fail()?;
         }
         let new_key = DataValue::Str(new.name.clone());
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);
 
         if self.store_tx.exists(&new_encoded, true)? {
-            bail!("Cannot create relation {} as one with the same name already exists")
+            RelationAlreadyExistsSnafu {
+                name: new.name.to_string(),
+            }
+            .fail()?;
         };
 
         let old_key = DataValue::Str(old.name.clone());
@@ -1402,7 +1471,10 @@ impl<'a> SessionTx<'a> {
 
         let mut rel = self.get_relation(old, true)?;
         if rel.access_level < AccessLevel::Normal {
-            bail!("Insufficient access level {} for {} on stored relation '{}'");
+            InsufficientAccessSnafu {
+                operation: format!("rename stored relation '{}'", old.name),
+            }
+            .fail()?;
         }
         rel.name = new.name.clone();
 
@@ -1418,7 +1490,10 @@ impl<'a> SessionTx<'a> {
         let new_encoded = vec![new_key].encode_as_key(RelationId::SYSTEM);
 
         if self.temp_store_tx.exists(&new_encoded, true)? {
-            bail!("Cannot create relation {} as one with the same name already exists")
+            RelationAlreadyExistsSnafu {
+                name: new.name.to_string(),
+            }
+            .fail()?;
         };
 
         let old_key = DataValue::Str(old.name.clone());
