@@ -288,7 +288,9 @@ impl<'a> SessionTx<'a> {
             }
             let mut changed = false;
             for (k, new_store) in to_merge {
-                let old_store = stores.get_mut(k).unwrap();
+                let old_store = stores
+                    .get_mut(k)
+                    .expect("to_merge key always present in stores: derived from stores entries");
                 old_store.merge_in(new_store)?;
                 trace!("delta for {}: {}", k, old_store.has_delta());
                 changed |= old_store.has_delta();
@@ -367,8 +369,13 @@ impl<'a> SessionTx<'a> {
             let value: Vec<_> = aggr
                 .iter()
                 .map(|a| -> Result<DataValue> {
-                    let (aggr, _) = a.as_ref().unwrap();
-                    let op = aggr.meet_op.as_ref().unwrap();
+                    let (aggr, _) = a
+                        .as_ref()
+                        .expect("aggr is Some: filtered with all(|a| a.is_some()) above");
+                    let op = aggr
+                        .meet_op
+                        .as_ref()
+                        .expect("meet_op is Some: meet aggregation validated at compile time");
                     Ok(op.init_val())
                 })
                 .try_collect()?;
@@ -425,7 +432,7 @@ impl<'a> SessionTx<'a> {
                             aggr_ops[aggr_idx]
                                 .normal_op
                                 .as_mut()
-                                .unwrap()
+                                .expect("normal_op is Some: set by normal_init in Vacant branch")
                                 .set(&item[*tuple_idx])?;
                         }
                     }
@@ -434,7 +441,11 @@ impl<'a> SessionTx<'a> {
                         for (i, (aggr, params)) in &val_indices_and_aggrs {
                             let mut cur_aggr = aggr.clone();
                             cur_aggr.normal_init(params)?;
-                            cur_aggr.normal_op.as_mut().unwrap().set(&item[*i])?;
+                            cur_aggr
+                                .normal_op
+                                .as_mut()
+                                .expect("normal_op is Some: set by normal_init immediately above")
+                                .set(&item[*i])?;
                             aggr_ops.push(cur_aggr)
                         }
                         ent.insert(aggr_ops);
@@ -462,10 +473,14 @@ impl<'a> SessionTx<'a> {
                 .aggr
                 .iter()
                 .map(|a| {
-                    let (aggr, args) = a.as_ref().unwrap();
+                    let (aggr, args) = a
+                        .as_ref()
+                        .expect("aggr is Some: checked with all(|v| v.is_some()) above");
                     let mut aggr = aggr.clone();
                     aggr.normal_init(args)?;
-                    let op = aggr.normal_op.unwrap();
+                    let op = aggr
+                        .normal_op
+                        .expect("normal_op is Some: set by normal_init immediately above");
                     op.get()
                 })
                 .try_collect()?;
@@ -477,7 +492,11 @@ impl<'a> SessionTx<'a> {
                 .iter()
                 .map(|(is_aggr, idx)| {
                     if *is_aggr {
-                        aggrs[*idx].normal_op.as_ref().unwrap().get()
+                        aggrs[*idx]
+                            .normal_op
+                            .as_ref()
+                            .expect("normal_op is Some: all aggr ops initialised before collection")
+                            .get()
                     } else {
                         Ok(keys[*idx].clone())
                     }
@@ -511,7 +530,9 @@ impl<'a> SessionTx<'a> {
         limiter: &QueryLimiter,
         poison: Poison,
     ) -> Result<(bool, RegularTempStore)> {
-        let prev_store = stores.get(rule_symb).unwrap();
+        let prev_store = stores
+            .get(rule_symb)
+            .expect("rule_symb always present in stores: inserted during plan compilation");
         let mut out_store = RegularTempStore::default();
         let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
         for (rule_n, rule) in ruleset.iter().enumerate() {
@@ -519,7 +540,11 @@ impl<'a> SessionTx<'a> {
             let mut dependencies_changed = false;
 
             for (symb, multiplicity) in rule.contained_rules.iter() {
-                if stores.get(symb).unwrap().has_delta() {
+                if stores
+                    .get(symb)
+                    .expect("contained rule symbol always present in stores: validated by compiler")
+                    .has_delta()
+                {
                     dependencies_changed = true;
                     if *multiplicity == ContainedRuleMultiplicity::Many {
                         need_complete_run = true;
@@ -611,7 +636,11 @@ impl<'a> SessionTx<'a> {
             let mut dependencies_changed = false;
 
             for (symb, multiplicity) in rule.contained_rules.iter() {
-                if stores.get(symb).unwrap().has_delta() {
+                if stores
+                    .get(symb)
+                    .expect("contained rule symbol always present in stores: validated by compiler")
+                    .has_delta()
+                {
                     dependencies_changed = true;
                     if *multiplicity == ContainedRuleMultiplicity::Many {
                         need_complete_run = true;

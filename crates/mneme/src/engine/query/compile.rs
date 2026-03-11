@@ -617,7 +617,10 @@ impl<'a> SessionTx<'a> {
         let cur_ret_set: BTreeSet<_> = ret.bindings_after_eliminate().into_iter().collect();
 
         if cur_ret_set != ret_vars_set {
-            let unbound = ret_vars_set.difference(&cur_ret_set).next().unwrap();
+            let unbound = ret_vars_set
+                .difference(&cur_ret_set)
+                .next()
+                .expect("difference is non-empty: cur_ret_set != ret_vars_set checked above");
             return Err(UnboundVariableSnafu {
                 message: format!("symbol '{unbound}' in rule head is unbound"),
             }
