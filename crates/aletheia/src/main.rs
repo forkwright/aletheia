@@ -908,6 +908,8 @@ async fn serve(cli: Cli) -> Result<()> {
             ),
             enabled: true,
             active_window: Some((8, 23)),
+            catch_up: false,
+            ..aletheia_oikonomos::schedule::TaskDef::default()
         });
         let daemon_span = tracing::info_span!("daemon", nous.id = %agent_def.id);
         tokio::spawn(
