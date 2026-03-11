@@ -72,6 +72,10 @@ impl CredentialProvider for StaticCredentialProvider {
 }
 
 fn build_http_client() -> Result<Client> {
+    // reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
+    // install_default() is idempotent — subsequent calls return Err and are ignored.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     Client::builder()
         .timeout(Duration::from_secs(120))
         .build()
