@@ -2276,7 +2276,10 @@ impl KnowledgeStore {
 
     /// Get pending merge candidates (review queue) for a nous.
     #[instrument(skip(self))]
-    #[expect(clippy::used_underscore_binding, reason = "nous_id reserved for future filtering")]
+    #[expect(
+        clippy::used_underscore_binding,
+        reason = "nous_id reserved for future filtering"
+    )]
     pub fn get_pending_merges(
         &self,
         _nous_id: &str,
@@ -2319,7 +2322,10 @@ impl KnowledgeStore {
 
     /// Get the full merge history.
     #[instrument(skip(self))]
-    #[expect(clippy::used_underscore_binding, reason = "nous_id reserved for future filtering")]
+    #[expect(
+        clippy::used_underscore_binding,
+        reason = "nous_id reserved for future filtering"
+    )]
     pub fn get_merge_history(
         &self,
         _nous_id: &str,

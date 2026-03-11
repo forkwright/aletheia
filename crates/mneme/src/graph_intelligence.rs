@@ -511,14 +511,8 @@ impl crate::knowledge_store::KnowledgeStore {
                 .and_then(|v| v.get_str())
                 .unwrap_or("")
                 .to_owned();
-            let fact_count = row
-                .get(2)
-                .and_then(DataValue::get_int)
-                .unwrap_or(0);
-            let avg_stability = row
-                .get(3)
-                .and_then(DataValue::get_float)
-                .unwrap_or(0.0);
+            let fact_count = row.get(2).and_then(DataValue::get_int).unwrap_or(0);
+            let avg_stability = row.get(3).and_then(DataValue::get_float).unwrap_or(0.0);
 
             top_entities.push(crate::succession::EntityProfile {
                 entity_id: crate::id::EntityId::new_unchecked(entity_id),
@@ -533,24 +527,14 @@ impl crate::knowledge_store::KnowledgeStore {
         let mut params2 = std::collections::BTreeMap::new();
         params2.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
 
-        let stats_result =
-            self.run_query(crate::succession::NOUS_ACTIVE_FACT_STATS, params2)?;
+        let stats_result = self.run_query(crate::succession::NOUS_ACTIVE_FACT_STATS, params2)?;
 
-        let (total_active_facts, avg_stability_hours) = stats_result
-            .rows
-            .first()
-            .map(|row| {
-                let total = row
-                    .first()
-                    .and_then(DataValue::get_int)
-                    .unwrap_or(0);
-                let avg = row
-                    .get(1)
-                    .and_then(DataValue::get_float)
-                    .unwrap_or(0.0);
+        let (total_active_facts, avg_stability_hours) =
+            stats_result.rows.first().map_or((0, 0.0), |row| {
+                let total = row.first().and_then(DataValue::get_int).unwrap_or(0);
+                let avg = row.get(1).and_then(DataValue::get_float).unwrap_or(0.0);
                 (i64_to_u32(total), avg)
-            })
-            .unwrap_or((0, 0.0));
+            });
 
         Ok(crate::succession::KnowledgeProfile {
             nous_id: nous_id.to_owned(),

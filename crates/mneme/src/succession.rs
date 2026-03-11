@@ -213,10 +213,7 @@ active[fid, stab] :=
     is_forgotten == false,
     is_null(superseded_by)
 
-?[total_facts, avg_stability] :=
-    total_facts = count(fid),
-    avg_stability = mean(stab),
-    active[fid, stab]
+?[count(fid), mean(stab)] := active[fid, stab]
 ";
 
 #[cfg(test)]
@@ -248,10 +245,7 @@ mod tests {
         // 10 facts, 8 superseded, avg chain length 2.0
         // ratio = 0.8, chain_factor = 1.2, result = 0.96
         let v = compute_volatility(10, 8, 2.0);
-        assert!(
-            (v - 0.96).abs() < f64::EPSILON,
-            "expected 0.96, got {v}"
-        );
+        assert!((v - 0.96).abs() < f64::EPSILON, "expected 0.96, got {v}");
     }
 
     #[test]
@@ -259,20 +253,14 @@ mod tests {
         // 10 facts, 1 superseded, avg chain length 0.5
         // ratio = 0.1, chain_factor = 1.05, result = 0.105
         let v = compute_volatility(10, 1, 0.5);
-        assert!(
-            (v - 0.105).abs() < 1e-10,
-            "expected 0.105, got {v}"
-        );
+        assert!((v - 0.105).abs() < 1e-10, "expected 0.105, got {v}");
     }
 
     #[test]
     fn volatility_clamped_to_one() {
         // All superseded with long chains → saturates at 1.0
         let v = compute_volatility(10, 10, 20.0);
-        assert!(
-            (v - 1.0).abs() < f64::EPSILON,
-            "expected 1.0, got {v}"
-        );
+        assert!((v - 1.0).abs() < f64::EPSILON, "expected 1.0, got {v}");
     }
 
     #[test]
@@ -385,7 +373,7 @@ mod tests {
     #[cfg(feature = "mneme-engine")]
     mod engine_tests {
         use super::*;
-        use crate::knowledge::{Entity, Fact, Relationship, far_future, format_timestamp};
+        use crate::knowledge::{Entity, Fact, far_future};
         use crate::knowledge_store::KnowledgeStore;
 
         fn test_store() -> std::sync::Arc<KnowledgeStore> {
