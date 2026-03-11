@@ -22,6 +22,8 @@ pub mod engine;
 /// Database backup and JSON export for session data.
 #[cfg(feature = "sqlite")]
 pub mod backup;
+/// LLM-driven fact consolidation for knowledge maintenance.
+pub mod consolidation;
 /// Conflict detection pipeline for fact insertion.
 pub mod conflict;
 /// Entity deduplication pipeline for merging semantically identical entities.
