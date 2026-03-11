@@ -882,6 +882,10 @@ mod tests {
 
     type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
     // --- In-memory mock stores ---
 
     struct MockNoteStore {
@@ -1000,6 +1004,7 @@ mod tests {
         note_store: Arc<dyn NoteStore>,
         bb_store: Arc<dyn BlackboardStore>,
     ) -> ToolContext {
+        install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),

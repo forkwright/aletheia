@@ -269,7 +269,12 @@ mod tests {
 
     use super::*;
 
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
     fn test_ctx() -> ToolContext {
+        install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
             session_id: SessionId::new(),

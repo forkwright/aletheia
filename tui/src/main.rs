@@ -27,6 +27,10 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install ring crypto provider");
+
     let cli = Cli::parse();
     aletheia_tui::run_tui(cli.url, cli.token, cli.agent, cli.session, cli.logout).await
 }

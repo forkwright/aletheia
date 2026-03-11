@@ -22,6 +22,10 @@ use aletheia_symbolon::types::Role;
 use aletheia_taxis::oikos::Oikos;
 use tokio_util::sync::CancellationToken;
 
+fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 struct MockProvider {
     response: CompletionResponse,
 }
@@ -76,6 +80,7 @@ impl LlmProvider for MockProvider {
 }
 
 async fn start_test_server() -> (String, String, tempfile::TempDir) {
+    install_crypto_provider();
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
 

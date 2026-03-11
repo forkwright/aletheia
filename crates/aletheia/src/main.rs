@@ -316,6 +316,10 @@ enum MaintenanceAction {
 #[tokio::main]
 #[expect(clippy::too_many_lines, reason = "CLI dispatch is inherently verbose")]
 async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install ring crypto provider");
+
     let cli = Cli::parse();
 
     match &cli.command {

@@ -18,6 +18,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 use aletheia_koina::id::ToolName;
 use aletheia_koina::id::{NousId, SessionId};
 use aletheia_mneme::store::SessionStore;
@@ -41,6 +45,7 @@ fn test_store() -> Arc<Mutex<SessionStore>> {
 }
 
 fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
+    install_crypto_provider();
     let session_id = SessionId::new();
     {
         let s = store.try_lock().expect("lock not contended in test setup");
@@ -344,6 +349,7 @@ impl KnowledgeSearchService for StubKnowledgeService {
 }
 
 fn ctx_with_knowledge(svc: Arc<StubKnowledgeService>) -> ToolContext {
+    install_crypto_provider();
     ToolContext {
         nous_id: NousId::new("alice").expect("valid"),
         session_id: SessionId::new(),
