@@ -13,7 +13,9 @@ pub enum Error {
     TokenRequired { message: String },
 
     /// Gateway is unreachable (health check returned false or connection refused).
-    #[snafu(display("cannot reach gateway at {url}. Is it running?"))]
+    #[snafu(display(
+        "cannot reach gateway at {url}\n  Server not running. Start it with: aletheia"
+    ))]
     GatewayUnreachable { url: String },
 
     /// Could not determine the OS config directory (e.g. $HOME unset).
