@@ -26,46 +26,54 @@ impl HermeneusExtractionProvider {
 }
 
 impl ExtractionProvider for HermeneusExtractionProvider {
-    fn complete(&self, system: &str, user_message: &str) -> Result<String, ExtractionError> {
-        let request = CompletionRequest {
-            model: self.model.clone(),
-            system: Some(system.to_owned()),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text(user_message.to_owned()),
-            }],
-            max_tokens: 4096,
-            tools: Vec::new(),
-            temperature: None,
-            thinking: None,
-            stop_sequences: Vec::new(),
-            ..Default::default()
-        };
+    fn complete<'a>(
+        &'a self,
+        system: &'a str,
+        user_message: &'a str,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            let request = CompletionRequest {
+                model: self.model.clone(),
+                system: Some(system.to_owned()),
+                messages: vec![Message {
+                    role: Role::User,
+                    content: Content::Text(user_message.to_owned()),
+                }],
+                max_tokens: 4096,
+                tools: Vec::new(),
+                temperature: None,
+                thinking: None,
+                stop_sequences: Vec::new(),
+                ..Default::default()
+            };
 
-        let provider = self.providers.find_provider(&self.model).ok_or_else(|| {
-            LlmCallSnafu {
-                message: format!("no provider for model {}", self.model),
-            }
-            .build()
-        })?;
+            let provider = self.providers.find_provider(&self.model).ok_or_else(|| {
+                LlmCallSnafu {
+                    message: format!("no provider for model {}", self.model),
+                }
+                .build()
+            })?;
 
-        let response = provider.complete(&request).map_err(|e| {
-            LlmCallSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
+            let response = provider.complete(&request).await.map_err(|e| {
+                LlmCallSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
-        response
-            .content
-            .iter()
-            .find_map(|block| match block {
-                ContentBlock::Text { text, .. } => Some(text.clone()),
-                _ => None,
-            })
-            .context(LlmCallSnafu {
-                message: "no text content in extraction response",
-            })
+            response
+                .content
+                .iter()
+                .find_map(|block| match block {
+                    ContentBlock::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .context(LlmCallSnafu {
+                    message: "no text content in extraction response",
+                })
+        })
     }
 }
 
@@ -85,43 +93,51 @@ impl HermeneusSkillExtractionProvider {
 }
 
 impl SkillExtractionProvider for HermeneusSkillExtractionProvider {
-    fn complete(&self, system: &str, user_message: &str) -> Result<String, SkillExtractionError> {
-        let request = CompletionRequest {
-            model: self.model.clone(),
-            system: Some(system.to_owned()),
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text(user_message.to_owned()),
-            }],
-            max_tokens: 2048,
-            tools: Vec::new(),
-            temperature: None,
-            thinking: None,
-            stop_sequences: Vec::new(),
-            ..Default::default()
-        };
+    fn complete<'a>(
+        &'a self,
+        system: &'a str,
+        user_message: &'a str,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<String, SkillExtractionError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            let request = CompletionRequest {
+                model: self.model.clone(),
+                system: Some(system.to_owned()),
+                messages: vec![Message {
+                    role: Role::User,
+                    content: Content::Text(user_message.to_owned()),
+                }],
+                max_tokens: 2048,
+                tools: Vec::new(),
+                temperature: None,
+                thinking: None,
+                stop_sequences: Vec::new(),
+                ..Default::default()
+            };
 
-        let provider = self.providers.find_provider(&self.model).ok_or_else(|| {
-            SkillLlmCallSnafu {
-                message: format!("no provider for model {}", self.model),
-            }
-            .build()
-        })?;
+            let provider = self.providers.find_provider(&self.model).ok_or_else(|| {
+                SkillLlmCallSnafu {
+                    message: format!("no provider for model {}", self.model),
+                }
+                .build()
+            })?;
 
-        let response = provider.complete(&request).map_err(|e| {
-            let msg = e.to_string();
-            SkillLlmCallSnafu { message: msg }.build()
-        })?;
+            let response = provider.complete(&request).await.map_err(|e| {
+                let msg = e.to_string();
+                SkillLlmCallSnafu { message: msg }.build()
+            })?;
 
-        response
-            .content
-            .iter()
-            .find_map(|block| match block {
-                ContentBlock::Text { text, .. } => Some(text.clone()),
-                _ => None,
-            })
-            .context(SkillLlmCallSnafu {
-                message: "no text content in skill extraction response",
-            })
+            response
+                .content
+                .iter()
+                .find_map(|block| match block {
+                    ContentBlock::Text { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+                .context(SkillLlmCallSnafu {
+                    message: "no text content in skill extraction response",
+                })
+        })
     }
 }

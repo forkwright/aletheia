@@ -42,15 +42,23 @@ impl MockProvider {
 }
 
 impl LlmProvider for MockProvider {
-    fn complete(
-        &self,
-        _request: &CompletionRequest,
-    ) -> aletheia_hermeneus::error::Result<CompletionResponse> {
-        self.response
-            .lock()
-            .expect("lock") // INVARIANT: test mock, panic = test bug
-            .take()
-            .expect("mock provider called more than once")
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            self.response
+                .lock()
+                .expect("lock") // INVARIANT: test mock, panic = test bug
+                .take()
+                .expect("mock provider called more than once")
+        })
     }
 
     fn supported_models(&self) -> &[&str] {

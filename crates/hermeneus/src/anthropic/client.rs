@@ -1,9 +1,11 @@
 //! Anthropic Messages API provider.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use reqwest::blocking::Client;
+use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
 use secrecy::SecretString;
 use snafu::ResultExt;
@@ -142,14 +144,13 @@ impl AnthropicProvider {
     /// Once deltas have been streamed, a retry would produce duplicate/corrupt
     /// output, so mid-content errors propagate immediately.
     ///
-    /// This is an `AnthropicProvider`-specific method. The sync `LlmProvider`
-    /// trait only exposes `complete()`. When the trait goes async in M2, this
-    /// will become the primary implementation.
+    /// This is an `AnthropicProvider`-specific method. The `LlmProvider`
+    /// trait only exposes `complete()`.
     #[expect(
         clippy::too_many_lines,
         reason = "streaming retry loop with span recording at each exit point"
     )]
-    pub fn complete_streaming(
+    pub async fn complete_streaming(
         &self,
         request: &CompletionRequest,
         mut on_event: impl FnMut(StreamEvent),
@@ -179,7 +180,7 @@ impl AnthropicProvider {
                     max = self.max_retries,
                     "retrying streaming request after transient error"
                 );
-                std::thread::sleep(backoff_delay(attempt, last_error.as_ref()));
+                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
             let headers = self.build_headers()?;
@@ -191,6 +192,7 @@ impl AnthropicProvider {
                 .headers(headers)
                 .body(body.clone())
                 .send()
+                .await
             {
                 Ok(r) => r,
                 Err(e) => {
@@ -201,7 +203,7 @@ impl AnthropicProvider {
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
-                let err = super::error::map_error_response(response);
+                let err = super::error::map_error_response(response).await;
                 // Non-retryable HTTP status: 401, 400-level (except 429)
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
@@ -223,8 +225,14 @@ impl AnthropicProvider {
                 continue;
             }
 
-            // SSE stream — track whether content has been emitted
-            let reader = std::io::BufReader::new(response);
+            // Read the full response body and parse SSE from it
+            let response_bytes = response.bytes().await.map_err(|e| {
+                error::ApiRequestSnafu {
+                    message: format!("failed to read streaming response body: {e}"),
+                }
+                .build()
+            })?;
+            let reader = std::io::Cursor::new(response_bytes);
             let mut accumulator = StreamAccumulator::new();
             let mut content_started = false;
 
@@ -337,7 +345,7 @@ impl AnthropicProvider {
     }
 
     /// Count tokens for a request via the Anthropic `count_tokens` endpoint.
-    pub fn count_tokens_request(&self, request: &CompletionRequest) -> Result<TokenCount> {
+    pub async fn count_tokens_request(&self, request: &CompletionRequest) -> Result<TokenCount> {
         #[derive(serde::Deserialize)]
         struct CountResponse {
             input_tokens: u64,
@@ -353,6 +361,7 @@ impl AnthropicProvider {
             .headers(headers)
             .body(body)
             .send()
+            .await
             .map_err(|e| {
                 error::ApiRequestSnafu {
                     message: format!("count_tokens request failed: {e}"),
@@ -361,10 +370,10 @@ impl AnthropicProvider {
             })?;
 
         if !response.status().is_success() {
-            return Err(super::error::map_error_response(response));
+            return Err(super::error::map_error_response(response).await);
         }
 
-        let text = response.text().map_err(|e| {
+        let text = response.text().await.map_err(|e| {
             error::ApiRequestSnafu {
                 message: format!("failed to read count_tokens response: {e}"),
             }
@@ -420,7 +429,7 @@ impl AnthropicProvider {
         clippy::too_many_lines,
         reason = "retry loop with span recording at each exit point"
     )]
-    fn execute_with_retry(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+    async fn execute_with_retry(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
             llm.provider = "anthropic",
             llm.model = %request.model,
@@ -441,7 +450,7 @@ impl AnthropicProvider {
 
         for attempt in 0..=self.max_retries {
             if attempt > 0 {
-                std::thread::sleep(backoff_delay(attempt, last_error.as_ref()));
+                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
             }
 
             let headers = self.build_headers()?;
@@ -452,6 +461,7 @@ impl AnthropicProvider {
                 .headers(headers)
                 .body(body.clone())
                 .send()
+                .await
             {
                 Ok(r) => r,
                 Err(e) => {
@@ -463,7 +473,7 @@ impl AnthropicProvider {
             let status = response.status().as_u16();
 
             if response.status().is_success() {
-                let text = response.text().map_err(|e| {
+                let text = response.text().await.map_err(|e| {
                     error::ApiRequestSnafu {
                         message: format!("failed to read response body: {e}"),
                     }
@@ -514,7 +524,7 @@ impl AnthropicProvider {
                 return parsed;
             }
 
-            let err = super::error::map_error_response(response);
+            let err = super::error::map_error_response(response).await;
 
             // Non-retryable: 401, 400-level (except 429).
             if status == 401 || ((400..500).contains(&status) && status != 429) {
@@ -562,8 +572,11 @@ impl AnthropicProvider {
 }
 
 impl LlmProvider for AnthropicProvider {
-    fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
-        self.execute_with_retry(request)
+    fn complete<'a>(
+        &'a self,
+        request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
+        Box::pin(self.execute_with_retry(request))
     }
 
     fn supported_models(&self) -> &[&str] {
@@ -578,8 +591,11 @@ impl LlmProvider for AnthropicProvider {
         "anthropic"
     }
 
-    fn count_tokens(&self, request: &CompletionRequest) -> Result<Option<TokenCount>> {
-        self.count_tokens_request(request).map(Some)
+    fn count_tokens<'a>(
+        &'a self,
+        request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<TokenCount>>> + Send + 'a>> {
+        Box::pin(async move { self.count_tokens_request(request).await.map(Some) })
     }
 
     fn supports_caching(&self) -> bool {
@@ -659,23 +675,7 @@ mod tests {
     use super::*;
     use crate::error::Error;
     use crate::provider::{LlmProvider, ProviderConfig};
-    use crate::types::{CompletionRequest, CompletionResponse, Content, Message, Role};
-
-    /// Build a provider and call `complete()` on a blocking thread.
-    ///
-    /// `reqwest::blocking::Client` panics if constructed or used inside a tokio
-    /// async context, so wiremock tests dispatch everything to `spawn_blocking`.
-    async fn complete_on_blocking_thread(
-        config: ProviderConfig,
-        request: CompletionRequest,
-    ) -> crate::error::Result<CompletionResponse> {
-        tokio::task::spawn_blocking(move || {
-            let provider = AnthropicProvider::from_config(&config)?;
-            provider.complete(&request)
-        })
-        .await
-        .expect("spawn_blocking join")
-    }
+    use crate::types::{CompletionRequest, Content, Message, Role};
 
     fn test_config_with(base_url: &str) -> ProviderConfig {
         ProviderConfig {
@@ -774,9 +774,8 @@ mod tests {
             .await;
 
         let config = test_config_with(&server.uri());
-        let response = complete_on_blocking_thread(config, test_request())
-            .await
-            .expect("complete");
+        let provider = AnthropicProvider::from_config(&config).expect("valid config");
+        let response = provider.complete(&test_request()).await.expect("complete");
         assert_eq!(response.id, "msg_test");
         assert_eq!(response.stop_reason, crate::types::StopReason::EndTurn);
         assert_eq!(response.usage.input_tokens, 10);
@@ -798,7 +797,9 @@ mod tests {
 
         let mut config = test_config_with(&server.uri());
         config.max_retries = Some(2);
-        let err = complete_on_blocking_thread(config, test_request())
+        let provider = AnthropicProvider::from_config(&config).expect("valid config");
+        let err = provider
+            .complete(&test_request())
             .await
             .expect_err("should fail");
         assert!(
@@ -823,7 +824,9 @@ mod tests {
 
         let mut config = test_config_with(&server.uri());
         config.max_retries = Some(2);
-        let err = complete_on_blocking_thread(config, test_request())
+        let provider = AnthropicProvider::from_config(&config).expect("valid config");
+        let err = provider
+            .complete(&test_request())
             .await
             .expect_err("should fail");
         assert!(
@@ -847,7 +850,9 @@ mod tests {
             .await;
 
         let config = test_config_with(&server.uri());
-        let err = complete_on_blocking_thread(config, test_request())
+        let provider = AnthropicProvider::from_config(&config).expect("valid config");
+        let err = provider
+            .complete(&test_request())
             .await
             .expect_err("should fail");
         assert!(
@@ -868,7 +873,9 @@ mod tests {
             .await;
 
         let config = test_config_with(&server.uri());
-        let err = complete_on_blocking_thread(config, test_request())
+        let provider = AnthropicProvider::from_config(&config).expect("valid config");
+        let err = provider
+            .complete(&test_request())
             .await
             .expect_err("should fail");
         assert!(
@@ -889,7 +896,9 @@ mod tests {
             .await;
 
         let config = test_config_with(&server.uri());
-        let err = complete_on_blocking_thread(config, test_request())
+        let provider = AnthropicProvider::from_config(&config).expect("valid config");
+        let err = provider
+            .complete(&test_request())
             .await
             .expect_err("should fail");
         assert!(
