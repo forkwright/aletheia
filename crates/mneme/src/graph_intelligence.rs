@@ -380,6 +380,186 @@ impl crate::knowledge_store::KnowledgeStore {
         Ok(())
     }
 
+    /// Compute per-entity domain volatility from supersession patterns.
+    ///
+    /// Joins `facts`, `fact_entities`, and supersession chain data to produce
+    /// [`DomainVolatility`] scores for all entities with linked facts.
+    pub fn compute_domain_volatility(
+        &self,
+    ) -> crate::error::Result<Vec<crate::succession::DomainVolatility>> {
+        let result = self.run_query(
+            crate::succession::ENTITY_VOLATILITY_METRICS,
+            std::collections::BTreeMap::new(),
+        )?;
+
+        let now = jiff::Timestamp::now();
+        let mut volatilities = Vec::new();
+
+        for row in &result.rows {
+            let Some(entity_id) = row.first().and_then(|v| v.get_str()) else {
+                continue;
+            };
+            let total_facts = row
+                .get(1)
+                .and_then(crate::engine::DataValue::get_int)
+                .unwrap_or(0);
+            let superseded_facts = row
+                .get(2)
+                .and_then(crate::engine::DataValue::get_int)
+                .unwrap_or(0);
+            let avg_chain_length = row
+                .get(3)
+                .and_then(crate::engine::DataValue::get_float)
+                .unwrap_or(0.0);
+
+            let total = i64_to_u32(total_facts);
+            let superseded = i64_to_u32(superseded_facts);
+            let volatility_score =
+                crate::succession::compute_volatility(total, superseded, avg_chain_length);
+
+            volatilities.push(crate::succession::DomainVolatility {
+                entity_id: crate::id::EntityId::new_unchecked(entity_id),
+                total_facts: total,
+                superseded_facts: superseded,
+                avg_chain_length,
+                volatility_score,
+                computed_at: now,
+            });
+        }
+
+        Ok(volatilities)
+    }
+
+    /// Compute domain volatility and store scores in `graph_scores`.
+    ///
+    /// Intended for background scheduling — runs the volatility Datalog,
+    /// computes scores, and upserts them into `graph_scores` with
+    /// `score_type = "volatility"`.
+    pub fn compute_and_store_volatility(&self) -> crate::error::Result<()> {
+        let volatilities = self.compute_domain_volatility()?;
+        let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
+
+        for vol in &volatilities {
+            let mut params = std::collections::BTreeMap::new();
+            params.insert(
+                "entity_id".to_owned(),
+                crate::engine::DataValue::Str(vol.entity_id.as_str().into()),
+            );
+            params.insert(
+                "volatility".to_owned(),
+                crate::engine::DataValue::from(vol.volatility_score),
+            );
+            params.insert(
+                "now".to_owned(),
+                crate::engine::DataValue::Str(now.clone().into()),
+            );
+            self.run_mut_query(crate::succession::STORE_VOLATILITY_SCORE, params)?;
+        }
+
+        Ok(())
+    }
+
+    /// Load volatility scores from `graph_scores`.
+    ///
+    /// Returns a map of `entity_id → volatility_score` for all entities
+    /// that have stored volatility data.
+    pub fn load_volatility_scores(&self) -> crate::error::Result<HashMap<String, f64>> {
+        let result = self.run_query(
+            r"?[entity_id, score] := *graph_scores{entity_id, score_type, score}, score_type = 'volatility'",
+            std::collections::BTreeMap::new(),
+        )?;
+
+        let mut scores = HashMap::new();
+        for row in &result.rows {
+            if let (Some(eid), Some(score)) = (
+                row.first().and_then(|v| v.get_str()),
+                row.get(1).and_then(crate::engine::DataValue::get_float),
+            ) {
+                scores.insert(eid.to_owned(), score);
+            }
+        }
+
+        Ok(scores)
+    }
+
+    /// Get the knowledge profile for a specific nous.
+    ///
+    /// Returns the top entities by fact count, average stability, and
+    /// volatility scores. Useful for understanding what each nous "knows about."
+    pub fn nous_knowledge_profile(
+        &self,
+        nous_id: &str,
+    ) -> crate::error::Result<crate::succession::KnowledgeProfile> {
+        use crate::engine::DataValue;
+
+        // Get top entities
+        let mut params = std::collections::BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+
+        let result = self.run_query(crate::succession::NOUS_KNOWLEDGE_PROFILE, params)?;
+
+        // Load volatility scores for enrichment
+        let volatility_scores = self.load_volatility_scores().unwrap_or_default();
+
+        let mut top_entities = Vec::new();
+        for row in &result.rows {
+            let Some(entity_id) = row.first().and_then(|v| v.get_str()) else {
+                continue;
+            };
+            let entity_name = row
+                .get(1)
+                .and_then(|v| v.get_str())
+                .unwrap_or("")
+                .to_owned();
+            let fact_count = row
+                .get(2)
+                .and_then(DataValue::get_int)
+                .unwrap_or(0);
+            let avg_stability = row
+                .get(3)
+                .and_then(DataValue::get_float)
+                .unwrap_or(0.0);
+
+            top_entities.push(crate::succession::EntityProfile {
+                entity_id: crate::id::EntityId::new_unchecked(entity_id),
+                entity_name,
+                fact_count: i64_to_u32(fact_count),
+                avg_stability_hours: avg_stability,
+                volatility_score: volatility_scores.get(entity_id).copied(),
+            });
+        }
+
+        // Get overall stats
+        let mut params2 = std::collections::BTreeMap::new();
+        params2.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+
+        let stats_result =
+            self.run_query(crate::succession::NOUS_ACTIVE_FACT_STATS, params2)?;
+
+        let (total_active_facts, avg_stability_hours) = stats_result
+            .rows
+            .first()
+            .map(|row| {
+                let total = row
+                    .first()
+                    .and_then(DataValue::get_int)
+                    .unwrap_or(0);
+                let avg = row
+                    .get(1)
+                    .and_then(DataValue::get_float)
+                    .unwrap_or(0.0);
+                (i64_to_u32(total), avg)
+            })
+            .unwrap_or((0, 0.0));
+
+        Ok(crate::succession::KnowledgeProfile {
+            nous_id: nous_id.to_owned(),
+            top_entities,
+            avg_stability_hours,
+            total_active_facts,
+        })
+    }
+
     /// Build a full [`GraphContext`] for a recall query.
     ///
     /// Loads cached graph scores, computes BFS proximity from seed entities,

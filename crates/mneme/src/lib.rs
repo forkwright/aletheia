@@ -75,6 +75,8 @@ pub mod skills;
 /// `SQLite` session store (WAL mode, prepared statements, transactional writes).
 #[cfg(feature = "sqlite")]
 pub mod store;
+/// Ecological succession — domain volatility tracking and adaptive decay rates.
+pub mod succession;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types;
 /// Controlled relationship type vocabulary for knowledge graph validation.
