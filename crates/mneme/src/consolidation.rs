@@ -731,9 +731,10 @@ mod engine_impl {
 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by,
    source_session_id, recorded_at, access_count, last_accessed_at,
    stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason] :=
-    *facts{id: $id, valid_from, content, nous_id, confidence, tier,
+    *facts{id, valid_from, content, nous_id, confidence, tier,
            source_session_id, recorded_at, access_count, last_accessed_at,
            stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason},
+    id = $id,
     valid_to = $now,
     superseded_by = $superseding_id
 
@@ -1240,12 +1241,7 @@ mod engine_tests {
     use std::sync::Arc;
 
     fn test_store() -> Arc<KnowledgeStore> {
-        let store = KnowledgeStore::open_mem().expect("open_mem");
-        // Initialize consolidation_audit relation
-        store
-            .init_consolidation_audit()
-            .expect("init consolidation_audit");
-        store
+        KnowledgeStore::open_mem().expect("open_mem")
     }
 
     fn make_fact(id: &str, nous_id: &str, content: &str, tier: EpistemicTier, days_ago: i64) -> Fact {
