@@ -52,7 +52,6 @@ pub struct FtsIndexConfig {
     pub filters: Vec<TokenizerConfig>,
 }
 
-#[allow(missing_docs)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MinHashLshConfig {
     pub base_relation: CompactString,

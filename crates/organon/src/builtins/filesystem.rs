@@ -348,7 +348,6 @@ fn format_system_time(time: &SystemTime) -> String {
     }
 }
 
-#[allow(clippy::similar_names)] // doe/doy are standard names in Hinnant's date algorithm
 fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     // Algorithm from http://howardhinnant.github.io/date_algorithms.html
     let z = days + 719_468;

@@ -7,9 +7,8 @@ use crate::engine::error::DbResult as Result;
 #[cfg(feature = "graph-algo")]
 use crate::engine::fixed_rule::csr::{CsrBuilder, DirectedCsrGraph};
 use crate::ensure;
-#[allow(unused_imports)]
 use compact_str::CompactString;
-#[allow(unused_imports)]
+#[cfg(feature = "graph-algo")]
 use either::{Left, Right};
 use itertools::Itertools;
 use snafu::Snafu;

@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+repository.workspace = true
 description = "Behavioral eval framework — scenario-based API testing against a live instance"
 publish = false
 

@@ -399,10 +399,12 @@ impl ScanBuilder {
 // ---------------------------------------------------------------------------
 
 /// Builder-generated query scripts for `KnowledgeStore` operations.
+// `#[expect]` cannot be used here: this module is only compiled with mneme-engine, so the
+// expectation would be unfulfilled in default-feature compilations that omit this module.
 #[allow(
     clippy::enum_glob_use,
     clippy::wildcard_imports,
-    // query builders use glob imports for field enum variants
+    reason = "query builders use glob imports for enum field variants"
 )]
 pub mod queries {
     use super::*;

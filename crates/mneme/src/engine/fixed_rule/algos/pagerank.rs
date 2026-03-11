@@ -16,7 +16,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct PageRank;
 
 impl FixedRule for PageRank {
-    #[allow(unused_variables)]
+    #[expect(
+        unused_variables,
+        reason = "poison is required by the FixedRule trait but PageRank does not poll for cancellation"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

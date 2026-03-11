@@ -31,5 +31,5 @@ seccompiler = "0.5"
 [dev-dependencies]
 rustls = { workspace = true }
 static_assertions = { workspace = true }
-tempfile = "3"
+tempfile = { workspace = true }
 tokio = { workspace = true }
