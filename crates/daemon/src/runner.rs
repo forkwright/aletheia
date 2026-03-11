@@ -17,12 +17,6 @@ use crate::maintenance::{
 };
 use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus, backoff_delay};
 
-/// Maximum wall-clock duration for any single task execution (10 minutes).
-///
-/// Prevents a hung task (e.g., a blocking shell command or an unresponsive
-/// knowledge store operation) from blocking the runner indefinitely.
-const TASK_EXECUTION_TIMEOUT: Duration = Duration::from_secs(600);
-
 /// Per-nous background task runner.
 pub struct TaskRunner {
     nous_id: String,
