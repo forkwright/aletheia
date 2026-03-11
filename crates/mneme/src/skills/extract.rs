@@ -137,6 +137,169 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
 }
 
 // ---------------------------------------------------------------------------
+// Deduplication
+// ---------------------------------------------------------------------------
+
+/// Result of a dedup check on a candidate skill.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DedupOutcome {
+    /// No duplicate found — promote normally.
+    Unique,
+    /// Existing skill is better — discard candidate.
+    DiscardCandidate {
+        /// The ID of the existing skill that wins.
+        existing_id: String,
+    },
+    /// Candidate is better — supersede the existing skill.
+    SupersedeExisting {
+        /// The ID of the existing skill to supersede.
+        existing_id: String,
+    },
+}
+
+/// Parameters for a dedup comparison between a candidate and an existing skill.
+pub struct DedupInput<'a> {
+    /// The candidate skill content.
+    pub candidate: &'a SkillContent,
+    /// Candidate confidence score.
+    pub candidate_confidence: f64,
+    /// Candidate usage count.
+    pub candidate_usage: u32,
+    /// The existing skill content.
+    pub existing: &'a SkillContent,
+    /// Existing skill confidence score.
+    pub existing_confidence: f64,
+    /// Existing skill usage count.
+    pub existing_usage: u32,
+    /// Existing skill fact ID.
+    pub existing_id: &'a str,
+    /// Optional embedding for the candidate.
+    pub candidate_embedding: Option<&'a [f32]>,
+    /// Optional embedding for the existing skill.
+    pub existing_embedding: Option<&'a [f32]>,
+}
+
+/// Check whether a candidate skill duplicates an existing one.
+///
+/// Uses embedding cosine similarity when embeddings are provided.
+/// Falls back to tool overlap + name similarity heuristics otherwise.
+///
+/// Threshold: cosine similarity > 0.90 = duplicate.
+pub fn check_dedup(input: &DedupInput<'_>) -> DedupOutcome {
+    let candidate = input.candidate;
+    let existing = input.existing;
+    let candidate_confidence = input.candidate_confidence;
+    let candidate_usage = input.candidate_usage;
+    let existing_confidence = input.existing_confidence;
+    let existing_usage = input.existing_usage;
+    let existing_id = input.existing_id;
+    let is_duplicate = if let (Some(cand_emb), Some(exist_emb)) =
+        (input.candidate_embedding, input.existing_embedding)
+    {
+        cosine_similarity(cand_emb, exist_emb) > 0.90
+    } else {
+        // Fallback: tool overlap + name similarity
+        let tool_overlap = compute_tool_overlap(&candidate.tools_used, &existing.tools_used);
+        let name_sim = compute_name_similarity(&candidate.name, &existing.name);
+        tool_overlap > 0.85 || (tool_overlap > 0.6 && name_sim > 0.5)
+    };
+
+    if !is_duplicate {
+        return DedupOutcome::Unique;
+    }
+
+    // Existing wins if it has higher confidence + usage
+    let existing_score = existing_confidence + f64::from(existing_usage) * 0.01;
+    let candidate_score = candidate_confidence + f64::from(candidate_usage) * 0.01;
+
+    if existing_score >= candidate_score {
+        DedupOutcome::DiscardCandidate {
+            existing_id: existing_id.to_owned(),
+        }
+    } else {
+        DedupOutcome::SupersedeExisting {
+            existing_id: existing_id.to_owned(),
+        }
+    }
+}
+
+/// Compute cosine similarity between two vectors.
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+
+    let mut dot = 0.0_f64;
+    let mut norm_a = 0.0_f64;
+    let mut norm_b = 0.0_f64;
+
+    for (x, y) in a.iter().zip(b.iter()) {
+        let x = f64::from(*x);
+        let y = f64::from(*y);
+        dot += x * y;
+        norm_a += x * x;
+        norm_b += y * y;
+    }
+
+    let denom = norm_a.sqrt() * norm_b.sqrt();
+    if denom < f64::EPSILON {
+        0.0
+    } else {
+        dot / denom
+    }
+}
+
+/// Compute Jaccard overlap between two tool lists.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "tool list lengths are small (<50); precision loss is negligible"
+)]
+fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
+    if a.is_empty() && b.is_empty() {
+        return 1.0;
+    }
+    let set_a: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
+    let set_b: std::collections::HashSet<&str> = b.iter().map(String::as_str).collect();
+    let intersection = set_a.intersection(&set_b).count();
+    let union = set_a.union(&set_b).count();
+    if union == 0 {
+        0.0
+    } else {
+        intersection as f64 / union as f64
+    }
+}
+
+/// Simple name similarity: longest common subsequence ratio.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "string char counts are small; precision loss is negligible"
+)]
+fn compute_name_similarity(a: &str, b: &str) -> f64 {
+    let a_lower = a.to_lowercase();
+    let b_lower = b.to_lowercase();
+    let a_chars: Vec<char> = a_lower.chars().collect();
+    let b_chars: Vec<char> = b_lower.chars().collect();
+
+    if a_chars.is_empty() || b_chars.is_empty() {
+        return 0.0;
+    }
+
+    let mut dp = vec![vec![0usize; b_chars.len() + 1]; a_chars.len() + 1];
+    for (i, ac) in a_chars.iter().enumerate() {
+        for (j, bc) in b_chars.iter().enumerate() {
+            dp[i + 1][j + 1] = if ac == bc {
+                dp[i][j] + 1
+            } else {
+                dp[i + 1][j].max(dp[i][j + 1])
+            };
+        }
+    }
+
+    let lcs = dp[a_chars.len()][b_chars.len()];
+    lcs as f64 / a_chars.len().max(b_chars.len()) as f64
+}
+
+// ---------------------------------------------------------------------------
 // Prompt construction
 // ---------------------------------------------------------------------------
 
@@ -711,5 +874,195 @@ mod tests {
         assert!(EXTRACTION_SYSTEM_PROMPT.contains("steps"));
         assert!(EXTRACTION_SYSTEM_PROMPT.contains("tools_used"));
         assert!(EXTRACTION_SYSTEM_PROMPT.contains("domain_tags"));
+    }
+
+    // -- Dedup ----------------------------------------------------------------
+
+    fn make_skill(name: &str, tools: &[&str]) -> SkillContent {
+        SkillContent {
+            name: name.to_owned(),
+            description: format!("Skill for {name}"),
+            steps: vec!["step 1".to_owned()],
+            tools_used: tools.iter().map(|t| (*t).to_owned()).collect(),
+            domain_tags: vec!["test".to_owned()],
+            origin: "extracted".to_owned(),
+        }
+    }
+
+    #[test]
+    fn dedup_unique_skills() {
+        let candidate = make_skill("rust-testing", &["Bash", "Read"]);
+        let existing = make_skill("python-deploy", &["Write", "Bash"]);
+        let result = check_dedup(&DedupInput {
+            candidate: &candidate,
+            candidate_confidence: 0.8,
+            candidate_usage: 0,
+            existing: &existing,
+            existing_confidence: 0.9,
+            existing_usage: 5,
+            existing_id: "sk-1",
+            candidate_embedding: None,
+            existing_embedding: None,
+        });
+        assert_eq!(result, DedupOutcome::Unique);
+    }
+
+    #[test]
+    fn dedup_similar_tools_discard_candidate() {
+        let candidate = make_skill("rust-build", &["Read", "Edit", "Bash"]);
+        let existing = make_skill("rust-build-v2", &["Read", "Edit", "Bash"]);
+        let result = check_dedup(&DedupInput {
+            candidate: &candidate,
+            candidate_confidence: 0.7,
+            candidate_usage: 0,
+            existing: &existing,
+            existing_confidence: 0.9,
+            existing_usage: 10,
+            existing_id: "sk-1",
+            candidate_embedding: None,
+            existing_embedding: None,
+        });
+        assert_eq!(
+            result,
+            DedupOutcome::DiscardCandidate {
+                existing_id: "sk-1".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn dedup_candidate_better_supersedes() {
+        let candidate = make_skill("rust-build", &["Read", "Edit", "Bash"]);
+        let existing = make_skill("rust-build-old", &["Read", "Edit", "Bash"]);
+        let result = check_dedup(&DedupInput {
+            candidate: &candidate,
+            candidate_confidence: 0.95,
+            candidate_usage: 5,
+            existing: &existing,
+            existing_confidence: 0.5,
+            existing_usage: 0,
+            existing_id: "sk-1",
+            candidate_embedding: None,
+            existing_embedding: None,
+        });
+        assert_eq!(
+            result,
+            DedupOutcome::SupersedeExisting {
+                existing_id: "sk-1".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn dedup_embedding_similarity_above_threshold() {
+        let candidate = make_skill("skill-a", &["Read"]);
+        let existing = make_skill("skill-b", &["Write"]);
+        let cand_emb = [0.9, 0.1, 0.0, 0.0];
+        let exist_emb = [0.91, 0.09, 0.01, 0.0];
+        let result = check_dedup(&DedupInput {
+            candidate: &candidate,
+            candidate_confidence: 0.7,
+            candidate_usage: 0,
+            existing: &existing,
+            existing_confidence: 0.9,
+            existing_usage: 5,
+            existing_id: "sk-1",
+            candidate_embedding: Some(&cand_emb),
+            existing_embedding: Some(&exist_emb),
+        });
+        assert_eq!(
+            result,
+            DedupOutcome::DiscardCandidate {
+                existing_id: "sk-1".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn dedup_embedding_below_threshold_is_unique() {
+        let candidate = make_skill("skill-a", &["Read"]);
+        let existing = make_skill("skill-b", &["Write"]);
+        let cand_emb = [1.0, 0.0, 0.0, 0.0];
+        let exist_emb = [0.0, 1.0, 0.0, 0.0];
+        let result = check_dedup(&DedupInput {
+            candidate: &candidate,
+            candidate_confidence: 0.7,
+            candidate_usage: 0,
+            existing: &existing,
+            existing_confidence: 0.9,
+            existing_usage: 5,
+            existing_id: "sk-1",
+            candidate_embedding: Some(&cand_emb),
+            existing_embedding: Some(&exist_emb),
+        });
+        assert_eq!(result, DedupOutcome::Unique);
+    }
+
+    #[test]
+    fn cosine_similarity_identical_vectors() {
+        let a = [1.0, 0.0, 0.0];
+        let b = [1.0, 0.0, 0.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!(
+            (sim - 1.0).abs() < 1e-6,
+            "identical vectors should have sim=1.0, got {sim}"
+        );
+    }
+
+    #[test]
+    fn cosine_similarity_orthogonal_vectors() {
+        let a = [1.0, 0.0, 0.0];
+        let b = [0.0, 1.0, 0.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!(
+            sim.abs() < 1e-6,
+            "orthogonal vectors should have sim=0, got {sim}"
+        );
+    }
+
+    #[test]
+    fn cosine_similarity_empty_vectors() {
+        let sim = cosine_similarity(&[], &[]);
+        assert!(sim.abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tool_overlap_identical_sets() {
+        let a = vec!["Read".to_owned(), "Edit".to_owned()];
+        let b = vec!["Read".to_owned(), "Edit".to_owned()];
+        let overlap = compute_tool_overlap(&a, &b);
+        assert!((overlap - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tool_overlap_disjoint_sets() {
+        let a = vec!["Read".to_owned()];
+        let b = vec!["Write".to_owned()];
+        let overlap = compute_tool_overlap(&a, &b);
+        assert!(overlap.abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn name_similarity_identical() {
+        let sim = compute_name_similarity("rust-errors", "rust-errors");
+        assert!((sim - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn name_similarity_partial() {
+        let sim = compute_name_similarity("rust-error-handling", "rust-errors");
+        assert!(
+            sim > 0.5,
+            "partially overlapping names should have >0.5 similarity: {sim}"
+        );
+    }
+
+    #[test]
+    fn name_similarity_totally_different() {
+        let sim = compute_name_similarity("abc", "xyz");
+        assert!(
+            sim < 0.1,
+            "totally different names should have low similarity: {sim}"
+        );
     }
 }

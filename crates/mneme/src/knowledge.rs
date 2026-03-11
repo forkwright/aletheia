@@ -155,6 +155,10 @@ pub enum ForgetReason {
     Incorrect,
     /// Privacy concern.
     Privacy,
+    /// Skill retired due to prolonged inactivity (decay score below threshold).
+    Stale,
+    /// Replaced by a newer or better skill during deduplication.
+    Superseded,
 }
 
 impl ForgetReason {
@@ -165,6 +169,8 @@ impl ForgetReason {
             Self::Outdated => "outdated",
             Self::Incorrect => "incorrect",
             Self::Privacy => "privacy",
+            Self::Stale => "stale",
+            Self::Superseded => "superseded",
         }
     }
 }
@@ -184,6 +190,8 @@ impl std::str::FromStr for ForgetReason {
             "outdated" => Ok(Self::Outdated),
             "incorrect" => Ok(Self::Incorrect),
             "privacy" => Ok(Self::Privacy),
+            "stale" => Ok(Self::Stale),
+            "superseded" => Ok(Self::Superseded),
             other => Err(format!("unknown forget reason: {other}")),
         }
     }
@@ -696,6 +704,8 @@ mod tests {
             ForgetReason::Outdated,
             ForgetReason::Incorrect,
             ForgetReason::Privacy,
+            ForgetReason::Stale,
+            ForgetReason::Superseded,
         ] {
             let json =
                 serde_json::to_string(&reason).expect("ForgetReason serialization is infallible");
@@ -712,6 +722,8 @@ mod tests {
             ForgetReason::Outdated,
             ForgetReason::Incorrect,
             ForgetReason::Privacy,
+            ForgetReason::Stale,
+            ForgetReason::Superseded,
         ] {
             let json =
                 serde_json::to_string(&reason).expect("ForgetReason serialization is infallible");
@@ -727,6 +739,8 @@ mod tests {
             ForgetReason::Outdated,
             ForgetReason::Incorrect,
             ForgetReason::Privacy,
+            ForgetReason::Stale,
+            ForgetReason::Superseded,
         ] {
             let parsed: ForgetReason = reason
                 .as_str()

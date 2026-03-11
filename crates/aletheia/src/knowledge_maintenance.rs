@@ -11,10 +11,6 @@ use aletheia_oikonomos::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceR
 /// Bridges the daemon's `KnowledgeMaintenanceExecutor` trait to the concrete
 /// `KnowledgeStore`. All methods are blocking (`CozoDB` is sync).
 pub(crate) struct KnowledgeMaintenanceAdapter {
-    #[expect(
-        dead_code,
-        reason = "store will be used once F.1–F.8 stubs are replaced"
-    )]
     store: Arc<KnowledgeStore>,
 }
 
@@ -69,5 +65,29 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
 
     fn health_check(&self, _nous_id: &str) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
         Ok(MaintenanceReport::default())
+    }
+
+    fn run_skill_decay(
+        &self,
+        nous_id: &str,
+    ) -> aletheia_oikonomos::error::Result<MaintenanceReport> {
+        let (active, needs_review, retired) = self.store.run_skill_decay(nous_id).map_err(|e| {
+            aletheia_oikonomos::error::TaskFailedSnafu {
+                task_id: "skill-decay".to_owned(),
+                reason: e.to_string(),
+            }
+            .build()
+        })?;
+
+        let detail =
+            format!("Skill decay: {active} active, {needs_review} needs_review, {retired} retired");
+        tracing::info!(%detail, "maintenance: skill decay complete");
+
+        Ok(MaintenanceReport {
+            items_processed: (active + retired) as u64,
+            items_modified: retired as u64,
+            detail: Some(detail),
+            ..Default::default()
+        })
     }
 }

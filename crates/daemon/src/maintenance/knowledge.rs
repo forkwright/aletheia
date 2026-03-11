@@ -46,6 +46,9 @@ pub trait KnowledgeMaintenanceExecutor: Send + Sync {
 
     /// Run a diagnostic health check on the knowledge graph.
     fn health_check(&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
+
+    /// Compute decay scores for skills and retire stale ones.
+    fn run_skill_decay(&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;
 }
 
 /// Configuration for knowledge maintenance task scheduling.
@@ -95,6 +98,15 @@ mod tests {
 
         fn health_check(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
             Ok(MaintenanceReport::default())
+        }
+
+        fn run_skill_decay(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+            Ok(MaintenanceReport {
+                items_processed: 5,
+                items_modified: 1,
+                detail: Some("Skill decay: 4 active, 0 needs_review, 1 retired".to_owned()),
+                ..Default::default()
+            })
         }
     }
 
