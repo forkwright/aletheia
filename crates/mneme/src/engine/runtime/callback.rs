@@ -72,7 +72,10 @@ impl<'s, S: Storage<'s>> Db<S> {
 
         for (table, vals) in collector {
             for (op, new, old) in vals {
-                let (cbs, cb_dir) = &*self.event_callbacks.read().expect("event_callbacks lock poisoned");
+                let (cbs, cb_dir) = &*self
+                    .event_callbacks
+                    .read()
+                    .expect("event_callbacks lock poisoned");
                 if let Some(cb_ids) = cb_dir.get(&table) {
                     let mut it = cb_ids.iter();
                     if let Some(fst) = it.next() {
@@ -95,7 +98,10 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
 
         if !to_remove.is_empty() {
-            let (cbs, cb_dir) = &mut *self.event_callbacks.write().expect("event_callbacks lock poisoned");
+            let (cbs, cb_dir) = &mut *self
+                .event_callbacks
+                .write()
+                .expect("event_callbacks lock poisoned");
             for removing_id in &to_remove {
                 if let Some(removed) = cbs.remove(removing_id) {
                     if let Some(set) = cb_dir.get_mut(&removed.dependent) {

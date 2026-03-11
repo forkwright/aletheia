@@ -63,8 +63,7 @@ impl VectorCache {
     fn new(distance: HnswDistance, capacity: usize) -> Self {
         Self {
             cache: LruCache::new(
-                NonZeroUsize::new(capacity)
-                    .expect("VectorCache capacity must be > 0"),
+                NonZeroUsize::new(capacity).expect("VectorCache capacity must be > 0"),
             ),
             distance,
         }
@@ -109,7 +108,8 @@ impl VectorCache {
                 }
                 _ => bail!(
                     "Cannot compute cosine distance between {:?} and {:?}",
-                    v1, v2
+                    v1,
+                    v2
                 ),
             },
             HnswDistance::InnerProduct => match (v1, v2) {
@@ -232,10 +232,18 @@ impl<'a> SessionTx<'a> {
         if let Some(ep) = ep_res {
             let ep = ep?;
             // bottom level since we are going up
-            let bottom_level = ep[0].get_int().expect("HNSW index stores integers at this position");
+            let bottom_level = ep[0]
+                .get_int()
+                .expect("HNSW index stores integers at this position");
             let ep_t_key = ep[1..orig_table.metadata.keys.len() + 1].to_vec();
-            let ep_idx = ep[orig_table.metadata.keys.len() + 1].get_int().expect("HNSW index stores integers at this position") as usize;
-            let ep_subidx = ep[orig_table.metadata.keys.len() + 2].get_int().expect("HNSW index stores integers at this position") as i32;
+            let ep_idx = ep[orig_table.metadata.keys.len() + 1]
+                .get_int()
+                .expect("HNSW index stores integers at this position")
+                as usize;
+            let ep_subidx = ep[orig_table.metadata.keys.len() + 2]
+                .get_int()
+                .expect("HNSW index stores integers at this position")
+                as i32;
             let ep_key = (ep_t_key, ep_idx, ep_subidx);
             vec_cache.ensure_key(&ep_key, orig_table, self)?;
             let ep_distance = vec_cache.v_dist(q, &ep_key)?;
@@ -380,7 +388,11 @@ impl<'a> SessionTx<'a> {
                     let mut target_self_val: Vec<DataValue> =
                         rmp_serde::from_slice(&target_self_val_bytes[ENCODED_KEY_MIN_LEN..])
                             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                    let mut target_degree = target_self_val[0].get_float().expect("HNSW index stores floats at this position") as usize + 1;
+                    let mut target_degree = target_self_val[0]
+                        .get_float()
+                        .expect("HNSW index stores floats at this position")
+                        as usize
+                        + 1;
                     if target_degree > m_max {
                         // shrink links
                         target_degree = self.hnsw_shrink_neighbour(
@@ -498,7 +510,10 @@ impl<'a> SessionTx<'a> {
                 let old_existing_val: Vec<DataValue> =
                     rmp_serde::from_slice(&old_existing_val[ENCODED_KEY_MIN_LEN..])
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                if old_existing_val[2].get_bool().expect("HNSW index stores bools at this position") {
+                if old_existing_val[2]
+                    .get_bool()
+                    .expect("HNSW index stores bools at this position")
+                {
                     self.store_tx.del(&old_key_bytes)?;
                 } else {
                     let old_val = vec![
@@ -547,7 +562,8 @@ impl<'a> SessionTx<'a> {
             }
         }
         while !candidates.is_empty() && ret.len() < m {
-            let (cand_key, Reverse(OrderedFloat(cand_dist_to_q))) = candidates.pop()
+            let (cand_key, Reverse(OrderedFloat(cand_dist_to_q))) = candidates
+                .pop()
                 .expect("checked !is_empty() in while condition");
             let mut should_add = true;
             for (existing, _) in ret.iter() {
@@ -567,8 +583,9 @@ impl<'a> SessionTx<'a> {
         }
         if manifest.keep_pruned_connections {
             while !discarded.is_empty() && ret.len() < m {
-                let (nearest_triple, Reverse(OrderedFloat(nearest_dist))) =
-                    discarded.pop().expect("checked !is_empty() in while condition");
+                let (nearest_triple, Reverse(OrderedFloat(nearest_dist))) = discarded
+                    .pop()
+                    .expect("checked !is_empty() in while condition");
                 ret.push(nearest_triple, Reverse(OrderedFloat(nearest_dist)));
             }
         }
@@ -595,7 +612,9 @@ impl<'a> SessionTx<'a> {
         }
 
         while let Some((candidate, Reverse(OrderedFloat(candidate_dist)))) = candidates.pop() {
-            let (_, OrderedFloat(furtherest_dist)) = found_nn.peek().expect("found_nn is non-empty: populated before search loop");
+            let (_, OrderedFloat(furtherest_dist)) = found_nn
+                .peek()
+                .expect("found_nn is non-empty: populated before search loop");
             let furtherest_dist = *furtherest_dist;
             if candidate_dist > furtherest_dist {
                 break;
@@ -609,7 +628,9 @@ impl<'a> SessionTx<'a> {
                 }
                 vec_cache.ensure_key(&neighbour_key, orig_table, self)?;
                 let neighbour_dist = vec_cache.v_dist(q, &neighbour_key)?;
-                let (_, OrderedFloat(cand_furtherest_dist)) = found_nn.peek().expect("found_nn is non-empty: populated before search loop");
+                let (_, OrderedFloat(cand_furtherest_dist)) = found_nn
+                    .peek()
+                    .expect("found_nn is non-empty: populated before search loop");
                 if found_nn.len() < ef || neighbour_dist < *cand_furtherest_dist {
                     candidates.push(neighbour_key.clone(), Reverse(OrderedFloat(neighbour_dist)));
                     found_nn.push(neighbour_key.clone(), OrderedFloat(neighbour_dist));
@@ -641,8 +662,14 @@ impl<'a> SessionTx<'a> {
             .filter_map(move |res| {
                 let tuple = res.ok()?;
 
-                let key_idx = tuple[2 * key_len + 3].get_int().expect("HNSW index stores integers at this position") as usize;
-                let key_subidx = tuple[2 * key_len + 4].get_int().expect("HNSW index stores integers at this position") as i32;
+                let key_idx = tuple[2 * key_len + 3]
+                    .get_int()
+                    .expect("HNSW index stores integers at this position")
+                    as usize;
+                let key_subidx = tuple[2 * key_len + 4]
+                    .get_int()
+                    .expect("HNSW index stores integers at this position")
+                    as i32;
                 let key_tup = tuple[key_len + 3..2 * key_len + 3].to_vec();
                 if key_tup == cand_key.0 {
                     None
@@ -650,16 +677,22 @@ impl<'a> SessionTx<'a> {
                     if include_deleted {
                         return Some((
                             (key_tup, key_idx, key_subidx),
-                            tuple[2 * key_len + 5].get_float().expect("HNSW index stores floats at this position"),
+                            tuple[2 * key_len + 5]
+                                .get_float()
+                                .expect("HNSW index stores floats at this position"),
                         ));
                     }
-                    let is_deleted = tuple[2 * key_len + 7].get_bool().expect("HNSW index stores bools at this position");
+                    let is_deleted = tuple[2 * key_len + 7]
+                        .get_bool()
+                        .expect("HNSW index stores bools at this position");
                     if is_deleted {
                         None
                     } else {
                         Some((
                             (key_tup, key_idx, key_subidx),
-                            tuple[2 * key_len + 5].get_float().expect("HNSW index stores floats at this position"),
+                            tuple[2 * key_len + 5]
+                                .get_float()
+                                .expect("HNSW index stores floats at this position"),
                         ))
                     }
                 }
@@ -731,7 +764,9 @@ impl<'a> SessionTx<'a> {
         }
         let mut extracted_vectors = vec![];
         for idx in &manifest.vec_fields {
-            let val = tuple.get(*idx).expect("vec_fields indices validated at index creation");
+            let val = tuple
+                .get(*idx)
+                .expect("vec_fields indices validated at index creation");
             if let DataValue::Vec(v) = val {
                 extracted_vectors.push((v, *idx, -1));
             } else if let DataValue::List(l) = val {
@@ -774,8 +809,14 @@ impl<'a> SessionTx<'a> {
                 Ok(t) => Some({
                     (
                         t[1..orig_table.metadata.keys.len() + 1].to_vec(),
-                        t[orig_table.metadata.keys.len() + 1].get_int().expect("HNSW index stores integers at this position") as usize,
-                        t[orig_table.metadata.keys.len() + 2].get_int().expect("HNSW index stores integers at this position") as i32,
+                        t[orig_table.metadata.keys.len() + 1]
+                            .get_int()
+                            .expect("HNSW index stores integers at this position")
+                            as usize,
+                        t[orig_table.metadata.keys.len() + 2]
+                            .get_int()
+                            .expect("HNSW index stores integers at this position")
+                            as i32,
                     )
                 }),
                 Err(_) => None,
@@ -843,19 +884,24 @@ impl<'a> SessionTx<'a> {
                     neighbour_self_key.push(DataValue::from(neighbour_key.1 as i64));
                     neighbour_self_key.push(DataValue::from(neighbour_key.2 as i64));
                 }
-                let neighbour_val_bytes = match self
-                    .store_tx
-                    .get(
-                        &idx_table.encode_key_for_store(&neighbour_self_key, Default::default())?,
-                        false,
-                    )? {
+                let neighbour_val_bytes = match self.store_tx.get(
+                    &idx_table.encode_key_for_store(&neighbour_self_key, Default::default())?,
+                    false,
+                )? {
                     Some(bytes) => bytes,
-                    None => bail!("HNSW neighbour self-key not found during removal, index may be corrupted"),
+                    None => bail!(
+                        "HNSW neighbour self-key not found during removal, index may be corrupted"
+                    ),
                 };
                 let mut neighbour_val: Vec<DataValue> =
                     rmp_serde::from_slice(&neighbour_val_bytes[ENCODED_KEY_MIN_LEN..])
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-                neighbour_val[0] = DataValue::from(neighbour_val[0].get_float().expect("HNSW index stores floats at this position") - 1.);
+                neighbour_val[0] = DataValue::from(
+                    neighbour_val[0]
+                        .get_float()
+                        .expect("HNSW index stores floats at this position")
+                        - 1.,
+                );
                 self.store_tx.put(
                     &idx_table.encode_key_for_store(&neighbour_self_key, Default::default())?,
                     &idx_table.encode_val_only_for_store(&neighbour_val, Default::default())?,
@@ -886,7 +932,9 @@ impl<'a> SessionTx<'a> {
             if let Some(ep) = ep_res {
                 let ep = ep?;
                 let target_key_bytes = idx_table.encode_key_for_store(&ep, Default::default())?;
-                let bottom_level = ep[0].get_int().expect("HNSW index stores integers at this position");
+                let bottom_level = ep[0]
+                    .get_int()
+                    .expect("HNSW index stores integers at this position");
                 // canary value is for conflict detection: prevent the scenario of disconnected graphs at all levels
                 let canary_value = [
                     DataValue::from(bottom_level),
@@ -921,7 +969,8 @@ impl<'a> SessionTx<'a> {
             (Vector::F64(v), VecElementType::F32) => Vector::F32(v.mapv(|x| x as f32)),
         };
 
-        let mut vec_cache = VectorCache::new(config.manifest.distance, DEFAULT_VECTOR_CACHE_CAPACITY);
+        let mut vec_cache =
+            VectorCache::new(config.manifest.distance, DEFAULT_VECTOR_CACHE_CAPACITY);
 
         let ep_res = config
             .idx_handle
@@ -934,7 +983,9 @@ impl<'a> SessionTx<'a> {
             .next();
         if let Some(ep) = ep_res {
             let ep = ep?;
-            let bottom_level = ep[0].get_int().expect("HNSW index stores integers at this position");
+            let bottom_level = ep[0]
+                .get_int()
+                .expect("HNSW index stores integers at this position");
             let ep_idx = match ep[config.base_handle.metadata.keys.len() + 1].get_int() {
                 Some(x) => x as usize,
                 None => {
@@ -945,7 +996,8 @@ impl<'a> SessionTx<'a> {
             let ep_t_key = ep[1..config.base_handle.metadata.keys.len() + 1].to_vec();
             let ep_subidx = ep[config.base_handle.metadata.keys.len() + 2]
                 .get_int()
-                .expect("HNSW index stores integers at this position") as i32;
+                .expect("HNSW index stores integers at this position")
+                as i32;
             let ep_key = (ep_t_key, ep_idx, ep_subidx);
             vec_cache.ensure_key(&ep_key, &config.base_handle, self)?;
             let ep_distance = vec_cache.v_dist(&q, &ep_key)?;
@@ -1092,7 +1144,10 @@ mod tests {
         // Most recent insertions (5..10) should be in cache
         for i in 5..10u8 {
             let key = (vec![DataValue::from(i as i64)], 0, -1);
-            assert!(cache.cache.contains(&key), "recent key {i} should be in cache");
+            assert!(
+                cache.cache.contains(&key),
+                "recent key {i} should be in cache"
+            );
         }
         // Oldest insertions (0..5) should have been evicted
         for i in 0..5u8 {
@@ -1115,7 +1170,10 @@ mod tests {
         let v1 = Vector::F64(ndarray::Array1::from_vec(vec![0.0, 0.0]));
         let v2 = Vector::F64(ndarray::Array1::from_vec(vec![3.0, 4.0]));
         let d = cache.dist(&v1, &v2).unwrap();
-        assert!((d - 25.0).abs() < 1e-10, "L2 squared distance should be 25.0, got {d}");
+        assert!(
+            (d - 25.0).abs() < 1e-10,
+            "L2 squared distance should be 25.0, got {d}"
+        );
     }
 
     #[test]
@@ -1123,16 +1181,17 @@ mod tests {
         let cache = VectorCache::new(HnswDistance::Cosine, 10);
         let v = Vector::F64(ndarray::Array1::from_vec(vec![1.0, 0.0, 0.0]));
         let d = cache.dist(&v, &v).unwrap();
-        assert!(d.abs() < 1e-10, "cosine distance of identical vectors should be ~0, got {d}");
+        assert!(
+            d.abs() < 1e-10,
+            "cosine distance of identical vectors should be ~0, got {d}"
+        );
     }
 
     #[test]
     fn hnsw_insert_and_search() {
         let db = DbInstance::default();
-        db.run_default(
-            ":create vectors { id: Int => vec: <F32; 4> }",
-        )
-        .unwrap();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
         db.run_default(
             r#"::hnsw create vectors:idx {
                 dim: 4,
@@ -1163,16 +1222,18 @@ mod tests {
         // The closest vector should be id=5 (exact match)
         // HNSW is approximate — the exact match (id=5) should be among top results
         let ids: Vec<i64> = res.rows.iter().filter_map(|r| r[0].get_int()).collect();
-        assert!(ids.contains(&5), "exact match id=5 should be among top-k results, got {:?}", ids);
+        assert!(
+            ids.contains(&5),
+            "exact match id=5 should be among top-k results, got {:?}",
+            ids
+        );
     }
 
     #[test]
     fn hnsw_empty_search() {
         let db = DbInstance::default();
-        db.run_default(
-            ":create vectors { id: Int => vec: <F32; 4> }",
-        )
-        .unwrap();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
         db.run_default(
             r#"::hnsw create vectors:idx {
                 dim: 4,
@@ -1190,16 +1251,17 @@ mod tests {
         let res = db.run_default(
             r#"?[id, dist] := ~vectors:idx{id | query: vec([1.0, 2.0, 3.0, 4.0]), k: 5, ef: 50, bind_distance: dist}"#,
         ).unwrap();
-        assert!(res.rows.is_empty(), "empty index search should return no results");
+        assert!(
+            res.rows.is_empty(),
+            "empty index search should return no results"
+        );
     }
 
     #[test]
     fn hnsw_delete() {
         let db = DbInstance::default();
-        db.run_default(
-            ":create vectors { id: Int => vec: <F32; 4> }",
-        )
-        .unwrap();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
         db.run_default(
             r#"::hnsw create vectors:idx {
                 dim: 4,
@@ -1228,16 +1290,17 @@ mod tests {
             r#"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}"#,
         ).unwrap();
         let ids: Vec<i64> = res.rows.iter().filter_map(|r| r[0].get_int()).collect();
-        assert!(!ids.contains(&5), "deleted vector id=5 should not appear in results");
+        assert!(
+            !ids.contains(&5),
+            "deleted vector id=5 should not appear in results"
+        );
     }
 
     #[test]
     fn hnsw_search_results_ordered_by_distance() {
         let db = DbInstance::default();
-        db.run_default(
-            ":create vectors { id: Int => vec: <F32; 4> }",
-        )
-        .unwrap();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
         db.run_default(
             r#"::hnsw create vectors:idx {
                 dim: 4,
@@ -1264,7 +1327,12 @@ mod tests {
         let distances: Vec<f64> = res.rows.iter().filter_map(|r| r[1].get_float()).collect();
         assert!(!distances.is_empty(), "should return results");
         for window in distances.windows(2) {
-            assert!(window[0] <= window[1], "results should be ordered by distance: {} <= {}", window[0], window[1]);
+            assert!(
+                window[0] <= window[1],
+                "results should be ordered by distance: {} <= {}",
+                window[0],
+                window[1]
+            );
         }
     }
 }

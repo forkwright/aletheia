@@ -120,7 +120,10 @@ impl MeetAggrStore {
             Some(prev_aggr) => {
                 let mut changed = false;
                 for (i, (aggr_op, _)) in self.aggregations.iter().enumerate() {
-                    let op = aggr_op.meet_op.as_ref().expect("meet_op is set for meet-capable aggregations");
+                    let op = aggr_op
+                        .meet_op
+                        .as_ref()
+                        .expect("meet_op is set for meet-capable aggregations");
                     changed |= op.update(&mut prev_aggr[i], &val_part[i])?;
                 }
                 Ok(changed)
@@ -156,7 +159,10 @@ impl MeetAggrStore {
                 if ret.partial_cmp(&lower as &[DataValue]) == Some(Ordering::Less) {
                     None
                 } else {
-                    match ret.partial_cmp(&upper as &[DataValue]).expect("DataValue tuples are always comparable") {
+                    match ret
+                        .partial_cmp(&upper as &[DataValue])
+                        .expect("DataValue tuples are always comparable")
+                    {
                         Ordering::Less => Some(ret),
                         Ordering::Equal => {
                             if upper_inclusive {
@@ -192,7 +198,10 @@ impl MeetAggrStore {
                     {
                         let target = ent.get_mut();
                         for (i, (aggr_op, _)) in self.aggregations.iter().enumerate() {
-                            let op = aggr_op.meet_op.as_ref().expect("meet_op is set for meet-capable aggregations");
+                            let op = aggr_op
+                                .meet_op
+                                .as_ref()
+                                .expect("meet_op is set for meet-capable aggregations");
                             changed |= op.update(&mut target[i], &v[i])?;
                         }
                     }
@@ -337,9 +346,11 @@ pub(crate) struct TupleInIter<'a>(&'a Tuple, &'a Tuple, bool);
 
 impl<'a> TupleInIter<'a> {
     pub(crate) fn get(self, idx: usize) -> &'a DataValue {
-        self.0
-            .get(idx)
-            .unwrap_or_else(|| self.1.get(idx - self.0.len()).expect("idx is within combined tuple bounds"))
+        self.0.get(idx).unwrap_or_else(|| {
+            self.1
+                .get(idx - self.0.len())
+                .expect("idx is within combined tuple bounds")
+        })
     }
     fn should_skip(&self) -> bool {
         self.2

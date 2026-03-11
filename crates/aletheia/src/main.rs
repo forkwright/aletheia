@@ -57,7 +57,7 @@ use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
 
 #[derive(Debug, Parser)]
-#[command(name = "aletheia", about = "Cognitive agent runtime")]
+#[command(name = "aletheia", about = "Cognitive agent runtime", version)]
 struct Cli {
     /// Path to instance root directory
     #[arg(short = 'r', long)]
