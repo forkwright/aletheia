@@ -1,11 +1,16 @@
 //! Cloneable actor handle for sending messages to a [`NousActor`](crate::actor::NousActor).
 
+use std::time::Duration;
+
 use tokio::sync::{mpsc, oneshot};
 
-use crate::error::{self, ActorRecvSnafu, ActorSendSnafu};
+use crate::error::{self, ActorRecvSnafu, ActorSendSnafu, InboxFullSnafu};
 use crate::message::{NousMessage, NousStatus};
 use crate::pipeline::TurnResult;
 use crate::stream::TurnStreamEvent;
+
+/// Default timeout for sending messages to an actor's inbox.
+pub const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Cloneable handle for communicating with a nous actor.
 ///
@@ -31,6 +36,9 @@ impl NousHandle {
 
     /// Send a turn message and await the result.
     ///
+    /// Uses [`DEFAULT_SEND_TIMEOUT`] for the inbox send. If the inbox is full
+    /// for longer than the timeout, returns [`InboxFull`](error::Error::InboxFull).
+    ///
     /// # Cancel safety
     ///
     /// Not cancel-safe. If cancelled after `mpsc::send` completes but before
@@ -41,20 +49,24 @@ impl NousHandle {
         session_key: impl Into<String>,
         content: impl Into<String>,
     ) -> error::Result<TurnResult> {
-        let (tx, rx) = oneshot::channel();
-        self.sender
-            .send(NousMessage::Turn {
-                session_key: session_key.into(),
-                content: content.into(),
-                reply: tx,
-            })
+        self.send_turn_with_timeout(session_key, content, DEFAULT_SEND_TIMEOUT)
             .await
-            .map_err(|_send_err| {
-                ActorSendSnafu {
-                    message: format!("actor '{}' inbox closed", self.id),
-                }
-                .build()
-            })?;
+    }
+
+    /// Send a turn message with a configurable inbox timeout.
+    pub async fn send_turn_with_timeout(
+        &self,
+        session_key: impl Into<String>,
+        content: impl Into<String>,
+        timeout: Duration,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::Turn {
+            session_key: session_key.into(),
+            content: content.into(),
+            reply: tx,
+        };
+        self.send_with_timeout(msg, timeout).await?;
         rx.await.map_err(|_send_err| {
             ActorRecvSnafu {
                 message: format!("actor '{}' dropped reply", self.id),
@@ -68,6 +80,8 @@ impl NousHandle {
     /// Events are sent to `stream_tx` as the LLM generates content and tools execute.
     /// The final `TurnResult` is returned when the turn completes.
     ///
+    /// Uses [`DEFAULT_SEND_TIMEOUT`] for the inbox send.
+    ///
     /// # Cancel safety
     ///
     /// Not cancel-safe. Same as [`send_turn`](Self::send_turn) — if cancelled
@@ -79,27 +93,73 @@ impl NousHandle {
         content: impl Into<String>,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
     ) -> error::Result<TurnResult> {
-        let (tx, rx) = oneshot::channel();
-        self.sender
-            .send(NousMessage::StreamingTurn {
-                session_key: session_key.into(),
-                content: content.into(),
-                stream_tx,
-                reply: tx,
-            })
+        self.send_turn_streaming_with_timeout(session_key, content, stream_tx, DEFAULT_SEND_TIMEOUT)
             .await
-            .map_err(|_send_err| {
-                ActorSendSnafu {
-                    message: format!("actor '{}' inbox closed", self.id),
-                }
-                .build()
-            })?;
+    }
+
+    /// Send a streaming turn with a configurable inbox timeout.
+    pub async fn send_turn_streaming_with_timeout(
+        &self,
+        session_key: impl Into<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        timeout: Duration,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::StreamingTurn {
+            session_key: session_key.into(),
+            content: content.into(),
+            stream_tx,
+            reply: tx,
+        };
+        self.send_with_timeout(msg, timeout).await?;
         rx.await.map_err(|_send_err| {
             ActorRecvSnafu {
                 message: format!("actor '{}' dropped reply", self.id),
             }
             .build()
         })?
+    }
+
+    /// Send a ping to the actor and wait for a reply.
+    ///
+    /// Returns `Ok(())` if the actor responds within `timeout`, or an error
+    /// if the actor is unresponsive.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Both sides are cancel-safe and a lost ping has no side effects.
+    pub async fn ping(&self, timeout: Duration) -> error::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.send_with_timeout(NousMessage::Ping { reply: tx }, timeout)
+            .await?;
+        match tokio::time::timeout(timeout, rx).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(_)) => Err(ActorRecvSnafu {
+                message: format!("actor '{}' dropped ping reply", self.id),
+            }
+            .build()),
+            Err(_) => Err(ActorRecvSnafu {
+                message: format!("actor '{}' ping timed out", self.id),
+            }
+            .build()),
+        }
+    }
+
+    /// Send a message to the actor's inbox with a timeout.
+    async fn send_with_timeout(&self, msg: NousMessage, timeout: Duration) -> error::Result<()> {
+        match tokio::time::timeout(timeout, self.sender.send(msg)).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(_)) => Err(ActorSendSnafu {
+                message: format!("actor '{}' inbox closed", self.id),
+            }
+            .build()),
+            Err(_) => Err(InboxFullSnafu {
+                nous_id: self.id.clone(),
+                timeout_secs: timeout.as_secs(),
+            }
+            .build()),
+        }
     }
 
     /// Query the actor's current status.

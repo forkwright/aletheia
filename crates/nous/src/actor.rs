@@ -2,8 +2,10 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use tokio::sync::Mutex;
+use tokio::task::JoinSet;
 
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
@@ -33,6 +35,15 @@ use crate::session::SessionState;
 
 /// Default bounded channel capacity for the actor inbox.
 pub const DEFAULT_INBOX_CAPACITY: usize = 32;
+
+/// Maximum number of concurrent background tasks (extraction, distillation, skills).
+pub(crate) const MAX_SPAWNED_TASKS: usize = 8;
+
+/// Number of panics within `DEGRADED_WINDOW` that triggers degraded mode.
+const DEGRADED_PANIC_THRESHOLD: u32 = 5;
+
+/// Time window for panic counting (10 minutes).
+const DEGRADED_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// A single nous agent running as a Tokio actor.
 ///
@@ -64,6 +75,14 @@ pub struct NousActor {
     skill_loader: Option<crate::skills::SkillLoader>,
     /// Candidate tracker for skill auto-capture pipeline.
     candidate_tracker: Arc<aletheia_mneme::skills::CandidateTracker>,
+    /// Number of panics caught by the panic boundary since start.
+    panic_count: u32,
+    /// Timestamps of recent panics for degraded-mode window calculation.
+    panic_timestamps: Vec<Instant>,
+    /// When the actor started running.
+    started_at: Instant,
+    /// Background tasks (extraction, distillation, skill analysis).
+    background_tasks: JoinSet<()>,
 }
 
 impl NousActor {
@@ -119,6 +138,10 @@ impl NousActor {
             #[cfg(feature = "knowledge-store")]
             skill_loader,
             candidate_tracker: Arc::new(aletheia_mneme::skills::CandidateTracker::new()),
+            panic_count: 0,
+            panic_timestamps: Vec::new(),
+            started_at: Instant::now(),
+            background_tasks: JoinSet::new(),
         }
     }
 
@@ -137,9 +160,13 @@ impl NousActor {
             return;
         }
 
+        self.started_at = Instant::now();
         info!(lifecycle = %self.lifecycle, "actor started");
 
         loop {
+            // Reap completed background tasks
+            self.reap_background_tasks();
+
             tokio::select! {
                 msg = self.inbox.recv() => {
                     let Some(msg) = msg else { break };
@@ -149,7 +176,14 @@ impl NousActor {
                             content,
                             reply,
                         } => {
-                            self.handle_turn(session_key, content, reply).await;
+                            if self.lifecycle == NousLifecycle::Degraded {
+                                let _ = reply.send(Err(crate::error::ServiceDegradedSnafu {
+                                    nous_id: self.id.clone(),
+                                    panic_count: self.panic_count,
+                                }.build()));
+                            } else {
+                                self.handle_turn(session_key, content, reply).await;
+                            }
                         }
                         NousMessage::StreamingTurn {
                             session_key,
@@ -157,10 +191,21 @@ impl NousActor {
                             stream_tx,
                             reply,
                         } => {
-                            self.handle_streaming_turn(session_key, content, stream_tx, reply).await;
+                            if self.lifecycle == NousLifecycle::Degraded {
+                                let _ = reply.send(Err(crate::error::ServiceDegradedSnafu {
+                                    nous_id: self.id.clone(),
+                                    panic_count: self.panic_count,
+                                }.build()));
+                                drop(stream_tx);
+                            } else {
+                                self.handle_streaming_turn(session_key, content, stream_tx, reply).await;
+                            }
                         }
                         NousMessage::Status { reply } => {
                             self.handle_status(reply);
+                        }
+                        NousMessage::Ping { reply } => {
+                            let _ = reply.send(());
                         }
                         NousMessage::Sleep => {
                             self.handle_sleep();
@@ -191,7 +236,10 @@ impl NousActor {
             }
         }
 
-        info!(lifecycle = %self.lifecycle, "actor stopped");
+        // Drain remaining background tasks before exiting
+        while self.background_tasks.join_next().await.is_some() {}
+
+        info!(lifecycle = %self.lifecycle, panic_count = self.panic_count, "actor stopped");
     }
 
     /// # Cancel safety
@@ -237,7 +285,9 @@ impl NousActor {
         self.lifecycle = NousLifecycle::Active;
         self.active_session = Some(session_key.clone());
 
-        let result = self.execute_turn(&session_key, &content).await;
+        let result = self
+            .execute_turn_with_panic_boundary(&session_key, &content)
+            .await;
 
         if let Ok(ref turn_result) = result {
             self.maybe_spawn_extraction(&content, &turn_result.content);
@@ -246,7 +296,10 @@ impl NousActor {
         }
 
         self.active_session = None;
-        self.lifecycle = NousLifecycle::Idle;
+        // Preserve degraded state — only reset to Idle if not degraded
+        if self.lifecycle != NousLifecycle::Degraded {
+            self.lifecycle = NousLifecycle::Idle;
+        }
 
         // Ignore send error — caller may have dropped the receiver
         let _ = reply.send(result);
@@ -273,7 +326,7 @@ impl NousActor {
         self.active_session = Some(session_key.clone());
 
         let result = self
-            .execute_streaming_turn(&session_key, &content, &stream_tx)
+            .execute_streaming_turn_with_panic_boundary(&session_key, &content, &stream_tx)
             .await;
 
         if let Ok(ref turn_result) = result {
@@ -283,9 +336,219 @@ impl NousActor {
         }
 
         self.active_session = None;
-        self.lifecycle = NousLifecycle::Idle;
+        if self.lifecycle != NousLifecycle::Degraded {
+            self.lifecycle = NousLifecycle::Idle;
+        }
 
         let _ = reply.send(result);
+    }
+
+    /// Execute a turn with a panic boundary. If the pipeline panics, the panic
+    /// is caught, logged, and an error is returned to the caller. The actor
+    /// continues processing subsequent messages.
+    async fn execute_turn_with_panic_boundary(
+        &mut self,
+        session_key: &str,
+        content: &str,
+    ) -> crate::error::Result<TurnResult> {
+        // Spawn the pipeline in a separate task so panics are caught by the
+        // JoinHandle rather than propagating into the actor loop.
+        let result = self.spawn_pipeline_task(session_key, content, None).await;
+        self.handle_pipeline_result(result, session_key)
+    }
+
+    /// Execute a streaming turn with a panic boundary.
+    async fn execute_streaming_turn_with_panic_boundary(
+        &mut self,
+        session_key: &str,
+        content: &str,
+        stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    ) -> crate::error::Result<TurnResult> {
+        let result = self
+            .spawn_pipeline_task(session_key, content, Some(stream_tx.clone()))
+            .await;
+        self.handle_pipeline_result(result, session_key)
+    }
+
+    /// Spawn the pipeline as a separate tokio task to catch panics.
+    async fn spawn_pipeline_task(
+        &mut self,
+        session_key: &str,
+        content: &str,
+        stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
+    ) -> Result<crate::error::Result<TurnResult>, tokio::task::JoinError> {
+        // Prepare all data needed by the pipeline before spawning
+        let session = self
+            .sessions
+            .entry(session_key.to_owned())
+            .or_insert_with(|| {
+                let id = SessionId::new().to_string();
+                debug!(session_key, session_id = %id, "creating new session");
+                SessionState::new(id, session_key.to_owned(), &self.config)
+            });
+
+        session.next_turn();
+
+        let input = crate::pipeline::PipelineInput {
+            content: content.to_owned(),
+            session: session.clone(),
+            config: self.pipeline_config.clone(),
+        };
+
+        let nous_id = NousId::new(&self.id).map_err(|e| {
+            crate::error::ConfigSnafu {
+                message: format!("invalid nous id: {e}"),
+            }
+            .build()
+        });
+
+        let nous_id = match nous_id {
+            Ok(id) => id,
+            Err(e) => return Ok(Err(e)),
+        };
+
+        let tool_ctx = ToolContext {
+            nous_id,
+            session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
+            workspace: self.oikos.nous_dir(&self.id),
+            allowed_roots: vec![self.oikos.root().to_path_buf()],
+            services: self.tool_services.clone(),
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+        };
+
+        let mut extra_bootstrap = self.extra_bootstrap.clone();
+        extra_bootstrap.extend(self.resolve_skill_sections(content).await);
+
+        let oikos = Arc::clone(&self.oikos);
+        let config = self.config.clone();
+        let pipeline_config = self.pipeline_config.clone();
+        let providers = Arc::clone(&self.providers);
+        let tools = Arc::clone(&self.tools);
+        let embedding_provider = self.embedding_provider.clone();
+        let vector_search = self.vector_search.clone();
+        let session_store = self.session_store.clone();
+        let span = tracing::Span::current();
+
+        tokio::spawn(
+            async move {
+                match stream_tx {
+                    Some(ref stx) => {
+                        crate::pipeline::run_pipeline(
+                            input,
+                            &oikos,
+                            &config,
+                            &pipeline_config,
+                            &providers,
+                            &tools,
+                            &tool_ctx,
+                            embedding_provider.as_deref(),
+                            vector_search.as_deref(),
+                            session_store.as_deref(),
+                            extra_bootstrap,
+                            Some(stx),
+                        )
+                        .await
+                    }
+                    None => {
+                        crate::pipeline::run_pipeline(
+                            input,
+                            &oikos,
+                            &config,
+                            &pipeline_config,
+                            &providers,
+                            &tools,
+                            &tool_ctx,
+                            embedding_provider.as_deref(),
+                            vector_search.as_deref(),
+                            session_store.as_deref(),
+                            extra_bootstrap,
+                            None,
+                        )
+                        .await
+                    }
+                }
+            }
+            .instrument(span),
+        )
+        .await
+    }
+
+    /// Convert a spawned pipeline result (which may be a panic) into an `error::Result`.
+    /// Records panic if one occurred and potentially enters degraded mode.
+    fn handle_pipeline_result(
+        &mut self,
+        result: Result<crate::error::Result<TurnResult>, tokio::task::JoinError>,
+        session_key: &str,
+    ) -> crate::error::Result<TurnResult> {
+        match result {
+            Ok(inner) => inner,
+            Err(join_error) => {
+                self.record_panic();
+
+                let panic_msg = if join_error.is_panic() {
+                    let panic_payload = join_error.into_panic();
+                    if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                        (*s).to_owned()
+                    } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+                        s.clone()
+                    } else {
+                        "unknown panic".to_owned()
+                    }
+                } else {
+                    format!("task cancelled: {join_error}")
+                };
+
+                error!(
+                    nous_id = %self.id,
+                    session_key = %session_key,
+                    panic_count = self.panic_count,
+                    message = %panic_msg,
+                    "pipeline panicked — actor continues"
+                );
+
+                Err(crate::error::PipelinePanicSnafu {
+                    nous_id: self.id.clone(),
+                    message: panic_msg,
+                }
+                .build())
+            }
+        }
+    }
+
+    /// Record a panic occurrence. Enters degraded mode if too many panics in the window.
+    fn record_panic(&mut self) {
+        self.panic_count += 1;
+        self.panic_timestamps.push(Instant::now());
+
+        // Prune timestamps outside the window
+        let cutoff = Instant::now()
+            .checked_sub(DEGRADED_WINDOW)
+            .unwrap_or(self.started_at);
+        self.panic_timestamps.retain(|t| *t > cutoff);
+
+        if self.panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
+            warn!(
+                nous_id = %self.id,
+                panic_count = self.panic_count,
+                recent_panics = self.panic_timestamps.len(),
+                "entering degraded mode — too many panics in window"
+            );
+            self.lifecycle = NousLifecycle::Degraded;
+        }
+    }
+
+    /// Reap completed background tasks and log any failures.
+    fn reap_background_tasks(&mut self) {
+        while let Some(result) = self.background_tasks.try_join_next() {
+            match result {
+                Ok(()) => {}
+                Err(e) => {
+                    warn!(nous_id = %self.id, error = %e, "background task failed");
+                }
+            }
+        }
     }
 
     /// # Cancel safety
@@ -354,82 +617,19 @@ impl NousActor {
         .await
     }
 
-    /// # Cancel safety
-    ///
-    /// Cancel-safe — same profile as `execute_turn`.
-    async fn execute_streaming_turn(
-        &mut self,
-        session_key: &str,
-        content: &str,
-        stream_tx: &mpsc::Sender<TurnStreamEvent>,
-    ) -> crate::error::Result<TurnResult> {
-        let session = self
-            .sessions
-            .entry(session_key.to_owned())
-            .or_insert_with(|| {
-                let id = SessionId::new().to_string();
-                debug!(session_key, session_id = %id, "creating new session");
-                SessionState::new(id, session_key.to_owned(), &self.config)
-            });
-
-        session.next_turn();
-
-        let input = crate::pipeline::PipelineInput {
-            content: content.to_owned(),
-            session: session.clone(),
-            config: self.pipeline_config.clone(),
-        };
-
-        let nous_id = NousId::new(&self.id).map_err(|e| {
-            crate::error::ConfigSnafu {
-                message: format!("invalid nous id: {e}"),
-            }
-            .build()
-        })?;
-
-        let tool_ctx = ToolContext {
-            nous_id,
-            session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
-            workspace: self.oikos.nous_dir(&self.id),
-            allowed_roots: vec![self.oikos.root().to_path_buf()],
-            services: self.tool_services.clone(),
-            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
-                std::collections::HashSet::new(),
-            )),
-        };
-
-        // Merge static domain-pack sections with dynamic skill sections.
-        let mut extra_bootstrap = self.extra_bootstrap.clone();
-        extra_bootstrap.extend(self.resolve_skill_sections(content).await);
-
-        crate::pipeline::run_pipeline(
-            input,
-            &self.oikos,
-            &self.config,
-            &self.pipeline_config,
-            &self.providers,
-            &self.tools,
-            &tool_ctx,
-            self.embedding_provider.as_deref(),
-            self.vector_search.as_deref(),
-            self.session_store.as_deref(),
-            extra_bootstrap,
-            Some(stream_tx),
-        )
-        .await
-    }
-
     fn handle_status(&self, reply: tokio::sync::oneshot::Sender<NousStatus>) {
         let status = NousStatus {
             id: self.id.clone(),
             lifecycle: self.lifecycle,
             session_count: self.sessions.len(),
             active_session: self.active_session.clone(),
+            panic_count: self.panic_count,
+            uptime: self.started_at.elapsed(),
         };
         let _ = reply.send(status);
     }
 
-    fn maybe_spawn_extraction(&self, user_content: &str, assistant_content: &str) {
+    fn maybe_spawn_extraction(&mut self, user_content: &str, assistant_content: &str) {
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
         };
@@ -451,7 +651,12 @@ impl NousActor {
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.knowledge_store.clone();
 
-        tokio::spawn(
+        if self.background_tasks.len() >= MAX_SPAWNED_TASKS {
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping extraction");
+            return;
+        }
+
+        self.background_tasks.spawn(
             async move {
                 run_extraction(
                     &config,
@@ -474,7 +679,7 @@ impl NousActor {
     /// runs them through the heuristic filter and candidate tracker, and
     /// spawns LLM extraction if a candidate is promoted (Rule of Three).
     fn maybe_spawn_skill_analysis(
-        &self,
+        &mut self,
         tool_calls: &[crate::pipeline::ToolCall],
         session_key: &str,
     ) {
@@ -520,7 +725,7 @@ impl NousActor {
 
     /// Spawn background LLM extraction for a promoted skill candidate.
     fn spawn_skill_extraction(
-        &self,
+        &mut self,
         candidate_id: &str,
         tool_calls: &[aletheia_mneme::skills::ToolCallRecord],
     ) {
@@ -539,7 +744,12 @@ impl NousActor {
         let knowledge_store = self.knowledge_store.clone();
         let span = tracing::info_span!("skill_extraction", nous.id = %nous_id, candidate.id = %candidate_id);
 
-        tokio::spawn(
+        if self.background_tasks.len() >= MAX_SPAWNED_TASKS {
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping skill extraction");
+            return;
+        }
+
+        self.background_tasks.spawn(
             async move {
                 run_skill_extraction(
                     &model,
@@ -557,7 +767,7 @@ impl NousActor {
         );
     }
 
-    async fn maybe_spawn_distillation(&self, session_key: &str) {
+    async fn maybe_spawn_distillation(&mut self, session_key: &str) {
         let Some(ref store_arc) = self.session_store else {
             return;
         };
@@ -597,7 +807,12 @@ impl NousActor {
         let span =
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
 
-        tokio::spawn(
+        if self.background_tasks.len() >= MAX_SPAWNED_TASKS {
+            warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping distillation");
+            return;
+        }
+
+        self.background_tasks.spawn(
             run_background_distillation(store, providers, session_id, nous_id, config)
                 .instrument(span),
         );
@@ -653,6 +868,9 @@ impl NousActor {
             NousLifecycle::Dormant => {
                 debug!("already dormant");
             }
+            NousLifecycle::Degraded => {
+                debug!("cannot sleep while degraded");
+            }
         }
     }
 
@@ -664,6 +882,9 @@ impl NousActor {
             }
             NousLifecycle::Idle | NousLifecycle::Active => {
                 debug!(lifecycle = %self.lifecycle, "already awake");
+            }
+            NousLifecycle::Degraded => {
+                debug!("cannot wake from degraded — requires restart");
             }
         }
     }
@@ -1381,5 +1602,220 @@ mod tests {
             msg.contains("SOUL.md"),
             "error should mention SOUL.md: {msg}"
         );
+    }
+
+    // --- Resilience tests ---
+
+    /// Mock provider that panics on every call.
+    struct PanickingProvider;
+
+    impl LlmProvider for PanickingProvider {
+        fn complete<'a>(
+            &'a self,
+            _request: &'a CompletionRequest,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
+                    > + Send
+                    + 'a,
+            >,
+        > {
+            Box::pin(async { panic!("deliberate test panic in pipeline") })
+        }
+
+        fn supported_models(&self) -> &[&str] {
+            &["test-model"]
+        }
+
+        #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
+        fn name(&self) -> &str {
+            "panicking-mock"
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+
+    fn panicking_providers() -> Arc<ProviderRegistry> {
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(PanickingProvider));
+        Arc::new(providers)
+    }
+
+    fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::TempDir) {
+        let (dir, oikos) = test_oikos();
+        let providers = panicking_providers();
+        let tools = Arc::new(ToolRegistry::new());
+        let config = test_config();
+        let pipeline_config = PipelineConfig::default();
+
+        let (handle, join) = spawn(
+            config,
+            pipeline_config,
+            providers,
+            tools,
+            oikos,
+            None,
+            None,
+            None,
+            #[cfg(feature = "knowledge-store")]
+            None,
+            None,
+            Vec::new(),
+            None,
+            CancellationToken::new(),
+        );
+        (handle, join, dir)
+    }
+
+    #[tokio::test]
+    async fn actor_survives_pipeline_panic() {
+        let (handle, join, _dir) = spawn_panicking_actor();
+
+        // First turn panics — should return an error, not kill the actor
+        let result = handle.send_turn("main", "Hello").await;
+        assert!(result.is_err(), "panicking turn should return error");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("panic") || msg.contains("pipeline"),
+            "error should mention panic: {msg}"
+        );
+
+        // Actor is still alive — can respond to status
+        let status = handle.status().await.expect("actor should still be alive");
+        assert_eq!(status.panic_count, 1);
+        assert_eq!(status.lifecycle, NousLifecycle::Idle);
+
+        // Second panicking turn also returns error, actor still alive
+        let result2 = handle.send_turn("main", "Hello again").await;
+        assert!(result2.is_err());
+
+        let status2 = handle
+            .status()
+            .await
+            .expect("actor still alive after 2 panics");
+        assert_eq!(status2.panic_count, 2);
+
+        handle.shutdown().await.expect("shutdown");
+        join.await.expect("join");
+    }
+
+    #[tokio::test]
+    async fn ping_pong_liveness() {
+        let (handle, join, _dir) = spawn_test_actor();
+
+        let result = handle.ping(std::time::Duration::from_secs(5)).await;
+        assert!(result.is_ok(), "ping should succeed on healthy actor");
+
+        handle.shutdown().await.expect("shutdown");
+        join.await.expect("join");
+    }
+
+    #[tokio::test]
+    async fn ping_fails_on_dead_actor() {
+        let (handle, join, _dir) = spawn_test_actor();
+
+        // Shut down the actor first
+        handle.shutdown().await.expect("shutdown");
+        join.await.expect("join");
+
+        // Ping should fail
+        let result = handle.ping(std::time::Duration::from_millis(100)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn send_timeout_fires_when_inbox_full() {
+        // Create a channel with capacity 1
+        let (tx, _rx) = mpsc::channel(1);
+        let handle = NousHandle::new("test-agent".to_owned(), tx.clone());
+
+        // Fill the inbox — don't drop _rx so the channel stays open
+        // Send one message to fill the single slot
+        let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+        tx.send(NousMessage::Turn {
+            session_key: "main".to_owned(),
+            content: "filler".to_owned(),
+            reply: reply_tx,
+        })
+        .await
+        .expect("fill inbox");
+
+        // Now the inbox is full — send_turn_with_timeout should fail
+        let result = handle
+            .send_turn_with_timeout("main", "Hello", std::time::Duration::from_millis(50))
+            .await;
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("inbox full"),
+            "should report inbox full: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn degraded_state_after_repeated_panics() {
+        let (handle, join, _dir) = spawn_panicking_actor();
+
+        // Trigger enough panics to enter degraded mode (5 in window)
+        for i in 0..5 {
+            let result = handle.send_turn("main", &format!("panic {i}")).await;
+            assert!(result.is_err());
+        }
+
+        let status = handle.status().await.expect("status");
+        assert_eq!(
+            status.lifecycle,
+            NousLifecycle::Degraded,
+            "should be degraded after 5 panics"
+        );
+        assert_eq!(status.panic_count, 5);
+
+        // Subsequent turn should get ServiceDegraded error
+        let result = handle.send_turn("main", "more work").await;
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("degraded"), "should report degraded: {msg}");
+
+        handle.shutdown().await.expect("shutdown");
+        join.await.expect("join");
+    }
+
+    #[tokio::test]
+    async fn background_task_reaping() {
+        let (handle, join, _dir) = spawn_test_actor();
+
+        // Run a turn — this may spawn background tasks (extraction etc.)
+        // Even if no tasks spawn, the reaping code runs each loop iteration.
+        let result = handle.send_turn("main", "Hello").await.expect("turn");
+        assert_eq!(result.content, "Hello from actor!");
+
+        // The actor is still responsive — reaping didn't break anything.
+        let status = handle.status().await.expect("status");
+        assert_eq!(status.lifecycle, NousLifecycle::Idle);
+
+        handle.shutdown().await.expect("shutdown");
+        join.await.expect("join");
+    }
+
+    #[tokio::test]
+    async fn status_includes_uptime() {
+        let (handle, join, _dir) = spawn_test_actor();
+
+        // Give the actor a moment to start
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let status = handle.status().await.expect("status");
+        // Uptime should be non-zero — the actor has been alive for at least a few ms
+        assert!(
+            !status.uptime.is_zero(),
+            "uptime should be non-zero, got {:?}",
+            status.uptime
+        );
+
+        handle.shutdown().await.expect("shutdown");
+        join.await.expect("join");
     }
 }
