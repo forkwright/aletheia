@@ -194,8 +194,17 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     tracing::info!("turn aborted: {reason}");
     app.streaming_text.clear();
     app.streaming_thinking.clear();
+    app.streaming_tool_calls.clear();
     app.active_turn_id = None;
     app.stream_rx = None;
+    // Reset agent status so sidebar shows idle, not stuck on "working"
+    if let Some(ref agent_id) = app.focused_agent {
+        if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
+            agent.status = AgentStatus::Idle;
+            agent.active_tool = None;
+            agent.tool_started_at = None;
+        }
+    }
 }
 
 #[tracing::instrument(skip_all)]
@@ -205,6 +214,18 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
     app.active_turn_id = None;
     app.stream_rx = None;
+    // Clear streaming_tool_calls so the UI doesn't show a stale running spinner
+    // for the last tool. streaming_text is intentionally preserved so the user
+    // can read any partial response received before the error.
+    app.streaming_tool_calls.clear();
+    // Reset agent status so sidebar shows idle, not stuck on "working"
+    if let Some(ref agent_id) = app.focused_agent {
+        if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
+            agent.status = AgentStatus::Idle;
+            agent.active_tool = None;
+            agent.tool_started_at = None;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -362,14 +383,24 @@ mod tests {
     #[test]
     fn turn_abort_clears_state() {
         let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
         app.active_turn_id = Some("t1".into());
         app.streaming_text = "partial".to_string();
+        app.streaming_tool_calls.push(ToolCallInfo {
+            name: "read_file".to_string(),
+            duration_ms: None,
+            is_error: false,
+        });
+        app.agents[0].status = AgentStatus::Working;
 
         handle_stream_turn_abort(&mut app, "user cancelled".to_string());
 
         assert!(app.active_turn_id.is_none());
         assert!(app.streaming_text.is_empty());
+        assert!(app.streaming_tool_calls.is_empty());
         assert!(app.stream_rx.is_none());
+        assert_eq!(app.agents[0].status, AgentStatus::Idle);
     }
 
     #[test]
@@ -382,6 +413,34 @@ mod tests {
         assert!(app.error_toast.is_some());
         assert_eq!(app.error_toast.as_ref().unwrap().message, "connection lost");
         assert!(app.active_turn_id.is_none());
+    }
+
+    #[test]
+    fn stream_error_clears_tool_calls_and_resets_agent() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+        app.active_turn_id = Some("t1".into());
+        app.streaming_text = "partial response".to_string();
+        app.streaming_tool_calls.push(ToolCallInfo {
+            name: "grep".to_string(),
+            duration_ms: None,
+            is_error: false,
+        });
+        app.agents[0].status = AgentStatus::Working;
+        app.agents[0].active_tool = Some("grep".to_string());
+
+        handle_stream_error(&mut app, "connection reset".to_string());
+
+        // Partial text preserved for user inspection
+        assert_eq!(app.streaming_text, "partial response");
+        // Tool calls cleared so no stale spinners
+        assert!(app.streaming_tool_calls.is_empty());
+        // Agent back to idle
+        assert_eq!(app.agents[0].status, AgentStatus::Idle);
+        assert!(app.agents[0].active_tool.is_none());
+        // Error toast displayed
+        assert!(app.error_toast.is_some());
     }
 
     #[test]

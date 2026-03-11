@@ -73,6 +73,21 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         );
     }
 
+    // Empty state: no messages and not streaming — show helpful placeholder.
+    if app.messages.is_empty() && app.active_turn_id.is_none() && !filter_active {
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled("no messages yet", theme.style_dim()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(
+                "type a message below to start a conversation",
+                theme.style_muted(),
+            ),
+        ]));
+    }
+
     if filter_active && lines.len() <= 1 {
         lines.push(Line::from(vec![
             Span::raw(" "),

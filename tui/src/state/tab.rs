@@ -6,6 +6,7 @@ use crate::id::{NousId, SessionId, ToolId, TurnId};
 use crate::state::chat::{ChatMessage, SavedScrollState, ToolCallInfo};
 use crate::state::filter::FilterState;
 use crate::state::input::InputState;
+use crate::state::ops::OpsState;
 use crate::state::view_stack::ViewStack;
 
 /// Unique identifier for a tab, distinct from session IDs.
@@ -28,6 +29,7 @@ pub(crate) struct TabState {
     pub(crate) active_turn_id: Option<TurnId>,
     pub(crate) cached_markdown_text: String,
     pub(crate) cached_markdown_lines: Vec<ratatui::text::Line<'static>>,
+    pub(crate) ops: OpsState,
 }
 
 /// A single tab in the tab bar.
@@ -72,6 +74,7 @@ impl TabState {
             active_turn_id: None,
             cached_markdown_text: String::new(),
             cached_markdown_lines: Vec::new(),
+            ops: OpsState::default(),
         }
     }
 }
