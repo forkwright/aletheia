@@ -26,6 +26,7 @@ aletheia-thesauros = { path = "../thesauros" }
 aletheia-pylon = { path = "../pylon" }
 aletheia-symbolon = { path = "../symbolon" }
 jiff = { workspace = true }
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 axum = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
