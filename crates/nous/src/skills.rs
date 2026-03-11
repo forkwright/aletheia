@@ -17,10 +17,15 @@ const MAX_CONTEXT_CHARS: usize = 200;
 /// Extracts a concise task description from the latest user message.
 ///
 /// The result is used as the BM25 query for skill search, so brevity
-/// is preferred. Trims whitespace and truncates at a word boundary.
+/// is preferred. Trims whitespace, strips punctuation that `CozoDB` FTS
+/// cannot parse, and truncates at a word boundary.
 #[cfg(any(feature = "knowledge-store", test))]
 pub(crate) fn extract_task_context(content: &str) -> String {
-    let trimmed = content.trim();
+    let sanitized = sanitize_fts_query(content);
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
     if trimmed.len() <= MAX_CONTEXT_CHARS {
         return trimmed.to_owned();
     }
@@ -34,6 +39,31 @@ pub(crate) fn extract_task_context(content: &str) -> String {
     // Prefer breaking at a word boundary
     let word_end = trimmed[..end].rfind(' ').unwrap_or(end);
     trimmed[..word_end].trim_end().to_owned()
+}
+
+/// Strip characters that `CozoDB` FTS (tantivy) cannot parse.
+///
+/// Keeps alphanumeric chars, whitespace, hyphens, and underscores.
+/// Collapses runs of whitespace into a single space.
+#[cfg(any(feature = "knowledge-store", test))]
+fn sanitize_fts_query(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut prev_space = false;
+    for ch in input.chars() {
+        if ch.is_alphanumeric() || ch == '-' || ch == '_' {
+            result.push(ch);
+            prev_space = false;
+        } else if ch.is_whitespace() && !prev_space && !result.is_empty() {
+            result.push(' ');
+            prev_space = true;
+        }
+        // Other punctuation is dropped
+    }
+    // Trim trailing space
+    if result.ends_with(' ') {
+        result.pop();
+    }
+    result
 }
 
 /// Format a [`SkillContent`] as a compact markdown section for the system prompt.
@@ -293,6 +323,34 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
 mod tests {
     use super::*;
 
+    // ── sanitize_fts_query ─────────────────────────────────────────────────
+
+    #[test]
+    fn sanitize_fts_strips_punctuation() {
+        assert_eq!(
+            sanitize_fts_query("Hello, how are you?"),
+            "Hello how are you"
+        );
+    }
+
+    #[test]
+    fn sanitize_fts_preserves_hyphens_and_underscores() {
+        assert_eq!(
+            sanitize_fts_query("rust-error_handling"),
+            "rust-error_handling"
+        );
+    }
+
+    #[test]
+    fn sanitize_fts_collapses_whitespace() {
+        assert_eq!(sanitize_fts_query("a  ,  b"), "a b");
+    }
+
+    #[test]
+    fn sanitize_fts_only_punctuation_returns_empty() {
+        assert_eq!(sanitize_fts_query("?!@#$%"), "");
+    }
+
     // ── extract_task_context ─────────────────────────────────────────────────
 
     #[test]
@@ -311,6 +369,15 @@ mod tests {
     fn extract_task_context_empty_returns_empty() {
         assert_eq!(extract_task_context(""), "");
         assert_eq!(extract_task_context("   "), "");
+    }
+
+    #[test]
+    fn extract_task_context_sanitizes_punctuation() {
+        // This was bug #746: punctuated input caused FTS parse errors
+        let ctx = extract_task_context("Hello, how are you?");
+        assert_eq!(ctx, "Hello how are you");
+        assert!(!ctx.contains(','));
+        assert!(!ctx.contains('?'));
     }
 
     #[test]

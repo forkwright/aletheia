@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use tracing::info;
 
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
-use aletheia_mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact};
+use aletheia_mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, far_future, parse_timestamp};
 use aletheia_mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 use aletheia_taxis::oikos::Oikos;
 use qdrant_client::Qdrant;
@@ -248,23 +248,22 @@ fn import_fact(
     embedder: &Arc<dyn EmbeddingProvider>,
 ) -> Result<()> {
     let fact_id = format!("migrated-{}", content_hash(&record.content));
-    let now = jiff::Zoned::now()
-        .strftime("%Y-%m-%dT%H:%M:%SZ")
-        .to_string();
+    let now = jiff::Timestamp::now();
+    let valid_from = parse_timestamp(&record.created_at).unwrap_or(now);
 
     let fact = Fact {
-        id: fact_id.clone(),
+        id: fact_id.clone().into(),
         nous_id: agent_id.to_owned(),
         content: record.content.clone(),
         confidence: 0.7,
         tier: EpistemicTier::Inferred,
-        valid_from: record.created_at.clone(),
-        valid_to: "9999-12-31".to_owned(),
+        valid_from,
+        valid_to: far_future(),
         superseded_by: None,
         source_session_id: None,
-        recorded_at: now.clone(),
+        recorded_at: now,
         access_count: 0,
-        last_accessed_at: String::new(),
+        last_accessed_at: None,
         stability_hours: aletheia_mneme::knowledge::default_stability_hours(""),
         fact_type: String::new(),
         is_forgotten: false,
@@ -277,7 +276,7 @@ fn import_fact(
 
     if let Ok(embedding) = embedder.embed(&record.content) {
         let chunk = EmbeddedChunk {
-            id: format!("emb-{fact_id}"),
+            id: format!("emb-{fact_id}").into(),
             content: record.content.clone(),
             source_type: "fact".to_owned(),
             source_id: fact_id,
