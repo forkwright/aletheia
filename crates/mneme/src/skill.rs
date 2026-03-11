@@ -15,7 +15,7 @@ pub mod decay {
     /// Skills below this score are flagged for review.
     pub const NEEDS_REVIEW_THRESHOLD: f64 = 0.3;
     /// Skills below this score are auto-retired.
-    pub const RETIRE_THRESHOLD: f64 = 0.1;
+    pub const RETIRE_THRESHOLD: f64 = 0.08;
     /// Default days of inactivity before decay reaches review threshold for low-usage skills.
     pub const DEFAULT_STALE_DAYS: u32 = 28;
     /// Usage count above which a skill is considered "high-usage" and decays 3× slower.
