@@ -104,7 +104,6 @@ indexmap = { version = "2", features = ["serde"] }
 ulid = { version = "1", features = ["serde"] }
 
 # Time
-chrono = "0.4"
 cron = "0.15"
 jiff = "0.2"
 
