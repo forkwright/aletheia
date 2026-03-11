@@ -128,7 +128,9 @@ pub fn eval_bytecode(
                 pointer += 1;
             }
             Bytecode::JumpIfFalse { jump_to, span: _ } => {
-                let val = stack.pop().unwrap();
+                let val = stack
+                    .pop()
+                    .expect("JumpIfFalse bytecode guarantees a value on the stack");
                 let cond =
                     val.get_bool()
                         .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
@@ -150,7 +152,9 @@ pub fn eval_bytecode(
             }
         }
     }
-    Ok(stack.pop().unwrap())
+    Ok(stack
+        .pop()
+        .expect("bytecode execution guarantees exactly one result on the stack"))
 }
 
 /// Expression can be evaluated to yield a DataValue
@@ -217,8 +221,13 @@ impl Display for Expr {
                 write!(f, "{val}")
             }
             Expr::Apply { op, args, .. } => {
-                let mut writer =
-                    f.debug_tuple(op.name.strip_prefix("OP_").unwrap().to_lowercase().as_str());
+                let mut writer = f.debug_tuple(
+                    op.name
+                        .strip_prefix("OP_")
+                        .expect("all operator names are prefixed with OP_")
+                        .to_lowercase()
+                        .as_str(),
+                );
                 for arg in args.iter() {
                     writer.field(arg);
                 }
@@ -769,7 +778,10 @@ impl<'de> Visitor<'de> for OpVisitor {
     where
         E: Error,
     {
-        let name = v.strip_prefix("OP_").unwrap().to_ascii_lowercase();
+        let name = v
+            .strip_prefix("OP_")
+            .ok_or_else(|| E::custom(format!("op name must start with OP_, got: {v}")))?
+            .to_ascii_lowercase();
         get_op(&name).ok_or_else(|| E::custom(format!("op not found in serialized data: {v}")))
     }
 }
