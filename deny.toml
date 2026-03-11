@@ -8,12 +8,10 @@ exclude = ["aletheia-mneme-engine", "aletheia-integration-tests"]
 [advisories]
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "rsa timing side-channel via jsonwebtoken — no safe upgrade, local-only use" },
-    { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained — transitive via graph_builder, no safe upgrade" },
-    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained — transitive via tonic/qdrant-client, no safe upgrade" },
     { id = "RUSTSEC-2024-0320", reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
-    { id = "RUSTSEC-2024-0437", reason = "protobuf uncontrolled recursion — transitive via prometheus 0.13, no safe upgrade without prometheus migration" },
     { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained (dtolnay archived) — transitive via tokenizers, no safe upgrade" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained — transitive via tonic → qdrant-client (migrate-qdrant feature); no safe upgrade, tonic has not migrated" },
 ]
 
 [licenses]
@@ -38,8 +36,106 @@ allow = [
 confidence-threshold = 0.8
 
 [bans]
-multiple-versions = "warn"
+multiple-versions = "deny"
 wildcards = "allow"
+
+# Skip entries for duplicates caused by upstream constraints we cannot resolve.
+# Each entry exempts the named version from the multiple-versions check.
+# The newer/canonical version is not listed here and is kept as-is.
+skip = [
+    # rand 0.8 — jsonwebtoken 10.x pins rand 0.8; no upstream release uses rand 0.9.
+    # Track: https://github.com/Keats/jsonwebtoken/issues
+    { name = "rand", version = "=0.8.5" },
+    { name = "rand_chacha", version = "=0.3.1" },
+    { name = "rand_core", version = "=0.6.4" },
+
+    # getrandom — three versions coexist: 0.2 (rand 0.8 ecosystem via jsonwebtoken),
+    # 0.3 (rand 0.9 ecosystem), 0.4 (jsonwebtoken rust_crypto feature).
+    { name = "getrandom", version = "=0.2.17" },
+    { name = "getrandom", version = "=0.3.4" },
+
+    # base64 0.13 — from spm_precompiled → tokenizers (ML tokenizer lib for candle embeddings).
+    # tokenizers has not yet released with base64 0.22.
+    { name = "base64", version = "=0.13.1" },
+
+    # darling 0.20 — from derive_builder → tokenizers. Newer darling 0.23 is used by ratatui/instability.
+    { name = "darling", version = "=0.20.11" },
+    { name = "darling_core", version = "=0.20.11" },
+    { name = "darling_macro", version = "=0.20.11" },
+
+    # linux-raw-sys 0.4 — rustix 0.38 (from prometheus/procfs) requires 0.4;
+    # rustix 1.x (newer crates) requires 0.12.
+    { name = "linux-raw-sys", version = "=0.4.15" },
+
+    # r-efi — two versions from different platform abstraction layers.
+    { name = "r-efi", version = "=5.3.0" },
+
+    # rustix 0.38 — prometheus/procfs has not migrated to rustix 1.x.
+    { name = "rustix", version = "=0.38.44" },
+
+    # thiserror 1.x — protobuf (transitive via prometheus) has not migrated to thiserror 2.x.
+    { name = "thiserror", version = "=1.0.69" },
+    { name = "thiserror-impl", version = "=1.0.69" },
+
+    # windows-sys — four versions from different dep generations:
+    # 0.52 (ring/rustls), 0.59 (rustix 0.38), 0.60 (arboard via tui), 0.61 (current).
+    { name = "windows-sys", version = "=0.52.0" },
+    { name = "windows-sys", version = "=0.59.0" },
+    { name = "windows-sys", version = "=0.60.2" },
+
+    # windows-targets and subcomponents — 0.52 from ring/rustls, 0.53 from arboard/tui.
+    { name = "windows-targets", version = "=0.52.6" },
+    { name = "windows_aarch64_gnullvm", version = "=0.52.6" },
+    { name = "windows_aarch64_msvc", version = "=0.52.6" },
+    { name = "windows_i686_gnu", version = "=0.52.6" },
+    { name = "windows_i686_gnullvm", version = "=0.52.6" },
+    { name = "windows_i686_msvc", version = "=0.52.6" },
+    { name = "windows_x86_64_gnu", version = "=0.52.6" },
+    { name = "windows_x86_64_gnullvm", version = "=0.52.6" },
+    { name = "windows_x86_64_msvc", version = "=0.52.6" },
+
+    # winnow 0.6 — cron 0.15 (used by oikonomos/daemon) has not migrated to winnow 0.7.
+    { name = "winnow", version = "=0.6.26" },
+
+    # qdrant-client pulls tonic 0.12 which depends on axum 0.7 — version split vs our axum 0.8.
+    # No safe upgrade until qdrant-client migrates to tonic 1.x.
+    { name = "axum", version = "=0.7.9" },
+    { name = "axum-core", version = "=0.4.5" },
+
+    # core-foundation 0.9 — qdrant-client transitive deps have not migrated to 0.10.
+    { name = "core-foundation", version = "=0.9.4" },
+
+    # foldhash — 0.1 from older hashmap ecosystem, 0.2 from current; qdrant-client pulls 0.1.
+    { name = "foldhash", version = "=0.1.5" },
+
+    # hashbrown — four versions coexist: 0.12 from indexmap 1.x (qdrant/tonic era),
+    # 0.14 from mid-cycle deps, 0.15 from near-current; 0.16 is canonical.
+    { name = "hashbrown", version = "=0.12.3" },
+    { name = "hashbrown", version = "=0.14.5" },
+    { name = "hashbrown", version = "=0.15.5" },
+
+    # indexmap 1.x — qdrant-client/tonic transitively depend on indexmap 1.x.
+    { name = "indexmap", version = "=1.9.3" },
+
+    # matchit 0.7 — tonic/axum 0.7 (via qdrant-client) use matchit 0.7; axum 0.8 uses 0.8.
+    { name = "matchit", version = "=0.7.3" },
+
+    # socket2 0.5 — qdrant-client transitive deps have not migrated to socket2 0.6.
+    { name = "socket2", version = "=0.5.10" },
+
+    # tower 0.4 — tonic 0.12 (via qdrant-client) depends on tower 0.4; tower 0.5 is canonical.
+    { name = "tower", version = "=0.4.13" },
+
+    # windows-targets/subcomponents 0.48 — qdrant-client/tonic era; 0.52 already skipped above.
+    { name = "windows-targets", version = "=0.48.5" },
+    { name = "windows_aarch64_gnullvm", version = "=0.48.5" },
+    { name = "windows_aarch64_msvc", version = "=0.48.5" },
+    { name = "windows_i686_gnu", version = "=0.48.5" },
+    { name = "windows_i686_msvc", version = "=0.48.5" },
+    { name = "windows_x86_64_gnu", version = "=0.48.5" },
+    { name = "windows_x86_64_gnullvm", version = "=0.48.5" },
+    { name = "windows_x86_64_msvc", version = "=0.48.5" },
+]
 
 [sources]
 unknown-registry = "deny"

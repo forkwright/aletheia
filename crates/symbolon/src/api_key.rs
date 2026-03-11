@@ -27,7 +27,7 @@ pub fn generate(
     nous_id: Option<&str>,
     expires_in: Option<Duration>,
 ) -> Result<(String, ApiKeyRecord)> {
-    let secret_bytes: [u8; 32] = rand::thread_rng().r#gen();
+    let secret_bytes: [u8; 32] = rand::rng().random();
     let secret_hex = hex::encode(&secret_bytes);
     let full_key = format!("{KEY_PREFIX}_{prefix}_{secret_hex}");
 
