@@ -2,11 +2,29 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
 use owo_colors::OwoColorize;
+use snafu::{ResultExt, Snafu};
+
+#[derive(Debug, Snafu)]
+pub(crate) enum StatusError {
+    #[snafu(display("failed to connect to {endpoint}"))]
+    Connect {
+        endpoint: String,
+        source: reqwest::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    #[snafu(display("failed to parse response from {endpoint}"))]
+    ParseResponse {
+        endpoint: String,
+        source: reqwest::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
 
 /// Run the status command against a running (or stopped) instance.
-pub async fn run(url: &str, instance_root: Option<&std::path::PathBuf>) -> Result<()> {
+pub async fn run(url: &str, instance_root: Option<&std::path::PathBuf>) -> Result<(), StatusError> {
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
     let version = env!("CARGO_PKG_VERSION");
 
@@ -73,16 +91,20 @@ struct NousInfo {
     session_count: usize,
 }
 
-async fn fetch_health(url: &str) -> Result<HealthResponse> {
+async fn fetch_health(url: &str) -> Result<HealthResponse, StatusError> {
     let endpoint = format!("{url}/api/health");
-    let resp = reqwest::get(&endpoint).await.context("failed to connect")?;
-    resp.json().await.context("failed to parse health response")
+    let resp = reqwest::get(&endpoint).await.context(ConnectSnafu {
+        endpoint: endpoint.clone(),
+    })?;
+    resp.json().await.context(ParseResponseSnafu { endpoint })
 }
 
-async fn fetch_nous(url: &str) -> Result<Vec<NousInfo>> {
+async fn fetch_nous(url: &str) -> Result<Vec<NousInfo>, StatusError> {
     let endpoint = format!("{url}/api/v1/nous");
-    let resp = reqwest::get(&endpoint).await.context("failed to connect")?;
-    resp.json().await.context("failed to parse nous response")
+    let resp = reqwest::get(&endpoint).await.context(ConnectSnafu {
+        endpoint: endpoint.clone(),
+    })?;
+    resp.json().await.context(ParseResponseSnafu { endpoint })
 }
 
 fn print_gateway_up(url: &str, health: &HealthResponse, color: bool) {

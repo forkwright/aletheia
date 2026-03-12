@@ -66,6 +66,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "snafu",
  "supports-color",
  "tempfile",
  "theatron-tui",

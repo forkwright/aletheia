@@ -2,7 +2,50 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use snafu::{ResultExt, Snafu};
+
+#[derive(Debug, Snafu)]
+pub(crate) enum InitError {
+    #[snafu(display("interactive prompt failed"))]
+    Prompt {
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    #[snafu(display("ANTHROPIC_API_KEY not set"))]
+    MissingApiKey {
+        source: std::env::VarError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    #[snafu(display("failed to create directory {path}"))]
+    CreateDir {
+        path: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    #[snafu(display("failed to write {path}"))]
+    WriteFile {
+        path: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    #[snafu(display("failed to serialize credential JSON"))]
+    SerializeJson {
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    #[snafu(display("failed to set permissions on {path}"))]
+    SetPermissions {
+        path: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
 
 /// User choices collected during the interactive (or non-interactive) flow.
 struct Answers {
@@ -31,7 +74,11 @@ impl Default for Answers {
     }
 }
 
-pub(crate) fn run(root: PathBuf, non_interactive: bool, api_key: Option<String>) -> Result<()> {
+pub(crate) fn run(
+    root: PathBuf,
+    non_interactive: bool,
+    api_key: Option<String>,
+) -> Result<(), InitError> {
     let mut answers = Answers {
         root,
         api_key,
@@ -59,9 +106,10 @@ pub(crate) fn run(root: PathBuf, non_interactive: bool, api_key: Option<String>)
         }
         let overwrite: bool = cliclack::confirm("Instance already exists. Overwrite?")
             .initial_value(false)
-            .interact()?;
+            .interact()
+            .context(PromptSnafu)?;
         if !overwrite {
-            cliclack::outro_cancel("Aborted.")?;
+            cliclack::outro_cancel("Aborted.").context(PromptSnafu)?;
             return Ok(());
         }
     }
@@ -80,18 +128,20 @@ pub(crate) fn run(root: PathBuf, non_interactive: bool, api_key: Option<String>)
              \n\
              \x1b[36m  aletheia tui\x1b[0m",
             answers.root.display()
-        ))?;
+        ))
+        .context(PromptSnafu)?;
     }
 
     Ok(())
 }
 
-fn collect_interactive(mut answers: Answers) -> Result<Answers> {
-    cliclack::intro("Aletheia Instance Setup")?;
+fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
+    cliclack::intro("Aletheia Instance Setup").context(PromptSnafu)?;
 
     let root: String = cliclack::input("Instance root")
         .default_input(&answers.root.display().to_string())
-        .interact()?;
+        .interact()
+        .context(PromptSnafu)?;
     answers.root = PathBuf::from(root);
 
     answers.api_key = collect_credential()?;
@@ -100,7 +150,8 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers> {
         .item("claude-sonnet-4-6", "claude-sonnet-4-6 (recommended)", "")
         .item("claude-opus-4-6", "claude-opus-4-6", "")
         .item("claude-haiku-4-5", "claude-haiku-4-5", "")
-        .interact()?;
+        .interact()
+        .context(PromptSnafu)?;
     model.clone_into(&mut answers.model);
 
     let agent_id: String = cliclack::input("Agent ID")
@@ -117,41 +168,47 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers> {
                 Ok(())
             }
         })
-        .interact()?;
+        .interact()
+        .context(PromptSnafu)?;
     answers.agent_id = agent_id;
 
     let default_name = capitalize(&answers.agent_id);
     let agent_name: String = cliclack::input("Agent display name")
         .default_input(&default_name)
-        .interact()?;
+        .interact()
+        .context(PromptSnafu)?;
     answers.agent_name = agent_name;
 
     let bind: &str = cliclack::select("Gateway bind")
         .item("localhost", "localhost (this machine only)", "")
         .item("lan", "lan (network/Tailscale accessible)", "")
-        .interact()?;
+        .interact()
+        .context(PromptSnafu)?;
     bind.clone_into(&mut answers.bind);
 
     let auth: &str = cliclack::select("Auth mode")
         .item("none", "none (no authentication — single user)", "")
         .item("token", "token (API key required to connect)", "")
-        .interact()?;
+        .interact()
+        .context(PromptSnafu)?;
     auth.clone_into(&mut answers.auth_mode);
 
     let tz: String = cliclack::input("Timezone")
         .default_input(&answers.timezone)
-        .interact()?;
+        .interact()
+        .context(PromptSnafu)?;
     answers.timezone = tz;
 
     Ok(answers)
 }
 
-fn collect_credential() -> Result<Option<String>> {
+fn collect_credential() -> Result<Option<String>, InitError> {
     let cred_choice: &str = cliclack::select("Anthropic API credential")
         .item("paste", "Paste API key", "")
         .item("env", "Use ANTHROPIC_API_KEY env var", "")
         .item("skip", "Skip (configure later)", "")
-        .interact()?;
+        .interact()
+        .context(PromptSnafu)?;
 
     match cred_choice {
         "paste" => {
@@ -164,18 +221,19 @@ fn collect_credential() -> Result<Option<String>> {
                         Ok(())
                     }
                 })
-                .interact()?;
+                .interact()
+                .context(PromptSnafu)?;
             Ok(Some(key))
         }
         "env" => {
-            let key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY not set")?;
+            let key = std::env::var("ANTHROPIC_API_KEY").context(MissingApiKeySnafu)?;
             Ok(Some(key))
         }
         _ => Ok(None),
     }
 }
 
-fn scaffold(answers: &Answers) -> Result<()> {
+fn scaffold(answers: &Answers) -> Result<(), InitError> {
     let root = &answers.root;
 
     // Create directories
@@ -187,22 +245,26 @@ fn scaffold(answers: &Answers) -> Result<()> {
         root.join("shared/coordination"),
     ];
     for dir in &dirs {
-        std::fs::create_dir_all(dir)
-            .with_context(|| format!("failed to create {}", dir.display()))?;
+        std::fs::create_dir_all(dir).context(CreateDirSnafu {
+            path: dir.display().to_string(),
+        })?;
     }
 
     // Write config
     let config_toml = render_config(answers);
     let config_path = root.join("config/aletheia.toml");
-    std::fs::write(&config_path, config_toml)
-        .with_context(|| format!("failed to write {}", config_path.display()))?;
+    std::fs::write(&config_path, config_toml).context(WriteFileSnafu {
+        path: config_path.display().to_string(),
+    })?;
 
     // Write credential
     if let Some(ref key) = answers.api_key {
         let cred_path = root.join("config/credentials/anthropic.json");
         let cred_json = serde_json::json!({ "token": key });
-        std::fs::write(&cred_path, serde_json::to_string_pretty(&cred_json)?)
-            .with_context(|| format!("failed to write {}", cred_path.display()))?;
+        let json_str = serde_json::to_string_pretty(&cred_json).context(SerializeJsonSnafu)?;
+        std::fs::write(&cred_path, json_str).context(WriteFileSnafu {
+            path: cred_path.display().to_string(),
+        })?;
         set_permissions(&cred_path, 0o600)?;
     }
 
@@ -216,8 +278,9 @@ fn scaffold(answers: &Answers) -> Result<()> {
         name = answers.agent_name
     );
     let soul_path = root.join(format!("nous/{}/SOUL.md", answers.agent_id));
-    std::fs::write(&soul_path, soul)
-        .with_context(|| format!("failed to write {}", soul_path.display()))?;
+    std::fs::write(&soul_path, soul).context(WriteFileSnafu {
+        path: soul_path.display().to_string(),
+    })?;
 
     Ok(())
 }
@@ -333,14 +396,17 @@ fn capitalize(s: &str) -> String {
 }
 
 #[cfg(unix)]
-fn set_permissions(path: &Path, mode: u32) -> Result<()> {
+fn set_permissions(path: &Path, mode: u32) -> Result<(), InitError> {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
-        .with_context(|| format!("failed to set permissions on {}", path.display()))
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).context(
+        SetPermissionsSnafu {
+            path: path.display().to_string(),
+        },
+    )
 }
 
 #[cfg(not(unix))]
-fn set_permissions(_path: &Path, _mode: u32) -> Result<()> {
+fn set_permissions(_path: &Path, _mode: u32) -> Result<(), InitError> {
     Ok(())
 }
 
