@@ -362,6 +362,70 @@ mod tests {
         assert!(result.unwrap().contains("legacy threshold"));
     }
 
+    /// Verify that `apply_distillation` writes a summary and marks messages distilled in the store.
+    ///
+    /// This exercises the trigger path that fires after `should_trigger_distillation` returns
+    /// Some — confirming that the store mutation side-effects actually occur.
+    #[test]
+    fn apply_distillation_updates_store() {
+        use aletheia_melete::distill::DistillResult;
+        use aletheia_mneme::store::SessionStore;
+        use aletheia_mneme::types::Role as MnemeRole;
+
+        let store = SessionStore::open_in_memory().expect("in-memory store");
+        store
+            .create_session("ses-1", "agent-1", "main", None, None)
+            .expect("create session");
+
+        // Append 5 messages so we have a non-trivial history slice.
+        for i in 0..5_i64 {
+            store
+                .append_message(
+                    "ses-1",
+                    MnemeRole::User,
+                    &format!("turn {i}"),
+                    None,
+                    None,
+                    100,
+                )
+                .expect("append");
+        }
+
+        let history = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history.len(), 5);
+
+        // Distill all 5 messages — avoids the seq-shift conflict that occurs when
+        // undistilled messages have adjacent seq numbers after partial distillation.
+        let result = DistillResult {
+            summary: "Summary of previous turns.".to_owned(),
+            messages_distilled: history.len(),
+            tokens_before: 500,
+            tokens_after: 120,
+            distillation_number: 1,
+            timestamp: jiff::Timestamp::now().to_string(),
+            verbatim_messages: vec![],
+        };
+
+        apply_distillation(&store, "ses-1", &result, &history).expect("apply distillation");
+
+        // The distillation summary should now appear in history.
+        let history_after = store.get_history("ses-1", None).expect("history after");
+        let has_summary = history_after
+            .iter()
+            .any(|m| m.content.contains("[Distillation #1]"));
+        assert!(has_summary, "distillation summary message must be present");
+
+        // The session's distillation metadata should be updated.
+        let session = store
+            .find_session_by_id("ses-1")
+            .expect("find session")
+            .expect("session exists");
+        assert_eq!(
+            session.distillation_count, 1,
+            "distillation_count should be incremented"
+        );
+    }
+
     #[test]
     fn message_conversion_maps_roles() {
         let messages = vec![
