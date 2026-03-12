@@ -370,7 +370,10 @@ pub struct MultiTransaction {
 pub use crate::engine::runtime::db::Poison;
 
 #[cfg(test)]
-#[expect(clippy::result_large_err, reason = "test helpers — error size not critical")]
+#[expect(
+    clippy::result_large_err,
+    reason = "test helpers — error size not critical"
+)]
 impl DbInstance {
     pub(crate) fn default() -> Self {
         crate::engine::storage::mem::new_mem_db().unwrap()
@@ -403,7 +406,10 @@ pub(crate) struct TestMultiTx {
 }
 
 #[cfg(test)]
-#[expect(clippy::result_large_err, reason = "test helpers — error size not critical")]
+#[expect(
+    clippy::result_large_err,
+    reason = "test helpers — error size not critical"
+)]
 impl TestMultiTx {
     pub(crate) fn run_script(
         &self,

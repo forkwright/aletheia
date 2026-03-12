@@ -67,8 +67,9 @@ No unmerged PRs contain fixes we need. Upstream is inactive - no divergence risk
 
 ### Unsafe Sites — Resolved
 
-All 24 unsafe sites now have SAFETY comments (P202). Each site carries an individual
-`#[expect(unsafe_code, reason = "SAFETY comment above")]` where needed.
+All 14 unsafe sites (12 `unsafe {}` blocks + 2 `unsafe impl`) now have `// SAFETY:`
+comments (P202, verified P302). Each comment explains the precondition, why the
+invariant holds at the call site, and what would break if violated.
 
 ### Lint Suppressions — Resolved
 
