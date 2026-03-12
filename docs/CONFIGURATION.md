@@ -1,11 +1,11 @@
 # Configuration Reference
 
-**File:** `instance/config/aletheia.yaml`
+**File:** `instance/config/aletheia.toml`
 
 Loaded by the `taxis` crate using figment with a three-layer cascade:
 
 1. Compiled defaults (`AletheiaConfig::default()`)
-2. YAML file (if present)
+2. TOML file (if present)
 3. Environment variables, prefix `ALETHEIA_` (double underscore for nesting: `ALETHEIA_GATEWAY__PORT=9000`)
 
 Later layers override earlier ones. All field names use `snake_case` in YAML; `camelCase` also works via serde compat.

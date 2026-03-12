@@ -107,7 +107,7 @@ The instance directory is the boundary between platform code (git-tracked) and d
 
 ```
 instance/
-├── config/         Configuration (aletheia.yaml, credentials, TLS certs)
+├── config/         Configuration (aletheia.toml, credentials, TLS certs)
 ├── data/           SQLite databases, backups
 ├── logs/           Trace files
 ├── nous/           Agent workspaces (SOUL.md, MEMORY.md per agent)

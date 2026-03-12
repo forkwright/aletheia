@@ -8,14 +8,14 @@ aletheia init
 cp -r instance.example instance
 ```
 
-Then configure `instance/config/aletheia.yaml` and add your agents under `instance/nous/`.
+Then configure `instance/config/aletheia.toml` and add your agents under `instance/nous/`.
 
 ## Directory Structure
 
 ```text
 instance/
 ├── config/                     # Deployment configuration
-│   ├── aletheia.yaml           # Main config (from aletheia.yaml.example)
+│   ├── aletheia.toml           # Main config (from aletheia.toml.example)
 │   └── credentials/            # API keys, OAuth tokens, Signal creds
 │
 ├── data/                       # Runtime data stores

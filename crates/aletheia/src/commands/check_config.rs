@@ -101,7 +101,7 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
             Some("CHANGE-ME-IN-PRODUCTION") | None => {
                 println!(
                     "  [FAIL] {jwt_check_label}: key is still the default placeholder\n         \
-                     Set gateway.auth.signingKey in aletheia.yaml or ALETHEIA_JWT_SECRET env var.\n         \
+                     Set gateway.auth.signingKey in aletheia.toml or ALETHEIA_JWT_SECRET env var.\n         \
                      Generate one with: openssl rand -hex 32"
                 );
                 all_ok = false;

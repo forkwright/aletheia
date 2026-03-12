@@ -17,7 +17,7 @@ my-pack/
 
 ## Configuration
 
-Declare packs in `aletheia.yaml`:
+Declare packs in `aletheia.toml`:
 
 ```yaml
 packs:
@@ -120,7 +120,7 @@ overlays:
 ```
 
 Domain merging at startup:
-1. Static domains from `aletheia.yaml` agent definitions
+1. Static domains from `aletheia.toml` agent definitions
 2. Pack overlay domains (union across all loaded packs)
 3. Combined domains stored on the agent's config
 

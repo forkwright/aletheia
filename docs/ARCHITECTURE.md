@@ -84,7 +84,7 @@ aletheia/                          # git root — the platform
 
 │   │
 │   ├── config/                   # Deployment config
-│   │   ├── aletheia.yaml
+│   │   ├── aletheia.toml
 │   │   ├── credentials/
 │   │   └── bindings.yaml
 │   │

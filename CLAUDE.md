@@ -14,7 +14,7 @@ Full reference: [docs/STANDARDS.md](docs/STANDARDS.md).
 
 ### Config
 
-- **Rust crates:** `instance/config/aletheia.yaml` - figment cascade (defaults → YAML → env vars)
+- **Rust crates:** `instance/config/aletheia.toml` - figment cascade (defaults → TOML → env vars)
 - **Standards:** [docs/STANDARDS.md](docs/STANDARDS.md) - coding standards reference
 
 ## Commands

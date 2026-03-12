@@ -11,7 +11,7 @@ What Aletheia stores, where it lives, and how to control it.
 | Workspace files | `instance/nous/{id}/` | Mixed | Per-agent identity, memory, tools, hooks |
 | Shared resources | `instance/shared/` | Mixed | Cross-agent tools, skills, coordination |
 | Collaborative space | `instance/theke/` | Mixed | Human + agent shared documents |
-| Configuration | `instance/config/aletheia.yaml` | YAML | Instance settings, agent definitions |
+| Configuration | `instance/config/aletheia.toml` | TOML | Instance settings, agent definitions |
 | Credentials | `instance/config/credentials/` | Various | API keys, OAuth tokens |
 | Signal data | `instance/signal/` | signal-cli | Phone account, contacts, message state |
 | Logs | `instance/logs/` | Text | Runtime logs |
@@ -24,7 +24,7 @@ All data lives under the instance root directory. Default: `./instance`. Overrid
 
 ```text
 instance/
-├── config/aletheia.yaml     # Main config
+├── config/aletheia.toml     # Main config
 ├── config/credentials/      # API keys
 ├── data/
 │   ├── sessions.db          # Session store (SQLite, WAL mode)
@@ -55,7 +55,7 @@ All processing happens locally. The only external call is to the configured LLM 
 
 ## Retention Defaults
 
-Configured in `instance/config/aletheia.yaml` under `data.retention`:
+Configured in `instance/config/aletheia.toml` under `data.retention`:
 
 ```yaml
 data:
