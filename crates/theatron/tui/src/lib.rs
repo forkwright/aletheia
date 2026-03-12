@@ -74,7 +74,7 @@ async fn run_tui_inner(
     fmt()
         .with_env_filter(
             EnvFilter::from_default_env()
-                .add_directive("aletheia_tui=debug".parse().context(LogDirectiveSnafu)?),
+                .add_directive("theatron_tui=debug".parse().context(LogDirectiveSnafu)?),
         )
         .with_writer(non_blocking)
         .with_ansi(false)

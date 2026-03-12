@@ -17,7 +17,8 @@ members = [
     "crates/symbolon",
     "crates/taxis",
     "crates/thesauros",
-    "tui",
+    "crates/theatron/core",
+    "crates/theatron/tui",
 ]
 
 [workspace.package]

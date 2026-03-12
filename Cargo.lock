@@ -48,7 +48,6 @@ dependencies = [
  "aletheia-symbolon",
  "aletheia-taxis",
  "aletheia-thesauros",
- "aletheia-tui",
  "anyhow",
  "assert_cmd",
  "axum 0.8.8",
@@ -68,6 +67,7 @@ dependencies = [
  "sha2",
  "supports-color",
  "tempfile",
+ "theatron-tui",
  "time",
  "tokio",
  "tokio-util",
@@ -400,39 +400,6 @@ dependencies = [
  "snafu",
  "tempfile",
  "tracing",
-]
-
-[[package]]
-name = "aletheia-tui"
-version = "0.10.0"
-dependencies = [
- "anyhow",
- "arboard",
- "base64 0.22.1",
- "clap",
- "crossterm",
- "dirs",
- "futures-util",
- "fuzzy-matcher",
- "open",
- "pulldown-cmark",
- "ratatui",
- "regex",
- "reqwest 0.13.2",
- "reqwest-eventsource",
- "rustls",
- "serde",
- "serde_json",
- "serde_yaml",
- "similar",
- "snafu",
- "syntect",
- "tokio",
- "toml",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "unicode-width",
 ]
 
 [[package]]
@@ -6010,6 +5977,47 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 dependencies = [
  "smawk",
  "unicode-linebreak",
+ "unicode-width",
+]
+
+[[package]]
+name = "theatron-core"
+version = "0.10.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "theatron-tui"
+version = "0.10.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "base64 0.22.1",
+ "clap",
+ "crossterm",
+ "dirs",
+ "futures-util",
+ "fuzzy-matcher",
+ "open",
+ "pulldown-cmark",
+ "ratatui",
+ "regex",
+ "reqwest 0.13.2",
+ "reqwest-eventsource",
+ "rustls",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "similar",
+ "snafu",
+ "syntect",
+ "theatron-core",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
  "unicode-width",
 ]
 

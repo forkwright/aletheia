@@ -32,5 +32,5 @@ async fn main() -> Result<()> {
         .expect("failed to install ring crypto provider");
 
     let cli = Cli::parse();
-    aletheia_tui::run_tui(cli.url, cli.token, cli.agent, cli.session, cli.logout).await
+    theatron_tui::run_tui(cli.url, cli.token, cli.agent, cli.session, cli.logout).await
 }
