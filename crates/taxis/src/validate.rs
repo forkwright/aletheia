@@ -24,6 +24,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "embedding" => validate_embedding(value, &mut errors),
         "channels" => validate_channels(value, &mut errors),
         "bindings" => validate_bindings(value, &mut errors),
+        "credential" => validate_credential(value, &mut errors),
         "packs" | "pricing" | "sandbox" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
@@ -179,6 +180,16 @@ fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
                 }
                 _ => {}
             }
+        }
+    }
+}
+
+fn validate_credential(value: &Value, errors: &mut Vec<String>) {
+    if let Some(source) = value.get("source").and_then(Value::as_str) {
+        if !matches!(source, "auto" | "api-key" | "claude-code") {
+            errors.push(format!(
+                "credential.source must be \"auto\", \"api-key\", or \"claude-code\", got \"{source}\""
+            ));
         }
     }
 }
@@ -367,5 +378,25 @@ mod tests {
             { "channel": "signal", "source": "*", "nousId": "main" }
         ]);
         assert!(validate_section("bindings", &section).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_credential_source() {
+        let section = json!({ "source": "magic" });
+        let result = validate_section("credential", &section);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.errors[0].contains("credential.source"));
+    }
+
+    #[test]
+    fn accepts_valid_credential_sources() {
+        for source in &["auto", "api-key", "claude-code"] {
+            let section = json!({ "source": source });
+            assert!(
+                validate_section("credential", &section).is_ok(),
+                "source '{source}' should be valid"
+            );
+        }
     }
 }

@@ -250,6 +250,69 @@ fn chain_empty_providers_returns_none() {
     assert!(chain.get_credential().is_none());
 }
 
+// --- claude_code_default_path ---
+
+#[test]
+fn claude_code_default_path_uses_home() {
+    // This test depends on $HOME being set, which is typical in CI and dev.
+    if let Some(path) = claude_code_default_path() {
+        assert!(path.ends_with(".claude/.credentials.json"));
+    }
+}
+
+// --- claude_code_provider ---
+
+#[test]
+fn claude_code_provider_missing_file_returns_none() {
+    let result = claude_code_provider(Path::new("/nonexistent/.credentials.json"));
+    assert!(result.is_none());
+}
+
+#[test]
+fn claude_code_provider_static_token() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    let cred = CredentialFile {
+        token: "sk-ant-api-static".to_owned(),
+        refresh_token: None,
+        expires_at: None,
+        scopes: None,
+        subscription_type: None,
+    };
+    cred.save(&path).unwrap();
+
+    let provider = claude_code_provider(&path).expect("should return provider");
+    let resolved = provider.get_credential().unwrap();
+    assert_eq!(resolved.secret, "sk-ant-api-static");
+    assert_eq!(resolved.source, CredentialSource::File);
+}
+
+#[tokio::test]
+async fn claude_code_provider_with_access_token_alias() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    // Write raw JSON using "accessToken" (Claude Code native format)
+    std::fs::write(
+        &path,
+        r#"{"accessToken": "sk-ant-oat-cc-token", "refreshToken": "rt-cc"}"#,
+    )
+    .unwrap();
+
+    let provider = claude_code_provider(&path).expect("should return provider");
+    let resolved = provider.get_credential().unwrap();
+    assert_eq!(resolved.secret, "sk-ant-oat-cc-token");
+    // Has refresh token → OAuth source via RefreshingCredentialProvider
+    assert_eq!(resolved.source, CredentialSource::OAuth);
+}
+
+#[test]
+fn claude_code_provider_malformed_returns_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    std::fs::write(&path, "not valid json").unwrap();
+    assert!(claude_code_provider(&path).is_none());
+}
+
 // --- unix_epoch_ms ---
 
 #[test]
