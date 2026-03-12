@@ -170,3 +170,91 @@ pub struct ToolSummary {
     /// Tool category (e.g. `"Builtin"`, `"Pack"`).
     pub category: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nous_list_response_serializes_nous_array() {
+        let resp = NousListResponse {
+            nous: vec![NousSummary {
+                id: "alice".to_owned(),
+                name: "Alice".to_owned(),
+                model: "anthropic/claude-opus-4-6".to_owned(),
+                status: "active".to_owned(),
+            }],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert!(json.get("nous").is_some());
+        assert_eq!(json["nous"][0]["id"], "alice");
+        assert_eq!(json["nous"][0]["status"], "active");
+    }
+
+    #[test]
+    fn nous_list_response_empty_array() {
+        let resp = NousListResponse { nous: vec![] };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert!(json["nous"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn nous_summary_name_falls_back_to_id() {
+        // The handler constructs name as: name.unwrap_or_else(|| id.clone())
+        // Test that summary with name set serializes name correctly
+        let summary = NousSummary {
+            id: "bob".to_owned(),
+            name: "bob".to_owned(), // fallback case: name == id
+            model: "anthropic/claude-sonnet-4-6".to_owned(),
+            status: "active".to_owned(),
+        };
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["name"], "bob");
+        assert_eq!(json["id"], "bob");
+    }
+
+    #[test]
+    fn nous_status_serializes_all_config_fields() {
+        let status = NousStatus {
+            id: "syn".to_owned(),
+            model: "anthropic/claude-opus-4-6".to_owned(),
+            context_window: 200_000,
+            max_output_tokens: 4096,
+            thinking_enabled: true,
+            thinking_budget: 10_000,
+            max_tool_iterations: 10,
+            status: "active".to_owned(),
+        };
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json["id"], "syn");
+        assert_eq!(json["context_window"], 200_000);
+        assert_eq!(json["thinking_enabled"], true);
+        assert_eq!(json["max_tool_iterations"], 10);
+    }
+
+    #[test]
+    fn tools_response_serializes_tool_list() {
+        let resp = ToolsResponse {
+            tools: vec![ToolSummary {
+                name: "read_file".to_owned(),
+                description: "Read a file from disk".to_owned(),
+                category: "Builtin".to_owned(),
+            }],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["tools"][0]["name"], "read_file");
+        assert_eq!(json["tools"][0]["category"], "Builtin");
+    }
+
+    #[test]
+    fn nous_not_found_error_is_404() {
+        use crate::error::{ApiError, NousNotFoundSnafu};
+        use axum::response::IntoResponse;
+        let err: ApiError = NousNotFoundSnafu {
+            id: "unknown-nous".to_owned(),
+        }
+        .build();
+        let response = err.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+}

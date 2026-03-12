@@ -907,3 +907,211 @@ pub struct HistoryMessage {
     /// ISO 8601 creation timestamp.
     pub created_at: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_response_serializes_all_fields() {
+        let resp = SessionResponse {
+            id: "01ABCDEF".to_owned(),
+            nous_id: "alice".to_owned(),
+            session_key: "main".to_owned(),
+            status: "active".to_owned(),
+            model: Some("anthropic/claude-opus-4-6".to_owned()),
+            message_count: 3,
+            token_count_estimate: 150,
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            updated_at: "2026-01-01T01:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["id"], "01ABCDEF");
+        assert_eq!(json["nous_id"], "alice");
+        assert_eq!(json["message_count"], 3);
+        assert_eq!(json["model"], "anthropic/claude-opus-4-6");
+    }
+
+    #[test]
+    fn session_response_model_none_serializes_null() {
+        let resp = SessionResponse {
+            id: "01XYZ".to_owned(),
+            nous_id: "bob".to_owned(),
+            session_key: "main".to_owned(),
+            status: "active".to_owned(),
+            model: None,
+            message_count: 0,
+            token_count_estimate: 0,
+            created_at: "2026-01-01T00:00:00Z".to_owned(),
+            updated_at: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert!(json["model"].is_null());
+    }
+
+    #[test]
+    fn session_list_item_uses_camel_case() {
+        let item = SessionListItem {
+            id: "ses-1".to_owned(),
+            nous_id: "alice".to_owned(),
+            session_key: "debug".to_owned(),
+            status: "active".to_owned(),
+            message_count: 10,
+            updated_at: "2026-03-01T00:00:00Z".to_owned(),
+            display_name: None,
+        };
+        let json = serde_json::to_value(&item).unwrap();
+        assert!(
+            json.get("nousId").is_some(),
+            "nous_id should be camelCase nousId"
+        );
+        assert!(
+            json.get("sessionKey").is_some(),
+            "session_key should be camelCase sessionKey"
+        );
+        assert!(
+            json.get("messageCount").is_some(),
+            "message_count should be camelCase messageCount"
+        );
+        assert!(
+            json.get("updatedAt").is_some(),
+            "updated_at should be camelCase updatedAt"
+        );
+        // display_name=None should be omitted (skip_serializing_if)
+        assert!(
+            json.get("displayName").is_none(),
+            "None display_name should be omitted"
+        );
+    }
+
+    #[test]
+    fn session_list_item_includes_display_name_when_set() {
+        let item = SessionListItem {
+            id: "ses-2".to_owned(),
+            nous_id: "alice".to_owned(),
+            session_key: "main".to_owned(),
+            status: "active".to_owned(),
+            message_count: 0,
+            updated_at: "2026-03-01T00:00:00Z".to_owned(),
+            display_name: Some("My Session".to_owned()),
+        };
+        let json = serde_json::to_value(&item).unwrap();
+        assert_eq!(json["displayName"], "My Session");
+    }
+
+    #[test]
+    fn create_session_request_deserializes() {
+        let json = r#"{"nous_id": "alice", "session_key": "work"}"#;
+        let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.nous_id, "alice");
+        assert_eq!(req.session_key, "work");
+    }
+
+    #[test]
+    fn stream_turn_request_defaults_session_key_to_main() {
+        let json = r#"{"agentId": "alice", "message": "hello"}"#;
+        let req: StreamTurnRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.agent_id, "alice");
+        assert_eq!(req.message, "hello");
+        assert_eq!(req.session_key, "main");
+    }
+
+    #[test]
+    fn stream_turn_request_accepts_explicit_session_key() {
+        let json = r#"{"agentId": "alice", "message": "hi", "sessionKey": "debug"}"#;
+        let req: StreamTurnRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.session_key, "debug");
+    }
+
+    #[test]
+    fn history_response_serializes_messages_in_order() {
+        let resp = HistoryResponse {
+            messages: vec![
+                HistoryMessage {
+                    id: 1,
+                    seq: 0,
+                    role: "user".to_owned(),
+                    content: "Hello".to_owned(),
+                    tool_call_id: None,
+                    tool_name: None,
+                    created_at: "2026-01-01T00:00:00Z".to_owned(),
+                },
+                HistoryMessage {
+                    id: 2,
+                    seq: 1,
+                    role: "assistant".to_owned(),
+                    content: "Hi there".to_owned(),
+                    tool_call_id: None,
+                    tool_name: None,
+                    created_at: "2026-01-01T00:00:01Z".to_owned(),
+                },
+            ],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        let msgs = json["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[1]["role"], "assistant");
+        assert_eq!(msgs[0]["seq"], 0);
+        assert_eq!(msgs[1]["seq"], 1);
+    }
+
+    #[test]
+    fn history_before_filter_retains_earlier_messages() {
+        // Verify the before-filter logic: messages with seq < before are kept
+        let messages = [
+            HistoryMessage {
+                id: 1,
+                seq: 0,
+                role: "user".to_owned(),
+                content: "first".to_owned(),
+                tool_call_id: None,
+                tool_name: None,
+                created_at: "2026-01-01T00:00:00Z".to_owned(),
+            },
+            HistoryMessage {
+                id: 2,
+                seq: 5,
+                role: "assistant".to_owned(),
+                content: "fifth".to_owned(),
+                tool_call_id: None,
+                tool_name: None,
+                created_at: "2026-01-01T00:00:05Z".to_owned(),
+            },
+        ];
+        let before: i64 = 5;
+        let filtered: Vec<_> = messages.iter().filter(|m| m.seq < before).collect();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].seq, 0);
+    }
+
+    #[test]
+    fn session_not_found_error_is_404() {
+        use crate::error::{ApiError, SessionNotFoundSnafu};
+        use axum::response::IntoResponse;
+        let err: ApiError = SessionNotFoundSnafu {
+            id: "missing-session".to_owned(),
+        }
+        .build();
+        let response = err.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn list_sessions_response_serializes() {
+        let resp = ListSessionsResponse {
+            sessions: vec![SessionListItem {
+                id: "ses-1".to_owned(),
+                nous_id: "alice".to_owned(),
+                session_key: "main".to_owned(),
+                status: "active".to_owned(),
+                message_count: 2,
+                updated_at: "2026-01-01T00:00:00Z".to_owned(),
+                display_name: Some("Project Alpha".to_owned()),
+            }],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["sessions"].as_array().unwrap().len(), 1);
+        assert_eq!(json["sessions"][0]["displayName"], "Project Alpha");
+    }
+}

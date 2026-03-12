@@ -195,3 +195,72 @@ pub(crate) fn deep_merge(base: &mut Value, patch: Value) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn deep_merge_replaces_leaf_value() {
+        let mut base = json!({"key": "old"});
+        deep_merge(&mut base, json!({"key": "new"}));
+        assert_eq!(base["key"], "new");
+    }
+
+    #[test]
+    fn deep_merge_merges_nested_objects_without_replacing() {
+        let mut base = json!({"outer": {"a": 1, "b": 2}});
+        deep_merge(&mut base, json!({"outer": {"b": 99}}));
+        // 'b' is patched, 'a' is preserved
+        assert_eq!(base["outer"]["a"], 1);
+        assert_eq!(base["outer"]["b"], 99);
+    }
+
+    #[test]
+    fn deep_merge_adds_new_key() {
+        let mut base = json!({"existing": true});
+        deep_merge(&mut base, json!({"added": "value"}));
+        assert_eq!(base["existing"], true);
+        assert_eq!(base["added"], "value");
+    }
+
+    #[test]
+    fn deep_merge_does_not_remove_unpatched_keys() {
+        let mut base = json!({"keep": "me", "also": "this"});
+        deep_merge(&mut base, json!({"keep": "updated"}));
+        assert_eq!(base["also"], "this");
+    }
+
+    #[test]
+    fn deep_merge_replaces_array_wholesale() {
+        let mut base = json!({"items": [1, 2, 3]});
+        deep_merge(&mut base, json!({"items": [4, 5]}));
+        // Arrays are not merged — patch replaces entirely
+        let items = base["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0], 4);
+    }
+
+    #[test]
+    fn valid_sections_includes_expected_entries() {
+        assert!(VALID_SECTIONS.contains(&"agents"));
+        assert!(VALID_SECTIONS.contains(&"gateway"));
+        assert!(VALID_SECTIONS.contains(&"maintenance"));
+        assert!(!VALID_SECTIONS.contains(&"secrets"));
+    }
+
+    #[test]
+    fn config_update_response_serializes_camel_case() {
+        let resp = ConfigUpdateResponse {
+            section: "agents".to_owned(),
+            config: json!({"list": []}),
+            restart_required: vec!["agents.model".to_owned()],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["section"], "agents");
+        // camelCase: restart_required → restartRequired
+        assert!(json.get("restartRequired").is_some());
+        assert!(json["restartRequired"].as_array().unwrap().len() == 1);
+    }
+}
