@@ -396,8 +396,8 @@ pub async fn run_pipeline(
         let _guard = span.enter();
         let start = Instant::now();
         let recall_timeout_secs = pipeline_config.stage_budget.recall_secs;
-        let is_mock_embedding = embedding_provider
-            .is_some_and(|ep| ep.model_name() == "mock-embedding");
+        let is_mock_embedding =
+            embedding_provider.is_some_and(|ep| ep.model_name() == "mock-embedding");
         #[expect(
             clippy::cast_sign_loss,
             reason = "remaining_tokens is positive after context assembly"
