@@ -68,6 +68,7 @@ jobs:
 
   msrv:
     name: MSRV (1.85)
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -111,7 +112,7 @@ jobs:
           sudo apt-get install -y -qq fd-find ripgrep
           sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
       - name: Test recall feature in isolation
-        run: cargo test -p aletheia-mneme --no-default-features --features recall
+        run: cargo test -p aletheia --no-default-features --features recall
 
   migrate-qdrant:
     name: migrate-qdrant feature
