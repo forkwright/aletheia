@@ -1,0 +1,290 @@
+//! Message operations, distillation pipeline, and usage recording.
+
+use snafu::ResultExt;
+use tracing::{debug, info, instrument};
+
+use super::{map_message, SessionStore};
+use crate::error::{self, Result};
+use crate::types::{Message, Role, UsageRecord};
+
+impl SessionStore {
+    // --- Messages ---
+
+    /// Append a message to a session. Returns the sequence number.
+    #[instrument(skip(self, content))]
+    pub fn append_message(
+        &self,
+        session_id: &str,
+        role: Role,
+        content: &str,
+        tool_call_id: Option<&str>,
+        tool_name: Option<&str>,
+        token_estimate: i64,
+    ) -> Result<i64> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .context(error::DatabaseSnafu)?;
+
+        let next_seq: i64 = tx
+            .query_row(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE session_id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "INSERT INTO messages (session_id, seq, role, content, tool_call_id, tool_name, token_estimate, is_distilled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
+            rusqlite::params![session_id, next_seq, role.as_str(), content, tool_call_id, tool_name, token_estimate],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "UPDATE sessions SET message_count = message_count + 1, token_count_estimate = token_count_estimate + ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?2",
+            rusqlite::params![token_estimate, session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.commit().context(error::DatabaseSnafu)?;
+
+        debug!(session_id, seq = next_seq, %role, token_estimate, "appended message");
+        Ok(next_seq)
+    }
+
+    /// Get message history for a session.
+    #[instrument(skip(self))]
+    pub fn get_history(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {
+        let mut messages = Vec::new();
+
+        if let Some(limit) = limit {
+            // Most recent N messages in chronological order
+            let mut stmt = self
+                .conn
+                .prepare_cached(
+                    "SELECT * FROM (SELECT * FROM messages WHERE session_id = ?1 AND is_distilled = 0 ORDER BY seq DESC LIMIT ?2) ORDER BY seq ASC",
+                )
+                .context(error::DatabaseSnafu)?;
+            let rows = stmt
+                .query_map(rusqlite::params![session_id, limit], map_message)
+                .context(error::DatabaseSnafu)?;
+            for row in rows {
+                messages.push(row.context(error::DatabaseSnafu)?);
+            }
+        } else {
+            let mut stmt = self
+                .conn
+                .prepare_cached(
+                    "SELECT * FROM messages WHERE session_id = ?1 AND is_distilled = 0 ORDER BY seq ASC",
+                )
+                .context(error::DatabaseSnafu)?;
+            let rows = stmt
+                .query_map([session_id], map_message)
+                .context(error::DatabaseSnafu)?;
+            for row in rows {
+                messages.push(row.context(error::DatabaseSnafu)?);
+            }
+        }
+
+        Ok(messages)
+    }
+
+    /// Get message history within a token budget (most recent first, working backward).
+    #[instrument(skip(self), level = "debug")]
+    pub fn get_history_with_budget(
+        &self,
+        session_id: &str,
+        max_tokens: i64,
+    ) -> Result<Vec<Message>> {
+        let all = self.get_history(session_id, None)?;
+        let mut total: i64 = 0;
+        let mut result = Vec::new();
+
+        for msg in all.into_iter().rev() {
+            if total + msg.token_estimate > max_tokens && !result.is_empty() {
+                break;
+            }
+            total += msg.token_estimate;
+            result.push(msg);
+        }
+
+        result.reverse();
+        Ok(result)
+    }
+
+    // --- Distillation ---
+
+    /// Mark messages as distilled and recalculate session token count.
+    #[instrument(skip(self, seqs), fields(count = seqs.len()))]
+    pub fn mark_messages_distilled(&self, session_id: &str, seqs: &[i64]) -> Result<()> {
+        if seqs.is_empty() {
+            return Ok(());
+        }
+
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .context(error::DatabaseSnafu)?;
+
+        // Mark each seq as distilled
+        let mut stmt = tx
+            .prepare_cached(
+                "UPDATE messages SET is_distilled = 1 WHERE session_id = ?1 AND seq = ?2",
+            )
+            .context(error::DatabaseSnafu)?;
+        for seq in seqs {
+            stmt.execute(rusqlite::params![session_id, seq])
+                .context(error::DatabaseSnafu)?;
+        }
+        drop(stmt);
+
+        // Recalculate
+        let (total_tokens, msg_count): (i64, i64) = tx
+            .query_row(
+                "SELECT COALESCE(SUM(token_estimate), 0), COUNT(*) FROM messages WHERE session_id = ?1 AND is_distilled = 0",
+                [session_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "UPDATE sessions SET token_count_estimate = ?1, message_count = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?3",
+            rusqlite::params![total_tokens, msg_count, session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.commit().context(error::DatabaseSnafu)?;
+
+        info!(
+            session_id,
+            distilled = seqs.len(),
+            total_tokens,
+            msg_count,
+            "distilled messages"
+        );
+        Ok(())
+    }
+
+    /// Insert a distillation summary as a system message, then remove distilled messages.
+    ///
+    /// In a single transaction:
+    /// 1. Shift seq numbers of undistilled messages up by 1
+    /// 2. Insert summary at seq 0
+    /// 3. Delete all messages marked `is_distilled = 1`
+    #[instrument(skip(self, content))]
+    pub fn insert_distillation_summary(&self, session_id: &str, content: &str) -> Result<()> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .context(error::DatabaseSnafu)?;
+
+        // Shift existing undistilled messages up by 1
+        tx.execute(
+            "UPDATE messages SET seq = seq + 1 WHERE session_id = ?1 AND is_distilled = 0",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        // Insert summary at seq 0
+        #[expect(clippy::cast_possible_wrap, reason = "summary length fits in i64")]
+        let token_estimate = content.len() as i64 / 4;
+        tx.execute(
+            "INSERT INTO messages (session_id, seq, role, content, is_distilled, token_estimate, created_at)
+             VALUES (?1, 0, 'system', ?2, 0, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            rusqlite::params![session_id, content, token_estimate],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        // Delete distilled messages
+        tx.execute(
+            "DELETE FROM messages WHERE session_id = ?1 AND is_distilled = 1",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        // Recalculate session counts
+        let (total_tokens, msg_count): (i64, i64) = tx
+            .query_row(
+                "SELECT COALESCE(SUM(token_estimate), 0), COUNT(*) FROM messages WHERE session_id = ?1 AND is_distilled = 0",
+                [session_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "UPDATE sessions SET token_count_estimate = ?1, message_count = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?3",
+            rusqlite::params![total_tokens, msg_count, session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.commit().context(error::DatabaseSnafu)?;
+
+        info!(
+            session_id,
+            msg_count, total_tokens, "inserted distillation summary"
+        );
+        Ok(())
+    }
+
+    /// Record a distillation event: insert into distillations table, update session counters.
+    #[instrument(skip(self))]
+    pub fn record_distillation(
+        &self,
+        session_id: &str,
+        messages_before: i64,
+        messages_after: i64,
+        tokens_before: i64,
+        tokens_after: i64,
+        model: Option<&str>,
+    ) -> Result<()> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "INSERT INTO distillations (session_id, messages_before, messages_after, tokens_before, tokens_after, model)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![session_id, messages_before, messages_after, tokens_before, tokens_after, model],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.execute(
+            "UPDATE sessions SET distillation_count = distillation_count + 1, last_distilled_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        tx.commit().context(error::DatabaseSnafu)?;
+
+        info!(
+            session_id,
+            messages_before, messages_after, tokens_before, tokens_after, "recorded distillation"
+        );
+        Ok(())
+    }
+
+    // --- Usage ---
+
+    /// Record token usage for a turn.
+    #[instrument(skip(self, record), level = "debug")]
+    pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO usage (session_id, turn_seq, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, model)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    record.session_id,
+                    record.turn_seq,
+                    record.input_tokens,
+                    record.output_tokens,
+                    record.cache_read_tokens,
+                    record.cache_write_tokens,
+                    record.model,
+                ],
+            )
+            .context(error::DatabaseSnafu)?;
+        Ok(())
+    }
+}
