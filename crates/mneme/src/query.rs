@@ -663,7 +663,7 @@ pub mod queries {
     ";
 
     /// BM25 full-text recall (no vector embeddings required).
-    /// Returns rows in the same format as `SEMANTIC_SEARCH` (id, content, source_type, source_id, dist)
+    /// Returns rows in the same format as `SEMANTIC_SEARCH` (id, content, `source_type`, `source_id`, dist)
     /// with synthetic distance derived from BM25 score.
     /// Params: `$query_text`, `$k`.
     pub const BM25_RECALL: &str = r"

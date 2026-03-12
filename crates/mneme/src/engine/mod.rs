@@ -86,7 +86,6 @@ pub(crate) mod query;
 pub(crate) mod runtime;
 #[expect(
     clippy::pedantic,
-    clippy::redundant_closure,
     clippy::result_large_err,
     clippy::type_complexity,
     reason = "vendored CozoDB engine — storage backend trait implementations"
