@@ -48,11 +48,11 @@ pub(crate) fn run(root: PathBuf, non_interactive: bool, api_key: Option<String>)
     }
 
     // Pre-check: existing instance
-    let config_path = answers.root.join("config/aletheia.yaml");
+    let config_path = answers.root.join("config/aletheia.toml");
     if config_path.exists() {
         if non_interactive {
             println!(
-                "Instance already exists at {}. Skipping (delete config/aletheia.yaml to re-initialize).",
+                "Instance already exists at {}. Skipping (delete config/aletheia.toml to re-initialize).",
                 answers.root.display()
             );
             return Ok(());
@@ -192,9 +192,9 @@ fn scaffold(answers: &Answers) -> Result<()> {
     }
 
     // Write config
-    let config_yaml = render_config(answers);
-    let config_path = root.join("config/aletheia.yaml");
-    std::fs::write(&config_path, config_yaml)
+    let config_toml = render_config(answers);
+    let config_path = root.join("config/aletheia.toml");
+    std::fs::write(&config_path, config_toml)
         .with_context(|| format!("failed to write {}", config_path.display()))?;
 
     // Write credential
@@ -230,80 +230,79 @@ fn render_config(a: &Answers) -> String {
 # Full reference: docs/CONFIGURATION.md
 
 # --- Gateway ---
-gateway:
-  port: 18789
-  bind: {bind}
-  auth:
-    mode: {auth_mode}
-  # tls:
-  #   enabled: true
-  #   certPath: config/tls/cert.pem
-  #   keyPath: config/tls/key.pem
-  # cors:
-  #   allowedOrigins: ["https://my-dashboard.local"]
-  # csrf:
-  #   enabled: true
+[gateway]
+port = 18789
+bind = "{bind}"
+
+[gateway.auth]
+mode = "{auth_mode}"
+
+# tls:
+# [gateway.tls]
+# enabled = true
+# certPath = "config/tls/cert.pem"
+# keyPath = "config/tls/key.pem"
+
+# cors:
+# [gateway.cors]
+# allowedOrigins = ["https://my-dashboard.local"]
+
+# csrf:
+# [gateway.csrf]
+# enabled = true
 
 # --- Agents ---
-agents:
-  defaults:
-    model:
-      primary: {model}
-    contextTokens: 200000
-    maxOutputTokens: 16384
-    userTimezone: {timezone}
-    timeoutSeconds: 300
-    # thinkingEnabled: false
-    # thinkingBudget: 10000
-    # maxToolIterations: 50
-    # toolTimeouts:
-    #   defaultMs: 120000
+[agents.defaults]
+contextTokens = 200000
+maxOutputTokens = 16384
+userTimezone = "{timezone}"
+timeoutSeconds = 300
+# thinkingEnabled = false
+# thinkingBudget = 10000
+# maxToolIterations = 50
+# toolTimeouts.defaultMs = 120000
 
-  list:
-    - id: {agent_id}
-      name: {agent_name}
-      default: true
-      workspace: {workspace}
+[agents.defaults.model]
+primary = "{model}"
+
+[[agents.list]]
+id = "{agent_id}"
+name = "{agent_name}"
+default = true
+workspace = "{workspace}"
 
 # --- Channels ---
-# channels:
-#   signal:
-#     enabled: true
-#     accounts:
-#       default:
-#         account: "+1XXXXXXXXXX"
-#         httpHost: localhost
-#         httpPort: 8080
+# [[channels.signal.accounts]]
+# account = "+1XXXXXXXXXX"
+# httpHost = "localhost"
+# httpPort = 8080
 
 # --- Bindings (route messages to agents) ---
-# bindings:
-#   - channel: signal
-#     source: "*"
-#     nousId: {agent_id}
+# [[bindings]]
+# channel = "signal"
+# source = "*"
+# nousId = "{agent_id}"
 
 # --- Embedding (for recall/knowledge search) ---
-# embedding:
-#   provider: candle       # mock | candle
-#   dimension: 384
+# [embedding]
+# provider = "candle"       # mock | candle
+# dimension = 384
 
 # --- Data retention ---
-# data:
-#   retention:
-#     sessionMaxAgeDays: 90
-#     archiveBeforeDelete: true
+# [data.retention]
+# sessionMaxAgeDays = 90
+# archiveBeforeDelete = true
 
 # --- Maintenance ---
-# maintenance:
-#   traceRotation:
-#     maxAgeDays: 14
-#   dbMonitoring:
-#     warnThresholdMb: 100
+# [maintenance.traceRotation]
+# maxAgeDays = 14
+# [maintenance.dbMonitoring]
+# warnThresholdMb = 100
 
 # --- Cost tracking ---
-pricing:
-  {model}:
-    inputCostPerMtok: 3.0
-    outputCostPerMtok: 15.0
+[pricing.{model}]
+inputCostPerMtok = 3.0
+outputCostPerMtok = 15.0
 "#,
         bind = a.bind,
         auth_mode = a.auth_mode,
@@ -352,26 +351,49 @@ mod tests {
     #[test]
     fn default_answers_produce_valid_config() {
         let answers = Answers::default();
-        let yaml = render_config(&answers);
-        // Should be valid YAML that can be parsed
-        let value: serde_yaml::Value =
-            serde_yaml::from_str(&yaml).expect("rendered config should be valid YAML");
-        let gateway = &value["gateway"];
-        assert_eq!(gateway["port"].as_u64(), Some(18789));
-        assert_eq!(gateway["bind"].as_str(), Some("localhost"));
-        assert_eq!(gateway["auth"]["mode"].as_str(), Some("none"));
-
-        let agents = &value["agents"];
+        let toml_str = render_config(&answers);
+        // Should be valid TOML that can be parsed
+        let value: toml::Value =
+            toml::from_str(&toml_str).expect("rendered config should be valid TOML");
+        let gateway = value.get("gateway").expect("has gateway");
         assert_eq!(
-            agents["defaults"]["model"]["primary"].as_str(),
+            gateway.get("port").and_then(toml::Value::as_integer),
+            Some(18789)
+        );
+        assert_eq!(
+            gateway.get("bind").and_then(toml::Value::as_str),
+            Some("localhost")
+        );
+        assert_eq!(
+            gateway
+                .get("auth")
+                .and_then(|v| v.get("mode"))
+                .and_then(toml::Value::as_str),
+            Some("none")
+        );
+
+        let agents = value.get("agents").expect("has agents");
+        assert_eq!(
+            agents
+                .get("defaults")
+                .and_then(|v| v.get("model"))
+                .and_then(|v| v.get("primary"))
+                .and_then(toml::Value::as_str),
             Some("claude-sonnet-4-6")
         );
-        let list = agents["list"]
-            .as_sequence()
-            .expect("list should be sequence");
+        let list = agents
+            .get("list")
+            .and_then(toml::Value::as_array)
+            .expect("list should be array");
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0]["id"].as_str(), Some("main"));
-        assert_eq!(list[0]["name"].as_str(), Some("Main"));
+        assert_eq!(
+            list[0].get("id").and_then(toml::Value::as_str),
+            Some("main")
+        );
+        assert_eq!(
+            list[0].get("name").and_then(toml::Value::as_str),
+            Some("Main")
+        );
     }
 
     #[test]
@@ -384,7 +406,7 @@ mod tests {
         };
         scaffold(&answers).expect("scaffold should succeed");
 
-        assert!(dir.path().join("config/aletheia.yaml").exists());
+        assert!(dir.path().join("config/aletheia.toml").exists());
         assert!(
             dir.path()
                 .join("config/credentials/anthropic.json")
@@ -416,7 +438,7 @@ mod tests {
         };
         scaffold(&answers).expect("scaffold should succeed");
 
-        assert!(dir.path().join("config/aletheia.yaml").exists());
+        assert!(dir.path().join("config/aletheia.toml").exists());
         assert!(
             !dir.path()
                 .join("config/credentials/anthropic.json")

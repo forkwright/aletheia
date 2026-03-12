@@ -74,7 +74,7 @@ snafu = "0.8"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
+toml = "1.0"
 
 # HTTP
 axum = "0.8"
@@ -95,7 +95,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 prometheus = { version = "0.14", features = ["process"] }
 
 # Config
-figment = { version = "0.10", features = ["yaml", "json", "env"] }
+figment = { version = "0.10", features = ["toml", "json", "env"] }
 
 # IDs
 uuid = { version = "1", features = ["v4"] }

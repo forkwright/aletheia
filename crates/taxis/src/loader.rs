@@ -1,30 +1,30 @@
 //! Figment-based configuration loading with YAML cascade.
 
 use figment::Figment;
-use figment::providers::{Env, Format, Serialized, Yaml};
+use figment::providers::{Env, Format, Serialized, Toml};
 use snafu::ResultExt;
 
 use crate::config::AletheiaConfig;
-use crate::error::{FigmentSnafu, Result, SerializeYamlSnafu, WriteConfigSnafu};
+use crate::error::{FigmentSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
 use crate::oikos::Oikos;
 
-/// Load configuration with cascade: defaults → YAML → environment.
+/// Load configuration with cascade: defaults → TOML → environment.
 ///
 /// Resolution order (later wins):
 /// 1. Compiled defaults ([`AletheiaConfig::default()`])
-/// 2. `{oikos.config()}/aletheia.yaml` (if it exists)
+/// 2. `{oikos.config()}/aletheia.toml` (if it exists)
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
 #[expect(
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
 )]
 pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
-    let yaml_path = oikos.config().join("aletheia.yaml");
+    let toml_path = oikos.config().join("aletheia.toml");
 
     let mut figment = Figment::new().merge(Serialized::defaults(AletheiaConfig::default()));
 
-    if yaml_path.exists() {
-        figment = figment.merge(Yaml::file(&yaml_path));
+    if toml_path.exists() {
+        figment = figment.merge(Toml::file(&toml_path));
     }
 
     figment = figment.merge(Env::prefixed("ALETHEIA_").split("__"));
@@ -41,8 +41,8 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     reason = "figment::Error is inherently large"
 )]
 pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
-    let yaml = serde_yaml::to_string(config).map_err(|e| {
-        SerializeYamlSnafu {
+    let toml = toml::to_string(config).map_err(|e| {
+        SerializeTomlSnafu {
             reason: e.to_string(),
         }
         .build()
@@ -53,10 +53,10 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
         path: config_dir.clone(),
     })?;
 
-    let target = config_dir.join("aletheia.yaml");
-    let tmp = config_dir.join("aletheia.yaml.tmp");
+    let target = config_dir.join("aletheia.toml");
+    let tmp = config_dir.join("aletheia.toml.tmp");
 
-    std::fs::write(&tmp, yaml).context(WriteConfigSnafu { path: tmp.clone() })?;
+    std::fs::write(&tmp, toml).context(WriteConfigSnafu { path: tmp.clone() })?;
     std::fs::rename(&tmp, &target).context(WriteConfigSnafu { path: target })?;
 
     Ok(())
@@ -86,12 +86,12 @@ mod tests {
     }
 
     #[test]
-    fn load_from_yaml_file() {
+    fn load_from_toml_file() {
         figment::Jail::expect_with(|jail| {
             std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
             jail.create_file(
-                "config/aletheia.yaml",
-                "gateway:\n  port: 9999\nagents:\n  defaults:\n    contextTokens: 100000\n",
+                "config/aletheia.toml",
+                "[gateway]\nport = 9999\n\n[agents.defaults]\ncontextTokens = 100000\n",
             )?;
 
             let oikos = Oikos::from_root(jail.directory());
@@ -105,10 +105,10 @@ mod tests {
     }
 
     #[test]
-    fn env_overrides_yaml() {
+    fn env_overrides_toml() {
         figment::Jail::expect_with(|jail| {
             std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
-            jail.create_file("config/aletheia.yaml", "gateway:\n  port: 9999\n")?;
+            jail.create_file("config/aletheia.toml", "[gateway]\nport = 9999\n")?;
             jail.set_env("ALETHEIA_GATEWAY__PORT", "7777");
 
             let oikos = Oikos::from_root(jail.directory());
@@ -134,6 +134,9 @@ mod tests {
     #[test]
     fn write_then_load_roundtrip() {
         figment::Jail::expect_with(|jail| {
+            // figment::Jail doesn't auto-create the config dir, so create it first.
+            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
+
             let oikos = Oikos::from_root(jail.directory());
             let mut config = AletheiaConfig::default();
             config.gateway.port = 9876;

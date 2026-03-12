@@ -29,9 +29,9 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    /// YAML serialization / deserialization error.
-    #[snafu(display("YAML error: {source}"))]
-    Yaml { source: serde_yaml::Error },
+    /// TOML serialization error.
+    #[snafu(display("TOML error: {source}"))]
+    Toml { source: toml::ser::Error },
 
     /// Invalid `tracing` filter directive.
     #[snafu(display("invalid log directive: {source}"))]
