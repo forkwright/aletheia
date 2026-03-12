@@ -117,7 +117,7 @@ ls -la <repo>/nous/<agent-id>/SOUL.md   # verify workspace readable
 journalctl --user -u aletheia --since "1 hour ago" 2>/dev/null | grep -E "401|429|expired|unauthorized"
 ```
 
-Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need manual replacement in `instance/config/aletheia.yaml`.
+Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need manual replacement in `instance/config/aletheia.toml`.
 
 ---
 
@@ -132,7 +132,7 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 
 | Path | Purpose |
 |------|---------|
-| `instance/config/aletheia.yaml` | Main config |
+| `instance/config/aletheia.toml` | Main config |
 | `instance/data/sessions.db` | SQLite session store |
 | `instance/data/cozo/` | CozoDB knowledge graph (embedded) |
 | `instance/nous/<id>/` | Agent workspaces |

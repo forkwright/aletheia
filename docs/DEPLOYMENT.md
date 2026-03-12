@@ -84,7 +84,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # or enter interactively
 aletheia init                            # interactive wizard, creates ./instance
 ```
 
-The wizard prompts for API key, model, agent name, and bind address, then writes a fully valid `config/aletheia.yaml`. For non-interactive (CI/scripting) use:
+The wizard prompts for API key, model, agent name, and bind address, then writes a fully valid `config/aletheia.toml`. For non-interactive (CI/scripting) use:
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... aletheia init --yes --instance-root /srv/aletheia/instance
@@ -96,14 +96,14 @@ ANTHROPIC_API_KEY=sk-ant-... aletheia init --yes --instance-root /srv/aletheia/i
 cp -r instance.example instance
 ```
 
-Then configure `instance/config/aletheia.yaml` (see below).
+Then configure `instance/config/aletheia.toml` (see below).
 
 This creates the full directory scaffold:
 
 ```text
 instance/
 ├── config/
-│   ├── aletheia.yaml       # Main config
+│   ├── aletheia.toml       # Main config
 │   ├── credentials/        # API keys, secrets
 │   └── tls/                # TLS certs (optional)
 ├── data/                   # SQLite databases, backups
@@ -129,7 +129,7 @@ The binary finds the instance directory in this order:
 
 ## Configuration
 
-The init wizard writes a complete `config/aletheia.yaml`. If you are setting up manually, create one:
+The init wizard writes a complete `config/aletheia.toml`. If you are setting up manually, create one:
 
 ```yaml
 gateway:
@@ -197,7 +197,7 @@ Edit the bootstrap files:
 - `GOALS.md` — current goals
 - `MEMORY.md` — persistent operational memory
 
-Register the agent in `aletheia.yaml`:
+Register the agent in `aletheia.toml`:
 
 ```yaml
 agents:
@@ -377,7 +377,7 @@ Aletheia can receive and send messages via [Signal](https://signal.org/) using t
 
 1. Install and register signal-cli
 2. Start the JSON-RPC daemon: `signal-cli -a +1XXXXXXXXXX daemon --http 8080`
-3. Configure in `aletheia.yaml`:
+3. Configure in `aletheia.toml`:
 
 ```yaml
 channels:

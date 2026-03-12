@@ -1,8 +1,9 @@
-//! Figment-based configuration loading with YAML cascade.
+//! Figment-based configuration loading with TOML cascade.
 
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use snafu::ResultExt;
+use tracing::warn;
 
 use crate::config::AletheiaConfig;
 use crate::error::{FigmentSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
@@ -20,11 +21,22 @@ use crate::oikos::Oikos;
 )]
 pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     let toml_path = oikos.config().join("aletheia.toml");
+    let yaml_path = oikos.config().join("aletheia.yaml");
 
     let mut figment = Figment::new().merge(Serialized::defaults(AletheiaConfig::default()));
 
     if toml_path.exists() {
         figment = figment.merge(Toml::file(&toml_path));
+    } else if yaml_path.exists() {
+        warn!(
+            "Found aletheia.yaml but not aletheia.toml — run migration or rename. \
+             See docs/CONFIGURATION.md."
+        );
+    } else {
+        warn!(
+            "No config file found, using defaults. \
+             Create aletheia.toml to configure. See docs/CONFIGURATION.md."
+        );
     }
 
     figment = figment.merge(Env::prefixed("ALETHEIA_").split("__"));
