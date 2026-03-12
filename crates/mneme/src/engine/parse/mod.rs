@@ -293,3 +293,32 @@ impl ExtractSpan for Pair<'_> {
         SourceSpan(start, end - start)
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use proptest::prelude::*;
+
+    use crate::engine::data::value::ValidityTs;
+    use crate::engine::parse::parse_script;
+
+    fn empty_fixed_rules() -> BTreeMap<String, Arc<Box<dyn crate::engine::FixedRule>>> {
+        BTreeMap::new()
+    }
+
+    proptest! {
+        /// The Datalog parser must never panic on arbitrary input — it should return a
+        /// parse error for invalid input, never crash. Panics indicate parser logic bugs.
+        #[test]
+        fn datalog_parser_never_panics(input in "\\PC{0,500}") {
+            let _ = parse_script(
+                &input,
+                &BTreeMap::new(),
+                &empty_fixed_rules(),
+                ValidityTs(std::cmp::Reverse(0)),
+            );
+        }
+    }
+}

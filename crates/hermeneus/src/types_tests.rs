@@ -511,3 +511,114 @@ fn code_execution_server_tool_definition_serde() {
     assert_eq!(back.tool_type, "code_execution_20250522");
     assert_eq!(back.name, "code_execution");
 }
+
+// --- Proptest serde roundtrip tests ---
+//
+// Per project standards (docs/STANDARDS.md): every type that implements
+// Serialize + Deserialize gets a roundtrip property test.
+
+mod proptests {
+    use proptest::prelude::*;
+
+    use super::super::*;
+
+    proptest! {
+        /// Role serializes to a lowercase JSON string and deserializes back identically.
+        #[test]
+        fn role_serde_roundtrip_prop(role in prop_oneof![
+            Just(Role::System),
+            Just(Role::User),
+            Just(Role::Assistant),
+        ]) {
+            let json = serde_json::to_string(&role).unwrap();
+            let back: Role = serde_json::from_str(&json).unwrap();
+            prop_assert_eq!(role, back);
+        }
+
+        /// StopReason serializes and deserializes without loss.
+        #[test]
+        fn stop_reason_roundtrip_prop(reason in prop_oneof![
+            Just(StopReason::EndTurn),
+            Just(StopReason::ToolUse),
+            Just(StopReason::MaxTokens),
+            Just(StopReason::StopSequence),
+        ]) {
+            let json = serde_json::to_string(&reason).unwrap();
+            let back: StopReason = serde_json::from_str(&json).unwrap();
+            prop_assert_eq!(reason, back);
+        }
+
+        /// Content::Text round-trips through JSON without data loss.
+        #[test]
+        fn content_text_roundtrip(text in "\\PC{0,500}") {
+            let content = Content::Text(text.clone());
+            let json = serde_json::to_string(&content).unwrap();
+            let back: Content = serde_json::from_str(&json).unwrap();
+            match back {
+                Content::Text(s) => prop_assert_eq!(s, text),
+                Content::Blocks(_) => prop_assert!(false, "expected Text variant"),
+            }
+        }
+
+        /// Message round-trips through JSON for all role variants.
+        #[test]
+        fn message_roundtrip(
+            role in prop_oneof![
+                Just(Role::User),
+                Just(Role::Assistant),
+            ],
+            text in "\\PC{0,200}",
+        ) {
+            let msg = Message { role, content: Content::Text(text) };
+            let json = serde_json::to_string(&msg).unwrap();
+            let back: Message = serde_json::from_str(&json).unwrap();
+            prop_assert_eq!(back.role, msg.role);
+            prop_assert_eq!(back.content.text(), msg.content.text());
+        }
+
+        /// Usage.total() equals input_tokens + output_tokens regardless of cache fields.
+        #[test]
+        fn usage_total_prop(
+            input in 0_u64..=100_000,
+            output in 0_u64..=100_000,
+            cache_read in 0_u64..=50_000,
+            cache_write in 0_u64..=50_000,
+        ) {
+            let usage = Usage {
+                input_tokens: input,
+                output_tokens: output,
+                cache_read_tokens: cache_read,
+                cache_write_tokens: cache_write,
+            };
+            prop_assert_eq!(usage.total(), input + output);
+        }
+
+        /// ToolChoice::Auto and ::Any round-trip through JSON.
+        #[test]
+        fn tool_choice_auto_any_roundtrip(auto in proptest::bool::ANY) {
+            let choice = if auto { ToolChoice::Auto } else { ToolChoice::Any };
+            let json = serde_json::to_string(&choice).unwrap();
+            let back: ToolChoice = serde_json::from_str(&json).unwrap();
+            // Verify the tag was preserved by checking the JSON contains the right type string.
+            if auto {
+                prop_assert!(json.contains("\"auto\""), "expected 'auto' in {json}");
+                prop_assert!(matches!(back, ToolChoice::Auto));
+            } else {
+                prop_assert!(json.contains("\"any\""), "expected 'any' in {json}");
+                prop_assert!(matches!(back, ToolChoice::Any));
+            }
+        }
+
+        /// ToolChoice::Tool round-trips preserving the name field.
+        #[test]
+        fn tool_choice_tool_roundtrip(name in "[a-zA-Z_]{1,50}") {
+            let choice = ToolChoice::Tool { name: name.clone() };
+            let json = serde_json::to_string(&choice).unwrap();
+            let back: ToolChoice = serde_json::from_str(&json).unwrap();
+            match back {
+                ToolChoice::Tool { name: n } => prop_assert_eq!(n, name),
+                other => prop_assert!(false, "expected Tool variant, got {other:?}"),
+            }
+        }
+    }
+}

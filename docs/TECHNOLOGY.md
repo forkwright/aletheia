@@ -41,7 +41,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Event bus | tokio::sync::broadcast | EventEmitter | Typed, backpressure-aware. `watch` for latest-value status. |
 | Plugins | WASM (wasmtime) | Dynamic JS import() | Sandboxed, portable, any-language |
 | MCP | rmcp 1.2.0 pinned exact | @modelcontextprotocol/sdk | MCP SDK for external AI agent integration via diaporeia. Pre-1.0 - pin exact, wrap in trait. |
-| Testing | bolero + proptest + cargo-llvm-cov | vitest | Unified fuzz/property/coverage |
+| Testing | proptest + cargo-llvm-cov | vitest | Property-based testing and coverage |
 | TUI | ratatui + crossterm | Svelte 5 web UI | Terminal-native, embedded in workspace, zero web dependencies |
 
 ---

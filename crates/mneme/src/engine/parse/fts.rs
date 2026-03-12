@@ -187,4 +187,40 @@ mod tests {
         assert!(matches!(res, FtsExpr::Near(FtsNear { distance: 10, .. })));
         println!("{:#?}", res);
     }
+
+    mod proptests {
+        use proptest::prelude::*;
+
+        use crate::engine::parse::fts::parse_fts_query;
+
+        proptest! {
+            /// The FTS parser must never panic on arbitrary input — it should return a
+            /// parse error instead. Panics indicate logic bugs in the parser itself.
+            #[test]
+            fn fts_parser_never_panics(input in "\\PC{0,500}") {
+                let _ = parse_fts_query(&input);
+            }
+
+            /// Valid single-word queries must always parse successfully.
+            #[test]
+            fn fts_single_word_parses(word in "[a-zA-Z]{1,30}") {
+                let upper = word.to_uppercase();
+                prop_assume!(!matches!(upper.as_str(), "AND" | "OR" | "NOT" | "NEAR"));
+                parse_fts_query(&word).expect("single word should parse");
+            }
+
+            /// AND/OR combinations of alphanumeric words must always parse without error.
+            #[test]
+            fn fts_and_or_parses(
+                lhs in "[a-zA-Z]{1,20}",
+                op in prop_oneof![Just("AND"), Just("OR")],
+                rhs in "[a-zA-Z]{1,20}",
+            ) {
+                let is_kw = |w: &str| matches!(w.to_uppercase().as_str(), "AND" | "OR" | "NOT" | "NEAR");
+                prop_assume!(!is_kw(&lhs) && !is_kw(&rhs));
+                let query = format!("{lhs} {op} {rhs}");
+                parse_fts_query(&query).expect("AND/OR query should parse");
+            }
+        }
+    }
 }
