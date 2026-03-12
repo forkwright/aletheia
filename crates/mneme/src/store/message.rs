@@ -267,6 +267,20 @@ impl SessionStore {
 
     // --- Usage ---
 
+    /// Check if usage has already been recorded for a given session + turn.
+    #[instrument(skip(self), level = "debug")]
+    pub fn usage_exists_for_turn(&self, session_id: &str, turn_seq: i64) -> Result<bool> {
+        let exists: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM usage WHERE session_id = ?1 AND turn_seq = ?2)",
+                rusqlite::params![session_id, turn_seq],
+                |row| row.get(0),
+            )
+            .context(error::DatabaseSnafu)?;
+        Ok(exists)
+    }
+
     /// Record token usage for a turn.
     #[instrument(skip(self, record), level = "debug")]
     pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {

@@ -36,12 +36,17 @@ impl<'a> SessionTx<'a> {
                         Some(DataValue::List(l)) => l
                             .into_iter()
                             .map(|chunk| match chunk {
-                                DataValue::Bytes(b) => b,
-                                other => panic!(
-                                    "LSH index invariant violated: expected Bytes, got {other:?}"
-                                ),
+                                DataValue::Bytes(b) => Ok(b),
+                                other => InvalidOperationSnafu {
+                                    op: "lsh_index",
+                                    reason: format!(
+                                        "expected Bytes in inverse index, got {other:?}"
+                                    ),
+                                }
+                                .fail()
+                                .map_err(|e| e.into()),
                             })
-                            .collect_vec(),
+                            .collect::<Result<Vec<_>>>()?,
                         other => {
                             return Err(InvalidOperationSnafu {
                                 op: "lsh_index",
@@ -90,12 +95,15 @@ impl<'a> SessionTx<'a> {
                 Some(DataValue::List(l)) => l
                     .into_iter()
                     .map(|chunk| match chunk {
-                        DataValue::Bytes(b) => b,
-                        other => {
-                            panic!("LSH index invariant violated: expected Bytes, got {other:?}")
+                        DataValue::Bytes(b) => Ok(b),
+                        other => InvalidOperationSnafu {
+                            op: "lsh_index",
+                            reason: format!("expected Bytes in inverse index, got {other:?}"),
                         }
+                        .fail()
+                        .map_err(|e| e.into()),
                     })
-                    .collect_vec(),
+                    .collect::<Result<Vec<_>>>()?,
                 other => {
                     return Err(InvalidOperationSnafu {
                         op: "lsh_index",

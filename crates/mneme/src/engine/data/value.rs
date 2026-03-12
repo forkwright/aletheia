@@ -56,7 +56,9 @@ impl Serialize for RegexWrapper {
     where
         S: serde::Serializer,
     {
-        panic!("serializing regex");
+        Err(serde::ser::Error::custom(
+            "RegexWrapper is transient and cannot be serialized",
+        ))
     }
 }
 
@@ -65,7 +67,9 @@ impl<'de> Deserialize<'de> for RegexWrapper {
     where
         D: Deserializer<'de>,
     {
-        panic!("deserializing regex");
+        Err(serde::de::Error::custom(
+            "RegexWrapper is transient and cannot be deserialized",
+        ))
     }
 }
 
