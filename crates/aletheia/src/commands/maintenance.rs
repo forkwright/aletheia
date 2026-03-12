@@ -22,6 +22,9 @@ pub enum Action {
     Run {
         /// Task name: trace-rotation, drift-detection, db-monitor, or all
         task: String,
+        /// List individual files (drift-detection only)
+        #[arg(long)]
+        verbose: bool,
     },
 }
 
@@ -41,7 +44,7 @@ pub fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
             let statuses = runner.status();
             println!("{}", serde_json::to_string_pretty(&statuses)?);
         }
-        Action::Run { task } => {
+        Action::Run { task, verbose } => {
             let tasks: Vec<&str> = if task == "all" {
                 vec!["trace-rotation", "drift-detection", "db-monitor"]
             } else {
@@ -62,11 +65,24 @@ pub fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
                         let report = DriftDetector::new(maint.drift_detection.clone())
                             .check()
                             .context("drift detection failed")?;
-                        println!(
-                            "drift-detection: {} missing, {} extra",
-                            report.missing_files.len(),
-                            report.extra_files.len()
-                        );
+                        let missing = report.missing_files.len();
+                        let extra = report.extra_files.len();
+                        if missing == 0 && extra == 0 {
+                            println!("drift-detection: clean");
+                        } else if verbose {
+                            println!("drift-detection: {missing} missing, {extra} extra");
+                            for path in &report.missing_files {
+                                println!("  missing: {}", path.display());
+                            }
+                            for path in &report.extra_files {
+                                println!("  extra:   {}", path.display());
+                            }
+                        } else {
+                            println!(
+                                "drift-detection: {missing} missing, {extra} extra  \
+                                 (use --verbose to list files)"
+                            );
+                        }
                     }
                     "db-monitor" => {
                         let report = DbMonitor::new(maint.db_monitoring.clone())
