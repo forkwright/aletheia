@@ -28,7 +28,7 @@ fn defaults_are_sensible() {
     assert!(config.channels.signal.enabled);
     assert!(config.channels.signal.accounts.is_empty());
     assert!(config.bindings.is_empty());
-    assert_eq!(config.embedding.provider, "mock");
+    assert_eq!(config.embedding.provider, "candle");
     assert!(config.embedding.model.is_none());
     assert_eq!(config.embedding.dimension, 384);
     // Maintenance defaults
@@ -49,7 +49,7 @@ fn serde_roundtrip() {
     assert_eq!(back.agents.defaults.context_tokens, 200_000);
     assert_eq!(back.gateway.port, 18789);
     assert!(back.channels.signal.enabled);
-    assert_eq!(back.embedding.provider, "mock");
+    assert_eq!(back.embedding.provider, "candle");
     assert_eq!(back.embedding.dimension, 384);
 }
 

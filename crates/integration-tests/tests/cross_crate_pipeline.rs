@@ -355,6 +355,8 @@ impl TestHarness {
                 aletheia_taxis::config::AletheiaConfig::default(),
             )),
             shutdown: CancellationToken::new(),
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
         });
 
         Self {

@@ -5,6 +5,8 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use aletheia_hermeneus::provider::ProviderRegistry;
+#[cfg(feature = "knowledge-store")]
+use aletheia_mneme::knowledge_store::KnowledgeStore;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::manager::NousManager;
 use aletheia_organon::registry::ToolRegistry;
@@ -35,6 +37,9 @@ pub struct AppState {
     pub auth_mode: String,
     /// Root shutdown token. Cancel to initiate graceful shutdown of all subsystems.
     pub shutdown: CancellationToken,
+    /// Shared knowledge store for fact/entity/relationship queries.
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<KnowledgeStore>>,
 }
 
 #[cfg(test)]

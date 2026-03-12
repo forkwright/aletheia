@@ -153,10 +153,10 @@ impl Oikos {
         self.root.join("data").join("planning.db")
     }
 
-    /// The knowledge store directory (redb persistent storage).
+    /// The knowledge store directory (fjall persistent storage).
     #[must_use]
     pub fn knowledge_db(&self) -> PathBuf {
-        self.root.join("data").join("knowledge.redb")
+        self.root.join("data").join("knowledge.fjall")
     }
 
     /// The backups directory.
@@ -355,7 +355,7 @@ mod tests {
         );
         assert_eq!(
             oikos.knowledge_db(),
-            PathBuf::from("/srv/instance/data/knowledge.redb")
+            PathBuf::from("/srv/instance/data/knowledge.fjall")
         );
         assert_eq!(oikos.logs(), PathBuf::from("/srv/instance/logs"));
         assert_eq!(oikos.signal(), PathBuf::from("/srv/instance/signal"));

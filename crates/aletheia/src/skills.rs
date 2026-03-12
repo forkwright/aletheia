@@ -186,7 +186,7 @@ pub(crate) fn export_skills_cmd(
         let knowledge_path = oikos.knowledge_db();
 
         let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
-        let store = KnowledgeStore::open_redb(&knowledge_path, config).map_err(|e| {
+        let store = KnowledgeStore::open_fjall(&knowledge_path, config).map_err(|e| {
             anyhow::anyhow!(
                 "failed to open knowledge store at {}: {e}",
                 knowledge_path.display()
@@ -271,7 +271,7 @@ pub(crate) fn review_skills_cmd(
         let knowledge_path = oikos.knowledge_db();
 
         let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
-        let store = KnowledgeStore::open_redb(&knowledge_path, config).map_err(|e| {
+        let store = KnowledgeStore::open_fjall(&knowledge_path, config).map_err(|e| {
             anyhow::anyhow!(
                 "failed to open knowledge store at {}: {e}",
                 knowledge_path.display()

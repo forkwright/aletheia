@@ -193,11 +193,19 @@ impl NousActor {
         let tools = Arc::clone(&self.tools);
         let embedding_provider = self.embedding_provider.clone();
         let vector_search = self.vector_search.clone();
+        #[cfg(feature = "knowledge-store")]
+        let text_search = self.text_search.clone();
         let session_store = self.session_store.clone();
         let span = tracing::Span::current();
 
         tokio::spawn(
             async move {
+                #[cfg(feature = "knowledge-store")]
+                let text_search_ref: Option<&dyn crate::recall::TextSearch> =
+                    text_search.as_deref();
+                #[cfg(not(feature = "knowledge-store"))]
+                let text_search_ref: Option<&dyn crate::recall::TextSearch> = None;
+
                 match stream_tx {
                     Some(ref stx) => {
                         crate::pipeline::run_pipeline(
@@ -210,6 +218,7 @@ impl NousActor {
                             &tool_ctx,
                             embedding_provider.as_deref(),
                             vector_search.as_deref(),
+                            text_search_ref,
                             session_store.as_deref(),
                             extra_bootstrap,
                             Some(stx),
@@ -227,6 +236,7 @@ impl NousActor {
                             &tool_ctx,
                             embedding_provider.as_deref(),
                             vector_search.as_deref(),
+                            text_search_ref,
                             session_store.as_deref(),
                             extra_bootstrap,
                             None,
@@ -353,6 +363,11 @@ impl NousActor {
         let mut extra_bootstrap = self.extra_bootstrap.clone();
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 
+        #[cfg(feature = "knowledge-store")]
+        let text_search_ref: Option<&dyn crate::recall::TextSearch> = self.text_search.as_deref();
+        #[cfg(not(feature = "knowledge-store"))]
+        let text_search_ref: Option<&dyn crate::recall::TextSearch> = None;
+
         crate::pipeline::run_pipeline(
             input,
             &self.oikos,
@@ -363,6 +378,7 @@ impl NousActor {
             &tool_ctx,
             self.embedding_provider.as_deref(),
             self.vector_search.as_deref(),
+            text_search_ref,
             self.session_store.as_deref(),
             extra_bootstrap,
             None,

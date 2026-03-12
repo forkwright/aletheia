@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(redacted["gateway"]["port"], 18789);
         assert_eq!(redacted["agents"]["defaults"]["contextTokens"], 200_000);
         assert_eq!(redacted["agents"]["defaults"]["timeoutSeconds"], 300);
-        assert_eq!(redacted["embedding"]["provider"], "mock");
+        assert_eq!(redacted["embedding"]["provider"], "candle");
     }
 
     #[test]

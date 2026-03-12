@@ -105,6 +105,9 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         AletheiaConfig::default()
     });
 
+    #[cfg(feature = "knowledge-store")]
+    let knowledge_store = nous_manager.knowledge_store().cloned();
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -116,6 +119,8 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         auth_mode: aletheia_config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
         shutdown: CancellationToken::new(),
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store,
     });
 
     let app = build_router(state.clone(), &config.security);

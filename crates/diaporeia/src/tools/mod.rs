@@ -43,7 +43,9 @@ impl DiaporeiaServer {
         }))
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(json)]))
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     /// List sessions, optionally filtered by nous agent ID.
@@ -75,7 +77,9 @@ impl DiaporeiaServer {
         let json = serde_json::to_string_pretty(&summaries)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(json)]))
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     /// Send a message to a nous agent session and get the response.
@@ -131,7 +135,9 @@ impl DiaporeiaServer {
         let json = serde_json::to_string_pretty(&history)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(json)]))
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     // -- Nous tools --
@@ -158,7 +164,9 @@ impl DiaporeiaServer {
         let json = serde_json::to_string_pretty(&list)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(json)]))
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     /// Get detailed status of a specific nous agent.
@@ -193,7 +201,9 @@ impl DiaporeiaServer {
         }))
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(json)]))
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     /// List tools available to nous agents.
@@ -202,16 +212,16 @@ impl DiaporeiaServer {
         &self,
         Parameters(params): Parameters<params::NousIdParam>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let _handle =
-            self.state
-                .nous_manager
-                .get(&params.nous_id)
-                .ok_or_else(|| {
-                    rmcp::ErrorData::internal_error(
-                        format!("nous agent not found: {}", params.nous_id),
-                        None,
-                    )
-                })?;
+        let _handle = self
+            .state
+            .nous_manager
+            .get(&params.nous_id)
+            .ok_or_else(|| {
+                rmcp::ErrorData::internal_error(
+                    format!("nous agent not found: {}", params.nous_id),
+                    None,
+                )
+            })?;
 
         let defs = self.state.tool_registry.definitions();
         let tools: Vec<serde_json::Value> = defs
@@ -228,7 +238,9 @@ impl DiaporeiaServer {
         let json = serde_json::to_string_pretty(&tools)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(json)]))
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     // -- Knowledge tools --
@@ -276,7 +288,9 @@ impl DiaporeiaServer {
         let json = serde_json::to_string_pretty(&redacted)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(json)]))
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 
     // -- System tools --
@@ -312,6 +326,8 @@ impl DiaporeiaServer {
         let json = serde_json::to_string_pretty(&result)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(json)]))
+        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+            json,
+        )]))
     }
 }

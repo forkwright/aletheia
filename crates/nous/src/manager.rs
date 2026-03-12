@@ -470,7 +470,7 @@ impl NousManager {
     ///
     /// This is the primary shutdown path when the manager is behind `Arc`
     /// and mutable access is unavailable. Awaiting join handles ensures that
-    /// redb WAL checkpoints and other finalisation complete before exit.
+    /// fjall WAL checkpoints and other finalisation complete before exit.
     ///
     /// # Cancel safety
     ///
@@ -496,7 +496,7 @@ impl NousManager {
         }
 
         // Await all join handles within the timeout, so callers can guarantee
-        // all Arc<KnowledgeStore> / redb Database references are dropped.
+        // all Arc<KnowledgeStore> / fjall Database references are dropped.
         // Take handles first to avoid holding MutexGuard across .await points.
         let mut joins: Vec<(String, JoinHandle<()>)> = self
             .actors
@@ -557,6 +557,13 @@ impl NousManager {
     #[must_use]
     pub fn count(&self) -> usize {
         self.actors.len()
+    }
+
+    /// Access the shared knowledge store, if configured.
+    #[cfg(feature = "knowledge-store")]
+    #[must_use]
+    pub fn knowledge_store(&self) -> Option<&Arc<KnowledgeStore>> {
+        self.knowledge_store.as_ref()
     }
 }
 

@@ -170,6 +170,8 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
             aletheia_taxis::config::AletheiaConfig::default(),
         )),
         shutdown: CancellationToken::new(),
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store: None,
     });
 
     (state, dir)
@@ -1439,6 +1441,8 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         start_time: state.start_time,
         config: Arc::clone(&state.config),
         shutdown: state.shutdown.clone(),
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store: None,
     });
     (build_router(state, &test_security_config()), dir)
 }

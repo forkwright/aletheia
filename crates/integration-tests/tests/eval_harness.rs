@@ -147,6 +147,8 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
             aletheia_taxis::config::AletheiaConfig::default(),
         )),
         shutdown: CancellationToken::new(),
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store: None,
     });
 
     let router = build_router(

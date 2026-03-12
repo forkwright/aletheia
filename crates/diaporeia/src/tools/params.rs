@@ -56,7 +56,10 @@ pub(crate) struct NousIdParam {
 
 /// Parameters for knowledge search.
 #[derive(Debug, Deserialize, JsonSchema)]
-#[expect(dead_code, reason = "fields used for JSON Schema generation; tool is a Phase 1 stub")]
+#[expect(
+    dead_code,
+    reason = "fields used for JSON Schema generation; tool is a Phase 1 stub"
+)]
 pub(crate) struct KnowledgeSearchParams {
     /// The search query text.
     pub query: String,

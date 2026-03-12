@@ -1,6 +1,8 @@
 //! Configuration resources.
 
-use rmcp::model::{RawResourceTemplate, ReadResourceRequestParams, ResourceContents, ResourceTemplate};
+use rmcp::model::{
+    RawResourceTemplate, ReadResourceRequestParams, ResourceContents, ResourceTemplate,
+};
 
 use crate::state::DiaporeiaState;
 

@@ -181,12 +181,12 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         if let Some(parent) = kb_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_redb(
+        let store = aletheia_mneme::knowledge_store::KnowledgeStore::open_fjall(
             &kb_path,
             aletheia_mneme::knowledge_store::KnowledgeConfig::default(),
         )
         .context("failed to open knowledge store")?;
-        info!(path = %kb_path.display(), dim = 384, "knowledge store opened (redb)");
+        info!(path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
         Some(store)
     };
     #[cfg(not(feature = "recall"))]
@@ -369,6 +369,9 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         tracing::warn!("failed to load config, using defaults: {e}");
         aletheia_taxis::config::AletheiaConfig::default()
     });
+    #[cfg(feature = "recall")]
+    let knowledge_store = nous_manager.knowledge_store().cloned();
+
     let state = Arc::new(AppState {
         session_store,
         nous_manager: Arc::clone(&nous_manager),
@@ -380,6 +383,8 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         auth_mode: config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
         shutdown: shutdown_token.clone(),
+        #[cfg(feature = "recall")]
+        knowledge_store,
     });
 
     let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
@@ -427,7 +432,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
     // 2. Root token is cancelled — daemon tasks observe it and exit their loops.
     // 3. Wait for system daemon to finish in-flight maintenance work.
-    // 4. Drain nous actors with a timeout, flushing redb WAL and other state.
+    // 4. Drain nous actors with a timeout, flushing fjall WAL and other state.
     //    Awaiting join handles ensures Arc<Database> drops, checkpointing the WAL.
     // 5. Drop AppState (session store, registries).
     // ────────────────────────────────────────────────────────────────────────

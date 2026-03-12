@@ -18,6 +18,44 @@ use crate::error;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
 
+/// Abstracts BM25 text search for recall when no embedding provider is available.
+///
+/// Used as fallback when the embedding provider is mock or unavailable.
+/// `KnowledgeStore` implements this when the `mneme-engine` feature is available.
+pub trait TextSearch: Send + Sync {
+    /// Search by text (BM25) and return the `k` best-matching results.
+    fn search_text(&self, query: &str, k: usize) -> error::Result<Vec<KnowledgeRecallResult>>;
+}
+
+/// Bridges [`aletheia_mneme::knowledge_store::KnowledgeStore::search_text_for_recall`] to [`TextSearch`].
+#[cfg(feature = "knowledge-store")]
+pub struct KnowledgeTextSearch {
+    store: Arc<KnowledgeStore>,
+}
+
+#[cfg(feature = "knowledge-store")]
+impl KnowledgeTextSearch {
+    #[must_use]
+    pub fn new(store: Arc<KnowledgeStore>) -> Self {
+        Self { store }
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+impl TextSearch for KnowledgeTextSearch {
+    fn search_text(&self, query: &str, k: usize) -> error::Result<Vec<KnowledgeRecallResult>> {
+        let k_i64 = i64::try_from(k).unwrap_or(i64::MAX);
+        self.store
+            .search_text_for_recall(query, k_i64)
+            .map_err(|e| {
+                error::RecallSearchSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
+    }
+}
+
 /// Abstracts vector knowledge search.
 ///
 /// `KnowledgeStore` implements this when the `mneme-engine` feature is available.
@@ -135,6 +173,35 @@ impl RecallStage {
             engine: RecallEngine::new(),
             config,
         }
+    }
+
+    /// Run recall using BM25 text search only (no vector embeddings required).
+    ///
+    /// Used as a fallback when the embedding provider is in mock mode.
+    /// Scores, ranks, and formats results the same way as [`run`](Self::run).
+    pub fn run_bm25(
+        &self,
+        query: &str,
+        nous_id: &str,
+        text_search: &dyn TextSearch,
+        remaining_budget: u64,
+    ) -> error::Result<RecallStageResult> {
+        if !self.config.enabled {
+            debug!("recall disabled");
+            return Ok(RecallStageResult::empty());
+        }
+
+        let k = self.config.max_results * 3;
+        let raw = text_search.search_text(query, k)?;
+
+        if raw.is_empty() {
+            debug!("no BM25 recall candidates found");
+            return Ok(RecallStageResult::empty());
+        }
+
+        let candidates = self.build_candidates(raw, nous_id);
+        let ranked = self.engine.rank(candidates);
+        Ok(self.finalize_results(ranked, remaining_budget))
     }
 
     /// Run the recall stage.

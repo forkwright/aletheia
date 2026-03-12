@@ -484,12 +484,12 @@ Rules:
                 crate::vocab::RelationType::Unknown(normalized) => {
                     tracing::warn!(
                         relation = %normalized,
-                        raw = %rel.relation,
                         source = %rel.source,
                         target = %rel.target,
-                        "persisting relationship with unknown type"
+                        "skipping relationship with unknown type"
                     );
-                    normalized
+                    result.relationships_skipped += 1;
+                    continue;
                 }
             };
             let r = Relationship {
@@ -1207,7 +1207,7 @@ mod tests {
 
     #[cfg(feature = "mneme-engine")]
     #[test]
-    fn persist_accepts_unknown_type() {
+    fn persist_skips_unknown_type() {
         let store = crate::knowledge_store::KnowledgeStore::open_mem()
             .expect("in-memory knowledge store should open successfully");
         let engine = ExtractionEngine::new(ExtractionConfig::default());
@@ -1236,9 +1236,10 @@ mod tests {
 
         let result = engine
             .persist(&extraction, &store, "session:test", "syn")
-            .expect("persist should succeed with unknown relationship type");
-        assert_eq!(result.relationships_inserted, 1);
-        assert_eq!(result.relationships_skipped, 0);
+            .expect("persist should succeed even when relationship type is unknown");
+        // Unknown types are now rejected — not persisted — to keep the vocab clean.
+        assert_eq!(result.relationships_inserted, 0);
+        assert_eq!(result.relationships_skipped, 1);
     }
 
     #[test]
