@@ -62,7 +62,7 @@ impl ToolExecutor for ShellToolExecutor {
                         }
                         Err(e) if e.raw_os_error() == Some(26) && attempt < 3 => {
                             // ETXTBSY — brief backoff (1ms, 5ms, 25ms)
-                            std::thread::sleep(Duration::from_millis(1 << (2 * attempt)));
+                            tokio::time::sleep(Duration::from_millis(1 << (2 * attempt))).await;
                             last_err = Some(e);
                         }
                         Err(e) => {
@@ -91,16 +91,21 @@ impl ToolExecutor for ShellToolExecutor {
             }
 
             // Wait in a background thread to avoid blocking the async runtime,
-            // then enforce timeout from this side via channel.
-            let (tx, rx) = std::sync::mpsc::channel();
+            // then enforce timeout from this async side via oneshot + tokio timeout.
+            let (tx, rx) = tokio::sync::oneshot::channel();
             std::thread::spawn(move || {
                 let result = child.wait_with_output();
                 let _ = tx.send(result);
             });
 
-            let output_result = match rx.recv_timeout(timeout) {
-                Ok(Ok(o)) => o,
-                Ok(Err(e)) => return Ok(ToolResult::error(format!("wait failed: {e}"))),
+            let output_result = match tokio::time::timeout(timeout, rx).await {
+                Ok(Ok(Ok(o))) => o,
+                Ok(Ok(Err(e))) => return Ok(ToolResult::error(format!("wait failed: {e}"))),
+                Ok(Err(_)) => {
+                    return Ok(ToolResult::error(
+                        "wait channel closed unexpectedly".to_owned(),
+                    ));
+                }
                 Err(_) => {
                     return Ok(ToolResult::error(format!(
                         "command timed out after {}ms",
@@ -517,8 +522,8 @@ mod tests {
         assert!(registry.definitions().is_empty());
     }
 
-    #[test]
-    fn shell_executor_runs_script() {
+    #[tokio::test]
+    async fn shell_executor_runs_script() {
         let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
         make_executable(&dir, "tools/echo.sh");
 
@@ -544,7 +549,7 @@ mod tests {
             )),
         };
 
-        let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
+        let result = executor.execute(&input, &ctx).await.unwrap();
         assert!(
             !result.is_error,
             "unexpected error: {}",
@@ -553,8 +558,8 @@ mod tests {
         assert!(result.content.text_summary().contains("hello"));
     }
 
-    #[test]
-    fn shell_executor_nonzero_exit_is_error() {
+    #[tokio::test]
+    async fn shell_executor_nonzero_exit_is_error() {
         let dir = setup_pack_dir(&[("tools/fail.sh", "#!/bin/sh\nexit 1")]);
         make_executable(&dir, "tools/fail.sh");
 
@@ -580,7 +585,7 @@ mod tests {
             )),
         };
 
-        let result = futures::executor::block_on(executor.execute(&input, &ctx)).unwrap();
+        let result = executor.execute(&input, &ctx).await.unwrap();
         assert!(result.is_error);
     }
 
