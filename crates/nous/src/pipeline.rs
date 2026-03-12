@@ -373,7 +373,9 @@ pub async fn run_pipeline(
         let start = Instant::now();
         assemble_context_with_extra(oikos, config, pipeline_config, &mut ctx, extra_bootstrap)
             .await
-            .inspect_err(|_| crate::metrics::record_error(&config.id, "context", "assembly_failed"))?;
+            .inspect_err(|_| {
+                crate::metrics::record_error(&config.id, "context", "assembly_failed");
+            })?;
         #[expect(
             clippy::cast_possible_truncation,
             reason = "stage duration fits in u64"
@@ -606,7 +608,9 @@ pub async fn run_pipeline(
 
         result = if let Some(timeout_dur) = effective_execute_timeout {
             match tokio::time::timeout(timeout_dur, execute_fut).await {
-                Ok(res) => res.inspect_err(|_| crate::metrics::record_error(&config.id, "execute", "pipeline_error"))?,
+                Ok(res) => res.inspect_err(|_| {
+                    crate::metrics::record_error(&config.id, "execute", "pipeline_error");
+                })?,
                 Err(_elapsed) => {
                     let secs = execute_secs.max(pipeline_config.stage_budget.total_secs);
                     span.record("status", "timeout");
@@ -619,7 +623,9 @@ pub async fn run_pipeline(
                 }
             }
         } else {
-            execute_fut.await.inspect_err(|_| crate::metrics::record_error(&config.id, "execute", "pipeline_error"))?
+            execute_fut.await.inspect_err(|_| {
+                crate::metrics::record_error(&config.id, "execute", "pipeline_error");
+            })?
         };
 
         #[expect(
@@ -705,15 +711,12 @@ pub async fn run_pipeline(
 
     crate::metrics::record_turn(&config.id);
 
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "pipeline duration fits in u64"
-    )]
+    let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
     tracing::info!(
         input_tokens = result.usage.input_tokens,
         output_tokens = result.usage.output_tokens,
         tool_calls_count = result.tool_calls.len() as u64,
-        duration_ms = pipeline_start.elapsed().as_millis() as u64,
+        duration_ms,
         model = %config.model,
         "turn_completed"
     );
