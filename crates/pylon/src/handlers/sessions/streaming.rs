@@ -17,8 +17,8 @@ use aletheia_nous::pipeline::TurnResult;
 use aletheia_nous::stream::TurnStreamEvent;
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
-use crate::middleware::RequestId;
 use crate::extract::Claims;
+use crate::middleware::RequestId;
 use crate::state::AppState;
 use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
 

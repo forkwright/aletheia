@@ -307,7 +307,11 @@ impl AnthropicProvider {
                         resp.usage.cache_read_tokens,
                         resp.usage.cache_write_tokens,
                     );
-                    crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
+                    crate::metrics::record_latency(
+                        &request.model,
+                        "ok",
+                        start.elapsed().as_secs_f64(),
+                    );
                     if let Some(ttft_dur) = ttft {
                         crate::metrics::record_ttft(&request.model, "ok", ttft_dur.as_secs_f64());
                     }
@@ -328,7 +332,11 @@ impl AnthropicProvider {
                         }
                         tracing::Span::current().record("llm.retries", attempt);
                         tracing::Span::current().record("llm.status", "error");
-                        crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
+                        crate::metrics::record_latency(
+                            &request.model,
+                            "error",
+                            start.elapsed().as_secs_f64(),
+                        );
                         return Err(e);
                     }
                     // Only retry RateLimited (overloaded/429); other errors are terminal.
@@ -568,7 +576,11 @@ impl AnthropicProvider {
                         resp.usage.cache_read_tokens,
                         resp.usage.cache_write_tokens,
                     );
-                    crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
+                    crate::metrics::record_latency(
+                        &request.model,
+                        "ok",
+                        start.elapsed().as_secs_f64(),
+                    );
                 }
                 return parsed;
             }

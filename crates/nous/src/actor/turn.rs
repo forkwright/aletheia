@@ -86,7 +86,12 @@ impl NousActor {
         self.active_session = Some(session_key.clone());
 
         let result = self
-            .execute_streaming_turn_with_panic_boundary(&session_key, &content, &stream_tx, caller_span)
+            .execute_streaming_turn_with_panic_boundary(
+                &session_key,
+                &content,
+                &stream_tx,
+                caller_span,
+            )
             .await;
 
         if let Ok(ref turn_result) = result {
@@ -121,7 +126,9 @@ impl NousActor {
     ) -> crate::error::Result<TurnResult> {
         // Spawn the pipeline in a separate task so panics are caught by the
         // JoinHandle rather than propagating into the actor loop.
-        let result = self.spawn_pipeline_task(session_key, content, None, caller_span).await;
+        let result = self
+            .spawn_pipeline_task(session_key, content, None, caller_span)
+            .await;
         self.handle_pipeline_result(result, session_key)
     }
 
