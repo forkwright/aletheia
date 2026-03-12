@@ -41,4 +41,4 @@ This system reveals:
 
 ## Naming Convention
 
-The Greek naming system is integral to this project. Each module, agent, and subsystem is named for its essential nature using Ancient Greek roots. See [gnomon.md](gnomon.md) for the full naming philosophy, layer test, and current lexicon.
+The Greek naming system is integral to this project. Each module, agent, and subsystem is named for its essential nature using Ancient Greek roots. See [gnomon.md](gnomon.md) for the naming philosophy and layer test, and [lexicon.md](lexicon.md) for the full registry of named concepts.
