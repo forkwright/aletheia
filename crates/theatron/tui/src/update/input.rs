@@ -63,6 +63,10 @@ pub(crate) fn handle_clear_line(app: &mut App) {
     app.input.cursor = 0;
 }
 
+pub(crate) fn handle_delete_to_end(app: &mut App) {
+    app.input.text.drain(app.input.cursor..);
+}
+
 pub(crate) fn handle_history_up(app: &mut App) {
     if !app.input.history.is_empty() {
         let idx = match app.input.history_index {

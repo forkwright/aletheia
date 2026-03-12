@@ -103,6 +103,30 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         render_streaming(app, &mut lines, inner_width, theme, agent_name_lower);
     }
 
+    // Bottom alignment: when total content is shorter than the pane, push it to
+    // the bottom by prepending empty lines.  Only applies when not scrolled
+    // (content fits in the viewport).
+    {
+        let w = wrap_width.max(1) as usize;
+        let total_visual: usize = lines
+            .iter()
+            .map(|line| {
+                let lw: usize = line.spans.iter().map(|s| s.content.len()).sum();
+                if lw == 0 { 1 } else { lw.div_ceil(w) }
+            })
+            .sum();
+        let padding = (visible_height as usize).saturating_sub(total_visual);
+        if padding > 0 {
+            let mut padded: Vec<Line<'static>> = vec![Line::raw(""); padding];
+            padded.append(&mut lines);
+            lines = padded;
+            // Shift all paragraph-relative link line indices by the padding.
+            for (line_idx, _, _, _) in &mut para_links {
+                *line_idx += padding;
+            }
+        }
+    }
+
     // Pre-compute per-line widths — needed for resolve_osc_links and legacy scroll.
     let line_widths: Vec<usize> = lines
         .iter()

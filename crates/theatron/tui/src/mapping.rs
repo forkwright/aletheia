@@ -184,6 +184,7 @@ impl App {
 
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::DeleteWord),
             (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::ClearLine),
+            (KeyModifiers::CONTROL, KeyCode::Char('k')) => Some(Msg::DeleteToEnd),
             (KeyModifiers::CONTROL, KeyCode::Char('y')) => Some(Msg::CopyLastResponse),
             (KeyModifiers::CONTROL, KeyCode::Char('e')) => Some(Msg::ComposeInEditor),
 
