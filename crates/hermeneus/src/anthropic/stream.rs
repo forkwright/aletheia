@@ -327,21 +327,36 @@ impl StreamAccumulator {
 }
 
 /// Parse SSE lines from a reader, dispatching events to the accumulator.
+///
+/// Uses lossy UTF-8 conversion so that proxy-injected non-UTF8 bytes do not
+/// abort the stream — replacement characters (`\u{FFFD}`) appear in event
+/// data instead of causing an error.
 pub(crate) fn parse_sse_stream(
-    reader: impl BufRead,
+    mut reader: impl BufRead,
     accumulator: &mut StreamAccumulator,
     on_event: &mut impl FnMut(StreamEvent),
 ) -> Result<()> {
     let mut current_event_type = String::new();
     let mut current_data = String::new();
+    let mut raw_line: Vec<u8> = Vec::new();
 
-    for line in reader.lines() {
-        let line = line.map_err(|e| {
+    loop {
+        raw_line.clear();
+        let n = reader.read_until(b'\n', &mut raw_line).map_err(|e| {
             error::ApiRequestSnafu {
                 message: format!("stream read error: {e}"),
             }
             .build()
         })?;
+
+        if n == 0 {
+            break; // EOF
+        }
+
+        // Lossy UTF-8: non-UTF8 bytes (e.g. from a misconfigured proxy) are
+        // replaced with U+FFFD rather than aborting the stream.
+        let line_cow = String::from_utf8_lossy(&raw_line);
+        let line = line_cow.trim_end_matches(['\n', '\r']);
 
         if line.is_empty() {
             // Empty line = end of event. Dispatch if we have data.

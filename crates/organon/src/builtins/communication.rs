@@ -15,6 +15,8 @@ use crate::types::{
 };
 
 const MESSAGE_MAX_LEN: usize = 4000;
+const INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
+const INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
 
 struct MessageExecutor;
 
@@ -68,13 +70,23 @@ impl ToolExecutor for SessionsAskExecutor {
 
             let agent_id = extract_str(&input.arguments, "agentId", &input.name)?;
             let message = extract_str(&input.arguments, "message", &input.name)?;
+
+            if message.len() > INTER_SESSION_MAX_MESSAGE_LEN {
+                return Ok(ToolResult::error(format!(
+                    "Message exceeds {INTER_SESSION_MAX_MESSAGE_LEN} byte limit ({} bytes)",
+                    message.len()
+                )));
+            }
+
             let default_session = format!("ask:{}", ctx.nous_id.as_str());
             let session_key = input
                 .arguments
                 .get("sessionKey")
                 .and_then(|v| v.as_str())
                 .unwrap_or(&default_session);
-            let timeout = extract_opt_u64(&input.arguments, "timeoutSeconds").unwrap_or(120);
+            let timeout = extract_opt_u64(&input.arguments, "timeoutSeconds")
+                .unwrap_or(120)
+                .min(INTER_SESSION_MAX_TIMEOUT_SECS);
 
             match cross
                 .ask(
@@ -111,6 +123,14 @@ impl ToolExecutor for SessionsSendExecutor {
 
             let agent_id = extract_str(&input.arguments, "agentId", &input.name)?;
             let message = extract_str(&input.arguments, "message", &input.name)?;
+
+            if message.len() > INTER_SESSION_MAX_MESSAGE_LEN {
+                return Ok(ToolResult::error(format!(
+                    "Message exceeds {INTER_SESSION_MAX_MESSAGE_LEN} byte limit ({} bytes)",
+                    message.len()
+                )));
+            }
+
             let session_key = input
                 .arguments
                 .get("sessionKey")

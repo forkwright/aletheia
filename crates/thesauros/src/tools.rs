@@ -70,20 +70,22 @@ impl ToolExecutor for ShellToolExecutor {
                         }
                     }
                 }
-                match spawned {
-                    Some(c) => c,
-                    None => {
-                        return Ok(ToolResult::error(format!(
-                            "spawn failed after retries: {}",
-                            last_err.unwrap()
-                        )));
-                    }
+                if let Some(c) = spawned {
+                    c
+                } else {
+                    let msg = last_err.map_or_else(
+                        || "spawn failed: binary not found or inaccessible".to_owned(),
+                        |e| format!("spawn failed after retries: {e}"),
+                    );
+                    return Ok(ToolResult::error(msg));
                 }
             };
 
             if let Some(mut stdin) = child.stdin.take() {
                 use std::io::Write;
-                let _ = stdin.write_all(json_input.as_bytes());
+                if let Err(e) = stdin.write_all(json_input.as_bytes()) {
+                    return Ok(ToolResult::error(format!("failed to write tool input: {e}")));
+                }
             }
 
             // Wait in a background thread to avoid blocking the async runtime,

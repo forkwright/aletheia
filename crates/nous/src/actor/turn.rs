@@ -41,6 +41,13 @@ impl NousActor {
             .await;
 
         if let Ok(ref turn_result) = result {
+            // Update per-session cumulative token count for spending cap enforcement.
+            if let Some(session) = self.sessions.get_mut(&session_key) {
+                session.cumulative_tokens = session
+                    .cumulative_tokens
+                    .saturating_add(turn_result.usage.input_tokens)
+                    .saturating_add(turn_result.usage.output_tokens);
+            }
             self.maybe_spawn_extraction(&content, &turn_result.content);
             self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &session_key);
             self.maybe_spawn_distillation(&session_key).await;
@@ -81,6 +88,13 @@ impl NousActor {
             .await;
 
         if let Ok(ref turn_result) = result {
+            // Update per-session cumulative token count for spending cap enforcement.
+            if let Some(session) = self.sessions.get_mut(&session_key) {
+                session.cumulative_tokens = session
+                    .cumulative_tokens
+                    .saturating_add(turn_result.usage.input_tokens)
+                    .saturating_add(turn_result.usage.output_tokens);
+            }
             self.maybe_spawn_extraction(&content, &turn_result.content);
             self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &session_key);
             self.maybe_spawn_distillation(&session_key).await;

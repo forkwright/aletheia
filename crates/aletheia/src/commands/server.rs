@@ -292,6 +292,7 @@ pub async fn run(args: Args) -> Result<()> {
                 domains,
                 server_tools: Vec::new(),
                 cache_enabled: resolved.cache_enabled,
+                session_token_cap: 500_000,
             };
             nous_manager
                 .spawn(
