@@ -1,4 +1,5 @@
 //! Fjall persistent storage backend.
+#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 
 use std::fs;
 use std::path::Path;
@@ -460,6 +461,7 @@ impl Iterator for CollectedSkipIterator {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::engine::data::value::{DataValue, Validity};

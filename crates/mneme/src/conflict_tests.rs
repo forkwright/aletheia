@@ -1,3 +1,4 @@
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 use super::*;
 
 fn make_fact(content: &str, confidence: f64, embedding: Vec<f32>) -> FactForConflictCheck {

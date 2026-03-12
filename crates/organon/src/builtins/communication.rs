@@ -1,4 +1,5 @@
 //! Communication tool executors: message, sessions_ask, sessions_send.
+#![expect(clippy::expect_used, reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain")]
 
 use std::future::Future;
 use std::pin::Pin;
@@ -287,6 +288,8 @@ fn sessions_send_def() -> ToolDef {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::future::Future;
     use std::path::PathBuf;

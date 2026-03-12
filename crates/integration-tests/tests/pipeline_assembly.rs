@@ -1,5 +1,7 @@
 //! Integration: nous pipeline types assembled from config + session.
 
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::pipeline::{
     GuardResult, InteractionSignal, LoopDetector, PipelineContext, PipelineInput, PipelineMessage,

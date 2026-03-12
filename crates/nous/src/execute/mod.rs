@@ -1,5 +1,12 @@
 //! Execute stage — LLM call and tool iteration loop.
 
+// RwLock::read().expect() is infallible under normal operation; poisoning only
+// occurs on a prior panic which makes the process state undefined anyway.
+#![expect(
+    clippy::expect_used,
+    reason = "RwLock read is infallible under normal operation"
+)]
+
 mod dispatch;
 
 #[cfg(test)]

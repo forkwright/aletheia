@@ -83,6 +83,10 @@ impl DriftDetector {
         Ok(report)
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "path is obtained by walking example_root so strip_prefix is guaranteed to succeed"
+    )]
     fn walk_example(&self, dir: &Path, report: &mut DriftReport) -> error::Result<()> {
         let entries = fs::read_dir(dir).context(error::MaintenanceIoSnafu {
             context: format!("reading example dir {}", dir.display()),
@@ -147,6 +151,8 @@ impl DriftDetector {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

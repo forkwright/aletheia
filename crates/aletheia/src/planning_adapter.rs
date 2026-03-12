@@ -300,6 +300,8 @@ fn list_projects_sync(root: &Path) -> Result<String, String> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

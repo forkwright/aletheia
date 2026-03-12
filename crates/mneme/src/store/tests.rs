@@ -1,4 +1,5 @@
 //! Tests for the session store.
+#![expect(clippy::expect_used, reason = "test assertions")]
 
 use super::SessionStore;
 use crate::types::{Role, SessionStatus, SessionType, UsageRecord};

@@ -8,6 +8,10 @@ use prometheus::{
 };
 
 static TOOL_INVOCATIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error"
+    )]
     register_int_counter_vec!(
         Opts::new("aletheia_tool_invocations_total", "Total tool invocations"),
         &["tool_name", "status"]
@@ -16,6 +20,10 @@ static TOOL_INVOCATIONS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
 });
 
 static TOOL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error"
+    )]
     register_histogram_vec!(
         HistogramOpts::new(
             "aletheia_tool_duration_seconds",

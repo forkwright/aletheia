@@ -495,6 +495,7 @@ pub(crate) fn truncate_content(s: &str, max: usize) -> String {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

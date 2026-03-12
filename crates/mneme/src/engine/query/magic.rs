@@ -1,4 +1,5 @@
 //! Magic sets query transformation.
+#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use std::collections::BTreeSet;
 use std::mem;
 
@@ -648,6 +649,7 @@ impl NormalFormInlineRule {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::engine::DbInstance;
     use serde_json::json;

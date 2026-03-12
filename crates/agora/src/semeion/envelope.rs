@@ -115,6 +115,7 @@ pub fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

@@ -406,6 +406,7 @@ async fn poll_loop(
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

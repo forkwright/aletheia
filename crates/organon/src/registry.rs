@@ -172,6 +172,7 @@ impl ToolRegistry {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::sync::{Arc, Mutex, RwLock};
 

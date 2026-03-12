@@ -49,6 +49,7 @@ pub fn verify_password(password: &SecretString, hash: &str) -> Result<bool> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

@@ -208,6 +208,7 @@ pub fn get_schema_version(conn: &Connection) -> u32 {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

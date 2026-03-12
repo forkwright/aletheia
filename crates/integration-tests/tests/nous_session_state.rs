@@ -1,4 +1,6 @@
 //! Cross-crate tests for nous `SessionState` with mneme store.
+
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![cfg(feature = "sqlite-tests")]
 
 use aletheia_mneme::store::SessionStore;

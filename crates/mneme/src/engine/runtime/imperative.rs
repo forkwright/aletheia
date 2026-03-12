@@ -1,4 +1,5 @@
 //! Imperative script execution.
+#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::Ordering;
 

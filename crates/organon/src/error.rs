@@ -55,6 +55,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};

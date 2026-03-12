@@ -169,6 +169,7 @@ pub fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<Pa
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use std::fs;

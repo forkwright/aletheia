@@ -1,4 +1,5 @@
 //! In-memory storage backend.
+#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use crate::engine::error::InternalResult;
 use crate::engine::storage::error::{StorageResult, WriteInReadTransactionSnafu};
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};

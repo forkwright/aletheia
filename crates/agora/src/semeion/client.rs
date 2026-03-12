@@ -313,6 +313,7 @@ fn normalize_url(url: &str) -> String {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

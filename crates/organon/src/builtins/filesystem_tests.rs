@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "test assertions")]
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 

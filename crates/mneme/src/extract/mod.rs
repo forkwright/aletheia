@@ -632,6 +632,7 @@ fn slugify(s: &str) -> String {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -1567,6 +1568,7 @@ Some text
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod proptests {
     use super::*;
     use proptest::prelude::*;

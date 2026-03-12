@@ -164,6 +164,7 @@ impl<'a> TokenStream for SplitCompoundWordsTokenStream<'a> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::engine::fts::tokenizer::{SimpleTokenizer, TextAnalyzer};

@@ -44,6 +44,10 @@ static LLM_REQUESTS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
 });
 
 static LLM_CACHE_TOKENS_TOTAL: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    #[expect(
+        clippy::expect_used,
+        reason = "metric registration fails only on name/label collision, a startup-time programming error that must not be silently ignored"
+    )]
     register_int_counter_vec!(
         Opts::new(
             "aletheia_llm_cache_tokens_total",

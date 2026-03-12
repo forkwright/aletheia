@@ -1,4 +1,5 @@
 //! A* shortest path search.
+#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 

@@ -48,6 +48,10 @@ todo = "deny"
 unimplemented = "deny"
 exit = "deny"
 
+# Panics in library code must be explicit and justified
+unwrap_used = "deny"
+expect_used = "deny"
+
 # Correctness: holding std::sync::Mutex across .await causes deadlocks
 await_holding_lock = "deny"
 explicit_into_iter_loop = "warn"

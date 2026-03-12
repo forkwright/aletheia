@@ -6,6 +6,8 @@
 //! Each test uses the `TestHarness` pattern from `end_to_end.rs`, extended with
 //! multi-response mock providers for tool-use round trips and recall injection.
 
+#![expect(clippy::expect_used, reason = "test assertions")]
+
 #![cfg(feature = "sqlite-tests")]
 
 use std::sync::{Arc, Mutex};

@@ -443,6 +443,7 @@ pub struct ServerToolConfig {
 impl ServerToolConfig {
     /// Generate catalog entries for server tools available via `enable_tool`.
     #[must_use]
+    #[expect(clippy::expect_used, reason = "ToolName::new() with known-valid static string literals is infallible")]
     pub fn catalog_entries(&self) -> Vec<(ToolName, String)> {
         let mut entries = Vec::new();
         if self.web_search {
@@ -462,6 +463,7 @@ impl ServerToolConfig {
 
     /// Produce server tool definitions for tools that are currently active.
     #[must_use]
+    #[expect(clippy::expect_used, reason = "ToolName::new() with known-valid static string literals is infallible")]
     pub fn active_definitions(
         &self,
         active: &HashSet<ToolName>,

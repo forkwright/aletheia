@@ -410,6 +410,7 @@ impl HashValues {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod test {
     use super::*;
 

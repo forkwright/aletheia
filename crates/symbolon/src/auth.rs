@@ -226,6 +226,7 @@ fn days_to_date(days_since_epoch: u64) -> (u64, u64, u64) {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

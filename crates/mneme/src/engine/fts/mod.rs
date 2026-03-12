@@ -1,4 +1,5 @@
 //! Full-text search subsystem.
+#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use crate::engine::data::memcmp::MemCmpEncoder;
 use crate::engine::data::value::DataValue;
 use crate::engine::error::InternalResult as Result;

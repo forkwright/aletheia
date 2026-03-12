@@ -1,3 +1,5 @@
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::*;

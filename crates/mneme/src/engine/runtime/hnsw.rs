@@ -1,4 +1,5 @@
 //! Hierarchical Navigable Small World vector index.
+#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::engine::data::program::HnswSearch;
 use crate::engine::data::relation::VecElementType;
@@ -1187,6 +1188,7 @@ impl<'a> SessionTx<'a> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use rand::Rng;
     use std::collections::BTreeMap;

@@ -59,6 +59,7 @@ impl RetentionPolicy {
     /// `archive_dir` is used when `archive_before_delete` is true. One JSON file
     /// per session is written to `{archive_dir}/{session_id}.json`.
     #[instrument(skip(self, conn))]
+    #[expect(clippy::expect_used, reason = "timestamp arithmetic uses bounded durations well within i64 range")]
     pub fn apply(&self, conn: &Connection, archive_dir: &Path) -> Result<RetentionResult> {
         let page_size = get_page_size(conn);
         let free_before = get_free_pages(conn);

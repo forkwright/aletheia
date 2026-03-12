@@ -122,6 +122,7 @@ pub fn extract_usage(events: &[ParsedSseEvent]) -> Option<UsageData> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

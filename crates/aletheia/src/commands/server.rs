@@ -677,6 +677,7 @@ fn build_tool_registry(
     Ok(registry)
 }
 
+#[expect(clippy::expect_used, reason = "channel registration is infallible for unique providers")]
 fn start_inbound_dispatch(
     config: &aletheia_taxis::config::AletheiaConfig,
     nous_manager: &Arc<NousManager>,
@@ -774,6 +775,7 @@ fn init_tracing(log_level: &str, json: bool) {
     }
 }
 
+#[expect(clippy::expect_used, reason = "signal handler installation is infallible on supported platforms")]
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()

@@ -280,6 +280,7 @@ pub fn apply_sandbox(cmd: &mut std::process::Command, policy: SandboxPolicy) {
 pub fn apply_sandbox(_cmd: &mut std::process::Command, _policy: SandboxPolicy) {}
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

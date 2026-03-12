@@ -66,6 +66,7 @@ impl TraceRotator {
 
     /// Run trace rotation. Moves old files to archive, compresses if configured,
     /// prunes archives exceeding the limit.
+    #[expect(clippy::expect_used, reason = "file_name() is None only for paths ending in '..', which trace files never are")]
     pub fn rotate(&self) -> error::Result<RotationReport> {
         if !self.config.trace_dir.exists() {
             return Ok(RotationReport::default());
@@ -253,6 +254,8 @@ struct TraceFileEntry {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::io::Read;
 

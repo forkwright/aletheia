@@ -1,4 +1,5 @@
 //! Louvain community detection.
+#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::InternalResult as Result;
@@ -269,6 +270,7 @@ fn louvain_step(
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::engine::fixed_rule::csr::CsrBuilder;
 

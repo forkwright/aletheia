@@ -1,5 +1,11 @@
 //! Prometheus metric definitions for the HTTP gateway.
 
+// Prometheus metric registration panics only on duplicate name (programmer error).
+#![expect(
+    clippy::expect_used,
+    reason = "metric registration is infallible at startup"
+)]
+
 use std::sync::LazyLock;
 
 use prometheus::{

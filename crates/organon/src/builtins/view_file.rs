@@ -1,4 +1,5 @@
 //! view_file tool — images, PDFs, and text with multimodal support.
+#![expect(clippy::expect_used, reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain")]
 
 use std::future::Future;
 use std::path::Path;
@@ -209,6 +210,7 @@ fn view_file_def() -> crate::types::ToolDef {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};

@@ -1,5 +1,7 @@
 //! Integration: recall pipeline end-to-end with mock providers.
 
+#![expect(clippy::expect_used, reason = "test assertions")]
+
 use aletheia_mneme::embedding::MockEmbeddingProvider;
 use aletheia_mneme::knowledge::RecallResult as KnowledgeRecallResult;
 use aletheia_nous::recall::{RecallConfig, RecallStage, VectorSearch};

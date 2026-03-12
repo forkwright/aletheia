@@ -1,4 +1,5 @@
 //! Unweighted shortest path via BFS.
+#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::engine::error::InternalResult as Result;
@@ -107,6 +108,7 @@ impl FixedRule for ShortestPathBFS {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::engine::data::value::DataValue;
 

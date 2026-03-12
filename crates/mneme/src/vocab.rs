@@ -54,6 +54,7 @@ const CONTROLLED_VOCAB: &[&str] = &[
 /// 3. Check controlled vocabulary → `Valid`.
 /// 4. Check alias map → `Valid` (mapped canonical form).
 /// 5. Otherwise → `Unknown` (uppercased form returned for caller to decide).
+#[expect(clippy::expect_used, reason = "find() after contains() is guaranteed to succeed — both operate on the same CONTROLLED_VOCAB static")]
 pub fn normalize_relation(raw: &str) -> RelationType {
     let normalized: String = raw
         .trim()
@@ -136,6 +137,7 @@ fn lookup_alias(key: &str) -> Option<&'static str> {
 }
 
 /// Return a `&'static str` from `CONTROLLED_VOCAB` for a known key.
+#[expect(clippy::expect_used, reason = "callers only pass keys that exist in CONTROLLED_VOCAB — a panic here is a programming error in the alias table")]
 fn vocab_entry(key: &str) -> &'static str {
     CONTROLLED_VOCAB
         .iter()

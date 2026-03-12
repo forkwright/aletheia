@@ -1,3 +1,5 @@
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 use crate::export::{ExportOptions, export_agent};
 use crate::portability::*;

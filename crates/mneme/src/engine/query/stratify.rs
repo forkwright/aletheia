@@ -1,4 +1,5 @@
 //! Datalog program stratification.
+#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -291,6 +292,7 @@ impl NormalFormProgram {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::engine::DbInstance;
 

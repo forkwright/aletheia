@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 use crate::knowledge::parse_timestamp;
 

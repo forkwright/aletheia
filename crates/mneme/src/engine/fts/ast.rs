@@ -1,4 +1,5 @@
 //! Full-text search query AST.
+#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use crate::engine::fts::tokenizer::TextAnalyzer;
 use compact_str::CompactString;
 use ordered_float::OrderedFloat;

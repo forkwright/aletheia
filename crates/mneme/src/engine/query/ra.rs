@@ -1,4 +1,5 @@
 //! Relational algebra operators.
+#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Formatter, Write};
 use std::iter;
@@ -2377,6 +2378,7 @@ impl<'a> Iterator for CachedMaterializedIterator<'a> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::engine::DbInstance;
     use crate::engine::data::value::DataValue;

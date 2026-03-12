@@ -203,6 +203,7 @@ impl ProviderRegistry {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use std::future::Future;
     use std::pin::Pin;

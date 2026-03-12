@@ -1,4 +1,5 @@
 //! Agent coordination tool executors: sessions_spawn, sessions_dispatch.
+#![expect(clippy::expect_used, reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain")]
 
 use std::future::Future;
 use std::pin::Pin;
@@ -279,6 +280,7 @@ fn sessions_dispatch_def() -> ToolDef {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::HashSet;
     use std::future::Future;
