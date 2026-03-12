@@ -182,6 +182,7 @@ impl AnthropicProvider {
         on_event: &mut impl FnMut(StreamEvent),
     ) -> Result<CompletionResponse> {
         let start = Instant::now();
+        let mut ttft: Option<std::time::Duration> = None;
 
         let wire = WireRequest::from_request(request, Some(true));
         let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
@@ -259,6 +260,9 @@ impl AnthropicProvider {
                         | StreamEvent::ThinkingDelta { .. }
                         | StreamEvent::InputJsonDelta { .. }
                 ) {
+                    if ttft.is_none() {
+                        ttft = Some(start.elapsed());
+                    }
                     content_started = true;
                 }
                 on_event(event);
@@ -303,6 +307,14 @@ impl AnthropicProvider {
                         resp.usage.cache_read_tokens,
                         resp.usage.cache_write_tokens,
                     );
+                    crate::metrics::record_latency(
+                        &request.model,
+                        "ok",
+                        start.elapsed().as_secs_f64(),
+                    );
+                    if let Some(ttft_dur) = ttft {
+                        crate::metrics::record_ttft(&request.model, "ok", ttft_dur.as_secs_f64());
+                    }
                     return Ok(resp);
                 }
                 Err(e) => {
@@ -320,6 +332,11 @@ impl AnthropicProvider {
                         }
                         tracing::Span::current().record("llm.retries", attempt);
                         tracing::Span::current().record("llm.status", "error");
+                        crate::metrics::record_latency(
+                            &request.model,
+                            "error",
+                            start.elapsed().as_secs_f64(),
+                        );
                         return Err(e);
                     }
                     // Only retry RateLimited (overloaded/429); other errors are terminal.
@@ -354,6 +371,7 @@ impl AnthropicProvider {
         tracing::Span::current().record("llm.status", "error");
 
         crate::metrics::record_completion("anthropic", 0, 0, 0.0, false);
+        crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {
@@ -558,6 +576,11 @@ impl AnthropicProvider {
                         resp.usage.cache_read_tokens,
                         resp.usage.cache_write_tokens,
                     );
+                    crate::metrics::record_latency(
+                        &request.model,
+                        "ok",
+                        start.elapsed().as_secs_f64(),
+                    );
                 }
                 return parsed;
             }
@@ -600,6 +623,7 @@ impl AnthropicProvider {
         tracing::Span::current().record("llm.status", "error");
 
         crate::metrics::record_completion("anthropic", 0, 0, 0.0, false);
+        crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {

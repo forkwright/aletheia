@@ -113,11 +113,30 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::Prosoche => {
             if let Some(bridge) = bridge {
                 let prompt = "Run your prosoche heartbeat check per PROSOCHE.md.";
-                let _ = bridge.send_prompt(nous_id, "daemon:prosoche", prompt).await;
-                Ok(ExecutionResult {
-                    success: true,
-                    output: Some("dispatched".to_owned()),
-                })
+                match bridge.send_prompt(nous_id, "daemon:prosoche", prompt).await {
+                    Ok(result) => {
+                        tracing::debug!(
+                            nous_id = %nous_id,
+                            success = result.success,
+                            "prosoche dispatch succeeded"
+                        );
+                        Ok(ExecutionResult {
+                            success: true,
+                            output: Some("dispatched".to_owned()),
+                        })
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            nous_id = %nous_id,
+                            error = %e,
+                            "prosoche dispatch failed"
+                        );
+                        Ok(ExecutionResult {
+                            success: false,
+                            output: Some(format!("dispatch failed: {e}")),
+                        })
+                    }
+                }
             } else {
                 Ok(ExecutionResult {
                     success: false,
