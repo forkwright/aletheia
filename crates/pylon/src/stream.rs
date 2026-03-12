@@ -66,9 +66,10 @@ impl SseEvent {
     }
 }
 
-/// SSE events matching the Svelte web UI's `TurnStreamEvent` contract.
+/// SSE events for the TUI streaming protocol (`POST /api/v1/sessions/stream`).
 ///
-/// Separate from `SseEvent` to avoid changing the v1 API shape.
+/// Used by `theatron-tui` and the Signal integration. Separate from `SseEvent`
+/// to avoid changing the per-session message API shape.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WebchatEvent {
@@ -126,6 +127,7 @@ impl WebchatEvent {
     }
 }
 
+/// Turn completion data emitted in `TurnComplete` events.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnOutcome {
@@ -138,58 +140,4 @@ pub struct TurnOutcome {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
-}
-
-/// Convert a `TurnResult` into the webchat event sequence and send via channel.
-pub async fn emit_webchat_events(
-    tx: &tokio::sync::mpsc::Sender<WebchatEvent>,
-    result: &aletheia_nous::pipeline::TurnResult,
-    session_id: &str,
-    nous_id: &str,
-    model: Option<&str>,
-) {
-    for tc in &result.tool_calls {
-        let _ = tx
-            .send(WebchatEvent::ToolStart {
-                tool_name: tc.name.clone(),
-                tool_id: tc.id.clone(),
-                input: tc.input.clone(),
-            })
-            .await;
-        if let Some(ref result_content) = tc.result {
-            let _ = tx
-                .send(WebchatEvent::ToolResult {
-                    tool_name: tc.name.clone(),
-                    tool_id: tc.id.clone(),
-                    result: result_content.clone(),
-                    is_error: tc.is_error,
-                    duration_ms: tc.duration_ms,
-                })
-                .await;
-        }
-    }
-
-    if !result.content.is_empty() {
-        let _ = tx
-            .send(WebchatEvent::TextDelta {
-                text: result.content.clone(),
-            })
-            .await;
-    }
-
-    let _ = tx
-        .send(WebchatEvent::TurnComplete {
-            outcome: TurnOutcome {
-                text: result.content.clone(),
-                nous_id: nous_id.to_owned(),
-                session_id: session_id.to_owned(),
-                model: model.map(ToOwned::to_owned),
-                tool_calls: result.tool_calls.len(),
-                input_tokens: result.usage.input_tokens,
-                output_tokens: result.usage.output_tokens,
-                cache_read_tokens: result.usage.cache_read_tokens,
-                cache_write_tokens: result.usage.cache_write_tokens,
-            },
-        })
-        .await;
 }

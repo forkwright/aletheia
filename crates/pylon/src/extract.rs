@@ -10,23 +10,6 @@ use aletheia_symbolon::types::Role;
 use crate::error::ApiError;
 use crate::state::AppState;
 
-/// Optional auth claims — passes through when auth is missing or invalid.
-///
-/// Use on webchat compatibility endpoints that should work with or without JWT.
-#[derive(Debug, Clone)]
-pub struct OptionalClaims(pub Option<Claims>);
-
-impl FromRequestParts<Arc<AppState>> for OptionalClaims {
-    type Rejection = std::convert::Infallible;
-
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &Arc<AppState>,
-    ) -> Result<Self, Self::Rejection> {
-        Ok(Self(Claims::from_request_parts(parts, state).await.ok()))
-    }
-}
-
 /// Authenticated user claims extracted from a JWT Bearer token.
 ///
 /// When `auth_mode` is `"none"` in the gateway config, a synthetic admin
