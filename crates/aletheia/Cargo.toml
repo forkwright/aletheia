@@ -13,9 +13,11 @@ name = "aletheia"
 path = "src/main.rs"
 
 [features]
-default = ["tui", "recall"]
+default = ["tui", "recall", "storage-fjall"]
 # Recall pipeline: enables KnowledgeStore (CozoDB) for vector search + extraction persistence.
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-redb", "aletheia-pylon/knowledge-store"]
+# fjall storage backend for mneme (alternative to redb; both may coexist at compile time).
+storage-fjall = ["aletheia-mneme/storage-fjall"]
 migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-redb"]
 tls = ["aletheia-pylon/tls"]
 tui = ["dep:theatron-tui"]

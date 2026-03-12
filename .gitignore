@@ -24,7 +24,6 @@ data/
 # === Cargo build output ===
 /target/
 tui/target/
-crates/mneme-bench/target/
 .cargo/
 
 # === Model caches ===
