@@ -37,7 +37,8 @@ aletheia
 │   └── semeion   — Signal (signal-cli subprocess)
 ├── daemon        — oikonomos: per-nous background tasks, cron, evolution, prosoche
 ├── melete        — distillation, reflection, memory flush, consolidation
-└── tui           — terminal dashboard                                  (separate workspace member at tui/)
+└── theatron      — presentation umbrella (crates/theatron/)
+    └── tui       — terminal dashboard                                  (crates/theatron/tui/)
 ```
 
 ---
@@ -122,8 +123,9 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
 | `pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
-| `tui` | Terminal dashboard — separate workspace member at `tui/` | reqwest (standalone UI client) |
-| `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, oikonomos, dianoia, tui (optional) |
+| `theatron-core` | Shared presentation types and traits for Aletheia UIs — `crates/theatron/core/` | nothing (leaf) |
+| `theatron-tui` | Terminal dashboard — `crates/theatron/tui/` | theatron-core, reqwest (standalone UI client) |
+| `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, oikonomos, dianoia, theatron-tui (optional) |
 
 **Support crates** (not part of the application dependency graph):
 

@@ -131,7 +131,7 @@ async fn main() -> Result<()> {
         }
         #[cfg(feature = "tui")]
         Some(Command::Tui(a)) => {
-            return aletheia_tui::run_tui(a.url, a.token, a.agent, a.session, a.logout).await;
+            return theatron_tui::run_tui(a.url, a.token, a.agent, a.session, a.logout).await;
         }
         #[cfg(not(feature = "tui"))]
         Some(Command::Tui(_)) => {

@@ -18,7 +18,7 @@ default = ["tui", "recall"]
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-redb", "aletheia-pylon/knowledge-store"]
 migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-redb"]
 tls = ["aletheia-pylon/tls"]
-tui = ["dep:aletheia-tui"]
+tui = ["dep:theatron-tui"]
 
 [dependencies]
 aletheia-dianoia = { path = "../dianoia" }
@@ -34,7 +34,7 @@ aletheia-pylon = { path = "../pylon" }
 aletheia-agora = { path = "../agora" }
 aletheia-dokimion = { path = "../eval" }
 aletheia-thesauros = { path = "../thesauros" }
-aletheia-tui = { path = "../../tui", optional = true }
+theatron-tui = { path = "../theatron/tui", optional = true }
 
 tokio = { workspace = true }
 tokio-util = { workspace = true }

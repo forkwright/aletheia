@@ -23,7 +23,7 @@ jobs:
                      aletheia-integration-tests aletheia-koina \
                      aletheia-melete aletheia-nous aletheia-oikonomos \
                      aletheia-organon aletheia-pylon aletheia-symbolon \
-                     aletheia-taxis aletheia-thesauros aletheia-tui; do
+                     aletheia-taxis aletheia-thesauros theatron-core theatron-tui; do
             cargo fmt -p "$pkg" -- --check
           done
 

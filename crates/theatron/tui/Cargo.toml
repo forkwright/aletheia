@@ -1,5 +1,5 @@
 [package]
-name = "aletheia-tui"
+name = "theatron-tui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,6 +12,8 @@ name = "aletheia-tui"
 path = "src/main.rs"
 
 [dependencies]
+theatron-core = { path = "../core" }
+
 # Core TUI — ratatui 0.30 defaults to crossterm 0.29
 ratatui = "0.30"
 crossterm = { version = "0.29", features = ["event-stream"] }
