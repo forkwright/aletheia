@@ -116,6 +116,8 @@ pub struct ExtractionConfig {
     pub max_entities: usize,
     /// Maximum relationships to extract per conversation segment.
     pub max_relationships: usize,
+    /// Maximum facts to extract per conversation segment.
+    pub max_facts: usize,
     /// Whether extraction is active.
     pub enabled: bool,
 }
@@ -125,8 +127,9 @@ impl Default for ExtractionConfig {
         Self {
             model: "claude-haiku-4-5-20251001".to_owned(),
             min_message_length: 50,
-            max_entities: 10,
-            max_relationships: 15,
+            max_entities: 20,
+            max_relationships: 30,
+            max_facts: 50,
             enabled: true,
         }
     }
@@ -246,10 +249,11 @@ Rules:
 - Assign confidence: 1.0 for explicit statements, 0.5-0.8 for inferences, below 0.5 for weak signals.
 - Normalize entity names: use proper nouns ("Alice" not "she", "Aletheia" not "the project").
 - Skip greetings, small talk, and meta-conversation ("let me think about that").
-- Maximum {max_entities} entities, {max_relationships} relationships.
+- Maximum {max_entities} entities, {max_relationships} relationships, {max_facts} facts.
 - If the conversation contains no extractable knowledge, return empty arrays."#,
             max_entities = self.config.max_entities,
             max_relationships = self.config.max_relationships,
+            max_facts = self.config.max_facts,
         );
 
         if let Some(tt) = turn_type {
@@ -408,7 +412,39 @@ Rules:
         let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
 
-        for entity in &extraction.entities {
+        // Enforce per-turn extraction limits
+        let entities = if extraction.entities.len() > self.config.max_entities {
+            tracing::warn!(
+                count = extraction.entities.len(),
+                limit = self.config.max_entities,
+                "extraction entity limit exceeded, truncating"
+            );
+            &extraction.entities[..self.config.max_entities]
+        } else {
+            &extraction.entities
+        };
+        let relationships = if extraction.relationships.len() > self.config.max_relationships {
+            tracing::warn!(
+                count = extraction.relationships.len(),
+                limit = self.config.max_relationships,
+                "extraction relationship limit exceeded, truncating"
+            );
+            &extraction.relationships[..self.config.max_relationships]
+        } else {
+            &extraction.relationships
+        };
+        let facts = if extraction.facts.len() > self.config.max_facts {
+            tracing::warn!(
+                count = extraction.facts.len(),
+                limit = self.config.max_facts,
+                "extraction fact limit exceeded, truncating"
+            );
+            &extraction.facts[..self.config.max_facts]
+        } else {
+            &extraction.facts
+        };
+
+        for entity in entities {
             let id = crate::id::EntityId::from(slugify(&entity.name));
             let aliases = if entity.description.is_empty() {
                 vec![]
@@ -432,7 +468,7 @@ Rules:
             result.entities_inserted += 1;
         }
 
-        for rel in &extraction.relationships {
+        for rel in relationships {
             let relation_type = match crate::vocab::normalize_relation(&rel.relation) {
                 crate::vocab::RelationType::Valid(canonical) => canonical.to_owned(),
                 crate::vocab::RelationType::Rejected => {
@@ -472,7 +508,7 @@ Rules:
             result.relationships_inserted += 1;
         }
 
-        for (i, fact) in extraction.facts.iter().enumerate() {
+        for (i, fact) in facts.iter().enumerate() {
             let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
             let id = crate::id::FactId::from(format!(
                 "{}-{}-{i}",
@@ -604,8 +640,9 @@ mod tests {
         let cfg = ExtractionConfig::default();
         assert_eq!(cfg.model, "claude-haiku-4-5-20251001");
         assert_eq!(cfg.min_message_length, 50);
-        assert_eq!(cfg.max_entities, 10);
-        assert_eq!(cfg.max_relationships, 15);
+        assert_eq!(cfg.max_entities, 20);
+        assert_eq!(cfg.max_relationships, 30);
+        assert_eq!(cfg.max_facts, 50);
         assert!(cfg.enabled);
     }
 
@@ -1211,6 +1248,7 @@ mod tests {
             min_message_length: 99,
             max_entities: 42,
             max_relationships: 7,
+            max_facts: 50,
             enabled: false,
         };
         let engine = ExtractionEngine::new(config);

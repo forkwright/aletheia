@@ -492,7 +492,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             );
 
             let start = Tuple::default().encode_as_key(handle.id);
-            let end = Tuple::default().encode_as_key(handle.id.next());
+            let end = Tuple::default().encode_as_key(handle.id.next()?);
 
             let mut rows = vec![];
             for data in tx.store_tx.range_scan(&start, &end) {

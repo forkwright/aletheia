@@ -53,6 +53,10 @@ pub struct FinalizeResult {
 /// The nous actor creates sessions in memory (not in `SQLite`). Before
 /// appending messages we ensure the session record exists in the store,
 /// avoiding a FOREIGN KEY constraint violation on the `messages` table.
+#[expect(
+    clippy::too_many_lines,
+    reason = "sequential persist pipeline with dedup guard adds a few lines over the limit"
+)]
 #[instrument(skip_all, fields(session_id = %session.id))]
 pub fn finalize(
     store: &SessionStore,
@@ -61,6 +65,23 @@ pub fn finalize(
     result: &TurnResult,
     config: &FinalizeConfig,
 ) -> error::Result<FinalizeResult> {
+    // Dedup guard: check if this turn was already finalized (usage record exists).
+    #[expect(clippy::cast_possible_wrap, reason = "turn counter fits in i64")]
+    let turn_seq = session.turn as i64;
+    if store
+        .usage_exists_for_turn(&session.id, turn_seq)
+        .context(error::StoreSnafu)?
+    {
+        warn!(
+            turn = session.turn,
+            "finalize called twice for same turn, skipping duplicate"
+        );
+        return Ok(FinalizeResult {
+            messages_persisted: 0,
+            usage_recorded: false,
+        });
+    }
+
     let mut messages_persisted = 0usize;
 
     if config.persist_messages {
@@ -321,6 +342,27 @@ mod tests {
         assert!(!fr.usage_recorded);
         // Messages should still be persisted
         assert_eq!(fr.messages_persisted, 2);
+    }
+
+    #[test]
+    fn finalize_dedup_guard_skips_duplicate() {
+        let (store, session) = test_store_and_session();
+        let result = simple_result();
+        let config = FinalizeConfig::default();
+
+        // First call succeeds
+        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        assert_eq!(fr.messages_persisted, 2);
+        assert!(fr.usage_recorded);
+
+        // Second call with same session/turn is skipped
+        let fr2 = finalize(&store, &session, "Hi again", &result, &config).expect("finalize");
+        assert_eq!(fr2.messages_persisted, 0);
+        assert!(!fr2.usage_recorded);
+
+        // Only the first set of messages should exist
+        let history = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history.len(), 2);
     }
 
     #[test]

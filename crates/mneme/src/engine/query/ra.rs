@@ -2127,10 +2127,10 @@ impl InnerJoin {
                 "generic_mat_join"
             }
             RelAlgebra::Reorder(_) => {
-                panic!("joining on reordered")
+                unreachable!("query plan invariant: Reorder must be resolved before join")
             }
             RelAlgebra::NegJoin(_) => {
-                panic!("joining on NegJoin")
+                unreachable!("query plan invariant: NegJoin cannot appear as join RHS")
             }
         }
     }
@@ -2211,12 +2211,16 @@ impl InnerJoin {
             | RelAlgebra::LshSearch(_) => {
                 self.materialized_join(tx, eliminate_indices, delta_rule, stores)
             }
-            RelAlgebra::Reorder(_) => {
-                panic!("joining on reordered")
+            RelAlgebra::Reorder(_) => CompilationFailedSnafu {
+                message: "joining on reordered algebra is not supported",
             }
-            RelAlgebra::NegJoin(_) => {
-                panic!("joining on NegJoin")
+            .fail()
+            .map_err(|e| e.into()),
+            RelAlgebra::NegJoin(_) => CompilationFailedSnafu {
+                message: "joining on NegJoin is not supported",
             }
+            .fail()
+            .map_err(|e| e.into()),
         }
     }
     fn materialized_join<'a>(

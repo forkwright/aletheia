@@ -40,21 +40,26 @@ use crate::engine::{NamedRows, StoreTx};
 pub(crate) struct RelationId(pub(crate) u64);
 
 impl RelationId {
-    pub(crate) fn new(u: u64) -> Self {
+    pub(crate) fn new(u: u64) -> Result<Self> {
         if u > 2u64.pow(6 * 8) {
-            panic!("StoredRelId overflow: {u}")
+            InvalidOperationSnafu {
+                op: "RelationId::new",
+                reason: format!("value {u} exceeds 6-byte limit"),
+            }
+            .fail()
+            .map_err(|e| e.into())
         } else {
-            Self(u)
+            Ok(Self(u))
         }
     }
-    pub(crate) fn next(&self) -> Self {
+    pub(crate) fn next(&self) -> Result<Self> {
         Self::new(self.0 + 1)
     }
     pub(crate) const SYSTEM: Self = Self(0);
     pub(crate) fn raw_encode(&self) -> [u8; 8] {
         self.0.to_be_bytes()
     }
-    pub(crate) fn raw_decode(src: &[u8]) -> Self {
+    pub(crate) fn raw_decode(src: &[u8]) -> Result<Self> {
         let u = u64::from_be_bytes([
             src[0], src[1], src[2], src[3], src[4], src[5], src[6], src[7],
         ]);
@@ -343,7 +348,12 @@ impl RelationHandle {
         tx: &'a SessionTx<'_>,
     ) -> impl Iterator<Item = Result<Tuple>> + use<'a> {
         let lower = Tuple::default().encode_as_key(self.id);
-        let upper = Tuple::default().encode_as_key(self.id.next());
+        #[expect(
+            clippy::expect_used,
+            reason = "RelationId from store is always < 2^48; next() cannot overflow"
+        )]
+        let upper =
+            Tuple::default().encode_as_key(self.id.next().expect("stored RelationId overflow"));
         if self.is_temp {
             tx.temp_store_tx.range_scan_tuple(&lower, &upper)
         } else {
@@ -357,7 +367,12 @@ impl RelationHandle {
         valid_at: ValidityTs,
     ) -> impl Iterator<Item = Result<Tuple>> + use<'a> {
         let lower = Tuple::default().encode_as_key(self.id);
-        let upper = Tuple::default().encode_as_key(self.id.next());
+        #[expect(
+            clippy::expect_used,
+            reason = "RelationId from store is always < 2^48; next() cannot overflow"
+        )]
+        let upper =
+            Tuple::default().encode_as_key(self.id.next().expect("stored RelationId overflow"));
         if self.is_temp {
             tx.temp_store_tx
                 .range_skip_scan_tuple(&lower, &upper, valid_at)
@@ -615,7 +630,7 @@ impl<'a> SessionTx<'a> {
         };
         let meta = RelationHandle {
             name: input_meta.name.name,
-            id: RelationId::new(last_id + 1),
+            id: RelationId::new(last_id + 1)?,
             metadata,
             put_triggers: vec![],
             rm_triggers: vec![],
@@ -724,7 +739,7 @@ impl<'a> SessionTx<'a> {
             self.store_tx.del(&encoded)?;
         }
         let lower_bound = Tuple::default().encode_as_key(store.id);
-        let upper_bound = Tuple::default().encode_as_key(store.id.next());
+        let upper_bound = Tuple::default().encode_as_key(store.id.next()?);
         to_clean.push((lower_bound, upper_bound));
         Ok(to_clean)
     }
