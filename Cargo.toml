@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/aletheia",
+    "crates/diaporeia",
     "crates/dianoia",
     "crates/agora",
     "crates/daemon",

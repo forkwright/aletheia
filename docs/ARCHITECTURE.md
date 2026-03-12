@@ -32,6 +32,7 @@ aletheia
 ├── nous          — agent pipeline, bootstrap, recall, finalize, actor model
 ├── dianoia       — planning / project orchestration
 ├── pylon         — Axum HTTP gateway, SSE streaming
+├── diaporeia     — MCP server interface for external AI agents
 ├── symbolon      — JWT auth, sessions, RBAC
 ├── agora         — channel registry + ChannelProvider trait
 │   └── semeion   — Signal (signal-cli subprocess)
@@ -123,6 +124,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
 | `pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
+| `diaporeia` | MCP server interface for external AI agents — `crates/diaporeia` | koina, taxis, nous, organon, mneme, symbolon |
 | `theatron-core` | Shared presentation types and traits for Aletheia UIs — `crates/theatron/core/` | nothing (leaf) |
 | `theatron-tui` | Terminal dashboard — `crates/theatron/tui/` | theatron-core, reqwest (standalone UI client) |
 | `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, oikonomos, dianoia, theatron-tui (optional) |
@@ -154,7 +156,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 - **Leaf** (no workspace deps): `koina`
 - **Low** (koina only): `taxis`, `hermeneus`, `symbolon`, `mneme` (includes vendored CozoDB engine behind feature gate)
 - **Mid**: `melete` (koina + hermeneus), `organon` (koina + hermeneus), `agora` (koina + taxis), `oikonomos` (koina), `dianoia` (koina), `thesauros` (koina + organon)
-- **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous)
+- **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
 - **Top**: `aletheia` binary, `tui` (terminal dashboard)
 - **Support**: `dokimion` (eval), `integration-tests`
 
