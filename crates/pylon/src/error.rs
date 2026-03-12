@@ -135,10 +135,20 @@ impl IntoResponse for ApiError {
             None
         };
 
+        // For 5xx errors: log full internal details (request_id is in the active span) and
+        // return a generic message so internal paths, SQL, panic text, and provider details
+        // are never exposed to clients. (#827, #846, #847)
+        let client_message = if status.is_server_error() {
+            tracing::error!(error = %self, "internal server error");
+            "An internal error occurred".to_owned()
+        } else {
+            self.to_string()
+        };
+
         let body = ErrorResponse {
             error: ErrorBody {
                 code: code.to_owned(),
-                message: self.to_string(),
+                message: client_message,
                 details,
             },
         };
@@ -329,5 +339,92 @@ mod tests {
     #[test]
     fn api_error_is_send_sync() {
         static_assertions::assert_impl_all!(ApiError: Send, Sync);
+    }
+
+    // --- Sanitization tests (#827, #846, #847) ---
+
+    /// Helper: extract the `message` field from an `ErrorResponse` JSON body.
+    fn body_message(response: Response) -> String {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let body = rt
+            .block_on(axum::body::to_bytes(response.into_body(), 64 * 1024))
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        json["error"]["message"].as_str().unwrap().to_owned()
+    }
+
+    #[test]
+    fn internal_error_returns_generic_message() {
+        let err = ApiError::Internal {
+            message: "SELECT * FROM users; file: /etc/passwd".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let msg = body_message(response);
+        assert_eq!(msg, "An internal error occurred");
+        assert!(!msg.contains("SELECT"));
+        assert!(!msg.contains("/etc/passwd"));
+    }
+
+    #[test]
+    fn service_unavailable_returns_generic_message() {
+        let err = ApiError::ServiceUnavailable {
+            message: "provider auth failed: Anthropic API key is invalid".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let msg = body_message(response);
+        assert_eq!(msg, "An internal error occurred");
+        assert!(!msg.contains("Anthropic"));
+        assert!(!msg.contains("invalid"));
+    }
+
+    #[tokio::test]
+    async fn join_error_returns_generic_message() {
+        // JoinError converts to Internal, which must be sanitized.
+        let join_err = tokio::spawn(async { panic!("database connection string leaked") })
+            .await
+            .unwrap_err();
+        let api_err = ApiError::from(join_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert_eq!(msg, "An internal error occurred");
+        assert!(!msg.contains("database connection string"));
+    }
+
+    #[test]
+    fn auth_failed_does_not_leak_provider_details() {
+        let hermeneus_err = aletheia_hermeneus::error::Error::AuthFailed {
+            message: "Anthropic returned 401: x-api-key header is invalid".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let api_err = ApiError::from(hermeneus_err);
+        let response = api_err.into_response();
+        // Maps to ServiceUnavailable (503) — must be sanitized.
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let msg = body_message(response);
+        assert_eq!(msg, "An internal error occurred");
+        assert!(!msg.contains("Anthropic"));
+        assert!(!msg.contains("x-api-key"));
+    }
+
+    #[test]
+    fn bad_request_message_is_preserved() {
+        // 4xx messages are user-facing and must NOT be sanitized.
+        let err = ApiError::BadRequest {
+            message: "content must not be empty".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let msg = body_message(response);
+        assert!(msg.contains("content must not be empty"));
     }
 }

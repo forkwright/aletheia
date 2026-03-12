@@ -140,11 +140,16 @@ pub async fn update_section(
         deep_merge(existing, body);
     }
 
-    // Deserialize back to verify structural validity
+    // Deserialize back to verify structural validity.
+    // Log serde details internally; the error message exposed to the client must not
+    // include field paths or internal type names from the serde error. (#845)
     let new_config: aletheia_taxis::config::AletheiaConfig =
-        serde_json::from_value(config_value).map_err(|e| ApiError::ValidationFailed {
-            errors: vec![format!("invalid config structure: {e}")],
-            location: snafu::Location::default(),
+        serde_json::from_value(config_value).map_err(|e| {
+            tracing::error!(error = %e, section = %section, "config deserialization failed after merge");
+            ApiError::ValidationFailed {
+                errors: vec!["Invalid configuration format".to_owned()],
+                location: snafu::Location::default(),
+            }
         })?;
 
     // Persist to disk
