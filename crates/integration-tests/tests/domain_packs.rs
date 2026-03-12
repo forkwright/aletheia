@@ -95,8 +95,8 @@ fn setup_oikos(dir: &Path, agent_id: &str) -> Arc<Oikos> {
     Arc::new(Oikos::from_root(dir))
 }
 
-fn setup_pack(dir: &Path, yaml: &str, files: &[(&str, &str)]) {
-    std::fs::write(dir.join("pack.yaml"), yaml).expect("write pack.yaml");
+fn setup_pack(dir: &Path, toml_content: &str, files: &[(&str, &str)]) {
+    std::fs::write(dir.join("pack.toml"), toml_content).expect("write pack.toml");
     for (name, content) in files {
         let path = dir.join(name);
         if let Some(parent) = path.parent() {
@@ -124,11 +124,12 @@ async fn pack_sections_appear_in_bootstrap() {
     setup_pack(
         pack_dir.path(),
         r#"
-name: test-pack
-version: "1.0"
-context:
-  - path: context/DOMAIN_KNOWLEDGE.md
-    priority: important
+name = "test-pack"
+version = "1.0"
+
+[[context]]
+path = "context/DOMAIN_KNOWLEDGE.md"
+priority = "important"
 "#,
         &[(
             "context/DOMAIN_KNOWLEDGE.md",
@@ -189,19 +190,20 @@ fn pack_tools_registered_and_available() {
     setup_pack(
         pack_dir.path(),
         r#"
-name: tool-pack
-version: "1.0"
-context: []
-tools:
-  - name: echo_input
-    description: Echoes JSON input back
-    command: tools/echo.sh
-    input_schema:
-      properties:
-        message:
-          type: string
-          description: Message to echo
-      required: [message]
+name = "tool-pack"
+version = "1.0"
+
+[[tools]]
+name = "echo_input"
+description = "Echoes JSON input back"
+command = "tools/echo.sh"
+
+[tools.input_schema]
+required = ["message"]
+
+[tools.input_schema.properties.message]
+type = "string"
+description = "Message to echo"
 "#,
         &[("tools/echo.sh", "#!/bin/sh\ncat")],
     );
@@ -248,15 +250,18 @@ async fn domain_tagged_sections_reach_correct_agents() {
     setup_pack(
         pack_dir.path(),
         r#"
-name: domain-pack
-version: "1.0"
-context:
-  - path: context/GENERAL.md
-  - path: context/HEALTHCARE.md
-    agents: [healthcare]
-overlays:
-  chiron:
-    domains: [healthcare]
+name = "domain-pack"
+version = "1.0"
+
+[[context]]
+path = "context/GENERAL.md"
+
+[[context]]
+path = "context/HEALTHCARE.md"
+agents = ["healthcare"]
+
+[overlays.chiron]
+domains = ["healthcare"]
 "#,
         &[
             ("context/GENERAL.md", "General knowledge for all agents."),
@@ -385,7 +390,7 @@ fn missing_pack_warns_not_crashes() {
     let good_dir = tempfile::TempDir::new().expect("tmpdir");
     setup_pack(
         good_dir.path(),
-        "name: good-pack\nversion: \"1.0\"\ncontext: []\n",
+        "name = \"good-pack\"\nversion = \"1.0\"\n",
         &[],
     );
 
@@ -402,10 +407,10 @@ fn missing_pack_warns_not_crashes() {
 fn invalid_manifest_skips_gracefully() {
     let bad_dir = tempfile::TempDir::new().expect("tmpdir");
     std::fs::write(
-        bad_dir.path().join("pack.yaml"),
-        "this: [is: not: valid: yaml: {{}}",
+        bad_dir.path().join("pack.toml"),
+        "this = [is = not = valid = toml {{}}",
     )
-    .expect("write bad yaml");
+    .expect("write bad toml");
 
     let packs = load_packs(&[bad_dir.path().to_path_buf()]);
     assert!(packs.is_empty());
