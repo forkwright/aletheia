@@ -5,11 +5,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use rand::Rng as _;
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
 use secrecy::SecretString;
 use snafu::ResultExt;
-use tracing::{info, info_span};
+use tracing::{Instrument as _, info, info_span};
 
 use std::collections::HashMap;
 
@@ -77,6 +78,7 @@ fn build_http_client() -> Result<Client> {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     Client::builder()
+        .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(120))
         .build()
         .map_err(|e| {
@@ -150,10 +152,6 @@ impl AnthropicProvider {
     ///
     /// This is an `AnthropicProvider`-specific method. The `LlmProvider`
     /// trait only exposes `complete()`.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "streaming retry loop with span recording at each exit point"
-    )]
     pub async fn complete_streaming(
         &self,
         request: &CompletionRequest,
@@ -169,7 +167,20 @@ impl AnthropicProvider {
             llm.retries = tracing::field::Empty,
             llm.stream = true,
         );
-        let _guard = span.enter();
+        self.complete_streaming_inner(request, &mut on_event)
+            .instrument(span)
+            .await
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "streaming retry loop with span recording at each exit point"
+    )]
+    async fn complete_streaming_inner(
+        &self,
+        request: &CompletionRequest,
+        on_event: &mut impl FnMut(StreamEvent),
+    ) -> Result<CompletionResponse> {
         let start = Instant::now();
 
         let wire = WireRequest::from_request(request, Some(true));
@@ -215,13 +226,14 @@ impl AnthropicProvider {
                         reason = "LLM call duration fits in u64"
                     )]
                     {
-                        span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                        tracing::Span::current()
+                            .record("llm.duration_ms", start.elapsed().as_millis() as u64);
                     }
-                    span.record("llm.retries", attempt);
+                    tracing::Span::current().record("llm.retries", attempt);
                     if status == 401 {
-                        span.record("llm.status", "auth_failed");
+                        tracing::Span::current().record("llm.status", "auth_failed");
                     } else {
-                        span.record("llm.status", "error");
+                        tracing::Span::current().record("llm.status", "error");
                     }
                     return Err(err);
                 }
@@ -260,12 +272,13 @@ impl AnthropicProvider {
                         reason = "LLM call duration fits in u64"
                     )]
                     {
-                        span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                        tracing::Span::current()
+                            .record("llm.duration_ms", start.elapsed().as_millis() as u64);
                     }
-                    span.record("llm.tokens_in", resp.usage.input_tokens);
-                    span.record("llm.tokens_out", resp.usage.output_tokens);
-                    span.record("llm.status", "ok");
-                    span.record("llm.retries", attempt);
+                    tracing::Span::current().record("llm.tokens_in", resp.usage.input_tokens);
+                    tracing::Span::current().record("llm.tokens_out", resp.usage.output_tokens);
+                    tracing::Span::current().record("llm.status", "ok");
+                    tracing::Span::current().record("llm.retries", attempt);
                     info!(
                         model = %request.model,
                         tokens_in = resp.usage.input_tokens,
@@ -302,10 +315,11 @@ impl AnthropicProvider {
                             reason = "LLM call duration fits in u64"
                         )]
                         {
-                            span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                            tracing::Span::current()
+                                .record("llm.duration_ms", start.elapsed().as_millis() as u64);
                         }
-                        span.record("llm.retries", attempt);
-                        span.record("llm.status", "error");
+                        tracing::Span::current().record("llm.retries", attempt);
+                        tracing::Span::current().record("llm.status", "error");
                         return Err(e);
                     }
                     // Only retry RateLimited (overloaded/429); other errors are terminal.
@@ -319,10 +333,11 @@ impl AnthropicProvider {
                         reason = "LLM call duration fits in u64"
                     )]
                     {
-                        span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                        tracing::Span::current()
+                            .record("llm.duration_ms", start.elapsed().as_millis() as u64);
                     }
-                    span.record("llm.retries", attempt);
-                    span.record("llm.status", "error");
+                    tracing::Span::current().record("llm.retries", attempt);
+                    tracing::Span::current().record("llm.status", "error");
                     return Err(e);
                 }
             }
@@ -333,10 +348,10 @@ impl AnthropicProvider {
             reason = "LLM call duration fits in u64"
         )]
         {
-            span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+            tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64);
         }
-        span.record("llm.retries", self.max_retries);
-        span.record("llm.status", "error");
+        tracing::Span::current().record("llm.retries", self.max_retries);
+        tracing::Span::current().record("llm.status", "error");
 
         crate::metrics::record_completion("anthropic", 0, 0, 0.0, false);
 
@@ -439,10 +454,6 @@ impl AnthropicProvider {
         Ok(headers)
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "retry loop with span recording at each exit point"
-    )]
     async fn execute_with_retry(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
             llm.provider = "anthropic",
@@ -454,7 +465,19 @@ impl AnthropicProvider {
             llm.retries = tracing::field::Empty,
             llm.stream = false,
         );
-        let _guard = span.enter();
+        self.execute_with_retry_inner(request)
+            .instrument(span)
+            .await
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "retry loop with span recording at each exit point"
+    )]
+    async fn execute_with_retry_inner(
+        &self,
+        request: &CompletionRequest,
+    ) -> Result<CompletionResponse> {
         let start = Instant::now();
 
         let wire = WireRequest::from_request(request, None);
@@ -504,12 +527,13 @@ impl AnthropicProvider {
                         reason = "LLM call duration fits in u64"
                     )]
                     {
-                        span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                        tracing::Span::current()
+                            .record("llm.duration_ms", start.elapsed().as_millis() as u64);
                     }
-                    span.record("llm.tokens_in", resp.usage.input_tokens);
-                    span.record("llm.tokens_out", resp.usage.output_tokens);
-                    span.record("llm.status", "ok");
-                    span.record("llm.retries", attempt);
+                    tracing::Span::current().record("llm.tokens_in", resp.usage.input_tokens);
+                    tracing::Span::current().record("llm.tokens_out", resp.usage.output_tokens);
+                    tracing::Span::current().record("llm.status", "ok");
+                    tracing::Span::current().record("llm.retries", attempt);
                     info!(
                         model = %request.model,
                         tokens_in = resp.usage.input_tokens,
@@ -547,15 +571,16 @@ impl AnthropicProvider {
                     reason = "LLM call duration fits in u64"
                 )]
                 {
-                    span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+                    tracing::Span::current()
+                        .record("llm.duration_ms", start.elapsed().as_millis() as u64);
                 }
-                span.record("llm.retries", attempt);
+                tracing::Span::current().record("llm.retries", attempt);
                 if status == 401 {
-                    span.record("llm.status", "auth_failed");
+                    tracing::Span::current().record("llm.status", "auth_failed");
                 } else if status == 429 {
-                    span.record("llm.status", "rate_limited");
+                    tracing::Span::current().record("llm.status", "rate_limited");
                 } else {
-                    span.record("llm.status", "error");
+                    tracing::Span::current().record("llm.status", "error");
                 }
                 return Err(err);
             }
@@ -569,10 +594,10 @@ impl AnthropicProvider {
             reason = "LLM call duration fits in u64"
         )]
         {
-            span.record("llm.duration_ms", start.elapsed().as_millis() as u64);
+            tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64);
         }
-        span.record("llm.retries", self.max_retries);
-        span.record("llm.status", "error");
+        tracing::Span::current().record("llm.retries", self.max_retries);
+        tracing::Span::current().record("llm.status", "error");
 
         crate::metrics::record_completion("anthropic", 0, 0, 0.0, false);
 
@@ -656,10 +681,10 @@ pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> 
     let base = BACKOFF_BASE_MS * BACKOFF_FACTOR.pow(attempt.saturating_sub(1));
     let capped = base.min(BACKOFF_MAX_MS);
 
-    // ±25% jitter via integer math: range = capped / 4
+    // ±25% random jitter: prevents thundering herd under concurrent load
     let jitter_range = capped / 4;
     let delay = if jitter_range > 0 {
-        let offset = (u64::from(attempt) * 7 + 13) % (jitter_range * 2);
+        let offset = rand::rng().random_range(0..jitter_range * 2);
         capped - jitter_range + offset
     } else {
         capped
