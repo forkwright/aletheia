@@ -63,7 +63,7 @@ warns gracefully without it (defaulting all settings). For production:
 1. Copy `instance.example/config/aletheia.yaml.example` → `instance/config/aletheia.yaml`
 2. Add agents: `syn`, `demiurge`, `syl`, `akron` under `agents.list`
 3. Set `channels.signal` config and `bindings` for message routing
-4. Set `embedding.provider: fastembed` (or `mock` for testing)
+4. Set `embedding.provider: candle` (or `mock` for testing)
 5. Add credentials in `instance/config/credentials/`
 
 The config cascade (`figment`: defaults → YAML → env vars) means the binary can start with

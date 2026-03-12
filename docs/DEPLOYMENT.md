@@ -11,7 +11,7 @@ Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For 
 | | Minimum | Recommended |
 |---|---|---|
 | CPU | 2 cores | 4 cores |
-| RAM | 2 GB | 4 GB (fastembed model loading) |
+| RAM | 2 GB | 4 GB (candle model loading) |
 | Disk | 1 GB | 10 GB (session data growth) |
 
 ### Operating System
