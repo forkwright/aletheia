@@ -11,6 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+# Required by the `cron` crate API for schedule parsing
 chrono = { workspace = true }
 cron = { workspace = true }
 flate2 = { workspace = true }

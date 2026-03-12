@@ -120,14 +120,20 @@ async fn main() -> Result<()> {
     let instance_root = cli.instance_root.as_ref();
 
     match cli.command {
-        Some(Command::Init(a)) => return init::run(a.instance_root, a.yes, a.api_key),
+        Some(Command::Init(a)) => {
+            return init::run(a.instance_root, a.yes, a.api_key).map_err(anyhow::Error::from);
+        }
         Some(Command::Health(a)) => return commands::health::run(&a).await,
         Some(Command::Backup(a)) => return commands::backup::run(instance_root, &a),
         Some(Command::Maintenance { action }) => {
             return commands::maintenance::run(action, instance_root);
         }
         Some(Command::Tls { action }) => return commands::tls::run(&action),
-        Some(Command::Status { url }) => return status::run(&url, instance_root).await,
+        Some(Command::Status { url }) => {
+            return status::run(&url, instance_root)
+                .await
+                .map_err(anyhow::Error::from);
+        }
         Some(Command::Credential { action }) => {
             return commands::credential::run(action, instance_root).await;
         }
