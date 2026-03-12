@@ -159,7 +159,7 @@ pub async fn run(args: Args) -> Result<()> {
 
     // Build shared registries — single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry(&config, &oikos));
-    let mut tool_registry = build_tool_registry()?;
+    let mut tool_registry = build_tool_registry(&config.sandbox)?;
 
     // Register domain pack tools alongside builtins
     let tool_errors = aletheia_thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
@@ -468,7 +468,11 @@ pub async fn run(args: Args) -> Result<()> {
         other => other,
     };
 
-    // Warn if auth is disabled on a non-localhost bind address
+    // Warn unconditionally when auth is disabled — every request is granted Operator role.
+    if config.gateway.auth.mode == "none" {
+        warn!("auth mode is 'none' -- all requests granted Operator role");
+    }
+    // Additionally warn if auth is disabled on a non-localhost bind address.
     if config.gateway.auth.mode == "none"
         && bind_addr_str != "127.0.0.1"
         && bind_addr_str != "localhost"
@@ -626,9 +630,23 @@ fn build_provider_registry(
     registry
 }
 
-fn build_tool_registry() -> Result<ToolRegistry> {
+fn build_tool_registry(
+    sandbox_settings: &aletheia_taxis::config::SandboxSettings,
+) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
-    builtins::register_all(&mut registry).context("failed to register builtin tools")?;
+    let sandbox = aletheia_organon::sandbox::SandboxConfig {
+        enabled: sandbox_settings.enabled,
+        enforcement: match sandbox_settings.enforcement {
+            aletheia_taxis::config::SandboxEnforcementMode::Enforcing => {
+                aletheia_organon::sandbox::SandboxEnforcement::Enforcing
+            }
+            _ => aletheia_organon::sandbox::SandboxEnforcement::Permissive,
+        },
+        extra_read_paths: sandbox_settings.extra_read_paths.clone(),
+        extra_write_paths: sandbox_settings.extra_write_paths.clone(),
+    };
+    builtins::register_all_with_sandbox(&mut registry, sandbox)
+        .context("failed to register builtin tools")?;
     info!(count = registry.definitions().len(), "tools registered");
     Ok(registry)
 }

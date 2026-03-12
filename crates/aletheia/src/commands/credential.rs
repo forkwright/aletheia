@@ -16,6 +16,14 @@ pub enum Action {
     Refresh,
 }
 
+fn token_preview(s: &str) -> String {
+    if s.len() > 10 {
+        format!("{}...{}", &s[..10], &s[s.len() - 3..])
+    } else {
+        "***".to_owned()
+    }
+}
+
 pub async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
@@ -25,63 +33,53 @@ pub async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> 
 
     match action {
         Action::Status => {
-            match CredentialFile::load(&cred_path) {
-                Some(cred) => {
-                    let token_preview = if cred.token.len() > 10 {
-                        format!(
-                            "{}...{}",
-                            &cred.token[..10],
-                            &cred.token[cred.token.len() - 3..]
-                        )
+            if let Some(cred) = CredentialFile::load(&cred_path) {
+                let cred_type = if cred.has_refresh_token() {
+                    "OAuth (auto-refresh)"
+                } else {
+                    "static API key"
+                };
+                println!("Source:        file ({})", cred_path.display());
+                println!("Type:          {cred_type}");
+                println!("Token:         {}", token_preview(&cred.token));
+                if let Some(remaining) = cred.seconds_remaining() {
+                    let hours = remaining / 3600;
+                    let mins = (remaining % 3600) / 60;
+                    if remaining > 0 {
+                        println!("Expires:       {hours}h {mins}m remaining");
                     } else {
-                        "***".to_owned()
-                    };
-                    let cred_type = if cred.has_refresh_token() {
-                        "OAuth (auto-refresh)"
-                    } else {
-                        "static API key"
-                    };
-                    println!("Source:        file ({})", cred_path.display());
-                    println!("Type:          {cred_type}");
-                    println!("Token:         {token_preview}");
-                    if let Some(remaining) = cred.seconds_remaining() {
-                        let hours = remaining / 3600;
-                        let mins = (remaining % 3600) / 60;
-                        if remaining > 0 {
-                            println!("Expires:       {hours}h {mins}m remaining");
-                        } else {
-                            println!("Expires:       EXPIRED");
-                        }
-                    } else {
-                        println!("Expires:       no expiry set");
+                        println!("Expires:       EXPIRED");
                     }
-                    println!(
-                        "Refresh token: {}",
-                        if cred.has_refresh_token() {
-                            "present"
-                        } else {
-                            "absent"
-                        }
-                    );
+                } else {
+                    println!("Expires:       no expiry set");
                 }
-                None => {
-                    // Check env var fallback
-                    match std::env::var("ANTHROPIC_API_KEY") {
-                        Ok(key) if !key.is_empty() => {
-                            let preview = if key.len() > 10 {
-                                format!("{}...{}", &key[..10], &key[key.len() - 3..])
-                            } else {
-                                "***".to_owned()
-                            };
-                            println!("Source:        environment (ANTHROPIC_API_KEY)");
-                            println!("Type:          static API key");
-                            println!("Token:         {preview}");
-                        }
-                        _ => {
-                            println!("No credential found.");
-                            println!("Checked: {} (not found)", cred_path.display());
-                            println!("Checked: ANTHROPIC_API_KEY (not set)");
-                        }
+                println!(
+                    "Refresh token: {}",
+                    if cred.has_refresh_token() { "present" } else { "absent" }
+                );
+            } else {
+                // Check env var fallbacks in resolution order.
+                let auth_token =
+                    std::env::var("ANTHROPIC_AUTH_TOKEN").ok().filter(|v| !v.is_empty());
+                let api_key =
+                    std::env::var("ANTHROPIC_API_KEY").ok().filter(|v| !v.is_empty());
+
+                match (auth_token, api_key) {
+                    (Some(token), _) => {
+                        println!("Source:        environment (ANTHROPIC_AUTH_TOKEN)");
+                        println!("Type:          OAuth token");
+                        println!("Token:         {}", token_preview(&token));
+                    }
+                    (None, Some(key)) => {
+                        println!("Source:        environment (ANTHROPIC_API_KEY)");
+                        println!("Type:          static API key");
+                        println!("Token:         {}", token_preview(&key));
+                    }
+                    (None, None) => {
+                        println!("No credential found.");
+                        println!("Checked: {} (not found)", cred_path.display());
+                        println!("Checked: ANTHROPIC_AUTH_TOKEN (not set)");
+                        println!("Checked: ANTHROPIC_API_KEY (not set)");
                     }
                 }
             }
