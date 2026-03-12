@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use snafu::{ResultExt, Snafu};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
-use tracing::info;
+use tracing::{info, warn};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_mneme::store::SessionStore;
@@ -61,11 +61,19 @@ pub enum ServerError {
     /// Binary was compiled without the `tls` feature flag.
     #[snafu(display("TLS support not compiled — rebuild with --features tls"))]
     TlsNotCompiled,
+
+    /// Instance directory layout validation failed.
+    #[snafu(display("instance layout invalid: {source}"))]
+    Validation {
+        source: aletheia_taxis::error::Error,
+    },
 }
 
 /// Start the HTTP gateway and block until shutdown.
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
-    let oikos = Arc::new(Oikos::from_root(&config.instance_path));
+    let oikos = Oikos::from_root(&config.instance_path);
+    oikos.validate().context(ValidationSnafu)?;
+    let oikos = Arc::new(oikos);
 
     let session_store = SessionStore::open(&oikos.sessions_db()).context(SessionStoreSnafu)?;
     let session_store = Arc::new(Mutex::new(session_store));
@@ -124,6 +132,14 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 }
 
 async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerError> {
+    let is_loopback = bind_addr.starts_with("127.") || bind_addr.starts_with("[::1]");
+    if !is_loopback {
+        warn!(
+            addr = %bind_addr,
+            "serving without TLS on public address — connections are unencrypted"
+        );
+    }
+
     let listener = TcpListener::bind(bind_addr).await.context(BindSnafu {
         addr: bind_addr.to_owned(),
     })?;

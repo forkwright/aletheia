@@ -45,6 +45,19 @@ pub async fn create(
     let nous_id = body.nous_id;
     let session_key = body.session_key;
 
+    if nous_id.is_empty() {
+        return Err(BadRequestSnafu {
+            message: "nous_id must not be empty",
+        }
+        .build());
+    }
+    if session_key.is_empty() {
+        return Err(BadRequestSnafu {
+            message: "session_key must not be empty",
+        }
+        .build());
+    }
+
     let config = state.nous_manager.get_config(&nous_id).ok_or_else(|| {
         NousNotFoundSnafu {
             id: nous_id.clone(),

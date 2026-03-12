@@ -42,6 +42,7 @@ pub async fn require_csrf_header(request: Request, next: Next) -> Response {
             Some(v) if v == csrf.header_value => next.run(request).await,
             _ => (
                 StatusCode::FORBIDDEN,
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
                 serde_json::json!({
                     "error": {
                         "code": "csrf_rejected",
