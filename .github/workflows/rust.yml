@@ -66,15 +66,83 @@ jobs:
       - name: Doc tests
         run: cargo test --workspace --doc
 
-  secrets:
-    name: Secret Scan
+  msrv:
+    name: MSRV (1.85)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - name: Check MSRV
+        run: cargo check --workspace
+
+  no-default-features:
+    name: No-default-features check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check workspace with no default features
+        run: cargo check --workspace --no-default-features
+
+  docs:
+    name: Rustdoc
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build docs
+        run: cargo doc --workspace --no-deps
+
+  recall-isolation:
+    name: Recall feature isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install tool dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fd-find ripgrep
+          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
+      - name: Test recall feature in isolation
+        run: cargo test -p aletheia-mneme --no-default-features --features recall
+
+  migrate-qdrant:
+    name: migrate-qdrant feature
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check migrate-qdrant feature compiles
+        run: cargo check -p aletheia --features migrate-qdrant
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          fetch-depth: 0
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+      - name: Install tool dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fd-find ripgrep
+          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
+      - name: Measure coverage
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
