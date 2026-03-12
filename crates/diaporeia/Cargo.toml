@@ -1,0 +1,48 @@
+[package]
+name = "aletheia-diaporeia"
+version.workspace = true
+description = "MCP server interface — the passage through for external AI agents"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# MCP SDK — pin exact per TECHNOLOGY.md policy
+rmcp = { version = "=1.2.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
+schemars = "1"
+
+# HTTP (for streamable HTTP transport Axum integration)
+axum = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+
+# IDs
+ulid = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+snafu = { workspace = true }
+
+# Observability
+tracing = { workspace = true }
+
+# Internal crates (same layer as pylon — depends on mid+low crates)
+aletheia-koina = { path = "../koina" }
+aletheia-taxis = { path = "../taxis" }
+aletheia-nous = { path = "../nous" }
+aletheia-organon = { path = "../organon" }
+aletheia-mneme = { path = "../mneme", features = ["sqlite"] }
+aletheia-symbolon = { path = "../symbolon" }
+
+[dev-dependencies]
+static_assertions = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

@@ -40,7 +40,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Browser | chromiumoxide | None | CDP wrapper for headless Chromium, indexed DOM |
 | Event bus | tokio::sync::broadcast | EventEmitter | Typed, backpressure-aware. `watch` for latest-value status. |
 | Plugins | WASM (wasmtime) | Dynamic JS import() | Sandboxed, portable, any-language |
-| MCP | rmcp (pin version) | @modelcontextprotocol/sdk | Pre-1.0 - pin exact, wrap in trait |
+| MCP | rmcp 1.2.0 pinned exact | @modelcontextprotocol/sdk | MCP SDK for external AI agent integration via diaporeia. Pre-1.0 - pin exact, wrap in trait. |
 | Testing | bolero + proptest + cargo-llvm-cov | vitest | Unified fuzz/property/coverage |
 | TUI | ratatui + crossterm | Svelte 5 web UI | Terminal-native, embedded in workspace, zero web dependencies |
 
