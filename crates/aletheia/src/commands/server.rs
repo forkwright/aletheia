@@ -35,11 +35,11 @@ use aletheia_symbolon::credential::{
     RefreshingCredentialProvider,
 };
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
-use secrecy::SecretString;
 use aletheia_taxis::config::resolve_nous;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
 use aletheia_taxis::validate::validate_section;
+use secrecy::SecretString;
 
 use crate::commands::maintenance;
 use crate::daemon_bridge;
@@ -117,9 +117,7 @@ pub async fn run(args: Args) -> Result<()> {
         None => "CHANGE-ME-IN-PRODUCTION".to_owned(),
     };
     let auth_mode = config.gateway.auth.mode.as_str();
-    if matches!(auth_mode, "token" | "jwt")
-        && effective_jwt_key == "CHANGE-ME-IN-PRODUCTION"
-    {
+    if matches!(auth_mode, "token" | "jwt") && effective_jwt_key == "CHANGE-ME-IN-PRODUCTION" {
         anyhow::bail!(
             "JWT signing key is still the default placeholder.\n  \
              Set gateway.auth.signingKey in aletheia.yaml or the ALETHEIA_JWT_SECRET env var.\n  \

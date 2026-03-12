@@ -167,7 +167,9 @@ fn validate_channels(value: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
-    let Some(bindings) = value.as_array() else { return };
+    let Some(bindings) = value.as_array() else {
+        return;
+    };
 
     for (i, binding) in bindings.iter().enumerate() {
         for field in &["channel", "source", "nousId"] {
