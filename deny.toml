@@ -60,6 +60,10 @@ skip = [
     { name = "getrandom", version = "=0.2.17" },
     { name = "getrandom", version = "=0.3.4" },
 
+    # toml 0.8 — figment 0.10 pins toml 0.8; workspace now uses toml 1.0 for pack manifests.
+    { name = "toml", version = "=0.8.23" },
+    { name = "serde_spanned", version = "=0.6.9" },
+    { name = "toml_datetime", version = "=0.6.11" },
     # base64 0.13 — from spm_precompiled → tokenizers (ML tokenizer lib for candle embeddings).
     # tokenizers has not yet released with base64 0.22.
     { name = "base64", version = "=0.13.1" },
