@@ -20,8 +20,9 @@ pub enum Msg {
     CursorRight,
     CursorHome,
     CursorEnd,
-    DeleteWord, // Ctrl+W
-    ClearLine,  // Ctrl+U
+    DeleteWord,  // Ctrl+W
+    ClearLine,   // Ctrl+U
+    DeleteToEnd, // Ctrl+K
     HistoryUp,
     HistoryDown,
     Submit,           // Enter — send message

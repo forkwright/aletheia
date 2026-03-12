@@ -59,6 +59,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::CursorEnd => input::handle_cursor_end(app),
         Msg::DeleteWord => input::handle_delete_word(app),
         Msg::ClearLine => input::handle_clear_line(app),
+        Msg::DeleteToEnd => input::handle_delete_to_end(app),
         Msg::HistoryUp => input::handle_history_up(app),
         Msg::HistoryDown => input::handle_history_down(app),
         Msg::Submit => input::handle_submit(app),

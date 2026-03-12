@@ -292,6 +292,12 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             show_in_status_bar: false,
         },
         Keybinding {
+            keys: "Ctrl+K",
+            description: "Delete to end of line",
+            contexts: &[KeyContext::Input],
+            show_in_status_bar: false,
+        },
+        Keybinding {
             keys: "Ctrl+E",
             description: "Open $EDITOR",
             contexts: &[KeyContext::Input],

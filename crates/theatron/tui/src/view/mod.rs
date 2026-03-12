@@ -206,11 +206,12 @@ fn render_chat_area(
     area: Rect,
     theme: &crate::theme::Theme,
 ) -> Vec<OscLink> {
-    // Dynamically size input area based on text length (wrapping)
-    let prompt_len: u16 = if app.active_turn_id.is_some() { 9 } else { 2 };
-    let text_len = app.input.text.len() as u16 + prompt_len;
-    let content_width = area.width.max(1);
-    let wrapped_lines = (text_len / content_width) + 1;
+    // Dynamically size input area based on word-wrapped line count.
+    let prompt_len: usize = if app.active_turn_id.is_some() { 9 } else { 2 };
+    let content_width = area.width.max(1) as usize;
+    let first_line_avail = content_width.saturating_sub(prompt_len).max(1);
+    let wrapped_lines =
+        input::word_wrap_lines(&app.input.text, first_line_avail, content_width).len() as u16;
     let input_height = (wrapped_lines + 1).clamp(3, 8); // +1 for border, min 3, max 8
 
     let filter_height: u16 = if app.filter.editing { 1 } else { 0 };
