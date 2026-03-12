@@ -1,0 +1,12 @@
+name = "starter"
+version = "1.0"
+description = "Minimal example domain pack — copy and adapt for your domain"
+
+# Context files are injected into the agent's system prompt at startup.
+# priority: required | important | flexible | optional
+# agents: [] means all agents; list agent IDs or domain tags to restrict
+# truncatable: true allows the section to be trimmed under token budget pressure
+[[context]]
+path = "context/GETTING_STARTED.md"
+priority = "flexible"
+truncatable = true

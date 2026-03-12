@@ -6,7 +6,7 @@ A domain pack bundles knowledge, tools, and configuration overlays that extend a
 
 ```text
 my-pack/
-  pack.yaml              # Manifest (required)
+  pack.toml              # Manifest (required)
   context/               # Markdown files injected into bootstrap
     BUSINESS_LOGIC.md
     GLOSSARY.md
@@ -27,36 +27,38 @@ packs:
 
 Packs load at startup. Invalid or missing packs log warnings and are skipped (graceful degradation).
 
-## Manifest: pack.yaml
+## Manifest: pack.toml
 
-```yaml
-name: my-domain-pack
-version: "1.0"
-description: Optional description of this pack
+```toml
+name = "my-domain-pack"
+version = "1.0"
+description = "Optional description of this pack"
 
-context:
-  - path: context/BUSINESS_LOGIC.md
-    priority: important
-    agents: [chiron]
-  - path: context/GLOSSARY.md
-    priority: flexible
-    truncatable: true
+[[context]]
+path = "context/BUSINESS_LOGIC.md"
+priority = "important"
+agents = ["chiron"]
 
-tools:
-  - name: query_database
-    description: Run a read-only SQL query against the data warehouse
-    command: tools/query_database.sh
-    timeout: 60
-    input_schema:
-      properties:
-        sql:
-          type: string
-          description: SQL query to execute
-      required: [sql]
+[[context]]
+path = "context/GLOSSARY.md"
+priority = "flexible"
+truncatable = true
 
-overlays:
-  chiron:
-    domains: [healthcare, sql]
+[[tools]]
+name = "query_database"
+description = "Run a read-only SQL query against the data warehouse"
+command = "tools/query_database.sh"
+timeout = 60000
+
+[tools.input_schema]
+required = ["sql"]
+
+[tools.input_schema.properties.sql]
+type = "string"
+description = "SQL query to execute"
+
+[overlays.chiron]
+domains = ["healthcare", "sql"]
 ```
 
 ## Context Entries
@@ -87,7 +89,7 @@ Tools are shell commands exposed to the LLM as callable functions. The runtime p
 | `name` | string | required | Tool name (alphanumeric + underscores) |
 | `description` | string | required | Short description sent to the LLM |
 | `command` | string | required | Path to script, relative to pack root |
-| `timeout` | int | `30` | Execution timeout in seconds |
+| `timeout` | int | `30000` | Execution timeout in **milliseconds** |
 | `input_schema` | object | none | JSON Schema for input parameters |
 
 Input schema properties support types: `string`, `number`, `integer`, `boolean`, `array`, `object`. Each property has a `description` field and optional `enum` and `default` values.
@@ -109,14 +111,14 @@ Input schema properties support types: `string`, `number`, `integer`, `boolean`,
 
 ## Overlays
 
-Overlays assign per-agent domain tags. A section tagged `agents: [healthcare]` reaches any agent whose domain list includes `healthcare`.
+Overlays assign per-agent domain tags. A section tagged `agents = ["healthcare"]` reaches any agent whose domain list includes `healthcare`.
 
-```yaml
-overlays:
-  chiron:
-    domains: [healthcare, analytics, sql]
-  hermes:
-    domains: [messaging]
+```toml
+[overlays.chiron]
+domains = ["healthcare", "analytics", "sql"]
+
+[overlays.hermes]
+domains = ["messaging"]
 ```
 
 Domain merging at startup:
@@ -134,3 +136,108 @@ Tool definitions are validated (command exists, path is safe, schema parses), co
 
 ### Domain resolution
 At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domains)` on each loaded pack. A section matches if its `agents` list is empty, contains the agent ID, or contains any of the agent's domain tags.
+
+## How to Create a Custom Pack
+
+1. **Create the pack directory** anywhere on the filesystem (e.g., `instance/packs/my-pack/`).
+
+2. **Write `pack.toml`** with at minimum `name` and `version`:
+
+   ```toml
+   name = "my-pack"
+   version = "1.0"
+   description = "Context and tools for my domain"
+   ```
+
+3. **Add context files** under a subdirectory (conventionally `context/`):
+
+   ```text
+   my-pack/
+     pack.toml
+     context/
+       DOMAIN_KNOWLEDGE.md
+   ```
+
+4. **Reference them in `pack.toml`**:
+
+   ```toml
+   [[context]]
+   path = "context/DOMAIN_KNOWLEDGE.md"
+   priority = "important"
+   ```
+
+5. **Register the pack** in `instance/config/aletheia.yaml`:
+
+   ```yaml
+   packs:
+     - instance/packs/my-pack
+   ```
+
+6. **Restart Aletheia**. The startup log will show `domain pack loaded` for each valid pack.
+
+### Adding a tool
+
+1. Write an executable script under `tools/`:
+
+   ```bash
+   #!/usr/bin/env bash
+   # Reads JSON from stdin, writes result to stdout
+   INPUT=$(cat)
+   QUERY=$(echo "$INPUT" | jq -r '.sql')
+   psql "$DATABASE_URL" -c "$QUERY"
+   ```
+
+2. Make it executable: `chmod +x tools/query.sh`
+
+3. Declare it in `pack.toml`:
+
+   ```toml
+   [[tools]]
+   name = "run_query"
+   description = "Execute a read-only SQL query"
+   command = "tools/query.sh"
+   timeout = 30000
+
+   [tools.input_schema]
+   required = ["sql"]
+
+   [tools.input_schema.properties.sql]
+   type = "string"
+   description = "SQL SELECT statement to execute"
+   ```
+
+### Filtering to specific agents
+
+Use the `agents` field on context entries and the `overlays` table to target content:
+
+```toml
+# Only agent "chiron" sees this section
+[[context]]
+path = "context/CLINICAL_GUIDELINES.md"
+agents = ["chiron"]
+
+# Or target by domain tag — any agent with "healthcare" domain receives it
+[[context]]
+path = "context/ICD_CODES.md"
+agents = ["healthcare"]
+
+# Assign the domain tag to chiron via overlay
+[overlays.chiron]
+domains = ["healthcare"]
+```
+
+## Pack Resolution Order
+
+Packs are loaded in the order they appear in the `packs` config list. When multiple packs match an agent:
+
+- **Context sections**: all matching sections from all packs are included (additive)
+- **Tools**: tool names must be unique across all packs; duplicates are rejected at startup
+- **Domain overlays**: merged (union) across all packs for each agent
+
+There is no override or shadowing mechanism — packs compose, they do not replace each other.
+
+## See Also
+
+- `instance.example/packs/starter/` — minimal working example
+- `docs/CONFIGURATION.md` — full `aletheia.yaml` reference
+- `crates/thesauros/` — pack loader source
