@@ -62,9 +62,9 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Failed to serialize configuration to YAML.
-    #[snafu(display("failed to serialize config to YAML: {reason}"))]
-    SerializeYaml {
+    /// Failed to serialize configuration to TOML.
+    #[snafu(display("failed to serialize config to TOML: {reason}"))]
+    SerializeToml {
         reason: String,
         #[snafu(implicit)]
         location: snafu::Location,

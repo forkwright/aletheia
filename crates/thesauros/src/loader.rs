@@ -199,27 +199,30 @@ mod tests {
         dir
     }
 
-    fn full_pack_yaml() -> &'static str {
+    fn full_pack_toml() -> &'static str {
         r#"
-name: test-pack
-version: "1.0"
-context:
-  - path: context/LOGIC.md
-    priority: important
-    agents: [chiron]
-  - path: context/GLOSSARY.md
-    priority: flexible
-    truncatable: true
-overlays:
-  chiron:
-    domains: [healthcare, sql]
+name = "test-pack"
+version = "1.0"
+
+[[context]]
+path = "context/LOGIC.md"
+priority = "important"
+agents = ["chiron"]
+
+[[context]]
+path = "context/GLOSSARY.md"
+priority = "flexible"
+truncatable = true
+
+[overlays.chiron]
+domains = ["healthcare", "sql"]
 "#
     }
 
     #[test]
     fn load_single_pack_succeeds() {
         let dir = setup_pack(&[
-            ("pack.yaml", full_pack_yaml()),
+            ("pack.toml", full_pack_toml()),
             ("context/LOGIC.md", "Business logic content."),
             ("context/GLOSSARY.md", "Term definitions."),
         ]);
@@ -240,15 +243,15 @@ overlays:
     fn load_packs_multiple() {
         let dir1 = setup_pack(&[
             (
-                "pack.yaml",
-                "name: pack-a\nversion: \"1.0\"\ncontext:\n  - path: a.md\n",
+                "pack.toml",
+                "name = \"pack-a\"\nversion = \"1.0\"\n\n[[context]]\npath = \"a.md\"\n",
             ),
             ("a.md", "Content A"),
         ]);
         let dir2 = setup_pack(&[
             (
-                "pack.yaml",
-                "name: pack-b\nversion: \"1.0\"\ncontext:\n  - path: b.md\n",
+                "pack.toml",
+                "name = \"pack-b\"\nversion = \"1.0\"\n\n[[context]]\npath = \"b.md\"\n",
             ),
             ("b.md", "Content B"),
         ]);
@@ -261,7 +264,7 @@ overlays:
 
     #[test]
     fn load_packs_skips_invalid() {
-        let good = setup_pack(&[("pack.yaml", "name: good\nversion: \"1.0\"\n")]);
+        let good = setup_pack(&[("pack.toml", "name = \"good\"\nversion = \"1.0\"\n")]);
 
         let packs = load_packs(&[
             PathBuf::from("/nonexistent/pack"),
@@ -280,7 +283,7 @@ overlays:
     #[test]
     fn sections_for_agent_filters() {
         let dir = setup_pack(&[
-            ("pack.yaml", full_pack_yaml()),
+            ("pack.toml", full_pack_toml()),
             ("context/LOGIC.md", "logic"),
             ("context/GLOSSARY.md", "glossary"),
         ]);
@@ -300,7 +303,7 @@ overlays:
     #[test]
     fn sections_for_agent_or_domains_by_agent() {
         let dir = setup_pack(&[
-            ("pack.yaml", full_pack_yaml()),
+            ("pack.toml", full_pack_toml()),
             ("context/LOGIC.md", "logic"),
             ("context/GLOSSARY.md", "glossary"),
         ]);
@@ -314,18 +317,23 @@ overlays:
 
     #[test]
     fn sections_for_agent_or_domains_by_domain() {
-        let yaml = r#"
-name: domain-test
-version: "1.0"
-context:
-  - path: general.md
-  - path: healthcare.md
-    agents: [healthcare]
-  - path: sql.md
-    agents: [sql]
+        let toml = r#"
+name = "domain-test"
+version = "1.0"
+
+[[context]]
+path = "general.md"
+
+[[context]]
+path = "healthcare.md"
+agents = ["healthcare"]
+
+[[context]]
+path = "sql.md"
+agents = ["sql"]
 "#;
         let dir = setup_pack(&[
-            ("pack.yaml", yaml),
+            ("pack.toml", toml),
             ("general.md", "general content"),
             ("healthcare.md", "healthcare content"),
             ("sql.md", "sql content"),
@@ -343,16 +351,19 @@ context:
 
     #[test]
     fn sections_for_agent_or_domains_no_match() {
-        let yaml = r#"
-name: filter-test
-version: "1.0"
-context:
-  - path: general.md
-  - path: restricted.md
-    agents: [chiron]
+        let toml = r#"
+name = "filter-test"
+version = "1.0"
+
+[[context]]
+path = "general.md"
+
+[[context]]
+path = "restricted.md"
+agents = ["chiron"]
 "#;
         let dir = setup_pack(&[
-            ("pack.yaml", yaml),
+            ("pack.toml", toml),
             ("general.md", "general"),
             ("restricted.md", "restricted"),
         ]);
@@ -368,7 +379,7 @@ context:
     #[test]
     fn domains_for_agent() {
         let dir = setup_pack(&[
-            ("pack.yaml", full_pack_yaml()),
+            ("pack.toml", full_pack_toml()),
             ("context/LOGIC.md", "logic"),
             ("context/GLOSSARY.md", "glossary"),
         ]);
@@ -380,8 +391,8 @@ context:
 
     #[test]
     fn missing_context_file_skipped_gracefully() {
-        let yaml = "name: partial\nversion: \"1.0\"\ncontext:\n  - path: exists.md\n  - path: missing.md\n";
-        let dir = setup_pack(&[("pack.yaml", yaml), ("exists.md", "content")]);
+        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"exists.md\"\n\n[[context]]\npath = \"missing.md\"\n";
+        let dir = setup_pack(&[("pack.toml", toml), ("exists.md", "content")]);
 
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.sections.len(), 1);
@@ -392,8 +403,8 @@ context:
     fn content_is_trimmed() {
         let dir = setup_pack(&[
             (
-                "pack.yaml",
-                "name: trim-test\nversion: \"1.0\"\ncontext:\n  - path: padded.md\n",
+                "pack.toml",
+                "name = \"trim-test\"\nversion = \"1.0\"\n\n[[context]]\npath = \"padded.md\"\n",
             ),
             ("padded.md", "\n\n  Content with whitespace.  \n\n"),
         ]);
@@ -404,7 +415,7 @@ context:
 
     #[test]
     fn pack_root_stored() {
-        let dir = setup_pack(&[("pack.yaml", "name: root-test\nversion: \"1.0\"\n")]);
+        let dir = setup_pack(&[("pack.toml", "name = \"root-test\"\nversion = \"1.0\"\n")]);
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.root, dir.path());
     }

@@ -111,12 +111,12 @@ impl Oikos {
         self.root.join("config")
     }
 
-    /// The main config file (prefers YAML, falls back to JSON).
+    /// The main config file (prefers TOML, falls back to JSON).
     #[must_use]
     pub fn config_file(&self) -> PathBuf {
-        let yaml = self.root.join("config").join("aletheia.yaml");
-        if yaml.exists() {
-            return yaml;
+        let toml = self.root.join("config").join("aletheia.toml");
+        if toml.exists() {
+            return toml;
         }
         self.root.join("config").join("aletheia.json")
     }
@@ -394,14 +394,14 @@ mod tests {
     }
 
     #[test]
-    fn config_file_prefers_yaml() {
+    fn config_file_prefers_toml() {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
-        std::fs::write(dir.path().join("config/aletheia.yaml"), "{}").unwrap();
+        std::fs::write(dir.path().join("config/aletheia.toml"), "").unwrap();
 
         let oikos = Oikos::from_root(dir.path());
         let cf = oikos.config_file();
-        assert!(cf.to_string_lossy().ends_with("aletheia.yaml"));
+        assert!(cf.to_string_lossy().ends_with("aletheia.toml"));
     }
 
     // --- validate() tests ---

@@ -172,7 +172,7 @@ mod tests {
 
         // Create example structure.
         fs::create_dir_all(config.example_root.join("config")).unwrap();
-        fs::write(config.example_root.join("config/aletheia.yaml"), "").unwrap();
+        fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
 
         // Instance has the dir but not the file.
         fs::create_dir_all(config.instance_root.join("config")).unwrap();
@@ -183,7 +183,7 @@ mod tests {
         assert!(
             report
                 .missing_files
-                .contains(&PathBuf::from("config/aletheia.yaml")),
+                .contains(&PathBuf::from("config/aletheia.toml")),
             "should detect missing config file"
         );
     }
@@ -273,9 +273,9 @@ mod tests {
 
         // Create identical structures.
         fs::create_dir_all(config.example_root.join("config")).unwrap();
-        fs::write(config.example_root.join("config/aletheia.yaml"), "").unwrap();
+        fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
         fs::create_dir_all(config.instance_root.join("config")).unwrap();
-        fs::write(config.instance_root.join("config/aletheia.yaml"), "").unwrap();
+        fs::write(config.instance_root.join("config/aletheia.toml"), "").unwrap();
 
         let detector = DriftDetector::new(config);
         let report = detector.check().expect("check succeeds");

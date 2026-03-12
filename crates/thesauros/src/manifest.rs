@@ -9,7 +9,7 @@ use snafu::{ResultExt, ensure};
 use crate::error::{self, Result};
 
 /// Manifest filename expected in every pack root.
-const MANIFEST_FILENAME: &str = "pack.yaml";
+const MANIFEST_FILENAME: &str = "pack.toml";
 
 /// A parsed and validated domain pack manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,7 +147,7 @@ pub fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
     })?;
 
     let manifest: PackManifest =
-        serde_yaml::from_str(&contents).map_err(|e| error::Error::ParseManifest {
+        toml::from_str(&contents).map_err(|e| error::Error::ParseManifest {
             path: manifest_path,
             reason: e.to_string(),
             location: snafu::Location::new(file!(), line!(), column!()),
@@ -187,12 +187,12 @@ mod tests {
     }
 
     fn minimal_manifest() -> &'static str {
-        "name: test-pack\nversion: \"1.0\"\n"
+        "name = \"test-pack\"\nversion = \"1.0\"\n"
     }
 
     #[test]
     fn load_minimal_manifest() {
-        let dir = setup_pack(&[("pack.yaml", minimal_manifest())]);
+        let dir = setup_pack(&[("pack.toml", minimal_manifest())]);
         let manifest = load_manifest(dir.path()).unwrap();
         assert_eq!(manifest.name, "test-pack");
         assert_eq!(manifest.version, "1.0");
@@ -202,28 +202,31 @@ mod tests {
 
     #[test]
     fn load_full_manifest() {
-        let yaml = r#"
-name: acme-analytics
-version: "1.0"
-description: Acme Corp analytics domain pack
+        let toml = r#"
+name = "acme-analytics"
+version = "1.0"
+description = "Acme Corp analytics domain pack"
 
-context:
-  - path: context/BUSINESS_LOGIC.md
-    priority: important
-    agents: [chiron]
-    truncatable: false
-  - path: context/GLOSSARY.md
-    priority: flexible
-    truncatable: true
-  - path: context/SQL_PATTERNS.md
-    priority: important
+[[context]]
+path = "context/BUSINESS_LOGIC.md"
+priority = "important"
+agents = ["chiron"]
+truncatable = false
 
-overlays:
-  chiron:
-    domains: [healthcare, analytics, sql]
+[[context]]
+path = "context/GLOSSARY.md"
+priority = "flexible"
+truncatable = true
+
+[[context]]
+path = "context/SQL_PATTERNS.md"
+priority = "important"
+
+[overlays.chiron]
+domains = ["healthcare", "analytics", "sql"]
 "#;
         let dir = setup_pack(&[
-            ("pack.yaml", yaml),
+            ("pack.toml", toml),
             ("context/BUSINESS_LOGIC.md", "business logic"),
             ("context/GLOSSARY.md", "glossary"),
             ("context/SQL_PATTERNS.md", "patterns"),
@@ -257,8 +260,8 @@ overlays:
     }
 
     #[test]
-    fn load_invalid_yaml() {
-        let dir = setup_pack(&[("pack.yaml", "{{{{invalid yaml")]);
+    fn load_invalid_toml() {
+        let dir = setup_pack(&[("pack.toml", "{{{{invalid toml")]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(matches!(err, error::Error::ParseManifest { .. }));
     }
@@ -266,7 +269,7 @@ overlays:
     #[test]
     fn resolve_context_path_found() {
         let dir = setup_pack(&[
-            ("pack.yaml", minimal_manifest()),
+            ("pack.toml", minimal_manifest()),
             ("context/LOGIC.md", "content"),
         ]);
         let entry = ContextEntry {
@@ -281,7 +284,7 @@ overlays:
 
     #[test]
     fn resolve_context_path_missing() {
-        let dir = setup_pack(&[("pack.yaml", minimal_manifest())]);
+        let dir = setup_pack(&[("pack.toml", minimal_manifest())]);
         let entry = ContextEntry {
             path: "context/MISSING.md".to_owned(),
             priority: Priority::Important,
@@ -294,8 +297,8 @@ overlays:
 
     #[test]
     fn priority_default_is_important() {
-        let yaml = "name: test\nversion: \"1.0\"\ncontext:\n  - path: file.md\n";
-        let dir = setup_pack(&[("pack.yaml", yaml), ("file.md", "content")]);
+        let toml = "name = \"test\"\nversion = \"1.0\"\n\n[[context]]\npath = \"file.md\"\n";
+        let dir = setup_pack(&[("pack.toml", toml), ("file.md", "content")]);
         let manifest = load_manifest(dir.path()).unwrap();
         assert_eq!(manifest.context[0].priority, Priority::Important);
     }
@@ -323,28 +326,37 @@ overlays:
 
     #[test]
     fn load_manifest_with_tools() {
-        let yaml = r#"
-name: tool-pack
-version: "1.0"
-tools:
-  - name: query_redshift
-    description: "Execute read-only SQL against Redshift"
-    command: tools/query_redshift.sh
-    timeout: 60000
-    input_schema:
-      properties:
-        sql: { type: string, description: "SQL query to execute" }
-      required: [sql]
-  - name: schema_lookup
-    description: "Look up table schema"
-    command: tools/schema_lookup.py
-    input_schema:
-      properties:
-        table: { type: string, description: "Table name" }
-      required: [table]
+        let toml = r#"
+name = "tool-pack"
+version = "1.0"
+
+[[tools]]
+name = "query_redshift"
+description = "Execute read-only SQL against Redshift"
+command = "tools/query_redshift.sh"
+timeout = 60000
+
+[tools.input_schema]
+required = ["sql"]
+
+[tools.input_schema.properties.sql]
+type = "string"
+description = "SQL query to execute"
+
+[[tools]]
+name = "schema_lookup"
+description = "Look up table schema"
+command = "tools/schema_lookup.py"
+
+[tools.input_schema]
+required = ["table"]
+
+[tools.input_schema.properties.table]
+type = "string"
+description = "Table name"
 "#;
         let dir = setup_pack(&[
-            ("pack.yaml", yaml),
+            ("pack.toml", toml),
             ("tools/query_redshift.sh", "#!/bin/sh"),
             ("tools/schema_lookup.py", "#!/usr/bin/env python3"),
         ]);
@@ -364,7 +376,7 @@ tools:
 
     #[test]
     fn manifest_without_tools_backward_compat() {
-        let dir = setup_pack(&[("pack.yaml", minimal_manifest())]);
+        let dir = setup_pack(&[("pack.toml", minimal_manifest())]);
         let manifest = load_manifest(dir.path()).unwrap();
         assert!(manifest.tools.is_empty());
     }
