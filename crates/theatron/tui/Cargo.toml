@@ -69,13 +69,31 @@ similar = "2"
 # Cross-platform URL/file opening
 open = "5"
 
+# theatron-tui uses inline lints rather than lints.workspace = true because Cargo
+# does not allow combining workspace lint inheritance with package-level overrides,
+# and the TUI codebase is not pedantic-clean. Deny-level rules are kept in sync
+# with [workspace.lints] manually.
 [lints.rust]
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
 unsafe_code = "deny"
 
 [lints.clippy]
+# Deny-level — must stay in sync with [workspace.lints.clippy]
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 exit = "deny"
+await_holding_lock = "deny"
+# Warn-level extras from workspace
+explicit_into_iter_loop = "warn"
+fallible_impl_from = "warn"
+fn_params_excessive_bools = "warn"
+implicit_clone = "warn"
+map_err_ignore = "warn"
+match_wildcard_for_single_variants = "warn"
+needless_for_each = "warn"
+rc_mutex = "warn"
+string_add = "warn"
+trait_duplication_in_bounds = "warn"
+unused_self = "warn"

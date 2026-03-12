@@ -102,7 +102,7 @@ pub fn render(
                             let l = lang.to_string();
                             if l.is_empty() { None } else { Some(l) }
                         }
-                        _ => None,
+                        pulldown_cmark::CodeBlockKind::Indented => None,
                     };
                 }
                 Tag::List(_) => {
@@ -1448,7 +1448,8 @@ mod tests {
     #[test]
     fn test_deeply_nested_blockquotes() {
         // 50 levels of blockquote nesting must not stack overflow (iterative parser).
-        let md: String = (0..50).map(|_| "> ").collect::<String>() + "deeply nested";
+        let mut md: String = (0..50).map(|_| "> ").collect();
+        md.push_str("deeply nested");
         let lines = test_render(&md);
         assert!(!lines.is_empty());
     }

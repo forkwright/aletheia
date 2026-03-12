@@ -599,7 +599,7 @@ fn build_signal_provider(
     }
 
     if signal_config.accounts.is_empty() {
-        warn!("signal enabled but no accounts configured");
+        tracing::debug!("signal enabled but no accounts configured");
         return None;
     }
 

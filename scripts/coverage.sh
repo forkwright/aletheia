@@ -10,7 +10,6 @@ set -euo pipefail
 cargo llvm-cov \
     --workspace \
     --exclude aletheia-mneme-engine \
-    --exclude aletheia-mneme-bench \
     --html \
     --output-dir target/coverage \
     "$@"
@@ -18,7 +17,6 @@ cargo llvm-cov \
 cargo llvm-cov \
     --workspace \
     --exclude aletheia-mneme-engine \
-    --exclude aletheia-mneme-bench \
     --lcov \
     --output-path target/coverage/lcov.info \
     "$@"
