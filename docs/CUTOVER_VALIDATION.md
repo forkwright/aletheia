@@ -14,7 +14,7 @@ Run against commit `08ffa14` on branch `feat/cutover-validation`, 2026-03-08.
 | Clippy | ✅ | Zero warnings |
 | Fmt | ✅ | Fixed multi-line `#[expect]` in `mneme/src/knowledge_store.rs` |
 | Bootstrap | ✅ | SOUL.md required, all others gracefully skipped if absent |
-| Config | ⚠️ | `instance/config/aletheia.yaml` is gitignored — operator must configure |
+| Config | ⚠️ | `instance/config/aletheia.toml` is gitignored — operator must configure |
 | Sessions | ✅ | DB at `{instance_root}/data/sessions.db` — stable path, no migration needed |
 | Service file | ✅ | Template at `instance.example/services/aletheia.service`; points to Rust binary |
 | Tool parity | ✅ | 32 tools registered; all TS-era tools present plus new ones |
@@ -57,10 +57,10 @@ No other file is required for the binary to start an agent.
 
 ### Configuration (⚠️ — operator action required)
 
-`instance/config/aletheia.yaml` is gitignored (operator-specific). The binary starts and
+`instance/config/aletheia.toml` is gitignored (operator-specific). The binary starts and
 warns gracefully without it (defaulting all settings). For production:
 
-1. Copy `instance.example/config/aletheia.yaml.example` → `instance/config/aletheia.yaml`
+1. Copy `instance.example/config/aletheia.toml.example` → `instance/config/aletheia.toml`
 2. Add agents: `syn`, `demiurge`, `syl`, `akron` under `agents.list`
 3. Set `channels.signal` config and `bindings` for message routing
 4. Set `embedding.provider: candle` (or `mock` for testing)
@@ -173,7 +173,7 @@ None. The binary is complete and correct.
 
 ## Warnings (fix before or shortly after cutover)
 
-1. **Instance config not present in repo.** `instance/config/aletheia.yaml` must be created
+1. **Instance config not present in repo.** `instance/config/aletheia.toml` must be created
    from the example before starting. Binary starts without it (defaults only) but no agents
    will be configured.
 
@@ -211,8 +211,8 @@ sed -i "s|__ALETHEIA_HOME__|$HOME/aletheia|g" ~/.config/systemd/user/aletheia.se
 systemctl --user daemon-reload
 
 # 3. Configure the instance (if not already done)
-cp instance.example/config/aletheia.yaml.example instance/config/aletheia.yaml
-# Edit instance/config/aletheia.yaml:
+cp instance.example/config/aletheia.toml.example instance/config/aletheia.toml
+# Edit instance/config/aletheia.toml:
 #   - agents.list: add syn, demiurge, syl, akron
 #   - channels.signal: add account config
 #   - bindings: route signal → agent

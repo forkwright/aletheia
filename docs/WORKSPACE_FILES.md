@@ -58,7 +58,7 @@ All other files are optional. A minimal nous needs only SOUL.md. In practice, mo
 
 ## Token Budget
 
-The bootstrap system enforces a configurable token budget (default: 40,000 tokens, set via `bootstrap_max_tokens` in `aletheia.yaml`).
+The bootstrap system enforces a configurable token budget (default: 40,000 tokens, set via `bootstrap_max_tokens` in `aletheia.toml`).
 
 **Budget enforcement algorithm:**
 

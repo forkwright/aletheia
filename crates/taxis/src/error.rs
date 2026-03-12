@@ -1,7 +1,7 @@
 //! Taxis-specific errors.
 //!
 //! Covers instance root discovery, configuration file reading, and
-//! YAML/JSON/Figment parsing failures during the configuration cascade.
+//! TOML/JSON/Figment parsing failures during the configuration cascade.
 
 use snafu::Snafu;
 use std::path::PathBuf;
@@ -32,15 +32,6 @@ pub enum Error {
     ReadConfig {
         path: PathBuf,
         source: std::io::Error,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Failed to parse YAML configuration.
-    #[snafu(display("failed to parse YAML config at {}: {reason}", path.display()))]
-    ParseYaml {
-        path: PathBuf,
-        reason: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
