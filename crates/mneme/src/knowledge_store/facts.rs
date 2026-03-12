@@ -1,5 +1,5 @@
 use super::marshal::{extract_str, fact_to_params, rows_to_facts};
-use super::{queries, KnowledgeStore};
+use super::{KnowledgeStore, queries};
 use tracing::instrument;
 
 #[cfg(feature = "mneme-engine")]

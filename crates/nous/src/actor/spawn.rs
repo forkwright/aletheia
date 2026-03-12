@@ -7,9 +7,9 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, info, warn};
 
+use aletheia_mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
 use aletheia_mneme::knowledge_store::KnowledgeStore;
-use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::store::SessionStore;
 
 use aletheia_hermeneus::provider::ProviderRegistry;

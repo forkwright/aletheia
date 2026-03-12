@@ -13,8 +13,7 @@ use crate::types::{PlanningService, ToolContext, ToolInput, ToolResult};
 mod defs;
 use defs::{
     plan_create_def, plan_discuss_def, plan_execute_def, plan_requirements_def, plan_research_def,
-    plan_roadmap_def, plan_status_def, plan_step_complete_def, plan_step_fail_def,
-    plan_verify_def,
+    plan_roadmap_def, plan_status_def, plan_step_complete_def, plan_step_fail_def, plan_verify_def,
 };
 
 fn require_planning(

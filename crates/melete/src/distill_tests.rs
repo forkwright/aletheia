@@ -78,9 +78,8 @@ impl LlmProvider for MockProvider {
         _request: &'a CompletionRequest,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<
-                    Output = aletheia_hermeneus::error::Result<CompletionResponse>,
-                > + Send
+            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
+                + Send
                 + 'a,
         >,
     > {

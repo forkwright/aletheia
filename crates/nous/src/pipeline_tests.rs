@@ -506,8 +506,7 @@ fn tool_call_with_error() {
 #[test]
 fn check_guard_always_allows() {
     let config = crate::config::NousConfig::default();
-    let session =
-        crate::session::SessionState::new("s-1".to_owned(), "main".to_owned(), &config);
+    let session = crate::session::SessionState::new("s-1".to_owned(), "main".to_owned(), &config);
     assert_eq!(check_guard(&session, &config), GuardResult::Allow);
 }
 

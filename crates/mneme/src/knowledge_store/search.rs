@@ -1,5 +1,7 @@
-use super::marshal::{build_hybrid_query, embedding_to_params, rows_to_hybrid_results, rows_to_recall_results};
-use super::{queries, HybridQuery, HybridResult, KnowledgeStore};
+use super::marshal::{
+    build_hybrid_query, embedding_to_params, rows_to_hybrid_results, rows_to_recall_results,
+};
+use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
 use tracing::instrument;
 
 #[cfg(feature = "mneme-engine")]

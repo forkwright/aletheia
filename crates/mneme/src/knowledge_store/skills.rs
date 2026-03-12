@@ -1,5 +1,5 @@
-use super::marshal::{compute_name_similarity, compute_tool_overlap, rows_to_facts};
 use super::KnowledgeStore;
+use super::marshal::{compute_name_similarity, compute_tool_overlap, rows_to_facts};
 use tracing::instrument;
 
 #[cfg(feature = "mneme-engine")]

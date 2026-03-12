@@ -185,8 +185,7 @@ async fn assemble_optional_dropped() {
 
 #[tokio::test]
 async fn assemble_budget_consumed_correctly() {
-    let (_dir, oikos) =
-        setup_oikos("test", &[("SOUL.md", "identity"), ("USER.md", "user info")]);
+    let (_dir, oikos) = setup_oikos("test", &[("SOUL.md", "identity"), ("USER.md", "user info")]);
     let assembler = BootstrapAssembler::new(&oikos);
     let mut budget = default_budget();
 

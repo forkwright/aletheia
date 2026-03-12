@@ -3,7 +3,7 @@
 use snafu::ResultExt;
 use tracing::{debug, info, instrument};
 
-use super::{map_message, SessionStore};
+use super::{SessionStore, map_message};
 use crate::error::{self, Result};
 use crate::types::{Message, Role, UsageRecord};
 

@@ -1,4 +1,4 @@
-use super::{fts_ddl, KnowledgeStore, KNOWLEDGE_DDL};
+use super::{KNOWLEDGE_DDL, KnowledgeStore, fts_ddl};
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {

@@ -110,8 +110,7 @@ fn archive_produces_valid_json() {
     let archive_path = archive_dir.join("old-1.json");
     assert!(archive_path.exists(), "archive file should exist");
 
-    let contents =
-        std::fs::read_to_string(&archive_path).expect("archive file should be readable");
+    let contents = std::fs::read_to_string(&archive_path).expect("archive file should be readable");
     let parsed: serde_json::Value =
         serde_json::from_str(&contents).expect("archive file should contain valid JSON");
     assert_eq!(parsed["session"]["id"], "old-1");
@@ -231,8 +230,7 @@ fn retention_archives_before_delete() {
     let archive_path = archive_dir.join("expired-1.json");
     assert!(archive_path.exists(), "archive file must be created");
 
-    let contents =
-        std::fs::read_to_string(&archive_path).expect("archive file should be readable");
+    let contents = std::fs::read_to_string(&archive_path).expect("archive file should be readable");
     let parsed: serde_json::Value =
         serde_json::from_str(&contents).expect("archive file should contain valid JSON");
     assert_eq!(parsed["session"]["id"], "expired-1");
@@ -663,8 +661,7 @@ fn policy_preserves_notes_in_archive() {
 
     let archive_path = archive_dir.join("noted.json");
     assert!(archive_path.exists());
-    let contents =
-        std::fs::read_to_string(&archive_path).expect("archive file should be readable");
+    let contents = std::fs::read_to_string(&archive_path).expect("archive file should be readable");
     let parsed: serde_json::Value =
         serde_json::from_str(&contents).expect("archive file should contain valid JSON");
     assert_eq!(

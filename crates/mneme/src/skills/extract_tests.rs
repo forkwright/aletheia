@@ -195,8 +195,7 @@ fn parse_json_with_surrounding_text() {
         "Here is the extracted skill:\n{}\nDone.",
         valid_json_response()
     );
-    let skill =
-        parse_skill_response(&response).expect("json with surrounding text should parse");
+    let skill = parse_skill_response(&response).expect("json with surrounding text should parse");
     assert_eq!(skill.name, "test-driven-bug-fix");
 }
 

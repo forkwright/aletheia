@@ -1,8 +1,7 @@
 use super::marshal::{
-    entity_to_params, extract_bool, extract_float, extract_int, extract_str,
-    relationship_to_params,
+    entity_to_params, extract_bool, extract_float, extract_int, extract_str, relationship_to_params,
 };
-use super::{queries, KnowledgeStore, QueryResult};
+use super::{KnowledgeStore, QueryResult, queries};
 use tracing::instrument;
 
 #[cfg(feature = "mneme-engine")]

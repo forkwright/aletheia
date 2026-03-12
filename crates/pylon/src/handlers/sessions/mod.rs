@@ -17,7 +17,9 @@ use tracing::{info, instrument};
 
 use aletheia_mneme::types::SessionStatus;
 
-use crate::error::{ApiError, BadRequestSnafu, ErrorResponse, SessionNotFoundSnafu, NousNotFoundSnafu};
+use crate::error::{
+    ApiError, BadRequestSnafu, ErrorResponse, NousNotFoundSnafu, SessionNotFoundSnafu,
+};
 use crate::extract::Claims;
 use crate::state::AppState;
 

@@ -51,8 +51,7 @@ fn scan_classifies_files() {
     std::fs::write(dir.path().join("notes.md"), "# Notes").expect("write notes.md");
     std::fs::write(dir.path().join("data.bin"), b"\x00binary\x00").expect("write data.bin");
     std::fs::create_dir(dir.path().join(".git")).expect("create .git dir");
-    std::fs::write(dir.path().join(".git/HEAD"), "ref: refs/heads/main")
-        .expect("write .git/HEAD");
+    std::fs::write(dir.path().join(".git/HEAD"), "ref: refs/heads/main").expect("write .git/HEAD");
 
     let ws = scan_workspace(dir.path()).expect("scan workspace");
     assert_eq!(ws.files.len(), 1);
@@ -65,8 +64,7 @@ fn scan_classifies_files() {
 fn scan_skips_ignored_dirs() {
     let dir = tempfile::tempdir().expect("create tempdir");
     std::fs::create_dir(dir.path().join("node_modules")).expect("create node_modules dir");
-    std::fs::write(dir.path().join("node_modules/package.json"), "{}")
-        .expect("write package.json");
+    std::fs::write(dir.path().join("node_modules/package.json"), "{}").expect("write package.json");
     std::fs::write(dir.path().join("readme.md"), "hello").expect("write readme.md");
 
     let ws = scan_workspace(dir.path()).expect("scan workspace");

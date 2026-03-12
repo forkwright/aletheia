@@ -248,8 +248,7 @@ fn with_maintenance_builder_pattern() {
 #[test]
 fn with_retention_builder_pattern() {
     let token = CancellationToken::new();
-    let executor: Arc<dyn crate::maintenance::RetentionExecutor> =
-        Arc::new(MockRetentionExecutor);
+    let executor: Arc<dyn crate::maintenance::RetentionExecutor> = Arc::new(MockRetentionExecutor);
     let runner = TaskRunner::new("test-nous", token).with_retention(executor);
     assert!(runner.status().is_empty());
 }

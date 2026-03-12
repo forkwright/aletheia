@@ -458,11 +458,7 @@ fn stopword_is_stopword() {
 fn iterative_recall_deduplicates() {
     // Cycle 1: results with domain terms to trigger cycle 2
     let cycle1 = vec![
-        make_knowledge_result_with_id(
-            "quantum entanglement enables communication",
-            0.1,
-            "fact-a",
-        ),
+        make_knowledge_result_with_id("quantum entanglement enables communication", 0.1, "fact-a"),
         make_knowledge_result_with_id("quantum computing research paper", 0.2, "fact-b"),
     ];
     // Cycle 2: overlapping fact-b, plus new fact-c

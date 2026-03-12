@@ -30,8 +30,7 @@ fn json_export_produces_valid_files() {
     let json_path = export_dir.join("ses-1.json");
     assert!(json_path.exists());
     let contents = std::fs::read_to_string(&json_path).expect("read exported JSON file");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&contents).expect("parse exported JSON");
+    let parsed: serde_json::Value = serde_json::from_str(&contents).expect("parse exported JSON");
     assert_eq!(parsed["session"]["id"], "ses-1");
     assert_eq!(
         parsed["messages"]
@@ -428,8 +427,7 @@ fn json_export_is_valid_json() {
 
     let json_path = export_dir.join("ses-export.json");
     let contents = std::fs::read_to_string(&json_path).expect("read exported JSON file");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&contents).expect("parse exported JSON");
+    let parsed: serde_json::Value = serde_json::from_str(&contents).expect("parse exported JSON");
 
     assert!(parsed.is_object());
     assert!(parsed["session"].is_object());
@@ -578,8 +576,7 @@ fn export_sessions_json_empty_store() {
 fn restore_from_corrupt_file_errors() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let corrupt_path = dir.path().join("corrupt.db");
-    std::fs::write(&corrupt_path, b"this is not a sqlite database")
-        .expect("write corrupt file");
+    std::fs::write(&corrupt_path, b"this is not a sqlite database").expect("write corrupt file");
 
     if let Ok(c) = Connection::open(&corrupt_path) {
         let result = c.query_row("SELECT COUNT(*) FROM sessions", [], |row| {

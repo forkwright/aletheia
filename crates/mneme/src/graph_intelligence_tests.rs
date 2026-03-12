@@ -172,8 +172,7 @@ fn backward_compat_empty_context() {
     );
 
     let base_access = 0.5;
-    let enhanced_access =
-        score_access_with_evolution(base_access, ctx.chain_length("any_fact"));
+    let enhanced_access = score_access_with_evolution(base_access, ctx.chain_length("any_fact"));
     assert!(
         (enhanced_access - base_access).abs() < f64::EPSILON,
         "empty context access should match base"
@@ -449,8 +448,7 @@ mod engine_tests {
         // Use the enhanced scoring
         let base_tier = 0.6; // inferred
         let hub_score = super::score_epistemic_tier_with_importance(base_tier, hub_importance);
-        let leaf_score =
-            super::score_epistemic_tier_with_importance(base_tier, leaf_importance);
+        let leaf_score = super::score_epistemic_tier_with_importance(base_tier, leaf_importance);
 
         assert!(
             hub_score > leaf_score,

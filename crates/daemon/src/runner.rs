@@ -11,9 +11,7 @@ use tracing::Instrument;
 use crate::bridge::DaemonBridge;
 use crate::error::Result;
 use crate::execution::execute_action;
-use crate::maintenance::{
-    KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor,
-};
+use crate::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceConfig, RetentionExecutor};
 use crate::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus, backoff_delay};
 
 /// Per-nous background task runner.

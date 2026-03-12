@@ -717,7 +717,9 @@ pub(super) fn extract_str(val: &crate::engine::DataValue) -> crate::error::Resul
 }
 
 #[cfg(feature = "mneme-engine")]
-pub(super) fn extract_optional_str(val: &crate::engine::DataValue) -> crate::error::Result<Option<String>> {
+pub(super) fn extract_optional_str(
+    val: &crate::engine::DataValue,
+) -> crate::error::Result<Option<String>> {
     match val {
         crate::engine::DataValue::Null => Ok(None),
         crate::engine::DataValue::Str(s) => Ok(Some(s.to_string())),
@@ -760,7 +762,9 @@ pub(super) fn extract_bool(val: &crate::engine::DataValue) -> crate::error::Resu
 }
 
 #[cfg(feature = "mneme-engine")]
-pub(super) fn parse_epistemic_tier(s: &str) -> crate::error::Result<crate::knowledge::EpistemicTier> {
+pub(super) fn parse_epistemic_tier(
+    s: &str,
+) -> crate::error::Result<crate::knowledge::EpistemicTier> {
     use crate::knowledge::EpistemicTier;
     match s {
         "verified" => Ok(EpistemicTier::Verified),

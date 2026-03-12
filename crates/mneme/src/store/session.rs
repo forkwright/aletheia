@@ -3,7 +3,7 @@
 use snafu::ResultExt;
 use tracing::{info, instrument};
 
-use super::{map_session, OptionalExt, SessionStore};
+use super::{OptionalExt, SessionStore, map_session};
 use crate::error::{self, Result};
 use crate::types::{Session, SessionStatus, SessionType};
 

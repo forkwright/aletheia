@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 use tracing::instrument;
 
 use super::{
+    CLUSTER_FACTS_FOR_CONSOLIDATION, COMMUNITY_OVERFLOW_CANDIDATES, CONSOLIDATION_AUDIT_DDL,
     ConsolidatedFact, ConsolidationAuditRecord, ConsolidationCandidate, ConsolidationConfig,
     ConsolidationError, ConsolidationProvider, ConsolidationResult, ConsolidationTrigger,
-    RateLimitedSnafu, StoreSnafu, age_cutoff, batch_facts, consolidation_system_prompt,
-    consolidation_user_message, parse_consolidation_response, CLUSTER_FACTS_FOR_CONSOLIDATION,
-    COMMUNITY_OVERFLOW_CANDIDATES, CONSOLIDATION_AUDIT_DDL, ENTITY_FACTS_FOR_CONSOLIDATION,
-    ENTITY_OVERFLOW_CANDIDATES,
+    ENTITY_FACTS_FOR_CONSOLIDATION, ENTITY_OVERFLOW_CANDIDATES, RateLimitedSnafu, StoreSnafu,
+    age_cutoff, batch_facts, consolidation_system_prompt, consolidation_user_message,
+    parse_consolidation_response,
 };
 use crate::engine::DataValue;
 use crate::id::{EntityId, FactId};
@@ -475,15 +475,13 @@ impl KnowledgeStore {
         let mut results = Vec::new();
 
         for candidate in &self.find_entity_overflow_candidates(nous_id, config)? {
-            results.push(
-                self.execute_consolidation(provider, candidate, nous_id, config, dry_run)?,
-            );
+            results
+                .push(self.execute_consolidation(provider, candidate, nous_id, config, dry_run)?);
         }
 
         for candidate in &self.find_community_overflow_candidates(nous_id, config)? {
-            results.push(
-                self.execute_consolidation(provider, candidate, nous_id, config, dry_run)?,
-            );
+            results
+                .push(self.execute_consolidation(provider, candidate, nous_id, config, dry_run)?);
         }
 
         Ok(results)
@@ -536,8 +534,7 @@ fn run_llm_consolidation(
         let response = provider.consolidate(system, &user_msg)?;
         let entries = parse_consolidation_response(&response)?;
 
-        let batch_fact_ids: Vec<FactId> =
-            batch.iter().map(|(id, _, _, _)| id.clone()).collect();
+        let batch_fact_ids: Vec<FactId> = batch.iter().map(|(id, _, _, _)| id.clone()).collect();
 
         for entry in entries {
             all_consolidated.push(ConsolidatedFact {

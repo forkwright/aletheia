@@ -216,8 +216,7 @@ fn resolve_contradicts_equal_confidence_new_wins() {
 
 #[test]
 fn resolve_refines_supersedes() {
-    let candidate =
-        make_candidate("f-old", "general claim", 0.8, EpistemicTier::Inferred, 0.85);
+    let candidate = make_candidate("f-old", "general claim", 0.8, EpistemicTier::Inferred, 0.85);
     let fact = make_fact("specific claim", 0.9, vec![]);
     let action = resolve_action(&ConflictClassification::Refines, &candidate, &fact);
     assert_eq!(
@@ -230,8 +229,7 @@ fn resolve_refines_supersedes() {
 
 #[test]
 fn resolve_supplements_inserts() {
-    let candidate =
-        make_candidate("f-old", "existing claim", 0.8, EpistemicTier::Inferred, 0.8);
+    let candidate = make_candidate("f-old", "existing claim", 0.8, EpistemicTier::Inferred, 0.8);
     let fact = make_fact("additional info", 0.7, vec![]);
     let action = resolve_action(&ConflictClassification::Supplements, &candidate, &fact);
     assert_eq!(action, ConflictAction::Insert);
@@ -439,10 +437,9 @@ fn classify_each_type_produces_correct_action() {
             EpistemicTier::Inferred,
             0.85,
         )];
-        let (classification, idx) =
-            classify_against_candidates(&classifier, &fact, &candidates)
-                .unwrap()
-                .unwrap();
+        let (classification, idx) = classify_against_candidates(&classifier, &fact, &candidates)
+            .unwrap()
+            .unwrap();
         let action = resolve_action(&classification, &candidates[idx], &fact);
         assert_eq!(action, expected_action, "failed for {response}");
     }

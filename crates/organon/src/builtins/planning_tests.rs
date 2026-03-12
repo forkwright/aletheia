@@ -164,9 +164,7 @@ impl PlanningService for MockPlanning {
         Box::pin(async move { result })
     }
 
-    fn list_projects(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    fn list_projects(&self) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
         Box::pin(async { Ok("[]".to_owned()) })
     }
 }

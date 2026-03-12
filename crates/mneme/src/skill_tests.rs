@@ -49,8 +49,8 @@ fn parse_basic_skill_md() {
 
 #[test]
 fn parse_skill_with_frontmatter() {
-    let skill = parse_skill_md(SAMPLE_WITH_FRONTMATTER, "web-intel")
-        .expect("valid frontmatter skill md");
+    let skill =
+        parse_skill_md(SAMPLE_WITH_FRONTMATTER, "web-intel").expect("valid frontmatter skill md");
     assert_eq!(skill.tools_used, vec!["web_fetch", "web_search"]);
     assert_eq!(skill.domain_tags, vec!["research", "writing"]);
     assert_eq!(skill.steps.len(), 2);
@@ -350,9 +350,8 @@ fn export_skill_md_contains_valid_frontmatter() {
     let skills = vec![export_skill()];
     export_skills_to_cc(&skills, dir.path(), None).expect("export skills to cc");
 
-    let content =
-        std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
-            .expect("read exported SKILL.md");
+    let content = std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
+        .expect("read exported SKILL.md");
     assert!(content.starts_with("---\n"));
     assert!(content.contains("name: rust-error-handling"));
     assert!(content.contains("description:"));
@@ -378,8 +377,7 @@ fn export_domain_filtering_excludes_non_matching() {
 #[test]
 fn export_no_skills_produces_empty_result() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let exported =
-        export_skills_to_cc(&[], dir.path(), None).expect("export empty skills list");
+    let exported = export_skills_to_cc(&[], dir.path(), None).expect("export empty skills list");
     assert!(exported.is_empty());
 }
 
@@ -391,8 +389,7 @@ fn export_multiple_skills_creates_separate_directories() {
     docker_skill.domain_tags = vec!["docker".to_owned()];
 
     let skills = vec![export_skill(), docker_skill];
-    let exported =
-        export_skills_to_cc(&skills, dir.path(), None).expect("export multiple skills");
+    let exported = export_skills_to_cc(&skills, dir.path(), None).expect("export multiple skills");
 
     assert_eq!(exported.len(), 2);
     assert!(
@@ -420,8 +417,8 @@ fn export_roundtrip_content_preserved() {
     let exported_md =
         std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
             .expect("read back exported SKILL.md");
-    let parsed = parse_skill_md(&exported_md, "rust-error-handling")
-        .expect("re-parse exported skill md");
+    let parsed =
+        parse_skill_md(&exported_md, "rust-error-handling").expect("re-parse exported skill md");
 
     assert_eq!(parsed.name, original.name);
     assert_eq!(parsed.description, original.description);
@@ -446,8 +443,7 @@ fn export_overwrites_existing_file() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let skill_dir = dir.path().join("rust-error-handling");
     std::fs::create_dir_all(&skill_dir).expect("create pre-existing skill dir");
-    std::fs::write(skill_dir.join("SKILL.md"), "old content")
-        .expect("write pre-existing SKILL.md");
+    std::fs::write(skill_dir.join("SKILL.md"), "old content").expect("write pre-existing SKILL.md");
 
     let skills = vec![export_skill()];
     export_skills_to_cc(&skills, dir.path(), None).expect("overwrite existing skill");

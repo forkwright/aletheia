@@ -64,8 +64,7 @@ fn epistemic_tier_serde_roundtrip() {
         EpistemicTier::Inferred,
         EpistemicTier::Assumed,
     ] {
-        let json =
-            serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
+        let json = serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
         let back: EpistemicTier = serde_json::from_str(&json)
             .expect("EpistemicTier should deserialize from its own JSON");
         assert_eq!(tier, back);
@@ -145,10 +144,9 @@ fn embedded_chunk_serde_roundtrip() {
         embedding: vec![0.1, 0.2, 0.3],
         created_at: test_timestamp("2026-02-28T00:00:00Z"),
     };
-    let json =
-        serde_json::to_string(&chunk).expect("EmbeddedChunk serialization is infallible");
-    let back: EmbeddedChunk = serde_json::from_str(&json)
-        .expect("EmbeddedChunk should deserialize from its own JSON");
+    let json = serde_json::to_string(&chunk).expect("EmbeddedChunk serialization is infallible");
+    let back: EmbeddedChunk =
+        serde_json::from_str(&json).expect("EmbeddedChunk should deserialize from its own JSON");
     assert_eq!(chunk.content, back.content);
     assert_eq!(chunk.embedding.len(), back.embedding.len());
 }
@@ -161,8 +159,7 @@ fn recall_result_serde_roundtrip() {
         source_type: "fact".to_owned(),
         source_id: "fact-1".to_owned(),
     };
-    let json =
-        serde_json::to_string(&result).expect("RecallResult serialization is infallible");
+    let json = serde_json::to_string(&result).expect("RecallResult serialization is infallible");
     let back: RecallResult =
         serde_json::from_str(&json).expect("RecallResult should deserialize from its own JSON");
     assert_eq!(result.content, back.content);
@@ -218,8 +215,8 @@ fn fact_with_unicode_content() {
         forgotten_at: None,
         forget_reason: None,
     };
-    let json = serde_json::to_string(&fact)
-        .expect("Fact with unicode content serializes successfully");
+    let json =
+        serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");
     let back: Fact = serde_json::from_str(&json)
         .expect("Fact with unicode content should deserialize from its own JSON");
     assert_eq!(fact.content, back.content);
@@ -235,8 +232,8 @@ fn entity_empty_aliases() {
         created_at: test_timestamp("2026-01-01T00:00:00Z"),
         updated_at: test_timestamp("2026-01-01T00:00:00Z"),
     };
-    let json = serde_json::to_string(&entity)
-        .expect("Entity with empty aliases serializes successfully");
+    let json =
+        serde_json::to_string(&entity).expect("Entity with empty aliases serializes successfully");
     let back: Entity = serde_json::from_str(&json)
         .expect("Entity with empty aliases should deserialize from its own JSON");
     assert!(back.aliases.is_empty());
@@ -271,8 +268,7 @@ fn epistemic_tier_as_str_matches_serde() {
         EpistemicTier::Inferred,
         EpistemicTier::Assumed,
     ] {
-        let json =
-            serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
+        let json = serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
         let expected = format!("\"{}\"", tier.as_str());
         assert_eq!(json, expected);
     }
@@ -290,8 +286,8 @@ fn forget_reason_serde_roundtrip() {
     ] {
         let json =
             serde_json::to_string(&reason).expect("ForgetReason serialization is infallible");
-        let back: ForgetReason = serde_json::from_str(&json)
-            .expect("ForgetReason should deserialize from its own JSON");
+        let back: ForgetReason =
+            serde_json::from_str(&json).expect("ForgetReason should deserialize from its own JSON");
         assert_eq!(reason, back);
     }
 }
@@ -507,8 +503,8 @@ fn fact_with_session_source() {
         forget_reason: None,
     };
     assert_eq!(fact.source_session_id.as_deref(), Some("ses-abc-123"));
-    let json = serde_json::to_string(&fact)
-        .expect("Fact with source_session_id serializes successfully");
+    let json =
+        serde_json::to_string(&fact).expect("Fact with source_session_id serializes successfully");
     let back: Fact = serde_json::from_str(&json)
         .expect("Fact with source_session_id should deserialize from its own JSON");
     assert_eq!(back.source_session_id.as_deref(), Some("ses-abc-123"));

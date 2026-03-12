@@ -133,8 +133,8 @@ fn import_restores_workspace_files() {
     .expect("import_agent should succeed");
 
     assert_eq!(result.files_restored, 1);
-    let content = std::fs::read_to_string(dir.path().join("notes.md"))
-        .expect("notes.md should be written");
+    let content =
+        std::fs::read_to_string(dir.path().join("notes.md")).expect("notes.md should be written");
     assert_eq!(content, "# Notes\n");
 }
 
@@ -159,8 +159,8 @@ fn import_skips_existing_without_force() {
     .expect("import_agent should succeed");
 
     assert_eq!(result.files_restored, 0);
-    let content = std::fs::read_to_string(dir.path().join("notes.md"))
-        .expect("notes.md should be readable");
+    let content =
+        std::fs::read_to_string(dir.path().join("notes.md")).expect("notes.md should be readable");
     assert_eq!(content, "original");
 }
 
@@ -297,8 +297,7 @@ fn import_rejects_path_traversal() {
     let store = test_store();
     let dir = tempfile::tempdir().expect("create temp dir");
     let mut agent = minimal_agent_file();
-    agent.workspace.files =
-        HashMap::from([("../../../etc/passwd".to_owned(), "evil".to_owned())]);
+    agent.workspace.files = HashMap::from([("../../../etc/passwd".to_owned(), "evil".to_owned())]);
 
     let id_gen = counter_id_gen();
     let result = import_agent(
@@ -369,8 +368,7 @@ fn export_import_roundtrip() {
     .expect("export_agent should succeed");
 
     // Serialize and deserialize to simulate file I/O
-    let json =
-        serde_json::to_string_pretty(&exported).expect("serialize exported agent to JSON");
+    let json = serde_json::to_string_pretty(&exported).expect("serialize exported agent to JSON");
     let imported: AgentFile =
         serde_json::from_str(&json).expect("deserialize agent file from JSON");
 
@@ -585,8 +583,7 @@ fn export_import_preserves_unicode() {
     )
     .expect("export_agent should succeed");
 
-    let json =
-        serde_json::to_string_pretty(&exported).expect("serialize exported agent to JSON");
+    let json = serde_json::to_string_pretty(&exported).expect("serialize exported agent to JSON");
     let restored: AgentFile =
         serde_json::from_str(&json).expect("deserialize agent file from JSON");
 
@@ -657,8 +654,7 @@ fn export_import_large_data() {
     assert_eq!(total_msgs, 1000);
 
     let json = serde_json::to_string(&exported).expect("serialize large export");
-    let restored: AgentFile =
-        serde_json::from_str(&json).expect("deserialize large agent file");
+    let restored: AgentFile = serde_json::from_str(&json).expect("deserialize large agent file");
 
     let import_store = test_store();
     let import_dir = tempfile::tempdir().expect("create import temp dir");
