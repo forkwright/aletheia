@@ -15,6 +15,8 @@ use aletheia_taxis::config::AletheiaConfig;
 use aletheia_taxis::oikos::Oikos;
 use tokio_util::sync::CancellationToken;
 
+use crate::idempotency::IdempotencyCache;
+
 /// Shared state for all Axum handlers, held behind `Arc` in the router.
 pub struct AppState {
     /// Persistent session and message storage.
@@ -37,6 +39,8 @@ pub struct AppState {
     pub auth_mode: String,
     /// Root shutdown token. Cancel to initiate graceful shutdown of all subsystems.
     pub shutdown: CancellationToken,
+    /// Idempotency-key cache for deduplicating `POST /sessions/{id}/messages`.
+    pub idempotency_cache: Arc<IdempotencyCache>,
     /// Shared knowledge store for fact/entity/relationship queries.
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,

@@ -226,6 +226,7 @@ impl TestHarness {
             config: Arc::new(tokio::sync::RwLock::new(
                 aletheia_taxis::config::AletheiaConfig::default(),
             )),
+            idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
