@@ -17,7 +17,7 @@ use utoipa::OpenApi;
         crate::handlers::sessions::create,
         crate::handlers::sessions::get_session,
         crate::handlers::sessions::close,
-        crate::handlers::sessions::send_message,
+        crate::handlers::sessions::streaming::send_message,
         crate::handlers::sessions::history,
         crate::handlers::nous::list,
         crate::handlers::nous::get_status,
