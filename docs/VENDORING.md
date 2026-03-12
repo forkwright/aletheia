@@ -14,7 +14,7 @@
 | Copyright | Copyright 2022-2024 Ziyang Hu and CozoDB contributors |
 | Location | `crates/mneme/src/engine/` (behind `mneme-engine` feature gate) |
 
-CozoDB transitively depends on `graph_builder` (0.4.1, MIT, neo4j-labs) via crates.io. It is not vendored on disk. Rayon is pinned to =1.10.0 to work around a type mismatch in `EdgeList::edges()` (graph#138).
+CozoDB transitively depends on `graph_builder` (0.4.1, MIT, neo4j-labs) via crates.io. It is not vendored on disk.
 
 ## License Compliance
 
@@ -58,7 +58,6 @@ Per MPL-2.0 Section 3.1, source files from CozoDB retain their original license.
 | Upstream status | Inactive (no commits since Dec 2024) |
 
 **Relevant issues:**
-- **#298** - rayon 1.11 breaks graph_builder compilation. Pinned rayon to =1.10.0.
 - **#287** - env_logger in non-dev dependencies. Moved to dev-dependencies in absorption.
 
 No unmerged PRs contain fixes we need. Upstream is inactive - no divergence risk. Future CozoDB development (if any) would need manual review for cherry-pick into the engine module.

@@ -57,7 +57,7 @@ POST /api/v1/sessions/{id}/messages
 Once a message reaches a NousActor, it flows through sequential pipeline stages:
 
 1. **Context assembly** — loads bootstrap files (SOUL.md, IDENTITY.md, GOALS.md) from the agent's workspace, assembles the system prompt within token budget
-2. **Recall** — embeds the user message via fastembed-rs, searches the knowledge store for relevant facts, injects them into context
+2. **Recall** — embeds the user message via candle, searches the knowledge store for relevant facts, injects them into context
 3. **Execute** — calls the LLM (Anthropic API). If the model returns tool calls, executes them via the tool registry and feeds results back. Loops until the model stops requesting tools or hits the iteration limit.
 4. **Finalize** — persists messages to SQLite, records token usage, extracts knowledge facts for future recall
 
@@ -78,7 +78,7 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 - **taxis** — configuration and paths. Loads the YAML config cascade (figment), resolves the oikos instance directory structure.
 - **hermeneus** — LLM provider abstraction. The Anthropic streaming client lives here. Handles retries, cost tracking, model routing.
 - **symbolon** — authentication: JWT tokens, bearer validation, RBAC. Depends on koina; uses its own SQLite for token storage.
-- **mneme** — memory engine. SQLite session store, vendored Datalog engine for knowledge graphs and vector search, fastembed-rs for local embeddings, LLM-driven fact extraction.
+- **mneme** — memory engine. SQLite session store, vendored Datalog engine for knowledge graphs and vector search, candle for local embeddings, LLM-driven fact extraction.
 
 ### Mid (depends on lower layers)
 

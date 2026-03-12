@@ -235,13 +235,13 @@ Embedding provider for the recall pipeline (vector search over knowledge).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | string | `"mock"` | Provider type: `"mock"`, `"fastembed"` |
+| `provider` | string | `"mock"` | Provider type: `"mock"`, `"candle"` |
 | `model` | string | -- | Provider-specific model name |
 | `dimension` | usize | `384` | Output vector dimension (must match HNSW index) |
 
 ```yaml
 embedding:
-  provider: fastembed
+  provider: candle
   model: BAAI/bge-small-en-v1.5
   dimension: 384
 ```

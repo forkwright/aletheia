@@ -22,10 +22,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Encryption | XChaCha20Poly1305 | None (plaintext) | Per-message encryption at rest, ~700ns overhead, zero plaintext on disk |
 | Config | figment + serde + validator | Zod | figment handles oikos cascade natively (YAML + env + CLI, hierarchical merge). By Rocket author. |
 | IDs | ulid + uuid | uuid | ulid for time-sorted data (sessions, messages, memories) - lexicographic sort = natural CozoDB ordering. uuid v4 for non-temporal. |
-| Errors | snafu + anyhow + miette | AletheiaError hierarchy | snafu for library/mid-level enums (context wrapping, Location-based virtual stack traces, multiple variants from same source type - GreptimeDB pattern). anyhow for application entry. miette for diagnostics. |
+| Errors | snafu + anyhow | AletheiaError hierarchy | snafu for library/mid-level enums (context wrapping, Location-based virtual stack traces, multiple variants from same source type - GreptimeDB pattern). anyhow for application entry. |
 | Logging | tracing + Langfuse | tslog | Spans, layers, OpenTelemetry. Langfuse for LLM-specific traces. |
 | CLI | clap | Commander | Compile-time validation |
-| JSON | sonic-rs | serde_json | SIMD-accelerated, 2-3x faster parse/serialize |
+| JSON | serde_json | — | Standard Rust JSON; sonic-rs was evaluated but not adopted |
 | Hashing | blake3 + foldhash | crypto.createHash / ahash | blake3 for content hashing (dedup, loop detection). foldhash for HashMap keys. |
 | Secrets | secrecy | None | `SecretString` / `SecretVec` - zeroizes on drop, redacts in Debug |
 | Hot reload | arc-swap + notify | SIGUSR1 | arc-swap for zero-downtime config swap. notify for file watching. |
@@ -69,7 +69,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 ### Cross-Compilation Notes
 
 - `candle`: pure Rust, cross-compiles cleanly. Feature-gated behind `embed-candle`.
-- `sonic-rs` (SIMD): aarch64 NEON supported but verify. Fallback to `serde_json` via feature flag.
+- `serde_json`: standard, no platform-specific concerns.
 - `chromiumoxide`: requires Chromium on host. Feature-gate behind `browser`.
 - `extrasafe` (seccomp): Linux-only. Feature-gate behind `sandbox-seccomp`.
 
@@ -79,14 +79,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 
 | Crate | Key Dependencies |
 |-------|-----------------|
-| **koina** | snafu, tracing, tracing-subscriber, miette |
+| **koina** | snafu, tracing, tracing-subscriber |
 | **taxis** | koina, figment, serde, serde_json, snafu, tracing |
 | **mneme** | koina, snafu, serde, tracing, ulid, rusqlite (sqlite), candle-core/nn/transformers (embed-candle), jiff, hnsw_rs, fjall |
-| **hermeneus** | koina, taxis, reqwest, reqwest-eventsource, sonic-rs, tokio, secrecy |
+| **hermeneus** | koina, taxis, reqwest, reqwest-eventsource, serde_json, tokio, secrecy |
 | **organon** | koina, taxis, hermeneus, tokio, gix, extrasafe, chromiumoxide |
 | **nous** | koina, taxis, mneme, hermeneus, organon, melete, tokio, ulid, compact_str |
 | **dianoia** | koina, taxis, mneme, hermeneus, nous, rusqlite |
-| **pylon** | koina, taxis, nous, axum, tower, tower-http, symbolon, sonic-rs, chacha20poly1305 |
+| **pylon** | koina, taxis, nous, axum, tower, tower-http, symbolon, serde_json, chacha20poly1305 |
 | **symbolon** | koina, taxis, rusqlite, jsonwebtoken, argon2 |
 | **agora** | koina, taxis, nous, tokio (semeion: tokio::process, slack: tokio-tungstenite) |
 | **daemon** | koina, taxis, nous, mneme, cron, notify, arc-swap |

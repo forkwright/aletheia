@@ -20,10 +20,10 @@ Module and crate names use Greek terms reflecting their purpose (nous = mind, mn
 aletheia
 ├── koina         — errors, tracing, safe wrappers, fs utils
 ├── taxis         — config, path resolution, oikos hierarchy, secret refs
-├── mneme         — session store (SQLite) + knowledge engine (vendored Datalog) + fastembed-rs
+├── mneme         — session store (SQLite) + knowledge engine (vendored Datalog) + candle
 │   ├── store     — SQLite session store: WAL, migrations, retention
 │   ├── knowledge — Datalog knowledge graph, HNSW vectors, entity relations
-│   ├── embedding — EmbeddingProvider trait: fastembed-rs (local default)
+│   ├── embedding — EmbeddingProvider trait: candle (local default)
 │   ├── extract   — LLM-driven fact extraction, entity resolution
 │   ├── recall    — hybrid retrieval (vector + graph + BM25), MMR diversity
 │   └── engine/   — vendored Datalog + HNSW engine (mneme-engine feature gate)

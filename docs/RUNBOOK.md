@@ -10,7 +10,7 @@ aletheia                         (port 18789)  -- Rust binary, API
 +-- daemon (oikonomos)           (in-process)  -- heartbeats, scheduled tasks, prosoche
 ```
 
-Memory (CozoDB, fastembed-rs, SQLite) is embedded in the binary. No external databases or sidecars required.
+Memory (CozoDB, candle, SQLite) is embedded in the binary. No external databases or sidecars required.
 
 ## Quick Health Check
 
