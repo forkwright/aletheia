@@ -27,6 +27,11 @@ pub struct SessionState {
     pub thinking_budget: u32,
     /// Bootstrap context hash (for cache invalidation).
     pub bootstrap_hash: Option<String>,
+    /// Cumulative API tokens consumed across all turns (input + output).
+    ///
+    /// Updated by the actor after each completed turn from `TurnUsage`.
+    /// Used by the guard stage to enforce `NousConfig::session_token_cap`.
+    pub cumulative_tokens: u64,
 }
 
 impl SessionState {
@@ -44,6 +49,7 @@ impl SessionState {
             thinking_enabled: config.thinking_enabled,
             thinking_budget: config.thinking_budget,
             bootstrap_hash: None,
+            cumulative_tokens: 0,
         }
     }
 

@@ -81,6 +81,7 @@ impl SpawnService for SpawnServiceImpl {
             domains: Vec::new(),
             server_tools: Vec::new(),
             cache_enabled: true,
+            session_token_cap: 500_000,
         };
 
         let pipeline_config = PipelineConfig {

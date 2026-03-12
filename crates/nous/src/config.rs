@@ -35,10 +35,21 @@ pub struct NousConfig {
     /// Whether prompt caching is enabled for this agent.
     #[serde(default = "default_cache_enabled")]
     pub cache_enabled: bool,
+    /// Maximum cumulative tokens (input + output) allowed per session.
+    ///
+    /// Once a session exceeds this budget the guard stage rejects further
+    /// turns with a `GuardResult::Rejected` response. Set to `0` to disable
+    /// the cap (default: 500,000).
+    #[serde(default = "default_session_token_cap")]
+    pub session_token_cap: u64,
 }
 
 fn default_cache_enabled() -> bool {
     true
+}
+
+fn default_session_token_cap() -> u64 {
+    500_000
 }
 
 impl Default for NousConfig {
@@ -57,6 +68,7 @@ impl Default for NousConfig {
             domains: Vec::new(),
             server_tools: Vec::new(),
             cache_enabled: true,
+            session_token_cap: default_session_token_cap(),
         }
     }
 }
@@ -196,6 +208,7 @@ mod tests {
             domains: vec!["medical".to_owned()],
             server_tools: Vec::new(),
             cache_enabled: false,
+            session_token_cap: 250_000,
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.thinking_enabled);

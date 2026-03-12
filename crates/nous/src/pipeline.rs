@@ -299,9 +299,18 @@ pub async fn assemble_context_with_extra(
 
 /// Guard stage — check rate limits, loop detection, safety.
 ///
-/// Stub implementation. Always allows the request.
+/// Enforces the per-session token spending cap from
+/// [`NousConfig::session_token_cap`]. A cap of `0` disables the check.
 #[must_use]
-pub fn check_guard(_session: &SessionState, _config: &NousConfig) -> GuardResult {
+pub fn check_guard(session: &SessionState, config: &NousConfig) -> GuardResult {
+    if config.session_token_cap > 0 && session.cumulative_tokens >= config.session_token_cap {
+        return GuardResult::Rejected {
+            reason: format!(
+                "session token budget exhausted: {} of {} tokens used",
+                session.cumulative_tokens, config.session_token_cap
+            ),
+        };
+    }
     GuardResult::Allow
 }
 
