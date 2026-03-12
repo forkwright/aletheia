@@ -565,6 +565,51 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Claude Code credential detection
+// ---------------------------------------------------------------------------
+
+/// Default path to the Claude Code credentials file.
+///
+/// Returns `~/.claude/.credentials.json`, resolving `~` via `$HOME`.
+/// Returns `None` if `$HOME` is not set.
+#[must_use]
+pub fn claude_code_default_path() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| {
+        PathBuf::from(home)
+            .join(".claude")
+            .join(".credentials.json")
+    })
+}
+
+/// Build a credential provider from a Claude Code credentials file.
+///
+/// If the file contains a refresh token, returns a [`RefreshingCredentialProvider`]
+/// that keeps the token fresh in the background. Otherwise returns a
+/// [`FileCredentialProvider`] for static token reads.
+///
+/// Returns `None` if the file does not exist or cannot be parsed.
+pub fn claude_code_provider(path: &Path) -> Option<Box<dyn CredentialProvider>> {
+    if !path.exists() {
+        return None;
+    }
+    let cred = CredentialFile::load(path)?;
+    if cred.has_refresh_token() {
+        if let Some(refreshing) = RefreshingCredentialProvider::new(path.to_path_buf()) {
+            info!(
+                path = %path.display(),
+                "Claude Code credentials found (OAuth auto-refresh)"
+            );
+            return Some(Box::new(refreshing));
+        }
+    }
+    info!(
+        path = %path.display(),
+        "Claude Code credentials found (static token)"
+    );
+    Some(Box::new(FileCredentialProvider::new(path.to_path_buf())))
+}
+
+// ---------------------------------------------------------------------------
 // CredentialChain
 // ---------------------------------------------------------------------------
 

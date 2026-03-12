@@ -32,7 +32,7 @@ use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
-    RefreshingCredentialProvider,
+    RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
 };
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::config::resolve_nous;
@@ -97,6 +97,7 @@ pub async fn run(args: Args) -> Result<()> {
         "embedding",
         "channels",
         "bindings",
+        "credential",
     ] {
         if let Some(section_value) = config_value.get(section) {
             validate_section(section, section_value)
@@ -601,6 +602,30 @@ fn build_provider_registry(
     )));
     // ANTHROPIC_API_KEY: auto-detects OAuth tokens by sk-ant-oat prefix
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
+
+    // Claude Code credentials file — lowest priority in the chain.
+    // Enabled when credential.source is "auto" (default) or "claude-code".
+    let cred_source = config.credential.source.as_str();
+    if matches!(cred_source, "auto" | "claude-code") {
+        let cc_path = config
+            .credential
+            .claude_code_credentials
+            .as_ref()
+            .map(PathBuf::from)
+            .or_else(claude_code_default_path);
+
+        if let Some(path) = cc_path {
+            if let Some(provider) = claude_code_provider(&path) {
+                chain.push(provider);
+            } else if cred_source == "claude-code" {
+                // Explicit claude-code source but file missing/invalid — warn loudly
+                warn!(
+                    path = %path.display(),
+                    "credential.source is \"claude-code\" but credentials file not found or invalid"
+                );
+            }
+        }
+    }
 
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
 

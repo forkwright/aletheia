@@ -30,6 +30,8 @@ pub struct AletheiaConfig {
     pub pricing: HashMap<String, ModelPricing>,
     /// Sandbox configuration for tool execution.
     pub sandbox: SandboxSettings,
+    /// Credential resolution configuration.
+    pub credential: CredentialConfig,
 }
 
 /// Sandbox enforcement level for tool execution.
@@ -641,6 +643,34 @@ impl Default for SandboxSettings {
             enforcement: SandboxEnforcementMode::Enforcing,
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
+        }
+    }
+}
+
+/// Credential resolution configuration.
+///
+/// Controls how the server discovers LLM API credentials. The `source` field
+/// selects the strategy:
+///
+/// - `"auto"` (default): instance credential file → env vars → Claude Code credentials
+/// - `"api-key"`: only instance credential file and env vars
+/// - `"claude-code"`: prefer Claude Code's `~/.claude/.credentials.json`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CredentialConfig {
+    /// Credential source strategy: `"auto"`, `"api-key"`, or `"claude-code"`.
+    pub source: String,
+    /// Override path to the Claude Code credentials file.
+    /// Defaults to `~/.claude/.credentials.json`.
+    pub claude_code_credentials: Option<String>,
+}
+
+impl Default for CredentialConfig {
+    fn default() -> Self {
+        Self {
+            source: "auto".to_owned(),
+            claude_code_credentials: None,
         }
     }
 }
