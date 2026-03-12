@@ -1,5 +1,8 @@
 //! Filesystem navigation tools: grep, find, ls.
-#![expect(clippy::expect_used, reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain")]
+#![expect(
+    clippy::expect_used,
+    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
+)]
 
 use std::fmt::Write as _;
 use std::future::Future;

@@ -3,7 +3,10 @@
 //! Web search is now handled by Anthropic's server-side `web_search` tool,
 //! configured via `NousConfig.server_tools`. This module only provides
 //! `web_fetch` for direct URL retrieval.
-#![expect(clippy::expect_used, reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain")]
+#![expect(
+    clippy::expect_used,
+    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
+)]
 
 use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};

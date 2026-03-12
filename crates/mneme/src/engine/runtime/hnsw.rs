@@ -1,5 +1,8 @@
 //! Hierarchical Navigable Small World vector index.
-#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use crate::engine::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::engine::data::program::HnswSearch;
 use crate::engine::data::relation::VecElementType;

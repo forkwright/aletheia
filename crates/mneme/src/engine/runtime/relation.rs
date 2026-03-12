@@ -1,6 +1,12 @@
 //! Stored relation management.
-#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
-#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::Ordering;

@@ -115,7 +115,10 @@ impl Schedule {
     /// Calculate the next run time from now.
     ///
     /// Returns `None` for `Startup` (already ran) or `Once` with a past timestamp.
-    #[expect(clippy::expect_used, reason = "chrono/jiff timestamp conversions are within valid ranges; interval durations fit in i64 nanos for any reasonable schedule")]
+    #[expect(
+        clippy::expect_used,
+        reason = "chrono/jiff timestamp conversions are within valid ranges; interval durations fit in i64 nanos for any reasonable schedule"
+    )]
     pub fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {
@@ -152,7 +155,10 @@ impl Schedule {
     ///
     /// Returns `true` if there was at least one scheduled run between `last_run`
     /// and `now` that was missed, and it's within the last 24 hours.
-    #[expect(clippy::expect_used, reason = "chrono/jiff timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow")]
+    #[expect(
+        clippy::expect_used,
+        reason = "chrono/jiff timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow"
+    )]
     pub fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
             return Ok(false);
@@ -190,7 +196,10 @@ impl Schedule {
     /// Check if the current time is within the active window.
     ///
     /// `None` window means always active. Handles overnight windows (e.g., 22-06).
-    #[expect(clippy::expect_used, reason = "hour() returns 0-23 which always fits in u8")]
+    #[expect(
+        clippy::expect_used,
+        reason = "hour() returns 0-23 which always fits in u8"
+    )]
     pub fn in_window(window: Option<(u8, u8)>) -> bool {
         let Some((start, end)) = window else {
             return true;

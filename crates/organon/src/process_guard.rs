@@ -46,7 +46,10 @@ impl ProcessGuard {
     ///
     /// Panics if the guard has already been consumed via
     /// [`detach()`][Self::detach].
-    #[expect(clippy::expect_used, reason = "panics intentionally when called after detach() — documented invariant")]
+    #[expect(
+        clippy::expect_used,
+        reason = "panics intentionally when called after detach() — documented invariant"
+    )]
     pub(crate) fn get_mut(&mut self) -> &mut std::process::Child {
         self.child.as_mut().expect("ProcessGuard already consumed")
     }
@@ -60,7 +63,10 @@ impl ProcessGuard {
     /// # Panics
     ///
     /// Panics if called on an already-detached guard.
-    #[expect(clippy::expect_used, reason = "panics intentionally when called twice — documented invariant")]
+    #[expect(
+        clippy::expect_used,
+        reason = "panics intentionally when called twice — documented invariant"
+    )]
     pub(crate) fn detach(mut self) -> std::process::Child {
         self.child.take().expect("ProcessGuard already consumed")
     }

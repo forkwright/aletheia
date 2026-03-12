@@ -55,7 +55,13 @@ reach[a, c] := reach[a, b], edge[b, c]
 }
 
 // --- DDL and non-engine unit tests ---
-#[cfg_attr(feature = "mneme-engine", expect(clippy::expect_used, reason = "test assertions in feature-gated engine tests"))]
+#[cfg_attr(
+    feature = "mneme-engine",
+    expect(
+        clippy::expect_used,
+        reason = "test assertions in feature-gated engine tests"
+    )
+)]
 mod ddl_tests {
     use super::super::*;
 

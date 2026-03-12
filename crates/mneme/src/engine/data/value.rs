@@ -1,5 +1,8 @@
 //! Core value type for the Datalog engine.
-#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use ndarray::Array1;

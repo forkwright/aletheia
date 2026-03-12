@@ -1,5 +1,8 @@
 //! Communication tool executors: message, sessions_ask, sessions_send.
-#![expect(clippy::expect_used, reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain")]
+#![expect(
+    clippy::expect_used,
+    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
+)]
 
 use std::future::Future;
 use std::pin::Pin;

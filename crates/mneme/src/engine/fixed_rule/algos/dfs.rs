@@ -1,5 +1,8 @@
 //! Depth-first search traversal.
-#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::InternalResult as Result;

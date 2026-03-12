@@ -1,5 +1,8 @@
 //! Tarjan's strongly connected components.
-#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 #![expect(
     unused_imports,
     reason = "algorithm may use additional imports depending on feature flags"

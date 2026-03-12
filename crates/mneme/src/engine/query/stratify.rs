@@ -1,5 +1,8 @@
 //! Datalog program stratification.
-#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 

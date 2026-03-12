@@ -15,7 +15,10 @@
 //!
 //! Two signatures are considered the *same pattern* when
 //! [`crate::skills::signature_similarity`] ≥ 0.8.
-#![expect(clippy::expect_used, reason = "Mutex::lock() panics only on poisoning (another thread panicked while holding the lock), which is a fatal programming error")]
+#![expect(
+    clippy::expect_used,
+    reason = "Mutex::lock() panics only on poisoning (another thread panicked while holding the lock), which is a fatal programming error"
+)]
 
 use serde::{Deserialize, Serialize};
 

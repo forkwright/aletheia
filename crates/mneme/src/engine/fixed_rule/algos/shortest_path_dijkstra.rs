@@ -1,5 +1,8 @@
 //! Weighted shortest path (Dijkstra).
-#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::Reverse;

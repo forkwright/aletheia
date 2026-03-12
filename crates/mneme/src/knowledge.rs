@@ -334,7 +334,10 @@ pub fn default_stability_hours(fact_type: &str) -> f64 {
 /// so existing data using `"9999-12-31"` must be treated equivalently (any year-9999
 /// timestamp means "no end date").
 #[must_use]
-#[expect(clippy::expect_used, reason = "date(9999, 1, 1) is a valid Gregorian date and UTC conversion is infallible")]
+#[expect(
+    clippy::expect_used,
+    reason = "date(9999, 1, 1) is a valid Gregorian date and UTC conversion is infallible"
+)]
 pub fn far_future() -> jiff::Timestamp {
     jiff::civil::date(9999, 1, 1)
         .to_zoned(jiff::tz::TimeZone::UTC)
@@ -362,7 +365,10 @@ pub fn is_far_future(ts: &jiff::Timestamp) -> bool {
 ///
 /// Returns `None` for empty or unparseable strings.
 #[must_use]
-#[expect(clippy::expect_used, reason = "UTC timezone conversion for a valid parsed date is infallible")]
+#[expect(
+    clippy::expect_used,
+    reason = "UTC timezone conversion for a valid parsed date is infallible"
+)]
 pub fn parse_timestamp(s: &str) -> Option<jiff::Timestamp> {
     if s.is_empty() {
         return None;

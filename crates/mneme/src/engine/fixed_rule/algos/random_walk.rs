@@ -1,5 +1,8 @@
 //! Random walk over graphs.
-#![expect(clippy::unwrap_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use std::collections::BTreeMap;
 
 use crate::engine::error::InternalResult as Result;

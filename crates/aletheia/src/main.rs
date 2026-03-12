@@ -111,7 +111,10 @@ enum Command {
 }
 
 #[tokio::main]
-#[expect(clippy::expect_used, reason = "ring crypto provider installation is infallible unless already installed")]
+#[expect(
+    clippy::expect_used,
+    reason = "ring crypto provider installation is infallible unless already installed"
+)]
 async fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()

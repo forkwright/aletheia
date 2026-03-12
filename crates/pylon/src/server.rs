@@ -211,7 +211,10 @@ fn serve_tls(
     std::future::ready(TlsNotCompiledSnafu.fail())
 }
 
-#[expect(clippy::expect_used, reason = "signal handler installation is infallible on supported platforms")]
+#[expect(
+    clippy::expect_used,
+    reason = "signal handler installation is infallible on supported platforms"
+)]
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()

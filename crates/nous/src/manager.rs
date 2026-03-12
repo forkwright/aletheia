@@ -146,7 +146,10 @@ impl NousManager {
     /// Not cancel-safe. If cancelled after removing an old actor but before
     /// inserting the new entry, the old actor is lost. Only call during
     /// sequential startup, never in a `select!`.
-    #[expect(clippy::expect_used, reason = "Mutex::lock is infallible under normal operation")]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex::lock is infallible under normal operation"
+    )]
     pub async fn spawn(
         &mut self,
         config: NousConfig,
@@ -313,7 +316,10 @@ impl NousManager {
     }
 
     /// Restart a dead actor with exponential backoff.
-    #[expect(clippy::expect_used, reason = "Mutex::lock is infallible under normal operation")]
+    #[expect(
+        clippy::expect_used,
+        reason = "Mutex::lock is infallible under normal operation"
+    )]
     async fn restart_actor(&mut self, id: &str) {
         let Some(entry) = self.actors.get(id) else {
             return;

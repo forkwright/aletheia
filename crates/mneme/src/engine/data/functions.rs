@@ -1,5 +1,8 @@
 //! Built-in scalar functions.
-#![expect(clippy::expect_used, reason = "engine invariant — internal CozoDB algorithm correctness guarantee")]
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use std::cmp::Reverse;
 use std::collections::BTreeSet;
 use std::mem;
