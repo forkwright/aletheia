@@ -395,7 +395,8 @@ fn get_stored_facts(state: &AppState, query: &FactsQuery) -> Vec<aletheia_mneme:
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let nous_id = query.nous_id.as_deref().unwrap_or("default");
-        let limit = i64::try_from((query.offset + query.limit + 1000).min(10000)).unwrap_or(i64::MAX);
+        let limit =
+            i64::try_from((query.offset + query.limit + 1000).min(10000)).unwrap_or(i64::MAX);
         match store.audit_all_facts(nous_id, limit) {
             Ok(facts) => return facts,
             Err(e) => {
