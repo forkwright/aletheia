@@ -25,6 +25,10 @@ pub struct SecurityConfig {
     pub tls_cert_path: Option<PathBuf>,
     /// Path to PEM private key file.
     pub tls_key_path: Option<PathBuf>,
+    /// Whether per-IP rate limiting is active.
+    pub rate_limit_enabled: bool,
+    /// Maximum requests per minute per client IP.
+    pub rate_limit_requests_per_minute: u32,
 }
 
 impl SecurityConfig {
@@ -41,6 +45,8 @@ impl SecurityConfig {
             tls_enabled: gateway.tls.enabled,
             tls_cert_path: gateway.tls.cert_path.as_ref().map(PathBuf::from),
             tls_key_path: gateway.tls.key_path.as_ref().map(PathBuf::from),
+            rate_limit_enabled: gateway.rate_limit.enabled,
+            rate_limit_requests_per_minute: gateway.rate_limit.requests_per_minute,
         }
     }
 }
@@ -57,6 +63,8 @@ impl Default for SecurityConfig {
             tls_enabled: false,
             tls_cert_path: None,
             tls_key_path: None,
+            rate_limit_enabled: false,
+            rate_limit_requests_per_minute: 60,
         }
     }
 }

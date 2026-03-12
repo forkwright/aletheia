@@ -14,7 +14,7 @@ fn defaults_are_sensible() {
     assert_eq!(config.agents.defaults.max_tool_iterations, 50);
     assert_eq!(config.agents.defaults.tool_timeouts.default_ms, 120_000);
     assert_eq!(config.gateway.port, 18789);
-    assert_eq!(config.gateway.bind, "lan");
+    assert_eq!(config.gateway.bind, "localhost");
     assert_eq!(config.gateway.auth.mode, "token");
     // Security config defaults
     assert!(!config.gateway.tls.enabled);
@@ -25,6 +25,8 @@ fn defaults_are_sensible() {
     assert!(config.gateway.csrf.enabled);
     assert_eq!(config.gateway.csrf.header_name, "x-requested-with");
     assert_eq!(config.gateway.csrf.header_value, "aletheia");
+    assert!(!config.gateway.rate_limit.enabled);
+    assert_eq!(config.gateway.rate_limit.requests_per_minute, 60);
     assert!(config.channels.signal.enabled);
     assert!(config.channels.signal.accounts.is_empty());
     assert!(config.bindings.is_empty());
@@ -168,7 +170,7 @@ fn signal_account_defaults() {
     assert_eq!(account.http_host, "localhost");
     assert_eq!(account.http_port, 8080);
     assert!(account.auto_start);
-    assert_eq!(account.dm_policy, "open");
+    assert_eq!(account.dm_policy, "contacts");
     assert_eq!(account.group_policy, "allowlist");
     assert!(account.require_mention);
     assert!(account.send_read_receipts);

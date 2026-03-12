@@ -17,8 +17,8 @@ use tracing::info_span;
 use crate::error::ApiError;
 use crate::handlers::{config, health, knowledge, metrics, nous, sessions};
 use crate::middleware::{
-    CsrfState, RequestId, enrich_error_response, inject_request_id, record_http_metrics,
-    require_csrf_header,
+    CsrfState, RateLimiter, RequestId, enrich_error_response, inject_request_id, rate_limit,
+    record_http_metrics, require_csrf_header,
 };
 use crate::openapi;
 use crate::security::SecurityConfig;
@@ -80,6 +80,14 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         .route("/metrics", get(metrics::expose));
 
     router = router.fallback(fallback_handler);
+
+    // Rate limiting — per-IP sliding window, applied before business logic
+    if security.rate_limit_enabled {
+        let limiter = Arc::new(RateLimiter::new(security.rate_limit_requests_per_minute));
+        router = router
+            .layer(axum::middleware::from_fn(rate_limit))
+            .layer(axum::Extension(limiter));
+    }
 
     // CSRF protection — inject state and apply middleware
     if security.csrf_enabled {

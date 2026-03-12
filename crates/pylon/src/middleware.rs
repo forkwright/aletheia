@@ -1,5 +1,9 @@
 //! Custom middleware layers for pylon.
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
 use axum::body::Body;
 use axum::extract::Request;
 use axum::http::{Method, StatusCode};
@@ -129,4 +133,115 @@ pub async fn record_http_metrics(request: Request, next: Next) -> Response {
     crate::metrics::record_request(&method, &path, status, duration);
 
     response
+}
+
+/// Per-IP sliding-window rate limiter.
+///
+/// Each IP gets a fixed window of `window` duration. The window resets when
+/// expired. Uses `std::sync::Mutex` (not tokio) — the critical section is
+/// short and contains no `.await` points.
+pub struct RateLimiter {
+    max_requests: u32,
+    window: Duration,
+    state: Mutex<HashMap<String, (Instant, u32)>>,
+}
+
+impl RateLimiter {
+    pub fn new(requests_per_minute: u32) -> Self {
+        Self {
+            max_requests: requests_per_minute,
+            window: Duration::from_secs(60),
+            state: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Check whether the given client key is within the rate limit.
+    ///
+    /// Returns `None` if the request is allowed, or `Some(retry_after_secs)`
+    /// if the limit has been exceeded.
+    pub fn check(&self, client: &str) -> Option<u64> {
+        let now = Instant::now();
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        if let Some((window_start, count)) = state.get_mut(client) {
+            if now.duration_since(*window_start) >= self.window {
+                // Window expired — start a new one.
+                *window_start = now;
+                *count = 1;
+                None
+            } else if *count >= self.max_requests {
+                let elapsed = now.duration_since(*window_start);
+                let remaining = self.window.saturating_sub(elapsed);
+                Some(remaining.as_secs() + 1)
+            } else {
+                *count += 1;
+                None
+            }
+        } else {
+            state.insert(client.to_owned(), (now, 1));
+            None
+        }
+    }
+}
+
+/// Extract the best available client identifier from request headers.
+///
+/// Checks `X-Forwarded-For` (reverse proxy) then `X-Real-IP`, falling back
+/// to `"127.0.0.1"` for direct connections.
+fn extract_client_key(request: &Request) -> String {
+    if let Some(xff) = request.headers().get("x-forwarded-for") {
+        if let Ok(s) = xff.to_str() {
+            let ip = s.split(',').next().unwrap_or("").trim();
+            if !ip.is_empty() {
+                return ip.to_owned();
+            }
+        }
+    }
+    if let Some(xri) = request.headers().get("x-real-ip") {
+        if let Ok(s) = xri.to_str() {
+            let ip = s.trim();
+            if !ip.is_empty() {
+                return ip.to_owned();
+            }
+        }
+    }
+    "127.0.0.1".to_owned()
+}
+
+/// Middleware that enforces per-IP rate limiting.
+///
+/// Reads the `Arc<RateLimiter>` from request extensions (installed by
+/// `build_router`). Returns 429 Too Many Requests with a `Retry-After` header
+/// when the client has exceeded the configured limit.
+pub async fn rate_limit(request: Request, next: Next) -> Response {
+    let limiter = request.extensions().get::<Arc<RateLimiter>>().cloned();
+    let Some(limiter) = limiter else {
+        return next.run(request).await;
+    };
+
+    let client = extract_client_key(&request);
+    if let Some(retry_after) = limiter.check(&client) {
+        let mut response = (
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({
+                "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": "too many requests — retry after the indicated number of seconds",
+                    "retry_after": retry_after
+                }
+            })),
+        )
+            .into_response();
+        if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after.to_string()) {
+            response
+                .headers_mut()
+                .insert(axum::http::header::RETRY_AFTER, value);
+        }
+        return response;
+    }
+
+    next.run(request).await
 }

@@ -108,7 +108,7 @@ HTTP gateway serving the API.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `port` | u16 | `18789` | Listen port |
-| `bind` | string | `"lan"` | Bind mode: `"lan"`, `"localhost"`, `"auto"`, or a custom address |
+| `bind` | string | `"localhost"` | Bind mode: `"localhost"` (loopback only), `"lan"` (all interfaces), or a custom address |
 | `auth.mode` | string | `"token"` | Auth mode: `"token"` (bearer) or `"none"` |
 
 ### gateway.tls
@@ -140,10 +140,23 @@ HTTP gateway serving the API.
 | `header_name` | string | `"x-requested-with"` | Required header name |
 | `header_value` | string | `"aletheia"` | Required header value |
 
+### gateway.rate_limit
+
+Per-IP rate limiting for API endpoints. Requests that exceed the limit receive
+`429 Too Many Requests` with a `Retry-After` header indicating when to retry.
+
+The client IP is read from `X-Forwarded-For` or `X-Real-IP` (reverse proxy)
+and falls back to `127.0.0.1` for direct connections.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Whether rate limiting is active |
+| `requestsPerMinute` | u32 | `60` | Maximum requests per minute per client IP |
+
 ```yaml
 gateway:
   port: 18789
-  bind: lan
+  bind: localhost
   auth:
     mode: token
   tls:
@@ -181,7 +194,7 @@ gateway:
 | `http_port` | u16 | `8080` | signal-cli JSON-RPC port |
 | `cli_path` | string | -- | Path to signal-cli binary (auto-detected if unset) |
 | `auto_start` | bool | `true` | Auto-start receive loop |
-| `dm_policy` | string | `"open"` | DM access: `"open"`, `"allowlist"` |
+| `dm_policy` | string | `"contacts"` | DM access: `"contacts"` (known contacts only), `"open"` (anyone), `"allowlist"` |
 | `group_policy` | string | `"allowlist"` | Group access: `"open"`, `"allowlist"` |
 | `require_mention` | bool | `true` | Require @mention in groups |
 | `send_read_receipts` | bool | `true` | Send read receipts |
@@ -196,7 +209,7 @@ channels:
         account: "+15551234567"
         http_host: localhost
         http_port: 8080
-        dm_policy: open
+        dm_policy: contacts
         group_policy: allowlist
         require_mention: true
 ```
