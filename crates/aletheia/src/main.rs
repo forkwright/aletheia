@@ -106,6 +106,8 @@ enum Command {
         /// Shell to generate completions for
         shell: clap_complete::Shell,
     },
+    /// Validate configuration without starting any services
+    CheckConfig,
 }
 
 #[tokio::main]
@@ -154,6 +156,9 @@ async fn main() -> Result<()> {
         }
         Some(Command::MigrateMemory(a)) => {
             return commands::agent_io::migrate_memory(instance_root, a).await;
+        }
+        Some(Command::CheckConfig) => {
+            return commands::check_config::run(instance_root);
         }
         None => {}
     }

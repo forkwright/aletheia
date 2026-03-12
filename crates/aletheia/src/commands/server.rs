@@ -38,6 +38,8 @@ use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::config::resolve_nous;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
+use aletheia_taxis::validate::validate_section;
+use secrecy::SecretString;
 
 use crate::commands::maintenance;
 use crate::daemon_bridge;
@@ -84,16 +86,53 @@ pub async fn run(args: Args) -> Result<()> {
         "config loaded"
     );
 
-    // Validate per-agent workspace paths declared in config
-    for agent in &config.agents.list {
-        if let Err(e) = oikos.validate_workspace_path(&agent.workspace) {
-            tracing::warn!(
-                agent = %agent.id,
-                workspace = %agent.workspace,
-                error = %e,
-                "agent workspace path invalid — agent may fail to start"
-            );
+    // Validate all config sections — fail fast before any actors or stores initialise.
+    let config_value =
+        serde_json::to_value(&config).context("failed to serialize config for validation")?;
+    for section in &[
+        "agents",
+        "gateway",
+        "maintenance",
+        "data",
+        "embedding",
+        "channels",
+        "bindings",
+    ] {
+        if let Some(section_value) = config_value.get(section) {
+            validate_section(section, section_value)
+                .with_context(|| format!("invalid config section '{section}'"))?;
         }
+    }
+    info!("config validated");
+
+    // JWT key validation — fail if auth mode requires JWT and the key is still the placeholder.
+    let jwt_key = config
+        .gateway
+        .auth
+        .signing_key
+        .clone()
+        .or_else(|| std::env::var("ALETHEIA_JWT_SECRET").ok());
+    let effective_jwt_key = match jwt_key {
+        Some(k) => k,
+        None => "CHANGE-ME-IN-PRODUCTION".to_owned(),
+    };
+    let auth_mode = config.gateway.auth.mode.as_str();
+    if matches!(auth_mode, "token" | "jwt") && effective_jwt_key == "CHANGE-ME-IN-PRODUCTION" {
+        anyhow::bail!(
+            "JWT signing key is still the default placeholder.\n  \
+             Set gateway.auth.signingKey in aletheia.yaml or the ALETHEIA_JWT_SECRET env var.\n  \
+             Generate one with: openssl rand -hex 32"
+        );
+    }
+
+    // Validate per-agent workspace paths — fatal if any agent workspace is invalid.
+    for agent in &config.agents.list {
+        oikos.validate_workspace_path(&agent.workspace).with_context(|| {
+            format!(
+                "agent '{}' workspace path '{}' is invalid — create the directory or fix the config",
+                agent.id, agent.workspace
+            )
+        })?;
     }
 
     // Domain packs — load external knowledge packs declared in config
@@ -112,8 +151,11 @@ pub async fn run(args: Args) -> Result<()> {
     ));
     info!(path = %db_path.display(), "session store opened");
 
-    // JWT manager
-    let jwt_manager = JwtManager::new(JwtConfig::default());
+    // JWT manager — use the resolved key (validated above; placeholder only reaches here when mode="none").
+    let jwt_manager = JwtManager::new(JwtConfig {
+        signing_key: SecretString::from(effective_jwt_key),
+        ..JwtConfig::default()
+    });
 
     // Build shared registries — single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry(&config, &oikos));

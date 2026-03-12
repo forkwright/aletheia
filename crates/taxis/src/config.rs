@@ -259,14 +259,18 @@ impl Default for GatewayConfig {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct GatewayAuthConfig {
-    /// Auth mode: `"token"` (bearer token), `"none"` (disabled).
+    /// Auth mode: `"token"` (bearer token), `"none"` (disabled), `"jwt"` (explicit JWT).
     pub mode: String,
+    /// JWT signing key. If `None`, falls back to `ALETHEIA_JWT_SECRET` env var.
+    /// Startup fails when auth mode requires JWT and this is still the default placeholder.
+    pub signing_key: Option<String>,
 }
 
 impl Default for GatewayAuthConfig {
     fn default() -> Self {
         Self {
             mode: "token".to_owned(),
+            signing_key: None,
         }
     }
 }
