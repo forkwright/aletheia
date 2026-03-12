@@ -73,7 +73,6 @@ pub(crate) mod parse;
 )]
 pub(crate) mod query;
 #[expect(
-    unsafe_code,
     private_interfaces,
     clippy::pedantic,
     clippy::mutable_key_type,

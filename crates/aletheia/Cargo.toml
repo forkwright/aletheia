@@ -59,6 +59,7 @@ clap_complete = "4"
 qdrant-client = { version = "1", optional = true }
 sha2 = "0.10"
 anyhow = "1"
+snafu = { workspace = true }
 rcgen = { workspace = true }
 # time is a direct dep because rcgen's CertificateParams.not_before/not_after are
 # time::OffsetDateTime. rcgen already depends on time transitively, so this does

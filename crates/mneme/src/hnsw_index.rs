@@ -66,17 +66,39 @@ impl Default for HnswConfig {
 /// - Persistence via dump/load to disk
 /// - Arc-wrapped for shared concurrent access
 ///
-/// # Persistence lifetime
+/// # Persistence and the `'static` transmute
 ///
-/// `HnswIo` is kept alive alongside `Hnsw` because `load_hnsw` borrows the
-/// loader (for mmap support). The `_loader` field is declared before `inner`
-/// so Rust drops it *after* the `Hnsw`, guaranteeing the borrow remains valid.
+/// `hnsw_rs::HnswIo::load_hnsw` returns a `Hnsw<'_, …>` that borrows the
+/// loader. We extend that lifetime to `'static` via `mem::transmute` so the
+/// index can be stored in a `'static`-bounded field.
+///
+/// **Safety invariant:** This is sound because we do **not** use mmap. When
+/// mmap is disabled (our default), `load_hnsw` copies all point data into
+/// heap-owned `Vec`s inside the `Hnsw` struct. The loader is not accessed
+/// after `load_hnsw` returns; it is retained in `_loader` only to satisfy
+/// the type system's lifetime requirement at construction time.
+///
+/// Drop order (fields drop in declaration order): `_loader` drops before
+/// `inner`. Because the `Hnsw` owns its data and never dereferences the
+/// loader at runtime, this ordering is safe regardless of which field drops
+/// first.
+///
+/// `#[repr(C)]` pins the field layout so static offset assertions below
+/// remain accurate if the struct is ever modified.
+#[repr(C)]
 pub struct HnswIndex {
-    /// Kept alive so loaded `Hnsw` borrow remains valid. Dropped after `inner`.
+    /// Retained to satisfy the type system; not accessed after construction.
     _loader: RwLock<Option<Box<HnswIo>>>,
     inner: RwLock<Option<Hnsw<'static, f32, DistCosine>>>,
     config: HnswConfig,
 }
+
+// Compile-time assertion: `_loader` must precede `inner` in the struct layout.
+// If the field order is changed the safety argument above must be re-evaluated.
+const _: () = assert!(
+    std::mem::offset_of!(HnswIndex, _loader) < std::mem::offset_of!(HnswIndex, inner),
+    "_loader must be declared before inner; see safety comment on HnswIndex"
+);
 
 impl HnswIndex {
     /// Create a new empty HNSW index.
@@ -113,15 +135,14 @@ impl HnswIndex {
                         }
                         .build()
                     })?;
-                // SAFETY: The `HnswIo` loader is heap-allocated in a pinned `Box`
-                // and stored in `_loader`, which is declared before `inner` — so it
-                // is dropped *after* the `Hnsw`. This guarantees the loader outlives
-                // the index data. Without mmap (our default), `Hnsw` owns all point
-                // data and does not dereference the loader at runtime, but the type
-                // system requires the lifetime relationship regardless.
+                // SAFETY: Extending the `Hnsw` lifetime to `'static` is sound
+                // because mmap is not used. `load_hnsw` copies all point data into
+                // heap-owned allocations inside `Hnsw`; the loader is not accessed
+                // after this call returns. The `_loader` Box is stored in the struct
+                // to satisfy the type system — see the safety invariant on `HnswIndex`.
                 #[expect(
                     unsafe_code,
-                    reason = "lifetime extension: Box<HnswIo> stored in struct outlives Hnsw"
+                    reason = "lifetime extension: Hnsw owns its data after load (no mmap)"
                 )]
                 let hnsw: Hnsw<'static, f32, DistCosine> = unsafe { std::mem::transmute(hnsw) };
                 return Ok(Arc::new(Self {

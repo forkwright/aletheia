@@ -353,23 +353,7 @@ impl HashPermutations {
         Self(perms)
     }
     pub(crate) fn as_bytes(&self) -> &[u8] {
-        // SAFETY: Reinterpreting Vec<u32> storage as &[u8] is sound because:
-        // (1) Alignment: align_of::<u8>() == 1 is always satisfied by any pointer,
-        //     including those from Vec<u32> (which are aligned to ≥ 4 bytes).
-        // (2) Validity: the pointer is non-null and the Vec owns `self.0.len()`
-        //     initialised u32 values; `len * size_of::<u32>()` is the exact byte
-        //     count of the live initialised data.
-        // (3) Lifetime: the returned slice borrows `self`, so it cannot outlive
-        //     the Vec — the borrow checker enforces this.
-        // (4) No aliasing: `&self` gives shared access; no exclusive reference to
-        //     the Vec storage exists for the lifetime of the returned slice.
-        // Violating these would cause UB: dangling pointer or out-of-bounds read.
-        unsafe {
-            std::slice::from_raw_parts(
-                self.0.as_ptr() as *const u8,
-                self.0.len() * std::mem::size_of::<u32>(),
-            )
-        }
+        bytemuck::cast_slice(&self.0)
     }
     // this is the inverse of `as_bytes`
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
@@ -421,23 +405,7 @@ impl HashValues {
         matches as f32 / self.0.len() as f32
     }
     pub(crate) fn get_bytes(&self) -> &[u8] {
-        // SAFETY: Reinterpreting Vec<u32> storage as &[u8] is sound for the same
-        // reasons as `HashPermutations::as_bytes`:
-        // (1) Alignment: align_of::<u8>() == 1 is always satisfied by any pointer.
-        // (2) Validity: the pointer is non-null and the Vec owns `self.0.len()`
-        //     initialised u32 values; `len * size_of::<u32>()` is the exact byte
-        //     count of the live initialised data.
-        // (3) Lifetime: the returned slice borrows `self`, preventing it from
-        //     outliving the Vec — enforced by the borrow checker.
-        // (4) No aliasing: `&self` gives shared access; no exclusive reference to
-        //     the Vec storage exists for the lifetime of the returned slice.
-        // Violating these would cause UB: dangling pointer or out-of-bounds read.
-        unsafe {
-            std::slice::from_raw_parts(
-                self.0.as_ptr() as *const u8,
-                self.0.len() * std::mem::size_of::<u32>(),
-            )
-        }
+        bytemuck::cast_slice(&self.0)
     }
 }
 
