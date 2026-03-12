@@ -15,8 +15,6 @@ pub use crate::engine::runtime::db::{NamedRows, ScriptMutability, TransactionPay
 #[cfg(feature = "storage-fjall")]
 pub use crate::engine::storage::fjall_backend::FjallStorage;
 pub use crate::engine::storage::mem::MemStorage;
-#[cfg(feature = "storage-redb")]
-pub use crate::engine::storage::redb::RedbStorage;
 pub use ndarray::Array1;
 
 pub(crate) use crate::engine::data::expr::Expr;
@@ -125,8 +123,6 @@ pub enum Db {
     Mem(crate::engine::runtime::db::Db<MemStorage>),
     #[cfg(feature = "storage-fjall")]
     Fjall(crate::engine::runtime::db::Db<FjallStorage>),
-    #[cfg(feature = "storage-redb")]
-    Redb(crate::engine::runtime::db::Db<RedbStorage>),
 }
 
 #[expect(
@@ -152,14 +148,6 @@ impl Db {
             .map_err(convert_internal)
     }
 
-    /// Open a redb-backed database at the given path.
-    #[cfg(feature = "storage-redb")]
-    pub fn open_redb(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
-        crate::engine::storage::redb::new_cozo_redb(path)
-            .map(Db::Redb)
-            .map_err(convert_internal)
-    }
-
     /// Execute a Datalog script.
     pub fn run(
         &self,
@@ -171,8 +159,6 @@ impl Db {
             Db::Mem(db) => db.run_script(script, params, mutability),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => db.run_script(script, params, mutability),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => db.run_script(script, params, mutability),
         };
         result.map_err(convert_internal)
     }
@@ -195,8 +181,6 @@ impl Db {
             Db::Mem(db) => db.backup_db(path),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => db.backup_db(path),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => db.backup_db(path),
         };
         result.map_err(convert_internal)
     }
@@ -210,8 +194,6 @@ impl Db {
             Db::Mem(db) => db.restore_backup(path),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => db.restore_backup(path),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => db.restore_backup(path),
         };
         result.map_err(convert_internal)
     }
@@ -229,8 +211,6 @@ impl Db {
             Db::Mem(db) => db.import_from_backup(path, relations),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => db.import_from_backup(path, relations),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => db.import_from_backup(path, relations),
         };
         result.map_err(convert_internal)
     }
@@ -248,8 +228,6 @@ impl Db {
             Db::Mem(db) => db.export_relations(relations),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => db.export_relations(relations),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => db.export_relations(relations),
         };
         result.map_err(convert_internal)
     }
@@ -260,8 +238,6 @@ impl Db {
             Db::Mem(db) => db.import_relations(data),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => db.import_relations(data),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => db.import_relations(data),
         };
         result.map_err(convert_internal)
     }
@@ -276,8 +252,6 @@ impl Db {
             Db::Mem(db) => db.register_fixed_rule(name, rule),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => db.register_fixed_rule(name, rule),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => db.register_fixed_rule(name, rule),
         };
         result.map_err(convert_internal)
     }
@@ -296,8 +270,6 @@ impl Db {
             Db::Mem(db) => db.register_callback(relation, capacity),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => db.register_callback(relation, capacity),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => db.register_callback(relation, capacity),
         }
     }
 
@@ -322,8 +294,6 @@ impl Db {
             Db::Mem(db) => DbInner::Mem(db.clone()),
             #[cfg(feature = "storage-fjall")]
             Db::Fjall(db) => DbInner::Fjall(db.clone()),
-            #[cfg(feature = "storage-redb")]
-            Db::Redb(db) => DbInner::Redb(db.clone()),
         }
     }
 }
@@ -333,8 +303,6 @@ enum DbInner {
     Mem(crate::engine::runtime::db::Db<MemStorage>),
     #[cfg(feature = "storage-fjall")]
     Fjall(crate::engine::runtime::db::Db<FjallStorage>),
-    #[cfg(feature = "storage-redb")]
-    Redb(crate::engine::runtime::db::Db<RedbStorage>),
 }
 
 impl DbInner {
@@ -348,8 +316,6 @@ impl DbInner {
             DbInner::Mem(db) => db.run_multi_transaction(write, payloads, results),
             #[cfg(feature = "storage-fjall")]
             DbInner::Fjall(db) => db.run_multi_transaction(write, payloads, results),
-            #[cfg(feature = "storage-redb")]
-            DbInner::Redb(db) => db.run_multi_transaction(write, payloads, results),
         }
     }
 }
@@ -439,6 +405,4 @@ mod safety_assertions {
     assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::mem::MemStorage>: Send, Sync);
     #[cfg(feature = "storage-fjall")]
     assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::fjall_backend::FjallStorage>: Send, Sync);
-    #[cfg(feature = "storage-redb")]
-    assert_impl_all!(crate::engine::runtime::db::Db<crate::engine::storage::redb::RedbStorage>: Send, Sync);
 }

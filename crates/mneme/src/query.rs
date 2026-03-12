@@ -662,6 +662,25 @@ pub mod queries {
         :order hop, name
     ";
 
+    /// BM25 full-text recall (no vector embeddings required).
+    /// Returns rows in the same format as `SEMANTIC_SEARCH` (id, content, source_type, source_id, dist)
+    /// with synthetic distance derived from BM25 score.
+    /// Params: `$query_text`, `$k`.
+    pub const BM25_RECALL: &str = r"
+        bm25[id, score] := ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}
+
+        ?[id, content, source_type, source_id, dist] :=
+            bm25[id, bm25_score],
+            *facts{id, content, is_forgotten, superseded_by},
+            is_forgotten == false,
+            is_null(superseded_by),
+            source_type = 'fact',
+            source_id = id,
+            dist = 1.0 / bm25_score
+        :order dist
+        :limit $k
+    ";
+
     /// KNN vector search. Params: `$query_vec`, `$k`, `$ef`.
     pub const SEMANTIC_SEARCH: &str = r"
         ?[id, content, source_type, source_id, dist] :=

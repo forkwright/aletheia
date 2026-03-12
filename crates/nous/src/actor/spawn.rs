@@ -31,7 +31,7 @@ use super::{DEFAULT_INBOX_CAPACITY, NousActor};
 ///
 /// `cancel` is a child token derived from the manager's root token.
 /// When cancelled, the actor exits its message loop and releases all resources,
-/// ensuring redb WAL and other state are flushed before the task completes.
+/// ensuring fjall WAL and other state are flushed before the task completes.
 #[expect(
     clippy::too_many_arguments,
     reason = "actor spawn requires all runtime dependencies"

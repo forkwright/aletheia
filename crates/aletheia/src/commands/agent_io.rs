@@ -100,7 +100,7 @@ pub struct MigrateMemoryArgs {
     /// Qdrant collection name
     #[arg(long, default_value = "aletheia_memories")]
     pub collection: String,
-    /// Path to persistent knowledge store (redb)
+    /// Path to persistent knowledge store (fjall)
     #[arg(long, env = "ALETHEIA_KNOWLEDGE_PATH")]
     pub knowledge_path: Option<PathBuf>,
     /// Write flagged facts to a review file
@@ -457,7 +457,7 @@ pub fn export_skills(instance_root: Option<&PathBuf>, args: &ExportSkillsArgs) -
         let knowledge_path = oikos.knowledge_db();
 
         let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
-        let store = KnowledgeStore::open_redb(&knowledge_path, config).map_err(|e| {
+        let store = KnowledgeStore::open_fjall(&knowledge_path, config).map_err(|e| {
             anyhow::anyhow!(
                 "failed to open knowledge store at {}: {e}",
                 knowledge_path.display()
@@ -541,7 +541,7 @@ pub fn review_skills(instance_root: Option<&PathBuf>, args: &ReviewSkillsArgs) -
         let knowledge_path = oikos.knowledge_db();
 
         let config = aletheia_mneme::knowledge_store::KnowledgeConfig::default();
-        let store = KnowledgeStore::open_redb(&knowledge_path, config).map_err(|e| {
+        let store = KnowledgeStore::open_fjall(&knowledge_path, config).map_err(|e| {
             anyhow::anyhow!(
                 "failed to open knowledge store at {}: {e}",
                 knowledge_path.display()

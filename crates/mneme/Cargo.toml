@@ -31,7 +31,6 @@ mneme-engine = [
     "dep:aho-corasick", "dep:rust-stemmers",
     "dep:bytemuck", "dep:lru",
 ]
-storage-redb = ["dep:redb", "mneme-engine"]
 storage-fjall = ["dep:fjall", "mneme-engine"]
 hnsw_rs = ["dep:hnsw_rs"]
 
@@ -72,7 +71,6 @@ aho-corasick = { version = "1.1", optional = true }
 rust-stemmers = { version = "1.2", optional = true }
 bytemuck = { version = "1.25", optional = true }
 lru = { version = "0.16", optional = true }
-redb = { version = "3", optional = true }
 fjall = { version = "3", optional = true }
 hnsw_rs = { version = "0.3", optional = true }
 

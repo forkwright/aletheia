@@ -331,27 +331,6 @@ impl KnowledgeStore {
         Ok(std::sync::Arc::new(store))
     }
 
-    /// Open a persistent knowledge store backed by redb at the given path.
-    #[cfg(feature = "storage-redb")]
-    #[instrument(skip(path))]
-    pub fn open_redb(
-        path: impl AsRef<std::path::Path>,
-        config: KnowledgeConfig,
-    ) -> crate::error::Result<std::sync::Arc<Self>> {
-        let db = crate::engine::Db::open_redb(path).map_err(|e| {
-            crate::error::EngineInitSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
-        let store = Self {
-            db: std::sync::Arc::new(db),
-            dim: config.dim,
-        };
-        store.init_schema()?;
-        Ok(std::sync::Arc::new(store))
-    }
-
     #[expect(
         clippy::too_many_lines,
         reason = "schema init is a single linear sequence"

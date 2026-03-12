@@ -391,13 +391,20 @@ pub async fn timeline(
     Ok(Json(TimelineResponse { events }))
 }
 
-fn get_stored_facts(
-    _state: &AppState,
-    _query: &FactsQuery,
-) -> Vec<aletheia_mneme::knowledge::Fact> {
-    // Knowledge store integration point. When the CozoDB knowledge store
-    // is wired up via AppState, this will query it directly.
-    // For now, return empty — the TUI handles empty state gracefully.
+fn get_stored_facts(state: &AppState, query: &FactsQuery) -> Vec<aletheia_mneme::knowledge::Fact> {
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let nous_id = query.nous_id.as_deref().unwrap_or("default");
+        let limit = (query.offset + query.limit + 1000).min(10000) as i64;
+        match store.audit_all_facts(nous_id, limit) {
+            Ok(facts) => return facts,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to query knowledge store");
+            }
+        }
+    }
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = (state, query);
     Vec::new()
 }
 

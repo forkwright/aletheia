@@ -74,7 +74,7 @@ pub async fn run(
                 .context("failed to create knowledge store directory")?;
         }
         info!(path = %path.display(), "opening persistent knowledge store");
-        KnowledgeStore::open_redb(&path, config)
+        KnowledgeStore::open_fjall(&path, config)
             .context("failed to open persistent knowledge store")?
     };
 

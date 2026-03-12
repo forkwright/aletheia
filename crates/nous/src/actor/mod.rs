@@ -66,6 +66,9 @@ pub struct NousActor {
     oikos: Arc<Oikos>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
+    /// BM25 text search — used as recall fallback when embedding provider is mock.
+    #[cfg(feature = "knowledge-store")]
+    text_search: Option<Arc<dyn crate::recall::TextSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
     #[cfg(feature = "knowledge-store")]
     knowledge_store: Option<Arc<KnowledgeStore>>,
@@ -116,6 +119,15 @@ impl NousActor {
             .as_ref()
             .map(|ks| crate::skills::SkillLoader::new(Arc::clone(ks)));
 
+        // Build the BM25 text search from the knowledge store when available.
+        #[cfg(feature = "knowledge-store")]
+        let text_search: Option<Arc<dyn crate::recall::TextSearch>> =
+            knowledge_store
+                .as_ref()
+                .map(|ks| -> Arc<dyn crate::recall::TextSearch> {
+                    Arc::new(crate::recall::KnowledgeTextSearch::new(Arc::clone(ks)))
+                });
+
         Self {
             id,
             config,
@@ -131,6 +143,8 @@ impl NousActor {
             oikos,
             embedding_provider,
             vector_search,
+            #[cfg(feature = "knowledge-store")]
+            text_search,
             session_store,
             #[cfg(feature = "knowledge-store")]
             knowledge_store,

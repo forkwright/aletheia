@@ -364,7 +364,7 @@ pub struct EmbeddingSettings {
 impl Default for EmbeddingSettings {
     fn default() -> Self {
         Self {
-            provider: "mock".to_owned(),
+            provider: "candle".to_owned(),
             model: None,
             dimension: 384,
         }

@@ -74,6 +74,26 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
+    /// BM25 full-text recall — returns `RecallResult` compatible rows without requiring embeddings.
+    ///
+    /// Used as a fallback when the embedding provider is unavailable or in mock mode.
+    /// Distance is the reciprocal of the BM25 score (lower = more relevant).
+    pub fn search_text_for_recall(
+        &self,
+        query_text: &str,
+        k: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::RecallResult>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert("query_text".to_owned(), DataValue::Str(query_text.into()));
+        params.insert("k".to_owned(), DataValue::from(k));
+
+        let rows = self.run_read(queries::BM25_RECALL, params)?;
+        rows_to_recall_results(rows)
+    }
+
     /// Hybrid BM25 + HNSW vector + graph retrieval fused via `ReciprocalRankFusion`.
     ///
     /// Runs a single Datalog query combining all three signals in the engine.

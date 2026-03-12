@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
+use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpService;
-use rmcp::ServiceExt;
 
 use crate::error::{self, Result};
 use crate::server::DiaporeiaServer;
@@ -34,12 +34,19 @@ pub async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
     let service = server
         .serve(rmcp::transport::io::stdio())
         .await
-        .map_err(|e| error::TransportSnafu { message: e.to_string() }.into_error(snafu::NoneError))?;
+        .map_err(|e| {
+            error::TransportSnafu {
+                message: e.to_string(),
+            }
+            .into_error(snafu::NoneError)
+        })?;
 
-    service
-        .waiting()
-        .await
-        .map_err(|e| error::TransportSnafu { message: e.to_string() }.into_error(snafu::NoneError))?;
+    service.waiting().await.map_err(|e| {
+        error::TransportSnafu {
+            message: e.to_string(),
+        }
+        .into_error(snafu::NoneError)
+    })?;
 
     Ok(())
 }

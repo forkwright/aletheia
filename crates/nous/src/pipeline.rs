@@ -336,6 +336,7 @@ pub async fn run_pipeline(
     tool_ctx: &ToolContext,
     embedding_provider: Option<&dyn EmbeddingProvider>,
     vector_search: Option<&dyn crate::recall::VectorSearch>,
+    text_search: Option<&dyn crate::recall::TextSearch>,
     session_store: Option<&Mutex<SessionStore>>,
     extra_bootstrap: Vec<BootstrapSection>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
@@ -395,14 +396,30 @@ pub async fn run_pipeline(
         let _guard = span.enter();
         let start = Instant::now();
         let recall_timeout_secs = pipeline_config.stage_budget.recall_secs;
-        if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
+        let is_mock_embedding = embedding_provider
+            .is_some_and(|ep| ep.model_name() == "mock-embedding");
+        #[expect(
+            clippy::cast_sign_loss,
+            reason = "remaining_tokens is positive after context assembly"
+        )]
+        let budget = ctx.remaining_tokens.max(0) as u64;
+
+        // BM25-only fallback when mock embedding provider is in use.
+        // Vector recall would produce meaningless results from hash-based embeddings.
+        if is_mock_embedding {
+            if let Some(ts) = text_search {
+                debug!("mock embedding provider — using BM25-only recall");
+                let recall_stage =
+                    crate::recall::RecallStage::new(crate::recall::RecallConfig::default());
+                let result = recall_stage.run_bm25(&input.content, &config.id, ts, budget);
+                apply_recall_result(result, &mut ctx, &span);
+            } else {
+                debug!("recall skipped: mock embedding provider with no text search");
+                span.record("status", "skipped");
+            }
+        } else if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
             let recall_config = crate::recall::RecallConfig::default();
             let recall_stage = crate::recall::RecallStage::new(recall_config);
-            #[expect(
-                clippy::cast_sign_loss,
-                reason = "remaining_tokens is positive after context assembly"
-            )]
-            let budget = ctx.remaining_tokens.max(0) as u64;
 
             let recall_result_opt = if recall_timeout_secs > 0 {
                 match tokio::time::timeout(
@@ -426,29 +443,7 @@ pub async fn run_pipeline(
             };
 
             if let Some(result) = recall_result_opt {
-                match result {
-                    Ok(recall_result) => {
-                        if let Some(ref section) = recall_result.recall_section {
-                            if let Some(ref mut prompt) = ctx.system_prompt {
-                                prompt.push_str("\n\n");
-                                prompt.push_str(section);
-                            }
-                            #[expect(
-                                clippy::cast_possible_wrap,
-                                reason = "recall tokens fit in i64"
-                            )]
-                            {
-                                ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
-                            }
-                        }
-                        ctx.recall_result = Some(recall_result);
-                        span.record("status", "ok");
-                    }
-                    Err(e) => {
-                        warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
-                        span.record("status", "error");
-                    }
-                }
+                apply_recall_result(result, &mut ctx, &span);
             }
         } else {
             debug!("recall skipped: embedding provider or vector search not configured");
@@ -705,6 +700,36 @@ pub async fn run_pipeline(
     crate::metrics::record_turn(&config.id);
 
     Ok(result)
+}
+
+/// Apply a recall result (vector or BM25) to the pipeline context.
+///
+/// Appends the recall section to the system prompt and records token consumption.
+fn apply_recall_result(
+    result: error::Result<crate::recall::RecallStageResult>,
+    ctx: &mut PipelineContext,
+    span: &tracing::Span,
+) {
+    match result {
+        Ok(recall_result) => {
+            if let Some(ref section) = recall_result.recall_section {
+                if let Some(ref mut prompt) = ctx.system_prompt {
+                    prompt.push_str("\n\n");
+                    prompt.push_str(section);
+                }
+                #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
+                {
+                    ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
+                }
+            }
+            ctx.recall_result = Some(recall_result);
+            span.record("status", "ok");
+        }
+        Err(e) => {
+            warn!(error = %e, "recall stage failed, continuing without recalled knowledge");
+            span.record("status", "error");
+        }
+    }
 }
 
 #[cfg(test)]
