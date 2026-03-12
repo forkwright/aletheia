@@ -55,14 +55,20 @@ pub async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> 
                 }
                 println!(
                     "Refresh token: {}",
-                    if cred.has_refresh_token() { "present" } else { "absent" }
+                    if cred.has_refresh_token() {
+                        "present"
+                    } else {
+                        "absent"
+                    }
                 );
             } else {
                 // Check env var fallbacks in resolution order.
-                let auth_token =
-                    std::env::var("ANTHROPIC_AUTH_TOKEN").ok().filter(|v| !v.is_empty());
-                let api_key =
-                    std::env::var("ANTHROPIC_API_KEY").ok().filter(|v| !v.is_empty());
+                let auth_token = std::env::var("ANTHROPIC_AUTH_TOKEN")
+                    .ok()
+                    .filter(|v| !v.is_empty());
+                let api_key = std::env::var("ANTHROPIC_API_KEY")
+                    .ok()
+                    .filter(|v| !v.is_empty());
 
                 match (auth_token, api_key) {
                     (Some(token), _) => {
