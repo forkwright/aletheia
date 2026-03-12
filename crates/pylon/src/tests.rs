@@ -1001,19 +1001,6 @@ async fn unknown_route_returns_404() {
 }
 
 #[tokio::test]
-async fn webchat_sessions_list_returns_200() {
-    let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(authed_get("/api/sessions"))
-        .await
-        .expect("response");
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert!(body["sessions"].is_array());
-}
-
-#[tokio::test]
 async fn old_api_nous_path_returns_gone() {
     let (app, _dir) = app().await;
     let resp = app
@@ -1750,161 +1737,6 @@ async fn events_stream_contains_init_event() {
     );
 }
 
-// --- Webchat HTTP-level tests ---
-
-#[tokio::test]
-async fn webchat_branding_returns_aletheia() {
-    let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(Request::get("/api/branding").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert_eq!(body["name"], "Aletheia");
-}
-
-#[tokio::test]
-async fn webchat_auth_mode_returns_token() {
-    let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(Request::get("/api/auth/mode").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert_eq!(body["mode"], "token");
-    assert_eq!(body["sessionAuth"], false);
-}
-
-#[tokio::test]
-async fn webchat_auth_mode_none() {
-    let (router, _dir) = app_auth_disabled().await;
-    let resp = router
-        .oneshot(Request::get("/api/auth/mode").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    let body = body_json(resp).await;
-    assert_eq!(body["mode"], "none");
-}
-
-#[tokio::test]
-async fn webchat_agents_list_returns_agents() {
-    let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(Request::get("/api/agents").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert!(body["agents"].is_array());
-}
-
-#[tokio::test]
-async fn webchat_agent_identity_unknown_returns_404() {
-    let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(
-            Request::get("/api/agents/nonexistent/identity")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn webchat_events_returns_sse() {
-    let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-    let ct = resp
-        .headers()
-        .get("content-type")
-        .unwrap()
-        .to_str()
-        .unwrap();
-    assert!(ct.contains("text/event-stream"));
-}
-
-#[tokio::test]
-async fn webchat_events_contains_init() {
-    use http_body_util::BodyExt;
-
-    let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    let mut body_text = String::new();
-    let mut body = resp.into_body();
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    while let Ok(Some(Ok(frame))) = tokio::time::timeout_at(deadline, body.frame()).await {
-        if let Some(data) = frame.data_ref() {
-            body_text.push_str(&String::from_utf8_lossy(data));
-            if body_text.contains("event: init") {
-                break;
-            }
-        }
-    }
-    assert!(body_text.contains("event: init"));
-    assert!(body_text.contains("activeTurns"));
-}
-
-#[tokio::test]
-async fn webchat_stream_empty_message_returns_400() {
-    let (app, _dir) = app().await;
-    let req = json_request(
-        "POST",
-        "/api/sessions/stream",
-        Some(serde_json::json!({
-            "agentId": "syn",
-            "message": ""
-        })),
-    );
-
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn webchat_stream_unknown_agent_returns_404() {
-    let (app, _dir) = app().await;
-    let req = json_request(
-        "POST",
-        "/api/sessions/stream",
-        Some(serde_json::json!({
-            "agentId": "nonexistent",
-            "message": "Hello!"
-        })),
-    );
-
-    let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn webchat_sessions_list_no_auth_returns_200() {
-    let (app, _dir) = app().await;
-    let resp = app
-        .oneshot(Request::get("/api/sessions").body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
-}
-
 // --- Config handler tests ---
 
 #[tokio::test]
@@ -2179,10 +2011,10 @@ fn sse_event_error_serialization() {
     assert_eq!(json["message"], "provider error");
 }
 
-// --- WebchatEvent serialization ---
+// --- TUI stream event type tests ---
 
 #[test]
-fn webchat_event_turn_start_type() {
+fn tui_event_turn_start_type() {
     let event = crate::stream::WebchatEvent::TurnStart {
         session_id: "s1".to_owned(),
         nous_id: "syn".to_owned(),
@@ -2192,7 +2024,7 @@ fn webchat_event_turn_start_type() {
 }
 
 #[test]
-fn webchat_event_text_delta_type() {
+fn tui_event_text_delta_type() {
     let event = crate::stream::WebchatEvent::TextDelta {
         text: "hello".to_owned(),
     };
@@ -2200,7 +2032,7 @@ fn webchat_event_text_delta_type() {
 }
 
 #[test]
-fn webchat_event_thinking_delta_type() {
+fn tui_event_thinking_delta_type() {
     let event = crate::stream::WebchatEvent::ThinkingDelta {
         text: "hmm".to_owned(),
     };
@@ -2208,7 +2040,7 @@ fn webchat_event_thinking_delta_type() {
 }
 
 #[test]
-fn webchat_event_tool_start_type() {
+fn tui_event_tool_start_type() {
     let event = crate::stream::WebchatEvent::ToolStart {
         tool_name: "search".to_owned(),
         tool_id: "t1".to_owned(),
@@ -2218,7 +2050,7 @@ fn webchat_event_tool_start_type() {
 }
 
 #[test]
-fn webchat_event_tool_result_type() {
+fn tui_event_tool_result_type() {
     let event = crate::stream::WebchatEvent::ToolResult {
         tool_name: "search".to_owned(),
         tool_id: "t1".to_owned(),
@@ -2230,7 +2062,7 @@ fn webchat_event_tool_result_type() {
 }
 
 #[test]
-fn webchat_event_turn_complete_type() {
+fn tui_event_turn_complete_type() {
     let event = crate::stream::WebchatEvent::TurnComplete {
         outcome: crate::stream::TurnOutcome {
             text: "done".to_owned(),
@@ -2248,7 +2080,7 @@ fn webchat_event_turn_complete_type() {
 }
 
 #[test]
-fn webchat_event_error_type() {
+fn tui_event_error_type() {
     let event = crate::stream::WebchatEvent::Error {
         message: "fail".to_owned(),
     };
@@ -2256,7 +2088,7 @@ fn webchat_event_error_type() {
 }
 
 #[test]
-fn webchat_event_turn_start_serialization() {
+fn tui_event_turn_start_serialization() {
     let event = crate::stream::WebchatEvent::TurnStart {
         session_id: "s1".to_owned(),
         nous_id: "syn".to_owned(),
@@ -2270,7 +2102,7 @@ fn webchat_event_turn_start_serialization() {
 }
 
 #[test]
-fn webchat_event_turn_complete_serialization() {
+fn tui_event_turn_complete_serialization() {
     let event = crate::stream::WebchatEvent::TurnComplete {
         outcome: crate::stream::TurnOutcome {
             text: "response".to_owned(),
@@ -2523,33 +2355,6 @@ fn deep_merge_replaces_non_object_with_object() {
     let patch = serde_json::json!({"key": {"nested": true}});
     deep_merge(&mut base, patch);
     assert_eq!(base["key"]["nested"], true);
-}
-
-// --- Webchat stream returns SSE ---
-
-#[tokio::test]
-async fn webchat_stream_returns_sse_content_type() {
-    let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
-
-    let req = json_request(
-        "POST",
-        "/api/sessions/stream",
-        Some(serde_json::json!({
-            "agentId": "syn",
-            "message": "Hello webchat!"
-        })),
-    );
-
-    let resp = router.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let ct = resp
-        .headers()
-        .get("content-type")
-        .unwrap()
-        .to_str()
-        .unwrap();
-    assert!(ct.contains("text/event-stream"));
 }
 
 // --- Session response fields ---
