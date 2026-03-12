@@ -17,6 +17,7 @@ use aletheia_nous::pipeline::TurnResult;
 use aletheia_nous::stream::TurnStreamEvent;
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
+use crate::middleware::RequestId;
 use crate::extract::Claims;
 use crate::state::AppState;
 use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
@@ -45,6 +46,7 @@ use super::{find_session, resolve_session, store_message};
 pub async fn send_message(
     State(state): State<Arc<AppState>>,
     _claims: Claims,
+    axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     Json(body): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
@@ -116,6 +118,7 @@ pub async fn send_message(
         session.id = %session_id,
         session.key = %session_key,
         nous.id = %session.nous_id,
+        request_id = %request_id.0,
     );
     tokio::spawn(
         async move {
@@ -197,6 +200,7 @@ pub async fn send_message(
 pub async fn stream_turn(
     State(state): State<Arc<AppState>>,
     _claims: Claims,
+    axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     Json(body): Json<StreamTurnRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
     let agent_id = body.agent_id;
@@ -248,6 +252,7 @@ pub async fn stream_turn(
         session.id = %sid,
         session.key = %session_key,
         nous.id = %aid,
+        request_id = %request_id.0,
     );
 
     // Bridge nous stream events to webchat events in real-time.

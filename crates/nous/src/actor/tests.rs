@@ -480,6 +480,7 @@ async fn send_timeout_fires_when_inbox_full() {
     tx.send(NousMessage::Turn {
         session_key: "main".to_owned(),
         content: "filler".to_owned(),
+        span: tracing::Span::current(),
         reply: reply_tx,
     })
     .await
