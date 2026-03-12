@@ -204,6 +204,8 @@ mod tests {
             /// Valid single-word queries must always parse successfully.
             #[test]
             fn fts_single_word_parses(word in "[a-zA-Z]{1,30}") {
+                let upper = word.to_uppercase();
+                prop_assume!(!matches!(upper.as_str(), "AND" | "OR" | "NOT" | "NEAR"));
                 parse_fts_query(&word).expect("single word should parse");
             }
 
@@ -214,6 +216,8 @@ mod tests {
                 op in prop_oneof![Just("AND"), Just("OR")],
                 rhs in "[a-zA-Z]{1,20}",
             ) {
+                let is_kw = |w: &str| matches!(w.to_uppercase().as_str(), "AND" | "OR" | "NOT" | "NEAR");
+                prop_assume!(!is_kw(&lhs) && !is_kw(&rhs));
                 let query = format!("{lhs} {op} {rhs}");
                 parse_fts_query(&query).expect("AND/OR query should parse");
             }
