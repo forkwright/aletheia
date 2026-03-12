@@ -88,7 +88,14 @@ fn build_term(pair: Pair<'_>) -> Result<FtsExpr> {
             FtsExpr::Near(FtsNear { literals, distance })
         }
         Rule::fts_phrase => FtsExpr::Literal(build_phrase(pair)?),
-        r => panic!("unexpected rule: {:?}", r),
+        r => {
+            return SyntaxSnafu {
+                span: String::new(),
+                message: format!("unexpected FTS rule: {r:?}"),
+            }
+            .fail()
+            .map_err(|e| e.into());
+        }
     })
 }
 

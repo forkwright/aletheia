@@ -101,7 +101,7 @@ impl<'a> SessionTx<'a> {
                 self.store_tx
                     .put(&storage_version_key, &CURRENT_STORAGE_VERSION)?;
                 self.store_tx
-                    .put(&t_encoded, &RelationId::new(0).raw_encode())?;
+                    .put(&t_encoded, &RelationId::new(0)?.raw_encode())?;
                 RelationId::SYSTEM
             }
             Some(slice) => {
@@ -125,7 +125,7 @@ impl<'a> SessionTx<'a> {
                         }
                     }
                 }
-                RelationId::raw_decode(&slice)
+                RelationId::raw_decode(&slice)?
             }
         };
         Ok(ret)

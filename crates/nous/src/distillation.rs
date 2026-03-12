@@ -123,6 +123,21 @@ pub async fn maybe_distill(
         return Ok(None);
     };
 
+    // Idempotency guard: skip if distillation was applied very recently (< 60s).
+    // Protects against concurrent background tasks running duplicate distillations.
+    if let Some(ref last) = session.last_distilled_at {
+        if let Ok(last_ts) = last.parse::<jiff::Timestamp>() {
+            let age_secs = jiff::Timestamp::now().duration_since(last_ts).as_secs();
+            if age_secs < 60 {
+                tracing::debug!(
+                    %session_id, age_secs,
+                    "distillation skipped: already distilled within 60s"
+                );
+                return Ok(None);
+            }
+        }
+    }
+
     info!(%session_id, %nous_id, %trigger, "triggering distillation");
 
     let history = session_store

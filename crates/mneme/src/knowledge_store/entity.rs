@@ -170,12 +170,17 @@ impl KnowledgeStore {
             "entity_b".to_owned(),
             DataValue::Str(merged_id.as_str().into()),
         );
-        // Try both orderings
-        let _ = self.run_mut(
+        // Try both orderings — non-critical cleanup, log on failure
+        if let Err(e) = self.run_mut(
             r"?[entity_a, entity_b] <- [[$entity_a, $entity_b]]
             :rm pending_merges {entity_a, entity_b}",
             rm_params,
-        );
+        ) {
+            tracing::warn!(
+                %canonical_id, %merged_id, error = %e,
+                "failed to remove pending_merges entry (a,b ordering)"
+            );
+        }
         let mut rm_params2 = BTreeMap::new();
         rm_params2.insert(
             "entity_a".to_owned(),
@@ -185,11 +190,16 @@ impl KnowledgeStore {
             "entity_b".to_owned(),
             DataValue::Str(canonical_id.as_str().into()),
         );
-        let _ = self.run_mut(
+        if let Err(e) = self.run_mut(
             r"?[entity_a, entity_b] <- [[$entity_a, $entity_b]]
             :rm pending_merges {entity_a, entity_b}",
             rm_params2,
-        );
+        ) {
+            tracing::warn!(
+                %canonical_id, %merged_id, error = %e,
+                "failed to remove pending_merges entry (b,a ordering)"
+            );
+        }
 
         Ok(crate::dedup::MergeRecord {
             canonical_entity_id: canonical.id,

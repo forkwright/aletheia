@@ -56,7 +56,11 @@ pub fn check_key_for_validity(
     size_hint: Option<usize>,
 ) -> (Option<Tuple>, Vec<u8>) {
     let mut decoded = decode_tuple_from_key(key, size_hint.unwrap_or(DEFAULT_SIZE_HINT));
-    let rel_id = RelationId::raw_decode(key);
+    #[expect(
+        clippy::expect_used,
+        reason = "decoding stored key; RelationId is always valid"
+    )]
+    let rel_id = RelationId::raw_decode(key).expect("stored RelationId is always valid");
     let vld = match decoded
         .last()
         .expect("decoded tuple always has validity as its last element")
