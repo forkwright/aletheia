@@ -265,7 +265,10 @@ pub(crate) struct MagicFixedRuleApply {
 #[derive(Debug)]
 pub(crate) struct FixedRuleOptionNotFoundError {
     pub(crate) name: String,
-    #[expect(dead_code, reason = "structural field preserved for diagnostic context")]
+    #[expect(
+        dead_code,
+        reason = "structural field preserved for diagnostic context"
+    )]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
 }
@@ -285,7 +288,10 @@ impl std::error::Error for FixedRuleOptionNotFoundError {}
 #[derive(Debug)]
 pub(crate) struct WrongFixedRuleOptionError {
     pub(crate) name: String,
-    #[expect(dead_code, reason = "structural field preserved for diagnostic context")]
+    #[expect(
+        dead_code,
+        reason = "structural field preserved for diagnostic context"
+    )]
     pub(crate) span: SourceSpan,
     pub(crate) rule_name: String,
     pub(crate) help: String,

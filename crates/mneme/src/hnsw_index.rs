@@ -277,7 +277,10 @@ mod tests {
         let index = HnswIndex::new(make_config(4));
 
         for i in 0..20_usize {
-            #[expect(clippy::cast_precision_loss, reason = "test data — small indices fit in f32")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "test data — small indices fit in f32"
+            )]
             let v = vec![i as f32, 0.0, 0.0, 0.0];
             index.insert(&v, i);
         }
