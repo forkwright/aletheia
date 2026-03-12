@@ -8,6 +8,8 @@ pub mod error;
 pub mod extract;
 /// HTTP request handlers for health, nous, and session endpoints.
 pub mod handlers;
+/// Idempotency-key cache for deduplicating message sends on retry.
+pub mod idempotency;
 /// Prometheus metrics collection and exposure.
 pub mod metrics;
 /// Custom Axum middleware layers (CSRF protection, request ID, error enrichment, HTTP metrics).

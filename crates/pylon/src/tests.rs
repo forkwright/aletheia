@@ -169,6 +169,7 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         config: Arc::new(tokio::sync::RwLock::new(
             aletheia_taxis::config::AletheiaConfig::default(),
         )),
+        idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
@@ -1440,6 +1441,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         jwt_manager: Arc::clone(&state.jwt_manager),
         start_time: state.start_time,
         config: Arc::clone(&state.config),
+        idempotency_cache: Arc::clone(&state.idempotency_cache),
         shutdown: state.shutdown.clone(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
@@ -2518,4 +2520,138 @@ async fn csrf_allows_delete_with_correct_header() {
 
     let resp = router.clone().oneshot(delete_req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+}
+
+// --- Idempotency-Key Tests (#866) ---
+
+/// Helper: build a POST send-message request with an optional Idempotency-Key header.
+fn send_message_req(session_id: &str, idempotency_key: Option<&str>) -> Request<Body> {
+    let token = default_token();
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/sessions/{session_id}/messages"))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"));
+    if let Some(key) = idempotency_key {
+        builder = builder.header("idempotency-key", key);
+    }
+    builder
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({ "content": "Hello!" })).unwrap(),
+        ))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn idempotency_key_absent_works_normally() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = send_message_req(id, None);
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn idempotency_key_first_request_succeeds() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = send_message_req(id, Some("unique-key-001"));
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        body.contains("event: message_complete"),
+        "first request should stream events normally"
+    );
+}
+
+#[tokio::test]
+async fn idempotency_key_replay_returns_cached_completion() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    // First request — completes and caches
+    let req1 = send_message_req(id, Some("replay-key-001"));
+    let resp1 = router.clone().oneshot(req1).await.unwrap();
+    assert_eq!(resp1.status(), StatusCode::OK);
+    // Consume the body to let the spawned turn task finish
+    let _ = body_string(resp1).await;
+
+    // Brief yield to let the turn task mark the entry as completed
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Second request with the same key — should get cached response
+    let req2 = send_message_req(id, Some("replay-key-001"));
+    let resp2 = router.clone().oneshot(req2).await.unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
+    let body2 = body_string(resp2).await;
+    assert!(
+        body2.contains("idempotency_replay"),
+        "replayed response should contain idempotency_replay stop_reason, got: {body2}"
+    );
+}
+
+#[tokio::test]
+async fn idempotency_key_in_flight_returns_409() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    // Manually insert an in-flight entry
+    let key = "inflight-key-001";
+    state.idempotency_cache.check_or_insert(key);
+
+    // Request with the same key while in-flight
+    let req = send_message_req(id, Some(key));
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "conflict");
+}
+
+#[tokio::test]
+async fn idempotency_key_too_long_returns_400() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let long_key = "x".repeat(65);
+    let req = send_message_req(id, Some(&long_key));
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn idempotency_key_empty_returns_400() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = send_message_req(id, Some(""));
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn idempotency_key_64_chars_accepted() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let key = "a".repeat(64);
+    let req = send_message_req(id, Some(&key));
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }

@@ -438,6 +438,7 @@ pub async fn run(args: Args) -> Result<()> {
         start_time: Instant::now(),
         auth_mode: config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
+        idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
         shutdown: shutdown_token.clone(),
         #[cfg(feature = "recall")]
         knowledge_store,

@@ -118,6 +118,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         start_time: Instant::now(),
         auth_mode: aletheia_config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
+        idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store,
