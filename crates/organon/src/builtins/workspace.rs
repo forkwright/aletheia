@@ -42,12 +42,52 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
 
     let normalized = normalize(&resolved);
 
+    // First check the normalized path (fast path, catches obvious traversals)
     let allowed = ctx
         .allowed_roots
         .iter()
         .any(|root| normalized.starts_with(root));
 
     if !allowed {
+        return Err(error::InvalidInputSnafu {
+            name: tool_name.clone(),
+            reason: format!("path outside allowed roots: {raw}"),
+        }
+        .build());
+    }
+
+    // Resolve symlinks to prevent symlink-based escapes.
+    // If the file exists, canonicalize it directly.
+    // If not (e.g. write to new file), canonicalize the parent directory.
+    let canonical = if normalized.exists() {
+        normalized.canonicalize()
+    } else if let Some(parent) = normalized.parent() {
+        // For new files: canonicalize parent, then append the filename
+        if parent.exists() {
+            parent.canonicalize().map(|p| {
+                if let Some(name) = normalized.file_name() {
+                    p.join(name)
+                } else {
+                    p
+                }
+            })
+        } else {
+            // Parent doesn't exist yet (will be created by write) — use normalized
+            Ok(normalized.clone())
+        }
+    } else {
+        Ok(normalized.clone())
+    };
+
+    let canonical = canonical.unwrap_or_else(|_| normalized.clone());
+
+    // Re-check canonical path against allowed roots
+    let canonical_allowed = ctx.allowed_roots.iter().any(|root| {
+        let canon_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+        canonical.starts_with(&canon_root)
+    });
+
+    if !canonical_allowed {
         return Err(error::InvalidInputSnafu {
             name: tool_name.clone(),
             reason: format!("path outside allowed roots: {raw}"),
@@ -96,6 +136,35 @@ pub(crate) fn extract_opt_bool(args: &serde_json::Value, field: &str) -> Option<
     args.get(field).and_then(serde_json::Value::as_bool)
 }
 
+/// Maximum file size the read tool will process.
+const MAX_READ_BYTES: u64 = 50 * 1024 * 1024; // 50 MB
+
+/// Maximum command string length for exec.
+const MAX_COMMAND_LENGTH: usize = 10_000; // 10 KB
+
+/// Files that the LLM must not overwrite.
+const PROTECTED_FILES: &[&str] = &[
+    "IDENTITY.md",
+    "SOUL.md",
+    "GOALS.md",
+    "TOOLS.md",
+    "MEMORY.md",
+    ".claude/settings.json",
+    ".claude/rules",
+];
+
+/// Check if a resolved path matches a protected file pattern.
+fn is_protected_file(path: &Path, workspace: &Path) -> Option<&'static str> {
+    let relative = path.strip_prefix(workspace).unwrap_or(path);
+    let rel_str = relative.to_string_lossy();
+    for &protected in PROTECTED_FILES {
+        if rel_str == protected || rel_str.starts_with(&format!("{protected}/")) {
+            return Some(protected);
+        }
+    }
+    None
+}
+
 fn err_result(msg: String) -> ToolResult {
     ToolResult::error(msg)
 }
@@ -116,6 +185,24 @@ impl ToolExecutor for ReadExecutor {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
             let path = validate_path(path_str, ctx, &input.name)?;
+
+            // File size guard — reject files larger than 50 MB
+            match std::fs::metadata(&path) {
+                Ok(meta) if meta.len() > MAX_READ_BYTES => {
+                    return Ok(err_result(format!(
+                        "file too large: {} bytes (max {} bytes)",
+                        meta.len(),
+                        MAX_READ_BYTES
+                    )));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(err_result(format!("file not found: {}", path.display())));
+                }
+                Err(e) => {
+                    return Ok(err_result(format!("read failed: {e}")));
+                }
+                Ok(_) => {}
+            }
 
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
@@ -153,6 +240,13 @@ impl ToolExecutor for WriteExecutor {
             let content = extract_str(&input.arguments, "content", &input.name)?;
             let append = extract_opt_bool(&input.arguments, "append").unwrap_or(false);
             let path = validate_path(path_str, ctx, &input.name)?;
+
+            // Block writes to protected bootstrap files
+            if let Some(protected) = is_protected_file(&path, &ctx.workspace) {
+                return Ok(err_result(format!(
+                    "cannot overwrite protected file: {protected}"
+                )));
+            }
 
             if let Some(parent) = path.parent() {
                 if let Err(e) = std::fs::create_dir_all(parent) {
@@ -251,6 +345,13 @@ impl ToolExecutor for ExecExecutor {
         Box::pin(async {
             let command = extract_str(&input.arguments, "command", &input.name)?;
             let timeout_ms = extract_opt_u64(&input.arguments, "timeout").unwrap_or(30_000);
+
+            if command.len() > MAX_COMMAND_LENGTH {
+                return Ok(err_result(format!(
+                    "command too long: {} bytes (max {MAX_COMMAND_LENGTH} bytes)",
+                    command.len()
+                )));
+            }
 
             let mut cmd = Command::new("sh");
             cmd.arg("-c")

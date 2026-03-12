@@ -399,26 +399,36 @@ impl AnthropicProvider {
             .build()
         })?;
 
+        if credential.secret.is_empty() {
+            return Err(error::AuthFailedSnafu {
+                message: "credential secret is empty — cannot build Authorization header"
+                    .to_owned(),
+            }
+            .build());
+        }
+
         let mut headers = HeaderMap::new();
-        match credential.source {
-            CredentialSource::OAuth => {
-                headers.insert(
-                    reqwest::header::AUTHORIZATION,
-                    HeaderValue::from_str(&format!("Bearer {}", credential.secret))
-                        .unwrap_or_else(|_| HeaderValue::from_static("")),
-                );
-                headers.insert(
-                    "anthropic-beta",
-                    HeaderValue::from_static("oauth-2025-04-20"),
-                );
-            }
-            _ => {
-                headers.insert(
-                    "x-api-key",
-                    HeaderValue::from_str(&credential.secret)
-                        .unwrap_or_else(|_| HeaderValue::from_static("")),
-                );
-            }
+        if credential.source == CredentialSource::OAuth {
+            let value =
+                HeaderValue::from_str(&format!("Bearer {}", credential.secret)).map_err(|_e| {
+                    error::AuthFailedSnafu {
+                        message: "credential contains invalid header characters".to_owned(),
+                    }
+                    .build()
+                })?;
+            headers.insert(reqwest::header::AUTHORIZATION, value);
+            headers.insert(
+                "anthropic-beta",
+                HeaderValue::from_static("oauth-2025-04-20"),
+            );
+        } else {
+            let value = HeaderValue::from_str(&credential.secret).map_err(|_e| {
+                error::AuthFailedSnafu {
+                    message: "API key contains invalid header characters".to_owned(),
+                }
+                .build()
+            })?;
+            headers.insert("x-api-key", value);
         }
         headers.insert(
             "anthropic-version",

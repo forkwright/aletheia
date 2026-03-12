@@ -23,6 +23,15 @@ use crate::router::build_router;
 use crate::security::SecurityConfig;
 use crate::state::AppState;
 
+/// Test helper: returns a `SecurityConfig` with CSRF disabled so that
+/// POST/PUT/DELETE requests don't require the CSRF header in tests.
+fn test_security_config() -> SecurityConfig {
+    SecurityConfig {
+        csrf_enabled: false,
+        ..SecurityConfig::default()
+    }
+}
+
 // --- Mock Provider ---
 
 struct MockProvider {
@@ -168,12 +177,12 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
 
 async fn app() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
-    (build_router(state, &SecurityConfig::default()), dir)
+    (build_router(state, &test_security_config()), dir)
 }
 
 async fn app_no_providers() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state_with_provider(false).await;
-    (build_router(state, &SecurityConfig::default()), dir)
+    (build_router(state, &test_security_config()), dir)
 }
 
 fn json_request(method: &str, uri: &str, body: Option<serde_json::Value>) -> Request<Body> {
@@ -556,7 +565,7 @@ async fn history_unknown_session_returns_404() {
 #[tokio::test]
 async fn history_with_limit() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
 
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -594,7 +603,7 @@ async fn history_with_limit() {
 #[tokio::test]
 async fn send_message_returns_sse_content_type() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -619,7 +628,7 @@ async fn send_message_returns_sse_content_type() {
 #[tokio::test]
 async fn send_message_stream_contains_events() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -678,7 +687,7 @@ async fn send_empty_message_returns_400() {
 #[tokio::test]
 async fn send_message_stores_in_history() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -828,7 +837,7 @@ async fn concurrent_session_creation() {
     let mut handles = Vec::new();
 
     for i in 0..5 {
-        let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+        let router = build_router(Arc::clone(&state), &test_security_config());
         handles.push(tokio::spawn(async move {
             let req = authed_request(
                 "POST",
@@ -854,7 +863,7 @@ async fn concurrent_session_creation() {
 #[tokio::test]
 async fn send_message_no_provider_returns_error() {
     let (state, _dir) = test_state_with_provider(false).await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -873,7 +882,7 @@ async fn send_message_no_provider_returns_error() {
 #[tokio::test]
 async fn send_message_routes_through_actor() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
@@ -902,7 +911,7 @@ async fn send_message_routes_through_actor() {
 #[tokio::test]
 async fn nous_list_from_manager() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
 
     let resp = router.oneshot(authed_get("/api/v1/nous")).await.unwrap();
 
@@ -1115,6 +1124,7 @@ async fn oversized_body_returns_413() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
         body_limit_bytes: 100,
+        csrf_enabled: false,
         ..SecurityConfig::default()
     };
     let router = build_router(state, &security);
@@ -1347,7 +1357,7 @@ async fn metrics_contains_aletheia_prefixed_families() {
 #[tokio::test]
 async fn metrics_counters_increment_after_request() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
 
     // Make a health request first to increment the counter
     let _ = router
@@ -1375,7 +1385,7 @@ async fn metrics_counters_increment_after_request() {
 #[tokio::test]
 async fn cors_permissive_when_no_origins_configured() {
     let (state, _dir) = test_state().await;
-    let security = SecurityConfig::default(); // empty origins = permissive
+    let security = test_security_config(); // empty origins = permissive
     let router = build_router(state, &security);
 
     let req = Request::builder()
@@ -1430,7 +1440,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         config: Arc::clone(&state.config),
         shutdown: state.shutdown.clone(),
     });
-    (build_router(state, &SecurityConfig::default()), dir)
+    (build_router(state, &test_security_config()), dir)
 }
 
 #[tokio::test]
@@ -1475,7 +1485,7 @@ async fn list_sessions_returns_empty_initially() {
 #[tokio::test]
 async fn list_sessions_includes_created_session() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
 
     create_test_session(&router).await;
 
@@ -1494,7 +1504,7 @@ async fn list_sessions_includes_created_session() {
 #[tokio::test]
 async fn list_sessions_filter_by_nous_id() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
 
     create_test_session(&router).await;
 
@@ -1573,7 +1583,7 @@ async fn create_session_unknown_nous_returns_404() {
 #[tokio::test]
 async fn history_before_filter() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
 
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
@@ -1612,7 +1622,7 @@ async fn history_before_filter() {
 #[tokio::test]
 async fn stream_turn_returns_sse() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
 
     let req = authed_request(
         "POST",
@@ -1638,7 +1648,7 @@ async fn stream_turn_returns_sse() {
 #[tokio::test]
 async fn stream_turn_contains_turn_start_event() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
 
     let req = authed_request(
         "POST",
@@ -2297,7 +2307,7 @@ fn security_config_default_values() {
     assert!(config.allowed_origins.is_empty());
     assert_eq!(config.cors_max_age_secs, 3600);
     assert_eq!(config.body_limit_bytes, 1_048_576);
-    assert!(!config.csrf_enabled);
+    assert!(config.csrf_enabled);
     assert_eq!(config.csrf_header_name, "x-requested-with");
     assert_eq!(config.csrf_header_value, "aletheia");
     assert!(!config.tls_enabled);
@@ -2312,7 +2322,7 @@ fn security_config_from_gateway() {
     let gw = GatewayConfig::default();
     let config = SecurityConfig::from_gateway(&gw);
     assert!(!config.tls_enabled);
-    assert!(!config.csrf_enabled);
+    assert!(config.csrf_enabled);
     assert_eq!(config.cors_max_age_secs, 3600);
 }
 
@@ -2379,7 +2389,7 @@ async fn session_response_has_all_expected_fields() {
 #[tokio::test]
 async fn history_messages_have_expected_fields() {
     let (state, _dir) = test_state().await;
-    let router = build_router(Arc::clone(&state), &SecurityConfig::default());
+    let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 

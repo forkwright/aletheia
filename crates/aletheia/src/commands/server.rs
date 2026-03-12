@@ -112,8 +112,16 @@ pub async fn run(args: Args) -> Result<()> {
     ));
     info!(path = %db_path.display(), "session store opened");
 
-    // JWT manager
-    let jwt_manager = JwtManager::new(JwtConfig::default());
+    // JWT manager — reject insecure default key when auth is enabled
+    let jwt_config = JwtConfig::default();
+    if config.gateway.auth.mode != "none" && jwt_config.has_insecure_key() {
+        anyhow::bail!(
+            "JWT signing key is the insecure default (\"CHANGE-ME-IN-PRODUCTION\").\n  \
+             Set a secure key in instance/config/aletheia.yaml under gateway.auth.jwt.signing_key,\n  \
+             or set auth mode to \"none\" if authentication is not required."
+        );
+    }
+    let jwt_manager = JwtManager::new(jwt_config);
 
     // Build shared registries — single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry(&config, &oikos));
@@ -405,6 +413,20 @@ pub async fn run(args: Args) -> Result<()> {
         "lan" => "0.0.0.0",
         other => other,
     };
+
+    // Warn if auth is disabled on a non-localhost bind address
+    if config.gateway.auth.mode == "none"
+        && bind_addr_str != "127.0.0.1"
+        && bind_addr_str != "localhost"
+        && bind_addr_str != "::1"
+    {
+        warn!(
+            bind = %bind_addr_str,
+            "authentication is disabled (auth.mode = \"none\") on a non-localhost address — \
+             the API is accessible without credentials"
+        );
+    }
+
     let bind_addr = format!("{bind_addr_str}:{port}");
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await

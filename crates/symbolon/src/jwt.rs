@@ -33,14 +33,26 @@ impl std::fmt::Debug for JwtConfig {
     }
 }
 
+/// The insecure placeholder key used when no explicit key is configured.
+/// Server startup MUST reject this value when auth is enabled.
+pub const INSECURE_DEFAULT_KEY: &str = "CHANGE-ME-IN-PRODUCTION";
+
 impl Default for JwtConfig {
     fn default() -> Self {
         Self {
-            signing_key: SecretString::from("CHANGE-ME-IN-PRODUCTION".to_owned()),
+            signing_key: SecretString::from(INSECURE_DEFAULT_KEY.to_owned()),
             access_ttl: Duration::from_secs(3600),
             refresh_ttl: Duration::from_secs(7 * 24 * 3600),
             issuer: "aletheia".to_owned(),
         }
+    }
+}
+
+impl JwtConfig {
+    /// Returns `true` if the signing key is the insecure placeholder.
+    #[must_use]
+    pub fn has_insecure_key(&self) -> bool {
+        self.signing_key.expose_secret() == INSECURE_DEFAULT_KEY
     }
 }
 

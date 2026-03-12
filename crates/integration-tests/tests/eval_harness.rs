@@ -151,7 +151,10 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
 
     let router = build_router(
         Arc::clone(&state),
-        &aletheia_pylon::security::SecurityConfig::default(),
+        &aletheia_pylon::security::SecurityConfig {
+            csrf_enabled: false,
+            ..aletheia_pylon::security::SecurityConfig::default()
+        },
     );
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
