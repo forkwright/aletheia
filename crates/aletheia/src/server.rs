@@ -388,9 +388,11 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     let port = cli.port.unwrap_or(config.gateway.port);
     // Resolve bind address: CLI flag > config gateway.bind > default 127.0.0.1.
     // "lan" is a semantic alias for "0.0.0.0" (listen on all interfaces).
+    // "localhost" is normalised to "127.0.0.1" to avoid IPv6 resolution on dual-stack hosts.
     let bind_host = cli.bind.as_deref().unwrap_or(&config.gateway.bind);
     let bind_addr_str = match bind_host {
         "lan" => "0.0.0.0",
+        "localhost" => "127.0.0.1",
         other => other,
     };
     let bind_addr = format!("{bind_addr_str}:{port}");
