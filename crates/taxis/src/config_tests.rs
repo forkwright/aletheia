@@ -22,7 +22,7 @@ fn defaults_are_sensible() {
     assert!(config.gateway.cors.allowed_origins.is_empty());
     assert_eq!(config.gateway.cors.max_age_secs, 3600);
     assert_eq!(config.gateway.body_limit.max_bytes, 1_048_576);
-    assert!(!config.gateway.csrf.enabled);
+    assert!(config.gateway.csrf.enabled);
     assert_eq!(config.gateway.csrf.header_name, "x-requested-with");
     assert_eq!(config.gateway.csrf.header_value, "aletheia");
     assert!(config.channels.signal.enabled);

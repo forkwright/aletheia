@@ -5,10 +5,12 @@
 //! `web_fetch` for direct URL retrieval.
 
 use std::future::Future;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::pin::Pin;
 
 use aletheia_koina::id::ToolName;
 use indexmap::IndexMap;
+use reqwest::redirect;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -25,6 +27,64 @@ fn require_services(
     ctx.services
         .as_deref()
         .ok_or_else(|| ToolResult::error("tool services not configured"))
+}
+
+// --- SSRF protection ---
+
+/// Blocked cloud metadata hostnames.
+const BLOCKED_HOSTNAMES: &[&str] = &["localhost", "metadata.google.internal"];
+
+/// Check whether an IP address belongs to a private, loopback, or link-local range.
+fn is_private_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()                                          // 127.0.0.0/8
+                || v4.is_private()                                    // 10/8, 172.16/12, 192.168/16
+                || v4.is_link_local()                                 // 169.254.0.0/16
+                || v4.octets()[0] == 0                                // 0.0.0.0/8
+                || *v4 == Ipv4Addr::new(169, 254, 169, 254)          // AWS metadata
+                || *v4 == Ipv4Addr::new(169, 254, 169, 123) // AWS NTP
+        }
+        IpAddr::V6(v6) => {
+            *v6 == Ipv6Addr::LOCALHOST                                // ::1
+                || (v6.segments()[0] & 0xfe00) == 0xfc00              // fc00::/7 (ULA)
+                || (v6.segments()[0] & 0xffc0) == 0xfe80 // fe80::/10 (link-local)
+        }
+    }
+}
+
+/// Resolve hostname and verify none of the addresses are private/internal.
+async fn validate_url_not_internal(url_str: &str) -> std::result::Result<(), String> {
+    let parsed: reqwest::Url = url_str.parse().map_err(|e| format!("invalid URL: {e}"))?;
+
+    let host = parsed.host_str().ok_or("URL has no host")?;
+
+    // Block known metadata / internal hostnames
+    let host_lower = host.to_lowercase();
+    for blocked in BLOCKED_HOSTNAMES {
+        if host_lower == *blocked {
+            return Err(format!("blocked hostname: {host}"));
+        }
+    }
+
+    // Resolve DNS and check every address
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host(format!("{host}:{port}"))
+        .await
+        .map_err(|e| format!("DNS resolution failed for {host}: {e}"))?
+        .collect();
+
+    if addrs.is_empty() {
+        return Err(format!("DNS resolution returned no addresses for {host}"));
+    }
+
+    for addr in &addrs {
+        if is_private_ip(&addr.ip()) {
+            return Err("URL resolves to a private/internal IP address".to_owned());
+        }
+    }
+
+    Ok(())
 }
 
 // --- web_fetch ---
@@ -51,8 +111,43 @@ impl ToolExecutor for WebFetchExecutor {
                 return Ok(ToolResult::error("URL must start with http:// or https://"));
             }
 
-            let response = services
-                .http_client
+            // SSRF protection: resolve hostname and block private/internal IPs
+            if let Err(msg) = validate_url_not_internal(url).await {
+                return Ok(ToolResult::error(msg));
+            }
+
+            // Build a client that checks redirects against private IPs
+            let ssrf_safe_client = reqwest::Client::builder()
+                .redirect(redirect::Policy::custom(|attempt| {
+                    let url = attempt.url();
+                    let host = match url.host_str() {
+                        Some(h) => h.to_lowercase(),
+                        None => return attempt.stop(),
+                    };
+                    for blocked in BLOCKED_HOSTNAMES {
+                        if host == *blocked {
+                            return attempt.stop();
+                        }
+                    }
+                    // For redirects we can only check parsed IPs directly;
+                    // full async DNS isn't available in the sync callback.
+                    // Reject if the redirect target is an IP literal in a private range.
+                    if let Some(addr) = url.host_str().and_then(|h| h.parse::<IpAddr>().ok()) {
+                        if is_private_ip(&addr) {
+                            return attempt.stop();
+                        }
+                    }
+                    // Limit redirect chain length
+                    if attempt.previous().len() >= 10 {
+                        return attempt.stop();
+                    }
+                    attempt.follow()
+                }))
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| services.http_client.clone());
+
+            let response = ssrf_safe_client
                 .get(url)
                 .header(
                     "User-Agent",
