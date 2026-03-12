@@ -84,7 +84,9 @@ impl ToolExecutor for ShellToolExecutor {
             if let Some(mut stdin) = child.stdin.take() {
                 use std::io::Write;
                 if let Err(e) = stdin.write_all(json_input.as_bytes()) {
-                    return Ok(ToolResult::error(format!("failed to write tool input: {e}")));
+                    return Ok(ToolResult::error(format!(
+                        "failed to write tool input: {e}"
+                    )));
                 }
             }
 
