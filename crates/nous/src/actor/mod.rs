@@ -188,6 +188,7 @@ impl NousActor {
                     match msg {
                         NousMessage::Turn {
                             session_key,
+                            session_id,
                             content,
                             span,
                             reply,
@@ -198,11 +199,12 @@ impl NousActor {
                                     panic_count: self.panic_count,
                                 }.build()));
                             } else {
-                                self.handle_turn(session_key, content, span, reply).await;
+                                self.handle_turn(session_key, session_id, content, span, reply).await;
                             }
                         }
                         NousMessage::StreamingTurn {
                             session_key,
+                            session_id,
                             content,
                             stream_tx,
                             span,
@@ -215,7 +217,7 @@ impl NousActor {
                                 }.build()));
                                 drop(stream_tx);
                             } else {
-                                self.handle_streaming_turn(session_key, content, stream_tx, span, reply).await;
+                                self.handle_streaming_turn(session_key, session_id, content, stream_tx, span, reply).await;
                             }
                         }
                         NousMessage::Status { reply } => {

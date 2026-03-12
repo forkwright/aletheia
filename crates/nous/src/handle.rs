@@ -49,20 +49,26 @@ impl NousHandle {
         session_key: impl Into<String>,
         content: impl Into<String>,
     ) -> error::Result<TurnResult> {
-        self.send_turn_with_timeout(session_key, content, DEFAULT_SEND_TIMEOUT)
+        self.send_turn_with_session_id(session_key, None, content, DEFAULT_SEND_TIMEOUT)
             .await
     }
 
-    /// Send a turn message with a configurable inbox timeout.
-    pub async fn send_turn_with_timeout(
+    /// Send a turn with an explicit database session ID.
+    ///
+    /// When `session_id` is `Some`, the actor adopts this ID for its in-memory
+    /// `SessionState` instead of generating a new one. This prevents divergence
+    /// between the HTTP-layer session ID and the actor's internal ID.
+    pub async fn send_turn_with_session_id(
         &self,
         session_key: impl Into<String>,
+        session_id: Option<String>,
         content: impl Into<String>,
         timeout: Duration,
     ) -> error::Result<TurnResult> {
         let (tx, rx) = oneshot::channel();
         let msg = NousMessage::Turn {
             session_key: session_key.into(),
+            session_id,
             content: content.into(),
             span: tracing::Span::current(),
             reply: tx,
@@ -74,6 +80,17 @@ impl NousHandle {
             }
             .build()
         })?
+    }
+
+    /// Send a turn message with a configurable inbox timeout.
+    pub async fn send_turn_with_timeout(
+        &self,
+        session_key: impl Into<String>,
+        content: impl Into<String>,
+        timeout: Duration,
+    ) -> error::Result<TurnResult> {
+        self.send_turn_with_session_id(session_key, None, content, timeout)
+            .await
     }
 
     /// Send a turn message with real-time streaming and await the result.
@@ -94,14 +111,21 @@ impl NousHandle {
         content: impl Into<String>,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
     ) -> error::Result<TurnResult> {
-        self.send_turn_streaming_with_timeout(session_key, content, stream_tx, DEFAULT_SEND_TIMEOUT)
-            .await
+        self.send_turn_streaming_with_session_id(
+            session_key,
+            None,
+            content,
+            stream_tx,
+            DEFAULT_SEND_TIMEOUT,
+        )
+        .await
     }
 
-    /// Send a streaming turn with a configurable inbox timeout.
-    pub async fn send_turn_streaming_with_timeout(
+    /// Send a streaming turn with an explicit database session ID.
+    pub async fn send_turn_streaming_with_session_id(
         &self,
         session_key: impl Into<String>,
+        session_id: Option<String>,
         content: impl Into<String>,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         timeout: Duration,
@@ -109,6 +133,7 @@ impl NousHandle {
         let (tx, rx) = oneshot::channel();
         let msg = NousMessage::StreamingTurn {
             session_key: session_key.into(),
+            session_id,
             content: content.into(),
             stream_tx,
             span: tracing::Span::current(),
@@ -121,6 +146,18 @@ impl NousHandle {
             }
             .build()
         })?
+    }
+
+    /// Send a streaming turn with a configurable inbox timeout.
+    pub async fn send_turn_streaming_with_timeout(
+        &self,
+        session_key: impl Into<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        timeout: Duration,
+    ) -> error::Result<TurnResult> {
+        self.send_turn_streaming_with_session_id(session_key, None, content, stream_tx, timeout)
+            .await
     }
 
     /// Send a ping to the actor and wait for a reply.
@@ -367,6 +404,7 @@ mod tests {
                 .sender
                 .send(NousMessage::Turn {
                     session_key: "main".to_owned(),
+                    session_id: None,
                     content: "hello".to_owned(),
                     span: tracing::Span::current(),
                     reply: reply_tx,

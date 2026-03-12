@@ -14,6 +14,10 @@ pub enum NousMessage {
     /// Process a user message in a session.
     Turn {
         session_key: String,
+        /// Database session ID from the session store. When `Some`, the actor
+        /// adopts this ID for the in-memory `SessionState` instead of generating
+        /// a new one, preventing FK constraint failures in finalize and tools.
+        session_id: Option<String>,
         content: String,
         /// Caller's tracing span — propagated into the pipeline task for request correlation.
         span: tracing::Span,
@@ -22,6 +26,8 @@ pub enum NousMessage {
     /// Process a user message with real-time streaming events.
     StreamingTurn {
         session_key: String,
+        /// Database session ID from the session store. See `Turn::session_id`.
+        session_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         /// Caller's tracing span — propagated into the pipeline task for request correlation.

@@ -479,6 +479,7 @@ async fn send_timeout_fires_when_inbox_full() {
     let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
     tx.send(NousMessage::Turn {
         session_key: "main".to_owned(),
+        session_id: None,
         content: "filler".to_owned(),
         span: tracing::Span::current(),
         reply: reply_tx,
@@ -558,6 +559,103 @@ async fn status_includes_uptime() {
         status.uptime
     );
 
+    handle.shutdown().await.expect("shutdown");
+    join.await.expect("join");
+}
+
+// --- Session ID adoption tests ---
+
+fn spawn_test_actor_with_store(
+    store: Arc<tokio::sync::Mutex<aletheia_mneme::store::SessionStore>>,
+) -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::TempDir) {
+    let (dir, oikos) = test_oikos();
+    let providers = test_providers();
+    let tools = Arc::new(ToolRegistry::new());
+    let config = test_config();
+    let pipeline_config = PipelineConfig::default();
+
+    let (handle, join) = spawn(
+        config,
+        pipeline_config,
+        providers,
+        tools,
+        oikos,
+        None,
+        None,
+        Some(store),
+        #[cfg(feature = "knowledge-store")]
+        None,
+        None,
+        Vec::new(),
+        None,
+        CancellationToken::new(),
+    );
+    (handle, join, dir)
+}
+
+/// Regression test for #758/#916/#923: session ID divergence.
+///
+/// Verifies that when pylon creates a DB session and passes its ID to the
+/// actor, the finalize stage persists messages under the SAME session ID
+/// (not a newly generated one).
+#[tokio::test]
+async fn session_id_adoption_prevents_fk_divergence() {
+    let store = aletheia_mneme::store::SessionStore::open_in_memory().expect("in-memory store");
+    let db_session_id = "db-ses-from-pylon";
+
+    // Simulate pylon creating the session in the store
+    store
+        .create_session(
+            db_session_id,
+            "test-agent",
+            "main",
+            None,
+            Some("test-model"),
+        )
+        .expect("create session");
+
+    let store = Arc::new(tokio::sync::Mutex::new(store));
+    let (handle, join, _dir) = spawn_test_actor_with_store(Arc::clone(&store));
+
+    // Send a turn with the DB session ID — actor must adopt it
+    let result = handle
+        .send_turn_with_session_id(
+            "main",
+            Some(db_session_id.to_owned()),
+            "Hello",
+            crate::handle::DEFAULT_SEND_TIMEOUT,
+        )
+        .await
+        .expect("turn should succeed");
+    assert_eq!(result.content, "Hello from actor!");
+
+    // Verify finalize persisted messages under the correct session ID
+    let store_guard = store.lock().await;
+    let history = store_guard
+        .get_history(db_session_id, None)
+        .expect("history");
+
+    // finalize writes: user + assistant = 2 messages
+    assert!(
+        history.len() >= 2,
+        "expected at least 2 messages under DB session ID, got {}",
+        history.len()
+    );
+
+    // Verify no messages exist under a different session ID
+    // (if divergence occurred, messages would be under a random ULID)
+    let all_sessions = store_guard
+        .list_sessions(Some("test-agent"))
+        .expect("list sessions");
+    assert_eq!(
+        all_sessions.len(),
+        1,
+        "should have exactly 1 session, got {}",
+        all_sessions.len()
+    );
+    assert_eq!(all_sessions[0].id, db_session_id);
+
+    drop(store_guard);
     handle.shutdown().await.expect("shutdown");
     join.await.expect("join");
 }

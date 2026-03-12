@@ -92,9 +92,8 @@ pub async fn send_message(
     let state_clone = Arc::clone(&state);
     let sid = session_id.clone();
 
-    // Persist user message before spawning — finalize writes to the actor's
-    // in-memory session ID (not the pylon ULID), so pylon is responsible for
-    // writing both the user message here and the assistant message after the turn.
+    // Persist user message eagerly so the client sees it in history immediately,
+    // even if the turn fails partway through.
     #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
     let input_token_estimate = content.len() as i64 / 4;
     if let Err(e) = store_message(
@@ -122,7 +121,15 @@ pub async fn send_message(
     );
     tokio::spawn(
         async move {
-            match handle.send_turn(&session_key, &content).await {
+            match handle
+                .send_turn_with_session_id(
+                    &session_key,
+                    Some(sid.clone()),
+                    &content,
+                    aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
+                )
+                .await
+            {
                 Ok(result) => {
                     emit_turn_result_events(&tx, &result).await;
 
@@ -303,7 +310,13 @@ pub async fn stream_turn(
     tokio::spawn(
         async move {
             match handle
-                .send_turn_streaming(&session_key, &message, nous_tx)
+                .send_turn_streaming_with_session_id(
+                    &session_key,
+                    Some(sid.clone()),
+                    &message,
+                    nous_tx,
+                    aletheia_nous::handle::DEFAULT_SEND_TIMEOUT,
+                )
                 .await
             {
                 Ok(result) => {
