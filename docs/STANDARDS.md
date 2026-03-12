@@ -75,6 +75,18 @@ Doc comments (rustdoc `///`, JSDoc `/** */`) only on:
 - Functions that can panic (mandatory `# Panics` section)
 - Functions returning `Result` with non-obvious error conditions
 
+Structured inline comment categories (use the prefix exactly as shown):
+
+| Prefix | When to use |
+|--------|-------------|
+| `// SAFETY:` | Precedes every `unsafe` block — explains why it is sound |
+| `// INVARIANT:` | Documents a maintained invariant at a call site or type definition |
+| `// NOTE:` | Non-obvious context that does not fit the surrounding code's logic |
+| `// TODO(#NNN):` | Known gap, must reference a tracking issue number |
+| `// FIXME(#NNN):` | Temporary workaround pending a fix, must reference an issue |
+
+No bare `// TODO` or `// FIXME` without an issue number — they become invisible debt.
+
 ### Testing (Universal)
 
 Behavior over implementation:
@@ -317,8 +329,10 @@ todo = "deny"
 unimplemented = "deny"
 exit = "deny"
 
+# Correctness: holding std::sync::Mutex across .await causes deadlocks
+await_holding_lock = "deny"
+
 # High-value warnings
-await_holding_lock = "warn"
 explicit_into_iter_loop = "warn"
 fallible_impl_from = "warn"
 fn_params_excessive_bools = "warn"
@@ -329,7 +343,7 @@ match_wildcard_for_single_variants = "warn"
 needless_for_each = "warn"
 rc_mutex = "warn"
 string_add = "warn"
-string_to_string = "warn"
+# string_to_string removed — covered by implicit_clone since clippy 1.80
 trait_duplication_in_bounds = "warn"
 unused_self = "warn"
 ```
@@ -341,9 +355,9 @@ Features are additive. Never negative names. Binary crate is the feature aggrega
 ```toml
 # Illustrative pattern — see crates/aletheia/Cargo.toml for actual binary features
 [features]
-default = ["tui", "recall"]
-recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-pylon/knowledge-store"]
-tui = ["dep:aletheia-tui"]
+default = ["tui"]
+knowledge-store = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine"]
+tui = ["dep:aletheia-theatron-tui"]
 tls = ["aletheia-pylon/tls"]
 ```
 
@@ -421,6 +435,7 @@ exclude = ["aletheia-mneme-engine", "aletheia-integration-tests"]
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "rsa timing side-channel via jsonwebtoken — no safe upgrade, local-only use" },
     { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained — transitive via graph_builder, no safe upgrade" },
+    # additional entries — see deny.toml for the full list
 ]
 
 [licenses]
@@ -428,8 +443,8 @@ allow = [
     "MIT", "Apache-2.0", "AGPL-3.0-or-later",
     "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib",
     "Unicode-3.0", "BSL-1.0", "CC0-1.0", "0BSD",
+    "MPL-2.0", "LGPL-3.0-or-later", "NCSA", "CDLA-Permissive-2.0", "OpenSSL",
 ]
-confidence-threshold = 0.8
 
 [bans]
 multiple-versions = "warn"
@@ -438,7 +453,7 @@ wildcards = "allow"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = []
+allow-git = ["https://github.com/romnn/reqwest-eventsource"]
 ```
 
 ---

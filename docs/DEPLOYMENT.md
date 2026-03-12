@@ -25,7 +25,7 @@ Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For 
 
 ### Software
 
-- No runtime dependencies beyond glibc (Linux). The binary is statically linked.
+- Links dynamically against glibc only (Linux). No other runtime dependencies.
 - **Build from source:** Rust 1.85+ (edition 2024), Cargo
 - **Optional:** signal-cli for Signal messaging channel
 
@@ -66,6 +66,16 @@ cargo build --release
 ```
 
 Binary: `target/release/aletheia`
+
+### Headless Build (no TUI)
+
+The TUI (terminal dashboard) is compiled in by default. To build without it — useful for servers, containers, or minimal footprints — disable the `tui` feature:
+
+```bash
+cargo build --release --no-default-features --features tls
+```
+
+The headless binary accepts all the same CLI flags and API endpoints. The `aletheia status` command falls back to a plain-text summary when TUI is absent.
 
 ### Shell Completions
 
@@ -238,7 +248,7 @@ The startup sequence:
 |------|---------|-------------|
 | `-r, --instance-root` | auto-discover | Path to instance directory |
 | `-l, --log-level` | `info` | Log level (trace, debug, info, warn, error) |
-| `--bind` | `127.0.0.1` | Bind address |
+| `--bind` | `localhost` | Bind address |
 | `-p, --port` | `18789` | Listen port |
 | `--json-logs` | off | Emit JSON-structured logs |
 

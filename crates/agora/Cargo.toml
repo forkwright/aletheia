@@ -1,7 +1,7 @@
 [package]
 name = "aletheia-agora"
 version.workspace = true
-description = "Channel registry and provider implementations (Signal, Slack)"
+description = "Channel registry and provider implementations (Signal)"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

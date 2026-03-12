@@ -23,6 +23,7 @@ Later layers override earlier ones. All field names use `snake_case` in YAML; `c
 - [maintenance](#maintenance)
 - [pricing](#pricing)
 - [packs](#packs)
+- [sandbox](#sandbox)
 
 ---
 
@@ -46,6 +47,13 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `max_tool_iterations` | u32 | `50` | Safety limit on consecutive tool use per turn |
 | `allowed_roots` | string[] | `[]` | Filesystem paths the agent may access |
 | `tool_timeouts` | object | see below | Per-tool execution timeout overrides |
+
+#### agents.defaults.caching
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `true` | Whether prompt caching is active |
+| `strategy` | string | `"auto"` | Caching strategy: `"auto"` (cache system prompt and large context blocks) or `"disabled"` |
 
 #### agents.defaults.tool_timeouts
 
@@ -319,6 +327,12 @@ Background maintenance tasks. All run automatically when the server is running, 
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Whether automatic retention enforcement runs |
 
+### maintenance.knowledge_maintenance_enabled
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `knowledge_maintenance_enabled` | bool | `false` | Whether background knowledge graph maintenance tasks run (entity deduplication, edge pruning, embedding refresh) |
+
 ```yaml
 maintenance:
   trace_rotation:
@@ -365,6 +379,28 @@ Array of filesystem paths to external domain packs. Each path should be a direct
 packs:
   - /srv/aletheia/packs/engineering
   - /srv/aletheia/packs/research
+```
+
+---
+
+## sandbox
+
+Filesystem sandbox applied to tool execution. When enabled, tools are restricted to the paths explicitly listed in `agents.*.allowed_roots` plus any extra paths declared here.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Whether sandbox restrictions are applied |
+| `enforcement` | string | `"enforcing"` | `"enforcing"` blocks violations; `"permissive"` logs them without blocking |
+| `extra_read_paths` | string[] | `[]` | Additional filesystem paths granted read access to all tools |
+| `extra_write_paths` | string[] | `[]` | Additional filesystem paths granted read+write access to all tools |
+
+```yaml
+sandbox:
+  enabled: true
+  enforcement: enforcing
+  extra_read_paths:
+    - /usr/share/doc
+  extra_write_paths: []
 ```
 
 ---

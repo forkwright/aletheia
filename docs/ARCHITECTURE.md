@@ -119,7 +119,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `symbolon` | JWT tokens, password hashing, RBAC policies | koina |
 | `melete` | Context distillation, compression strategies, token budget management | koina, hermeneus |
 | `agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
-| `oikonomos` | Background task scheduling, cron jobs, lifecycle events | koina |
+| `daemon` | Background task scheduling, cron jobs, lifecycle events | koina |
 | `dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
 | `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
@@ -127,13 +127,13 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `diaporeia` | MCP server interface for external AI agents — `crates/diaporeia` | koina, taxis, nous, organon, mneme, symbolon |
 | `theatron-core` | Shared presentation types and traits for Aletheia UIs — `crates/theatron/core/` | nothing (leaf) |
 | `theatron-tui` | Terminal dashboard — `crates/theatron/tui/` | theatron-core, reqwest (standalone UI client) |
-| `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, oikonomos, dianoia, theatron-tui (optional) |
+| `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, theatron-tui (optional) |
 
 **Support crates** (not part of the application dependency graph):
 
 | Crate | Domain | Depends On |
 |-------|--------|------------|
-| `dokimion` | Behavioral eval framework — HTTP scenario runner | nothing (leaf) |
+| `eval` | Behavioral eval framework — HTTP scenario runner | nothing (leaf) |
 | `integration-tests` | Cross-crate integration test suite | koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
 
 ### Dependency Graph
@@ -155,10 +155,10 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 **Layer rules:**
 - **Leaf** (no workspace deps): `koina`
 - **Low** (koina only): `taxis`, `hermeneus`, `symbolon`, `mneme` (includes vendored CozoDB engine behind feature gate)
-- **Mid**: `melete` (koina + hermeneus), `organon` (koina + hermeneus), `agora` (koina + taxis), `oikonomos` (koina), `dianoia` (koina), `thesauros` (koina + organon)
+- **Mid**: `melete` (koina + hermeneus), `organon` (koina + hermeneus), `agora` (koina + taxis), `daemon` (koina), `dianoia` (koina), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
 - **Top**: `aletheia` binary, `tui` (terminal dashboard)
-- **Support**: `dokimion` (eval), `integration-tests`
+- **Support**: `eval`, `integration-tests`
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
@@ -194,14 +194,16 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 ## Release Profile
 
 ```toml
-[profile.release]
-strip = true
-lto = "thin"
-opt-level = "z"    # size-optimized — single static binary
-codegen-units = 1
+[profile.dev]
+opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 2      # optimize deps in dev — faster iteration
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
 ```
 
 ---
@@ -212,6 +214,7 @@ opt-level = 2      # optimize deps in dev — faster iteration
 - **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, jsonwebtoken).
 - **CozoDB engine is vendored** inside `mneme/src/engine/`, gated behind the `mneme-engine` feature.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
-- **oikonomos depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
+- **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
 - **dianoia depends only on koina** - planning context decoupled from the agent pipeline. No other application crate imports it.
 - **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.
+- **nous requires a multi-thread Tokio runtime** (`rt-multi-thread`). The actor model and spawn-based timeout machinery depend on multiple OS threads. Single-thread runtime will deadlock.

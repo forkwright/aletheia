@@ -62,12 +62,11 @@ Tools live in `crates/organon/`. Each tool implements the `ToolExecutor` trait:
 
 ```rust
 pub trait ToolExecutor: Send + Sync {
-    fn definition(&self) -> &ToolDefinition;
-    fn execute(
-        &self,
-        input: serde_json::Value,
-        context: &ToolContext,
-    ) -> Result<String, ToolError>;
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>>;
 }
 ```
 
