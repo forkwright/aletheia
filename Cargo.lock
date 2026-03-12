@@ -329,6 +329,7 @@ dependencies = [
  "axum 0.8.8",
  "axum-server",
  "http-body-util",
+ "jiff",
  "jsonwebtoken",
  "prometheus",
  "reqwest 0.13.2",

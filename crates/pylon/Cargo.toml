@@ -54,6 +54,7 @@ aletheia-symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
 http-body-util = "0.1"
+jiff = { workspace = true }
 # jsonwebtoken 10.x pins rand 0.8; no released version uses rand 0.9.
 # This causes a duplicate rand in the binary. Track: https://github.com/Keats/jsonwebtoken/issues
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }

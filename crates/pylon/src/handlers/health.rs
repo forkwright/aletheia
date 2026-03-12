@@ -89,3 +89,121 @@ pub struct HealthCheck {
     /// Diagnostic message when status is not `"pass"`.
     pub message: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn health_response_serializes_all_fields() {
+        let resp = HealthResponse {
+            status: "healthy",
+            version: "1.0.0",
+            uptime_seconds: 300,
+            checks: vec![],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["status"], "healthy");
+        assert_eq!(json["version"], "1.0.0");
+        assert_eq!(json["uptime_seconds"], 300);
+        assert!(json["checks"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn health_check_pass_omits_message_when_none() {
+        let check = HealthCheck {
+            name: "session_store",
+            status: "pass",
+            message: None,
+        };
+        let json = serde_json::to_value(&check).unwrap();
+        assert_eq!(json["name"], "session_store");
+        assert_eq!(json["status"], "pass");
+        // message is None — serializes as null (no skip annotation)
+        assert!(json["message"].is_null());
+    }
+
+    #[test]
+    fn health_check_fail_includes_message() {
+        let check = HealthCheck {
+            name: "providers",
+            status: "fail",
+            message: Some("no LLM providers registered".to_owned()),
+        };
+        let json = serde_json::to_value(&check).unwrap();
+        assert_eq!(json["status"], "fail");
+        assert_eq!(json["message"], "no LLM providers registered");
+    }
+
+    #[test]
+    fn aggregate_status_unhealthy_when_any_check_fails() {
+        let checks = [
+            HealthCheck {
+                name: "a",
+                status: "pass",
+                message: None,
+            },
+            HealthCheck {
+                name: "b",
+                status: "fail",
+                message: Some("down".to_owned()),
+            },
+        ];
+        let status = if checks.iter().any(|c| c.status == "fail") {
+            "unhealthy"
+        } else if checks.iter().any(|c| c.status == "warn") {
+            "degraded"
+        } else {
+            "healthy"
+        };
+        assert_eq!(status, "unhealthy");
+    }
+
+    #[test]
+    fn aggregate_status_degraded_when_any_check_warns() {
+        let checks = [
+            HealthCheck {
+                name: "a",
+                status: "pass",
+                message: None,
+            },
+            HealthCheck {
+                name: "b",
+                status: "warn",
+                message: Some("no providers".to_owned()),
+            },
+        ];
+        let status = if checks.iter().any(|c| c.status == "fail") {
+            "unhealthy"
+        } else if checks.iter().any(|c| c.status == "warn") {
+            "degraded"
+        } else {
+            "healthy"
+        };
+        assert_eq!(status, "degraded");
+    }
+
+    #[test]
+    fn aggregate_status_healthy_when_all_pass() {
+        let checks = [
+            HealthCheck {
+                name: "session_store",
+                status: "pass",
+                message: None,
+            },
+            HealthCheck {
+                name: "providers",
+                status: "pass",
+                message: None,
+            },
+        ];
+        let status = if checks.iter().any(|c| c.status == "fail") {
+            "unhealthy"
+        } else if checks.iter().any(|c| c.status == "warn") {
+            "degraded"
+        } else {
+            "healthy"
+        };
+        assert_eq!(status, "healthy");
+    }
+}
