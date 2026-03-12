@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -15,9 +17,10 @@ use crate::state::AppState;
     path = "/api/health",
     responses(
         (status = 200, description = "Health status", body = HealthResponse),
+        (status = 503, description = "Service unavailable", body = HealthResponse),
     ),
 )]
-pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+pub async fn check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let uptime = state.start_time.elapsed().as_secs();
 
     let mut checks = Vec::new();
@@ -46,6 +49,30 @@ pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
         },
     });
 
+    // Check nous actor health
+    let actor_health = state.nous_manager.check_health().await;
+    let any_dead = actor_health.values().any(|h| !h.alive);
+    checks.push(HealthCheck {
+        name: "nous_actors",
+        status: if actor_health.is_empty() || any_dead {
+            "fail"
+        } else {
+            "pass"
+        },
+        message: if actor_health.is_empty() {
+            Some("no nous actors registered".to_owned())
+        } else if any_dead {
+            let dead: Vec<_> = actor_health
+                .iter()
+                .filter(|(_, h)| !h.alive)
+                .map(|(id, _)| id.as_str())
+                .collect();
+            Some(format!("actors not responding: {}", dead.join(", ")))
+        } else {
+            None
+        },
+    });
+
     let status = if checks.iter().any(|c| c.status == "fail") {
         "unhealthy"
     } else if checks.iter().any(|c| c.status == "warn") {
@@ -54,12 +81,21 @@ pub async fn check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
         "healthy"
     };
 
-    Json(HealthResponse {
-        status,
-        version: env!("CARGO_PKG_VERSION"),
-        uptime_seconds: uptime,
-        checks,
-    })
+    let http_status = if status == "unhealthy" {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    };
+
+    (
+        http_status,
+        Json(HealthResponse {
+            status,
+            version: env!("CARGO_PKG_VERSION"),
+            uptime_seconds: uptime,
+            checks,
+        }),
+    )
 }
 
 /// Top-level health response combining all subsystem checks.
