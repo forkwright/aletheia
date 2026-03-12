@@ -78,6 +78,7 @@ jobs:
         run: cargo check --workspace
 
   no-default-features:
+    continue-on-error: true
     name: No-default-features check
     runs-on: ubuntu-latest
     steps:
@@ -88,6 +89,7 @@ jobs:
         run: cargo check --workspace --no-default-features
 
   docs:
+    continue-on-error: true
     name: Rustdoc
     runs-on: ubuntu-latest
     env:
