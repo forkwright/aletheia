@@ -16,8 +16,9 @@ use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use aletheia_nous::pipeline::TurnResult;
 use aletheia_nous::stream::TurnStreamEvent;
 
-use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
+use crate::error::{ApiError, BadRequestSnafu, ConflictSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::Claims;
+use crate::idempotency::{LookupResult, MAX_KEY_LENGTH};
 use crate::middleware::RequestId;
 use crate::state::AppState;
 use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
@@ -29,27 +30,68 @@ use super::{find_session, resolve_session, store_message};
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/{id}/messages",
-    params(("id" = String, Path, description = "Session ID")),
+    params(
+        ("id" = String, Path, description = "Session ID"),
+        ("Idempotency-Key" = Option<String>, Header, description = "Optional idempotency key (max 64 chars). Duplicate keys with a completed request return the cached response; duplicate keys with an in-flight request return 409 Conflict."),
+    ),
     request_body = SendMessageRequest,
     responses(
         (status = 200, description = "SSE event stream", content_type = "text/event-stream"),
         (status = 400, description = "Bad request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Session not found", body = crate::error::ErrorResponse),
+        (status = 409, description = "Idempotency conflict — request still in flight", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
 #[expect(
     clippy::too_many_lines,
-    reason = "handler includes preflight checks, eager user-message persistence, and spawned turn task"
+    reason = "handler includes preflight checks, idempotency guard, eager user-message persistence, and spawned turn task"
 )]
 pub async fn send_message(
     State(state): State<Arc<AppState>>,
     _claims: Claims,
+    headers: axum::http::HeaderMap,
     axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     Json(body): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    // --- Idempotency key extraction ---
+    let idempotency_key = extract_idempotency_key(&headers)?;
+
+    if let Some(ref key) = idempotency_key {
+        match state.idempotency_cache.check_or_insert(key) {
+            LookupResult::Miss => { /* proceed normally */ }
+            LookupResult::Hit { .. } => {
+                // Return a minimal SSE stream indicating the request was already processed.
+                tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
+                let (tx, rx) = mpsc::channel::<SseEvent>(1);
+                let _ = tx
+                    .send(SseEvent::MessageComplete {
+                        stop_reason: "idempotency_replay".to_owned(),
+                        usage: UsageData {
+                            input_tokens: 0,
+                            output_tokens: 0,
+                        },
+                    })
+                    .await;
+                drop(tx);
+                let stream = ReceiverStream::new(rx).map(sse_event_to_axum);
+                return Ok(Sse::new(stream).keep_alive(
+                    KeepAlive::new()
+                        .interval(Duration::from_secs(15))
+                        .text("ping"),
+                ));
+            }
+            LookupResult::Conflict => {
+                return Err(ConflictSnafu {
+                    message: "Request with this idempotency key is still in progress",
+                }
+                .build());
+            }
+        }
+    }
+
     let session = find_session(&state, &session_id).await?;
     let content = body.content;
 
@@ -112,12 +154,16 @@ pub async fn send_message(
         );
     }
 
+    let idem_key = idempotency_key.clone();
+    let idem_cache = Arc::clone(&state.idempotency_cache);
+
     let turn_span = tracing::info_span!(
         "send_turn",
         session.id = %session_id,
         session.key = %session_key,
         nous.id = %session.nous_id,
         request_id = %request_id.0,
+        idempotency_key = idempotency_key.as_deref().unwrap_or(""),
     );
     tokio::spawn(
         async move {
@@ -150,11 +196,22 @@ pub async fn send_message(
                             "failed to persist assistant message to session store"
                         );
                     }
+
+                    // Mark idempotency entry as completed so retries get a cache hit.
+                    if let Some(ref key) = idem_key {
+                        idem_cache.complete(key, axum::http::StatusCode::OK, String::new());
+                    }
                 }
                 Err(err) => {
                     // Log full error internally; the active span carries request_id and
                     // session/nous context. Never forward internal details to the client. (#844)
                     tracing::error!(error = %err, "turn failed");
+
+                    // Remove idempotency entry on error so the client can retry.
+                    if let Some(ref key) = idem_key {
+                        idem_cache.remove(key);
+                    }
+
                     let _ = tx
                         .send(SseEvent::Error {
                             code: "turn_failed".to_owned(),
@@ -178,13 +235,7 @@ pub async fn send_message(
         .instrument(turn_span),
     );
 
-    let stream = ReceiverStream::new(rx).map(|event| {
-        let data = serde_json::to_string(&event).unwrap_or_else(|e| {
-            warn!(error = %e, "failed to serialize SSE event");
-            String::new()
-        });
-        Ok(Event::default().event(event.event_type()).data(data))
-    });
+    let stream = ReceiverStream::new(rx).map(sse_event_to_axum);
 
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
@@ -442,6 +493,52 @@ pub async fn events(
             .interval(Duration::from_secs(30))
             .text("heartbeat"),
     )
+}
+
+/// Convert an [`SseEvent`] into an Axum SSE [`Event`].
+///
+/// Used as a named function (not closure) so that both the idempotency-replay
+/// path and the normal streaming path produce the same `impl Stream` type.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Result<_, Infallible> required by Stream<Item = Result<Event, Infallible>>"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "owned value received from Stream::map"
+)]
+fn sse_event_to_axum(event: SseEvent) -> Result<Event, Infallible> {
+    let data = serde_json::to_string(&event).unwrap_or_else(|e| {
+        warn!(error = %e, "failed to serialize SSE event");
+        String::new()
+    });
+    Ok(Event::default().event(event.event_type()).data(data))
+}
+
+/// Extract and validate the optional `Idempotency-Key` header.
+fn extract_idempotency_key(headers: &axum::http::HeaderMap) -> Result<Option<String>, ApiError> {
+    let Some(value) = headers.get("idempotency-key") else {
+        return Ok(None);
+    };
+    let key = value.to_str().map_err(|_non_ascii| {
+        BadRequestSnafu {
+            message: "Idempotency-Key header must be valid ASCII",
+        }
+        .build()
+    })?;
+    if key.is_empty() {
+        return Err(BadRequestSnafu {
+            message: "Idempotency-Key must not be empty",
+        }
+        .build());
+    }
+    if key.len() > MAX_KEY_LENGTH {
+        return Err(BadRequestSnafu {
+            message: format!("Idempotency-Key must be at most {MAX_KEY_LENGTH} characters"),
+        }
+        .build());
+    }
+    Ok(Some(key.to_owned()))
 }
 
 /// Emit turn result as individual SSE events to a single client channel.

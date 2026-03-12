@@ -93,6 +93,14 @@ pub enum ApiError {
         location: snafu::Location,
     },
 
+    /// Idempotency conflict — a request with this key is already in flight (409).
+    #[snafu(display("conflict: {message}"))]
+    Conflict {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Config validation failed (422).
     #[snafu(display("validation failed"))]
     ValidationFailed {
@@ -116,6 +124,7 @@ impl IntoResponse for ApiError {
                 "rate_limited",
                 Some(serde_json::json!({ "retry_after_ms": retry_after_ms })),
             ),
+            Self::Conflict { .. } => (StatusCode::CONFLICT, "conflict", None),
             Self::Forbidden { .. } => (StatusCode::FORBIDDEN, "forbidden", None),
             Self::ServiceUnavailable { .. } => {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable", None)
