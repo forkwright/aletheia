@@ -17,8 +17,6 @@ use qdrant_client::qdrant::{
     ScrollPointsBuilder, value, with_payload_selector, with_vectors_selector,
 };
 
-use crate::Cli;
-
 struct MemoryRecord {
     content: String,
     agent_id: String,
@@ -41,14 +39,14 @@ fn extract_double(v: &qdrant_client::qdrant::Value) -> Option<f64> {
 }
 
 pub async fn run(
-    cli: &Cli,
+    instance_root: Option<&PathBuf>,
     qdrant_url: &str,
     collection: &str,
     knowledge_path: Option<&PathBuf>,
     review_file: Option<&PathBuf>,
     dry_run: bool,
 ) -> Result<()> {
-    let oikos = match &cli.instance_root {
+    let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
