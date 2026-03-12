@@ -459,6 +459,7 @@ pub async fn run(args: Args) -> Result<()> {
     let bind_host = args.bind.as_deref().unwrap_or(&config.gateway.bind);
     let bind_addr_str = match bind_host {
         "lan" => "0.0.0.0",
+        "localhost" => "127.0.0.1",
         other => other,
     };
 

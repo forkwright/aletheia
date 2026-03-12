@@ -226,7 +226,7 @@ pub struct NousDefinition {
 pub struct GatewayConfig {
     /// TCP port the gateway listens on.
     pub port: u16,
-    /// Bind mode: `"lan"` for LAN-accessible, `"localhost"` for loopback only.
+    /// Bind mode: `"localhost"` for loopback only, `"lan"` for all interfaces.
     pub bind: String,
     /// Authentication configuration.
     pub auth: GatewayAuthConfig,
@@ -238,18 +238,21 @@ pub struct GatewayConfig {
     pub body_limit: BodyLimitConfig,
     /// CSRF protection settings.
     pub csrf: CsrfConfig,
+    /// Rate limiting settings.
+    pub rate_limit: RateLimitConfig,
 }
 
 impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
             port: 18789,
-            bind: "lan".to_owned(),
+            bind: "localhost".to_owned(),
             auth: GatewayAuthConfig::default(),
             tls: TlsConfig::default(),
             cors: CorsConfig::default(),
             body_limit: BodyLimitConfig::default(),
             csrf: CsrfConfig::default(),
+            rate_limit: RateLimitConfig::default(),
         }
     }
 }
@@ -348,6 +351,26 @@ impl Default for CsrfConfig {
     }
 }
 
+/// Rate limiting configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct RateLimitConfig {
+    /// Whether rate limiting is active.
+    pub enabled: bool,
+    /// Maximum requests per minute per client IP.
+    pub requests_per_minute: u32,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            requests_per_minute: 60,
+        }
+    }
+}
+
 /// Embedding provider configuration for recall pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -423,7 +446,7 @@ pub struct SignalAccountConfig {
     pub cli_path: Option<String>,
     /// Whether to auto-start signal-cli when the daemon starts.
     pub auto_start: bool,
-    /// Direct message policy: `"open"` accepts all, `"allowlist"` restricts.
+    /// Direct message policy: `"contacts"` (known contacts only), `"open"` (anyone), `"allowlist"` restricts.
     pub dm_policy: String,
     /// Group message policy: `"open"` or `"allowlist"`.
     pub group_policy: String,
@@ -445,7 +468,7 @@ impl Default for SignalAccountConfig {
             http_port: 8080,
             cli_path: None,
             auto_start: true,
-            dm_policy: "open".to_owned(),
+            dm_policy: "contacts".to_owned(),
             group_policy: "allowlist".to_owned(),
             require_mention: true,
             send_read_receipts: true,
