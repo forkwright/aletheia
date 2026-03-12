@@ -8,6 +8,8 @@
 pub mod bridge;
 /// Error types for task execution, scheduling, and maintenance operations.
 pub mod error;
+/// Task action execution: commands, builtins, prompts, and knowledge maintenance.
+mod execution;
 /// Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 pub mod maintenance;
 /// Prosoche (directed attention) periodic check-in for calendar, tasks, and system health.

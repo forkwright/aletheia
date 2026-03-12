@@ -1,0 +1,358 @@
+//! Turn execution — handles individual turns with panic boundary protection.
+
+use std::sync::Arc;
+
+use tokio::sync::mpsc;
+use tracing::{Instrument, debug, error, warn};
+
+use aletheia_koina::id::{NousId, SessionId};
+use aletheia_organon::types::ToolContext;
+
+use crate::pipeline::TurnResult;
+use crate::session::SessionState;
+use crate::stream::TurnStreamEvent;
+
+use super::{DEGRADED_PANIC_THRESHOLD, DEGRADED_WINDOW, NousActor, NousLifecycle};
+
+impl NousActor {
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe in isolation. Sets `lifecycle = Active` and
+    /// `active_session` before awaiting `execute_turn`. If the future
+    /// were dropped mid-await, those fields would not be reset. In
+    /// practice this is only called from the sequential actor loop, so
+    /// cancellation only occurs at shutdown when the actor is consumed.
+    pub(super) async fn handle_turn(
+        &mut self,
+        session_key: String,
+        content: String,
+        reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
+    ) {
+        if self.lifecycle == NousLifecycle::Dormant {
+            debug!("auto-waking from dormant for turn");
+            self.lifecycle = NousLifecycle::Idle;
+        }
+
+        self.lifecycle = NousLifecycle::Active;
+        self.active_session = Some(session_key.clone());
+
+        let result = self
+            .execute_turn_with_panic_boundary(&session_key, &content)
+            .await;
+
+        if let Ok(ref turn_result) = result {
+            self.maybe_spawn_extraction(&content, &turn_result.content);
+            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &session_key);
+            self.maybe_spawn_distillation(&session_key).await;
+        }
+
+        self.active_session = None;
+        // Preserve degraded state — only reset to Idle if not degraded
+        if self.lifecycle != NousLifecycle::Degraded {
+            self.lifecycle = NousLifecycle::Idle;
+        }
+
+        // Ignore send error — caller may have dropped the receiver
+        let _ = reply.send(result);
+    }
+
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe in isolation — same profile as `handle_turn`.
+    /// Sets `lifecycle` and `active_session` before the `.await` point.
+    /// Only called from the sequential actor loop.
+    pub(super) async fn handle_streaming_turn(
+        &mut self,
+        session_key: String,
+        content: String,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
+    ) {
+        if self.lifecycle == NousLifecycle::Dormant {
+            debug!("auto-waking from dormant for streaming turn");
+            self.lifecycle = NousLifecycle::Idle;
+        }
+
+        self.lifecycle = NousLifecycle::Active;
+        self.active_session = Some(session_key.clone());
+
+        let result = self
+            .execute_streaming_turn_with_panic_boundary(&session_key, &content, &stream_tx)
+            .await;
+
+        if let Ok(ref turn_result) = result {
+            self.maybe_spawn_extraction(&content, &turn_result.content);
+            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &session_key);
+            self.maybe_spawn_distillation(&session_key).await;
+        }
+
+        self.active_session = None;
+        if self.lifecycle != NousLifecycle::Degraded {
+            self.lifecycle = NousLifecycle::Idle;
+        }
+
+        let _ = reply.send(result);
+    }
+
+    /// Execute a turn with a panic boundary. If the pipeline panics, the panic
+    /// is caught, logged, and an error is returned to the caller. The actor
+    /// continues processing subsequent messages.
+    async fn execute_turn_with_panic_boundary(
+        &mut self,
+        session_key: &str,
+        content: &str,
+    ) -> crate::error::Result<TurnResult> {
+        // Spawn the pipeline in a separate task so panics are caught by the
+        // JoinHandle rather than propagating into the actor loop.
+        let result = self.spawn_pipeline_task(session_key, content, None).await;
+        self.handle_pipeline_result(result, session_key)
+    }
+
+    /// Execute a streaming turn with a panic boundary.
+    async fn execute_streaming_turn_with_panic_boundary(
+        &mut self,
+        session_key: &str,
+        content: &str,
+        stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    ) -> crate::error::Result<TurnResult> {
+        let result = self
+            .spawn_pipeline_task(session_key, content, Some(stream_tx.clone()))
+            .await;
+        self.handle_pipeline_result(result, session_key)
+    }
+
+    /// Spawn the pipeline as a separate tokio task to catch panics.
+    async fn spawn_pipeline_task(
+        &mut self,
+        session_key: &str,
+        content: &str,
+        stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
+    ) -> Result<crate::error::Result<TurnResult>, tokio::task::JoinError> {
+        // Prepare all data needed by the pipeline before spawning
+        let session = self
+            .sessions
+            .entry(session_key.to_owned())
+            .or_insert_with(|| {
+                let id = SessionId::new().to_string();
+                debug!(session_key, session_id = %id, "creating new session");
+                SessionState::new(id, session_key.to_owned(), &self.config)
+            });
+
+        session.next_turn();
+
+        let input = crate::pipeline::PipelineInput {
+            content: content.to_owned(),
+            session: session.clone(),
+            config: self.pipeline_config.clone(),
+        };
+
+        let nous_id = NousId::new(&self.id).map_err(|e| {
+            crate::error::ConfigSnafu {
+                message: format!("invalid nous id: {e}"),
+            }
+            .build()
+        });
+
+        let nous_id = match nous_id {
+            Ok(id) => id,
+            Err(e) => return Ok(Err(e)),
+        };
+
+        let tool_ctx = ToolContext {
+            nous_id,
+            session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
+            workspace: self.oikos.nous_dir(&self.id),
+            allowed_roots: vec![self.oikos.root().to_path_buf()],
+            services: self.tool_services.clone(),
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+        };
+
+        let mut extra_bootstrap = self.extra_bootstrap.clone();
+        extra_bootstrap.extend(self.resolve_skill_sections(content).await);
+
+        let oikos = Arc::clone(&self.oikos);
+        let config = self.config.clone();
+        let pipeline_config = self.pipeline_config.clone();
+        let providers = Arc::clone(&self.providers);
+        let tools = Arc::clone(&self.tools);
+        let embedding_provider = self.embedding_provider.clone();
+        let vector_search = self.vector_search.clone();
+        let session_store = self.session_store.clone();
+        let span = tracing::Span::current();
+
+        tokio::spawn(
+            async move {
+                match stream_tx {
+                    Some(ref stx) => {
+                        crate::pipeline::run_pipeline(
+                            input,
+                            &oikos,
+                            &config,
+                            &pipeline_config,
+                            &providers,
+                            &tools,
+                            &tool_ctx,
+                            embedding_provider.as_deref(),
+                            vector_search.as_deref(),
+                            session_store.as_deref(),
+                            extra_bootstrap,
+                            Some(stx),
+                        )
+                        .await
+                    }
+                    None => {
+                        crate::pipeline::run_pipeline(
+                            input,
+                            &oikos,
+                            &config,
+                            &pipeline_config,
+                            &providers,
+                            &tools,
+                            &tool_ctx,
+                            embedding_provider.as_deref(),
+                            vector_search.as_deref(),
+                            session_store.as_deref(),
+                            extra_bootstrap,
+                            None,
+                        )
+                        .await
+                    }
+                }
+            }
+            .instrument(span),
+        )
+        .await
+    }
+
+    /// Convert a spawned pipeline result (which may be a panic) into an `error::Result`.
+    /// Records panic if one occurred and potentially enters degraded mode.
+    fn handle_pipeline_result(
+        &mut self,
+        result: Result<crate::error::Result<TurnResult>, tokio::task::JoinError>,
+        session_key: &str,
+    ) -> crate::error::Result<TurnResult> {
+        match result {
+            Ok(inner) => inner,
+            Err(join_error) => {
+                self.record_panic();
+
+                let panic_msg = if join_error.is_panic() {
+                    let panic_payload = join_error.into_panic();
+                    if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                        (*s).to_owned()
+                    } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+                        s.clone()
+                    } else {
+                        "unknown panic".to_owned()
+                    }
+                } else {
+                    format!("task cancelled: {join_error}")
+                };
+
+                error!(
+                    nous_id = %self.id,
+                    session_key = %session_key,
+                    panic_count = self.panic_count,
+                    message = %panic_msg,
+                    "pipeline panicked — actor continues"
+                );
+
+                Err(crate::error::PipelinePanicSnafu {
+                    nous_id: self.id.clone(),
+                    message: panic_msg,
+                }
+                .build())
+            }
+        }
+    }
+
+    /// Record a panic occurrence. Enters degraded mode if too many panics in the window.
+    fn record_panic(&mut self) {
+        self.panic_count += 1;
+        self.panic_timestamps.push(std::time::Instant::now());
+
+        // Prune timestamps outside the window
+        let cutoff = std::time::Instant::now()
+            .checked_sub(DEGRADED_WINDOW)
+            .unwrap_or(self.started_at);
+        self.panic_timestamps.retain(|t| *t > cutoff);
+
+        if self.panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
+            warn!(
+                nous_id = %self.id,
+                panic_count = self.panic_count,
+                recent_panics = self.panic_timestamps.len(),
+                "entering degraded mode — too many panics in window"
+            );
+            self.lifecycle = NousLifecycle::Degraded;
+        }
+    }
+
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Session creation via `entry().or_insert_with()` is
+    /// idempotent. If cancelled during `run_pipeline`, the session exists
+    /// but the turn is incomplete — no persistent state is corrupted.
+    pub(super) async fn execute_turn(
+        &mut self,
+        session_key: &str,
+        content: &str,
+    ) -> crate::error::Result<TurnResult> {
+        let session = self
+            .sessions
+            .entry(session_key.to_owned())
+            .or_insert_with(|| {
+                let id = SessionId::new().to_string();
+                debug!(session_key, session_id = %id, "creating new session");
+                SessionState::new(id, session_key.to_owned(), &self.config)
+            });
+
+        session.next_turn();
+
+        let input = crate::pipeline::PipelineInput {
+            content: content.to_owned(),
+            session: session.clone(),
+            config: self.pipeline_config.clone(),
+        };
+
+        let nous_id = NousId::new(&self.id).map_err(|e| {
+            crate::error::ConfigSnafu {
+                message: format!("invalid nous id: {e}"),
+            }
+            .build()
+        })?;
+
+        let tool_ctx = ToolContext {
+            nous_id,
+            session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
+            workspace: self.oikos.nous_dir(&self.id),
+            allowed_roots: vec![self.oikos.root().to_path_buf()],
+            services: self.tool_services.clone(),
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+        };
+
+        // Merge static domain-pack sections with dynamic skill sections.
+        let mut extra_bootstrap = self.extra_bootstrap.clone();
+        extra_bootstrap.extend(self.resolve_skill_sections(content).await);
+
+        crate::pipeline::run_pipeline(
+            input,
+            &self.oikos,
+            &self.config,
+            &self.pipeline_config,
+            &self.providers,
+            &self.tools,
+            &tool_ctx,
+            self.embedding_provider.as_deref(),
+            self.vector_search.as_deref(),
+            self.session_store.as_deref(),
+            extra_bootstrap,
+            None,
+        )
+        .await
+    }
+}
