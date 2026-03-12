@@ -16,7 +16,7 @@ Not a chatbot framework. A distributed cognition system.
 
 ## Architecture
 
-Rust workspace with 16 crates. Single binary deployment.
+Rust workspace with 17 crates. Single binary deployment.
 
 ```text
      TUI / HTTP API              Signal Messenger
