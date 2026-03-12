@@ -138,9 +138,15 @@ pub struct FjallWriteTx<'s> {
 // sharing a reference across threads is sound. SingleWriterWriteTx is protected
 // by an external mutex guard at the call site, ensuring exclusive access while
 // the reference is live. Both impls are therefore safe to declare Sync.
-#[expect(unsafe_code, reason = "fjall transaction types require manual Sync; soundness documented above")]
+#[expect(
+    unsafe_code,
+    reason = "fjall transaction types require manual Sync; soundness documented above"
+)]
 unsafe impl Sync for FjallReadTx<'_> {}
-#[expect(unsafe_code, reason = "fjall transaction types require manual Sync; soundness documented above")]
+#[expect(
+    unsafe_code,
+    reason = "fjall transaction types require manual Sync; soundness documented above"
+)]
 unsafe impl Sync for FjallWriteTx<'_> {}
 
 impl FjallWriteTx<'_> {

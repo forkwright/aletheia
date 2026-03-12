@@ -220,7 +220,10 @@ impl App {
         }
     }
 
-    #[expect(clippy::unused_self, reason = "consistent method signature; self needed for future key binding personalisation")]
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent method signature; self needed for future key binding personalisation"
+    )]
     fn map_ops_pane_key(&self, key: KeyEvent) -> Option<Msg> {
         match (key.modifiers, key.code) {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
@@ -237,7 +240,10 @@ impl App {
         }
     }
 
-    #[expect(clippy::unused_self, reason = "consistent method signature; self needed for future key binding personalisation")]
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent method signature; self needed for future key binding personalisation"
+    )]
     fn map_selection_key(&self, key: KeyEvent) -> Option<Msg> {
         match (key.modifiers, key.code) {
             // Ctrl combos pass through to global handlers
@@ -561,7 +567,10 @@ impl App {
         }
     }
 
-    #[expect(clippy::unused_self, reason = "consistent method signature for event mapping interface")]
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent method signature for event mapping interface"
+    )]
     fn map_sse(&self, event: SseEvent) -> Msg {
         match event {
             SseEvent::Connected => Msg::SseConnected,
@@ -617,7 +626,10 @@ impl App {
         }
     }
 
-    #[expect(clippy::unused_self, reason = "consistent method signature for event mapping interface")]
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent method signature for event mapping interface"
+    )]
     fn map_stream(&self, event: StreamEvent) -> Msg {
         match event {
             StreamEvent::TurnStart {

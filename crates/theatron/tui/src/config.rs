@@ -64,7 +64,10 @@ impl Config {
         })
     }
 
-    #[expect(clippy::unused_self, reason = "consistent instance-method API; &self kept for tracing::instrument skip")]
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent instance-method API; &self kept for tracing::instrument skip"
+    )]
     #[tracing::instrument(skip(self))]
     pub fn clear_credentials(&self) -> Result<()> {
         let path = Self::config_path()?;
@@ -79,7 +82,10 @@ impl Config {
     }
 
     #[expect(dead_code, reason = "called from login flow")]
-    #[expect(clippy::unused_self, reason = "consistent instance-method API; &self kept for tracing::instrument skip")]
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent instance-method API; &self kept for tracing::instrument skip"
+    )]
     #[tracing::instrument(skip(self, token))]
     pub fn save_token(&self, token: &str) -> Result<()> {
         let path = Self::config_path()?;
