@@ -51,7 +51,7 @@ impl Default for SecurityConfig {
             allowed_origins: Vec::new(),
             cors_max_age_secs: 3600,
             body_limit_bytes: 1_048_576,
-            csrf_enabled: false,
+            csrf_enabled: true,
             csrf_header_name: "x-requested-with".to_owned(),
             csrf_header_value: "aletheia".to_owned(),
             tls_enabled: false,

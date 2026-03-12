@@ -373,7 +373,10 @@ impl TestHarness {
     fn router(&self) -> axum::Router {
         build_router(
             Arc::clone(&self.state),
-            &aletheia_pylon::security::SecurityConfig::default(),
+            &aletheia_pylon::security::SecurityConfig {
+                csrf_enabled: false,
+                ..aletheia_pylon::security::SecurityConfig::default()
+            },
         )
     }
 

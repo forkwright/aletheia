@@ -448,6 +448,20 @@ pub async fn run(args: Args) -> Result<()> {
         "lan" => "0.0.0.0",
         other => other,
     };
+
+    // Warn if auth is disabled on a non-localhost bind address
+    if config.gateway.auth.mode == "none"
+        && bind_addr_str != "127.0.0.1"
+        && bind_addr_str != "localhost"
+        && bind_addr_str != "::1"
+    {
+        warn!(
+            bind = %bind_addr_str,
+            "authentication is disabled (auth.mode = \"none\") on a non-localhost address — \
+             the API is accessible without credentials"
+        );
+    }
+
     let bind_addr = format!("{bind_addr_str}:{port}");
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await

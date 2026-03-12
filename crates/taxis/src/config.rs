@@ -341,7 +341,7 @@ pub struct CsrfConfig {
 impl Default for CsrfConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             header_name: "x-requested-with".to_owned(),
             header_value: "aletheia".to_owned(),
         }

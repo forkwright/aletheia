@@ -127,13 +127,24 @@ impl CredentialFile {
 // OAuth response
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct OAuthResponse {
     access_token: String,
     refresh_token: String,
     #[serde(default = "default_expires_in")]
     expires_in: u64,
     scope: Option<String>,
+}
+
+impl std::fmt::Debug for OAuthResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthResponse")
+            .field("access_token", &"[REDACTED]")
+            .field("refresh_token", &"[REDACTED]")
+            .field("expires_in", &self.expires_in)
+            .field("scope", &self.scope)
+            .finish()
+    }
 }
 
 fn default_expires_in() -> u64 {
