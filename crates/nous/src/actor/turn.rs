@@ -25,6 +25,7 @@ impl NousActor {
     pub(super) async fn handle_turn(
         &mut self,
         session_key: String,
+        session_id: Option<String>,
         content: String,
         caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
@@ -38,7 +39,12 @@ impl NousActor {
         self.active_session = Some(session_key.clone());
 
         let result = self
-            .execute_turn_with_panic_boundary(&session_key, &content, caller_span)
+            .execute_turn_with_panic_boundary(
+                &session_key,
+                session_id.as_deref(),
+                &content,
+                caller_span,
+            )
             .await;
 
         if let Ok(ref turn_result) = result {
@@ -72,6 +78,7 @@ impl NousActor {
     pub(super) async fn handle_streaming_turn(
         &mut self,
         session_key: String,
+        session_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         caller_span: tracing::Span,
@@ -88,6 +95,7 @@ impl NousActor {
         let result = self
             .execute_streaming_turn_with_panic_boundary(
                 &session_key,
+                session_id.as_deref(),
                 &content,
                 &stream_tx,
                 caller_span,
@@ -121,13 +129,14 @@ impl NousActor {
     async fn execute_turn_with_panic_boundary(
         &mut self,
         session_key: &str,
+        session_id: Option<&str>,
         content: &str,
         caller_span: tracing::Span,
     ) -> crate::error::Result<TurnResult> {
         // Spawn the pipeline in a separate task so panics are caught by the
         // JoinHandle rather than propagating into the actor loop.
         let result = self
-            .spawn_pipeline_task(session_key, content, None, caller_span)
+            .spawn_pipeline_task(session_key, session_id, content, None, caller_span)
             .await;
         self.handle_pipeline_result(result, session_key)
     }
@@ -136,20 +145,33 @@ impl NousActor {
     async fn execute_streaming_turn_with_panic_boundary(
         &mut self,
         session_key: &str,
+        session_id: Option<&str>,
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
         caller_span: tracing::Span,
     ) -> crate::error::Result<TurnResult> {
         let result = self
-            .spawn_pipeline_task(session_key, content, Some(stream_tx.clone()), caller_span)
+            .spawn_pipeline_task(
+                session_key,
+                session_id,
+                content,
+                Some(stream_tx.clone()),
+                caller_span,
+            )
             .await;
         self.handle_pipeline_result(result, session_key)
     }
 
     /// Spawn the pipeline as a separate tokio task to catch panics.
+    ///
+    /// When `db_session_id` is `Some`, the actor adopts that ID for the
+    /// in-memory `SessionState` instead of generating a new ULID. This
+    /// ensures the actor's session ID matches the database row created by
+    /// pylon, preventing FK constraint failures in finalize and tools.
     async fn spawn_pipeline_task(
         &mut self,
         session_key: &str,
+        db_session_id: Option<&str>,
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         caller_span: tracing::Span,
@@ -159,7 +181,8 @@ impl NousActor {
             .sessions
             .entry(session_key.to_owned())
             .or_insert_with(|| {
-                let id = SessionId::new().to_string();
+                let id =
+                    db_session_id.map_or_else(|| SessionId::new().to_string(), ToOwned::to_owned);
                 debug!(session_key, session_id = %id, "creating new session");
                 SessionState::new(id, session_key.to_owned(), &self.config)
             });
@@ -338,6 +361,8 @@ impl NousActor {
             .sessions
             .entry(session_key.to_owned())
             .or_insert_with(|| {
+                // Cross-nous messages don't carry a database session ID;
+                // generate a fresh one and let finalize create the DB row.
                 let id = SessionId::new().to_string();
                 debug!(session_key, session_id = %id, "creating new session");
                 SessionState::new(id, session_key.to_owned(), &self.config)

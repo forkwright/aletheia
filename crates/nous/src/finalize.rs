@@ -387,4 +387,102 @@ mod tests {
         let fr = finalize(&store, &session2, "Read it", &result, &config).expect("finalize");
         assert_eq!(fr.messages_persisted, 4);
     }
+
+    /// Regression test for #758/#916/#923: session ID divergence.
+    ///
+    /// Simulates the scenario where pylon creates a session with DB ID "A",
+    /// but the actor's `SessionState` holds a different ID "B". Before the fix,
+    /// `find_or_create_session` would find the existing session by
+    /// (`nous_id`, `session_key`) and return ID "A", but `append_message` would
+    /// use the actor's ID "B" — causing an FK constraint violation.
+    ///
+    /// After the fix, the actor adopts the DB session ID so both match.
+    #[test]
+    fn finalize_with_matching_session_id_no_fk_violation() {
+        let store = SessionStore::open_in_memory().expect("in-memory store");
+        let db_session_id = "db-ses-from-pylon";
+
+        // Simulate pylon creating the session in the store
+        store
+            .create_session(db_session_id, "test-nous", "main", None, Some("test-model"))
+            .expect("create session");
+
+        // Actor's SessionState must use the SAME ID as the database.
+        // Before the fix, the actor would generate a different ULID here.
+        let config = NousConfig {
+            id: "test-nous".to_owned(),
+            model: "test-model".to_owned(),
+            ..NousConfig::default()
+        };
+        let session = SessionState::new(db_session_id.to_owned(), "main".to_owned(), &config);
+
+        let result = simple_result();
+        let finalize_config = FinalizeConfig::default();
+
+        // This must succeed — no FK violation because IDs match.
+        let fr = finalize(&store, &session, "Hello", &result, &finalize_config)
+            .expect("finalize should not fail with matching session IDs");
+        assert_eq!(fr.messages_persisted, 2);
+        assert!(fr.usage_recorded);
+
+        // Verify messages are under the correct session ID.
+        let history = store.get_history(db_session_id, None).expect("history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].role, Role::User);
+        assert_eq!(history[0].content, "Hello");
+        assert_eq!(history[1].role, Role::Assistant);
+        assert_eq!(history[1].content, "Hello!");
+    }
+
+    /// Regression test for #758: verify that when the actor uses a divergent
+    /// session ID, `find_or_create_session` finds by (`nous_id`, `session_key`)
+    /// but `append_message` would use the wrong ID. This test documents the
+    /// failure mode that the session-id-adoption fix prevents.
+    #[test]
+    fn divergent_session_id_causes_fk_violation() {
+        let store = SessionStore::open_in_memory().expect("in-memory store");
+
+        // Pylon creates session with one ID
+        store
+            .create_session("pylon-id", "test-nous", "main", None, Some("test-model"))
+            .expect("create session");
+
+        // Actor would have generated a DIFFERENT ID (before the fix)
+        let config = NousConfig {
+            id: "test-nous".to_owned(),
+            model: "test-model".to_owned(),
+            ..NousConfig::default()
+        };
+        let divergent_session =
+            SessionState::new("actor-generated-id".to_owned(), "main".to_owned(), &config);
+
+        let result = simple_result();
+        let finalize_config = FinalizeConfig::default();
+
+        // find_or_create_session finds "pylon-id" by (nous_id, session_key).
+        // But append_message uses "actor-generated-id" which has no DB row.
+        // finalize internally calls find_or_create_session which ensures a
+        // row exists matching the session_key, then tries append_message with
+        // the actor's ID. The find_or_create returns the existing "pylon-id"
+        // row, but append_message uses "actor-generated-id".
+        //
+        // The finalize function calls find_or_create_session with the actor's
+        // session.id as the `id` param. Since an active session already exists
+        // for (nous_id, session_key), it returns that existing session — but
+        // does NOT create a new row with the actor's ID. Subsequent
+        // append_message calls use the actor's ID, which has no row → FK error.
+        let result = finalize(
+            &store,
+            &divergent_session,
+            "Hello",
+            &result,
+            &finalize_config,
+        );
+
+        // This should fail with a database error due to FK constraint
+        assert!(
+            result.is_err(),
+            "divergent session ID should cause FK violation"
+        );
+    }
 }
