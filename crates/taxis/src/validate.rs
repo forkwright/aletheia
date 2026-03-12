@@ -21,7 +21,10 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "gateway" => validate_gateway(value, &mut errors),
         "maintenance" => validate_maintenance(value, &mut errors),
         "data" => validate_data(value, &mut errors),
-        "embedding" | "channels" | "bindings" | "packs" | "pricing" => {}
+        "embedding" => validate_embedding(value, &mut errors),
+        "channels" => validate_channels(value, &mut errors),
+        "bindings" => validate_bindings(value, &mut errors),
+        "packs" | "pricing" | "sandbox" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 
@@ -53,13 +56,36 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
                 }
             }
         }
+
+        // Bootstrap budget must fit within the context window.
+        let context = defaults.get("contextTokens").and_then(Value::as_u64);
+        let bootstrap = defaults.get("bootstrapMaxTokens").and_then(Value::as_u64);
+        if let (Some(ctx), Some(boot)) = (context, bootstrap) {
+            if boot >= ctx {
+                errors.push(format!(
+                    "bootstrapMaxTokens ({boot}) must be less than contextTokens ({ctx})"
+                ));
+            }
+        }
     }
 }
+
+const VALID_AUTH_MODES: &[&str] = &["none", "token", "jwt"];
 
 fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     if let Some(port) = value.get("port").and_then(Value::as_u64) {
         if port == 0 || port > 65535 {
             errors.push("port must be between 1 and 65535".to_owned());
+        }
+    }
+
+    if let Some(auth) = value.get("auth") {
+        if let Some(mode) = auth.get("mode").and_then(Value::as_str) {
+            if !VALID_AUTH_MODES.contains(&mode) {
+                errors.push(format!(
+                    "gateway.auth.mode '{mode}' is invalid; must be one of: none, token, jwt"
+                ));
+            }
         }
     }
 
@@ -107,6 +133,51 @@ fn validate_data(value: &Value, errors: &mut Vec<String>) {
     if let Some(retention) = value.get("retention") {
         check_positive_u32(retention, "sessionMaxAgeDays", errors);
         check_positive_u32(retention, "orphanMessageMaxAgeDays", errors);
+    }
+}
+
+fn validate_embedding(value: &Value, errors: &mut Vec<String>) {
+    if let Some(provider) = value.get("provider").and_then(Value::as_str) {
+        if provider.is_empty() {
+            errors.push("embedding.provider must not be empty".to_owned());
+        }
+    }
+
+    if let Some(dim) = value.get("dimension").and_then(Value::as_u64) {
+        if dim == 0 {
+            errors.push("embedding.dimension must be positive".to_owned());
+        }
+    }
+}
+
+fn validate_channels(value: &Value, errors: &mut Vec<String>) {
+    if let Some(signal) = value.get("signal") {
+        if let Some(accounts) = signal.get("accounts").and_then(Value::as_object) {
+            for (account_id, account) in accounts {
+                if let Some(port) = account.get("httpPort").and_then(Value::as_u64) {
+                    if port == 0 || port > 65535 {
+                        errors.push(format!(
+                            "channels.signal.accounts.{account_id}.httpPort must be between 1 and 65535"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
+    let Some(bindings) = value.as_array() else { return };
+
+    for (i, binding) in bindings.iter().enumerate() {
+        for field in &["channel", "source", "nousId"] {
+            match binding.get(field).and_then(Value::as_str) {
+                None | Some("") => {
+                    errors.push(format!("bindings[{i}].{field} must not be empty"));
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -187,5 +258,112 @@ mod tests {
     fn unknown_section_errors() {
         let result = validate_section("nonexistent", &json!({}));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_bootstrap_exceeding_context() {
+        let section = json!({
+            "defaults": {
+                "contextTokens": 10_000,
+                "bootstrapMaxTokens": 20_000
+            }
+        });
+        let result = validate_section("agents", &section);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.errors[0].contains("bootstrapMaxTokens"));
+    }
+
+    #[test]
+    fn accepts_bootstrap_within_context() {
+        let section = json!({
+            "defaults": {
+                "contextTokens": 200_000,
+                "bootstrapMaxTokens": 40_000
+            }
+        });
+        assert!(validate_section("agents", &section).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_auth_mode() {
+        let section = json!({ "auth": { "mode": "magic" } });
+        let result = validate_section("gateway", &section);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.errors[0].contains("gateway.auth.mode"));
+    }
+
+    #[test]
+    fn accepts_valid_auth_modes() {
+        for mode in &["none", "token", "jwt"] {
+            let section = json!({ "auth": { "mode": mode } });
+            assert!(
+                validate_section("gateway", &section).is_ok(),
+                "mode '{mode}' should be valid"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_zero_embedding_dimension() {
+        let section = json!({ "dimension": 0 });
+        let result = validate_section("embedding", &section);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_empty_embedding_provider() {
+        let section = json!({ "provider": "" });
+        let result = validate_section("embedding", &section);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn accepts_valid_embedding() {
+        let section = json!({ "provider": "candle", "dimension": 384 });
+        assert!(validate_section("embedding", &section).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_signal_port() {
+        let section = json!({
+            "signal": {
+                "accounts": {
+                    "primary": { "httpPort": 0 }
+                }
+            }
+        });
+        let result = validate_section("channels", &section);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn accepts_valid_channels() {
+        let section = json!({
+            "signal": {
+                "accounts": {
+                    "primary": { "httpPort": 8080 }
+                }
+            }
+        });
+        assert!(validate_section("channels", &section).is_ok());
+    }
+
+    #[test]
+    fn rejects_binding_with_empty_fields() {
+        let section = json!([
+            { "channel": "signal", "source": "*", "nousId": "" }
+        ]);
+        let result = validate_section("bindings", &section);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn accepts_valid_bindings() {
+        let section = json!([
+            { "channel": "signal", "source": "*", "nousId": "main" }
+        ]);
+        assert!(validate_section("bindings", &section).is_ok());
     }
 }
