@@ -446,3 +446,174 @@ async fn unknown_action_returns_error() {
     assert!(result.is_error);
     assert!(result.content.text_summary().contains("unknown action"));
 }
+
+#[tokio::test]
+async fn plan_requirements_start_scoping_dispatches() {
+    let mock = Arc::new(MockPlanning::default());
+    let mock_ref = Arc::clone(&mock);
+    let ctx = test_ctx_with_planning(mock);
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let input = ToolInput {
+        name: ToolName::new("plan_requirements").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({"project_id": "proj1", "action": "start_scoping"}),
+    };
+    let result = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(!result.is_error);
+
+    let calls = mock_ref.transition_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].1, "start_scoping");
+}
+
+#[tokio::test]
+async fn plan_requirements_complete_dispatches_start_planning() {
+    let mock = Arc::new(MockPlanning::default());
+    let mock_ref = Arc::clone(&mock);
+    let ctx = test_ctx_with_planning(mock);
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let input = ToolInput {
+        name: ToolName::new("plan_requirements").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({"project_id": "proj1", "action": "complete"}),
+    };
+    let result = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(!result.is_error);
+
+    let calls = mock_ref.transition_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].1, "start_planning");
+}
+
+#[tokio::test]
+async fn plan_discuss_complete_dispatches_start_execution() {
+    let mock = Arc::new(MockPlanning::default());
+    let mock_ref = Arc::clone(&mock);
+    let ctx = test_ctx_with_planning(mock);
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let input = ToolInput {
+        name: ToolName::new("plan_discuss").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({"project_id": "proj1", "action": "complete"}),
+    };
+    let result = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(!result.is_error);
+
+    let calls = mock_ref.transition_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].1, "start_execution");
+}
+
+#[tokio::test]
+async fn plan_discuss_unknown_action_returns_error() {
+    let mock = Arc::new(MockPlanning::default());
+    let ctx = test_ctx_with_planning(mock);
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let input = ToolInput {
+        name: ToolName::new("plan_discuss").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({"project_id": "proj1", "action": "invalid"}),
+    };
+    let result = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(result.is_error);
+    assert!(result.content.text_summary().contains("unknown action"));
+}
+
+#[tokio::test]
+async fn plan_roadmap_start_discussion_dispatches() {
+    let mock = Arc::new(MockPlanning::default());
+    let mock_ref = Arc::clone(&mock);
+    let ctx = test_ctx_with_planning(mock);
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let input = ToolInput {
+        name: ToolName::new("plan_roadmap").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({"project_id": "proj1", "action": "start_discussion"}),
+    };
+    let result = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(!result.is_error);
+
+    let calls = mock_ref.transition_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].1, "start_discussion");
+}
+
+#[tokio::test]
+async fn plan_roadmap_start_execution_dispatches() {
+    let mock = Arc::new(MockPlanning::default());
+    let mock_ref = Arc::clone(&mock);
+    let ctx = test_ctx_with_planning(mock);
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let input = ToolInput {
+        name: ToolName::new("plan_roadmap").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({"project_id": "proj1", "action": "start_execution"}),
+    };
+    let result = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(!result.is_error);
+
+    let calls = mock_ref.transition_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].1, "start_execution");
+}
+
+#[tokio::test]
+async fn plan_verify_complete_dispatches() {
+    let mock = Arc::new(MockPlanning::default());
+    let mock_ref = Arc::clone(&mock);
+    let ctx = test_ctx_with_planning(mock);
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let input = ToolInput {
+        name: ToolName::new("plan_verify").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({"project_id": "proj1", "action": "complete"}),
+    };
+    let result = reg.execute(&input, &ctx).await.expect("execute");
+    assert!(!result.is_error);
+
+    let calls = mock_ref.transition_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].1, "complete");
+}
+
+#[tokio::test]
+async fn plan_missing_service_returns_error_for_all_tools() {
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let ctx = test_ctx();
+
+    for tool_name in [
+        "plan_research",
+        "plan_requirements",
+        "plan_roadmap",
+        "plan_discuss",
+        "plan_execute",
+        "plan_verify",
+        "plan_status",
+        "plan_step_complete",
+        "plan_step_fail",
+    ] {
+        let args = serde_json::json!({"project_id": "p1", "action": "start"});
+        let input = ToolInput {
+            name: ToolName::new(tool_name).expect("valid"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: args,
+        };
+        let result = reg.execute(&input, &ctx).await.expect("execute");
+        assert!(
+            result.is_error,
+            "{tool_name} should return error when service not configured"
+        );
+        assert!(
+            result.content.text_summary().contains("not configured"),
+            "{tool_name}: expected 'not configured' in error"
+        );
+    }
+}
