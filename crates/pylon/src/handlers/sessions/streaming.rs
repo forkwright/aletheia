@@ -142,11 +142,13 @@ pub async fn send_message(
                     }
                 }
                 Err(err) => {
-                    warn!(error = %err, "turn failed");
+                    // Log full error internally; the active span carries request_id and
+                    // session/nous context. Never forward internal details to the client. (#844)
+                    tracing::error!(error = %err, "turn failed");
                     let _ = tx
                         .send(SseEvent::Error {
                             code: "turn_failed".to_owned(),
-                            message: err.to_string(),
+                            message: "An internal error occurred".to_owned(),
                         })
                         .await;
                     // Always send a completion marker so the client knows the
@@ -338,11 +340,12 @@ pub async fn stream_turn(
                     }
                 }
                 Err(err) => {
-                    warn!(error = %err, "streaming turn failed");
+                    // Log full error internally; span carries session/nous context. (#844)
+                    tracing::error!(error = %err, "streaming turn failed");
                     let _ = bridge_handle.await;
                     let _ = webchat_tx
                         .send(WebchatEvent::Error {
-                            message: err.to_string(),
+                            message: "An internal error occurred".to_owned(),
                         })
                         .await;
                     // Always send a completion marker so the TUI knows the stream
