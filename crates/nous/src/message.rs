@@ -15,6 +15,8 @@ pub enum NousMessage {
     Turn {
         session_key: String,
         content: String,
+        /// Caller's tracing span — propagated into the pipeline task for request correlation.
+        span: tracing::Span,
         reply: oneshot::Sender<error::Result<TurnResult>>,
     },
     /// Process a user message with real-time streaming events.
@@ -22,6 +24,8 @@ pub enum NousMessage {
         session_key: String,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
+        /// Caller's tracing span — propagated into the pipeline task for request correlation.
+        span: tracing::Span,
         reply: oneshot::Sender<error::Result<TurnResult>>,
     },
     /// Query current lifecycle state.

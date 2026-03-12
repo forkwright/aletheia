@@ -26,6 +26,7 @@ impl NousActor {
         &mut self,
         session_key: String,
         content: String,
+        caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
         if self.lifecycle == NousLifecycle::Dormant {
@@ -37,7 +38,7 @@ impl NousActor {
         self.active_session = Some(session_key.clone());
 
         let result = self
-            .execute_turn_with_panic_boundary(&session_key, &content)
+            .execute_turn_with_panic_boundary(&session_key, &content, caller_span)
             .await;
 
         if let Ok(ref turn_result) = result {
@@ -73,6 +74,7 @@ impl NousActor {
         session_key: String,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
+        caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
         if self.lifecycle == NousLifecycle::Dormant {
@@ -84,7 +86,12 @@ impl NousActor {
         self.active_session = Some(session_key.clone());
 
         let result = self
-            .execute_streaming_turn_with_panic_boundary(&session_key, &content, &stream_tx)
+            .execute_streaming_turn_with_panic_boundary(
+                &session_key,
+                &content,
+                &stream_tx,
+                caller_span,
+            )
             .await;
 
         if let Ok(ref turn_result) = result {
@@ -115,10 +122,13 @@ impl NousActor {
         &mut self,
         session_key: &str,
         content: &str,
+        caller_span: tracing::Span,
     ) -> crate::error::Result<TurnResult> {
         // Spawn the pipeline in a separate task so panics are caught by the
         // JoinHandle rather than propagating into the actor loop.
-        let result = self.spawn_pipeline_task(session_key, content, None).await;
+        let result = self
+            .spawn_pipeline_task(session_key, content, None, caller_span)
+            .await;
         self.handle_pipeline_result(result, session_key)
     }
 
@@ -128,9 +138,10 @@ impl NousActor {
         session_key: &str,
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
+        caller_span: tracing::Span,
     ) -> crate::error::Result<TurnResult> {
         let result = self
-            .spawn_pipeline_task(session_key, content, Some(stream_tx.clone()))
+            .spawn_pipeline_task(session_key, content, Some(stream_tx.clone()), caller_span)
             .await;
         self.handle_pipeline_result(result, session_key)
     }
@@ -141,6 +152,7 @@ impl NousActor {
         session_key: &str,
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
+        caller_span: tracing::Span,
     ) -> Result<crate::error::Result<TurnResult>, tokio::task::JoinError> {
         // Prepare all data needed by the pipeline before spawning
         let session = self
@@ -196,8 +208,6 @@ impl NousActor {
         #[cfg(feature = "knowledge-store")]
         let text_search = self.text_search.clone();
         let session_store = self.session_store.clone();
-        let span = tracing::Span::current();
-
         tokio::spawn(
             async move {
                 #[cfg(feature = "knowledge-store")]
@@ -245,7 +255,7 @@ impl NousActor {
                     }
                 }
             }
-            .instrument(span),
+            .instrument(caller_span),
         )
         .await
     }

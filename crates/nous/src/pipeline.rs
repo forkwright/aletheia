@@ -372,7 +372,10 @@ pub async fn run_pipeline(
         let _guard = span.enter();
         let start = Instant::now();
         assemble_context_with_extra(oikos, config, pipeline_config, &mut ctx, extra_bootstrap)
-            .await?;
+            .await
+            .inspect_err(|_| {
+                crate::metrics::record_error(&config.id, "context", "assembly_failed");
+            })?;
         #[expect(
             clippy::cast_possible_truncation,
             reason = "stage duration fits in u64"
@@ -480,7 +483,8 @@ pub async fn run_pipeline(
                 ctx.history_budget,
                 &history_config,
                 &input.content,
-            )?;
+            )
+            .inspect_err(|_| crate::metrics::record_error(&config.id, "history", "load_failed"))?;
             ctx.messages = messages;
             ctx.history_budget -= hist_result.tokens_consumed;
             ctx.history_result = Some(hist_result);
@@ -531,6 +535,7 @@ pub async fn run_pipeline(
             }
             GuardResult::RateLimited { retry_after_ms } => {
                 span.record("status", "error");
+                crate::metrics::record_error(&config.id, "guard", "rate_limited");
                 return Err(error::GuardRejectedSnafu {
                     reason: format!("rate limited, retry after {retry_after_ms}ms"),
                 }
@@ -538,6 +543,7 @@ pub async fn run_pipeline(
             }
             GuardResult::LoopDetected { pattern } => {
                 span.record("status", "error");
+                crate::metrics::record_error(&config.id, "guard", "loop_detected");
                 return Err(error::LoopDetectedSnafu {
                     iterations: 0u32,
                     pattern,
@@ -546,6 +552,7 @@ pub async fn run_pipeline(
             }
             GuardResult::Rejected { reason } => {
                 span.record("status", "error");
+                crate::metrics::record_error(&config.id, "guard", "rejected");
                 return Err(error::GuardRejectedSnafu { reason }.build());
             }
         }
@@ -601,10 +608,13 @@ pub async fn run_pipeline(
 
         result = if let Some(timeout_dur) = effective_execute_timeout {
             match tokio::time::timeout(timeout_dur, execute_fut).await {
-                Ok(res) => res?,
+                Ok(res) => res.inspect_err(|_| {
+                    crate::metrics::record_error(&config.id, "execute", "pipeline_error");
+                })?,
                 Err(_elapsed) => {
                     let secs = execute_secs.max(pipeline_config.stage_budget.total_secs);
                     span.record("status", "timeout");
+                    crate::metrics::record_error(&config.id, "execute", "timeout");
                     return Err(error::PipelineTimeoutSnafu {
                         stage: "execute",
                         timeout_secs: secs,
@@ -613,7 +623,9 @@ pub async fn run_pipeline(
                 }
             }
         } else {
-            execute_fut.await?
+            execute_fut.await.inspect_err(|_| {
+                crate::metrics::record_error(&config.id, "execute", "pipeline_error");
+            })?
         };
 
         #[expect(
@@ -698,6 +710,16 @@ pub async fn run_pipeline(
     pipeline_span.record("pipeline.tool_calls", result.tool_calls.len() as u64);
 
     crate::metrics::record_turn(&config.id);
+
+    let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    tracing::info!(
+        input_tokens = result.usage.input_tokens,
+        output_tokens = result.usage.output_tokens,
+        tool_calls_count = result.tool_calls.len() as u64,
+        duration_ms,
+        model = %config.model,
+        "turn_completed"
+    );
 
     Ok(result)
 }

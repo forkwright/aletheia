@@ -64,6 +64,7 @@ impl NousHandle {
         let msg = NousMessage::Turn {
             session_key: session_key.into(),
             content: content.into(),
+            span: tracing::Span::current(),
             reply: tx,
         };
         self.send_with_timeout(msg, timeout).await?;
@@ -110,6 +111,7 @@ impl NousHandle {
             session_key: session_key.into(),
             content: content.into(),
             stream_tx,
+            span: tracing::Span::current(),
             reply: tx,
         };
         self.send_with_timeout(msg, timeout).await?;
@@ -366,6 +368,7 @@ mod tests {
                 .send(NousMessage::Turn {
                     session_key: "main".to_owned(),
                     content: "hello".to_owned(),
+                    span: tracing::Span::current(),
                     reply: reply_tx,
                 })
                 .await
