@@ -394,8 +394,21 @@ pub async fn run(args: Args) -> Result<()> {
         shutdown: shutdown_token.clone(),
     });
 
+    // Diaporeia MCP server — shares state with pylon, zero overhead.
+    let diaporeia_state = Arc::new(aletheia_diaporeia::state::DiaporeiaState {
+        session_store: Arc::clone(&state.session_store),
+        nous_manager: Arc::clone(&state.nous_manager),
+        tool_registry: Arc::clone(&state.tool_registry),
+        oikos: Arc::clone(&state.oikos),
+        start_time: state.start_time,
+        config: Arc::clone(&state.config),
+        shutdown: shutdown_token.clone(),
+    });
+    let mcp_router = aletheia_diaporeia::transport::streamable_http_router(diaporeia_state);
+    info!("diaporeia MCP server mounted at /mcp");
+
     let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
-    let app = build_router(state.clone(), &security);
+    let app = build_router(state.clone(), &security).merge(mcp_router);
 
     let port = args.port.unwrap_or(config.gateway.port);
     // Resolve bind address: CLI flag > config gateway.bind > default 127.0.0.1.

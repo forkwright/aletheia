@@ -21,6 +21,7 @@ tls = ["aletheia-pylon/tls"]
 tui = ["dep:theatron-tui"]
 
 [dependencies]
+aletheia-diaporeia = { path = "../diaporeia" }
 aletheia-dianoia = { path = "../dianoia" }
 aletheia-oikonomos = { path = "../daemon" }
 aletheia-koina = { path = "../koina" }
