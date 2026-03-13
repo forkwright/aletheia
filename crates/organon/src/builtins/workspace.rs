@@ -368,7 +368,9 @@ impl ToolExecutor for ExecExecutor {
                 let policy = self
                     .sandbox
                     .build_policy(&ctx.workspace, &ctx.allowed_roots);
-                crate::sandbox::apply_sandbox(&mut cmd, policy);
+                if let Err(e) = crate::sandbox::apply_sandbox(&mut cmd, policy) {
+                    return Ok(err_result(format!("sandbox setup failed: {e}")));
+                }
             }
 
             // Wrap immediately so the child is killed on any early return
