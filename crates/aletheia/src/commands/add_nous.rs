@@ -5,8 +5,6 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
-use aletheia_taxis::config::{AletheiaConfig, ModelSpec, NousDefinition};
-use aletheia_taxis::loader;
 use aletheia_taxis::oikos::Oikos;
 
 #[derive(Debug, Clone, Args)]
@@ -23,7 +21,7 @@ pub struct AddNousArgs {
     pub model: String,
 }
 
-pub fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> Result<()> {
+pub async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> Result<()> {
     validate_name(&args.name)?;
     validate_provider(&args.provider)?;
 
@@ -44,7 +42,7 @@ pub fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> Result<()> {
 
     scaffold_directory(&oikos, args)?;
     update_config(&oikos, args)?;
-    try_register(&args.name);
+    try_register(&args.name).await;
     print_summary(&oikos, args);
 
     Ok(())
@@ -166,11 +164,33 @@ fn scaffold_directory(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     Ok(())
 }
 
+/// Modify the TOML config in-place using `toml_edit` to preserve comments and structure.
 fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
-    let config_result = loader::load_config(oikos);
-    let mut config: AletheiaConfig = config_result.unwrap_or_default();
+    let config_path = oikos.config().join("aletheia.toml");
+    let config_dir = oikos.config();
 
-    let already_listed = config.agents.list.iter().any(|a| a.id == args.name);
+    let existing = if config_path.exists() {
+        std::fs::read_to_string(&config_path)
+            .with_context(|| format!("failed to read {}", config_path.display()))?
+    } else {
+        String::new()
+    };
+
+    let mut doc: toml_edit::DocumentMut = existing
+        .parse()
+        .with_context(|| format!("failed to parse {}", config_path.display()))?;
+
+    // Check for duplicate before modifying
+    let already_listed = doc
+        .get("agents")
+        .and_then(|a| a.as_table())
+        .and_then(|a| a.get("list"))
+        .and_then(|l| l.as_array_of_tables())
+        .is_some_and(|list| {
+            list.iter()
+                .any(|t| t.get("id").and_then(|v| v.as_str()) == Some(args.name.as_str()))
+        });
+
     if already_listed {
         bail!(
             "agent '{}' already exists in the configuration file.\n\
@@ -179,36 +199,66 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         );
     }
 
-    let workspace = format!("{}/nous/{}", oikos.root().display(), args.name);
+    // Build the new agent table entry.
+    // WHY: workspace is relative to ALETHEIA_ROOT so the config stays portable.
+    let workspace = format!("nous/{}", args.name);
+    let mut entry = toml_edit::Table::new();
+    entry.insert("id", toml_edit::value(args.name.clone()));
+    entry.insert("name", toml_edit::value(capitalize(&args.name)));
+    entry.insert("workspace", toml_edit::value(workspace));
+    entry.insert("default", toml_edit::value(false));
 
-    config.agents.list.push(NousDefinition {
-        id: args.name.clone(),
-        name: Some(capitalize(&args.name)),
-        model: Some(ModelSpec {
-            primary: args.model.clone(),
-            fallbacks: Vec::new(),
-        }),
-        workspace,
-        thinking_enabled: None,
-        allowed_roots: Vec::new(),
-        domains: Vec::new(),
-        default: false,
-    });
+    let mut model_table = toml_edit::Table::new();
+    model_table.insert("primary", toml_edit::value(args.model.clone()));
+    model_table.insert(
+        "fallbacks",
+        toml_edit::Item::Value(toml_edit::Value::Array(toml_edit::Array::new())),
+    );
+    entry.insert("model", toml_edit::Item::Table(model_table));
 
-    loader::write_config(oikos, &config)
-        .map_err(|e| anyhow::anyhow!("failed to write config: {e}"))?;
+    // Ensure [agents] table exists
+    if doc.get("agents").and_then(|i| i.as_table()).is_none() {
+        doc.insert("agents", toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+
+    let agents = doc["agents"]
+        .as_table_mut()
+        .ok_or_else(|| anyhow::anyhow!("[agents] in config is not a table"))?;
+
+    // Ensure [[agents.list]] array of tables exists
+    if agents
+        .get("list")
+        .and_then(|i| i.as_array_of_tables())
+        .is_none()
+    {
+        agents.insert(
+            "list",
+            toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()),
+        );
+    }
+
+    let list = agents["list"]
+        .as_array_of_tables_mut()
+        .ok_or_else(|| anyhow::anyhow!("agents.list in config is not an array of tables"))?;
+
+    list.push(entry);
+
+    // Atomic write: write to .tmp then rename to preserve comments
+    std::fs::create_dir_all(&config_dir)
+        .with_context(|| format!("failed to create {}", config_dir.display()))?;
+    let tmp = config_dir.join("aletheia.toml.tmp");
+    std::fs::write(&tmp, doc.to_string())
+        .with_context(|| format!("failed to write {}", tmp.display()))?;
+    std::fs::rename(&tmp, &config_path)
+        .with_context(|| format!("failed to rename {}", tmp.display()))?;
 
     Ok(())
 }
 
-fn try_register(name: &str) {
-    // WHY: reqwest::blocking panics inside a tokio runtime, so we use a raw
-    // TCP connect probe to check if the server is listening.
-    use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
-
-    let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 18789);
-    let server_running =
-        TcpStream::connect_timeout(&addr.into(), std::time::Duration::from_secs(1)).is_ok();
+/// Check if the server is reachable by hitting its health endpoint.
+async fn try_register(name: &str) {
+    let url = "http://127.0.0.1:18789/api/health";
+    let server_running = reqwest::get(url).await.is_ok();
 
     if server_running {
         println!(
@@ -339,6 +389,90 @@ mod tests {
     }
 
     #[test]
+    fn update_config_appends_without_destroying_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+
+        // Write a config that has comments and custom formatting
+        let original = "# My custom config\n\
+            # This comment must survive\n\
+            [gateway]\n\
+            port = 9999\n\
+            \n";
+        std::fs::write(dir.path().join("config/aletheia.toml"), original).unwrap();
+
+        let args = AddNousArgs {
+            name: "alice".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+        };
+        update_config(&oikos, &args).unwrap();
+
+        let result = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        assert!(
+            result.contains("# My custom config"),
+            "comment must survive"
+        );
+        assert!(
+            result.contains("# This comment must survive"),
+            "comment must survive"
+        );
+        assert!(
+            result.contains("port = 9999"),
+            "existing config must survive"
+        );
+        assert!(result.contains(r#"id = "alice""#), "new agent must appear");
+        assert!(
+            result.contains(r#"workspace = "nous/alice""#),
+            "workspace must be relative"
+        );
+    }
+
+    #[test]
+    fn update_config_workspace_path_is_relative() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+
+        let args = AddNousArgs {
+            name: "bob".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+        };
+        update_config(&oikos, &args).unwrap();
+
+        let result = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        assert!(
+            result.contains(r#"workspace = "nous/bob""#),
+            "workspace path must be relative, got:\n{result}"
+        );
+        // Must not contain an absolute path
+        assert!(
+            !result.contains("/nous/bob"),
+            "workspace must not be absolute"
+        );
+    }
+
+    #[test]
+    fn update_config_rejects_duplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+
+        let args = AddNousArgs {
+            name: "charlie".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+        };
+        update_config(&oikos, &args).unwrap();
+        let result = update_config(&oikos, &args);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("already exists"), "got: {msg}");
+    }
+
+    #[test]
     fn scaffold_errors_when_directory_exists() {
         let dir = tempfile::tempdir().unwrap();
         let _oikos = Oikos::from_root(dir.path());
@@ -350,7 +484,9 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_owned(),
         };
 
-        let result = run(Some(&dir.path().to_path_buf()), &args);
+        // Use a blocking executor for this test since run() is now async
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(

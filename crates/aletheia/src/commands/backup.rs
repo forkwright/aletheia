@@ -8,6 +8,10 @@ use clap::Args;
 use aletheia_mneme::store::SessionStore;
 use aletheia_taxis::oikos::Oikos;
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "CLI flags — each bool is a distinct switch"
+)]
 #[derive(Debug, Clone, Args)]
 pub struct BackupArgs {
     /// List available backups
@@ -22,6 +26,12 @@ pub struct BackupArgs {
     /// Export sessions as JSON
     #[arg(long)]
     pub export_json: bool,
+    /// Output as JSON (for --list)
+    #[arg(long)]
+    pub json: bool,
+    /// Skip confirmation prompt when pruning
+    #[arg(long)]
+    pub yes: bool,
 }
 
 pub fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
@@ -30,6 +40,8 @@ pub fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
         prune,
         keep,
         export_json,
+        json,
+        yes,
     } = args;
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
@@ -45,7 +57,18 @@ pub fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
 
     if list {
         let backups = manager.list_backups().context("failed to list backups")?;
-        if backups.is_empty() {
+        if json {
+            let items: Vec<serde_json::Value> = backups
+                .iter()
+                .map(|b| {
+                    serde_json::json!({
+                        "filename": b.filename,
+                        "size_bytes": b.size_bytes,
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&items)?);
+        } else if backups.is_empty() {
             println!("No backups found.");
         } else {
             for b in &backups {
@@ -56,6 +79,35 @@ pub fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
     }
 
     if prune {
+        let backups = manager.list_backups().context("failed to list backups")?;
+        let to_remove: Vec<_> = backups.iter().skip(keep).collect();
+
+        if to_remove.is_empty() {
+            println!(
+                "Nothing to prune: {} backup(s) found, keeping {keep}.",
+                backups.len()
+            );
+            return Ok(());
+        }
+
+        if !yes {
+            println!("The following backup(s) will be deleted:");
+            for b in &to_remove {
+                println!("  {} ({} bytes)", b.filename, b.size_bytes);
+            }
+            print!("Proceed? [y/N] ");
+            std::io::Write::flush(&mut std::io::stdout()).context("failed to flush stdout")?;
+
+            let mut input = String::new();
+            std::io::BufRead::read_line(&mut std::io::stdin().lock(), &mut input)
+                .context("failed to read confirmation")?;
+
+            if !input.trim().eq_ignore_ascii_case("y") {
+                println!("Aborted.");
+                return Ok(());
+            }
+        }
+
         let removed = manager
             .prune_backups(keep)
             .context("failed to prune backups")?;

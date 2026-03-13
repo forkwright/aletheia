@@ -40,7 +40,7 @@ fn maintenance_status_parses() {
     assert!(matches!(
         cli.command,
         Some(Command::Maintenance {
-            action: maintenance::Action::Status
+            action: maintenance::Action::Status { .. }
         })
     ));
 }

@@ -67,6 +67,7 @@ rcgen = { workspace = true }
 time = "0.3"
 owo-colors = "4"
 supports-color = "3"
+toml_edit = "0.22"
 
 [dev-dependencies]
 assert_cmd = "2"
