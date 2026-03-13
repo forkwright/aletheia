@@ -15,7 +15,7 @@ pub enum Overlay {
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
-    #[expect(
+    #[allow(
         dead_code,
         reason = "overlay set by action dispatcher; construction pending keybinding wiring"
     )]
