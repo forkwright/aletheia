@@ -551,32 +551,29 @@ mod tests {
         let mut cmd = Command::new("echo");
         cmd.arg("should not run");
 
-        match probe_landlock_abi() {
-            None => {
-                // Landlock is not available: enforcing mode must return a clear error.
-                let err = apply_sandbox(&mut cmd, policy).expect_err("enforcing must fail");
-                let msg = err.to_string();
-                assert!(
-                    msg.contains("Landlock not available"),
-                    "error must name Landlock: {msg}"
-                );
-                assert!(
-                    msg.contains("ABI"),
-                    "error must mention ABI for diagnostics: {msg}"
-                );
-                assert!(
-                    msg.contains("enforcement=permissive"),
-                    "error must suggest permissive mode: {msg}"
-                );
-            }
-            Some(_) => {
-                // Landlock is available: enforcing mode succeeds (no opaque error).
-                let result = apply_sandbox(&mut cmd, policy);
-                assert!(
-                    result.is_ok(),
-                    "enforcing mode must succeed when Landlock is available: {result:?}"
-                );
-            }
+        if probe_landlock_abi().is_none() {
+            // Landlock is not available: enforcing mode must return a clear error.
+            let err = apply_sandbox(&mut cmd, policy).expect_err("enforcing must fail");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Landlock not available"),
+                "error must name Landlock: {msg}"
+            );
+            assert!(
+                msg.contains("ABI"),
+                "error must mention ABI for diagnostics: {msg}"
+            );
+            assert!(
+                msg.contains("enforcement=permissive"),
+                "error must suggest permissive mode: {msg}"
+            );
+        } else {
+            // Landlock is available: enforcing mode succeeds (no opaque error).
+            let result = apply_sandbox(&mut cmd, policy);
+            assert!(
+                result.is_ok(),
+                "enforcing mode must succeed when Landlock is available: {result:?}"
+            );
         }
     }
 
