@@ -180,12 +180,29 @@ pub async fn handle_confidence_submit(app: &mut App) {
     };
     app.memory.editing_confidence = false;
 
-    if let Some(fact) = app.memory.selected_fact() {
-        let id = fact.id.clone();
+    let selected = app
+        .memory
+        .selected_fact()
+        .map(|f| (f.id.clone(), f.confidence));
+    if let Some((id, prev_conf)) = selected {
+        // Optimistic update: apply locally before the API round-trip.
         if let Some(f) = app.memory.facts.iter_mut().find(|f| f.id == id) {
             f.confidence = conf;
         }
-        app.error_toast = Some(ErrorToast::new(format!("Confidence set to {conf:.2}")));
+        let client = app.client.clone();
+        match client.knowledge_update_confidence(&id, conf).await {
+            Ok(()) => {
+                app.error_toast = Some(ErrorToast::new(format!("Confidence set to {conf:.2}")));
+            }
+            Err(e) => {
+                // Revert the optimistic update on failure.
+                if let Some(f) = app.memory.facts.iter_mut().find(|f| f.id == id) {
+                    f.confidence = prev_conf;
+                }
+                app.error_toast =
+                    Some(ErrorToast::new(format!("Confidence update failed: {e}")));
+            }
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 use reqwest::{Client, Response, StatusCode};
 use snafu::prelude::*;
 
-use super::error::{AuthSnafu, HttpSnafu, Result};
+use super::error::{AuthSnafu, HttpSnafu, Result, ServerSnafu};
 use super::types::*;
 
 /// Percent-encode a value for use in a URL path segment.
@@ -123,9 +123,7 @@ impl ApiClient {
             return AuthSnafu.fail();
         }
 
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "login request",
-        })?;
+        let resp = Self::check_status(resp, "login request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "login response",
         })
@@ -141,9 +139,7 @@ impl ApiClient {
                 operation: "load agents",
             })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "agents request",
-        })?;
+        let resp = Self::check_status(resp, "agents request").await?;
         let wrapper: AgentsResponse = resp.json().await.context(HttpSnafu {
             operation: "agents response",
         })?;
@@ -164,9 +160,7 @@ impl ApiClient {
                 operation: "load sessions",
             })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "sessions request",
-        })?;
+        let resp = Self::check_status(resp, "sessions request").await?;
         let wrapper: SessionsResponse = resp.json().await.context(HttpSnafu {
             operation: "sessions response",
         })?;
@@ -187,9 +181,7 @@ impl ApiClient {
                 operation: "load history",
             })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "history request",
-        })?;
+        let resp = Self::check_status(resp, "history request").await?;
         let wrapper: HistoryResponse = resp.json().await.context(HttpSnafu {
             operation: "history response",
         })?;
@@ -210,9 +202,7 @@ impl ApiClient {
                 operation: "create session",
             })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "create session request",
-        })?;
+        let resp = Self::check_status(resp, "create session request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "create session response",
         })
@@ -221,58 +211,52 @@ impl ApiClient {
     #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/sessions/{encoded}/archive"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "archive session",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "archive request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/sessions/{encoded}/archive"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "archive session",
+            })?;
+        Self::check_status(resp, "archive request").await?;
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn unarchive_session(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/sessions/{encoded}/unarchive"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "unarchive session",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "unarchive request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/sessions/{encoded}/unarchive"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "unarchive session",
+            })?;
+        Self::check_status(resp, "unarchive request").await?;
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn rename_session(&self, session_id: &str, name: &str) -> Result<()> {
         let encoded = encode_path(session_id);
-        self.request(
-            reqwest::Method::PUT,
-            &format!("/api/v1/sessions/{encoded}/name"),
-        )
-        .json(&serde_json::json!({ "name": name }))
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "rename session",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "rename request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::PUT,
+                &format!("/api/v1/sessions/{encoded}/name"),
+            )
+            .json(&serde_json::json!({ "name": name }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "rename session",
+            })?;
+        Self::check_status(resp, "rename request").await?;
         Ok(())
     }
 
@@ -280,19 +264,17 @@ impl ApiClient {
     #[tracing::instrument(skip(self))]
     pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
         let encoded = encode_path(turn_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/turns/{encoded}/abort"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "abort turn",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "abort request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/turns/{encoded}/abort"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "abort turn",
+            })?;
+        Self::check_status(resp, "abort request").await?;
         Ok(())
     }
 
@@ -300,19 +282,17 @@ impl ApiClient {
     pub async fn approve_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
         let t = encode_path(turn_id);
         let d = encode_path(tool_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/turns/{t}/tools/{d}/approve"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "approve tool",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "approve request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/turns/{t}/tools/{d}/approve"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "approve tool",
+            })?;
+        Self::check_status(resp, "approve request").await?;
         Ok(())
     }
 
@@ -320,57 +300,51 @@ impl ApiClient {
     pub async fn deny_tool(&self, turn_id: &str, tool_id: &str) -> Result<()> {
         let t = encode_path(turn_id);
         let d = encode_path(tool_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/turns/{t}/tools/{d}/deny"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "deny tool",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "deny request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/turns/{t}/tools/{d}/deny"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "deny tool",
+            })?;
+        Self::check_status(resp, "deny request").await?;
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn approve_plan(&self, plan_id: &str) -> Result<()> {
         let encoded = encode_path(plan_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/plans/{encoded}/approve"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "approve plan",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "plan approve request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/plans/{encoded}/approve"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "approve plan",
+            })?;
+        Self::check_status(resp, "plan approve request").await?;
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn cancel_plan(&self, plan_id: &str) -> Result<()> {
         let encoded = encode_path(plan_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/plans/{encoded}/cancel"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "cancel plan",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "plan cancel request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/plans/{encoded}/cancel"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "cancel plan",
+            })?;
+        Self::check_status(resp, "plan cancel request").await?;
         Ok(())
     }
 
@@ -383,9 +357,7 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "load costs",
             })?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "costs request",
-        })?;
+        let resp = Self::check_status(resp, "costs request").await?;
         let daily: DailyResponse = resp.json().await.context(HttpSnafu {
             operation: "costs response",
         })?;
@@ -398,19 +370,17 @@ impl ApiClient {
     #[tracing::instrument(skip(self))]
     pub async fn compact(&self, session_id: &str) -> Result<()> {
         let encoded = encode_path(session_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/sessions/{encoded}/distill"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "trigger distillation",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "distillation request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/sessions/{encoded}/distill"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "trigger distillation",
+            })?;
+        Self::check_status(resp, "distillation request").await?;
         Ok(())
     }
 
@@ -428,9 +398,7 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "recall memory",
             })?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "recall request",
-        })?;
+        let resp = Self::check_status(resp, "recall request").await?;
         resp.text().await.context(HttpSnafu {
             operation: "recall response",
         })
@@ -446,9 +414,7 @@ impl ApiClient {
                 operation: "load config",
             })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "config request",
-        })?;
+        let resp = Self::check_status(resp, "config request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "config response",
         })
@@ -470,9 +436,7 @@ impl ApiClient {
                 operation: "update config",
             })?;
         Self::check_auth(&resp)?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "config update request",
-        })?;
+        let resp = Self::check_status(resp, "config update request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "config update response",
         })
@@ -495,9 +459,7 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "load facts",
             })?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "facts request",
-        })?;
+        let resp = Self::check_status(resp, "facts request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "facts response",
         })
@@ -516,9 +478,7 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "load fact detail",
             })?;
-        resp.error_for_status_ref().context(HttpSnafu {
-            operation: "fact detail request",
-        })?;
+        let resp = Self::check_status(resp, "fact detail request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "fact detail response",
         })
@@ -527,82 +487,70 @@ impl ApiClient {
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_forget(&self, fact_id: &str) -> Result<()> {
         let encoded = encode_path(fact_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/knowledge/facts/{encoded}/forget"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "forget fact",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "forget request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/knowledge/facts/{encoded}/forget"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "forget fact",
+            })?;
+        Self::check_status(resp, "forget request").await?;
         Ok(())
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_restore(&self, fact_id: &str) -> Result<()> {
         let encoded = encode_path(fact_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/knowledge/facts/{encoded}/restore"),
-        )
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "restore fact",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "restore request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/knowledge/facts/{encoded}/restore"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "restore fact",
+            })?;
+        Self::check_status(resp, "restore request").await?;
         Ok(())
     }
 
-    #[expect(
-        dead_code,
-        reason = "will be wired up when confidence editing calls the API"
-    )]
     #[tracing::instrument(skip(self))]
     pub async fn knowledge_update_confidence(&self, fact_id: &str, confidence: f64) -> Result<()> {
         let encoded = encode_path(fact_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/knowledge/facts/{encoded}/confidence"),
-        )
-        .json(&serde_json::json!({ "confidence": confidence }))
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "update confidence",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "confidence request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::PUT,
+                &format!("/api/v1/knowledge/facts/{encoded}/confidence"),
+            )
+            .json(&serde_json::json!({ "confidence": confidence }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update confidence",
+            })?;
+        Self::check_status(resp, "confidence request").await?;
         Ok(())
     }
 
     #[tracing::instrument(skip(self, text))]
     pub async fn queue_message(&self, session_id: &str, text: &str) -> Result<()> {
         let encoded = encode_path(session_id);
-        self.request(
-            reqwest::Method::POST,
-            &format!("/api/v1/sessions/{encoded}/queue"),
-        )
-        .json(&serde_json::json!({ "text": text }))
-        .send()
-        .await
-        .context(HttpSnafu {
-            operation: "queue message",
-        })?
-        .error_for_status_ref()
-        .context(HttpSnafu {
-            operation: "queue request",
-        })?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/sessions/{encoded}/queue"),
+            )
+            .json(&serde_json::json!({ "text": text }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "queue message",
+            })?;
+        Self::check_status(resp, "queue request").await?;
         Ok(())
     }
 
@@ -611,6 +559,27 @@ impl ApiClient {
             return AuthSnafu.fail();
         }
         Ok(())
+    }
+
+    /// Consumes a response, returning it unchanged if 2xx, or a `Server` error with a
+    /// human-readable message extracted from the body. Falls back to "{status} {reason}".
+    async fn check_status(resp: Response, operation: &'static str) -> Result<Response> {
+        if resp.status().is_success() {
+            return Ok(resp);
+        }
+        let status = resp.status();
+        let reason = status.canonical_reason().unwrap_or("Unknown");
+        let body = resp.text().await.unwrap_or_default();
+        let message = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+            json.get("message")
+                .or_else(|| json.get("error"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{} {}", status.as_u16(), reason))
+        } else {
+            format!("{} {}", status.as_u16(), reason)
+        };
+        ServerSnafu { operation, message }.fail()
     }
 
     #[expect(dead_code, reason = "reserved for future SSE connection management")]
