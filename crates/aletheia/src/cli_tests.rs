@@ -4,7 +4,10 @@
 
 use std::path::PathBuf;
 
-use super::{Cli, Command, commands::maintenance, commands::session_export::ExportFormat};
+use super::{
+    Cli, Command, commands::agent_io::InitArgs, commands::maintenance,
+    commands::session_export::ExportFormat,
+};
 use clap::Parser;
 
 #[test]
@@ -184,5 +187,98 @@ fn session_export_with_output_file_parses() {
             assert_eq!(args.output.unwrap(), PathBuf::from("/tmp/session.md"));
         }
         _ => panic!("expected SessionExport command"),
+    }
+}
+
+#[test]
+fn init_non_interactive_with_instance_path_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "init",
+        "--non-interactive",
+        "--instance-path",
+        "/tmp/test-instance",
+    ]);
+    match cli.command {
+        Some(Command::Init(InitArgs {
+            instance_root,
+            non_interactive,
+            yes,
+            api_key,
+            ..
+        })) => {
+            assert_eq!(instance_root.unwrap(), PathBuf::from("/tmp/test-instance"));
+            assert!(non_interactive);
+            assert!(!yes);
+            assert!(api_key.is_none());
+        }
+        _ => panic!("expected Init command"),
+    }
+}
+
+#[test]
+fn init_non_interactive_with_all_flags_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "init",
+        "--non-interactive",
+        "--instance-path",
+        "/srv/aletheia",
+        "--auth-mode",
+        "token",
+        "--api-provider",
+        "anthropic",
+        "--model",
+        "claude-opus-4-6",
+        "--api-key",
+        "sk-ant-test",
+    ]);
+    match cli.command {
+        Some(Command::Init(InitArgs {
+            instance_root,
+            non_interactive,
+            auth_mode,
+            api_provider,
+            model,
+            api_key,
+            ..
+        })) => {
+            assert_eq!(instance_root.unwrap(), PathBuf::from("/srv/aletheia"));
+            assert!(non_interactive);
+            assert_eq!(auth_mode.as_deref(), Some("token"));
+            assert_eq!(api_provider.as_deref(), Some("anthropic"));
+            assert_eq!(model.as_deref(), Some("claude-opus-4-6"));
+            assert_eq!(api_key.as_deref(), Some("sk-ant-test"));
+        }
+        _ => panic!("expected Init command"),
+    }
+}
+
+#[test]
+fn init_yes_flag_no_instance_path_parses() {
+    let cli = Cli::parse_from(["aletheia", "init", "-y"]);
+    match cli.command {
+        Some(Command::Init(InitArgs {
+            instance_root,
+            yes,
+            non_interactive,
+            ..
+        })) => {
+            assert!(instance_root.is_none());
+            assert!(yes);
+            assert!(!non_interactive);
+        }
+        _ => panic!("expected Init command"),
+    }
+}
+
+#[test]
+fn init_instance_root_alias_accepted() {
+    let cli = Cli::parse_from(["aletheia", "init", "--instance-root", "/custom/path"]);
+    match cli.command {
+        Some(Command::Init(InitArgs { instance_root, .. })) => {
+            assert_eq!(instance_root.unwrap(), PathBuf::from("/custom/path"));
+        }
+        _ => panic!("expected Init command"),
     }
 }

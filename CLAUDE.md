@@ -93,7 +93,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | `export-skills --nous-id ID [--output PATH] [--domain TAGS]` | Export skills to Claude Code `.claude/skills/` format |
 | `review-skills --nous-id ID [--action list\|approve\|reject] [--fact-id ID]` | Review pending auto-extracted skills |
 | `migrate-memory [--qdrant-url URL] [--collection NAME] [--knowledge-path PATH] [--review-file PATH] [--dry-run]` | Migrate memories from Qdrant into embedded knowledge store |
-| `init [--instance-root PATH] [-y] [--api-key KEY]` | Initialize a new instance |
+| `init [--instance-root\|--instance-path PATH] [-y] [--non-interactive] [--auth-mode MODE] [--api-provider PROVIDER] [--model MODEL] [--api-key KEY]` | Initialize a new instance |
 | `check-config` | Validate configuration without starting services |
 | `completions <bash\|zsh\|fish>` | Generate shell completions |
 

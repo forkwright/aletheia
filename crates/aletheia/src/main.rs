@@ -131,7 +131,16 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Command::Init(a)) => {
-            return init::run(a.instance_root, a.yes, a.api_key).map_err(anyhow::Error::from);
+            return init::run(init::RunArgs {
+                root: a.instance_root,
+                yes: a.yes,
+                non_interactive: a.non_interactive,
+                api_key: a.api_key,
+                auth_mode: a.auth_mode,
+                api_provider: a.api_provider,
+                model: a.model,
+            })
+            .map_err(anyhow::Error::from);
         }
         Some(Command::Health(a)) => return commands::health::run(&a).await,
         Some(Command::Backup(a)) => return commands::backup::run(instance_root, &a),
