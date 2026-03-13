@@ -1873,6 +1873,38 @@ async fn config_section_requires_auth() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
+// --- Gateway config redaction ---
+
+#[tokio::test]
+async fn gateway_config_signing_key_is_redacted() {
+    let (state, _dir) = test_state().await;
+
+    // Inject a signing key so there is a secret value to redact.
+    {
+        let mut config = state.config.write().await;
+        config.gateway.auth.signing_key = Some("super-secret-signing-key".to_owned());
+    }
+
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let resp = router
+        .oneshot(authed_get("/api/v1/config/gateway"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+
+    // The raw secret must not appear anywhere in the response.
+    assert!(
+        !body.to_string().contains("super-secret-signing-key"),
+        "signing key must not appear in API response"
+    );
+    // The field must be replaced with the redaction placeholder.
+    assert_eq!(body["auth"]["signingKey"], "***");
+    // Non-secret fields must still be present and correct.
+    assert_eq!(body["port"], 18789);
+}
+
 // --- Router: Method Not Allowed ---
 
 #[tokio::test]
