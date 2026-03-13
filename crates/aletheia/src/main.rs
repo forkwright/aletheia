@@ -187,7 +187,7 @@ async fn main() -> Result<()> {
             return commands::check_config::run(instance_root);
         }
         Some(Command::AddNous(a)) => {
-            return commands::add_nous::run(instance_root, &a);
+            return commands::add_nous::run(instance_root, &a).await;
         }
         None => {}
     }

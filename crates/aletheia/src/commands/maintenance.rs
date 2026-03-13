@@ -17,7 +17,11 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug, Clone, Subcommand)]
 pub enum Action {
     /// Show status of all maintenance tasks
-    Status,
+    Status {
+        /// Output as JSON instead of human-readable table
+        #[arg(long)]
+        json: bool,
+    },
     /// Run a specific maintenance task immediately
     Run {
         /// Task name: trace-rotation, drift-detection, db-monitor, or all
@@ -37,12 +41,22 @@ pub fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let maint = build_config(&oikos, &config.maintenance);
 
     match action {
-        Action::Status => {
+        Action::Status { json } => {
             let token = CancellationToken::new();
             let mut runner = TaskRunner::new("system", token).with_maintenance(maint);
             runner.register_maintenance_tasks();
             let statuses = runner.status();
-            println!("{}", serde_json::to_string_pretty(&statuses)?);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&statuses)?);
+            } else {
+                println!("{:<24} {:<8} {:<6} Last Run", "Task", "Enabled", "Runs");
+                println!("{}", "-".repeat(60));
+                for s in &statuses {
+                    let last = s.last_run.as_deref().unwrap_or("never");
+                    let enabled = if s.enabled { "yes" } else { "no" };
+                    println!("{:<24} {:<8} {:<6} {}", s.name, enabled, s.run_count, last);
+                }
+            }
         }
         Action::Run { task, verbose } => {
             let tasks: Vec<&str> = if task == "all" {

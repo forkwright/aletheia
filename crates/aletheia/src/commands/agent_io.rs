@@ -23,6 +23,9 @@ pub struct ExportArgs {
     /// Compact JSON (no pretty printing)
     #[arg(long)]
     pub compact: bool,
+    /// Overwrite existing output file without prompting
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[expect(
@@ -211,6 +214,13 @@ pub fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Resul
         let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
         PathBuf::from(format!("{nous_id}-{date}.agent.json"))
     });
+
+    if output_path.exists() && !args.force {
+        anyhow::bail!(
+            "output file already exists: {}\nUse --force to overwrite.",
+            output_path.display()
+        );
+    }
 
     let json = if args.compact {
         serde_json::to_string(&agent_file)?

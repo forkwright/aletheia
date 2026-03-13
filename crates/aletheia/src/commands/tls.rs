@@ -18,6 +18,9 @@ pub enum Action {
         /// Subject Alternative Names (hostnames/IPs)
         #[arg(long, default_values_t = vec!["localhost".to_owned(), "127.0.0.1".to_owned()])]
         san: Vec<String>,
+        /// Overwrite existing certificate files without prompting
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -27,13 +30,28 @@ pub fn run(action: &Action) -> Result<()> {
             output_dir,
             days,
             san,
-        } => generate_certs(output_dir, *days, san),
+            force,
+        } => generate_certs(output_dir, *days, san, *force),
     }
 }
 
-fn generate_certs(output_dir: &Path, days: u32, sans: &[String]) -> Result<()> {
+fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) -> Result<()> {
     std::fs::create_dir_all(output_dir)
         .with_context(|| format!("failed to create {}", output_dir.display()))?;
+
+    let cert_path = output_dir.join("cert.pem");
+    let key_path = output_dir.join("key.pem");
+
+    if !force {
+        for path in [&cert_path, &key_path] {
+            if path.exists() {
+                anyhow::bail!(
+                    "file already exists: {}\nUse --force to overwrite.",
+                    path.display()
+                );
+            }
+        }
+    }
 
     let subject_alt_names: Vec<String> = sans.to_vec();
     let key_pair = rcgen::KeyPair::generate().context("failed to generate key pair")?;
@@ -55,9 +73,6 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String]) -> Result<()> {
     let cert = params
         .self_signed(&key_pair)
         .context("failed to generate self-signed certificate")?;
-
-    let cert_path = output_dir.join("cert.pem");
-    let key_path = output_dir.join("key.pem");
 
     std::fs::write(&cert_path, cert.pem())
         .with_context(|| format!("failed to write {}", cert_path.display()))?;
