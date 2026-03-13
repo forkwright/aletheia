@@ -331,6 +331,7 @@ pub async fn run(args: Args) -> Result<()> {
                 server_tools: Vec::new(),
                 cache_enabled: resolved.cache_enabled,
                 session_token_cap: 500_000,
+                recall: resolved.recall.into(),
             };
             nous_manager
                 .spawn(

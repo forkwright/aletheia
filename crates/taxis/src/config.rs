@@ -83,6 +83,76 @@ pub struct AgentsConfig {
     pub list: Vec<NousDefinition>,
 }
 
+/// Per-factor scoring weights for the recall pipeline.
+///
+/// Mirrors the weights in the nous recall stage but lives in taxis so operators
+/// can tune them per-agent via YAML without creating a taxis → nous dependency.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct RecallWeights {
+    /// Temporal decay weight (0.0–1.0).
+    pub decay: f64,
+    /// Content relevance weight (0.0–1.0).
+    pub relevance: f64,
+    /// Epistemic tier weight (0.0–1.0).
+    pub epistemic_tier: f64,
+    /// Knowledge-graph relationship proximity weight (0.0–1.0).
+    pub relationship_proximity: f64,
+    /// Access frequency weight (0.0–1.0).
+    pub access_frequency: f64,
+}
+
+impl Default for RecallWeights {
+    fn default() -> Self {
+        Self {
+            decay: 0.5,
+            relevance: 0.5,
+            epistemic_tier: 0.3,
+            relationship_proximity: 0.0,
+            access_frequency: 0.0,
+        }
+    }
+}
+
+/// Recall pipeline settings for a nous agent.
+///
+/// Resolved from taxis config and forwarded to the recall stage via
+/// `NousConfig::recall` at startup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct RecallSettings {
+    /// Whether semantic recall is enabled for this agent.
+    pub enabled: bool,
+    /// Maximum number of recalled facts to inject per turn.
+    pub max_results: usize,
+    /// Minimum relevance score (0.0–1.0) to include a recalled fact.
+    pub min_score: f64,
+    /// Maximum tokens to allocate for recalled knowledge.
+    pub max_recall_tokens: u64,
+    /// Enable iterative two-cycle retrieval with terminology discovery.
+    pub iterative: bool,
+    /// Maximum retrieval cycles when iterative mode is enabled.
+    pub max_cycles: usize,
+    /// Per-factor scoring weights.
+    pub weights: RecallWeights,
+}
+
+impl Default for RecallSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_results: 5,
+            min_score: 0.3,
+            max_recall_tokens: 2000,
+            iterative: false,
+            max_cycles: 2,
+            weights: RecallWeights::default(),
+        }
+    }
+}
+
 /// Default values applied to every agent unless overridden.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,6 +182,8 @@ pub struct AgentDefaults {
     pub tool_timeouts: ToolTimeouts,
     /// Prompt caching configuration.
     pub caching: CachingConfig,
+    /// Recall pipeline settings applied to all agents unless overridden.
+    pub recall: RecallSettings,
 }
 
 impl Default for AgentDefaults {
@@ -129,6 +201,7 @@ impl Default for AgentDefaults {
             allowed_roots: Vec::new(),
             tool_timeouts: ToolTimeouts::default(),
             caching: CachingConfig::default(),
+            recall: RecallSettings::default(),
         }
     }
 }
@@ -219,6 +292,9 @@ pub struct NousDefinition {
     /// Whether this is the default agent for unrouted messages.
     #[serde(default)]
     pub default: bool,
+    /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
+    #[serde(default)]
+    pub recall: Option<RecallSettings>,
 }
 
 /// HTTP gateway configuration.
@@ -712,6 +788,8 @@ pub struct ResolvedNousConfig {
     pub timeout_seconds: u32,
     /// Whether prompt caching is enabled.
     pub cache_enabled: bool,
+    /// Resolved recall pipeline settings.
+    pub recall: RecallSettings,
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -752,6 +830,11 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     let domains = agent.map(|a| a.domains.clone()).unwrap_or_default();
     let name = agent.and_then(|a| a.name.clone());
 
+    // Agent-level recall overrides; falls back to shared defaults.
+    let recall = agent
+        .and_then(|a| a.recall.clone())
+        .unwrap_or_else(|| defaults.recall.clone());
+
     ResolvedNousConfig {
         id: nous_id.to_owned(),
         name,
@@ -769,6 +852,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         user_timezone: defaults.user_timezone.clone(),
         timeout_seconds: defaults.timeout_seconds,
         cache_enabled: defaults.caching.enabled && defaults.caching.strategy != "disabled",
+        recall,
     }
 }
 

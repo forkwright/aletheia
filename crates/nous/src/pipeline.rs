@@ -456,8 +456,7 @@ pub async fn run_pipeline(
         if is_mock_embedding {
             if let Some(ts) = text_search {
                 debug!("mock embedding provider — using BM25-only recall");
-                let recall_stage =
-                    crate::recall::RecallStage::new(crate::recall::RecallConfig::default());
+                let recall_stage = crate::recall::RecallStage::new(config.recall.clone());
                 let result = recall_stage.run_bm25(&input.content, &config.id, ts, budget);
                 apply_recall_result(result, &mut ctx, &span);
             } else {
@@ -465,8 +464,7 @@ pub async fn run_pipeline(
                 span.record("status", "skipped");
             }
         } else if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
-            let recall_config = crate::recall::RecallConfig::default();
-            let recall_stage = crate::recall::RecallStage::new(recall_config);
+            let recall_stage = crate::recall::RecallStage::new(config.recall.clone());
 
             let recall_result_opt = if recall_timeout_secs > 0 {
                 match tokio::time::timeout(
@@ -517,6 +515,11 @@ pub async fn run_pipeline(
         );
         let _guard = span.enter();
         let start = Instant::now();
+
+        // Waterfall: unused system-prompt budget flows into the history budget
+        // so tokens not consumed by bootstrap or recall are not wasted.
+        ctx.history_budget += ctx.remaining_tokens.max(0);
+
         let history_config = HistoryConfig::default();
         if let Some(store_mutex) = session_store {
             // Guard is scoped to this block and dropped before the execute .await below
@@ -783,9 +786,14 @@ fn apply_recall_result(
                     prompt.push_str("\n\n");
                     prompt.push_str(section);
                 }
+                // WHY: saturating_sub followed by max(0) ensures remaining_tokens
+                // never goes negative regardless of recall token accounting.
                 #[expect(clippy::cast_possible_wrap, reason = "recall tokens fit in i64")]
                 {
-                    ctx.remaining_tokens -= recall_result.tokens_consumed as i64;
+                    ctx.remaining_tokens = ctx
+                        .remaining_tokens
+                        .saturating_sub(recall_result.tokens_consumed as i64)
+                        .max(0);
                 }
             }
             ctx.recall_result = Some(recall_result);

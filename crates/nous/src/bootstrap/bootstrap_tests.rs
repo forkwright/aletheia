@@ -257,9 +257,10 @@ fn truncate_section_aware() {
         truncatable: true,
     };
 
-    // Budget enough for first section only
+    // Budget enough for one section: newest (Section C) is kept, oldest dropped.
     let truncated = assembler.truncate_section(&section, 10);
-    assert!(truncated.content.contains("Section A"));
+    assert!(truncated.content.contains("Section C"));
+    assert!(!truncated.content.contains("Section A"));
     assert!(truncated.content.contains("[truncated for token budget]"));
 }
 
@@ -276,9 +277,10 @@ fn truncate_falls_back_to_lines() {
         truncatable: true,
     };
 
-    // Budget enough for ~2 lines
+    // Budget enough for ~1 line: newest ("Line five") is kept, oldest dropped.
     let truncated = assembler.truncate_by_lines(&section, 5);
-    assert!(truncated.content.contains("Line one"));
+    assert!(truncated.content.contains("Line five"));
+    assert!(!truncated.content.contains("Line one"));
     assert!(truncated.content.contains("[truncated for token budget]"));
 }
 

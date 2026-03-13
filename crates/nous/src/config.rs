@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::recall::RecallConfig;
+
 /// Configuration for a single nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NousConfig {
@@ -42,6 +44,12 @@ pub struct NousConfig {
     /// the cap (default: 500,000).
     #[serde(default = "default_session_token_cap")]
     pub session_token_cap: u64,
+    /// Per-agent recall pipeline configuration.
+    ///
+    /// Overrides the global defaults for this agent's recall stage.
+    /// Wired from the taxis per-agent config block at startup.
+    #[serde(default)]
+    pub recall: RecallConfig,
 }
 
 fn default_cache_enabled() -> bool {
@@ -69,6 +77,7 @@ impl Default for NousConfig {
             server_tools: Vec::new(),
             cache_enabled: true,
             session_token_cap: default_session_token_cap(),
+            recall: RecallConfig::default(),
         }
     }
 }
@@ -210,6 +219,7 @@ mod tests {
             server_tools: Vec::new(),
             cache_enabled: false,
             session_token_cap: 250_000,
+            recall: RecallConfig::default(),
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.thinking_enabled);

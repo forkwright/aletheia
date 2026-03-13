@@ -80,23 +80,29 @@ pub fn load_history(
         ));
     }
 
-    let budget_messages = store
-        .get_history_with_budget(session_id, available)
-        .context(error::StoreSnafu)?;
+    // Single query: load all messages once, then filter and budget manually.
+    // This eliminates the redundant second query that the old approach used and
+    // ensures the `truncated` flag applies the same role filter as the loading
+    // loop (fix for #1102).
     let all_messages = store
         .get_history(session_id, None)
         .context(error::StoreSnafu)?;
 
-    let total_in_store = all_messages
+    // Count messages eligible under the same role filter as the loading loop.
+    let total_eligible = all_messages
         .iter()
-        .filter(|m| m.role != Role::System)
+        .filter(|m| {
+            m.role != Role::System && (config.include_tool_messages || m.role != Role::ToolResult)
+        })
         .count();
 
-    let mut messages = Vec::new();
+    // Iterate newest-first: collect the most recent messages that fit within
+    // the available budget and max_messages cap.
+    let mut collected: Vec<PipelineMessage> = Vec::new();
     let mut tokens_consumed: i64 = 0;
     let mut loaded_count: usize = 0;
 
-    for msg in &budget_messages {
+    for msg in all_messages.iter().rev() {
         if loaded_count >= config.max_messages {
             break;
         }
@@ -107,13 +113,17 @@ pub fn load_history(
             _ => {}
         }
 
+        if tokens_consumed + msg.token_estimate > available {
+            break;
+        }
+
         let role = match msg.role {
             Role::User | Role::ToolResult => "user",
             Role::Assistant => "assistant",
             Role::System => unreachable!(),
         };
 
-        messages.push(PipelineMessage {
+        collected.push(PipelineMessage {
             role: role.to_owned(),
             content: msg.content.clone(),
             token_estimate: msg.token_estimate,
@@ -122,9 +132,14 @@ pub fn load_history(
         loaded_count += 1;
     }
 
-    let truncated = total_in_store > loaded_count;
+    // Restore chronological order (collected is currently newest-first).
+    collected.reverse();
 
-    messages.push(PipelineMessage {
+    // Truncated when eligible messages exceed what was loaded — covers both
+    // budget truncation and max_messages truncation.
+    let truncated = total_eligible > loaded_count;
+
+    collected.push(PipelineMessage {
         role: "user".to_owned(),
         content: current_message.to_owned(),
         token_estimate: current_tokens,
@@ -141,7 +156,7 @@ pub fn load_history(
         truncated = result.truncated,
         "history loaded"
     );
-    Ok((messages, result))
+    Ok((collected, result))
 }
 
 #[cfg(test)]
