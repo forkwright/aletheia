@@ -4,7 +4,7 @@ Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For 
 
 ---
 
-## System Requirements
+## System requirements
 
 ### Hardware
 
@@ -14,7 +14,7 @@ Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For 
 | RAM | 2 GB | 4 GB (candle model loading) |
 | Disk | 1 GB | 10 GB (session data growth) |
 
-### Operating System
+### Operating system
 
 | Target | Notes |
 |--------|-------|
@@ -41,7 +41,7 @@ See [NETWORK.md](NETWORK.md) for the complete network call inventory.
 
 ## Installation
 
-### Prebuilt Binary
+### Prebuilt binary
 
 Download from [GitHub Releases](https://github.com/forkwright/aletheia/releases):
 
@@ -57,7 +57,7 @@ chmod +x aletheia-linux-amd64
 sudo mv aletheia-linux-amd64 /usr/local/bin/aletheia
 ```
 
-### Build from Source
+### Build from source
 
 ```bash
 git clone https://github.com/forkwright/aletheia.git
@@ -67,9 +67,9 @@ cargo build --release
 
 Binary: `target/release/aletheia`
 
-### Headless Build (no TUI)
+### Headless build (no TUI)
 
-The TUI (terminal dashboard) is compiled in by default. To build without it — useful for servers, containers, or minimal footprints — disable the `tui` feature:
+The TUI (terminal dashboard) is compiled in by default. To build without it (useful for servers, containers, or minimal footprints), disable the `tui` feature:
 
 ```bash
 cargo build --release --no-default-features --features tls
@@ -77,15 +77,15 @@ cargo build --release --no-default-features --features tls
 
 The headless binary accepts all the same CLI flags and API endpoints. The `aletheia status` command falls back to a plain-text summary when TUI is absent.
 
-### Shell Completions
+### Shell completions
 
 See [SHELL-COMPLETIONS.md](SHELL-COMPLETIONS.md) for setting up tab-completion in bash, zsh, and fish.
 
 ---
 
-## Instance Setup
+## Instance setup
 
-The instance directory holds all runtime state: config, databases, agent workspaces, logs. It is gitignored — the platform code ships without instance data.
+The instance directory holds all runtime state: config, databases, agent workspaces, logs. It is gitignored; the platform code ships without instance data.
 
 ### Recommended: use the init wizard
 
@@ -108,7 +108,7 @@ Copy the example scaffold to create your instance directory:
 cp -r instance.example instance
 ```
 
-Then configure `instance/config/aletheia.toml` (see below). The scaffold provides a template with all required directories and example configuration files.
+Then configure `instance/config/aletheia.toml` (see the Configuration section). The scaffold provides a template with all required directories and example configuration files.
 
 This creates the full directory scaffold:
 
@@ -129,7 +129,7 @@ instance/
 
 See [instance.example/README.md](../instance.example/README.md) for the three-tier cascade and what goes where.
 
-### Instance Discovery
+### Instance discovery
 
 The binary finds the instance directory in this order:
 
@@ -168,7 +168,7 @@ agents:
       workspace: instance/nous/main
 ```
 
-The workspace path can be relative (relative to the instance root) or absolute. In the example above, `instance/nous/main` is relative and will resolve to `./instance/instance/nous/main` when the instance root is `./instance`. For absolute paths, use the full filesystem path: `/srv/aletheia/instance/nous/main`.
+The workspace path can be relative (relative to the instance root) or absolute. In this example, `instance/nous/main` is relative and will resolve to `./instance/instance/nous/main` when the instance root is `./instance`. For absolute paths, use the full filesystem path: `/srv/aletheia/instance/nous/main`.
 
 The config cascade loads in order (later wins): compiled defaults, YAML file, `ALETHEIA_` environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference.
 
@@ -241,7 +241,7 @@ mode = "none"
 
 ## Credentials
 
-### LLM Provider
+### LLM provider
 
 Set the Anthropic API key as an environment variable:
 
@@ -251,7 +251,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 The binary reads `ANTHROPIC_API_KEY` from the environment at startup. If unset, it starts without an LLM provider (health check reports degraded status).
 
-### TLS (Optional)
+### TLS (optional)
 
 Generate self-signed certificates for LAN use:
 
@@ -271,7 +271,7 @@ gateway:
 
 ---
 
-## Agent Setup
+## Agent setup
 
 Each agent needs a workspace directory under `instance/nous/`:
 
@@ -280,10 +280,10 @@ cp -r instance/nous/_template instance/nous/main
 ```
 
 Edit the bootstrap files:
-- `SOUL.md` — agent identity and character
-- `IDENTITY.md` — display name, emoji
-- `GOALS.md` — current goals
-- `MEMORY.md` — persistent operational memory
+- `SOUL.md`: agent identity and character
+- `IDENTITY.md`: display name, emoji
+- `GOALS.md`: current goals
+- `MEMORY.md`: persistent operational memory
 
 Register the agent in `aletheia.toml`:
 
@@ -296,7 +296,7 @@ agents:
 
 ---
 
-## First Run
+## First run
 
 ```bash
 aletheia --instance-root ./instance
@@ -320,7 +320,7 @@ The startup sequence:
 8. Starts channel listeners (Signal, if configured)
 9. Starts HTTP gateway on configured bind:port
 
-### CLI Flags
+### CLI flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -334,7 +334,7 @@ The startup sequence:
 
 ## Verification
 
-### Health Check
+### Health check
 
 ```bash
 # CLI
@@ -360,7 +360,7 @@ Healthy response:
 
 Status values: `healthy` (all pass), `degraded` (warnings, e.g. no LLM provider), `unhealthy` (failures).
 
-### System Status
+### System status
 
 ```bash
 aletheia status
@@ -368,7 +368,7 @@ aletheia status
 
 Displays agent count, active sessions, uptime, and provider status.
 
-### Prometheus Metrics
+### Prometheus metrics
 
 ```bash
 curl -s http://127.0.0.1:18789/metrics
@@ -378,7 +378,7 @@ Exposes `nous_turn_duration_seconds`, `anthropic_requests_total`, `http_requests
 
 ---
 
-## Systemd Service (Linux)
+## Systemd service (Linux)
 
 A ready-to-use service template lives in `instance.example/services/aletheia.service`.
 It uses `%h` (systemd's `$HOME` specifier) so paths resolve automatically.
@@ -452,14 +452,14 @@ aletheia maintenance run all                    # run everything
 | `ANTHROPIC_API_KEY not set` | Export the env var or add to systemd `Environment=` |
 | Port already in use | `fuser -k 18789/tcp` then restart, or change `gateway.port` in config |
 | Config parse error | Check YAML syntax, verify field names match [CONFIGURATION.md](CONFIGURATION.md) |
-| Health returns `degraded` | No LLM provider registered — check API key |
-| Health returns `unhealthy` | Session store failed to open — check `instance/data/` permissions |
+| Health returns `degraded` | No LLM provider registered; check API key |
+| Health returns `unhealthy` | Session store failed to open; check `instance/data/` permissions |
 | Signal not receiving | Verify signal-cli daemon is running on configured host:port |
-| Bind address error | Check `--bind` flag or `gateway.bind` config — `lan` resolves to LAN interface |
+| Bind address error | Check `--bind` flag or `gateway.bind` config; `lan` resolves to LAN interface |
 
 ---
 
-## Optional: Signal Messaging
+## Optional: Signal messaging
 
 Aletheia can receive and send messages via [Signal](https://signal.org/) using the [signal-cli](https://github.com/AsamK/signal-cli) JSON-RPC daemon.
 

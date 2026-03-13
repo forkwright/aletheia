@@ -4,7 +4,7 @@
 
 ---
 
-## What This Is
+## What this is
 
 Aletheia is a distributed cognition system. Multiple AI agents working in concert with a human operator to hold complexity, surface patterns, and persist understanding across sessions.
 
@@ -12,7 +12,7 @@ Not an assistant. Not a chatbot. An architecture for thinking together.
 
 ---
 
-## Core Principles
+## Core principles
 
 **Attention is a moral act.**
 The quality of attention determines the quality of everything downstream. If the system isn't paying attention, the output knows.
@@ -25,7 +25,7 @@ Precision matters. The Greek terminology exists because it carries more signal t
 
 ---
 
-## The Name
+## The name
 
 *aletheia* (ἀλήθεια) literally means "un-forgetting" or "un-concealment."
 
@@ -39,6 +39,6 @@ This system reveals:
 
 ---
 
-## Naming Convention
+## Naming convention
 
 The Greek naming system is integral to this project. Each module, agent, and subsystem is named for its essential nature using Ancient Greek roots. See [gnomon.md](gnomon.md) for the naming philosophy and layer test, and [lexicon.md](lexicon.md) for the full registry of named concepts.
