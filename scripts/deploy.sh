@@ -20,9 +20,9 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 DRY_RUN=false
 
 for arg in "$@"; do
-  case $arg in
+  case "$arg" in
     --dry-run) DRY_RUN=true ;;
-    *) echo "Unknown option: $arg"; exit 1 ;;
+    *) echo "error: unknown option: $arg" >&2; exit 1 ;;
   esac
 done
 
