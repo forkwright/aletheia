@@ -38,6 +38,18 @@ pub enum Error {
     LogDirective {
         source: tracing_subscriber::filter::ParseError,
     },
+
+    /// An unexpected event type was received during SSE parsing.
+    #[snafu(display("unexpected event type: {event_type}"))]
+    UnexpectedEventType { event_type: String },
+
+    /// Malformed or missing data in an incoming SSE event.
+    #[snafu(display("malformed event data: {detail}"))]
+    MalformedEventData { detail: String },
+
+    /// SSE protocol state machine received an event out of sequence.
+    #[snafu(display("protocol mismatch: {detail}"))]
+    ProtocolMismatch { detail: String },
 }
 
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;

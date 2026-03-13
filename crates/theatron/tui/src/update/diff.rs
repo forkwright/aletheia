@@ -126,11 +126,10 @@ mod tests {
         let state = DiffViewState::new(vec![]);
         app.overlay = Some(Overlay::DiffView(state));
         handle_diff_cycle_mode(&mut app);
-        if let Some(Overlay::DiffView(ref s)) = app.overlay {
-            assert_eq!(s.mode, diff::DiffMode::SideBySide);
-        } else {
-            panic!("expected DiffView");
-        }
+        let Some(Overlay::DiffView(ref s)) = app.overlay else {
+            unreachable!("expected DiffView overlay");
+        };
+        assert_eq!(s.mode, diff::DiffMode::SideBySide);
     }
 
     #[test]

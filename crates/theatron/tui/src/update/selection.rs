@@ -467,7 +467,7 @@ mod tests {
                 assert!(*has_code);
                 assert!(!*has_links);
             }
-            other => panic!("expected AgentResponse, got {:?}", other),
+            other => unreachable!("expected AgentResponse, got {:?}", other),
         }
     }
 
@@ -480,7 +480,7 @@ mod tests {
             SelectionContext::AgentResponse { has_links, .. } => {
                 assert!(*has_links);
             }
-            other => panic!("expected AgentResponse, got {:?}", other),
+            other => unreachable!("expected AgentResponse, got {:?}", other),
         }
     }
 
@@ -649,7 +649,7 @@ mod tests {
             assert!(kinds.contains(&MessageActionKind::Delete));
             assert!(!kinds.contains(&MessageActionKind::RateResponse));
         } else {
-            panic!("expected ContextActions overlay");
+            unreachable!("expected ContextActions overlay");
         }
     }
 
@@ -665,7 +665,7 @@ mod tests {
             assert!(!kinds.contains(&MessageActionKind::Edit));
             assert!(!kinds.contains(&MessageActionKind::Delete));
         } else {
-            panic!("expected ContextActions overlay");
+            unreachable!("expected ContextActions overlay");
         }
     }
 
@@ -679,7 +679,7 @@ mod tests {
             let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
             assert!(kinds.contains(&MessageActionKind::YankCodeBlock));
         } else {
-            panic!("expected ContextActions overlay");
+            unreachable!("expected ContextActions overlay");
         }
     }
 
@@ -693,7 +693,7 @@ mod tests {
             let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
             assert!(kinds.contains(&MessageActionKind::OpenLinks));
         } else {
-            panic!("expected ContextActions overlay");
+            unreachable!("expected ContextActions overlay");
         }
     }
 
@@ -711,7 +711,7 @@ mod tests {
             let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
             assert!(kinds.contains(&MessageActionKind::Inspect));
         } else {
-            panic!("expected ContextActions overlay");
+            unreachable!("expected ContextActions overlay");
         }
     }
 
@@ -724,7 +724,7 @@ mod tests {
             let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
             assert!(!kinds.contains(&MessageActionKind::YankCodeBlock));
         } else {
-            panic!("expected ContextActions overlay");
+            unreachable!("expected ContextActions overlay");
         }
     }
 
@@ -751,7 +751,7 @@ mod tests {
         if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
             assert_eq!(ctx.cursor, 0);
         } else {
-            panic!("expected ContextActions overlay");
+            unreachable!("expected ContextActions overlay");
         }
     }
 

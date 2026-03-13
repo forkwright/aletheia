@@ -56,6 +56,9 @@ pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
 }
 
 pub(crate) async fn handle_next_agent(app: &mut App) {
+    if app.agents.is_empty() {
+        return;
+    }
     app.save_scroll_state();
     if let Some(ref current) = app.focused_agent
         && let Some(idx) = app.agents.iter().position(|a| a.id == *current)
@@ -69,6 +72,9 @@ pub(crate) async fn handle_next_agent(app: &mut App) {
 }
 
 pub(crate) async fn handle_prev_agent(app: &mut App) {
+    if app.agents.is_empty() {
+        return;
+    }
     app.save_scroll_state();
     if let Some(ref current) = app.focused_agent
         && let Some(idx) = app.agents.iter().position(|a| a.id == *current)
@@ -265,5 +271,23 @@ mod tests {
         handle_resize(&mut app, 120, 40);
         assert!(!app.auto_scroll);
         assert_eq!(app.scroll_offset, 5);
+    }
+
+    #[tokio::test]
+    async fn next_agent_empty_list_is_noop() {
+        let mut app = test_app();
+        assert!(app.agents.is_empty());
+        handle_next_agent(&mut app).await;
+        // No panic, no state change
+        assert!(app.focused_agent.is_none());
+    }
+
+    #[tokio::test]
+    async fn prev_agent_empty_list_is_noop() {
+        let mut app = test_app();
+        assert!(app.agents.is_empty());
+        handle_prev_agent(&mut app).await;
+        // No panic, no state change
+        assert!(app.focused_agent.is_none());
     }
 }
