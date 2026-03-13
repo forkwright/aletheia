@@ -8,6 +8,11 @@ use crate::id::{NousId, SessionId, TurnId};
 
 use super::types::SseEvent;
 
+/// If no SSE event is received within this window, the connection is treated as
+/// stale and a reconnect is triggered. Default covers quiet periods between pings
+/// while still detecting hung connections promptly.
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Manages the global SSE connection to /api/v1/events.
 /// Runs in a background task, sends parsed events through a channel.
 pub struct SseConnection {
@@ -45,7 +50,24 @@ impl SseConnection {
                     let _ = tx.send(SseEvent::Connected).await;
                     let mut connected = false;
 
-                    while let Some(event) = es.next().await {
+                    loop {
+                        let maybe_event = tokio::time::timeout(READ_TIMEOUT, es.next()).await;
+                        let event = match maybe_event {
+                            Ok(Some(event)) => event,
+                            Ok(None) => break, // stream ended cleanly
+                            Err(_elapsed) => {
+                                // WHY: No event received within READ_TIMEOUT. A healthy
+                                // server sends pings more frequently than this window, so
+                                // silence here indicates a hung or dropped connection.
+                                tracing::warn!(
+                                    timeout_secs = READ_TIMEOUT.as_secs(),
+                                    "SSE read timeout — treating as disconnect"
+                                );
+                                es.close();
+                                break;
+                            }
+                        };
+
                         match event {
                             Ok(EsEvent::Open) => {
                                 tracing::info!("SSE connected");

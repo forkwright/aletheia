@@ -7,6 +7,8 @@ use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
 use crate::state::{AgentState, AgentStatus};
 
+/// Show a disconnect warning toast after this much time without a connection.
+const DISCONNECT_WARN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 #[tracing::instrument(skip_all)]
@@ -18,34 +20,42 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
 
     if was_disconnected {
         tracing::info!("SSE reconnected — reloading agent state");
-        if let Ok(agents) = app.client.agents().await {
-            let notifications: HashMap<NousId, bool> = app
-                .agents
-                .iter()
-                .map(|a| (a.id.clone(), a.has_notification))
-                .collect();
+        match app.client.agents().await {
+            Ok(agents) => {
+                let notifications: HashMap<NousId, bool> = app
+                    .agents
+                    .iter()
+                    .map(|a| (a.id.clone(), a.has_notification))
+                    .collect();
 
-            app.agents = agents
-                .into_iter()
-                .map(|a| {
-                    let notif = notifications.get(&a.id).copied().unwrap_or(false);
-                    let name = sanitize_for_display(a.display_name()).into_owned();
-                    let name_lower = name.to_lowercase();
-                    AgentState {
-                        id: a.id.clone(),
-                        name,
-                        name_lower,
-                        emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
-                        status: AgentStatus::Idle,
-                        active_tool: None,
-                        tool_started_at: None,
-                        sessions: Vec::new(),
-                        model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
-                        compaction_stage: None,
-                        has_notification: notif,
-                    }
-                })
-                .collect();
+                app.agents = agents
+                    .into_iter()
+                    .map(|a| {
+                        let notif = notifications.get(&a.id).copied().unwrap_or(false);
+                        let name = sanitize_for_display(a.display_name()).into_owned();
+                        let name_lower = name.to_lowercase();
+                        AgentState {
+                            id: a.id.clone(),
+                            name,
+                            name_lower,
+                            emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
+                            status: AgentStatus::Idle,
+                            active_tool: None,
+                            tool_started_at: None,
+                            sessions: Vec::new(),
+                            model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
+                            compaction_stage: None,
+                            has_notification: notif,
+                        }
+                    })
+                    .collect();
+            }
+            Err(e) => {
+                tracing::warn!("SSE reconnect: failed to reload agents: {e}");
+                app.error_toast = Some(ErrorToast::new(format!(
+                    "Reconnect: failed to reload agents: {e}"
+                )));
+            }
         }
         app.load_focused_session().await;
     }
@@ -64,8 +74,13 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
     if app.sse_connected {
         return;
     }
-    if let Some(disconnected_at) = app.sse_disconnected_at
-        && disconnected_at.elapsed() >= RECONNECT_TIMEOUT
+    let Some(disconnected_at) = app.sse_disconnected_at else {
+        return;
+    };
+    let elapsed = disconnected_at.elapsed();
+
+    // After 5 minutes: escalate to a persistent critical error.
+    if elapsed >= RECONNECT_TIMEOUT
         && app
             .error_toast
             .as_ref()
@@ -74,6 +89,23 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
     {
         app.error_toast = Some(ErrorToast::new(
             "Server unreachable after 5 minutes. Check: journalctl --user -eu aletheia".to_string(),
+        ));
+        return;
+    }
+
+    // After 5 seconds: surface a visible warning so the user knows immediately.
+    if elapsed >= DISCONNECT_WARN_TIMEOUT
+        && app
+            .error_toast
+            .as_ref()
+            .map(|t| {
+                !t.message.starts_with("Connection lost")
+                    && !t.message.starts_with("Server unreachable")
+            })
+            .unwrap_or(true)
+    {
+        app.error_toast = Some(ErrorToast::new(
+            "Connection lost. Reconnecting…".to_string(),
         ));
     }
 }
@@ -390,5 +422,82 @@ mod tests {
         handle_sse_tool_called(&mut app, "nonexistent".into(), "tool".to_string());
         handle_sse_tool_failed(&mut app, "nonexistent".into());
         handle_sse_distill_before(&mut app, "nonexistent".into());
+    }
+
+    #[test]
+    fn check_timeout_shows_warning_after_disconnect_warn_timeout() {
+        let mut app = test_app();
+        app.sse_connected = false;
+        let past = std::time::Instant::now()
+            - (DISCONNECT_WARN_TIMEOUT + std::time::Duration::from_secs(1));
+        app.sse_disconnected_at = Some(past);
+        check_sse_reconnect_timeout(&mut app);
+        assert!(
+            app.error_toast.is_some(),
+            "expected an error toast after DISCONNECT_WARN_TIMEOUT"
+        );
+        assert!(
+            app.error_toast
+                .as_ref()
+                .unwrap()
+                .message
+                .starts_with("Connection lost"),
+            "toast message should indicate connection loss"
+        );
+    }
+
+    #[test]
+    fn check_timeout_no_warning_before_disconnect_warn_timeout() {
+        let mut app = test_app();
+        app.sse_connected = false;
+        // Disconnected just now — elapsed is near zero, well below DISCONNECT_WARN_TIMEOUT
+        app.sse_disconnected_at = Some(std::time::Instant::now());
+        check_sse_reconnect_timeout(&mut app);
+        assert!(
+            app.error_toast.is_none(),
+            "should not warn before DISCONNECT_WARN_TIMEOUT has elapsed"
+        );
+    }
+
+    #[test]
+    fn check_timeout_server_unreachable_not_replaced_by_warn() {
+        let mut app = test_app();
+        app.sse_connected = false;
+        let past = std::time::Instant::now()
+            - (DISCONNECT_WARN_TIMEOUT + std::time::Duration::from_secs(1));
+        app.sse_disconnected_at = Some(past);
+        // Pre-set the critical message as if it was already shown
+        app.error_toast = Some(crate::msg::ErrorToast::new(
+            "Server unreachable after 5 minutes.".to_string(),
+        ));
+        check_sse_reconnect_timeout(&mut app);
+        // The "Connection lost" warn must not overwrite the critical error
+        assert!(
+            app.error_toast
+                .as_ref()
+                .unwrap()
+                .message
+                .starts_with("Server unreachable"),
+            "critical server-unreachable toast must not be replaced by the 5s warning"
+        );
+    }
+
+    #[tokio::test]
+    async fn sse_connected_shows_error_toast_on_agent_reload_failure() {
+        // app.client targets localhost:18789 which is not running in tests,
+        // so agents() will fail with a connection error — the fix for #1001
+        // must surface that error via an error toast.
+        let mut app = test_app();
+        app.sse_connected = false; // simulate: was disconnected before reconnect
+        handle_sse_connected(&mut app).await;
+        assert!(
+            app.error_toast.is_some(),
+            "agent reload failure during SSE reconnect must set an error toast"
+        );
+        let msg = &app.error_toast.as_ref().unwrap().message;
+        assert!(
+            msg.starts_with("Reconnect: failed to reload agents"),
+            "toast message should describe the agent reload failure, got: {msg}"
+        );
     }
 }
