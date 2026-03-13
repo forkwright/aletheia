@@ -23,6 +23,8 @@ impl Scenario for HealthReturnsOk {
             category: "health",
             requires_auth: false,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
@@ -51,6 +53,8 @@ impl Scenario for HealthContainsVersion {
             category: "health",
             requires_auth: false,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
@@ -76,6 +80,8 @@ impl Scenario for HealthReportsChecks {
             category: "health",
             requires_auth: false,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {

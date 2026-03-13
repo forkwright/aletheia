@@ -49,6 +49,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    #[snafu(display("no agents available: agent list is empty"))]
+    NoAgentsAvailable {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

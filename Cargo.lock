@@ -138,6 +138,7 @@ name = "aletheia-dokimion"
 version = "0.10.0"
 dependencies = [
  "owo-colors",
+ "regex",
  "reqwest 0.13.2",
  "rustls",
  "serde",

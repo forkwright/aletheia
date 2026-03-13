@@ -88,8 +88,9 @@ impl ScenarioRunner {
         let mut passed = 0_usize;
         let mut failed = 0_usize;
         let mut skipped = 0_usize;
+        let mut fail_fast_idx: Option<usize> = None;
 
-        for scenario in &scenarios {
+        for (i, scenario) in scenarios.iter().enumerate() {
             let meta = scenario.meta();
 
             // Pre-check: skip if prerequisites aren't met
@@ -163,8 +164,22 @@ impl ScenarioRunner {
             results.push(ScenarioResult { meta, outcome });
 
             if self.config.fail_fast && failed > 0 {
-                // Mark remaining as skipped
+                fail_fast_idx = Some(i + 1);
                 break;
+            }
+        }
+
+        // When fail_fast triggered, include remaining scenarios as skipped so that
+        // passed + failed + skipped == total. Omitting them makes counts inconsistent.
+        if let Some(remaining_start) = fail_fast_idx {
+            for scenario in &scenarios[remaining_start..] {
+                results.push(ScenarioResult {
+                    meta: scenario.meta(),
+                    outcome: ScenarioOutcome::Skipped {
+                        reason: "fail_fast: earlier scenario failed".to_owned(),
+                    },
+                });
+                skipped += 1;
             }
         }
 
@@ -192,6 +207,8 @@ mod tests {
                 category: "test",
                 requires_auth: false,
                 requires_nous: false,
+                expected_contains: None,
+                expected_pattern: None,
             }
         }
         fn run<'a>(&'a self, _client: &'a EvalClient) -> crate::scenario::ScenarioFuture<'a> {
@@ -209,6 +226,8 @@ mod tests {
                 category: "test",
                 requires_auth: false,
                 requires_nous: false,
+                expected_contains: None,
+                expected_pattern: None,
             }
         }
         fn run<'a>(&'a self, _client: &'a EvalClient) -> crate::scenario::ScenarioFuture<'a> {
@@ -286,6 +305,8 @@ mod tests {
             category: "unit",
             requires_auth: true,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         };
         assert_eq!(meta.id, "test-scenario");
         assert_eq!(meta.description, "a test scenario");
