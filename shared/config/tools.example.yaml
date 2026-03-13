@@ -78,7 +78,7 @@ browser_automation:
 
 memory:
   knowledge_store:
-    description: "Long-term extracted memories (embedded CozoDB, cross-agent, cross-session)"
+    description: "Long-term extracted memories (embedded engine, cross-agent, cross-session)"
     tool: "memory_search (always available)"
 
 # -- System tools --

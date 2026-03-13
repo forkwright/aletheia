@@ -46,7 +46,7 @@ aletheia backup       # create a point-in-time database backup
 
 Run `aletheia --help` for the full command reference.
 
-Memory (CozoDB, candle) is embedded in the binary. No external databases, containers, or sidecars required.
+Memory (embedded engine, candle) is embedded in the binary. No external databases, containers, or sidecars required.
 
 ## Optional: Signal Integration
 

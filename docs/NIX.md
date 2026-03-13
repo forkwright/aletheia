@@ -698,7 +698,7 @@ From the [Nix integration plan](../planning/nix-integration.md):
 
 - **Single static binary.** No sidecars, no external databases.
 - **hf-hub model download is RUNTIME, not build-time.** Don't pre-fetch models in the derivation. The binary downloads them on first run via `hf-hub`.
-- **CozoDB is vendored.** Feature-gated in mneme. The Nix build needs C/C++ toolchain for the CozoDB compilation.
+- **Datalog engine is embedded.** Feature-gated in mneme behind `mneme-engine`.
 - **TLS decision: rustls + ring.** Minimal C/asm (constant-time crypto only). Not aws-lc-rs (heavy C++ toolchain). Not RustCrypto (alpha, RSA timing vulnerability).
 - **No ONNX, no RocksDB.** Much simpler than a typical ML project.
 - **Instance data at `/var/lib/aletheia/`.** Standard FHS location for service state on NixOS.

@@ -17,7 +17,7 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 
 | System | Location | Purpose |
 |--------|----------|---------|
-| KnowledgeStore | CozoDB (embedded) | Long-term extracted memories, entity relationships, vector search |
+| KnowledgeStore | mneme (embedded Datalog engine) | Long-term extracted memories, entity relationships, vector search |
 | Blackboard | sessions.db | Cross-agent shared state (TTL-based, SQLite) |
 
 ## Built-in Runtime Tools

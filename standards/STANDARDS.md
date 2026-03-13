@@ -59,7 +59,7 @@ When a comment is warranted, use exactly one of these prefixes. No freeform comm
 
 Usage:
 ```
-// WHY: CozoDB returns results as JSON arrays, not named columns.
+// WHY: Datalog engine returns results as JSON arrays, not named columns.
 // Positional indexing is intentional and matches their wire format.
 
 // WARNING: This timeout must exceed the LLM provider's own timeout,
