@@ -120,6 +120,17 @@ impl TraceRotator {
                 context: format!("moving {} to archive", entry.path.display()),
             })?;
 
+            // Rename-and-reopen: create a new empty file at the original path so active
+            // writers complete their current write to the renamed file (old inode) and
+            // immediately get the new file on the next open by name.
+            if let Err(e) = std::fs::File::create(&entry.path) {
+                tracing::warn!(
+                    path = %entry.path.display(),
+                    error = %e,
+                    "could not create replacement trace file after rotation — writers may stall until next rotation"
+                );
+            }
+
             if self.config.compress {
                 self.compress_file(&dest)?;
             }
@@ -291,7 +302,17 @@ mod tests {
         let report = rotator.rotate().expect("rotation succeeds");
 
         assert_eq!(report.files_rotated, 1);
-        assert!(!file.exists(), "old file should be moved");
+        // Rename-and-reopen: original path gets a fresh empty file so active
+        // writers can continue without stalling.
+        assert!(
+            file.exists(),
+            "replacement file should exist at original path"
+        );
+        assert_eq!(
+            fs::read_to_string(&file).unwrap(),
+            "",
+            "replacement file should be empty"
+        );
         assert!(
             config.archive_dir.join("old-trace.log").exists(),
             "old file should be in archive"

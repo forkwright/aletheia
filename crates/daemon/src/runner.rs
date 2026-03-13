@@ -25,6 +25,8 @@ pub struct TaskRunner {
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
     /// In-flight tasks: `task_id` → [`InFlightTask`].
     in_flight: HashMap<String, InFlightTask>,
+    /// Optional SQLite-backed state store for cross-restart persistence.
+    state_store: Option<crate::state::TaskStateStore>,
 }
 
 /// Tracks a task that is currently executing.
@@ -66,6 +68,7 @@ impl TaskRunner {
             retention_executor: None,
             knowledge_executor: None,
             in_flight: HashMap::new(),
+            state_store: None,
         }
     }
 
@@ -84,6 +87,7 @@ impl TaskRunner {
             retention_executor: None,
             knowledge_executor: None,
             in_flight: HashMap::new(),
+            state_store: None,
         }
     }
 
@@ -108,6 +112,16 @@ impl TaskRunner {
         executor: Arc<dyn KnowledgeMaintenanceExecutor>,
     ) -> Self {
         self.knowledge_executor = Some(executor);
+        self
+    }
+
+    /// Attach a `SQLite` state store for task execution persistence.
+    ///
+    /// State is loaded on the first call to [`Self::run`] (before catch-up),
+    /// and saved after every task completion or failure.
+    #[must_use]
+    pub fn with_state_store(mut self, store: crate::state::TaskStateStore) -> Self {
+        self.state_store = Some(store);
         self
     }
 
@@ -317,6 +331,9 @@ impl TaskRunner {
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
 
+        // Restore persisted state before checking for missed windows.
+        self.restore_state();
+
         // Check for missed cron windows on startup.
         self.check_missed_cron_catchup();
 
@@ -445,6 +462,14 @@ impl TaskRunner {
             result = "success",
             "task completed"
         );
+
+        let state_to_save = crate::state::TaskState {
+            task_id: task.def.id.clone(),
+            last_run_ts: task.last_run.map(|ts| ts.to_string()),
+            run_count: task.run_count,
+            consecutive_failures: task.consecutive_failures,
+        };
+        self.persist_task_state(&state_to_save);
     }
 
     /// Record a task failure: increment failures, apply backoff, possibly auto-disable.
@@ -501,6 +526,65 @@ impl TaskRunner {
                 error = %reason,
                 result = "failure",
                 "task failed — backoff applied"
+            );
+        }
+
+        let state_to_save = crate::state::TaskState {
+            task_id: task.def.id.clone(),
+            last_run_ts: task.last_run.map(|ts| ts.to_string()),
+            run_count: task.run_count,
+            consecutive_failures: task.consecutive_failures,
+        };
+        self.persist_task_state(&state_to_save);
+    }
+
+    /// Restore persisted task state from the `SQLite` store (if attached).
+    ///
+    /// Called once at startup, before catch-up checking. Skips silently when
+    /// no store is configured or when a task ID in the store no longer exists.
+    fn restore_state(&mut self) {
+        let Some(ref store) = self.state_store else {
+            return;
+        };
+        match store.load_all() {
+            Ok(states) => {
+                for saved in states {
+                    let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == saved.task_id)
+                    else {
+                        continue;
+                    };
+                    if let Some(Ok(ts)) = saved
+                        .last_run_ts
+                        .as_deref()
+                        .map(str::parse::<jiff::Timestamp>)
+                    {
+                        task.last_run = Some(ts);
+                    }
+                    task.run_count = saved.run_count;
+                    task.consecutive_failures = saved.consecutive_failures;
+                }
+                tracing::info!(nous_id = %self.nous_id, "task state restored from SQLite");
+            }
+            Err(e) => {
+                tracing::warn!(
+                    nous_id = %self.nous_id,
+                    error = %e,
+                    "failed to restore task state — starting fresh"
+                );
+            }
+        }
+    }
+
+    /// Persist a single task's state to the `SQLite` store, if one is attached.
+    fn persist_task_state(&self, state: &crate::state::TaskState) {
+        let Some(ref store) = self.state_store else {
+            return;
+        };
+        if let Err(e) = store.save(state) {
+            tracing::warn!(
+                task_id = %state.task_id,
+                error = %e,
+                "failed to persist task state"
             );
         }
     }
