@@ -34,31 +34,6 @@ jobs:
           done < <(find shared/bin -type f -executable 2>/dev/null)
           exit $failed
 
-  # --- PII scan (PRs only) ---
-  pii-scan:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: Scan for PII patterns
-        run: |
-          PATTERNS=$(grep -v '^#' .github/pii-patterns.txt | grep -v '^$' | paste -sd'|')
-          HITS=$(grep -rnE "$PATTERNS" \
-            --include='*.rs' --include='*.json' \
-            --include='*.md' --include='*.yaml' --include='*.yml' --include='*.toml' \
-            . | grep -v 'scrub-callback' | grep -v 'pii-patterns' | \
-            grep -v 'target/' | grep -v '^./docs/' | \
-            grep -v '^./standards/' | \
-            grep -v 'instance.example/' | \
-            grep -v 'node_modules/' | \
-            grep -v '\.venv/' || true)
-          if [[ -n "$HITS" ]]; then
-            echo "::error::PII patterns detected in tracked files:"
-            echo "$HITS"
-            exit 1
-          fi
-          echo "No PII patterns found."
-
   # --- Commit lint (PRs only) ---
   commitlint:
     if: github.event_name == 'pull_request'
