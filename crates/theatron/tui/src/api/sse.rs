@@ -30,9 +30,7 @@ impl SseConnection {
                 let mut backoff_secs: u64 = 1;
 
                 loop {
-                    let req = client
-                        .get(&url)
-                        .header("Accept", "text/event-stream");
+                    let req = client.get(&url).header("Accept", "text/event-stream");
                     let mut es = match EventSource::new(req) {
                         Ok(es) => es,
                         Err(e) => {
