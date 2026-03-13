@@ -126,7 +126,7 @@ impl SpawnService for SpawnServiceImpl {
                 // Ephemeral actors get their own token; they are
                 // short-lived and don't need a shared parent.
                 let ephemeral_cancel = CancellationToken::new();
-                let (handle, join_handle) = actor::spawn(
+                let (handle, join_handle, _active_turn) = actor::spawn(
                     config,
                     pipeline_config,
                     providers,

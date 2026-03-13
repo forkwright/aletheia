@@ -2,8 +2,9 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tokio::sync::Mutex as TokioMutex;
 
 #[cfg(feature = "knowledge-store")]
@@ -45,6 +46,10 @@ struct ActorEntry {
     restart_count: u32,
     /// When the actor was last (re)started.
     last_start: std::time::Instant,
+    /// Shared with the actor task. `true` while the actor is processing a turn.
+    /// Readable without queuing through the inbox — used by `check_health` to
+    /// distinguish a busy (healthy) actor from an unresponsive (dead) one.
+    active_turn: Arc<AtomicBool>,
 }
 
 /// Default interval between health polls (30 seconds).
@@ -201,7 +206,7 @@ impl NousManager {
         };
 
         let child_cancel = self.cancel.child_token();
-        let (handle, join_handle) = actor::spawn(
+        let (handle, join_handle, active_turn) = actor::spawn(
             config.clone(),
             pipeline_config.clone(),
             Arc::clone(&self.providers),
@@ -229,6 +234,7 @@ impl NousManager {
                 consecutive_misses: 0,
                 restart_count: 0,
                 last_start: std::time::Instant::now(),
+                active_turn,
             },
         );
         handle
@@ -254,12 +260,21 @@ impl NousManager {
 
     /// Check liveness of all actors by sending a ping with a timeout.
     ///
+    /// An actor that does not respond to a ping but has its `active_turn` flag
+    /// set is considered healthy-busy: it is processing a long turn (e.g. an
+    /// LLM call) and cannot dequeue inbox messages until the turn completes.
+    /// Only an actor that fails the ping **and** is not processing a turn is
+    /// reported as dead.
+    ///
     /// Returns a map of `nous_id → ActorHealth`.
     pub async fn check_health(&self) -> BTreeMap<String, ActorHealth> {
         let mut results = BTreeMap::new();
         for (id, entry) in &self.actors {
             let ping_result = entry.handle.ping(DEFAULT_PING_TIMEOUT).await;
-            let alive = ping_result.is_ok();
+            // WHY: An actor processing a long turn cannot dequeue Ping messages
+            // until the turn completes. Treat active_turn=true as a liveness
+            // signal so busy actors are not incorrectly declared dead.
+            let alive = ping_result.is_ok() || entry.active_turn.load(Ordering::Acquire);
 
             // Try to get status for panic_count and uptime
             let (panic_count, uptime) = if let Ok(status) = entry.handle.status().await {
