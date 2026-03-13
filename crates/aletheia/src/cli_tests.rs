@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use super::{Cli, Command, commands::maintenance};
+use super::{Cli, Command, commands::maintenance, commands::session_export::ExportFormat};
 use clap::Parser;
 
 #[test]
@@ -136,5 +136,53 @@ fn export_with_output_parses() {
             assert_eq!(args.max_messages, 100);
         }
         _ => panic!("expected Export command"),
+    }
+}
+
+#[test]
+fn session_export_defaults_to_markdown() {
+    let cli = Cli::parse_from(["aletheia", "session-export", "01JBVK0000000000000000000A"]);
+    match cli.command {
+        Some(Command::SessionExport(args)) => {
+            assert_eq!(args.session_id, "01JBVK0000000000000000000A");
+            assert!(matches!(args.format, ExportFormat::Md));
+            assert!(args.output.is_none());
+            assert_eq!(args.url, "http://127.0.0.1:18789");
+        }
+        _ => panic!("expected SessionExport command"),
+    }
+}
+
+#[test]
+fn session_export_json_format_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "session-export",
+        "01JBVK0000000000000000000A",
+        "--format",
+        "json",
+    ]);
+    match cli.command {
+        Some(Command::SessionExport(args)) => {
+            assert!(matches!(args.format, ExportFormat::Json));
+        }
+        _ => panic!("expected SessionExport command"),
+    }
+}
+
+#[test]
+fn session_export_with_output_file_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "session-export",
+        "01JBVK0000000000000000000A",
+        "--output",
+        "/tmp/session.md",
+    ]);
+    match cli.command {
+        Some(Command::SessionExport(args)) => {
+            assert_eq!(args.output.unwrap(), PathBuf::from("/tmp/session.md"));
+        }
+        _ => panic!("expected SessionExport command"),
     }
 }
