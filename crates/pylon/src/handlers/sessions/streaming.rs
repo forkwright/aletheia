@@ -210,6 +210,22 @@ pub async fn send_message(
 /// returns SSE events in the `WebchatEvent` format that the TUI expects:
 /// `turn_start`, `text_delta`, `thinking_delta`, `tool_start`, `tool_result`,
 /// `turn_complete`, `error`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/sessions/stream",
+    request_body(
+        content = serde_json::Value,
+        description = "Stream turn request: `{agentId, message, sessionKey?}`",
+        content_type = "application/json"
+    ),
+    responses(
+        (status = 200, description = "SSE event stream (WebchatEvent format)", content_type = "text/event-stream"),
+        (status = 400, description = "Bad request", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 404, description = "Nous not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[expect(
     clippy::too_many_lines,
     reason = "streaming bridge setup is inherently sequential"
@@ -404,6 +420,15 @@ pub async fn stream_turn(
 /// Provides system-wide events for the TUI dashboard: turn lifecycle,
 /// tool calls, status changes, and session events. Currently emits
 /// `init` (with empty active turns) and periodic `ping` heartbeats.
+#[utoipa::path(
+    get,
+    path = "/api/v1/events",
+    responses(
+        (status = 200, description = "SSE event stream: `init`, `ping` events", content_type = "text/event-stream"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn events(
     _claims: Claims,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {

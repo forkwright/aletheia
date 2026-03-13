@@ -90,6 +90,16 @@ pub async fn create(
 }
 
 /// GET /api/v1/sessions — list sessions, optionally filtered by agent.
+#[utoipa::path(
+    get,
+    path = "/api/v1/sessions",
+    params(("nous_id" = Option<String>, Query, description = "Filter sessions by agent ID")),
+    responses(
+        (status = 200, description = "Session list"),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[instrument(skip(state, _claims))]
 pub async fn list_sessions(
     State(state): State<Arc<AppState>>,
@@ -169,6 +179,17 @@ pub async fn close(
 /// POST /api/v1/sessions/{id}/archive — archive a session.
 ///
 /// Same behavior as DELETE but via POST, matching the TUI's API contract.
+#[utoipa::path(
+    post,
+    path = "/api/v1/sessions/{id}/archive",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 204, description = "Session archived"),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[instrument(skip(state, _claims))]
 pub async fn archive(
     State(state): State<Arc<AppState>>,
@@ -197,6 +218,17 @@ async fn archive_session_by_id(state: &Arc<AppState>, id: &str) -> Result<Status
 }
 
 /// POST /api/v1/sessions/{id}/unarchive — reactivate an archived session.
+#[utoipa::path(
+    post,
+    path = "/api/v1/sessions/{id}/unarchive",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 204, description = "Session reactivated"),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[instrument(skip(state, _claims))]
 pub async fn unarchive(
     State(state): State<Arc<AppState>>,
@@ -220,6 +252,19 @@ pub async fn unarchive(
 }
 
 /// PUT /api/v1/sessions/{id}/name — rename a session.
+#[utoipa::path(
+    put,
+    path = "/api/v1/sessions/{id}/name",
+    params(("id" = String, Path, description = "Session ID")),
+    request_body = RenameSessionRequest,
+    responses(
+        (status = 204, description = "Session renamed"),
+        (status = 400, description = "Bad request", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 #[instrument(skip(state, _claims, body))]
 pub async fn rename(
     State(state): State<Arc<AppState>>,
