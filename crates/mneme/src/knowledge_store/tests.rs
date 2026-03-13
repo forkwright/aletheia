@@ -2506,7 +2506,7 @@ mod knowledge_store_tests {
                         .rows
                         .first()
                         .and_then(|r| r.first())
-                        .and_then(|v| v.get_int())
+                        .and_then(crate::engine::data::value::DataValue::get_int)
                         .unwrap_or(0)
                 };
 
@@ -2526,11 +2526,11 @@ mod knowledge_store_tests {
                     .rows
                     .first()
                     .and_then(|r| r.first())
-                    .and_then(|v| v.get_int())
+                    .and_then(crate::engine::data::value::DataValue::get_int)
                     .unwrap_or(0);
                 prop_assert_eq!(
                     entity_count_after,
-                    (n as i64) - 1,
+                    i64::try_from(n).expect("test value fits i64") - 1,
                     "entity count must be N-1 after merge"
                 );
 
