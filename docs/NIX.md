@@ -9,7 +9,7 @@ tags:
 
 # Nix Language & NixOS Standards
 
-> Companion to `docs/STANDARDS.md` (Rust). This covers Nix the language, flake conventions, NixOS module patterns, and Aletheia-specific packaging decisions.
+> Companion to `standards/RUST.md`. This covers Nix the language, flake conventions, NixOS module patterns, and Aletheia-specific packaging decisions.
 
 ---
 
@@ -804,4 +804,4 @@ nix why-depends ./result /nix/store/<hash>-foo
 
 ---
 
-*Created: 2026-03-11. Peer to `docs/STANDARDS.md` (Rust).*
+*Created: 2026-03-11. Peer to `standards/RUST.md`.*
