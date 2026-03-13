@@ -4,6 +4,64 @@ Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For 
 
 ---
 
+## Getting started (first-time setup)
+
+Five steps from a fresh clone to a running instance:
+
+**Step 1 — Install the binary**
+
+```bash
+cargo build --release
+cp target/release/aletheia ~/.local/bin/
+```
+
+**Step 2 — Copy the instance scaffold**
+
+```bash
+cp -r instance.example instance
+```
+
+This creates the directory tree (`config/`, `data/`, `nous/`, etc.) with template files ready to edit.
+
+**Step 3 — Configure credentials**
+
+Set your Anthropic API key as an environment variable (or use the init wizard — see [Instance setup](#instance-setup)):
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+Then edit `instance/config/aletheia.toml` (copy from `instance/config/aletheia.toml.example` if it does not exist) and set the bind address, port, and auth mode.
+
+**Step 4 — Set up your first agent**
+
+```bash
+cp -r instance/nous/_template instance/nous/main
+```
+
+Edit `instance/nous/main/SOUL.md` with your agent's identity, then add the agent to `aletheia.toml`:
+
+```toml
+[agents]
+[[agents.list]]
+id = "main"
+default = true
+```
+
+**Step 5 — Start and verify**
+
+```bash
+aletheia --instance-root ./instance
+# In another terminal:
+aletheia health
+```
+
+A `healthy` response means the server is running with a registered LLM provider. If the status is `degraded`, verify your `ANTHROPIC_API_KEY` is set and the config loaded it.
+
+> **Faster alternative:** Run `aletheia init` to let the interactive wizard perform steps 2–4 automatically.
+
+---
+
 ## System requirements
 
 ### Hardware
@@ -206,25 +264,35 @@ This displays the current token or a way to generate one. Tokens are managed by 
 
 ### POST/PUT/DELETE CSRF protection
 
-State-changing requests (POST, PUT, DELETE, PATCH) require a CSRF header by default. Enable CSRF in your config:
+CSRF protection is **enabled by default**. All state-changing requests (POST, PUT, DELETE, PATCH) to `/api/v1/` must include the header:
 
-```yaml
-[gateway.csrf]
-enabled = true
+```
+X-Requested-With: aletheia
 ```
 
-The default header is `X-Requested-With: aletheia`. Include this header on all state-changing requests:
+Include this header on every mutating curl call:
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer your-token" \
   -H "X-Requested-With: aletheia" \
   -H "Content-Type: application/json" \
-  -d '{"nous_id": "main"}' \
+  -d '{"nous_id": "main", "session_key": "default"}' \
   http://127.0.0.1:18789/api/v1/sessions
 ```
 
-If CSRF is disabled in the config, the header is not required.
+Missing the CSRF header returns `403 Forbidden`. No config change is needed to enable this — it is on by default.
+
+#### Disable CSRF for development
+
+To turn off CSRF checks in a local development instance, add to `aletheia.toml`:
+
+```toml
+[gateway.csrf]
+enabled = false
+```
+
+With CSRF disabled, the `X-Requested-With` header is no longer required. Do not disable CSRF on any instance exposed to a network.
 
 ### No authentication mode
 
@@ -273,19 +341,27 @@ gateway:
 
 ## Agent setup
 
-Each agent needs a workspace directory under `instance/nous/`:
+### Recommended: use the init wizard
+
+The `aletheia init` wizard covers agent setup as part of instance initialization. It prompts for agent name and creates the workspace and config entry automatically. If you used `aletheia init`, your first agent is already configured — skip to [First run](#first-run).
+
+### Manual: add an additional agent
+
+To add a second agent or to configure one by hand:
+
+1. Create a workspace from the template:
 
 ```bash
 cp -r instance/nous/_template instance/nous/main
 ```
 
-Edit the bootstrap files:
-- `SOUL.md`: agent identity and character
-- `IDENTITY.md`: display name, emoji
-- `GOALS.md`: current goals
-- `MEMORY.md`: persistent operational memory
+2. Edit the bootstrap files in the new workspace:
+   - `SOUL.md`: agent identity and character
+   - `IDENTITY.md`: display name, emoji
+   - `GOALS.md`: current goals
+   - `MEMORY.md`: persistent operational memory
 
-Register the agent in `aletheia.toml`:
+3. Register the agent in `aletheia.toml`:
 
 ```yaml
 agents:
@@ -293,6 +369,8 @@ agents:
     - id: main
       default: true
 ```
+
+> **Manual alternative:** Steps 1–3 above apply to both first-time manual setups and adding agents to an existing instance. If you used the init wizard, only step 3 may be needed to add additional agents.
 
 ---
 
@@ -367,6 +445,31 @@ aletheia status
 ```
 
 Displays agent count, active sessions, uptime, and provider status.
+
+### API smoke test
+
+Create a session and send a message to verify the full request path. Replace `YOUR_TOKEN` with the token from `aletheia credential status`.
+
+```bash
+# Create a session (nous_id and session_key are both required)
+curl -s -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "X-Requested-With: aletheia" \
+  -H "Content-Type: application/json" \
+  -d '{"nous_id": "main", "session_key": "smoke-test"}' \
+  http://127.0.0.1:18789/api/v1/sessions | jq .id
+```
+
+Use the returned session ID to send a message (the response is an SSE stream):
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "X-Requested-With: aletheia" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Hello"}' \
+  http://127.0.0.1:18789/api/v1/sessions/SESSION_ID/messages
+```
 
 ### Prometheus metrics
 

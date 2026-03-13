@@ -172,10 +172,11 @@ pub async fn send_message(
                         idem_cache.remove(key);
                     }
 
+                    let (err_code, err_message) = turn_error_info(&err);
                     let _ = tx
                         .send(SseEvent::Error {
-                            code: "turn_failed".to_owned(),
-                            message: "An internal error occurred".to_owned(),
+                            code: err_code.to_owned(),
+                            message: err_message.to_owned(),
                         })
                         .await;
                     // Always send a completion marker so the client knows the
@@ -375,9 +376,10 @@ pub async fn stream_turn(
                     // Log full error internally; span carries session/nous context. (#844)
                     tracing::error!(error = %err, "streaming turn failed");
                     let _ = bridge_handle.await;
+                    let (_, err_message) = turn_error_info(&err);
                     let _ = webchat_tx
                         .send(WebchatEvent::Error {
-                            message: "An internal error occurred".to_owned(),
+                            message: err_message.to_owned(),
                         })
                         .await;
                     // Always send a completion marker so the TUI knows the stream
@@ -514,6 +516,39 @@ fn extract_idempotency_key(headers: &axum::http::HeaderMap) -> Result<Option<Str
         .build());
     }
     Ok(Some(key.to_owned()))
+}
+
+/// Categorize a nous turn error into a client-visible (code, message) pair.
+///
+/// Codes and messages identify the failure class without leaking internal
+/// paths, SQL, or provider credentials. See #844 for the security rationale.
+fn turn_error_info(err: &aletheia_nous::error::Error) -> (&'static str, &'static str) {
+    use aletheia_nous::error::Error;
+    match err {
+        Error::PipelineTimeout { .. } | Error::AskTimeout { .. } => {
+            ("turn_timeout", "turn timed out")
+        }
+        Error::GuardRejected { .. } => ("guard_rejected", "request rejected by safety guard"),
+        Error::InboxFull { .. } | Error::ServiceDegraded { .. } => {
+            ("service_busy", "agent is temporarily unavailable")
+        }
+        Error::Llm { source, .. } => classify_llm_error(source),
+        _ => ("turn_failed", "An internal error occurred"),
+    }
+}
+
+/// Map an LLM provider error to a client-visible (code, message) pair.
+fn classify_llm_error(err: &aletheia_hermeneus::error::Error) -> (&'static str, &'static str) {
+    use aletheia_hermeneus::error::Error;
+    match err {
+        Error::RateLimited { .. } => ("rate_limited", "rate limit exceeded"),
+        Error::ApiError { status, .. } if *status == 429 => ("rate_limited", "rate limit exceeded"),
+        Error::AuthFailed { .. } => ("provider_unavailable", "provider temporarily unavailable"),
+        Error::ApiError { status, .. } if *status == 503 => {
+            ("provider_unavailable", "provider temporarily unavailable")
+        }
+        _ => ("turn_failed", "An internal error occurred"),
+    }
 }
 
 /// Emit turn result as individual SSE events to a single client channel.
