@@ -31,6 +31,19 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Context assembly failed reading a required workspace file.
+    ///
+    /// Preserves the original [`std::io::Error`] source so callers can inspect
+    /// the OS-level failure (permission denied, missing file, etc.) without it
+    /// being erased into a string message.
+    #[snafu(display("context assembly failed: required file '{file}' unreadable: {source}"))]
+    ContextAssemblyIo {
+        file: String,
+        source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Workspace validation failed on actor startup.
     #[snafu(display("workspace validation failed for '{nous_id}': {message}"))]
     WorkspaceValidation {
@@ -198,6 +211,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use snafu::IntoError as _;
 
     #[test]
     fn error_display_context_assembly() {
@@ -208,6 +222,16 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("context assembly failed"));
         assert!(msg.contains("SOUL.md missing"));
+    }
+
+    #[test]
+    fn error_display_context_assembly_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let err = ContextAssemblyIoSnafu { file: "SOUL.md" }.into_error(io_err);
+        let msg = err.to_string();
+        assert!(msg.contains("SOUL.md"));
+        assert!(msg.contains("permission denied"));
+        assert!(msg.contains("context assembly failed"));
     }
 
     #[test]

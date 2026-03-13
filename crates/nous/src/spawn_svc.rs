@@ -82,6 +82,7 @@ impl SpawnService for SpawnServiceImpl {
             server_tools: Vec::new(),
             cache_enabled: true,
             session_token_cap: 500_000,
+            recall: crate::recall::RecallConfig::default(),
         };
 
         let pipeline_config = PipelineConfig {

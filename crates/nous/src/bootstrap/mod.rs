@@ -6,6 +6,7 @@
 /// Tool summary generation for inclusion in the bootstrap system prompt.
 pub mod tools;
 
+use snafu::IntoError as _;
 use tracing::{debug, info, warn};
 
 use aletheia_taxis::cascade;
@@ -298,10 +299,10 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
                 }
                 Err(e) => {
                     if spec.priority == SectionPriority::Required {
-                        return Err(error::ContextAssemblySnafu {
-                            message: format!("required file {} unreadable: {e}", spec.filename),
+                        return Err(error::ContextAssemblyIoSnafu {
+                            file: spec.filename.to_owned(),
                         }
-                        .build());
+                        .into_error(e));
                     }
                     warn!(
                         file = spec.filename,
@@ -318,9 +319,10 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
 
     /// Truncate a section to fit within the given token limit.
     ///
-    /// Strategy: split on `## ` markdown headers, include complete subsections
-    /// until budget is reached. Falls back to line-by-line truncation if no
-    /// headers are found.
+    /// Strategy: split on `## ` markdown headers and keep the **newest** (last)
+    /// subsections that fit within the budget, dropping the oldest. A truncation
+    /// marker is prepended so the reader knows content was removed. Falls back to
+    /// line-by-line truncation if no headers are found or no single section fits.
     fn truncate_section(&self, section: &BootstrapSection, max_tokens: u64) -> BootstrapSection {
         let parts: Vec<&str> = section.content.split("\n## ").collect();
 
@@ -328,26 +330,44 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             return self.truncate_by_lines(section, max_tokens);
         }
 
-        let mut result = String::new();
-        let mut tokens: u64 = 0;
-
-        for (i, part) in parts.iter().enumerate() {
-            let text = if i == 0 {
-                (*part).to_owned()
-            } else {
-                format!("\n## {part}")
-            };
-            let part_tokens = self.estimator.estimate(&text);
-
-            if tokens + part_tokens > max_tokens {
-                if result.is_empty() {
-                    return self.truncate_by_lines(section, max_tokens);
+        // Pre-format each part so token estimates are accurate.
+        let formatted: Vec<String> = parts
+            .iter()
+            .enumerate()
+            .map(|(i, part)| {
+                if i == 0 {
+                    (*part).to_owned()
+                } else {
+                    format!("\n## {part}")
                 }
-                result.push_str("\n\n... [truncated for token budget] ...");
+            })
+            .collect();
+
+        // Iterate from newest to oldest, collecting parts that fit.
+        let mut tokens_used: u64 = 0;
+        let mut kept: Vec<usize> = Vec::new();
+
+        for i in (0..formatted.len()).rev() {
+            let part_tokens = self.estimator.estimate(&formatted[i]);
+            if tokens_used + part_tokens > max_tokens {
                 break;
             }
-            result.push_str(&text);
-            tokens += part_tokens;
+            tokens_used += part_tokens;
+            kept.push(i);
+        }
+
+        if kept.is_empty() {
+            // No single section fits within the budget — fall back to lines.
+            return self.truncate_by_lines(section, max_tokens);
+        }
+
+        // Restore chronological order (kept is currently newest-first).
+        kept.reverse();
+
+        // Prepend truncation marker so the reader knows oldest content was dropped.
+        let mut result = String::from("... [truncated for token budget] ...");
+        for i in kept {
+            result.push_str(&formatted[i]);
         }
 
         let final_tokens = self.estimator.estimate(&result);
@@ -361,20 +381,48 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     }
 
     /// Line-by-line truncation fallback.
+    ///
+    /// Keeps the **newest** (last) lines that fit within the budget, dropping
+    /// the oldest. A truncation marker is prepended to indicate removed content.
     fn truncate_by_lines(&self, section: &BootstrapSection, max_tokens: u64) -> BootstrapSection {
-        let mut result = String::new();
-        let mut tokens: u64 = 0;
+        let lines: Vec<&str> = section.content.lines().collect();
 
-        for line in section.content.lines() {
+        // Iterate from newest to oldest, collecting lines that fit.
+        let mut tokens_used: u64 = 0;
+        let mut kept: Vec<&str> = Vec::new();
+
+        for line in lines.iter().rev() {
             let line_with_newline = format!("{line}\n");
             let line_tokens = self.estimator.estimate(&line_with_newline);
 
-            if tokens + line_tokens > max_tokens {
-                result.push_str("\n... [truncated for token budget] ...");
+            if tokens_used + line_tokens > max_tokens {
                 break;
             }
-            result.push_str(&line_with_newline);
-            tokens += line_tokens;
+            tokens_used += line_tokens;
+            kept.push(line);
+        }
+
+        if kept.is_empty() {
+            // Even one line exceeds the budget — return only the marker.
+            let content = "... [truncated for token budget] ...".to_owned();
+            let final_tokens = self.estimator.estimate(&content);
+            return BootstrapSection {
+                name: section.name.clone(),
+                priority: section.priority,
+                content,
+                tokens: final_tokens,
+                truncatable: section.truncatable,
+            };
+        }
+
+        // Restore chronological order (kept is currently newest-first).
+        kept.reverse();
+
+        // Prepend truncation marker so the reader knows oldest lines were dropped.
+        let mut result = String::from("... [truncated for token budget] ...\n");
+        for line in kept {
+            result.push_str(line);
+            result.push('\n');
         }
 
         let final_tokens = self.estimator.estimate(&result);

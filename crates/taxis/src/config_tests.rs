@@ -117,6 +117,7 @@ fn resolve_merges_agent_overrides() {
         allowed_roots: Vec::new(),
         domains: vec!["code".to_owned()],
         default: false,
+        recall: None,
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -141,6 +142,7 @@ fn resolve_merges_allowed_roots() {
         allowed_roots: vec!["/extra".to_owned(), "/shared".to_owned()],
         domains: Vec::new(),
         default: false,
+        recall: None,
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -159,6 +161,7 @@ fn resolve_thinking_override() {
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
+        recall: None,
     });
 
     let resolved = resolve_nous(&config, "thinker");
