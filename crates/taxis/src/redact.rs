@@ -9,6 +9,7 @@ const REDACTED: &str = "***";
 
 /// Paths whose leaf values are replaced with `"***"` in redacted output.
 const SENSITIVE_LEAVES: &[&[&str]] = &[
+    &["gateway", "auth", "signingKey"],
     &["gateway", "tls", "keyPath"],
     &["gateway", "tls", "certPath"],
 ];
@@ -87,6 +88,21 @@ fn redact_signal_accounts(root: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redacts_gateway_signing_key() {
+        let mut config = AletheiaConfig::default();
+        config.gateway.auth.signing_key = Some("super-secret-jwt-signing-key".to_owned());
+
+        let redacted = redact(&config);
+        assert_eq!(redacted["gateway"]["auth"]["signingKey"], REDACTED);
+        // Raw secret must not appear anywhere in the output
+        assert!(
+            !redacted
+                .to_string()
+                .contains("super-secret-jwt-signing-key")
+        );
+    }
 
     #[test]
     fn redacts_tls_key_path() {
