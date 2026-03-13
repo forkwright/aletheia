@@ -3,10 +3,15 @@ use crate::app::App;
 pub(crate) fn handle_open(app: &mut App) {
     app.filter.open();
     update_match_counts(app);
+    // Rebuild so the virtual scroll is fresh when the user exits filter mode.
+    app.rebuild_virtual_scroll();
 }
 
 pub(crate) fn handle_close(app: &mut App) {
     app.filter.close();
+    // Rebuild before scrolling to bottom so the virtual scroll reflects the
+    // full message list now that filtered rendering is deactivated.
+    app.rebuild_virtual_scroll();
     app.scroll_to_bottom();
 }
 
@@ -37,6 +42,9 @@ pub(crate) fn handle_confirm(app: &mut App) {
     } else {
         app.filter.confirm();
     }
+    // Rebuild so the virtual scroll is consistent with any layout changes that
+    // occurred while filter mode was active.
+    app.rebuild_virtual_scroll();
 }
 
 pub(crate) fn handle_next_match(app: &mut App) {
@@ -180,5 +188,53 @@ mod tests {
         handle_input(&mut app, 'e');
         // "!he" inverts: matches messages NOT containing "he"
         assert_eq!(app.filter.match_count, 1); // "world" matches
+    }
+
+    #[test]
+    fn handle_open_rebuilds_virtual_scroll() {
+        let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hello")]);
+        // Simulate a stale virtual scroll by clearing it.
+        app.virtual_scroll.clear();
+        assert_eq!(app.virtual_scroll.len(), 0);
+
+        handle_open(&mut app);
+
+        assert_eq!(
+            app.virtual_scroll.len(),
+            app.messages.len(),
+            "virtual scroll must be rebuilt on filter open"
+        );
+    }
+
+    #[test]
+    fn handle_close_rebuilds_virtual_scroll() {
+        let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hello")]);
+        handle_open(&mut app);
+        // Corrupt the virtual scroll to simulate stale state.
+        app.virtual_scroll.clear();
+
+        handle_close(&mut app);
+
+        assert_eq!(
+            app.virtual_scroll.len(),
+            app.messages.len(),
+            "virtual scroll must be rebuilt on filter close"
+        );
+    }
+
+    #[test]
+    fn handle_confirm_rebuilds_virtual_scroll() {
+        let mut app = test_app_with_messages(vec![("user", "hello"), ("assistant", "world")]);
+        handle_open(&mut app);
+        handle_input(&mut app, 'h');
+        app.virtual_scroll.clear();
+
+        handle_confirm(&mut app);
+
+        assert_eq!(
+            app.virtual_scroll.len(),
+            app.messages.len(),
+            "virtual scroll must be rebuilt on filter confirm"
+        );
     }
 }

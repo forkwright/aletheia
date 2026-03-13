@@ -167,6 +167,12 @@ pub async fn handle_save(app: &mut App) {
 pub fn handle_saved(app: &mut App) {
     app.error_toast = Some(ErrorToast::new("Config saved and reloaded".to_owned()));
     app.overlay = None;
+    // Config changes can affect display (e.g. syntax highlighting theme). Invalidate
+    // the cached markdown lines and rebuild virtual scroll heights so the next render
+    // picks up fresh layout.
+    app.cached_markdown_text.clear();
+    app.cached_markdown_lines.clear();
+    app.rebuild_virtual_scroll();
 }
 
 // SAFETY: sanitized at ingestion — error messages may contain external data.

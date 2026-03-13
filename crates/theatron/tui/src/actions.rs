@@ -1,6 +1,10 @@
 /// App action methods — message sending, tab completion, scroll state, cursor helpers.
 use tracing::Instrument;
 
+/// Maximum number of per-agent scroll states retained in memory.
+/// Entries beyond this cap are pruned to agents currently in the active roster.
+const MAX_SCROLL_STATES: usize = 100;
+
 use crate::api::streaming;
 use crate::app::App;
 use crate::state::virtual_scroll::estimate_message_height;
@@ -135,6 +139,13 @@ impl App {
                     auto_scroll: self.auto_scroll,
                 },
             );
+            // Prune stale entries once the map exceeds MAX_SCROLL_STATES.
+            // Retain only agents present in the current roster so that sessions
+            // closed or removed do not hold memory indefinitely.
+            if self.scroll_states.len() > MAX_SCROLL_STATES {
+                let active: Vec<_> = self.agents.iter().map(|a| a.id.clone()).collect();
+                self.scroll_states.retain(|k, _| active.contains(k));
+            }
         }
     }
 
@@ -227,6 +238,53 @@ mod tests {
         app.scroll_offset = 42;
         app.save_scroll_state();
         assert!(app.scroll_states.is_empty());
+    }
+
+    #[test]
+    fn scroll_states_pruned_when_exceeding_max() {
+        let mut app = test_app();
+        // Register one active agent.
+        app.agents.push(test_agent("active", "Active"));
+        app.focused_agent = Some("active".into());
+
+        // Pre-fill with MAX_SCROLL_STATES + 1 stale entries for agents not in roster.
+        for i in 0..=super::MAX_SCROLL_STATES {
+            app.scroll_states.insert(
+                crate::id::NousId::from(format!("stale-{i}")),
+                crate::state::SavedScrollState {
+                    scroll_offset: i,
+                    auto_scroll: false,
+                },
+            );
+        }
+
+        // One save_scroll_state call triggers pruning.
+        app.save_scroll_state();
+
+        // Only the active agent entry should survive.
+        assert!(
+            app.scroll_states.len() <= super::MAX_SCROLL_STATES,
+            "scroll_states must be capped at MAX_SCROLL_STATES after pruning"
+        );
+        assert!(
+            app.scroll_states
+                .contains_key(&crate::id::NousId::from("active")),
+            "active agent entry must be retained after pruning"
+        );
+    }
+
+    #[test]
+    fn scroll_states_within_limit_not_pruned() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.agents.push(test_agent("sol", "Sol"));
+        app.focused_agent = Some("syn".into());
+        app.scroll_offset = 10;
+        app.auto_scroll = false;
+
+        app.save_scroll_state();
+        // Well under the cap — no pruning should occur.
+        assert_eq!(app.scroll_states.len(), 1);
     }
 
     #[test]
