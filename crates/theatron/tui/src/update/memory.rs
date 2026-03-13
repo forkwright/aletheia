@@ -199,8 +199,7 @@ pub async fn handle_confidence_submit(app: &mut App) {
                 if let Some(f) = app.memory.facts.iter_mut().find(|f| f.id == id) {
                     f.confidence = prev_conf;
                 }
-                app.error_toast =
-                    Some(ErrorToast::new(format!("Confidence update failed: {e}")));
+                app.error_toast = Some(ErrorToast::new(format!("Confidence update failed: {e}")));
             }
         }
     }

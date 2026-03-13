@@ -59,12 +59,8 @@ impl SseConnection {
                                     return; // Receiver dropped, shut down
                                 }
                             }
-                            Err(reqwest_eventsource::Error::InvalidStatusCode(
-                                status,
-                                resp,
-                            )) => {
-                                let reason =
-                                    status.canonical_reason().unwrap_or("Unknown");
+                            Err(reqwest_eventsource::Error::InvalidStatusCode(status, resp)) => {
+                                let reason = status.canonical_reason().unwrap_or("Unknown");
                                 let body = resp.text().await.unwrap_or_default();
                                 let message = if let Ok(json) =
                                     serde_json::from_str::<serde_json::Value>(&body)
