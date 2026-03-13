@@ -22,7 +22,7 @@ Functional and non-functional requirements. Updated through Wave 9 (#756).
 | Phase | Description | Status |
 |-------|-------------|--------|
 | A | SQLite session store — WAL, migrations, retention | Done |
-| B | CozoDB engine absorption — vendored Datalog + HNSW | Done |
+| B | Datalog engine absorption — embedded Datalog + HNSW | Done |
 | C | Embedding provider trait + candle default | Done (#693) |
 | D | Hybrid recall pipeline — vector + graph + BM25 + MMR | Done |
 | E | Error remediation — snafu migration, BoxErr elimination | Done (#749, #752) |
@@ -81,7 +81,7 @@ Functional and non-functional requirements. Updated through Wave 9 (#756).
 | ID | Requirement | Status |
 |----|-------------|--------|
 | NF-01 | Single static binary | Done |
-| NF-02 | Zero external services (embedded CozoDB, SQLite, candle) | Done |
+| NF-02 | Zero external services (embedded engine, SQLite, candle) | Done |
 | NF-03 | Zero telemetry / phone-home | Done |
 | NF-04 | Cross-compile: Linux x86_64 + aarch64, macOS | Done |
 | NF-05 | Cargo clippy zero warnings across workspace | Done (#750, #752) |

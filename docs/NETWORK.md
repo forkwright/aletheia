@@ -16,7 +16,7 @@ Every outbound network connection Aletheia makes, documented for transparency.
 These components make **no network calls**:
 
 - **candle** — pure Rust inference for embeddings, runs entirely in-process
-- **CozoDB** — embedded graph + vector database, no network protocol
+- **mneme** — embedded graph + vector database, no network protocol
 - **SQLite** — session store, file-based
 - **Prometheus metrics** — passive endpoint (`GET /metrics`), scraped by external collector
 - **Configuration loading** — reads local YAML file only
@@ -97,7 +97,7 @@ Air-gapped operation is possible with a local LLM provider (configurable base UR
                ┌────────────┼────────────┐
                │            │            │
       ┌────────┴──┐   ┌────┴─────┐  ┌───┴────────┐
-      │  CozoDB   │   │  SQLite  │  │  candle     │
+      │  mneme    │   │  SQLite  │  │  candle     │
       │ (knowledge│   │ (sessions│  │ (embeddings)│
       │  graphs)  │   │  .db)    │  │             │
       └───────────┘   └──────────┘  └─────────────┘
@@ -112,7 +112,7 @@ Air-gapped operation is possible with a local LLM provider (configurable base UR
 ### What Stays Local
 
 - **Session history** → SQLite (`instance/data/sessions.db`)
-- **Knowledge graphs and vectors** → CozoDB (embedded)
+- **Knowledge graphs and vectors** → mneme (embedded Datalog engine)
 - **Embeddings** → computed locally by candle
 - **Agent workspaces** → local filesystem (`instance/nous/`)
 - **Trace logs** → local filesystem (`instance/logs/traces/`)

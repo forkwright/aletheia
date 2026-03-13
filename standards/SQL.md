@@ -2,9 +2,9 @@
 
 > Additive to STANDARDS.md. Read that first. Everything here is SQL-specific.
 >
-> Covers: PostgreSQL, SQLite, Redshift, CozoDB Datalog, Room (Android). Dialect-specific notes are marked.
+> Covers: PostgreSQL, SQLite, Redshift, mneme Datalog, Room (Android). Dialect-specific notes are marked.
 >
-> **Key decisions:** Lowercase keywords, CTEs over subqueries, explicit columns, nullif division, PG identity columns, SQLite STRICT tables, CozoDB Datalog.
+> **Key decisions:** Lowercase keywords, CTEs over subqueries, explicit columns, nullif division, PG identity columns, SQLite STRICT tables, mneme Datalog.
 
 ---
 
@@ -332,7 +332,7 @@ Caveat: with UPSERT `on conflict do nothing`, no row is returned when the confli
 - Parameterized queries always — never string interpolation
 - JSON functions available: `json()`, `json_extract()`, `->` / `->>`, `json_each()`, `json_group_array()`. Binary `jsonb_*` variants (3.45+) for better performance on large documents.
 
-### CozoDB Datalog
+### Mneme Datalog
 
 - Relations are the unit of storage. Rules are the unit of computation.
 - Atoms in rule bodies are positional — order maps to schema column order
@@ -340,7 +340,7 @@ Caveat: with UPSERT `on conflict do nothing`, no row is returned when the confli
 - Aggregation via `<-` (stored relation query) and `?[] <~ Algo(...)` for graph algorithms
 - No implicit joins — every shared variable name across atoms is an explicit join condition
 - Decompose complex queries into named rules freely — no efficiency penalty
-- Recursive rules are CozoDB's primary advantage over SQL — use for transitive closure, reachability, path-finding
+- Recursive rules are Datalog's primary advantage over SQL — use for transitive closure, reachability, path-finding
 - Built-in graph algorithms (PageRank, community detection, shortest path) as special rules — prefer over hand-rolled Datalog for performance
 - HNSW vector indices integrate directly into Datalog queries with ad-hoc joins
 - Test rules with small fixture relations before running against production data

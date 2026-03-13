@@ -34,16 +34,7 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Format
-        run: |
-          # Per-package — mneme contains vendored CozoDB engine code rustfmt can't parse
-          for pkg in aletheia aletheia-agora aletheia-dianoia \
-                     aletheia-dokimion aletheia-hermeneus \
-                     aletheia-integration-tests aletheia-koina \
-                     aletheia-melete aletheia-nous aletheia-oikonomos \
-                     aletheia-organon aletheia-pylon aletheia-symbolon \
-                     aletheia-taxis aletheia-thesauros theatron-core theatron-tui; do
-            cargo fmt -p "$pkg" -- --check
-          done
+        run: cargo fmt --all -- --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 

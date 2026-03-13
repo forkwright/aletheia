@@ -15,13 +15,13 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | HTTP | Axum | Hono | SSE built-in, cleaner middleware |
 | HTTP client | reqwest | node-fetch | Async, connection pooling, Anthropic + channel calls |
 | Anthropic API | Own client (~600 LOC) | @anthropic-ai/sdk | Stable API, reqwest + SSE, adaptive thinking, Tool Search Tool |
-| Unified store | Vendored Datalog engine (from CozoDB) | Qdrant + Neo4j | Rust-native embedded, Datalog, HNSW vectors + graph + relations in one DB. Zero external services. Vendored into `mneme/src/engine/`, gated behind `mneme-engine` feature. |
+| Unified store | Embedded Datalog+HNSW engine | Qdrant + Neo4j | Rust-native embedded, Datalog, HNSW vectors + graph + relations in one DB. Zero external services. Located in `mneme/src/engine/`, gated behind `mneme-engine` feature. |
 | Embeddings | candle + `EmbeddingProvider` trait | fastembed-rs (ONNX) | Pure Rust, no C++ deps. Default: BAAI/bge-small-en-v1.5 (384 dims). Feature-gated behind `embed-candle`. |
-| Memory | Direct (no abstraction) | KnowledgeStore (embedded CozoDB) | ~50 LOC replaces the library |
+| Memory | Direct (no abstraction) | KnowledgeStore (embedded engine) | ~50 LOC replaces the library |
 | Sessions | rusqlite + bundled | better-sqlite3 | WAL mode, no native addon |
 | Encryption | XChaCha20Poly1305 | None (plaintext) | Per-message encryption at rest, ~700ns overhead, zero plaintext on disk |
 | Config | figment + serde + validator | Zod | figment handles oikos cascade natively (YAML + env + CLI, hierarchical merge). By Rocket author. |
-| IDs | ulid + uuid | uuid | ulid for time-sorted data (sessions, messages, memories) - lexicographic sort = natural CozoDB ordering. uuid v4 for non-temporal. |
+| IDs | ulid + uuid | uuid | ulid for time-sorted data (sessions, messages, memories) - lexicographic sort = natural ordering. uuid v4 for non-temporal. |
 | Errors | snafu + anyhow | AletheiaError hierarchy | snafu for library/mid-level enums (context wrapping, Location-based virtual stack traces, multiple variants from same source type - GreptimeDB pattern). anyhow for application entry. |
 | Logging | tracing + Langfuse | tslog | Spans, layers, OpenTelemetry. Langfuse for LLM-specific traces. |
 | CLI | clap | Commander | Compile-time validation |

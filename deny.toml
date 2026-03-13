@@ -2,8 +2,8 @@
 # https://embarkstudios.github.io/cargo-deny/
 
 [graph]
-# Exclude vendored CozoDB engine and test-only crate from all checks
-exclude = ["aletheia-mneme-engine", "aletheia-integration-tests"]
+# Exclude test-only crate from all checks
+exclude = ["aletheia-integration-tests"]
 
 [advisories]
 ignore = [

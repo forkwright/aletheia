@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [features]
 default = ["tui", "recall", "storage-fjall"]
-# Recall pipeline: enables KnowledgeStore (CozoDB) for vector search + extraction persistence.
+# Recall pipeline: enables KnowledgeStore for vector search + extraction persistence.
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall", "aletheia-pylon/knowledge-store"]
 # fjall storage backend for mneme (LSM-tree, pure Rust, LZ4 compression).
 storage-fjall = ["aletheia-mneme/storage-fjall"]
