@@ -1,7 +1,7 @@
 /// Message selection handlers — navigation, actions, and SelectionContext sync.
 use crate::app::App;
 use crate::msg::{ErrorToast, MessageActionKind};
-use crate::state::{ContextAction, ContextActionsOverlay, Overlay, SelectionContext};
+use crate::state::SelectionContext;
 
 pub(crate) fn handle_select_prev(app: &mut App) {
     let count = app.messages.len();
@@ -67,74 +67,6 @@ pub(crate) fn handle_select_last(app: &mut App) {
     app.selected_message = Some(app.messages.len() - 1);
     app.auto_scroll = false;
     sync_selection_context(app);
-}
-
-pub(crate) fn handle_open_context_actions(app: &mut App) {
-    let idx = match app.selected_message {
-        Some(i) if i < app.messages.len() => i,
-        _ => return,
-    };
-
-    let msg = &app.messages[idx];
-    let mut actions = Vec::new();
-
-    actions.push(ContextAction {
-        label: "Copy text",
-        kind: MessageActionKind::Copy,
-    });
-
-    if msg.text.contains("```") {
-        actions.push(ContextAction {
-            label: "Copy code block",
-            kind: MessageActionKind::YankCodeBlock,
-        });
-    }
-
-    if msg.text.contains("http://") || msg.text.contains("https://") {
-        actions.push(ContextAction {
-            label: "Open URL",
-            kind: MessageActionKind::OpenLinks,
-        });
-    }
-
-    if !msg.tool_calls.is_empty() {
-        actions.push(ContextAction {
-            label: "Inspect tool calls",
-            kind: MessageActionKind::Inspect,
-        });
-    }
-
-    actions.push(ContextAction {
-        label: "Quote in reply",
-        kind: MessageActionKind::QuoteInReply,
-    });
-
-    if msg.role == "user" {
-        actions.push(ContextAction {
-            label: "Edit and resend",
-            kind: MessageActionKind::Edit,
-        });
-        actions.push(ContextAction {
-            label: "Delete message",
-            kind: MessageActionKind::Delete,
-        });
-    }
-
-    if msg.role == "assistant" {
-        actions.push(ContextAction {
-            label: "Rate response",
-            kind: MessageActionKind::RateResponse,
-        });
-        actions.push(ContextAction {
-            label: "Flag for review",
-            kind: MessageActionKind::FlagForReview,
-        });
-    }
-
-    app.overlay = Some(Overlay::ContextActions(ContextActionsOverlay {
-        actions,
-        cursor: 0,
-    }));
 }
 
 pub(crate) fn handle_message_action(app: &mut App, action: MessageActionKind) {
@@ -632,127 +564,6 @@ mod tests {
         let mut app = test_app_with_messages(vec![("user", "a")]);
         handle_message_action(&mut app, MessageActionKind::Copy);
         // Should not panic
-    }
-
-    // --- Context actions popup tests ---
-
-    #[test]
-    fn context_actions_user_message_has_copy_quote_edit_delete() {
-        let mut app = test_app_with_messages(vec![("user", "hello world")]);
-        app.selected_message = Some(0);
-        handle_open_context_actions(&mut app);
-        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
-            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
-            assert!(kinds.contains(&MessageActionKind::Copy));
-            assert!(kinds.contains(&MessageActionKind::QuoteInReply));
-            assert!(kinds.contains(&MessageActionKind::Edit));
-            assert!(kinds.contains(&MessageActionKind::Delete));
-            assert!(!kinds.contains(&MessageActionKind::RateResponse));
-        } else {
-            unreachable!("expected ContextActions overlay");
-        }
-    }
-
-    #[test]
-    fn context_actions_assistant_message_has_rate_and_flag() {
-        let mut app = test_app_with_messages(vec![("assistant", "response text")]);
-        app.selected_message = Some(0);
-        handle_open_context_actions(&mut app);
-        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
-            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
-            assert!(kinds.contains(&MessageActionKind::RateResponse));
-            assert!(kinds.contains(&MessageActionKind::FlagForReview));
-            assert!(!kinds.contains(&MessageActionKind::Edit));
-            assert!(!kinds.contains(&MessageActionKind::Delete));
-        } else {
-            unreachable!("expected ContextActions overlay");
-        }
-    }
-
-    #[test]
-    fn context_actions_code_block_shows_yank() {
-        let mut app =
-            test_app_with_messages(vec![("assistant", "here:\n```rust\nlet x = 1;\n```")]);
-        app.selected_message = Some(0);
-        handle_open_context_actions(&mut app);
-        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
-            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
-            assert!(kinds.contains(&MessageActionKind::YankCodeBlock));
-        } else {
-            unreachable!("expected ContextActions overlay");
-        }
-    }
-
-    #[test]
-    fn context_actions_links_shows_open_links() {
-        let mut app =
-            test_app_with_messages(vec![("assistant", "see https://example.com for more")]);
-        app.selected_message = Some(0);
-        handle_open_context_actions(&mut app);
-        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
-            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
-            assert!(kinds.contains(&MessageActionKind::OpenLinks));
-        } else {
-            unreachable!("expected ContextActions overlay");
-        }
-    }
-
-    #[test]
-    fn context_actions_tool_calls_shows_inspect() {
-        let mut app = test_app_with_messages(vec![("assistant", "ran a tool")]);
-        app.messages[0].tool_calls.push(crate::state::ToolCallInfo {
-            name: "read_file".to_string(),
-            duration_ms: Some(50),
-            is_error: false,
-        });
-        app.selected_message = Some(0);
-        handle_open_context_actions(&mut app);
-        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
-            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
-            assert!(kinds.contains(&MessageActionKind::Inspect));
-        } else {
-            unreachable!("expected ContextActions overlay");
-        }
-    }
-
-    #[test]
-    fn context_actions_no_code_hides_yank() {
-        let mut app = test_app_with_messages(vec![("assistant", "plain text only")]);
-        app.selected_message = Some(0);
-        handle_open_context_actions(&mut app);
-        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
-            let kinds: Vec<_> = ctx.actions.iter().map(|a| a.kind).collect();
-            assert!(!kinds.contains(&MessageActionKind::YankCodeBlock));
-        } else {
-            unreachable!("expected ContextActions overlay");
-        }
-    }
-
-    #[test]
-    fn context_actions_no_selection_noop() {
-        let mut app = test_app_with_messages(vec![("user", "hello")]);
-        handle_open_context_actions(&mut app);
-        assert!(app.overlay.is_none());
-    }
-
-    #[test]
-    fn context_actions_out_of_bounds_noop() {
-        let mut app = test_app_with_messages(vec![("user", "hello")]);
-        app.selected_message = Some(99);
-        handle_open_context_actions(&mut app);
-        assert!(app.overlay.is_none());
-    }
-
-    #[test]
-    fn context_actions_cursor_starts_at_zero() {
-        let mut app = test_app_with_messages(vec![("user", "hello")]);
-        app.selected_message = Some(0);
-        handle_open_context_actions(&mut app);
-        if let Some(Overlay::ContextActions(ctx)) = &app.overlay {
-            assert_eq!(ctx.cursor, 0);
-        } else {
-            unreachable!("expected ContextActions overlay");
-        }
     }
 
     #[test]

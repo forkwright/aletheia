@@ -343,7 +343,6 @@ mod tests {
             emoji: Some("🧠".into()),
             status: crate::state::AgentStatus::Idle,
             active_tool: None,
-            tool_started_at: None,
             sessions: Vec::new(),
             model: Some("claude-opus-4-6".into()),
             compaction_stage: None,

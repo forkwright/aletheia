@@ -24,7 +24,7 @@ use crate::state::virtual_scroll::VirtualScroll;
     reason = "re-exported for downstream modules that import from crate::app"
 )]
 pub use crate::state::{
-    AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
+    ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
     ContextActionsOverlay, FilterState, FocusedPane, InputState, MemoryInspectorState, OpsState,
     Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay,
     TabCompletion, ToolApprovalOverlay, ToolCallInfo, View, ViewStack,
@@ -251,7 +251,6 @@ impl App {
                     emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                     status: AgentStatus::Idle,
                     active_tool: None,
-                    tool_started_at: None,
                     sessions: Vec::new(),
                     model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                     compaction_stage: None,
@@ -601,7 +600,6 @@ pub(crate) mod test_helpers {
             emoji: None,
             status: AgentStatus::Idle,
             active_tool: None,
-            tool_started_at: None,
             sessions: Vec::new(),
             model: Some("test-model".to_string()),
             compaction_stage: None,

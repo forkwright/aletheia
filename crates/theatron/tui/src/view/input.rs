@@ -3,6 +3,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::App;
 use crate::theme::Theme;
@@ -119,24 +120,24 @@ pub(crate) fn word_wrap_lines(
             break;
         }
 
-        // Count characters and find the last whitespace within `avail` columns.
+        // Count display columns and find the last whitespace within `avail` columns.
         let mut last_ws_byte: Option<usize> = None; // byte offset within `remaining`
         let mut byte_at_avail: usize = remaining.len(); // byte offset of char at position `avail`
-        let mut char_count = 0usize;
+        let mut col_width = 0usize;
 
         for (b, c) in remaining.char_indices() {
-            if char_count == avail {
+            if col_width >= avail {
                 byte_at_avail = b;
                 break;
             }
             if c.is_whitespace() {
                 last_ws_byte = Some(b);
             }
-            char_count += 1;
+            col_width += UnicodeWidthChar::width(c).unwrap_or(1);
         }
 
         // If remaining text fits entirely, this is the last line.
-        if char_count < avail || remaining.chars().count() <= avail {
+        if col_width < avail || UnicodeWidthStr::width(remaining) <= avail {
             lines.push((pos, pos + remaining.len()));
             break;
         }
@@ -174,11 +175,11 @@ pub(crate) fn cursor_visual_position(
         // Cursor on this line if it falls within [start, end] (inclusive at end
         // so cursor-at-end-of-line is on this line rather than the next).
         if cursor_byte >= start && cursor_byte <= end {
-            let col_chars = text[start..cursor_byte].chars().count();
+            let col_display = UnicodeWidthStr::width(&text[start..cursor_byte]);
             let col = if row == 0 {
-                prompt_width + col_chars
+                prompt_width + col_display
             } else {
-                col_chars
+                col_display
             };
             return (row as u16, col as u16);
         }
@@ -188,11 +189,11 @@ pub(crate) fn cursor_visual_position(
     // Place it at the start of the next line.
     let last_row = line_ranges.len().saturating_sub(1);
     if let Some(&(start, _)) = line_ranges.last() {
-        let col_chars = text[start..cursor_byte.min(text.len())].chars().count();
+        let col_display = UnicodeWidthStr::width(&text[start..cursor_byte.min(text.len())]);
         let col = if last_row == 0 {
-            prompt_width + col_chars
+            prompt_width + col_display
         } else {
-            col_chars
+            col_display
         };
         return (last_row as u16, col as u16);
     }
@@ -259,6 +260,32 @@ mod tests {
         let (row, col) = cursor_visual_position(&ranges, text, 5, 2);
         assert_eq!(row, 0);
         assert_eq!(col, 7); // prompt(2) + 5 chars
+    }
+
+    #[test]
+    fn emoji_counts_as_two_display_columns() {
+        // emoji 😀 has display width 2; with avail=4, "😀ab" takes 4 cols and fits
+        let ranges = word_wrap_lines("😀ab", 4, 4);
+        assert_eq!(ranges, vec![(0, "😀ab".len())]);
+    }
+
+    #[test]
+    fn emoji_wraps_when_exceeds_avail() {
+        // emoji 😀 (width 2) + "xyz" (width 3) = 5 cols; avail=4 → "😀xy" (4 cols) on line 0, "z" on line 1
+        let ranges = word_wrap_lines("😀xyz", 4, 4);
+        assert_eq!(ranges.len(), 2);
+        assert_eq!(&"😀xyz"[ranges[0].0..ranges[0].1], "😀xy");
+        assert_eq!(&"😀xyz"[ranges[1].0..ranges[1].1], "z");
+    }
+
+    #[test]
+    fn cursor_col_accounts_for_emoji_width() {
+        let text = "😀ab";
+        let ranges = word_wrap_lines(text, 20, 20);
+        // Cursor after emoji (byte 4): emoji has display width 2, so col = prompt(2) + 2 = 4
+        let (row, col) = cursor_visual_position(&ranges, text, 4, 2);
+        assert_eq!(row, 0);
+        assert_eq!(col, 4); // prompt(2) + emoji_width(2)
     }
 
     #[test]
