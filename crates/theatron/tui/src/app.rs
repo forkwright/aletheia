@@ -290,8 +290,8 @@ impl App {
         }
 
         self.sse = Some(SseConnection::connect(
+            self.client.raw_client().clone(),
             &self.config.url,
-            self.client.token(),
         ));
 
         Ok(())

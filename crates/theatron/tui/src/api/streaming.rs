@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+use reqwest::Client;
 use reqwest_eventsource::{Event as EsEvent, EventSource};
 use tokio::sync::mpsc;
 use tracing::Instrument;
@@ -6,12 +7,16 @@ use tracing::Instrument;
 use crate::events::StreamEvent;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
-/// Streams a turn response from POST /api/sessions/stream.
+/// Streams a turn response from POST /api/v1/sessions/stream.
 /// Returns a channel that yields parsed StreamEvents.
+///
+/// `client` must be the shared instance from `ApiClient::raw_client()` — auth headers
+/// are already embedded. `Accept: text/event-stream` is set per-request to override
+/// the client-level `Accept: application/json` default.
 #[tracing::instrument(skip_all)]
 pub fn stream_message(
+    client: Client,
     base_url: &str,
-    token: Option<&str>,
     nous_id: &str,
     session_key: &str,
     text: &str,
@@ -25,14 +30,10 @@ pub fn stream_message(
         "sessionKey": session_key,
     });
 
-    let mut builder = reqwest::Client::new()
+    let builder = client
         .post(&url)
         .json(&body)
         .header("Accept", "text/event-stream");
-
-    if let Some(t) = token {
-        builder = builder.bearer_auth(t);
-    }
 
     let span = tracing::info_span!("stream_message");
     tokio::spawn(

@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+use reqwest::Client;
 use reqwest_eventsource::{Event as EsEvent, EventSource};
 use tokio::sync::mpsc;
 use tracing::Instrument;
@@ -7,7 +8,7 @@ use crate::id::{NousId, SessionId, TurnId};
 
 use super::types::SseEvent;
 
-/// Manages the global SSE connection to /api/events.
+/// Manages the global SSE connection to /api/v1/events.
 /// Runs in a background task, sends parsed events through a channel.
 pub struct SseConnection {
     rx: mpsc::Receiver<SseEvent>,
@@ -15,11 +16,13 @@ pub struct SseConnection {
 }
 
 impl SseConnection {
+    /// Connect using the shared HTTP client from `ApiClient::raw_client()`.
+    /// Auth headers are already embedded in the client. `Accept: text/event-stream`
+    /// is set per-request to override the client-level `Accept: application/json` default.
     #[tracing::instrument(skip_all)]
-    pub fn connect(base_url: &str, token: Option<&str>) -> Self {
+    pub fn connect(client: Client, base_url: &str) -> Self {
         let (tx, rx) = mpsc::channel(256);
         let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
-        let token_owned = token.map(|t| t.to_string());
 
         let span = tracing::info_span!("sse_connection");
         let handle = tokio::spawn(
@@ -27,12 +30,9 @@ impl SseConnection {
                 let mut backoff_secs: u64 = 1;
 
                 loop {
-                    let mut req = reqwest::Client::new()
+                    let req = client
                         .get(&url)
                         .header("Accept", "text/event-stream");
-                    if let Some(ref t) = token_owned {
-                        req = req.bearer_auth(t);
-                    }
                     let mut es = match EventSource::new(req) {
                         Ok(es) => es,
                         Err(e) => {
