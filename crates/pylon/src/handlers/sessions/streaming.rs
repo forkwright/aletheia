@@ -24,7 +24,7 @@ use crate::state::AppState;
 use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
 
 use super::types::{SendMessageRequest, StreamTurnRequest};
-use super::{find_session, resolve_session, store_message};
+use super::{find_session, resolve_session};
 
 /// POST /api/v1/sessions/{id}/messages — send a message and stream the response via SSE.
 #[utoipa::path(
@@ -46,7 +46,7 @@ use super::{find_session, resolve_session, store_message};
 )]
 #[expect(
     clippy::too_many_lines,
-    reason = "handler includes preflight checks, idempotency guard, eager user-message persistence, and spawned turn task"
+    reason = "handler includes preflight checks, idempotency guard, and spawned turn task"
 )]
 pub async fn send_message(
     State(state): State<Arc<AppState>>,
@@ -131,28 +131,7 @@ pub async fn send_message(
 
     let session_key = session.session_key.clone();
     let (tx, rx) = mpsc::channel::<SseEvent>(32);
-    let state_clone = Arc::clone(&state);
     let sid = session_id.clone();
-
-    // Persist user message eagerly so the client sees it in history immediately,
-    // even if the turn fails partway through.
-    #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
-    let input_token_estimate = content.len() as i64 / 4;
-    if let Err(e) = store_message(
-        &state,
-        &session_id,
-        aletheia_mneme::types::Role::User,
-        &content,
-        input_token_estimate,
-    )
-    .await
-    {
-        tracing::error!(
-            error = %e,
-            session_id = %session_id,
-            "failed to persist user message to session store"
-        );
-    }
 
     let idem_key = idempotency_key.clone();
     let idem_cache = Arc::clone(&state.idempotency_cache);
@@ -178,24 +157,6 @@ pub async fn send_message(
             {
                 Ok(result) => {
                     emit_turn_result_events(&tx, &result).await;
-
-                    // Store assistant response under the pylon session ID.
-                    let token_estimate = i64::try_from(result.usage.output_tokens).unwrap_or(0);
-                    if let Err(e) = store_message(
-                        &state_clone,
-                        &sid,
-                        aletheia_mneme::types::Role::Assistant,
-                        &result.content,
-                        token_estimate,
-                    )
-                    .await
-                    {
-                        tracing::error!(
-                            error = %e,
-                            session_id = %sid,
-                            "failed to persist assistant message to session store"
-                        );
-                    }
 
                     // Mark idempotency entry as completed so retries get a cache hit.
                     if let Some(ref key) = idem_key {
@@ -376,7 +337,6 @@ pub async fn stream_turn(
                     // seeing turn_complete before the final text_delta events.
                     let _ = bridge_handle.await;
 
-                    let token_estimate = i64::try_from(result.usage.output_tokens).unwrap_or(0);
                     let _ = webchat_tx
                         .send(WebchatEvent::TurnComplete {
                             outcome: TurnOutcome {
@@ -392,21 +352,6 @@ pub async fn stream_turn(
                             },
                         })
                         .await;
-                    if let Err(e) = store_message(
-                        &state,
-                        &sid,
-                        aletheia_mneme::types::Role::Assistant,
-                        &result.content,
-                        token_estimate,
-                    )
-                    .await
-                    {
-                        tracing::error!(
-                            error = %e,
-                            session_id = %sid,
-                            "failed to persist assistant message to session store"
-                        );
-                    }
                 }
                 Err(err) => {
                     // Log full error internally; span carries session/nous context. (#844)
