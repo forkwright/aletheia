@@ -48,11 +48,30 @@ pub(crate) fn handle_cursor_end(app: &mut App) {
 
 pub(crate) fn handle_delete_word(app: &mut App) {
     let mut pos = app.input.cursor;
-    while pos > 0 && app.input.text.as_bytes().get(pos - 1) == Some(&b' ') {
-        pos -= 1;
+    // Skip trailing whitespace using Unicode char boundaries
+    while pos > 0 {
+        let prev = app.prev_char_boundary(pos);
+        let is_ws = app.input.text[prev..pos]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_whitespace());
+        if is_ws {
+            pos = prev;
+        } else {
+            break;
+        }
     }
-    while pos > 0 && app.input.text.as_bytes().get(pos - 1) != Some(&b' ') {
-        pos -= 1;
+    // Skip word characters (non-whitespace)
+    while pos > 0 {
+        let prev = app.prev_char_boundary(pos);
+        let is_ws = app.input.text[prev..pos]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_whitespace());
+        if is_ws {
+            break;
+        }
+        pos = prev;
     }
     app.input.text.drain(pos..app.input.cursor);
     app.input.cursor = pos;
@@ -271,6 +290,26 @@ mod tests {
         handle_delete_word(&mut app);
         assert_eq!(app.input.text, "");
         assert_eq!(app.input.cursor, 0);
+    }
+
+    #[test]
+    fn delete_word_handles_unicode_whitespace() {
+        let mut app = test_app();
+        // Non-breaking space (U+00A0) before the word
+        app.input.text = "hello\u{00A0}world".to_string();
+        app.input.cursor = app.input.text.len();
+        handle_delete_word(&mut app);
+        assert_eq!(app.input.text, "hello\u{00A0}");
+    }
+
+    #[test]
+    fn delete_word_handles_multibyte_word() {
+        let mut app = test_app();
+        // CJK characters as the "word"
+        app.input.text = "hello 你好".to_string();
+        app.input.cursor = app.input.text.len();
+        handle_delete_word(&mut app);
+        assert_eq!(app.input.text, "hello ");
     }
 
     #[test]

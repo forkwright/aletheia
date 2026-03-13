@@ -7,12 +7,18 @@ use super::settings::SettingsOverlay;
 #[derive(Debug)]
 pub enum Overlay {
     Help,
-    AgentPicker { cursor: usize },
+    AgentPicker {
+        cursor: usize,
+    },
     SessionPicker(SessionPickerOverlay),
     SystemStatus,
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
+    #[allow(
+        dead_code,
+        reason = "overlay set by action dispatcher; construction pending keybinding wiring"
+    )]
     ContextActions(ContextActionsOverlay),
     DiffView(crate::diff::DiffViewState),
 }

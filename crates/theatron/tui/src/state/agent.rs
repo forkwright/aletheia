@@ -10,6 +10,13 @@ pub enum AgentStatus {
     Compacting,
 }
 
+/// The name and start time of a currently-running tool call, set and cleared atomically.
+#[derive(Debug, Clone)]
+pub struct ActiveTool {
+    pub name: String,
+    pub started_at: std::time::Instant,
+}
+
 #[derive(Debug, Clone)]
 pub struct AgentState {
     pub id: NousId,
@@ -18,8 +25,7 @@ pub struct AgentState {
     pub name_lower: String,
     pub emoji: Option<String>,
     pub status: AgentStatus,
-    pub active_tool: Option<String>,
-    pub tool_started_at: Option<std::time::Instant>,
+    pub active_tool: Option<ActiveTool>,
     pub sessions: Vec<Session>,
     pub model: Option<String>,
     pub compaction_stage: Option<String>,

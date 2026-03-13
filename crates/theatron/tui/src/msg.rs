@@ -5,7 +5,7 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 /// No I/O happens here — only data describing what happened.
 #[non_exhaustive]
 #[derive(Debug)]
-#[expect(
+#[allow(
     dead_code,
     reason = "variant fields carry event data that update handlers read via destructuring; \
               the compiler sees struct-style variant fields as unread when match arms \
@@ -59,7 +59,6 @@ pub enum Msg {
     DeselectMessage,                  // Esc — return to auto-scroll
     SelectFirst,                      // Home in selection mode
     SelectLast,                       // G or End in selection mode
-    OpenContextActions,               // Enter in selection mode — open popup
     MessageAction(MessageActionKind), // Action on selected message
 
     // --- Filter (`/` mode) ---
@@ -303,8 +302,20 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
+    #[allow(
+        dead_code,
+        reason = "constructed in context action overlay; creation pending keybinding wiring"
+    )]
     QuoteInReply,
+    #[allow(
+        dead_code,
+        reason = "constructed in context action overlay; creation pending keybinding wiring"
+    )]
     RateResponse,
+    #[allow(
+        dead_code,
+        reason = "constructed in context action overlay; creation pending keybinding wiring"
+    )]
     FlagForReview,
 }
 
@@ -314,10 +325,10 @@ pub enum OverlayKind {
     Help,
     AgentPicker,
     SessionPicker,
-    #[expect(dead_code, reason = "opened via command palette :sessions! command")]
+    #[allow(dead_code, reason = "opened via command palette :sessions! command")]
     SessionPickerAll,
     SystemStatus,
-    #[expect(dead_code, reason = "opened via command palette")]
+    #[allow(dead_code, reason = "opened via command palette")]
     Settings,
 }
 
@@ -344,7 +355,7 @@ impl ErrorToast {
 
 #[non_exhaustive]
 #[derive(Debug)]
-#[expect(dead_code, reason = "auth flow variants")]
+#[allow(dead_code, reason = "auth flow variants")]
 pub enum AuthOutcome {
     Success { token: String },
     NoAuthRequired,

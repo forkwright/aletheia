@@ -5,8 +5,8 @@ use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
 use crate::state::virtual_scroll::estimate_message_height;
 use crate::state::{
-    AgentStatus, ChatMessage, Overlay, PlanApprovalOverlay, PlanStepApproval, ToolApprovalOverlay,
-    ToolCallInfo,
+    ActiveTool, AgentStatus, ChatMessage, Overlay, PlanApprovalOverlay, PlanStepApproval,
+    ToolApprovalOverlay, ToolCallInfo,
 };
 
 #[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
@@ -64,8 +64,10 @@ pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
     if let Some(ref agent_id) = app.focused_agent
         && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
     {
-        agent.active_tool = Some(clean_name);
-        agent.tool_started_at = Some(std::time::Instant::now());
+        agent.active_tool = Some(ActiveTool {
+            name: clean_name,
+            started_at: std::time::Instant::now(),
+        });
     }
 }
 
@@ -92,7 +94,6 @@ pub(crate) fn handle_stream_tool_result(
         && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
     {
         agent.active_tool = None;
-        agent.tool_started_at = None;
     }
 }
 
@@ -122,6 +123,27 @@ pub(crate) fn handle_stream_tool_approval_resolved(app: &mut App) {
     if app.is_tool_approval_overlay() {
         app.overlay = None;
     }
+}
+
+#[tracing::instrument(skip_all, fields(step_id))]
+pub(crate) fn handle_stream_plan_step_start(app: &mut App, step_id: u32) {
+    app.ops
+        .push_tool_start(format!("plan step {step_id}"), None);
+}
+
+#[tracing::instrument(skip_all, fields(step_id, %status))]
+pub(crate) fn handle_stream_plan_step_complete(app: &mut App, step_id: u32, status: String) {
+    let name = format!("plan step {step_id}");
+    let is_error = matches!(status.as_str(), "failed" | "error");
+    app.ops.complete_tool(&name, is_error, 0, None);
+}
+
+#[tracing::instrument(skip_all, fields(%status))]
+pub(crate) fn handle_stream_plan_complete(app: &mut App, status: String) {
+    let is_error = matches!(status.as_str(), "failed" | "error");
+    let label = format!("plan: {status}");
+    app.ops.push_tool_start(label.clone(), None);
+    app.ops.complete_tool(&label, is_error, 0, None);
 }
 
 #[tracing::instrument(skip_all)]
@@ -208,7 +230,6 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     {
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
-        agent.tool_started_at = None;
     }
 }
 
@@ -229,7 +250,6 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     {
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
-        agent.tool_started_at = None;
     }
 }
 
@@ -281,7 +301,10 @@ mod tests {
         assert_eq!(app.streaming_tool_calls.len(), 1);
         assert_eq!(app.streaming_tool_calls[0].name, "read_file");
         assert!(app.streaming_tool_calls[0].duration_ms.is_none());
-        assert_eq!(app.agents[0].active_tool.as_deref(), Some("read_file"));
+        assert_eq!(
+            app.agents[0].active_tool.as_ref().map(|t| t.name.as_str()),
+            Some("read_file")
+        );
     }
 
     #[test]
@@ -386,6 +409,52 @@ mod tests {
     }
 
     #[test]
+    fn plan_step_start_adds_ops_entry() {
+        let mut app = test_app();
+        handle_stream_plan_step_start(&mut app, 1);
+        assert_eq!(app.ops.tool_calls.len(), 1);
+        assert_eq!(app.ops.tool_calls[0].name, "plan step 1");
+        assert_eq!(
+            app.ops.tool_calls[0].status,
+            crate::state::ops::OpsToolStatus::Running
+        );
+    }
+
+    #[test]
+    fn plan_step_complete_marks_done() {
+        let mut app = test_app();
+        handle_stream_plan_step_start(&mut app, 2);
+        handle_stream_plan_step_complete(&mut app, 2, "done".to_string());
+        assert_eq!(
+            app.ops.tool_calls[0].status,
+            crate::state::ops::OpsToolStatus::Complete
+        );
+    }
+
+    #[test]
+    fn plan_step_complete_marks_failed_on_error_status() {
+        let mut app = test_app();
+        handle_stream_plan_step_start(&mut app, 3);
+        handle_stream_plan_step_complete(&mut app, 3, "failed".to_string());
+        assert_eq!(
+            app.ops.tool_calls[0].status,
+            crate::state::ops::OpsToolStatus::Failed
+        );
+    }
+
+    #[test]
+    fn plan_complete_adds_completed_ops_entry() {
+        let mut app = test_app();
+        handle_stream_plan_complete(&mut app, "done".to_string());
+        assert_eq!(app.ops.tool_calls.len(), 1);
+        assert_eq!(app.ops.tool_calls[0].name, "plan: done");
+        assert_eq!(
+            app.ops.tool_calls[0].status,
+            crate::state::ops::OpsToolStatus::Complete
+        );
+    }
+
+    #[test]
     fn turn_abort_clears_state() {
         let mut app = test_app();
         app.agents.push(test_agent("syn", "Syn"));
@@ -433,7 +502,10 @@ mod tests {
             is_error: false,
         });
         app.agents[0].status = AgentStatus::Working;
-        app.agents[0].active_tool = Some("grep".to_string());
+        app.agents[0].active_tool = Some(ActiveTool {
+            name: "grep".to_string(),
+            started_at: std::time::Instant::now(),
+        });
 
         handle_stream_error(&mut app, "connection reset".to_string());
 

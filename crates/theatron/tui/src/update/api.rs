@@ -20,7 +20,6 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
                 emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                 status: AgentStatus::Idle,
                 active_tool: None,
-                tool_started_at: None,
                 sessions: sanitize_sessions(Vec::new()),
                 model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                 compaction_stage: None,
