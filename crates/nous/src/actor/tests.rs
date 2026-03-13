@@ -100,7 +100,7 @@ fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::Tem
     let config = test_config();
     let pipeline_config = PipelineConfig::default();
 
-    let (handle, join) = spawn(
+    let (handle, join, _active_turn) = spawn(
         config,
         pipeline_config,
         providers,
@@ -395,7 +395,7 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
     let config = test_config();
     let pipeline_config = PipelineConfig::default();
 
-    let (handle, join) = spawn(
+    let (handle, join, _active_turn) = spawn(
         config,
         pipeline_config,
         providers,
@@ -576,7 +576,7 @@ fn spawn_test_actor_with_store(
     let config = test_config();
     let pipeline_config = PipelineConfig::default();
 
-    let (handle, join) = spawn(
+    let (handle, join, _active_turn) = spawn(
         config,
         pipeline_config,
         providers,

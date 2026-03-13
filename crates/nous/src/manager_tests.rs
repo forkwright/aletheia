@@ -374,6 +374,49 @@ async fn check_health_detects_dead_actor() {
     assert!(!syn_health.alive, "dead actor should not be alive");
 }
 
+/// An actor processing a long turn cannot respond to pings — the inbox is
+/// occupied. `check_health` must report it alive as long as `active_turn`
+/// is set, distinguishing "busy" from "dead".
+#[tokio::test]
+async fn check_health_busy_actor_reports_alive() {
+    let (_dir, oikos) = test_oikos();
+    let mut mgr = test_manager(oikos);
+
+    mgr.spawn(syn_config(), PipelineConfig::default()).await;
+
+    // Simulate: actor is mid-turn (flag set) but its inbox is closed (ping fails).
+    mgr.actors
+        .get("syn")
+        .expect("actor registered")
+        .active_turn
+        .store(true, std::sync::atomic::Ordering::Release);
+
+    // Kill the actor so the ping fails.
+    let handle = mgr.actors.get("syn").expect("entry").handle.clone();
+    handle.shutdown().await.expect("shutdown sent");
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Ping fails but active_turn is set — must report healthy-busy, not dead.
+    let health = mgr.check_health().await;
+    assert!(
+        health.get("syn").expect("syn health").alive,
+        "busy actor (active_turn=true) must report alive even when ping fails"
+    );
+
+    // Clear the flag: actor is now both dead and idle — must report unhealthy.
+    mgr.actors
+        .get("syn")
+        .expect("actor registered")
+        .active_turn
+        .store(false, std::sync::atomic::Ordering::Release);
+
+    let health = mgr.check_health().await;
+    assert!(
+        !health.get("syn").expect("syn health").alive,
+        "dead actor with active_turn=false must report not alive"
+    );
+}
+
 #[test]
 fn backoff_calculation() {
     assert_eq!(super::calculate_backoff(0), Duration::from_secs(5));
