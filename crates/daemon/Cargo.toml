@@ -21,13 +21,10 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true, features = ["process"] }
 tokio-util = { workspace = true }
+rusqlite = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 static_assertions = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
-
-[dependencies.rusqlite]
-version = "0.38"
-features = ["bundled"]
