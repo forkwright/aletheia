@@ -13,8 +13,9 @@ pub struct CreateSessionRequest {
 }
 
 /// Body for `PUT /api/v1/sessions/{id}/name`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RenameSessionRequest {
+    /// New display name for the session.
     pub name: String,
 }
 

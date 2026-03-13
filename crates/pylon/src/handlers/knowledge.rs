@@ -166,6 +166,26 @@ pub struct TimelineResponse {
 /// The knowledge store may not be available (feature-gated), so we return
 /// synthetic demo data when the store is absent, ensuring the TUI always
 /// has something to display.
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/facts",
+    params(
+        ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
+        ("sort" = Option<String>, Query, description = "Sort field: confidence, recency, created, access_count, fsrs_review (default: confidence)"),
+        ("order" = Option<String>, Query, description = "Sort direction: asc or desc (default: desc)"),
+        ("filter" = Option<String>, Query, description = "Text filter"),
+        ("fact_type" = Option<String>, Query, description = "Fact type filter: knowledge, preference, skill, observation, etc."),
+        ("tier" = Option<String>, Query, description = "Epistemic tier: verified, inferred, assumed"),
+        ("limit" = Option<usize>, Query, description = "Maximum results (default: 100)"),
+        ("offset" = Option<usize>, Query, description = "Pagination offset"),
+        ("include_forgotten" = Option<bool>, Query, description = "Include forgotten facts (default: false)"),
+    ),
+    responses(
+        (status = 200, description = "Fact list with total count"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn list_facts(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FactsQuery>,
@@ -219,7 +239,18 @@ pub async fn list_facts(
     Ok(Json(FactsResponse { facts, total }))
 }
 
-/// GET /api/v1/knowledge/facts/:id
+/// GET /api/v1/knowledge/facts/{id}
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/facts/{id}",
+    params(("id" = String, Path, description = "Fact ID")),
+    responses(
+        (status = 200, description = "Fact detail with relationships and similar facts"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 404, description = "Fact not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn get_fact(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -245,6 +276,15 @@ pub async fn get_fact(
 }
 
 /// GET /api/v1/knowledge/entities
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/entities",
+    responses(
+        (status = 200, description = "Entity list"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn list_entities(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<EntitiesResponse>, ApiError> {
@@ -252,7 +292,17 @@ pub async fn list_entities(
     Ok(Json(EntitiesResponse { entities }))
 }
 
-/// GET /api/v1/knowledge/entities/:id/relationships
+/// GET /api/v1/knowledge/entities/{id}/relationships
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/entities/{id}/relationships",
+    params(("id" = String, Path, description = "Entity ID")),
+    responses(
+        (status = 200, description = "Entity relationships"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn entity_relationships(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -261,7 +311,22 @@ pub async fn entity_relationships(
     Ok(Json(RelationshipsResponse { relationships }))
 }
 
-/// POST /api/v1/knowledge/facts/:id/forget
+/// POST /api/v1/knowledge/facts/{id}/forget
+#[utoipa::path(
+    post,
+    path = "/api/v1/knowledge/facts/{id}/forget",
+    params(("id" = String, Path, description = "Fact ID")),
+    request_body(
+        content = serde_json::Value,
+        description = "Optional forget reason: `{reason?}` (default: user_requested)",
+        content_type = "application/json"
+    ),
+    responses(
+        (status = 200, description = "Fact marked forgotten"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn forget_fact(
     State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -273,7 +338,17 @@ pub async fn forget_fact(
     Ok(Json(serde_json::json!({ "status": "forgotten", "id": id })))
 }
 
-/// POST /api/v1/knowledge/facts/:id/restore
+/// POST /api/v1/knowledge/facts/{id}/restore
+#[utoipa::path(
+    post,
+    path = "/api/v1/knowledge/facts/{id}/restore",
+    params(("id" = String, Path, description = "Fact ID")),
+    responses(
+        (status = 200, description = "Fact restored"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn restore_fact(
     State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -282,7 +357,23 @@ pub async fn restore_fact(
     Ok(Json(serde_json::json!({ "status": "restored", "id": id })))
 }
 
-/// PUT /api/v1/knowledge/facts/:id/confidence
+/// PUT /api/v1/knowledge/facts/{id}/confidence
+#[utoipa::path(
+    put,
+    path = "/api/v1/knowledge/facts/{id}/confidence",
+    params(("id" = String, Path, description = "Fact ID")),
+    request_body(
+        content = serde_json::Value,
+        description = "Confidence value: `{confidence}` (0.0–1.0)",
+        content_type = "application/json"
+    ),
+    responses(
+        (status = 200, description = "Confidence updated"),
+        (status = 400, description = "Confidence out of range", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn update_confidence(
     State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -301,6 +392,20 @@ pub async fn update_confidence(
 }
 
 /// GET /api/v1/knowledge/search
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/search",
+    params(
+        ("q" = String, Query, description = "Search query text"),
+        ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
+        ("limit" = Option<usize>, Query, description = "Maximum results (default: 20)"),
+    ),
+    responses(
+        (status = 200, description = "Search results ranked by relevance"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
@@ -349,6 +454,18 @@ pub async fn search(
 }
 
 /// GET /api/v1/knowledge/timeline
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/timeline",
+    params(
+        ("nous_id" = Option<String>, Query, description = "Filter by agent ID"),
+    ),
+    responses(
+        (status = 200, description = "Fact activity timeline in chronological order"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
 pub async fn timeline(
     State(state): State<Arc<AppState>>,
     Query(_query): Query<FactsQuery>,
