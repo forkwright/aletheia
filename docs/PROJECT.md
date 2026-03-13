@@ -1,4 +1,4 @@
-# Aletheia - Project Plan
+# Aletheia - project plan
 
 Roadmap and design intent for Aletheia's evolution.
 
@@ -26,14 +26,14 @@ See [TECHNOLOGY.md](TECHNOLOGY.md) for technology decisions, dependency policy, 
 
 | Milestone | Summary | Status |
 |-----------|---------|--------|
-| M0a | Oikos migration — instance structure, tool resolution, config cascade | Done |
-| M0b | Foundation crates — koina errors, taxis config, newtypes, tracing | Done |
-| M1 | Memory + LLM client — Anthropic streaming, embedded Datalog engine, hybrid recall, embeddings | Done |
-| M2 | Agent core — tool registry, nous pipeline, bootstrap assembly, execute stage | Done |
-| M3 | Gateway + auth + channels — pylon HTTP, symbolon JWT, agora Signal, end-to-end wiring | Done |
-| M4 | Multi-nous + background — NousActor, daemon, dianoia planning, cross-nous sessions | Done |
-| M5 | Plugins + portability — WASM plugins, agent export/import (autarkeia #507, skills #676-#696) | In progress |
-| M6 | Platform extensions — composable ops, A2A interop, eBPF sensing, NixOS module | Backlog |
+| M0a | Oikos migration: instance structure, tool resolution, config cascade | Done |
+| M0b | Foundation crates: koina errors, taxis config, newtypes, tracing | Done |
+| M1 | Memory + LLM client: Anthropic streaming, embedded Datalog engine, hybrid recall, embeddings | Done |
+| M2 | Agent core: tool registry, nous pipeline, bootstrap assembly, execute stage | Done |
+| M3 | Gateway + auth + channels: pylon HTTP, symbolon JWT, agora Signal, end-to-end wiring | Done |
+| M4 | Multi-nous + background: NousActor, daemon, dianoia planning, cross-nous sessions | Done |
+| M5 | Plugins + portability: WASM plugins, agent export/import (autarkeia #507, skills #676-#696) | In progress |
+| M6 | Platform extensions: composable ops, A2A interop, eBPF sensing, NixOS module | Backlog |
 
 See `Cargo.toml` workspace members for current crate inventory.
 
@@ -46,7 +46,7 @@ See `Cargo.toml` workspace members for current crate inventory.
 | HTTP API | Active | REST on port 18789, SSE streaming |
 | Desktop app | Planned | Design knowledge captured in planning docs |
 
-## Related Documents
+## Related documents
 
 | Document | Purpose |
 |----------|---------|

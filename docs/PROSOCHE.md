@@ -1,6 +1,6 @@
-# Prosoche — Attention System
+# Prosoche: attention system
 
-**prosoche** (Greek: προσοχή) means "directed attention." In Stoic practice, prosoche is the discipline of sustained awareness — you cannot reveal what is hidden (aletheia) without first attending carefully.
+**prosoche** (Greek: προσοχή) means "directed attention." In Stoic practice, prosoche is the discipline of sustained awareness; you cannot reveal what is hidden (aletheia) without first attending carefully.
 
 In Aletheia, prosoche is the **heartbeat subsystem**: a periodic background check that prompts each agent to survey its environment and report anything that needs attention.
 
@@ -20,7 +20,7 @@ aletheia binary
     └── DaemonBridge — sends prompts to nous actors
 ```
 
-### Data Flow
+### Data flow
 
 1. `TaskRunner` fires the prosoche task on schedule
 2. Runner calls `DaemonBridge::send_prompt()` with session key `"daemon:prosoche"`
@@ -30,7 +30,7 @@ aletheia binary
 
 ---
 
-## Heartbeat Intervals
+## Heartbeat intervals
 
 The daemon supports multiple schedule types:
 
@@ -39,9 +39,9 @@ The daemon supports multiple schedule types:
 | `Cron` | `0 */45 8-23 * * *` | Every 45 min during waking hours |
 | `Interval` | `Duration::from_secs(3600)` | Fixed hourly interval |
 | `Once` | ISO 8601 timestamp | One-shot scheduled task |
-| `Startup` | — | Run once when daemon starts |
+| `Startup` | n/a | Run once when daemon starts |
 
-### Default Maintenance Schedules
+### Default maintenance schedules
 
 | Task | Schedule |
 |------|----------|
@@ -56,22 +56,22 @@ Tasks support optional **active windows** `(start_hour, end_hour)` to restrict e
 
 ## Configuration
 
-### Agent Workspace File
+### Agent workspace file
 
 Each agent has an `instance/nous/<agent-id>/PROSOCHE.md` file that defines its heartbeat checklist. A template is provided at `instance.example/nous/_template/PROSOCHE.md`.
 
 The checklist specifies what the agent should check on each heartbeat tick:
 
-1. **Calendar** — upcoming events in the next 4 hours
-2. **Tasks** — overdue or due-today items
-3. **System health** — agent status checks
+1. **Calendar**: upcoming events in the next 4 hours
+2. **Tasks**: overdue or due-today items
+3. **System health**: agent status checks
 
 **Constraints per tick:**
 - Maximum 5 tool calls
-- No investigation or research — just check and report
+- No investigation or research; just check and report
 - Response: `HEARTBEAT_OK` if nothing needs action, or brief one-line alerts
 
-### Attention Types
+### Attention types
 
 ```rust
 pub enum AttentionCategory {
@@ -97,7 +97,7 @@ pub enum Urgency {
 
 Currently, prosoche dispatches a prompt to the agent and relies on the agent's tool access (calendar, task manager, system health) to perform the actual checks. If no bridge is configured, prosoche completes successfully with empty results and logs a warning.
 
-### Failure Handling
+### Failure handling
 
 - Tasks are disabled after **3 consecutive failures**
 - A successful execution resets the failure counter
@@ -107,13 +107,13 @@ Currently, prosoche dispatches a prompt to the agent and relies on the agent's t
 
 ## Extensibility
 
-### Adding a New Check Category
+### Adding a new check category
 
 1. Add a variant to `AttentionCategory` in `crates/daemon/src/prosoche.rs`
 2. Update the agent's `PROSOCHE.md` template with instructions for the new check
 3. Ensure the agent has access to the relevant tools (register in `organon`)
 
-### Custom Scheduled Tasks
+### Custom scheduled tasks
 
 The `TaskRunner` accepts arbitrary tasks via `TaskAction`:
 
@@ -124,9 +124,9 @@ The `TaskRunner` accepts arbitrary tasks via `TaskAction`:
 | `Prompt(String)` | Prompt sent to a nous agent |
 | `Builtin(BuiltinTask)` | Built-in maintenance task |
 
-### Bridge Pattern
+### Bridge pattern
 
-The daemon communicates with nous actors through the `DaemonBridge` trait. This keeps the daemon crate decoupled from nous internals — the bridge is wired in the binary crate (`crates/aletheia/src/daemon_bridge.rs`).
+The daemon communicates with nous actors through the `DaemonBridge` trait. This keeps the daemon crate decoupled from nous internals; the bridge is wired in the binary crate (`crates/aletheia/src/daemon_bridge.rs`).
 
 ```rust
 pub trait DaemonBridge: Send + Sync {
@@ -141,7 +141,7 @@ pub trait DaemonBridge: Send + Sync {
 
 ---
 
-## Operational Notes
+## Operational notes
 
 ```bash
 # Check maintenance task status (includes prosoche)
@@ -151,4 +151,4 @@ aletheia maintenance status
 journalctl --user -u aletheia --since "1 hour ago" | grep prosoche
 ```
 
-Prosoche workspace files have **priority 7** in the token budget — they are dropped before semi-static files (MEMORY, TOOLS) under budget pressure, but SOUL.md is never dropped.
+Prosoche workspace files have **priority 7** in the token budget; they are dropped before semi-static files (MEMORY, TOOLS) under budget pressure, but SOUL.md is never dropped.

@@ -1,4 +1,4 @@
-# Aletheia — Requirements Tracking
+# Aletheia: requirements tracking
 
 Functional and non-functional requirements. Updated through Wave 9 (#756).
 
@@ -11,26 +11,26 @@ Functional and non-functional requirements. Updated through Wave 9 (#756).
 | ID | Requirement | Status |
 |----|-------------|--------|
 | MEM-01 | Hybrid recall: vector + graph + BM25 with MMR diversity | Done |
-| MEM-02 | Mem0 sidecar integration | Inactive — replaced by mneme direct implementation |
+| MEM-02 | Mem0 sidecar integration | Inactive: replaced by mneme direct implementation |
 | MEM-03 | Explicit forgetting API | Done (#736) |
 | MEM-04 | Distillation + memory flush (melete) | Done |
 
 ---
 
-## Mneme Phases
+## Mneme phases
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| A | SQLite session store — WAL, migrations, retention | Done |
-| B | Datalog engine absorption — embedded Datalog + HNSW | Done |
+| A | SQLite session store: WAL, migrations, retention | Done |
+| B | Datalog engine absorption: embedded Datalog + HNSW | Done |
 | C | Embedding provider trait + candle default | Done (#693) |
-| D | Hybrid recall pipeline — vector + graph + BM25 + MMR | Done |
-| E | Error remediation — snafu migration, BoxErr elimination | Done (#749, #752) |
-| F | Engine hygiene — unsafe SAFETY docs, lint suppressions, dead code | Done (#750, #752, #753) |
+| D | Hybrid recall pipeline: vector + graph + BM25 + MMR | Done |
+| E | Error remediation: snafu migration, BoxErr elimination | Done (#749, #752) |
+| F | Engine hygiene: unsafe SAFETY docs, lint suppressions, dead code | Done (#750, #752, #753) |
 
 ---
 
-## Engine Hygiene (completed Wave 8–9)
+## Engine hygiene (completed Wave 8–9)
 
 - **Snafu migration:** All library crates use snafu error enums. `anyhow` limited to binary entry points. Done.
 - **Unwrap elimination:** No `unwrap()` in library code. Documented exceptions with SAFETY comments. Done.
@@ -50,11 +50,11 @@ Functional and non-functional requirements. Updated through Wave 9 (#756).
 | SKILL-04 | Skill export/import (autarkeia) | Done (#507) |
 | SKILL-05 | Cross-nous skill sharing | Done (#696) |
 | SKILL-06 | Skill versioning | Done (#696) |
-| SKILL-07 | Skill quality lifecycle — promotion, demotion, expiry | Done (#740) |
+| SKILL-07 | Skill quality lifecycle: promotion, demotion, expiry | Done (#740) |
 
 ---
 
-## Agent Model (NOUS)
+## Agent model (NOUS)
 
 | ID | Requirement | Status |
 |----|-------------|--------|
@@ -71,12 +71,12 @@ Functional and non-functional requirements. Updated through Wave 9 (#756).
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| PLUG-01 | WASM plugin host (wasmtime) | Planned — M6 |
+| PLUG-01 | WASM plugin host (wasmtime) | Planned (M6) |
 | PLUG-02 | Agent export/import (autarkeia) | Done (#507) |
 
 ---
 
-## Non-Functional
+## Non-functional
 
 | ID | Requirement | Status |
 |----|-------------|--------|

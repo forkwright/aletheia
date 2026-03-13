@@ -35,7 +35,7 @@ aletheia health       # check connectivity — prints OK or FAILED
 aletheia tui          # launch the terminal dashboard
 ```
 
-## Daily Use
+## Daily use
 
 ```bash
 aletheia              # start the server (gateway, agents, daemon)
@@ -48,11 +48,11 @@ Run `aletheia --help` for the full command reference.
 
 Memory (embedded engine, candle) is embedded in the binary. No external databases, containers, or sidecars required.
 
-## Optional: Signal Integration
+## Optional: Signal integration
 
 Requires [signal-cli](https://github.com/AsamK/signal-cli) and a registered phone number. See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for setup.
 
-## Next Steps
+## Next steps
 
 - [CONFIGURATION.md](CONFIGURATION.md) - config reference
 - [DEPLOYMENT.md](DEPLOYMENT.md) - production setup

@@ -1,4 +1,4 @@
-# Git History Cleanup Plan
+# Git history cleanup plan
 
 Items to address via `git filter-repo`:
 

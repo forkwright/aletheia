@@ -1,8 +1,8 @@
-# Operational Runbook
+# Operational runbook
 
 For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## Service Architecture
+## Service architecture
 
 ```text
 aletheia                         (port 18789)  -- Rust binary, API
@@ -12,7 +12,7 @@ aletheia                         (port 18789)  -- Rust binary, API
 
 Memory (embedded engine, candle, SQLite) is embedded in the binary. No external databases or sidecars required.
 
-## Quick Health Check
+## Quick health check
 
 ```bash
 aletheia health          # connectivity, dependencies
@@ -21,7 +21,7 @@ aletheia status          # agent status, sessions, cron jobs
 
 ---
 
-## Start Procedure
+## Start procedure
 
 ### 1. Check port is free
 
@@ -54,7 +54,7 @@ curl -s http://localhost:18789/api/health | jq .
 
 ---
 
-## Stop Procedure
+## Stop procedure
 
 ```bash
 systemctl --user stop aletheia
@@ -64,7 +64,7 @@ Or send SIGTERM / Ctrl+C to the running process. The binary shuts down gracefull
 
 ---
 
-## Deploy / Update
+## Deploy / update
 
 ```bash
 cd <repo>
@@ -75,7 +75,7 @@ systemctl --user restart aletheia
 
 ---
 
-## Common Issues
+## Common issues
 
 ### EADDRINUSE on port 18789
 
@@ -121,14 +121,14 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 
 ---
 
-## Log Locations
+## Log locations
 
 | Service | Log |
 |---------|-----|
 | Gateway | stdout / `journalctl --user -u aletheia` |
 | Signal-cli | Gateway stdout (subprocess) |
 
-## Key Paths
+## Key paths
 
 | Path | Purpose |
 |------|---------|
@@ -137,6 +137,6 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 | `instance/data/engine/` | Knowledge graph (embedded Datalog engine) |
 | `instance/nous/<id>/` | Agent workspaces |
 
-## Pre-Restart Checklist
+## Pre-restart checklist
 
 Always run `aletheia health` before restarting. Fix reported failures first - restarting with broken dependencies adds confusion.

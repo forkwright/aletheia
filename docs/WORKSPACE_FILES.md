@@ -1,4 +1,4 @@
-# Workspace Files Reference
+# Workspace files reference
 
 Each nous has a workspace directory (`instance/nous/<name>/`) containing up to 10 markdown files that form its identity, memory, and runtime context. The bootstrap system (`crates/nous/src/bootstrap/`) reads these files, applies token budgeting, and assembles them into the system prompt for each API call. For shared tools available to all agents, see [shared/TOOLS-INFRASTRUCTURE.md](../shared/TOOLS-INFRASTRUCTURE.md).
 
@@ -20,7 +20,7 @@ Each nous has a workspace directory (`instance/nous/<name>/`) containing up to 1
 
 ---
 
-## Load Order and Priority
+## Load order and priority
 
 Files are loaded in strict priority order (1 = highest). The priority number determines two things:
 
@@ -31,7 +31,7 @@ If a file does not exist in the workspace directory, it is silently skipped. Emp
 
 ---
 
-## Required vs Optional
+## Required vs optional
 
 Only one file is truly required for a nous to function:
 
@@ -41,7 +41,7 @@ All other files are optional. A minimal nous needs only SOUL.md. In practice, mo
 
 ---
 
-## Hand-Written vs Auto-Generated
+## Hand-written vs auto-generated
 
 **Hand-written by the operator:**
 - SOUL.md, USER.md, AGENTS.md, IDENTITY.md, GOALS.md
@@ -56,7 +56,7 @@ All other files are optional. A minimal nous needs only SOUL.md. In practice, mo
 
 ---
 
-## Token Budget
+## Token budget
 
 The bootstrap system enforces a configurable token budget (default: 40,000 tokens, set via `bootstrap_max_tokens` in `aletheia.toml`).
 
@@ -73,7 +73,7 @@ The bootstrap budget is one piece of the total context window (`context_tokens`,
 
 ---
 
-## Anthropic Prompt Caching
+## Anthropic prompt caching
 
 The bootstrap assembles all workspace files into a single system prompt block. When `cache_system` is enabled on the `CompletionRequest` (configured via `hermeneus`), Anthropic's prompt caching applies a `cache_control: { "type": "ephemeral" }` breakpoint to the system block. This caches the entire assembled system prompt across turns within the same session, reducing input token costs.
 
@@ -81,15 +81,15 @@ Because all workspace files are concatenated into one block, any change to any f
 
 ---
 
-## Additional Injection Points
+## Additional injection points
 
 Beyond the 9 workspace files, the bootstrap accepts extra sections via `assemble_with_extra()`. Domain packs (loaded by `thesauros`) provide additional context and tool overlays as `BootstrapSection` values that participate in the same priority sorting and token budget as workspace files.
 
 ---
 
-## File Location Rule
+## File location rule
 
-Agent workspaces (`instance/nous/{id}/`) hold **identity files and session memory only**. All other working files — research, plans, drafts, specs, notes, project work — belong in `instance/theke/`.
+Agent workspaces (`instance/nous/{id}/`) hold **identity files and session memory only**. All other working files (research, plans, drafts, specs, notes, project work) belong in `instance/theke/`.
 
 ### What stays in `nous/{id}/`
 

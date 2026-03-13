@@ -1,4 +1,4 @@
-# Aletheia — Implementation Roadmap
+# Aletheia: implementation roadmap
 
 Tracks the prompt-driven implementation plan. Each Wave is a batch of PRs shipped together.
 
@@ -30,12 +30,12 @@ All done.
 
 | PR | Title |
 |----|-------|
-| #732 | Runtime snafu — error enum migration across runtime crates |
-| #733 | TUI error recovery — graceful degradation on API errors |
-| #734 | Core pipeline safety — cancel-safe select! branches |
-| #735 | Deployment flow — systemd unit, NixOS module skeleton |
-| #736 | Explicit forgetting — knowledge deletion API |
-| #737 | Cross-crate integration tests — pylon + mneme + nous end-to-end |
+| #732 | Runtime snafu: error enum migration across runtime crates |
+| #733 | TUI error recovery: graceful degradation on API errors |
+| #734 | Core pipeline safety: cancel-safe select! branches |
+| #735 | Deployment flow: systemd unit, NixOS module skeleton |
+| #736 | Explicit forgetting: knowledge deletion API |
+| #737 | Cross-crate integration tests: pylon + mneme + nous end-to-end |
 
 ---
 
@@ -44,10 +44,10 @@ All done.
 | PR | Title |
 |----|-------|
 | #738 | Daemon task backoff + health checks |
-| #739 | Actor crash recovery — NousActor supervisor restart |
-| #740 | Skill quality lifecycle — promotion, demotion, expiry |
+| #739 | Actor crash recovery: NousActor supervisor restart |
+| #740 | Skill quality lifecycle: promotion, demotion, expiry |
 | #741 | HNSW bounded cache + panic elimination |
-| #742 | lru dep bump — update to current release |
+| #742 | lru dep bump: update to current release |
 
 ---
 
@@ -55,12 +55,12 @@ All done.
 
 | PR | Title |
 |----|-------|
-| #743 | CHANGELOG generation — automated from conventional commits |
-| #744 | Smoke test suite — binary-level integration checks |
-| #749 | Engine facade consolidation — BoxErr → InternalError |
-| #750 | Workspace hygiene — lint cleanup, unused deps |
-| #751 | Deploy bug fixes — config cascade edge cases |
-| #752 | Final validation — zero blanket suppressions. Engine error remediation COMPLETE. |
+| #743 | CHANGELOG generation: automated from conventional commits |
+| #744 | Smoke test suite: binary-level integration checks |
+| #749 | Engine facade consolidation: BoxErr → InternalError |
+| #750 | Workspace hygiene: lint cleanup, unused deps |
+| #751 | Deploy bug fixes: config cascade edge cases |
+| #752 | Final validation: zero blanket suppressions. Engine error remediation COMPLETE. |
 
 ---
 
@@ -68,14 +68,14 @@ All done.
 
 | PR | Title |
 |----|-------|
-| #753 | Unsafe SAFETY docs — all 14 unsafe sites documented (#753 = P202 verification) |
-| #754 | Pylon handler tests — unit tests for all HTTP endpoints |
-| #755 | CLI modularization — main.rs 2245 → 172 lines, commands/ submodule |
-| #756 | Monolith decomposition — 7 large files split into focused modules |
+| #753 | Unsafe SAFETY docs: all 14 unsafe sites documented (#753 = P202 verification) |
+| #754 | Pylon handler tests: unit tests for all HTTP endpoints |
+| #755 | CLI modularization: main.rs 2245 → 172 lines, commands/ submodule |
+| #756 | Monolith decomposition: 7 large files split into focused modules |
 
 ---
 
-## In Flight
+## In flight
 
 None. All waves complete.
 
@@ -85,4 +85,4 @@ None. All waves complete.
 
 | Prompt | Title | Status |
 |--------|-------|--------|
-| P019 | Cutover validation | HELD — pending operator readiness |
+| P019 | Cutover validation | HELD: pending operator readiness |

@@ -1,8 +1,8 @@
-# Shell Completions
+# Shell completions
 
 Aletheia provides tab-completion for all subcommands, flags, and options via [clap_complete](https://docs.rs/clap_complete).
 
-## Generating Completions
+## Generating completions
 
 ```bash
 aletheia completions <SHELL>
@@ -54,7 +54,7 @@ Restart your shell or run `compinit` to pick up the new completions.
 aletheia completions fish > ~/.config/fish/completions/aletheia.fish
 ```
 
-Fish picks up completions from this directory automatically — no restart needed.
+Fish picks up completions from this directory automatically; no restart needed.
 
 ---
 

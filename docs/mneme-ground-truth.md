@@ -1,4 +1,4 @@
-# Mneme Ground Truth Report
+# Mneme ground truth report
 
 Generated: 2026-03-08
 
@@ -10,7 +10,7 @@ Generated: 2026-03-08
 - Broken/incomplete capabilities: none found at the code level; see gaps section for missing features from plan
 - Stubs/dead code: none found
 
-## Gate Results
+## Gate results
 
 | Gate | Status | Evidence |
 |------|--------|----------|
@@ -25,9 +25,9 @@ Generated: 2026-03-08
 | Schema Integrity | PASS | DDL has all required fields (access_count, last_accessed_at, stability_hours, fact_type, is_forgotten, forgotten_at, forget_reason). Migrations v1->v2->v3 tested. Schema version tracking works. |
 | Dead Code | PASS | No todo!(), unimplemented!(), or stub methods found in mneme src (non-engine). |
 
-## Detailed Findings
+## Detailed findings
 
-### Gate 1: Test Suite Health
+### Gate 1: test suite health
 
 ```
 Unit tests:  241 pass, 0 fail, 0 ignored (lib tests)
@@ -50,7 +50,7 @@ Test distribution by module:
 - embedding: 7 tests (fastembed init, deterministic, normalized, dimension, batch matching)
 - store: various session store tests
 
-### Gate 2: Knowledge Store CRUD
+### Gate 2: knowledge store CRUD
 
 All operations verified via integration tests (`knowledge_engine.rs`, `knowledge_lifecycle.rs`, `access_tracking.rs`):
 
@@ -63,7 +63,7 @@ All operations verified via integration tests (`knowledge_engine.rs`, `knowledge
 7. **Unforget fact -> restored**: `unforget_restores_to_search` - forget then unforget. Fact returns to query results. Audit shows cleared forget metadata.
 8. **Access tracking**: `insert_fact_then_search_increments_access_count`, `triple_search_yields_access_count_3` - vector search increments access_count and sets last_accessed_at. 3 searches = access_count 3.
 
-### Gate 3: Recall Engine
+### Gate 3: recall engine
 
 44 unit tests verify the 6-factor scoring formula:
 
@@ -88,7 +88,7 @@ Integration tests (`recall_scoring.rs`, `knowledge_recall.rs`):
 - recent outranks old
 - custom weights shift ranking
 
-### Gate 4: Extraction Pipeline
+### Gate 4: extraction pipeline
 
 Parse tests verify:
 - Valid JSON with entities, relationships, facts parsed correctly
@@ -113,7 +113,7 @@ Vocab validation:
 - Aliases map correctly (has->OWNS, works on->WORKS_AT, created by->CREATED, etc.)
 - Unknown types return Unknown(String), not a fallback
 
-### Gate 5: Backup & Retention
+### Gate 5: backup & retention
 
 Backup (19 tests):
 - `backup_creates_valid_sqlite_database`: VACUUM INTO produces a real SQLite file
@@ -133,7 +133,7 @@ Retention (13 tests):
 - Active sessions skipped
 - Property test: applying retention twice is idempotent
 
-### Gate 6: Import/Export Round-Trip
+### Gate 6: import/export round-trip
 
 21 tests covering:
 - `export_import_roundtrip`: export agent data, import to fresh store, verify fact/note counts and content match
@@ -145,7 +145,7 @@ Retention (13 tests):
 - `rejects_unsupported_version`: future format versions rejected gracefully
 - Property test: export_import_preserves_content with random data
 
-### Gate 7: Property Tests
+### Gate 7: property tests
 
 8 property tests, all pass:
 
@@ -160,7 +160,7 @@ Retention (13 tests):
 | retention | `retention_idempotency` | Applying retention policy twice produces same result as once |
 | import | `export_import_preserves_content` | Random agent data round-trips through export/import with content preserved |
 
-### Gate 8: Integration Tests
+### Gate 8: integration tests
 
 89 tests across 17 test files in `aletheia-integration-tests`:
 
@@ -183,7 +183,7 @@ Retention (13 tests):
 
 All tests verify real behavior, not just compilation. Tests assert on content, counts, ordering, and field values.
 
-### Gate 9: Schema Integrity
+### Gate 9: schema integrity
 
 **Knowledge Store DDL** (`knowledge_store.rs` KNOWLEDGE_DDL):
 All required fields present in the facts relation:
@@ -210,7 +210,7 @@ All required fields present in the facts relation:
 
 **One bug found and fixed**: `schema_version_queryable` integration test asserted `== 2` but actual version is 3 (bumped by v2->v3 migration adding forget columns). Fixed to assert `== 3`.
 
-### Gate 10: Dead Code and Stub Detection
+### Gate 10: dead code and stub detection
 
 No stubs found:
 - Zero `todo!()` or `unimplemented!()` in `crates/mneme/src/*.rs` (excluding engine/)
@@ -227,7 +227,7 @@ All public methods on KnowledgeStore have real implementations:
 - `increment_access`: access tracking
 - All have async wrappers via `spawn_blocking`
 
-## Gaps vs. mneme-excellence.md Phase A Items
+## Gaps vs. mneme-excellence.md phase A items
 
 | Phase A Task | Status | Evidence |
 |-------------|--------|----------|
@@ -242,7 +242,7 @@ All public methods on KnowledgeStore have real implementations:
 | Fix lib.rs #[allow] -> #[expect] | DONE | Engine module uses `#[expect]` with reason strings. |
 | Correct TECHNOLOGY.md | NOT VERIFIED | Not in scope for this validation (docs, not code). |
 
-## What the Waves Actually Delivered
+## What the waves actually delivered
 
 The waves (PRs #593-#620) delivered genuine working capabilities, not just code that compiles:
 
