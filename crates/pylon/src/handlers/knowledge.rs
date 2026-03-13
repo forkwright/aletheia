@@ -806,7 +806,7 @@ mod tests {
     #[test]
     fn limit_is_capped_at_max() {
         // list_facts clamps query.limit to MAX_LIMIT (1000) before use.
-        assert!(MAX_LIMIT <= 1000, "MAX_LIMIT must not exceed 1000");
+        const { assert!(MAX_LIMIT <= 1000) };
         assert_eq!(MAX_LIMIT, 1000);
     }
 
