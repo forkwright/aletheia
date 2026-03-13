@@ -2443,5 +2443,144 @@ mod knowledge_store_tests {
                 prop_assert_eq!(results[0].tier, crate::knowledge::EpistemicTier::Inferred);
             }
         }
+
+        // Entity merge invariants:
+        // - entity count drops by exactly 1
+        // - merged-from entity is gone
+        // - canonical entity survives
+        // - relationships are redirected (none reference the merged-from id)
+        // - relationship count does not increase (may decrease due to self-referential dedup)
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(256))]
+            #[test]
+            fn execute_merge_invariants(
+                n_entities in 2_usize..=20,
+                rel_pairs in proptest::collection::vec(
+                    (0_usize..20, 0_usize..20),
+                    0..=30,
+                ),
+                canonical_idx in 0_usize..20,
+                merged_idx in 0_usize..20,
+            ) {
+                let n = n_entities;
+                let ci = canonical_idx % n;
+                let mi = {
+                    let raw = merged_idx % n;
+                    if raw == ci { (ci + 1) % n } else { raw }
+                };
+
+                let store = make_store();
+
+                for i in 0..n {
+                    store
+                        .insert_entity(&make_entity(
+                            &format!("e{i}"),
+                            &format!("Entity {i}"),
+                            "concept",
+                        ))
+                        .expect("insert entity");
+                }
+
+                let relations = ["works_on", "knows", "depends_on", "uses"];
+                for (si, di) in &rel_pairs {
+                    let src_i = si % n;
+                    let dst_i = di % n;
+                    // skip self-loops: {src, dst} is the compound key
+                    if src_i == dst_i {
+                        continue;
+                    }
+                    let rel_idx = (src_i + dst_i) % relations.len();
+                    store
+                        .insert_relationship(&make_relationship(
+                            &format!("e{src_i}"),
+                            &format!("e{dst_i}"),
+                            relations[rel_idx],
+                            0.7,
+                        ))
+                        .expect("insert relationship");
+                }
+
+                let count_rels = |s: &Arc<KnowledgeStore>| -> i64 {
+                    s.run_query(r"?[count(src)] := *relationships{src}", BTreeMap::new())
+                        .expect("count rels")
+                        .rows
+                        .first()
+                        .and_then(|r| r.first())
+                        .and_then(|v| v.get_int())
+                        .unwrap_or(0)
+                };
+
+                let rel_count_before = count_rels(&store);
+
+                let canonical_id = crate::id::EntityId::new_unchecked(format!("e{ci}"));
+                let merged_id = crate::id::EntityId::new_unchecked(format!("e{mi}"));
+
+                store
+                    .execute_merge(&canonical_id, &merged_id)
+                    .expect("execute_merge must succeed");
+
+                // 1. Entity count is N-1
+                let entity_count_after = store
+                    .run_query(r"?[count(id)] := *entities{id}", BTreeMap::new())
+                    .expect("count entities after")
+                    .rows
+                    .first()
+                    .and_then(|r| r.first())
+                    .and_then(|v| v.get_int())
+                    .unwrap_or(0);
+                prop_assert_eq!(
+                    entity_count_after,
+                    (n as i64) - 1,
+                    "entity count must be N-1 after merge"
+                );
+
+                // 2. Merged-from entity is gone
+                let mut check_params = BTreeMap::new();
+                check_params.insert(
+                    "id".to_owned(),
+                    crate::engine::DataValue::Str(merged_id.as_str().into()),
+                );
+                let merged_rows = store
+                    .run_query(r"?[id] := *entities{id}, id = $id", check_params)
+                    .expect("check merged gone");
+                prop_assert!(merged_rows.rows.is_empty(), "merged entity must be gone");
+
+                // 3. Canonical entity survives
+                let mut canon_params = BTreeMap::new();
+                canon_params.insert(
+                    "id".to_owned(),
+                    crate::engine::DataValue::Str(canonical_id.as_str().into()),
+                );
+                let canon_rows = store
+                    .run_query(r"?[id] := *entities{id}, id = $id", canon_params)
+                    .expect("check canonical exists");
+                prop_assert_eq!(canon_rows.rows.len(), 1, "canonical entity must survive");
+
+                // 4. No relationship references the merged-from entity
+                let mut ref_params = BTreeMap::new();
+                ref_params.insert(
+                    "mid".to_owned(),
+                    crate::engine::DataValue::Str(merged_id.as_str().into()),
+                );
+                let orphan_rows = store
+                    .run_query(
+                        r"?[src, dst] := *relationships{src, dst}, (src = $mid or dst = $mid)",
+                        ref_params,
+                    )
+                    .expect("check no orphan edges");
+                prop_assert!(
+                    orphan_rows.rows.is_empty(),
+                    "no relationship should reference the merged-from entity"
+                );
+
+                // 5. Relationship count does not increase; may decrease due to
+                // self-referential dedup (canonical<->merged edges removed on redirect)
+                let rel_count_after = count_rels(&store);
+                prop_assert!(
+                    rel_count_after <= rel_count_before,
+                    "relationship count must not increase: before={rel_count_before}, after={rel_count_after}"
+                );
+            }
+        }
     }
 }
