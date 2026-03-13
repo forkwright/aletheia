@@ -120,14 +120,14 @@ pub struct PackPropertyDef {
 
 /// Load and parse a pack manifest from a directory.
 ///
-/// Reads `{pack_root}/pack.yaml`, validates structure, and returns the parsed manifest.
+/// Reads `{pack_root}/pack.toml`, validates structure, and returns the parsed manifest.
 ///
 /// # Errors
 ///
 /// - [`error::Error::PackNotFound`] if `pack_root` does not exist
-/// - [`error::Error::ManifestNotFound`] if `pack.yaml` is missing
+/// - [`error::Error::ManifestNotFound`] if `pack.toml` is missing
 /// - [`error::Error::ReadFile`] if the file cannot be read
-/// - [`error::Error::ParseManifest`] if YAML parsing fails
+/// - [`error::Error::ParseManifest`] if TOML parsing fails
 pub fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
     ensure!(
         pack_root.is_dir(),
@@ -153,7 +153,38 @@ pub fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
             location: snafu::Location::new(file!(), line!(), column!()),
         })?;
 
+    validate_manifest(&manifest)?;
+
     Ok(manifest)
+}
+
+/// Validate pack name and version fields.
+///
+/// Name must be 1–64 characters, alphanumeric and hyphens only.
+/// Version must be non-empty.
+fn validate_manifest(manifest: &PackManifest) -> Result<()> {
+    if !is_valid_pack_name(&manifest.name) {
+        return Err(error::Error::InvalidPackName {
+            name: manifest.name.clone(),
+            location: snafu::Location::new(file!(), line!(), column!()),
+        });
+    }
+
+    if manifest.version.is_empty() {
+        return Err(error::Error::InvalidPackVersion {
+            pack: manifest.name.clone(),
+            location: snafu::Location::new(file!(), line!(), column!()),
+        });
+    }
+
+    Ok(())
+}
+
+/// Returns `true` if the name is 1–64 ASCII alphanumeric/hyphen characters.
+fn is_valid_pack_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 /// Resolve a context entry path relative to the pack root.
@@ -457,5 +488,63 @@ description = "Table name"
             back.input_schema.unwrap().properties["query"].property_type,
             "string"
         );
+    }
+
+    #[test]
+    fn rejects_empty_pack_name() {
+        let dir = setup_pack(&[("pack.toml", "name = \"\"\nversion = \"1.0\"\n")]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, error::Error::InvalidPackName { .. }),
+            "expected InvalidPackName, got: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_pack_name_with_invalid_chars() {
+        let dir = setup_pack(&[("pack.toml", "name = \"my pack!\"\nversion = \"1.0\"\n")]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, error::Error::InvalidPackName { .. }),
+            "expected InvalidPackName, got: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_pack_name_too_long() {
+        let long_name = "a".repeat(65);
+        let toml = format!("name = \"{long_name}\"\nversion = \"1.0\"\n");
+        let dir = setup_pack(&[("pack.toml", &toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, error::Error::InvalidPackName { .. }),
+            "expected InvalidPackName, got: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_pack_version() {
+        let dir = setup_pack(&[("pack.toml", "name = \"my-pack\"\nversion = \"\"\n")]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, error::Error::InvalidPackVersion { .. }),
+            "expected InvalidPackVersion, got: {err}"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_pack_name_with_hyphens() {
+        let dir = setup_pack(&[("pack.toml", "name = \"my-pack-123\"\nversion = \"1.0\"\n")]);
+        let manifest = load_manifest(dir.path()).unwrap();
+        assert_eq!(manifest.name, "my-pack-123");
+    }
+
+    #[test]
+    fn accepts_pack_name_at_max_length() {
+        let name = "a".repeat(64);
+        let toml = format!("name = \"{name}\"\nversion = \"1.0\"\n");
+        let dir = setup_pack(&[("pack.toml", &toml)]);
+        let manifest = load_manifest(dir.path()).unwrap();
+        assert_eq!(manifest.name.len(), 64);
     }
 }
