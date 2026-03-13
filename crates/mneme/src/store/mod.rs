@@ -3,9 +3,9 @@
 //! WAL mode, prepared statement caching, transactional message appends.
 //!
 //! Split into sub-modules by responsibility:
-//! - [`session`] — session CRUD operations
-//! - [`message`] — message history, distillation pipeline, usage recording
-//! - [`peripherals`] — agent notes and blackboard
+//! - `session` — session CRUD operations
+//! - `message` — message history, distillation pipeline, usage recording
+//! - `peripherals` — agent notes and blackboard
 
 mod message;
 mod peripherals;

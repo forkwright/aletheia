@@ -82,6 +82,7 @@ impl IdempotencyCache {
 
     /// Look up a key. On miss, atomically inserts it as `InFlight`.
     pub(crate) fn check_or_insert(&self, key: &str) -> LookupResult {
+        #[expect(clippy::expect_used, reason = "Mutex::lock panics only on poison")]
         let mut inner = self.inner.lock().expect("idempotency cache lock poisoned");
         inner.evict_expired();
 
@@ -118,6 +119,7 @@ impl IdempotencyCache {
 
     /// Mark a key as completed with the given response.
     pub(crate) fn complete(&self, key: &str, status: StatusCode, body: String) {
+        #[expect(clippy::expect_used, reason = "Mutex::lock panics only on poison")]
         let mut inner = self.inner.lock().expect("idempotency cache lock poisoned");
         if let Some(entry) = inner.entries.get_mut(key) {
             entry.state = EntryState::Completed { status, body };
@@ -126,6 +128,7 @@ impl IdempotencyCache {
 
     /// Remove a key from the cache (e.g. on error, to allow retry).
     pub(crate) fn remove(&self, key: &str) {
+        #[expect(clippy::expect_used, reason = "Mutex::lock panics only on poison")]
         let mut inner = self.inner.lock().expect("idempotency cache lock poisoned");
         inner.entries.remove(key);
         inner.order.retain(|k| k != key);
@@ -144,6 +147,7 @@ impl CacheInner {
         while let Some(front_key) = self.order.front() {
             if let Some(entry) = self.entries.get(front_key) {
                 if now.duration_since(entry.created_at) > self.ttl {
+                    #[expect(clippy::expect_used, reason = "just peeked front()")]
                     let key = self.order.pop_front().expect("just peeked");
                     self.entries.remove(&key);
                 } else {
@@ -158,6 +162,7 @@ impl CacheInner {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

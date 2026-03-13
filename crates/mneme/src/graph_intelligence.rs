@@ -2,10 +2,10 @@
 //! and bounded BFS proximity into the 6-factor recall pipeline.
 //!
 //! This module provides:
-//! - [`GraphContext`]: per-query snapshot of graph scores loaded from `graph_scores` relation
+//! - [`GraphContext`](crate::graph_intelligence::GraphContext): per-query snapshot of graph scores loaded from `graph_scores` relation
 //! - Enhanced scoring functions that augment epistemic tier, relationship proximity, and access frequency
 //! - Background recomputation of `PageRank` + `Louvain` stored in `graph_scores`
-//! - Cache invalidation via [`GraphDirtyFlag`]
+//! - Cache invalidation via [`GraphDirtyFlag`](crate::graph_intelligence::GraphDirtyFlag)
 
 use std::collections::{HashMap, HashSet};
 
@@ -383,7 +383,7 @@ impl crate::knowledge_store::KnowledgeStore {
     /// Compute per-entity domain volatility from supersession patterns.
     ///
     /// Joins `facts`, `fact_entities`, and supersession chain data to produce
-    /// [`DomainVolatility`] scores for all entities with linked facts.
+    /// [`DomainVolatility`](crate::succession::DomainVolatility) scores for all entities with linked facts.
     pub fn compute_domain_volatility(
         &self,
     ) -> crate::error::Result<Vec<crate::succession::DomainVolatility>> {

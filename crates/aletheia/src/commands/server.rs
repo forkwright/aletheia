@@ -245,11 +245,6 @@ pub async fn run(args: Args) -> Result<()> {
         info!(path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
         Some(store)
     };
-    #[cfg(not(feature = "recall"))]
-    let knowledge_store: Option<
-        std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
-    > = None;
-
     // Wire vector search from KnowledgeStore
     #[cfg(feature = "recall")]
     let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> =

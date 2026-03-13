@@ -276,7 +276,7 @@ impl RecallEngine {
 
     /// Epistemic tier score boosted by entity `PageRank` importance.
     ///
-    /// Superset of [`score_epistemic_tier`]: calling with `importance=0.0`
+    /// Superset of [`score_epistemic_tier`](Self::score_epistemic_tier): calling with `importance=0.0`
     /// produces the same result as the base scorer.
     #[must_use]
     #[instrument(skip(self))]
@@ -287,7 +287,7 @@ impl RecallEngine {
 
     /// Relationship proximity score with community-aware floor.
     ///
-    /// Superset of [`score_relationship_proximity`]: calling with `same_cluster=false`
+    /// Superset of [`score_relationship_proximity`](Self::score_relationship_proximity): calling with `same_cluster=false`
     /// produces the same result as the base scorer.
     #[must_use]
     #[instrument(skip(self))]
@@ -302,7 +302,7 @@ impl RecallEngine {
 
     /// Access frequency score with supersession chain evolution bonus.
     ///
-    /// Superset of [`score_access_frequency`]: calling with `chain_length=0`
+    /// Superset of [`score_access_frequency`](Self::score_access_frequency): calling with `chain_length=0`
     /// produces the same result as the base scorer.
     #[must_use]
     #[instrument(skip(self))]
