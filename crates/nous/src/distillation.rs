@@ -406,6 +406,7 @@ mod tests {
             distillation_number: 1,
             timestamp: jiff::Timestamp::now().to_string(),
             verbatim_messages: vec![],
+            memory_flush: aletheia_melete::flush::MemoryFlush { decisions: vec![], corrections: vec![], facts: vec![], task_state: None },
         };
 
         apply_distillation(&store, "ses-1", &result, &history).expect("apply distillation");
