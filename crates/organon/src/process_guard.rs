@@ -75,12 +75,12 @@ impl ProcessGuard {
 impl Drop for ProcessGuard {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
-            // Best-effort kill. Returns an error if the process already
-            // exited — that is fine; we are ensuring cleanup, not asserting
-            // the process was alive.
+            // WHY: kill() may return ESRCH if the process already exited;
+            // safe to ignore — we are cleaning up, not asserting liveness.
             let _ = child.kill();
-            // Reap the (possibly-already-dead) child so it doesn't linger
-            // as a zombie. Errors indicate the OS already reaped it.
+            // INVARIANT: wait() after kill() prevents zombie accumulation.
+            // If try_wait() already reaped the zombie, wait() returns ECHILD
+            // which is safe to ignore — the goal (no zombie) is already met.
             let _ = child.wait();
         }
     }

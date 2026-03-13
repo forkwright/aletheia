@@ -38,11 +38,9 @@ impl ToolExecutor for MemorySearchExecutor {
             };
 
             let query = extract_str(&input.arguments, "query", &input.name)?;
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "limit from user input is small"
-            )]
-            let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(10) as usize;
+            let limit = extract_opt_u64(&input.arguments, "limit")
+                .unwrap_or(10)
+                .min(100) as usize;
 
             let Some(knowledge) = services.knowledge.as_ref() else {
                 return Ok(ToolResult::error("knowledge store not configured"));
@@ -246,7 +244,7 @@ fn memory_search_def() -> ToolDef {
                     "limit".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Number,
-                        description: "Max results (default 10)".to_owned(),
+                        description: "Max results (default 10, max 100)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(10)),
                     },
