@@ -1,12 +1,42 @@
 //! Context distillation engine.
 
 use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::{CompletionRequest, Content, Message, Role};
+use aletheia_hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use snafu::ResultExt;
 use tracing::instrument;
 
 use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
+use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 use crate::prompt;
+
+/// Maximum conversation turns to skip between distillation retry attempts.
+const MAX_BACKOFF_TURNS: u32 = 8;
+
+/// Bounded retry state to prevent distillation storms on repeated failures.
+///
+/// Tracks consecutive failures and enforces exponential backoff so that a
+/// failing distillation does not trigger a retry on every subsequent turn.
+#[derive(Debug, Default)]
+struct RetryState {
+    /// Consecutive distillation failures since the last success.
+    consecutive_failures: u32,
+    /// Remaining conversation turns before the next attempt is allowed.
+    turns_to_skip: u32,
+}
+
+impl RetryState {
+    fn record_failure(&mut self) {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        // Exponential backoff: 1, 2, 4, 8 turns; capped at MAX_BACKOFF_TURNS.
+        let shift = self.consecutive_failures.saturating_sub(1).min(3);
+        self.turns_to_skip = (1u32 << shift).min(MAX_BACKOFF_TURNS);
+    }
+
+    fn record_success(&mut self) {
+        self.consecutive_failures = 0;
+        self.turns_to_skip = 0;
+    }
+}
 
 /// Sections that can appear in a distillation summary.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -141,18 +171,56 @@ pub struct DistillResult {
     pub timestamp: String,
     /// Messages preserved verbatim (not summarized).
     pub verbatim_messages: Vec<Message>,
+    /// Structured memory items extracted from the summary for long-term persistence.
+    pub memory_flush: MemoryFlush,
 }
 
 /// The distillation engine.
 #[derive(Debug)]
 pub struct DistillEngine {
     config: DistillConfig,
+    retry_state: std::sync::Mutex<RetryState>,
 }
 
 impl DistillEngine {
     /// Create a new distillation engine.
     pub fn new(config: DistillConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            retry_state: std::sync::Mutex::new(RetryState::default()),
+        }
+    }
+
+    /// Acquire the retry state lock, recovering from a poisoned mutex.
+    ///
+    /// WHY: If a thread panicked while holding this lock, we recover the state
+    /// rather than propagating the panic. The retry counters are non-critical
+    /// bookkeeping: using a slightly stale value is preferable to crashing.
+    fn lock_retry_state(&self) -> std::sync::MutexGuard<'_, RetryState> {
+        self.retry_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Advance the backoff counter by one conversation turn.
+    ///
+    /// Call once at the start of each conversation turn, before calling
+    /// [`should_distill`][Self::should_distill]. Returns `true` if the engine is
+    /// still in a backoff period and distillation should be skipped this turn.
+    pub fn tick_turn(&self) -> bool {
+        let mut state = self.lock_retry_state();
+        if state.turns_to_skip > 0 {
+            state.turns_to_skip -= 1;
+            return true;
+        }
+        false
+    }
+
+    /// Returns `true` if the engine is in an active backoff period.
+    ///
+    /// Does not advance state. Use [`tick_turn`][Self::tick_turn] to advance.
+    pub fn in_backoff(&self) -> bool {
+        self.lock_retry_state().turns_to_skip > 0
     }
 
     /// Check if the given messages warrant distillation.
@@ -195,8 +263,9 @@ impl DistillEngine {
             .unwrap_or(&self.config.model)
             .to_owned();
 
+        let safe_nous_id = sanitize_nous_id(nous_id);
         let user_content = format!(
-            "Distill the following conversation from nous \"{nous_id}\" \
+            "Distill the following conversation from nous \"{safe_nous_id}\" \
              (distillation context: {msg_count} messages).\n\n\
              ---\n\n{formatted}",
             msg_count = messages.len(),
@@ -222,6 +291,9 @@ impl DistillEngine {
     ///
     /// Splits messages into a summarization group and a verbatim tail.
     /// Only the summarization group is sent to the LLM.
+    ///
+    /// Records success or failure into the backoff state so that
+    /// [`tick_turn`][Self::tick_turn] gates subsequent retry attempts.
     #[instrument(skip(self, messages, provider), fields(nous_id, distillation_number))]
     pub async fn distill(
         &self,
@@ -241,15 +313,27 @@ impl DistillEngine {
 
         let tokens_before = estimate_tokens(messages);
         let request = self.build_prompt(to_summarize, nous_id);
-        let response = provider.complete(&request).await.context(LlmCallSnafu)?;
+
+        let response = match provider.complete(&request).await.context(LlmCallSnafu) {
+            Ok(r) => {
+                self.lock_retry_state().record_success();
+                r
+            }
+            Err(e) => {
+                self.lock_retry_state().record_failure();
+                return Err(e);
+            }
+        };
 
         let summary = extract_summary_text(&response.content);
         if summary.is_empty() {
+            self.lock_retry_state().record_failure();
             return EmptySummarySnafu.fail();
         }
 
         let tokens_after = response.usage.output_tokens;
         let timestamp = jiff::Timestamp::now().to_string();
+        let memory_flush = parse_summary_to_flush(&summary, &timestamp);
 
         Ok(DistillResult {
             summary,
@@ -259,6 +343,7 @@ impl DistillEngine {
             distillation_number,
             timestamp,
             verbatim_messages: verbatim.to_vec(),
+            memory_flush,
         })
     }
 
@@ -268,10 +353,94 @@ impl DistillEngine {
     }
 }
 
-/// Estimate token count from messages using chars/4 heuristic.
+/// Strip characters that could alter prompt semantics from a `nous_id`.
+///
+/// Removes backticks, newlines, and all control characters so that an
+/// untrusted ID cannot inject prompt fragments.
+fn sanitize_nous_id(id: &str) -> String {
+    id.chars()
+        .filter(|c| !c.is_control() && *c != '`')
+        .collect()
+}
+
+/// Estimate token count for a slice of messages using the chars/4 heuristic.
+///
+/// Includes text, tool use inputs, and tool result content so that
+/// messages containing tool calls are not underestimated.
 fn estimate_tokens(messages: &[Message]) -> u64 {
-    let total_chars: usize = messages.iter().map(|m| m.content.text().len()).sum();
+    let total_chars: usize = messages.iter().map(estimate_single_message_chars).sum();
     (total_chars as u64).div_ceil(4)
+}
+
+/// Character count for a single message across all content types.
+fn estimate_single_message_chars(msg: &Message) -> usize {
+    content_char_len(&msg.content)
+}
+
+/// Character count for a Content value.
+fn content_char_len(content: &Content) -> usize {
+    match content {
+        Content::Text(s) => s.len(),
+        Content::Blocks(blocks) => blocks.iter().map(block_char_len).sum(),
+    }
+}
+
+/// Character count for a `ContentBlock`, including tool payloads.
+fn block_char_len(block: &ContentBlock) -> usize {
+    match block {
+        ContentBlock::Text { text, .. } => text.len(),
+        ContentBlock::ToolUse { name, input, .. }
+        | ContentBlock::ServerToolUse { name, input, .. } => name.len() + input.to_string().len(),
+        ContentBlock::ToolResult { content, .. } => content.text_summary().len(),
+        ContentBlock::Thinking { thinking, .. } => thinking.len(),
+        ContentBlock::WebSearchToolResult { content, .. } => content.to_string().len(),
+        ContentBlock::CodeExecutionResult {
+            code,
+            stdout,
+            stderr,
+            ..
+        } => code.len() + stdout.len() + stderr.len(),
+        // WHY: ContentBlock is #[non_exhaustive]; future variants default to zero.
+        _ => 0,
+    }
+}
+
+/// Drop the oldest messages until the token estimate fits within `context_window`.
+///
+/// Returns the number of messages dropped. Always keeps at least one message
+/// even when the remaining context still exceeds the window — dropping
+/// everything would leave the conversation unrecoverable.
+///
+/// Logs at `ERROR` level when any messages are dropped, because this is a
+/// last-resort fallback indicating that distillation has failed to keep the
+/// context in bounds.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "callable by the session management layer; no call site exists within this crate"
+    )
+)]
+pub(crate) fn enforce_context_limit(messages: &mut Vec<Message>, context_window: u64) -> usize {
+    if messages.is_empty() {
+        return 0;
+    }
+    let initial = estimate_tokens(messages);
+    if initial <= context_window {
+        return 0;
+    }
+    tracing::error!(
+        context_tokens = initial,
+        context_window,
+        message_count = messages.len(),
+        "context exceeds window; dropping oldest messages as last-resort fallback"
+    );
+    let mut dropped = 0;
+    while messages.len() > 1 && estimate_tokens(messages) > context_window {
+        messages.remove(0);
+        dropped += 1;
+    }
+    dropped
 }
 
 /// Extract plain text from response content blocks.
@@ -286,6 +455,100 @@ fn extract_summary_text(content: &[aletheia_hermeneus::types::ContentBlock]) -> 
         .join("\n")
         .trim()
         .to_owned()
+}
+
+/// Parse a distillation summary into structured memory items.
+///
+/// Extracts key decisions, corrections, and task context from the markdown
+/// sections of the summary, populating a [`MemoryFlush`] for the caller to
+/// persist to long-term storage.
+fn parse_summary_to_flush(summary: &str, timestamp: &str) -> MemoryFlush {
+    let mut decisions: Vec<FlushItem> = Vec::new();
+    let mut corrections: Vec<FlushItem> = Vec::new();
+    let mut task_state: Option<String> = None;
+    let mut current_section = "";
+    let mut section_lines: Vec<&str> = Vec::new();
+
+    for line in summary.lines() {
+        if let Some(heading) = line.strip_prefix("## ") {
+            collect_flush_section(
+                current_section,
+                &section_lines,
+                timestamp,
+                &mut decisions,
+                &mut corrections,
+                &mut task_state,
+            );
+            current_section = heading.trim();
+            section_lines.clear();
+        } else {
+            section_lines.push(line);
+        }
+    }
+    collect_flush_section(
+        current_section,
+        &section_lines,
+        timestamp,
+        &mut decisions,
+        &mut corrections,
+        &mut task_state,
+    );
+
+    MemoryFlush {
+        decisions,
+        corrections,
+        facts: vec![],
+        task_state,
+    }
+}
+
+/// Process one markdown section of a distillation summary into flush items.
+fn collect_flush_section(
+    section: &str,
+    lines: &[&str],
+    timestamp: &str,
+    decisions: &mut Vec<FlushItem>,
+    corrections: &mut Vec<FlushItem>,
+    task_state: &mut Option<String>,
+) {
+    let content: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    if content.is_empty() {
+        return;
+    }
+    match section {
+        "Key Decisions" => {
+            for &line in &content {
+                let text = line.trim_start_matches('-').trim();
+                if !text.is_empty() {
+                    decisions.push(FlushItem {
+                        content: text.to_owned(),
+                        timestamp: timestamp.to_owned(),
+                        source: FlushSource::Extracted,
+                    });
+                }
+            }
+        }
+        "Corrections" => {
+            for &line in &content {
+                let text = line.trim_start_matches('-').trim();
+                if !text.is_empty() {
+                    corrections.push(FlushItem {
+                        content: text.to_owned(),
+                        timestamp: timestamp.to_owned(),
+                        source: FlushSource::Extracted,
+                    });
+                }
+            }
+        }
+        "Task Context" => {
+            *task_state = Some(content.join("\n"));
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
