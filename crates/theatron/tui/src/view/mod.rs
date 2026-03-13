@@ -30,7 +30,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let area = frame.area();
     let theme = &app.theme;
 
-    let has_toast = app.error_toast.is_some();
+    let has_toast = app.error_toast.is_some() || app.success_toast.is_some();
     let palette_active = app.command_palette.active;
     let show_tabs = tab_bar::should_show(app);
 
@@ -57,7 +57,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     constraints.push(Constraint::Min(5)); // body
     constraints.push(Constraint::Length(bottom_height)); // status bar or command palette
     if has_toast {
-        constraints.push(Constraint::Length(1)); // error toast
+        constraints.push(Constraint::Length(1)); // error or success toast
     }
 
     let vertical = Layout::default()
@@ -85,15 +85,25 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         status_bar::render(app, frame, vertical[bottom_idx], theme);
     }
 
-    // Error toast at bottom
-    if has_toast && let Some(ref toast) = app.error_toast {
-        let toast_line = ratatui::text::Line::from(vec![
-            ratatui::text::Span::styled(" \u{2717} ", theme.style_error_bold()),
-            ratatui::text::Span::styled(&toast.message, theme.style_error()),
-        ]);
-        let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
-            .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
-        frame.render_widget(toast_widget, vertical[toast_idx]);
+    // Toast at bottom (error or success)
+    if has_toast {
+        if let Some(ref toast) = app.error_toast {
+            let toast_line = ratatui::text::Line::from(vec![
+                ratatui::text::Span::styled(" \u{2717} ", theme.style_error_bold()),
+                ratatui::text::Span::styled(&toast.message, theme.style_error()),
+            ]);
+            let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
+                .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+            frame.render_widget(toast_widget, vertical[toast_idx]);
+        } else if let Some(ref toast) = app.success_toast {
+            let toast_line = ratatui::text::Line::from(vec![
+                ratatui::text::Span::styled(" \u{2713} ", theme.style_success_bold()),
+                ratatui::text::Span::styled(&toast.message, theme.style_success_bold()),
+            ]);
+            let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
+                .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+            frame.render_widget(toast_widget, vertical[toast_idx]);
+        }
     }
 
     // Responsive: hide sidebar on narrow terminals

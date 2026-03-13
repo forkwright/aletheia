@@ -466,33 +466,39 @@ fn highlight_span(
 ) {
     let content = &span.content;
 
-    // Bail early without allocating: non-ASCII content cannot be safely byte-indexed
-    // after lowercasing (byte offsets may shift), and an empty pattern matches nothing.
-    if pattern.is_empty() || !content.is_ascii() {
+    if pattern.is_empty() {
         out.push(span.clone());
         return;
     }
 
     let content_lower = content.to_lowercase();
+    let pattern_lower = pattern.to_lowercase();
+    let mut last_char_idx = 0;
 
-    let mut last_end = 0;
-    for (start, _) in content_lower.match_indices(pattern) {
-        let end = start + pattern.len();
-        if start > last_end {
-            out.push(Span::styled(
-                content[last_end..start].to_string(),
-                span.style,
-            ));
+    for (byte_start, _) in content_lower.match_indices(&pattern_lower) {
+        // Convert byte offset in the original string to char index
+        let char_start = content[..byte_start].chars().count();
+        let pattern_chars = pattern.chars().count();
+        let char_end = char_start + pattern_chars;
+
+        // Re-slice the original content by reconstructing from char indices
+        if char_start > last_char_idx {
+            let before: String = content.chars().skip(last_char_idx).take(char_start - last_char_idx).collect();
+            out.push(Span::styled(before, span.style));
         }
+
+        let highlighted: String = content.chars().skip(char_start).take(pattern_chars).collect();
         out.push(Span::styled(
-            content[start..end].to_string(),
+            highlighted,
             span.style.patch(highlight_style),
         ));
-        last_end = end;
+        last_char_idx = char_end;
     }
-    if last_end < content.len() {
-        out.push(Span::styled(content[last_end..].to_string(), span.style));
-    } else if last_end == 0 {
+
+    if last_char_idx < content.chars().count() {
+        let remaining: String = content.chars().skip(last_char_idx).collect();
+        out.push(Span::styled(remaining, span.style));
+    } else if last_char_idx == 0 {
         out.push(span.clone());
     }
 }

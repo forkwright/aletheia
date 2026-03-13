@@ -83,6 +83,9 @@ pub struct App {
     // Error toast (auto-dismiss after 5s)
     pub error_toast: Option<ErrorToast>,
 
+    // Success toast (auto-dismiss after 5s)
+    pub success_toast: Option<ErrorToast>,
+
     // @mention tab completion state
     pub tab_completion: Option<TabCompletion>,
 
@@ -162,6 +165,7 @@ impl App {
             cached_markdown_lines: Vec::new(),
             tick_count: 0,
             error_toast: None,
+            success_toast: None,
             tab_completion: None,
             terminal_width: 120,
             terminal_height: 40,
@@ -541,6 +545,7 @@ pub(crate) mod test_helpers {
             cached_markdown_lines: Vec::new(),
             tick_count: 0,
             error_toast: None,
+            success_toast: None,
             tab_completion: None,
             terminal_width: 120,
             terminal_height: 40,

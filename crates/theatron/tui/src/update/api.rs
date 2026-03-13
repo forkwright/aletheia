@@ -146,6 +146,11 @@ pub(crate) fn handle_show_error(app: &mut App, msg: String) {
 }
 
 #[tracing::instrument(skip_all)]
+pub(crate) fn handle_show_success(app: &mut App, msg: String) {
+    app.success_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
+}
+
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_dismiss_error(app: &mut App) {
     app.error_toast = None;
 }
@@ -155,6 +160,9 @@ pub(crate) fn handle_tick(app: &mut App) {
     app.tick_count = app.tick_count.wrapping_add(1);
     if app.error_toast.as_ref().is_some_and(|t| t.is_expired()) {
         app.error_toast = None;
+    }
+    if app.success_toast.as_ref().is_some_and(|t| t.is_expired()) {
+        app.success_toast = None;
     }
 }
 

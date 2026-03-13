@@ -254,7 +254,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemoryActionResult(msg) => memory::handle_action_result(app, msg),
 
         Msg::ShowError(msg) => api::handle_show_error(app, msg),
-        Msg::ShowSuccess(msg) => api::handle_show_error(app, msg),
+        Msg::ShowSuccess(msg) => api::handle_show_success(app, msg),
         Msg::DismissError => api::handle_dismiss_error(app),
         // --- Diff viewer ---
         Msg::DiffOpen => diff::handle_diff_open(app).await,
