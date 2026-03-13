@@ -68,8 +68,8 @@ impl App {
             .unwrap_or_else(|| "main".to_string());
 
         let rx = streaming::stream_message(
+            self.client.raw_client().clone(),
             &self.config.url,
-            self.client.token(),
             &agent_id,
             &session_key,
             text,

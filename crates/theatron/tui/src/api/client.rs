@@ -1,4 +1,4 @@
-use reqwest::{Client, Response, StatusCode};
+use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
 use super::error::{AuthSnafu, HttpSnafu, Result, ServerSnafu};
@@ -21,6 +21,49 @@ fn encode_path(s: &str) -> String {
     encoded
 }
 
+/// Build the shared reqwest client used by all API paths (REST, streaming, SSE).
+///
+/// Default headers set here apply to every request made with this client:
+/// - Authorization: Bearer <token> (if a token is configured)
+/// - x-requested-with: aletheia (CSRF mitigation — server rejects absent header)
+/// - Content-Type: application/json
+/// - Accept: application/json (SSE callers override this per-request to text/event-stream)
+///
+/// WHY: A single client shares the connection pool and TLS session cache across all
+/// request types. Building one per call (as the previous streaming/SSE code did) creates
+/// a new pool per turn and leaks connections until they time out.
+pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
+    let mut headers = header::HeaderMap::new();
+
+    if let Some(t) = token {
+        let auth_value = header::HeaderValue::from_str(&format!("Bearer {t}"))
+            .expect("token must be a valid header value");
+        headers.insert(header::AUTHORIZATION, auth_value);
+    }
+
+    headers.insert(
+        "x-requested-with",
+        header::HeaderValue::from_static("aletheia"),
+    );
+    headers.insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static("application/json"),
+    );
+    headers.insert(
+        header::ACCEPT,
+        header::HeaderValue::from_static("application/json"),
+    );
+
+    Client::builder()
+        .cookie_store(true)
+        .timeout(std::time::Duration::from_secs(30))
+        .default_headers(headers)
+        .build()
+        .context(HttpSnafu {
+            operation: "build HTTP client",
+        })
+}
+
 /// HTTP client for the Aletheia gateway REST API.
 #[derive(Clone)]
 pub struct ApiClient {
@@ -40,13 +83,7 @@ impl std::fmt::Debug for ApiClient {
 
 impl ApiClient {
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
-        let client = Client::builder()
-            .cookie_store(true)
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .context(HttpSnafu {
-                operation: "build HTTP client",
-            })?;
+        let client = build_http_client(token.as_deref())?;
 
         Ok(Self {
             client,
@@ -74,11 +111,9 @@ impl ApiClient {
     }
 
     fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        let mut req = self.client.request(method, self.url(path));
-        if let Some(ref token) = self.token {
-            req = req.bearer_auth(token);
-        }
-        req
+        // WHY: Authorization is already in the client's default headers (set at build time).
+        // No per-request header injection needed — the token does not change after construction.
+        self.client.request(method, self.url(path))
     }
 
     #[tracing::instrument(skip(self))]
@@ -582,8 +617,7 @@ impl ApiClient {
         ServerSnafu { operation, message }.fail()
     }
 
-    #[expect(dead_code, reason = "reserved for future SSE connection management")]
-    /// Get the raw reqwest client for SSE/streaming (they manage their own connections)
+    /// The shared HTTP client, pre-configured with auth and default headers.
     pub fn raw_client(&self) -> &Client {
         &self.client
     }
