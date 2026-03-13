@@ -53,6 +53,93 @@ CREATE INDEX IF NOT EXISTS idx_blackboard_expires ON blackboard(expires_at);",
         up: "ALTER TABLE sessions ADD COLUMN display_name TEXT;",
         down: "ALTER TABLE sessions DROP COLUMN display_name;",
     },
+    Migration {
+        version: 4,
+        description: "add ON DELETE CASCADE to FK references, UNIQUE(session_id, turn_seq) on usage, hot-path indexes",
+        // WHY: SQLite cannot ALTER a table to add ON DELETE CASCADE or new UNIQUE
+        // constraints on existing columns. The standard workaround is to recreate
+        // the affected tables within a single transaction. DROP TABLE is DDL and
+        // does not trigger row-level FK enforcement, so PRAGMA foreign_keys = OFF
+        // is not required here.
+        up: "CREATE TABLE messages_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant', 'tool_result')),
+  content TEXT NOT NULL,
+  tool_call_id TEXT,
+  tool_name TEXT,
+  token_estimate INTEGER DEFAULT 0,
+  is_distilled INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(session_id, seq)
+);
+INSERT INTO messages_new
+  SELECT id, session_id, seq, role, content, tool_call_id, tool_name,
+         token_estimate, is_distilled, created_at
+  FROM messages;
+DROP TABLE messages;
+ALTER TABLE messages_new RENAME TO messages;
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_messages_distilled ON messages(session_id, is_distilled, seq);
+
+CREATE TABLE usage_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  turn_seq INTEGER NOT NULL,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
+  cache_read_tokens INTEGER DEFAULT 0,
+  cache_write_tokens INTEGER DEFAULT 0,
+  model TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(session_id, turn_seq)
+);
+INSERT INTO usage_new
+  SELECT id, session_id, turn_seq, input_tokens, output_tokens,
+         cache_read_tokens, cache_write_tokens, model, created_at
+  FROM usage;
+DROP TABLE usage;
+ALTER TABLE usage_new RENAME TO usage;
+CREATE INDEX IF NOT EXISTS idx_usage_session ON usage(session_id);
+
+CREATE TABLE distillations_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  messages_before INTEGER NOT NULL,
+  messages_after INTEGER NOT NULL,
+  tokens_before INTEGER NOT NULL,
+  tokens_after INTEGER NOT NULL,
+  facts_extracted INTEGER DEFAULT 0,
+  model TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+INSERT INTO distillations_new
+  SELECT id, session_id, messages_before, messages_after, tokens_before,
+         tokens_after, facts_extracted, model, created_at
+  FROM distillations;
+DROP TABLE distillations;
+ALTER TABLE distillations_new RENAME TO distillations;
+CREATE INDEX IF NOT EXISTS idx_distillations_session ON distillations(session_id);
+
+CREATE TABLE agent_notes_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  nous_id TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'context' CHECK(category IN ('task', 'decision', 'preference', 'correction', 'context')),
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+INSERT INTO agent_notes_new
+  SELECT id, session_id, nous_id, category, content, created_at
+  FROM agent_notes;
+DROP TABLE agent_notes;
+ALTER TABLE agent_notes_new RENAME TO agent_notes;
+CREATE INDEX IF NOT EXISTS idx_notes_session ON agent_notes(session_id);
+CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);",
+        down: "DROP INDEX IF EXISTS idx_messages_distilled;
+DROP INDEX IF EXISTS idx_distillations_session;",
+    },
 ];
 
 /// Outcome of a migration run.
@@ -223,8 +310,8 @@ mod tests {
             run_migrations(&conn).expect("migrations should apply successfully to a fresh DB");
 
         assert!(result.was_fresh);
-        assert_eq!(result.applied, vec![1, 2, 3]);
-        assert_eq!(result.current_version, 3);
+        assert_eq!(result.applied, vec![1, 2, 3, 4]);
+        assert_eq!(result.current_version, 4);
     }
 
     #[test]
@@ -235,7 +322,7 @@ mod tests {
         let result = run_migrations(&conn).expect("second migration run on same DB should succeed");
         assert!(!result.was_fresh);
         assert!(result.applied.is_empty());
-        assert_eq!(result.current_version, 3);
+        assert_eq!(result.current_version, 4);
     }
 
     #[test]
@@ -262,7 +349,7 @@ mod tests {
 
         let pending = check_migrations(&conn)
             .expect("check_migrations should return pending list without applying");
-        assert_eq!(pending.len(), 3);
+        assert_eq!(pending.len(), 4);
         assert_eq!(pending[0].version, 1);
 
         // Verify nothing was applied
@@ -321,9 +408,9 @@ mod tests {
     fn run_migrations_fresh_db_schema_version() {
         let conn = fresh_conn();
         let result = run_migrations(&conn).expect("migrations should apply to fresh DB");
-        assert_eq!(result.current_version, 3);
+        assert_eq!(result.current_version, 4);
         let version = get_schema_version(&conn);
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
     }
 
     #[test]
@@ -370,12 +457,12 @@ mod tests {
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
             .expect("inserting v1 schema_version record should succeed");
 
-        // Running migrations should detect existing v1 and apply v2+v3
+        // Running migrations should detect existing v1 and apply v2+v3+v4
         let result =
-            run_migrations(&conn).expect("migrations should apply v2 and v3 to a v1 database");
+            run_migrations(&conn).expect("migrations should apply v2, v3, v4 to a v1 database");
         assert!(!result.was_fresh);
-        assert_eq!(result.applied, vec![2, 3]);
-        assert_eq!(result.current_version, 3);
+        assert_eq!(result.applied, vec![2, 3, 4]);
+        assert_eq!(result.current_version, 4);
 
         // description column should have been added
         assert!(has_description_column(&conn));

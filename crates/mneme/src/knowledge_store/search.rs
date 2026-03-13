@@ -1,5 +1,6 @@
 use super::marshal::{
-    build_hybrid_query, embedding_to_params, rows_to_hybrid_results, rows_to_recall_results,
+    build_hybrid_query, embedding_to_params, extract_str, rows_to_hybrid_results,
+    rows_to_recall_results,
 };
 use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
 use tracing::instrument;
@@ -381,19 +382,65 @@ impl KnowledgeStore {
         at_time: &str,
     ) -> crate::error::Result<Vec<HybridResult>> {
         let all_results = self.search_hybrid(q)?;
+        if all_results.is_empty() {
+            return Ok(all_results);
+        }
 
-        // Get the set of fact IDs valid at the given time
-        // We query with an empty nous_id filter to get all facts across all agents
-        let valid_facts = self.query_facts_at_time_all(at_time)?;
-        let valid_ids: std::collections::HashSet<&str> =
-            valid_facts.iter().map(|f| f.id.as_str()).collect();
+        // WHY: Query only the O(k) candidate IDs for temporal validity rather than
+        // loading all facts in the store. This replaces the former full-scan via
+        // query_facts_at_time_all. The is_forgotten check is also inlined so there
+        // is no separate N+1 query for forgotten filtering.
+        let candidate_ids: Vec<&str> = all_results.iter().map(|r| r.id.as_str()).collect();
+        let valid_ids = self.query_ids_valid_at(at_time, &candidate_ids)?;
 
-        let filtered: Vec<HybridResult> = all_results
+        Ok(all_results
             .into_iter()
             .filter(|r| valid_ids.contains(r.id.as_str()))
+            .collect())
+    }
+
+    /// Return the subset of `ids` that are not forgotten and whose validity
+    /// window contains `at_time` (`valid_from <= at_time < valid_to`).
+    fn query_ids_valid_at(
+        &self,
+        at_time: &str,
+        ids: &[&str],
+    ) -> crate::error::Result<std::collections::HashSet<String>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        if ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+
+        // Build an inline id list for Datalog's `in` operator.
+        let id_list: Vec<String> = ids
+            .iter()
+            .map(|id| format!("'{}'", id.replace('\'', "''")))
             .collect();
 
-        Ok(filtered)
+        let script = format!(
+            "?[id] := *facts{{id, valid_from, valid_to, is_forgotten}},
+                      is_forgotten == false,
+                      valid_from <= $at_time,
+                      valid_to > $at_time,
+                      id in [{}]",
+            id_list.join(", ")
+        );
+
+        let mut params = BTreeMap::new();
+        params.insert("at_time".to_owned(), DataValue::Str(at_time.into()));
+
+        let rows = self.run_read(&script, params)?;
+        let mut result = std::collections::HashSet::new();
+        for row in rows.rows {
+            if let Some(val) = row.first()
+                && let Ok(s) = extract_str(val)
+            {
+                result.insert(s);
+            }
+        }
+        Ok(result)
     }
 
     /// Async `search_temporal` wrapper.

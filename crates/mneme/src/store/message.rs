@@ -26,20 +26,25 @@ impl SessionStore {
             .unchecked_transaction()
             .context(error::DatabaseSnafu)?;
 
+        // WHY: INSERT...SELECT computes the next seq within the INSERT statement,
+        // eliminating the TOCTOU window that existed when a separate SELECT was
+        // followed by a separate INSERT. The aggregate MAX() always returns one row
+        // even when no messages exist yet, so COALESCE handles the empty-session case.
+        tx.execute(
+            "INSERT INTO messages (session_id, seq, role, content, tool_call_id, tool_name, token_estimate, is_distilled)
+             SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3, ?4, ?5, ?6, 0
+             FROM messages WHERE session_id = ?1",
+            rusqlite::params![session_id, role.as_str(), content, tool_call_id, tool_name, token_estimate],
+        )
+        .context(error::DatabaseSnafu)?;
+
         let next_seq: i64 = tx
             .query_row(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE session_id = ?1",
-                [session_id],
+                "SELECT seq FROM messages WHERE id = last_insert_rowid()",
+                [],
                 |row| row.get(0),
             )
             .context(error::DatabaseSnafu)?;
-
-        tx.execute(
-            "INSERT INTO messages (session_id, seq, role, content, tool_call_id, tool_name, token_estimate, is_distilled)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
-            rusqlite::params![session_id, next_seq, role.as_str(), content, tool_call_id, tool_name, token_estimate],
-        )
-        .context(error::DatabaseSnafu)?;
 
         tx.execute(
             "UPDATE sessions SET message_count = message_count + 1, token_count_estimate = token_count_estimate + ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?2",

@@ -637,34 +637,6 @@ impl KnowledgeStore {
 
     // --- Internal helpers ---
 
-    /// Query all facts valid at a specific time, across all nous IDs.
-    /// Used internally by `search_temporal` for filtering.
-    pub(super) fn query_facts_at_time_all(
-        &self,
-        at_time: &str,
-    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
-        use crate::engine::DataValue;
-        use std::collections::BTreeMap;
-
-        let script = r"
-            ?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to,
-              superseded_by, source_session_id,
-              access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason] :=
-                *facts{id, valid_from, content, nous_id, confidence, tier, valid_to,
-                       superseded_by, source_session_id, recorded_at,
-                       access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason},
-                is_forgotten == false,
-                valid_from <= $at_time,
-                valid_to > $at_time
-        ";
-        let mut params = BTreeMap::new();
-        params.insert("at_time".to_owned(), DataValue::Str(at_time.into()));
-        let rows = self.run_read(script, params)?;
-        marshal::rows_to_facts(rows, "")
-    }
-
     /// Read a single fact by its ID (all temporal records matching).
     /// Returns all fields; does not apply time/validity filters.
     pub(super) fn read_facts_by_id(
