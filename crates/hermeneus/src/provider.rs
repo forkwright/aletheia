@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::anthropic::AnthropicProvider;
+use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
 use crate::types::{CompletionRequest, CompletionResponse, TokenCount};
@@ -70,7 +70,28 @@ pub trait LlmProvider: Send + Sync {
         false
     }
 
-    /// Downcast to concrete type for provider-specific features (e.g., streaming).
+    /// Whether this provider supports streaming completions.
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    /// Send a streaming completion request, emitting [`StreamEvent`]s incrementally.
+    ///
+    /// The default implementation ignores `on_event` and delegates to `complete()`.
+    /// Providers that support streaming should override both this method and
+    /// `supports_streaming()`.
+    ///
+    /// # Errors
+    /// Same as `complete`, plus mid-stream transport errors when overridden.
+    fn complete_streaming<'a>(
+        &'a self,
+        request: &'a CompletionRequest,
+        _on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
+        self.complete(request)
+    }
+
+    /// Downcast to concrete type for provider-specific features.
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -187,11 +208,10 @@ impl ProviderRegistry {
 
     /// Find a streaming-capable provider for the given model.
     ///
-    /// Returns `Some` if the provider supports streaming (currently only Anthropic).
+    /// Returns `Some` if the provider supports streaming.
     #[must_use]
-    pub fn find_streaming_provider(&self, model: &str) -> Option<&AnthropicProvider> {
-        self.find_provider(model)
-            .and_then(|p| p.as_any().downcast_ref::<AnthropicProvider>())
+    pub fn find_streaming_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
+        self.find_provider(model).filter(|p| p.supports_streaming())
     }
 
     /// Record a failed request for the named provider.
