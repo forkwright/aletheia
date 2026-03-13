@@ -168,6 +168,11 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
             tool_calls,
         });
         app.virtual_scroll.push_item(h);
+        // Scroll lock: when the user has scrolled up, keep the viewport anchored by
+        // compensating for the new content added below their current position.
+        if !app.auto_scroll {
+            app.scroll_offset = app.scroll_offset.saturating_add(h as usize);
+        }
     }
     app.streaming_text.clear();
     app.streaming_thinking.clear();
@@ -449,5 +454,59 @@ mod tests {
         handle_stream_text_delta(&mut app, "line1\nline2".to_string());
         // newline should trigger markdown re-render
         assert!(!app.cached_markdown_text.is_empty());
+    }
+
+    fn make_outcome() -> TurnOutcome {
+        TurnOutcome {
+            text: String::new(),
+            nous_id: "syn".into(),
+            session_id: "s1".into(),
+            model: "claude".to_string(),
+            tool_calls: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            error: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn turn_complete_auto_scroll_stays_at_bottom() {
+        let mut app = test_app();
+        app.auto_scroll = true;
+        app.scroll_offset = 0;
+        app.streaming_text = "hello world".to_string();
+        handle_stream_turn_complete(&mut app, make_outcome()).await;
+        assert!(app.auto_scroll);
+        assert_eq!(app.scroll_offset, 0);
+    }
+
+    #[tokio::test]
+    async fn turn_complete_scroll_lock_preserves_offset() {
+        let mut app = test_app();
+        app.auto_scroll = false;
+        app.scroll_offset = 30;
+        app.rebuild_virtual_scroll();
+        app.streaming_text = "a new message with some text".to_string();
+        let offset_before = app.scroll_offset;
+        handle_stream_turn_complete(&mut app, make_outcome()).await;
+        // Offset must increase so the viewport stays anchored while new content lands below.
+        assert!(!app.auto_scroll);
+        assert!(
+            app.scroll_offset > offset_before,
+            "scroll_offset should increase when new message arrives while scrolled up"
+        );
+    }
+
+    #[tokio::test]
+    async fn turn_complete_no_text_does_not_change_scroll() {
+        let mut app = test_app();
+        app.auto_scroll = false;
+        app.scroll_offset = 10;
+        // streaming_text is empty — no message is committed, offset unchanged
+        handle_stream_turn_complete(&mut app, make_outcome()).await;
+        assert_eq!(app.scroll_offset, 10);
+        assert!(!app.auto_scroll);
     }
 }

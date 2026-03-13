@@ -15,14 +15,25 @@ pub(crate) fn handle_scroll_down(app: &mut App) {
     }
 }
 
+/// Approximate chat viewport height from the current terminal height.
+///
+/// Subtracts fixed chrome: title bar (1) + status bar (2) + minimum input area (3).
+/// The result is used as the page-scroll distance so PageUp/PageDown move by one
+/// viewport rather than a hard-coded constant.
+fn chat_viewport_height(app: &App) -> usize {
+    app.terminal_height.saturating_sub(6).max(1) as usize
+}
+
 pub(crate) fn handle_scroll_page_up(app: &mut App) {
-    app.scroll_offset = app.scroll_offset.saturating_add(20);
+    let page = chat_viewport_height(app);
+    app.scroll_offset = app.scroll_offset.saturating_add(page);
     app.auto_scroll = false;
 }
 
 pub(crate) fn handle_scroll_page_down(app: &mut App) {
-    if app.scroll_offset >= 20 {
-        app.scroll_offset -= 20;
+    let page = chat_viewport_height(app);
+    if app.scroll_offset >= page {
+        app.scroll_offset -= page;
     } else {
         app.scroll_offset = 0;
         app.auto_scroll = true;
@@ -95,6 +106,18 @@ pub(crate) fn handle_resize(app: &mut App, w: u16, h: u16) {
     app.terminal_height = h;
     // Terminal width changed — recalculate message heights for wrapping.
     app.rebuild_virtual_scroll();
+    // After rebuild, heights may have changed due to reflow. Cap scroll_offset so
+    // the user cannot be stranded past the top of content. If already at the
+    // bottom, stay there. Auto-scroll mode is unaffected (it always pins to bottom).
+    if !app.auto_scroll {
+        let total = app.virtual_scroll.total_height();
+        let vh = chat_viewport_height(app) as u64;
+        let max_offset = total.saturating_sub(vh) as usize;
+        app.scroll_offset = app.scroll_offset.min(max_offset);
+        if app.scroll_offset == 0 {
+            app.auto_scroll = true;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -139,17 +162,20 @@ mod tests {
     }
 
     #[test]
-    fn scroll_page_up_jumps_20() {
+    fn scroll_page_up_jumps_one_viewport() {
         let mut app = test_app();
+        // test_app terminal_height=40 → chat_viewport_height = 40-6 = 34
+        let expected = chat_viewport_height(&app);
         handle_scroll_page_up(&mut app);
-        assert_eq!(app.scroll_offset, 20);
+        assert_eq!(app.scroll_offset, expected);
         assert!(!app.auto_scroll);
     }
 
     #[test]
-    fn scroll_page_down_jumps_20() {
+    fn scroll_page_down_jumps_one_viewport() {
         let mut app = test_app();
-        app.scroll_offset = 30;
+        let page = chat_viewport_height(&app);
+        app.scroll_offset = page + 10;
         handle_scroll_page_down(&mut app);
         assert_eq!(app.scroll_offset, 10);
     }
@@ -157,7 +183,7 @@ mod tests {
     #[test]
     fn scroll_page_down_to_zero_auto_scrolls() {
         let mut app = test_app();
-        app.scroll_offset = 15;
+        app.scroll_offset = 5; // less than a full page
         app.auto_scroll = false;
         handle_scroll_page_down(&mut app);
         assert_eq!(app.scroll_offset, 0);
@@ -200,5 +226,44 @@ mod tests {
         handle_resize(&mut app, 200, 50);
         assert_eq!(app.terminal_width, 200);
         assert_eq!(app.terminal_height, 50);
+    }
+
+    #[test]
+    fn resize_clamps_scroll_offset_when_content_shrinks() {
+        use crate::app::test_helpers::test_app_with_messages;
+        let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hello")]);
+        app.rebuild_virtual_scroll();
+        // Scroll up to a large offset that will exceed content after resize
+        app.scroll_offset = 9999;
+        app.auto_scroll = false;
+        // Resize to a very tall terminal — content now fits, offset must be clamped to 0
+        handle_resize(&mut app, 120, 200);
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn resize_preserves_valid_scroll_offset() {
+        use crate::app::test_helpers::test_app_with_messages;
+        let msgs: Vec<_> = (0..50)
+            .map(|i| {
+                (
+                    "user",
+                    if i % 2 == 0 {
+                        "hello world"
+                    } else {
+                        "response"
+                    },
+                )
+            })
+            .collect();
+        let mut app = test_app_with_messages(msgs);
+        app.rebuild_virtual_scroll();
+        app.scroll_offset = 5;
+        app.auto_scroll = false;
+        // Resize with same height — offset within valid range should be preserved
+        handle_resize(&mut app, 120, 40);
+        assert!(!app.auto_scroll);
+        assert_eq!(app.scroll_offset, 5);
     }
 }

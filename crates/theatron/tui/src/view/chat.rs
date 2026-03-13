@@ -23,7 +23,8 @@ struct MessageCtx<'a> {
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<OscLink> {
     let inner_width = area.width.saturating_sub(2) as usize;
     let wrap_width = area.width.saturating_sub(2).max(1);
-    let visible_height = area.height.saturating_sub(2);
+    // With Borders::NONE the paragraph has the full area height available.
+    let visible_height = area.height;
     // Para-relative link data collected from all messages.
     let mut para_links: Vec<(usize, u16, String, String)> = Vec::new(); // (line_idx, col, text, url)
 
@@ -127,26 +128,33 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         }
     }
 
-    // Pre-compute per-line widths — needed for resolve_osc_links and legacy scroll.
+    // Pre-compute per-line widths — needed for resolve_osc_links and scroll calc.
     let line_widths: Vec<usize> = lines
         .iter()
         .map(|line| line.spans.iter().map(|s| s.content.len()).sum())
         .collect();
 
-    // For virtual scroll path, the scroll offset is already baked into which items
-    // we rendered and the line_offset. For filtered path, use legacy scroll calc.
-    let scroll = if filter_active {
-        compute_legacy_scroll(
-            &lines,
-            wrap_width,
-            visible_height,
-            app.auto_scroll,
-            app.scroll_offset,
-        )
+    // Total visual rows of the final rendered lines vector (after padding + streaming).
+    // Used for auto-scroll so that streaming content appended after virtual render is
+    // always visible when the user is at the bottom.
+    let w = wrap_width.max(1) as usize;
+    let total_visual: usize = line_widths
+        .iter()
+        .map(|&lw| if lw == 0 { 1 } else { lw.div_ceil(w) })
+        .sum();
+    let vh = visible_height as usize;
+
+    let scroll = if app.auto_scroll {
+        // Pin to the very bottom of whatever was rendered (committed + streaming).
+        total_visual.saturating_sub(vh)
+    } else if filter_active {
+        // Filtered path: all messages are in `lines`; use the pre-computed total.
+        total_visual
+            .saturating_sub(vh)
+            .saturating_sub(app.scroll_offset)
     } else {
-        // Virtual scroll: we rendered exactly the right items with correct offset.
-        // The line_offset from visible_slice tells us where to start within the
-        // rendered content.
+        // Virtual scroll path with manual offset: line_offset already positions us
+        // correctly within the rendered (viewport-only) items.
         let slice =
             app.virtual_scroll
                 .visible_slice(app.scroll_offset, app.auto_scroll, visible_height);
@@ -327,36 +335,6 @@ fn render_filtered_messages(
             agent_name,
         };
         render_message(app, msg, lines, &ctx, para_links);
-    }
-}
-
-/// Legacy scroll calculation for filtered mode (iterates all rendered lines).
-fn compute_legacy_scroll(
-    lines: &[Line<'_>],
-    wrap_width: u16,
-    visible_height: u16,
-    auto_scroll: bool,
-    scroll_offset: usize,
-) -> usize {
-    let w = wrap_width.max(1) as usize;
-    let total_visual_lines: usize = lines
-        .iter()
-        .map(|line| {
-            let line_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
-            if line_width == 0 {
-                1
-            } else {
-                line_width.div_ceil(w)
-            }
-        })
-        .sum();
-    let vh = visible_height as usize;
-    if auto_scroll {
-        total_visual_lines.saturating_sub(vh)
-    } else {
-        total_visual_lines
-            .saturating_sub(vh)
-            .saturating_sub(scroll_offset)
     }
 }
 
