@@ -11,7 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [features]
-default = ["sqlite", "embed-candle", "graph-algo"]
+default = ["sqlite", "graph-algo"]
 graph-algo = []
 sqlite = ["dep:rusqlite"]
 embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
@@ -37,7 +37,7 @@ hnsw_rs = ["dep:hnsw_rs"]
 [dependencies]
 jiff = { workspace = true, features = ["serde"] }
 ndarray = { version = "0.17", features = ["serde"], optional = true }
-rusqlite = { version = "0.38", features = ["bundled"], optional = true }
+rusqlite = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
@@ -57,12 +57,12 @@ crossbeam = { version = "0.8.4", optional = true }
 itertools = { version = "0.14.0", optional = true }
 rustc-hash = { version = "2.1.1", optional = true }
 twox-hash = { version = "2.1", optional = true }
-regex = { version = "1", optional = true }
+regex = { workspace = true, optional = true }
 sha2 = { version = "0.10", optional = true }
 either = { version = "1", optional = true }
-rand = { version = "0.9", optional = true }
-base64 = { version = "0.22", optional = true }
-uuid = { version = "1", features = ["v1", "v4", "serde"], optional = true }
+rand = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+uuid = { workspace = true, features = ["v1", "serde"], optional = true }
 pest = { version = "2.8", optional = true }
 pest_derive = { version = "2.8", optional = true }
 strsim = { workspace = true }

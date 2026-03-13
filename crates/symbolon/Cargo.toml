@@ -15,11 +15,12 @@ aletheia-koina = { path = "../koina" }
 argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"
 # jsonwebtoken 10.x pins rand 0.8; no released version uses rand 0.9.
-# This causes a duplicate rand 0.8 in the binary (rand 0.9 is the workspace version).
-jsonwebtoken = { version = "10", features = ["rust_crypto"] }
-rand = "0.9"
+# rand is declared explicitly to ensure the workspace 0.9 version is resolved
+# rather than the older 0.8 that jsonwebtoken transitively requires.
+jsonwebtoken = { workspace = true }
+rand = { workspace = true }
 reqwest = { workspace = true }
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
