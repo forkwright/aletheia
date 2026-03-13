@@ -148,7 +148,7 @@ impl TaskRunner {
 
         if config.db_monitoring.enabled {
             self.register(TaskDef {
-                id: "db-size-monitor".to_owned(),
+                id: "db-monitor".to_owned(),
                 name: "Database size monitor".to_owned(),
                 nous_id: self.nous_id.clone(),
                 schedule: Schedule::Interval(Duration::from_secs(6 * 3600)),

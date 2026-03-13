@@ -33,7 +33,10 @@ pub async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> 
 
     match action {
         Action::Status => {
+            let mut found_any = false;
+
             if let Some(cred) = CredentialFile::load(&cred_path) {
+                found_any = true;
                 let cred_type = if cred.has_refresh_token() {
                     "OAuth (auto-refresh)"
                 } else {
@@ -61,33 +64,34 @@ pub async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> 
                         "absent"
                     }
                 );
-            } else {
-                // Check env var fallbacks in resolution order.
-                let auth_token = std::env::var("ANTHROPIC_AUTH_TOKEN")
-                    .ok()
-                    .filter(|v| !v.is_empty());
-                let api_key = std::env::var("ANTHROPIC_API_KEY")
-                    .ok()
-                    .filter(|v| !v.is_empty());
+            }
 
-                match (auth_token, api_key) {
-                    (Some(token), _) => {
-                        println!("Source:        environment (ANTHROPIC_AUTH_TOKEN)");
-                        println!("Type:          OAuth token");
-                        println!("Token:         {}", token_preview(&token));
+            // Always check provider env vars, regardless of credential file presence.
+            let env_vars: &[(&str, &str)] = &[
+                ("ANTHROPIC_AUTH_TOKEN", "OAuth token"),
+                ("ANTHROPIC_API_KEY", "static API key"),
+                ("OPENAI_API_KEY", "static API key"),
+            ];
+            for (var, key_type) in env_vars {
+                if let Ok(val) = std::env::var(var)
+                    && !val.is_empty()
+                {
+                    if found_any {
+                        println!();
                     }
-                    (None, Some(key)) => {
-                        println!("Source:        environment (ANTHROPIC_API_KEY)");
-                        println!("Type:          static API key");
-                        println!("Token:         {}", token_preview(&key));
-                    }
-                    (None, None) => {
-                        println!("No credential found.");
-                        println!("Checked: {} (not found)", cred_path.display());
-                        println!("Checked: ANTHROPIC_AUTH_TOKEN (not set)");
-                        println!("Checked: ANTHROPIC_API_KEY (not set)");
-                    }
+                    found_any = true;
+                    println!("Source:        env ({var})");
+                    println!("Type:          {key_type}");
+                    println!("Token:         {}", token_preview(&val));
                 }
+            }
+
+            if !found_any {
+                println!("No credential found.");
+                println!("Checked: {} (not found)", cred_path.display());
+                println!("Checked: ANTHROPIC_AUTH_TOKEN (not set)");
+                println!("Checked: ANTHROPIC_API_KEY (not set)");
+                println!("Checked: OPENAI_API_KEY (not set)");
             }
         }
         Action::Refresh => {
