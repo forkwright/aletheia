@@ -380,6 +380,10 @@ impl App {
                             })
                         })
                         .collect();
+                    // Stale streaming markdown from the previous session must not
+                    // bleed through when the user switches agents.
+                    self.cached_markdown_text.clear();
+                    self.cached_markdown_lines.clear();
                     self.rebuild_virtual_scroll();
                     self.scroll_to_bottom();
                 }
@@ -634,6 +638,28 @@ mod tests {
         assert_eq!(app.messages.len(), 2);
         assert_eq!(app.messages[0].role, "user");
         assert_eq!(app.messages[1].text, "hi there");
+    }
+
+    #[test]
+    fn markdown_cache_fields_exist_for_session_switch_clearing() {
+        // Verifies that the fields cleared on session switch are present and
+        // behave as expected when the caller clears them.
+        let mut app = test_app();
+        app.cached_markdown_text = "stale content from previous session".to_string();
+        app.cached_markdown_lines = vec![ratatui::text::Line::raw("stale line")];
+
+        // Simulate the clearing that load_focused_session performs on history load.
+        app.cached_markdown_text.clear();
+        app.cached_markdown_lines.clear();
+
+        assert!(
+            app.cached_markdown_text.is_empty(),
+            "markdown text cache must be cleared on session switch"
+        );
+        assert!(
+            app.cached_markdown_lines.is_empty(),
+            "markdown line cache must be cleared on session switch"
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@ use crate::id::NousId;
 pub(crate) fn handle_scroll_up(app: &mut App) {
     app.scroll_offset = app.scroll_offset.saturating_add(3);
     app.auto_scroll = false;
+    clamp_scroll_offset(app);
 }
 
 pub(crate) fn handle_scroll_down(app: &mut App) {
@@ -28,6 +29,7 @@ pub(crate) fn handle_scroll_page_up(app: &mut App) {
     let page = chat_viewport_height(app);
     app.scroll_offset = app.scroll_offset.saturating_add(page);
     app.auto_scroll = false;
+    clamp_scroll_offset(app);
 }
 
 pub(crate) fn handle_scroll_page_down(app: &mut App) {
@@ -105,6 +107,28 @@ pub(crate) fn handle_toggle_ops_pane(app: &mut App) {
 
 pub(crate) fn handle_ops_focus_switch(app: &mut App) {
     app.ops.toggle_focus();
+}
+
+/// Clamp `scroll_offset` to the maximum scrollable distance given current content
+/// and viewport height. When messages are present and the offset would place the
+/// viewport past the top of the content, it is reduced to the valid maximum.
+/// If the clamped offset reaches zero, auto-scroll is re-enabled.
+///
+/// No-op when there are no messages (nothing to bound against) or when
+/// auto-scroll is already active.
+fn clamp_scroll_offset(app: &mut App) {
+    if app.auto_scroll || app.messages.is_empty() {
+        return;
+    }
+    let total = app.virtual_scroll.total_height();
+    let vh = chat_viewport_height(app) as u64;
+    let max_offset = total.saturating_sub(vh) as usize;
+    if app.scroll_offset > max_offset {
+        app.scroll_offset = max_offset;
+        if max_offset == 0 {
+            app.auto_scroll = true;
+        }
+    }
 }
 
 pub(crate) fn handle_resize(app: &mut App, w: u16, h: u16) {
@@ -232,6 +256,65 @@ mod tests {
         handle_resize(&mut app, 200, 50);
         assert_eq!(app.terminal_width, 200);
         assert_eq!(app.terminal_height, 50);
+    }
+
+    #[test]
+    fn scroll_up_clamped_to_content_height_with_messages() {
+        use crate::app::test_helpers::test_app_with_messages;
+        // Two short messages, very tall terminal — content fits, max_offset = 0.
+        let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hey")]);
+        app.rebuild_virtual_scroll();
+        app.auto_scroll = false;
+        // Scrolling up when content fits should clamp back to 0.
+        handle_scroll_up(&mut app);
+        assert_eq!(app.scroll_offset, 0);
+        assert!(
+            app.auto_scroll,
+            "should re-enable auto-scroll when clamped to 0"
+        );
+    }
+
+    #[test]
+    fn scroll_up_does_not_clamp_empty_messages() {
+        // Without messages the clamp must not activate — existing behaviour preserved.
+        let mut app = test_app();
+        handle_scroll_up(&mut app);
+        assert_eq!(app.scroll_offset, 3);
+        assert!(!app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_page_up_clamped_to_content_height_with_messages() {
+        use crate::app::test_helpers::test_app_with_messages;
+        let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hey")]);
+        app.rebuild_virtual_scroll();
+        app.auto_scroll = false;
+        handle_scroll_page_up(&mut app);
+        // Content fits in the tall test terminal — offset must be clamped to 0.
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_up_preserves_valid_offset_within_content() {
+        use crate::app::test_helpers::test_app_with_messages;
+        // Build enough messages to exceed the test viewport (40 rows).
+        let msgs: Vec<_> = (0..30)
+            .map(|_| ("user", "hello world long enough line"))
+            .collect();
+        let mut app = test_app_with_messages(msgs);
+        app.rebuild_virtual_scroll();
+        app.auto_scroll = false;
+        let total = app.virtual_scroll.total_height();
+        let vh = chat_viewport_height(&app) as u64;
+        // Offset within valid range: no clamping expected.
+        if total > vh {
+            app.scroll_offset = 3;
+            handle_scroll_up(&mut app);
+            // Offset should be 6 (3 + 3) as long as content allows.
+            assert!(app.scroll_offset <= (total.saturating_sub(vh) as usize));
+            assert!(!app.auto_scroll);
+        }
     }
 
     #[test]

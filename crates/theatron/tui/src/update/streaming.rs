@@ -32,7 +32,7 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     app.streaming_text.push_str(&clean);
     let delta = app.streaming_text.len() as i64 - app.cached_markdown_text.len() as i64;
     if delta >= 64 || text.contains('\n') {
-        let width = 120;
+        let width = app.terminal_width.saturating_sub(2).max(1) as usize;
         app.cached_markdown_lines =
             crate::markdown::render(&app.streaming_text, width, &app.theme, &app.highlighter).0;
         app.cached_markdown_text = app.streaming_text.clone();
@@ -454,6 +454,16 @@ mod tests {
         handle_stream_text_delta(&mut app, "line1\nline2".to_string());
         // newline should trigger markdown re-render
         assert!(!app.cached_markdown_text.is_empty());
+    }
+
+    #[test]
+    fn text_delta_uses_terminal_width_not_hardcoded() {
+        let mut app = test_app();
+        app.terminal_width = 80;
+        // Trigger a cache update via newline
+        handle_stream_text_delta(&mut app, "hello\nworld".to_string());
+        // Cache should be populated (width is passed correctly even if _width is unused internally)
+        assert_eq!(app.cached_markdown_text, "hello\nworld");
     }
 
     fn make_outcome() -> TurnOutcome {

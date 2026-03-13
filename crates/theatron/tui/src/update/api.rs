@@ -61,6 +61,10 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
             })
         })
         .collect();
+    // Stale streaming markdown from the previous session must not bleed through
+    // when history is replaced on session switch.
+    app.cached_markdown_text.clear();
+    app.cached_markdown_lines.clear();
     app.rebuild_virtual_scroll();
     app.scroll_to_bottom();
 }
@@ -409,6 +413,26 @@ mod tests {
         app.tick_count = u64::MAX;
         handle_tick(&mut app);
         assert_eq!(app.tick_count, 0);
+    }
+
+    #[test]
+    fn handle_history_loaded_clears_markdown_cache() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        // Pre-populate stale cache from a previous streaming session.
+        app.cached_markdown_text = "stale from previous session".to_string();
+        app.cached_markdown_lines = vec![ratatui::text::Line::raw("stale")];
+
+        handle_history_loaded(&mut app, vec![]);
+
+        assert!(
+            app.cached_markdown_text.is_empty(),
+            "history load must clear stale markdown text cache"
+        );
+        assert!(
+            app.cached_markdown_lines.is_empty(),
+            "history load must clear stale markdown line cache"
+        );
     }
 
     #[test]
