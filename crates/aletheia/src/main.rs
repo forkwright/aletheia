@@ -27,6 +27,7 @@ use commands::credential;
 use commands::eval::EvalArgs;
 use commands::health::HealthArgs;
 use commands::maintenance;
+use commands::session_export::SessionExportArgs;
 use commands::tls;
 
 #[derive(Debug, Parser)]
@@ -87,6 +88,8 @@ enum Command {
     Eval(EvalArgs),
     /// Export an agent to a portable .agent.json file
     Export(ExportArgs),
+    /// Export a session as Markdown or JSON
+    SessionExport(SessionExportArgs),
     /// Launch the terminal dashboard
     Tui(TuiArgs),
     /// Migrate memories from Qdrant (Mem0) into embedded `KnowledgeStore`
@@ -151,6 +154,7 @@ async fn main() -> Result<()> {
         }
         Some(Command::Eval(a)) => return commands::eval::run(a).await,
         Some(Command::Export(a)) => return commands::agent_io::export_agent(instance_root, &a),
+        Some(Command::SessionExport(a)) => return commands::session_export::run(&a).await,
         Some(Command::Import(a)) => return commands::agent_io::import_agent(instance_root, &a),
         Some(Command::SeedSkills(a)) => return commands::agent_io::seed_skills(&a),
         Some(Command::ExportSkills(a)) => {

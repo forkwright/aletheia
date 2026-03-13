@@ -8,4 +8,5 @@ pub mod eval;
 pub mod health;
 pub mod maintenance;
 pub mod server;
+pub mod session_export;
 pub mod tls;
