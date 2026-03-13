@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn scaffold_errors_when_directory_exists() {
         let dir = tempfile::tempdir().unwrap();
-        let oikos = Oikos::from_root(dir.path());
+        let _oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(dir.path().join("nous/existing")).unwrap();
 
         let args = AddNousArgs {
