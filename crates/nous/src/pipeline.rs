@@ -115,7 +115,7 @@ const DEFAULT_LOOP_WINDOW: usize = 50;
 /// Maximum cycle length tested during the cycle-detection pass.
 ///
 /// Patterns longer than this are not detected. Limiting the scan keeps
-/// detection O(`CYCLE_DETECTION_MAX_LEN` × threshold) per call, which is
+/// detection O(CYCLE_DETECTION_MAX_LEN × threshold) per call, which is
 /// negligible for practical threshold and cycle-length values.
 const CYCLE_DETECTION_MAX_LEN: usize = 10;
 
@@ -134,7 +134,7 @@ impl LoopDetector {
     ///
     /// Returns `Some(pattern)` if a loop is detected — either N consecutive
     /// identical calls, or a repeating sequence of length
-    /// 2–[`CYCLE_DETECTION_MAX_LEN`] repeated at least N times, where
+    /// 2–`CYCLE_DETECTION_MAX_LEN` repeated at least N times, where
     /// N = threshold. This catches both single-tool hammering and longer
     /// cycles such as A → B → C → A.
     pub fn record(&mut self, tool_name: &str, input_hash: &str) -> Option<String> {
