@@ -1,6 +1,8 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
-use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
+use aletheia_hermeneus::types::{
+    CompletionResponse, ContentBlock, StopReason, ToolResultContent, Usage,
+};
 
 use super::*;
 
@@ -555,4 +557,354 @@ fn distill_section_equality() {
             description: "desc".to_owned()
         }
     );
+}
+
+// ─── Retry backoff (#1096) ────────────────────────────────────────────────────
+
+#[test]
+fn tick_turn_returns_false_when_no_failures() {
+    let engine = default_engine();
+    assert!(!engine.tick_turn());
+}
+
+#[test]
+fn in_backoff_is_false_on_fresh_engine() {
+    let engine = default_engine();
+    assert!(!engine.in_backoff());
+}
+
+#[test]
+fn backoff_activates_after_failure_and_expires_after_one_turn() {
+    let engine = default_engine();
+    // Simulate one failure: turns_to_skip becomes 1.
+    engine.retry_state.lock().unwrap().record_failure();
+    assert!(engine.in_backoff());
+    // After one tick the backoff expires.
+    assert!(engine.tick_turn()); // still in backoff, counter decrements to 0
+    assert!(!engine.in_backoff());
+    assert!(!engine.tick_turn()); // no longer in backoff
+}
+
+#[test]
+fn backoff_resets_on_success() {
+    let engine = default_engine();
+    {
+        let mut state = engine.retry_state.lock().unwrap();
+        state.record_failure();
+        state.record_failure();
+    }
+    assert!(engine.in_backoff());
+    engine.retry_state.lock().unwrap().record_success();
+    assert!(!engine.in_backoff());
+    assert!(!engine.tick_turn());
+}
+
+#[test]
+fn backoff_schedule_is_exponential() {
+    // After N failures, turns_to_skip = min(2^(N-1), 8).
+    let cases: &[(u32, u32)] = &[(1, 1), (2, 2), (3, 4), (4, 8), (5, 8), (10, 8)];
+    for &(failures, expected_skip) in cases {
+        let engine = default_engine();
+        {
+            let mut state = engine.retry_state.lock().unwrap();
+            for _ in 0..failures {
+                state.record_failure();
+            }
+        }
+        let actual = engine.retry_state.lock().unwrap().turns_to_skip;
+        assert_eq!(
+            actual, expected_skip,
+            "after {failures} failures expected turns_to_skip={expected_skip}, got {actual}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn distill_records_failure_on_llm_error() {
+    let engine = default_engine();
+    let messages = sample_conversation();
+    let provider = MockProvider::failure();
+
+    let _ = engine.distill(&messages, "test", &provider, 1).await;
+
+    assert!(
+        engine.in_backoff(),
+        "engine should be in backoff after LLM failure"
+    );
+}
+
+#[tokio::test]
+async fn distill_records_success_and_clears_backoff() {
+    let engine = default_engine();
+    // Prime with a failure first.
+    engine.retry_state.lock().unwrap().record_failure();
+    assert!(engine.in_backoff());
+
+    let messages = sample_conversation();
+    let provider = MockProvider::success(MOCK_SUMMARY);
+    engine
+        .distill(&messages, "test", &provider, 1)
+        .await
+        .unwrap();
+
+    assert!(
+        !engine.in_backoff(),
+        "backoff should clear after successful distillation"
+    );
+}
+
+// ─── Context overflow hard stop (#1097) ──────────────────────────────────────
+
+#[test]
+fn enforce_context_limit_returns_zero_when_within_window() {
+    let mut messages = sample_conversation();
+    let count_before = messages.len();
+    let dropped = enforce_context_limit(&mut messages, 1_000_000);
+    assert_eq!(dropped, 0);
+    assert_eq!(messages.len(), count_before);
+}
+
+#[test]
+fn enforce_context_limit_drops_oldest_messages_when_over() {
+    // Build messages where each has ~100 chars → ~25 tokens each.
+    let mut messages: Vec<Message> = (0..10)
+        .map(|i| text_msg(Role::User, &"x".repeat(100 + i)))
+        .collect();
+    let initial_count = messages.len();
+    // Set window so tight that we must drop some.
+    let dropped = enforce_context_limit(&mut messages, 4);
+    assert!(dropped > 0, "should have dropped some messages");
+    assert_eq!(messages.len(), initial_count - dropped);
+}
+
+#[test]
+fn enforce_context_limit_keeps_at_least_one_message() {
+    let mut messages = vec![text_msg(Role::User, "x".repeat(1000).as_str())];
+    // Window of 1 token — impossible to satisfy but we must keep the last message.
+    let dropped = enforce_context_limit(&mut messages, 1);
+    assert_eq!(dropped, 0, "single message must not be dropped");
+    assert_eq!(messages.len(), 1);
+}
+
+#[test]
+fn enforce_context_limit_drops_from_front() {
+    let mut messages = vec![
+        text_msg(Role::User, &"a".repeat(400)), // oldest — should be dropped
+        text_msg(Role::User, &"b".repeat(400)),
+        text_msg(Role::User, &"c".repeat(4)), // newest — should be kept
+    ];
+    // Tokens: 100 + 100 + 1 = 201 total. Window of 2 keeps last ~8 chars = 2 tokens.
+    let dropped = enforce_context_limit(&mut messages, 2);
+    assert!(dropped > 0);
+    // The surviving message must be the newest one.
+    assert!(messages.last().unwrap().content.text().starts_with('c'));
+}
+
+// ─── nous_id sanitization (#1098) ────────────────────────────────────────────
+
+#[test]
+fn sanitize_nous_id_clean_string_unchanged() {
+    assert_eq!(sanitize_nous_id("my-agent-01"), "my-agent-01");
+}
+
+#[test]
+fn sanitize_nous_id_removes_backtick() {
+    assert_eq!(sanitize_nous_id("agent`hack"), "agenthack");
+}
+
+#[test]
+fn sanitize_nous_id_removes_newline() {
+    assert_eq!(sanitize_nous_id("agent\nhack"), "agenthack");
+}
+
+#[test]
+fn sanitize_nous_id_removes_carriage_return() {
+    assert_eq!(sanitize_nous_id("agent\rhack"), "agenthack");
+}
+
+#[test]
+fn sanitize_nous_id_removes_control_chars() {
+    assert_eq!(sanitize_nous_id("agent\x00\x1bhack"), "agenthack");
+}
+
+#[test]
+fn build_prompt_sanitizes_backtick_in_nous_id() {
+    let engine = default_engine();
+    let request = engine.build_prompt(&sample_conversation(), "id`injection");
+    let user_text = request.messages[0].content.text();
+    assert!(
+        !user_text.contains('`'),
+        "backtick must not appear in prompt"
+    );
+    assert!(user_text.contains("idinjection"));
+}
+
+#[test]
+fn build_prompt_sanitizes_newline_in_nous_id() {
+    let engine = default_engine();
+    let request = engine.build_prompt(&sample_conversation(), "id\ninjection");
+    let user_text = request.messages[0].content.text();
+    // Newline must be stripped from inside the nous_id quoted span.
+    assert!(
+        !user_text.contains("\"id\ninjection\""),
+        "raw newline must not appear inside the quoted nous_id"
+    );
+    assert!(
+        user_text.contains("\"idinjection\""),
+        "sanitized nous_id should appear without the embedded newline"
+    );
+}
+
+// ─── Token estimation completeness (#1099) ───────────────────────────────────
+
+#[test]
+fn estimate_tokens_includes_tool_use_input() {
+    let msg_text_only = Message {
+        role: Role::Assistant,
+        content: Content::Blocks(vec![ContentBlock::Text {
+            text: "checking".to_owned(),
+            citations: None,
+        }]),
+    };
+    let msg_with_tool = Message {
+        role: Role::Assistant,
+        content: Content::Blocks(vec![
+            ContentBlock::Text {
+                text: "checking".to_owned(),
+                citations: None,
+            },
+            ContentBlock::ToolUse {
+                id: "t1".to_owned(),
+                name: "read_file".to_owned(),
+                input: serde_json::json!({"path": "/very/long/path/to/some/file.rs"}),
+            },
+        ]),
+    };
+    let tokens_text = estimate_tokens(&[msg_text_only]);
+    let tokens_tool = estimate_tokens(&[msg_with_tool]);
+    assert!(
+        tokens_tool > tokens_text,
+        "tool use input should increase token estimate: {tokens_tool} vs {tokens_text}"
+    );
+}
+
+#[test]
+fn estimate_tokens_includes_tool_result_content() {
+    let msg_empty_result = Message {
+        role: Role::User,
+        content: Content::Blocks(vec![ContentBlock::ToolResult {
+            tool_use_id: "t1".to_owned(),
+            content: ToolResultContent::text(""),
+            is_error: Some(false),
+        }]),
+    };
+    let msg_large_result = Message {
+        role: Role::User,
+        content: Content::Blocks(vec![ContentBlock::ToolResult {
+            tool_use_id: "t1".to_owned(),
+            content: ToolResultContent::text("x".repeat(400)),
+            is_error: Some(false),
+        }]),
+    };
+    let tokens_empty = estimate_tokens(&[msg_empty_result]);
+    let tokens_large = estimate_tokens(&[msg_large_result]);
+    assert!(
+        tokens_large > tokens_empty,
+        "tool result content should increase token estimate: {tokens_large} vs {tokens_empty}"
+    );
+}
+
+// ─── MemoryFlush wiring (#1100) ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn distill_result_contains_memory_flush_field() {
+    let engine = default_engine();
+    let messages = sample_conversation();
+    let provider = MockProvider::success(MOCK_SUMMARY);
+
+    let result = engine
+        .distill(&messages, "test", &provider, 1)
+        .await
+        .unwrap();
+    // The field exists — we don't assert content since mock summary has no decisions.
+    let _ = &result.memory_flush;
+}
+
+#[test]
+fn parse_summary_extracts_key_decisions() {
+    let summary = "\
+## Summary
+Fixed login bug.
+
+## Key Decisions
+- Decision: Use null check. Reason: Minimal fix.
+- Decision: Keep auth module. Reason: Already tested.
+
+## Corrections
+- Wrong file initially.
+";
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    assert_eq!(flush.decisions.len(), 2);
+    assert!(
+        flush.decisions[0]
+            .content
+            .contains("Decision: Use null check")
+    );
+    assert!(
+        flush.decisions[1]
+            .content
+            .contains("Decision: Keep auth module")
+    );
+}
+
+#[test]
+fn parse_summary_extracts_corrections() {
+    let summary = "\
+## Summary
+Fixed auth.
+
+## Corrections
+- Wrong file at first.
+- Missed the null check.
+";
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    assert_eq!(flush.corrections.len(), 2);
+    assert!(flush.corrections[0].content.contains("Wrong file at first"));
+}
+
+#[test]
+fn parse_summary_extracts_task_context() {
+    let summary = "\
+## Summary
+Auth work.
+
+## Task Context
+Working on the login flow for nous agent \"syn\".
+Fixing the null pointer crash.
+
+## Current State
+Done.
+";
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    assert!(flush.task_state.is_some());
+    let state = flush.task_state.unwrap();
+    assert!(state.contains("login flow"));
+}
+
+#[test]
+fn parse_summary_empty_sections_produce_no_items() {
+    let summary = "## Summary\nJust a summary.\n\n## Key Decisions\n\n## Corrections\n";
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    assert!(flush.decisions.is_empty());
+    assert!(flush.corrections.is_empty());
+    assert!(flush.task_state.is_none());
+}
+
+#[test]
+fn parse_summary_flush_source_is_extracted() {
+    let summary = "## Key Decisions\n- Decision: Use snafu. Reason: Standard.\n";
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    assert_eq!(flush.decisions.len(), 1);
+    // FlushSource is accessible from parent module's use statement.
+    assert!(matches!(flush.decisions[0].source, FlushSource::Extracted));
 }
