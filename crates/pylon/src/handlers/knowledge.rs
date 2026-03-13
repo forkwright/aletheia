@@ -53,8 +53,11 @@ fn default_order() -> String {
     "desc".to_string()
 }
 
+/// Hard upper bound on the `limit` query parameter for all knowledge endpoints.
+const MAX_LIMIT: usize = 1000;
+
 fn default_limit() -> usize {
-    100
+    50
 }
 
 /// Response wrapper for fact listing.
@@ -107,6 +110,9 @@ pub struct SearchQuery {
 fn default_search_limit() -> usize {
     20
 }
+
+/// Hard upper bound on the `limit` query parameter for search.
+const MAX_SEARCH_LIMIT: usize = 1000;
 
 /// Search result item.
 #[derive(Debug, Serialize)]
@@ -188,11 +194,14 @@ pub struct TimelineResponse {
 )]
 pub async fn list_facts(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<FactsQuery>,
+    Query(mut query): Query<FactsQuery>,
 ) -> Result<Json<FactsResponse>, ApiError> {
     use aletheia_mneme::knowledge::EpistemicTier;
 
-    // Build facts from the knowledge store if available, otherwise demo data
+    // Enforce pagination bounds: cap limit at MAX_LIMIT.
+    query.limit = query.limit.min(MAX_LIMIT);
+
+    // Build facts from the knowledge store if available.
     let mut facts = get_stored_facts(&state, &query);
 
     // Apply text filter
@@ -328,14 +337,42 @@ pub async fn entity_relationships(
     security(("bearer_auth" = []))
 )]
 pub async fn forget_fact(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Json(_body): Json<ForgetRequest>,
+    Json(body): Json<ForgetRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    // In production, this would update the knowledge store.
-    // For now, acknowledge the request.
-    tracing::info!(fact_id = %id, "fact forget requested");
-    Ok(Json(serde_json::json!({ "status": "forgotten", "id": id })))
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
+            message: format!("invalid fact id: {e}"),
+            location: snafu::Location::default(),
+        })?;
+        let reason = body
+            .reason
+            .parse::<aletheia_mneme::knowledge::ForgetReason>()
+            .unwrap_or(aletheia_mneme::knowledge::ForgetReason::UserRequested);
+        return match store.forget_fact_async(fact_id, reason).await {
+            Ok(_) => {
+                tracing::info!(fact_id = %id, "fact forgotten");
+                Ok(Json(serde_json::json!({ "status": "forgotten", "id": id })))
+            }
+            Err(aletheia_mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+                path: format!("fact/{id}"),
+                location: snafu::Location::default(),
+            }),
+            Err(e) => Err(ApiError::Internal {
+                message: e.to_string(),
+                location: snafu::Location::default(),
+            }),
+        };
+    }
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = (state, body);
+    tracing::info!(fact_id = %id, "fact forget requested but knowledge store not available");
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not available".to_owned(),
+        location: snafu::Location::default(),
+    })
 }
 
 /// POST /api/v1/knowledge/facts/{id}/restore
@@ -350,11 +387,37 @@ pub async fn forget_fact(
     security(("bearer_auth" = []))
 )]
 pub async fn restore_fact(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    tracing::info!(fact_id = %id, "fact restore requested");
-    Ok(Json(serde_json::json!({ "status": "restored", "id": id })))
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let fact_id = aletheia_mneme::id::FactId::new(&id).map_err(|e| ApiError::BadRequest {
+            message: format!("invalid fact id: {e}"),
+            location: snafu::Location::default(),
+        })?;
+        return match store.unforget_fact_async(fact_id).await {
+            Ok(_) => {
+                tracing::info!(fact_id = %id, "fact restored");
+                Ok(Json(serde_json::json!({ "status": "restored", "id": id })))
+            }
+            Err(aletheia_mneme::error::Error::FactNotFound { .. }) => Err(ApiError::NotFound {
+                path: format!("fact/{id}"),
+                location: snafu::Location::default(),
+            }),
+            Err(e) => Err(ApiError::Internal {
+                message: e.to_string(),
+                location: snafu::Location::default(),
+            }),
+        };
+    }
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = state;
+    tracing::info!(fact_id = %id, "fact restore requested but knowledge store not available");
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not available".to_owned(),
+        location: snafu::Location::default(),
+    })
 }
 
 /// PUT /api/v1/knowledge/facts/{id}/confidence
@@ -386,9 +449,12 @@ pub async fn update_confidence(
         });
     }
     tracing::info!(fact_id = %id, confidence = body.confidence, "confidence update requested");
-    Ok(Json(
-        serde_json::json!({ "status": "updated", "id": id, "confidence": body.confidence }),
-    ))
+    // WHY: KnowledgeStore exposes no direct confidence-update method; a full
+    // read-modify-write cycle is needed but not yet implemented (#1025).
+    Err(ApiError::NotImplemented {
+        message: "confidence update is not yet implemented in the knowledge store".to_owned(),
+        location: snafu::Location::default(),
+    })
 }
 
 /// GET /api/v1/knowledge/search
@@ -408,8 +474,11 @@ pub async fn update_confidence(
 )]
 pub async fn search(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
+    Query(mut query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
+    // Enforce pagination bound.
+    query.limit = query.limit.min(MAX_SEARCH_LIMIT);
+
     let all_facts = get_all_facts(&state);
     let query_lower = query.q.to_lowercase();
     let query_terms: Vec<&str> = query_lower.split_whitespace().collect();
@@ -511,13 +580,18 @@ pub async fn timeline(
 fn get_stored_facts(state: &AppState, query: &FactsQuery) -> Vec<aletheia_mneme::knowledge::Fact> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        let nous_id = query.nous_id.as_deref().unwrap_or("default");
-        let limit =
-            i64::try_from((query.offset + query.limit + 1000).min(10000)).unwrap_or(i64::MAX);
-        match store.audit_all_facts(nous_id, limit) {
-            Ok(facts) => return facts,
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to query knowledge store");
+        // Require an explicit nous_id so the Datalog query filters at the
+        // storage level rather than scanning the entire fact table.
+        if let Some(nous_id) = query.nous_id.as_deref() {
+            // Fetch exactly as many rows as offset + limit so subsequent
+            // in-memory pagination does not load more than needed.
+            let fetch_limit =
+                i64::try_from((query.offset + query.limit).min(10_000)).unwrap_or(i64::MAX);
+            match store.audit_all_facts(nous_id, fetch_limit) {
+                Ok(facts) => return facts,
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to query knowledge store");
+                }
             }
         }
     }
@@ -676,8 +750,8 @@ mod tests {
     }
 
     #[test]
-    fn default_limit_returns_100() {
-        assert_eq!(default_limit(), 100);
+    fn default_limit_returns_50() {
+        assert_eq!(default_limit(), 50);
     }
 
     #[test]
@@ -725,8 +799,15 @@ mod tests {
         let q: FactsQuery = serde_json::from_str("{}").unwrap();
         assert_eq!(q.sort, "confidence");
         assert_eq!(q.order, "desc");
-        assert_eq!(q.limit, 100);
+        assert_eq!(q.limit, 50);
         assert!(!q.include_forgotten);
+    }
+
+    #[test]
+    fn limit_is_capped_at_max() {
+        // list_facts clamps query.limit to MAX_LIMIT (1000) before use.
+        assert!(MAX_LIMIT <= 1000, "MAX_LIMIT must not exceed 1000");
+        assert_eq!(MAX_LIMIT, 1000);
     }
 
     #[test]

@@ -62,16 +62,24 @@ pub async fn send_message(
     if let Some(ref key) = idempotency_key {
         match state.idempotency_cache.check_or_insert(key) {
             LookupResult::Miss => { /* proceed normally */ }
-            LookupResult::Hit { .. } => {
-                // Return a minimal SSE stream indicating the request was already processed.
+            LookupResult::Hit { body, .. } => {
                 tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
+                // Decode the cached turn summary stored by the original request.
+                let cached: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                let stop_reason = cached["stop_reason"]
+                    .as_str()
+                    .unwrap_or("idempotency_replay")
+                    .to_owned();
+                let input_tokens = cached["input_tokens"].as_u64().unwrap_or(0);
+                let output_tokens = cached["output_tokens"].as_u64().unwrap_or(0);
+
                 let (tx, rx) = mpsc::channel::<SseEvent>(1);
                 let _ = tx
                     .send(SseEvent::MessageComplete {
-                        stop_reason: "idempotency_replay".to_owned(),
+                        stop_reason,
                         usage: UsageData {
-                            input_tokens: 0,
-                            output_tokens: 0,
+                            input_tokens,
+                            output_tokens,
                         },
                     })
                     .await;
@@ -157,9 +165,15 @@ pub async fn send_message(
                 Ok(result) => {
                     emit_turn_result_events(&tx, &result).await;
 
-                    // Mark idempotency entry as completed so retries get a cache hit.
+                    // Store the turn summary so cache-hit replays return real data.
                     if let Some(ref key) = idem_key {
-                        idem_cache.complete(key, axum::http::StatusCode::OK, String::new());
+                        let body = serde_json::json!({
+                            "stop_reason": result.stop_reason,
+                            "input_tokens": result.usage.input_tokens,
+                            "output_tokens": result.usage.output_tokens,
+                        })
+                        .to_string();
+                        idem_cache.complete(key, axum::http::StatusCode::OK, body);
                     }
                 }
                 Err(err) => {
@@ -403,12 +417,14 @@ pub async fn stream_turn(
         .instrument(turn_span),
     );
 
-    let stream = ReceiverStream::new(webchat_rx).map(|event| {
-        let data = serde_json::to_string(&event).unwrap_or_else(|e| {
+    let stream = ReceiverStream::new(webchat_rx).map(|event| match serde_json::to_string(&event) {
+        Ok(data) => Ok(Event::default().event(event.event_type()).data(data)),
+        Err(e) => {
             warn!(error = %e, "failed to serialize SSE event");
-            String::new()
-        });
-        Ok(Event::default().event(event.event_type()).data(data))
+            Ok(Event::default()
+                .event("error")
+                .data(r#"{"message":"serialization failed"}"#))
+        }
     });
 
     Ok(Sse::new(stream).keep_alive(
@@ -420,53 +436,27 @@ pub async fn stream_turn(
 
 /// GET /api/v1/events — global SSE event channel.
 ///
-/// Provides system-wide events for the TUI dashboard: turn lifecycle,
-/// tool calls, status changes, and session events. Currently emits
-/// `init` (with empty active turns) and periodic `ping` heartbeats.
+/// Returns 404 until a server-side `tokio::sync::broadcast` channel is wired
+/// into `AppState`. Clients should poll `/api/v1/sessions/{id}/messages` for
+/// per-session events instead.
 #[utoipa::path(
     get,
     path = "/api/v1/events",
     responses(
-        (status = 200, description = "SSE event stream: `init`, `ping` events", content_type = "text/event-stream"),
+        (status = 404, description = "Global event stream not yet available", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn events(
-    _claims: Claims,
-) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    let (tx, rx) = mpsc::channel::<Event>(8);
-
-    // Emit init event with empty active turns.
-    let init_data = serde_json::json!({"activeTurns": [], "pendingDeliveries": 0}).to_string();
-    let _ = tx
-        .send(Event::default().event("init").data(init_data))
-        .await;
-
-    // Ping every 15 seconds to keep the connection alive.
-    tokio::spawn(
-        async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(15));
-            loop {
-                interval.tick().await;
-                if tx
-                    .send(Event::default().event("ping").data("{}"))
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
+pub async fn events(_claims: Claims) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        axum::Json(serde_json::json!({
+            "error": {
+                "code": "not_implemented",
+                "message": "global event stream is not yet available"
             }
-        }
-        .instrument(tracing::info_span!("sse_ping")),
-    );
-
-    let stream = ReceiverStream::new(rx).map(Ok);
-
-    Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(30))
-            .text("heartbeat"),
+        })),
     )
 }
 
@@ -483,11 +473,15 @@ pub async fn events(
     reason = "owned value received from Stream::map"
 )]
 fn sse_event_to_axum(event: SseEvent) -> Result<Event, Infallible> {
-    let data = serde_json::to_string(&event).unwrap_or_else(|e| {
-        warn!(error = %e, "failed to serialize SSE event");
-        String::new()
-    });
-    Ok(Event::default().event(event.event_type()).data(data))
+    match serde_json::to_string(&event) {
+        Ok(data) => Ok(Event::default().event(event.event_type()).data(data)),
+        Err(e) => {
+            warn!(error = %e, "failed to serialize SSE event");
+            Ok(Event::default()
+                .event("error")
+                .data(r#"{"message":"serialization failed"}"#))
+        }
+    }
 }
 
 /// Extract and validate the optional `Idempotency-Key` header.
