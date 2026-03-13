@@ -105,6 +105,38 @@ impl VectorSearch for KnowledgeVectorSearch {
     }
 }
 
+/// Per-factor scoring weights for the recall pipeline.
+///
+/// Each weight is applied to the corresponding [`aletheia_mneme::recall::FactorScores`]
+/// field before the engine aggregates them into a final score. All weights default to
+/// the values that were previously hardcoded, preserving existing behaviour unless an
+/// operator overrides them in taxis config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecallWeights {
+    /// Temporal decay weight (0.0–1.0).
+    pub decay: f64,
+    /// Content relevance weight (0.0–1.0).
+    pub relevance: f64,
+    /// Epistemic tier weight (0.0–1.0).
+    pub epistemic_tier: f64,
+    /// Knowledge-graph relationship proximity weight (0.0–1.0).
+    pub relationship_proximity: f64,
+    /// Access frequency weight (0.0–1.0).
+    pub access_frequency: f64,
+}
+
+impl Default for RecallWeights {
+    fn default() -> Self {
+        Self {
+            decay: 0.5,
+            relevance: 0.5,
+            epistemic_tier: 0.3,
+            relationship_proximity: 0.0,
+            access_frequency: 0.0,
+        }
+    }
+}
+
 /// Configuration for the recall stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallConfig {
@@ -120,6 +152,9 @@ pub struct RecallConfig {
     pub iterative: bool,
     /// Maximum retrieval cycles (only used when `iterative` is true).
     pub max_cycles: usize,
+    /// Per-factor scoring weights applied when building candidates.
+    #[serde(default)]
+    pub weights: RecallWeights,
 }
 
 impl Default for RecallConfig {
@@ -131,6 +166,27 @@ impl Default for RecallConfig {
             max_recall_tokens: 2000,
             iterative: false,
             max_cycles: 2,
+            weights: RecallWeights::default(),
+        }
+    }
+}
+
+impl From<aletheia_taxis::config::RecallSettings> for RecallConfig {
+    fn from(s: aletheia_taxis::config::RecallSettings) -> Self {
+        Self {
+            enabled: s.enabled,
+            max_results: s.max_results,
+            min_score: s.min_score,
+            max_recall_tokens: s.max_recall_tokens,
+            iterative: s.iterative,
+            max_cycles: s.max_cycles,
+            weights: RecallWeights {
+                decay: s.weights.decay,
+                relevance: s.weights.relevance,
+                epistemic_tier: s.weights.epistemic_tier,
+                relationship_proximity: s.weights.relationship_proximity,
+                access_frequency: s.weights.access_frequency,
+            },
         }
     }
 }
@@ -386,6 +442,7 @@ impl RecallStage {
         raw: Vec<KnowledgeRecallResult>,
         _nous_id: &str,
     ) -> Vec<ScoredResult> {
+        let w = &self.config.weights;
         raw.into_iter()
             .map(|r| ScoredResult {
                 content: r.content,
@@ -394,11 +451,11 @@ impl RecallStage {
                 nous_id: String::new(),
                 factors: FactorScores {
                     vector_similarity: self.engine.score_vector_similarity(r.distance),
-                    decay: 0.5,
-                    relevance: 0.5,
-                    epistemic_tier: 0.3,
-                    relationship_proximity: 0.0,
-                    access_frequency: 0.0,
+                    decay: w.decay,
+                    relevance: w.relevance,
+                    epistemic_tier: w.epistemic_tier,
+                    relationship_proximity: w.relationship_proximity,
+                    access_frequency: w.access_frequency,
                 },
                 score: 0.0,
             })
