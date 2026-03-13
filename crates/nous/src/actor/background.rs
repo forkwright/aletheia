@@ -14,13 +14,25 @@ use aletheia_hermeneus::provider::ProviderRegistry;
 use super::{MAX_SPAWNED_TASKS, NousActor};
 
 impl NousActor {
-    /// Reap completed background tasks and log any failures.
+    /// Reap completed background tasks, log failures, and count panics.
     pub(super) fn reap_background_tasks(&mut self) {
         while let Some(result) = self.background_tasks.try_join_next() {
             match result {
                 Ok(()) => {}
                 Err(e) => {
-                    warn!(nous_id = %self.id, error = %e, "background task failed");
+                    if e.is_panic() {
+                        // WHY: Background tasks run outside the main panic boundary.
+                        // Counting them ensures degraded mode triggers correctly if
+                        // background tasks are repeatedly panicking.
+                        self.record_panic();
+                        warn!(
+                            nous_id = %self.id,
+                            panic_count = self.panic_count,
+                            "background task panicked"
+                        );
+                    } else {
+                        warn!(nous_id = %self.id, error = %e, "background task failed");
+                    }
                 }
             }
         }
@@ -165,11 +177,39 @@ impl NousActor {
     }
 
     pub(super) async fn maybe_spawn_distillation(&mut self, session_key: &str) {
-        let Some(ref store_arc) = self.session_store else {
+        use std::sync::atomic::Ordering;
+
+        // WHY(#1035): Two turns finishing close together can both observe the
+        // distillation trigger condition before either task commits its result.
+        // The atomic flag ensures only one distillation task runs at a time.
+        if self
+            .distillation_in_progress
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            debug!(nous_id = %self.id, "distillation already in progress, skipping");
             return;
+        }
+
+        let did_spawn = self.try_spawn_distillation(session_key).await;
+
+        // Clear the flag immediately if we did not actually spawn a task.
+        // If a task was spawned, the task itself clears the flag on completion.
+        if !did_spawn {
+            self.distillation_in_progress
+                .store(false, Ordering::Release);
+        }
+    }
+
+    /// Attempt to spawn a distillation task. Returns `true` if a task was spawned.
+    async fn try_spawn_distillation(&mut self, session_key: &str) -> bool {
+        use std::sync::atomic::Ordering;
+
+        let Some(ref store_arc) = self.session_store else {
+            return false;
         };
         let Some(session_state) = self.sessions.get(session_key) else {
-            return;
+            return false;
         };
         let session_id = session_state.id.clone();
 
@@ -177,7 +217,7 @@ impl NousActor {
         let should_distill = {
             let store = store_arc.lock().await;
             let Ok(Some(session)) = store.find_session_by_id(&session_id) else {
-                return;
+                return false;
             };
             let config = crate::distillation::DistillTriggerConfig::default();
             crate::distillation::should_trigger_distillation(
@@ -189,13 +229,13 @@ impl NousActor {
         };
 
         if !should_distill {
-            return;
+            return false;
         }
 
         let config = crate::distillation::DistillTriggerConfig::default();
         if self.providers.find_provider(&config.model).is_none() {
             warn!(model = %config.model, "no provider for distillation model");
-            return;
+            return false;
         }
 
         let store = Arc::clone(store_arc);
@@ -206,13 +246,19 @@ impl NousActor {
 
         if self.background_tasks.len() >= MAX_SPAWNED_TASKS {
             warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping distillation");
-            return;
+            return false;
         }
 
+        let flag = Arc::clone(&self.distillation_in_progress);
         self.background_tasks.spawn(
-            run_background_distillation(store, providers, session_id, nous_id, config)
-                .instrument(span),
+            async move {
+                run_background_distillation(store, providers, session_id, nous_id, config).await;
+                // Clear the in-progress flag so the next turn can trigger distillation.
+                flag.store(false, Ordering::Release);
+            }
+            .instrument(span),
         );
+        true
     }
 }
 

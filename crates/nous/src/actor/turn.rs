@@ -331,7 +331,7 @@ impl NousActor {
     }
 
     /// Record a panic occurrence. Enters degraded mode if too many panics in the window.
-    fn record_panic(&mut self) {
+    pub(super) fn record_panic(&mut self) {
         self.panic_count += 1;
         self.panic_timestamps.push(std::time::Instant::now());
 

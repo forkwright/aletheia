@@ -1,12 +1,5 @@
 //! Execute stage — LLM call and tool iteration loop.
 
-// RwLock::read().expect() is infallible under normal operation; poisoning only
-// occurs on a prior panic which makes the process state undefined anyway.
-#![expect(
-    clippy::expect_used,
-    reason = "RwLock read is infallible under normal operation"
-)]
-
 mod dispatch;
 
 #[cfg(test)]
@@ -102,7 +95,10 @@ pub async fn execute(
         let active = tool_ctx
             .active_tools
             .read()
-            .expect("active_tools lock") // INVARIANT: RwLock read, short critical section, poisoned = prior panic
+            .unwrap_or_else(|poisoned| {
+                warn!("active_tools lock poisoned by prior panic, recovering with last value");
+                poisoned.into_inner()
+            })
             .clone();
         let tool_defs = tools.to_hermeneus_tools_filtered(&active);
 
@@ -310,7 +306,10 @@ pub async fn execute_streaming(
         let active = tool_ctx
             .active_tools
             .read()
-            .expect("active_tools lock")
+            .unwrap_or_else(|poisoned| {
+                warn!("active_tools lock poisoned by prior panic, recovering with last value");
+                poisoned.into_inner()
+            })
             .clone();
         let server_tools = if let Some(services) = tool_ctx.services.as_deref() {
             let mut st = services.server_tool_config.active_definitions(&active);

@@ -388,7 +388,8 @@ async fn run_pipeline_simple() {
 #[test]
 fn loop_detector_window_cap_evicts_old_calls() {
     let mut det = LoopDetector::new(100); // high threshold so no loop triggers
-    for i in 0..25 {
+    // Insert more entries than the window to trigger eviction
+    for i in 0..55 {
         det.record("tool", &format!("hash{i}"));
     }
     assert_eq!(
@@ -441,12 +442,28 @@ fn loop_detector_window_still_detects_loops() {
 // --- Additional edge cases ---
 
 #[test]
-fn loop_detector_interleaved_not_detected() {
+fn loop_detector_detects_ab_cycle() {
+    // a, b, a, b, a, b — a 2-step cycle repeated 3 times should be detected
     let mut det = LoopDetector::new(3);
-    // a, b, a, b, a, b — interleaved, not consecutive
-    for _ in 0..3 {
-        assert!(det.record("exec", "a").is_none());
-        assert!(det.record("exec", "b").is_none());
+    assert!(det.record("exec", "a").is_none());
+    assert!(det.record("exec", "b").is_none());
+    assert!(det.record("exec", "a").is_none());
+    assert!(det.record("exec", "b").is_none());
+    assert!(det.record("exec", "a").is_none());
+    // Completing the 3rd repetition of the [exec:a, exec:b] cycle triggers detection
+    let result = det.record("exec", "b");
+    assert!(
+        result.is_some(),
+        "2-step cycle repeated 3 times should be detected"
+    );
+}
+
+#[test]
+fn loop_detector_non_repeating_interleaved_not_detected() {
+    // Different tool signatures each time — no repeating pattern
+    let mut det = LoopDetector::new(3);
+    for i in 0..6 {
+        assert!(det.record("exec", &format!("hash{i}")).is_none());
     }
 }
 

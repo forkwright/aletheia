@@ -110,10 +110,17 @@ pub struct LoopDetector {
     window: usize,
 }
 
-const DEFAULT_LOOP_WINDOW: usize = 20;
+const DEFAULT_LOOP_WINDOW: usize = 50;
+
+/// Maximum cycle length tested during the cycle-detection pass.
+///
+/// Patterns longer than this are not detected. Limiting the scan keeps
+/// detection O(`CYCLE_DETECTION_MAX_LEN` × threshold) per call, which is
+/// negligible for practical threshold and cycle-length values.
+const CYCLE_DETECTION_MAX_LEN: usize = 10;
 
 impl LoopDetector {
-    /// Create a new loop detector with the default window size (20).
+    /// Create a new loop detector with the default window size (50).
     #[must_use]
     pub fn new(threshold: u32) -> Self {
         Self {
@@ -125,8 +132,11 @@ impl LoopDetector {
 
     /// Record a tool call and check for loops.
     ///
-    /// Returns `Some(pattern)` if a loop is detected (N consecutive identical calls
-    /// where N = threshold).
+    /// Returns `Some(pattern)` if a loop is detected — either N consecutive
+    /// identical calls, or a repeating sequence of length
+    /// 2–[`CYCLE_DETECTION_MAX_LEN`] repeated at least N times, where
+    /// N = threshold. This catches both single-tool hammering and longer
+    /// cycles such as A → B → C → A.
     pub fn record(&mut self, tool_name: &str, input_hash: &str) -> Option<String> {
         let signature = format!("{tool_name}:{input_hash}");
         self.history.push_back(signature.clone());
@@ -136,12 +146,46 @@ impl LoopDetector {
             self.history.pop_front();
         }
 
-        // Check for N consecutive identical calls
-        let recent = self.history.iter().rev().take(self.threshold as usize);
-        let all_same = recent.clone().count() >= self.threshold as usize
-            && recent.clone().all(|s| *s == signature);
+        let n = self.history.len();
+        let t = self.threshold as usize;
 
-        if all_same { Some(signature) } else { None }
+        // Check for N consecutive identical calls
+        let recent = self.history.iter().rev().take(t);
+        let all_same = recent.clone().count() >= t && recent.clone().all(|s| *s == signature);
+        if all_same {
+            return Some(signature);
+        }
+
+        // Check for repeating sequence cycles (A→B→C→A etc.).
+        //
+        // A cycle of length L is confirmed when the last L×threshold history
+        // entries consist of exactly `threshold` repetitions of the same
+        // L-length pattern.  The inner comparison uses `VecDeque::get` so no
+        // allocation is required.
+        for cycle_len in 2..=CYCLE_DETECTION_MAX_LEN {
+            let needed = cycle_len * t;
+            if n < needed {
+                continue;
+            }
+            let pattern_start = n - cycle_len;
+            let all_match = (1..t).all(|rep| {
+                let seg_start = n - cycle_len * (rep + 1);
+                (0..cycle_len)
+                    .all(|i| self.history.get(pattern_start + i) == self.history.get(seg_start + i))
+            });
+            if all_match {
+                let pattern: String = self
+                    .history
+                    .iter()
+                    .skip(pattern_start)
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(",");
+                return Some(pattern);
+            }
+        }
+
+        None
     }
 
     /// Reset the detector (e.g. on new turn).
