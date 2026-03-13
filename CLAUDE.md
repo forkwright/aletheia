@@ -74,31 +74,84 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 
 ## CLI
 
-```text
-aletheia                            # start server (default)
-aletheia health [--url URL]         # check if server is running
-aletheia status [--url URL]         # system status dashboard
-aletheia backup [--list] [--prune --keep N] [--export-json]
-aletheia maintenance status         # show maintenance task status
-aletheia maintenance run <task>     # run: trace-rotation, drift-detection, db-monitor, all
-aletheia tls generate [--output-dir PATH] [--days N] [--san NAMES...]
-```
+| Subcommand | Description |
+|------------|-------------|
+| *(none)* | Start the server |
+| `health [--url URL]` | HTTP health check against a running instance |
+| `status [--url URL]` | System status dashboard |
+| `backup [--list\|--prune --keep N\|--export-json]` | Database backup management |
+| `maintenance status` | Show status of all maintenance tasks |
+| `maintenance run <task> [--verbose]` | Run task: `trace-rotation`, `drift-detection`, `db-monitor`, `all` |
+| `tls generate [--output-dir PATH] [--days N] [--san NAMES...]` | Generate self-signed TLS certificates |
+| `credential status` | Show credential source, expiry, and token prefix |
+| `credential refresh` | Force-refresh OAuth token |
+| `eval [--url URL] [--token TOKEN] [--scenario ID] [--json] [--timeout N]` | Run behavioral evaluation scenarios |
+| `export <nous-id> [--output PATH] [--archived] [--max-messages N] [--compact]` | Export agent to `.agent.json` |
+| `import <file> [--target-id ID] [--skip-sessions] [--skip-workspace] [--force] [--dry-run]` | Import agent from `.agent.json` |
+| `tui [--url URL] [--token TOKEN] [--agent ID] [--session ID] [--logout]` | Launch terminal dashboard (requires `tui` feature) |
+| `seed-skills --dir PATH --nous-id ID [--force] [--dry-run]` | Seed skills from `SKILL.md` files into knowledge store |
+| `export-skills --nous-id ID [--output PATH] [--domain TAGS]` | Export skills to Claude Code `.claude/skills/` format |
+| `review-skills --nous-id ID [--action list\|approve\|reject] [--fact-id ID]` | Review pending auto-extracted skills |
+| `migrate-memory [--qdrant-url URL] [--collection NAME] [--knowledge-path PATH] [--review-file PATH] [--dry-run]` | Migrate memories from Qdrant into embedded knowledge store |
+| `init [--instance-root PATH] [-y] [--api-key KEY]` | Initialize a new instance |
+| `check-config` | Validate configuration without starting services |
+| `completions <bash\|zsh\|fish>` | Generate shell completions |
 
 ## API Endpoints
 
+### Infrastructure
+
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/health` | Health check |
+| GET | `/api/health` | Liveness and readiness check |
 | GET | `/api/docs/openapi.json` | OpenAPI spec |
 | GET | `/metrics` | Prometheus metrics |
+
+### Sessions
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/sessions` | List sessions (query: `nous_id`) |
 | POST | `/api/v1/sessions` | Create session |
+| POST | `/api/v1/sessions/stream` | Stream a turn (TUI webchat protocol) |
 | GET | `/api/v1/sessions/{id}` | Get session |
-| DELETE | `/api/v1/sessions/{id}` | Close session |
-| POST | `/api/v1/sessions/{id}/messages` | Send message |
-| GET | `/api/v1/sessions/{id}/history` | Message history |
-| GET | `/api/v1/nous` | List agents |
-| GET | `/api/v1/nous/{id}` | Agent status |
-| GET | `/api/v1/nous/{id}/tools` | Agent tools |
+| DELETE | `/api/v1/sessions/{id}` | Close (archive) session |
+| POST | `/api/v1/sessions/{id}/archive` | Archive session |
+| POST | `/api/v1/sessions/{id}/unarchive` | Reactivate archived session |
+| PUT | `/api/v1/sessions/{id}/name` | Rename session |
+| POST | `/api/v1/sessions/{id}/messages` | Send message, SSE stream response |
+| GET | `/api/v1/sessions/{id}/history` | Conversation history (query: `limit`, `before`) |
+| GET | `/api/v1/events` | Global SSE event channel (TUI dashboard) |
+
+### Nous (Agents)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/nous` | List registered agents |
+| GET | `/api/v1/nous/{id}` | Agent status and config |
+| GET | `/api/v1/nous/{id}/tools` | Tools available to agent |
+
+### Config
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/config` | Full redacted runtime config |
+| GET | `/api/v1/config/{section}` | Single config section |
+| PUT | `/api/v1/config/{section}` | Update and persist config section |
+
+### Knowledge
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/knowledge/facts` | List facts (query: `nous_id`, `sort`, `order`, `filter`, `fact_type`, `tier`, `limit`, `offset`, `include_forgotten`) |
+| GET | `/api/v1/knowledge/facts/{id}` | Fact detail with relationships and similar facts |
+| POST | `/api/v1/knowledge/facts/{id}/forget` | Forget a fact |
+| POST | `/api/v1/knowledge/facts/{id}/restore` | Restore a forgotten fact |
+| PUT | `/api/v1/knowledge/facts/{id}/confidence` | Update fact confidence |
+| GET | `/api/v1/knowledge/entities` | List entities |
+| GET | `/api/v1/knowledge/entities/{id}/relationships` | Entity relationships |
+| GET | `/api/v1/knowledge/search` | Full-text search (query: `q`, `nous_id`, `limit`) |
+| GET | `/api/v1/knowledge/timeline` | Fact activity timeline |
 
 ## Git
 
