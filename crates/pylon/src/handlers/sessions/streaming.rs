@@ -294,44 +294,47 @@ pub async fn stream_turn(
     // before emitting turn_complete (prevents the race where turn_complete
     // arrives at the TUI before the final text_delta events).
     let bridge_tx = webchat_tx.clone();
-    let bridge_handle = tokio::spawn(async move {
-        while let Some(event) = nous_rx.recv().await {
-            let webchat_event = match event {
-                TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
-                    WebchatEvent::TextDelta { text }
+    let bridge_handle = tokio::spawn(
+        async move {
+            while let Some(event) = nous_rx.recv().await {
+                let webchat_event = match event {
+                    TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
+                        WebchatEvent::TextDelta { text }
+                    }
+                    TurnStreamEvent::LlmDelta(LlmStreamEvent::ThinkingDelta { thinking }) => {
+                        WebchatEvent::ThinkingDelta { text: thinking }
+                    }
+                    TurnStreamEvent::ToolStart {
+                        tool_id,
+                        tool_name,
+                        input,
+                    } => WebchatEvent::ToolStart {
+                        tool_name,
+                        tool_id,
+                        input,
+                    },
+                    TurnStreamEvent::ToolResult {
+                        tool_id,
+                        tool_name,
+                        result,
+                        is_error,
+                        duration_ms,
+                    } => WebchatEvent::ToolResult {
+                        tool_name,
+                        tool_id,
+                        result,
+                        is_error,
+                        duration_ms,
+                    },
+                    _ => continue,
+                };
+                if bridge_tx.send(webchat_event).await.is_err() {
+                    break;
                 }
-                TurnStreamEvent::LlmDelta(LlmStreamEvent::ThinkingDelta { thinking }) => {
-                    WebchatEvent::ThinkingDelta { text: thinking }
-                }
-                TurnStreamEvent::ToolStart {
-                    tool_id,
-                    tool_name,
-                    input,
-                } => WebchatEvent::ToolStart {
-                    tool_name,
-                    tool_id,
-                    input,
-                },
-                TurnStreamEvent::ToolResult {
-                    tool_id,
-                    tool_name,
-                    result,
-                    is_error,
-                    duration_ms,
-                } => WebchatEvent::ToolResult {
-                    tool_name,
-                    tool_id,
-                    result,
-                    is_error,
-                    duration_ms,
-                },
-                _ => continue,
-            };
-            if bridge_tx.send(webchat_event).await.is_err() {
-                break;
             }
         }
-    });
+        .instrument(tracing::info_span!("sse_bridge")),
+    );
 
     // Run the turn, wait for bridge to drain, then emit completion event.
     tokio::spawn(
@@ -441,19 +444,22 @@ pub async fn events(
         .await;
 
     // Ping every 15 seconds to keep the connection alive.
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(15));
-        loop {
-            interval.tick().await;
-            if tx
-                .send(Event::default().event("ping").data("{}"))
-                .await
-                .is_err()
-            {
-                break;
+    tokio::spawn(
+        async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(15));
+            loop {
+                interval.tick().await;
+                if tx
+                    .send(Event::default().event("ping").data("{}"))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
             }
         }
-    });
+        .instrument(tracing::info_span!("sse_ping")),
+    );
 
     let stream = ReceiverStream::new(rx).map(Ok);
 

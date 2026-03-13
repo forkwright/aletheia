@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{Instrument, info, warn};
 
 use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
 
@@ -358,9 +358,12 @@ impl RefreshingCredentialProvider {
         let task_shutdown = Arc::clone(&shutdown);
         let task_path = path.clone();
 
-        let task = tokio::spawn(async move {
-            refresh_loop(task_state, task_shutdown, task_path).await;
-        });
+        let task = tokio::spawn(
+            async move {
+                refresh_loop(task_state, task_shutdown, task_path).await;
+            }
+            .instrument(tracing::info_span!("credential_refresh")),
+        );
 
         Some(Self {
             state,

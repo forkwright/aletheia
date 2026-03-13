@@ -163,6 +163,7 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
     use std::time::Duration;
 
     use axum_server::tls_rustls::RustlsConfig;
+    use tracing::Instrument;
 
     let cert_path = config
         .security
@@ -189,10 +190,13 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
 
     let handle = axum_server::Handle::new();
     let shutdown_handle = handle.clone();
-    tokio::spawn(async move {
-        shutdown_signal().await;
-        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
-    });
+    tokio::spawn(
+        async move {
+            shutdown_signal().await;
+            shutdown_handle.graceful_shutdown(Some(Duration::from_secs(30)));
+        }
+        .instrument(tracing::info_span!("shutdown_signal")),
+    );
 
     info!(addr = %config.bind_addr, tls = true, "pylon listening (TLS)");
 
