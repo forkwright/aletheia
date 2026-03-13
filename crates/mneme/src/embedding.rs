@@ -339,8 +339,14 @@ mod candle_provider {
                 .and_then(|t| t.sum_keepdim(1))
                 .and_then(|t| t.sqrt())
                 .map_err(Self::candle_err("norm computation"))?;
+            // Clamp norm to a small positive value to prevent NaN when the
+            // pooled vector has zero norm (e.g. all-zero input embeddings).
+            // A zero-norm input produces an all-zero output rather than NaN.
+            let norm_safe = norm
+                .clamp(f32::EPSILON, f32::MAX)
+                .map_err(Self::candle_err("norm clamp"))?;
             let normalized = pooled
-                .broadcast_div(&norm)
+                .broadcast_div(&norm_safe)
                 .map_err(Self::candle_err("normalization"))?;
 
             let mut results = Vec::with_capacity(batch_size);
@@ -361,6 +367,33 @@ mod candle_provider {
             }
             let (embeddings, attention_mask) = self.encode_and_forward(texts)?;
             Self::pool_and_normalize(&embeddings, &attention_mask, texts.len())
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use candle_core::{DType, Device, Tensor};
+
+        /// Zero-norm input must not produce NaN after L2 normalisation.
+        ///
+        /// When mean-pooling over an all-zero hidden-state tensor the resulting
+        /// pooled vector has norm 0.  Without the clamp this becomes 0/0 = NaN.
+        #[test]
+        fn pool_and_normalize_zero_input_no_nan() {
+            let device = Device::Cpu;
+            // shape: [batch=1, seq_len=2, hidden=4] — all zeros
+            let embeddings =
+                Tensor::zeros(&[1usize, 2usize, 4usize], DType::F32, &device).expect("zero tensor");
+            // attention mask: all ones (both tokens valid)
+            let attention_mask =
+                Tensor::ones(&[1usize, 2usize], DType::F32, &device).expect("ones mask");
+            let result = CandelProvider::pool_and_normalize(&embeddings, &attention_mask, 1)
+                .expect("pool_and_normalize on zero input must not fail");
+            assert_eq!(result.len(), 1, "batch size must be preserved");
+            for v in &result[0] {
+                assert!(!v.is_nan(), "zero-norm input must not produce NaN, got {v}");
+            }
         }
     }
 

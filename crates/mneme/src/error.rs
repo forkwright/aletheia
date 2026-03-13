@@ -221,6 +221,16 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Embedding vector dimension does not match the store's configured dimension.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("embedding dimension mismatch: expected {expected}, got {actual}"))]
+    EmbeddingDimensionMismatch {
+        expected: usize,
+        actual: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using mneme's [`Error`] type.
