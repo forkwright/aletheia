@@ -35,13 +35,22 @@ pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
         if line.is_empty() {
             // Empty line = event boundary
             if !current_event_type.is_empty() && !current_data.is_empty() {
-                let data: serde_json::Value =
-                    serde_json::from_str(&current_data).context(error::JsonSnafu)?;
-                events.push(ParsedSseEvent {
-                    event_type: std::mem::take(&mut current_event_type),
-                    data,
-                });
-                current_data.clear();
+                match serde_json::from_str::<serde_json::Value>(&current_data) {
+                    Ok(data) => {
+                        events.push(ParsedSseEvent {
+                            event_type: std::mem::take(&mut current_event_type),
+                            data,
+                        });
+                        current_data.clear();
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            event_type = %current_event_type,
+                            raw_data = %current_data,
+                            "malformed SSE event skipped"
+                        );
+                    }
+                }
             }
             current_event_type.clear();
             current_data.clear();
@@ -67,12 +76,21 @@ pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
 
     // Handle trailing event without final blank line
     if !current_event_type.is_empty() && !current_data.is_empty() {
-        let data: serde_json::Value =
-            serde_json::from_str(&current_data).context(error::JsonSnafu)?;
-        events.push(ParsedSseEvent {
-            event_type: current_event_type,
-            data,
-        });
+        match serde_json::from_str::<serde_json::Value>(&current_data) {
+            Ok(data) => {
+                events.push(ParsedSseEvent {
+                    event_type: current_event_type,
+                    data,
+                });
+            }
+            Err(_) => {
+                tracing::warn!(
+                    event_type = %current_event_type,
+                    raw_data = %current_data,
+                    "malformed SSE event skipped"
+                );
+            }
+        }
     }
 
     Ok(events)
@@ -296,10 +314,19 @@ data: {\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":100,\"output_tok
     }
 
     #[test]
-    fn invalid_json_in_data_returns_error() {
+    fn malformed_json_event_skipped_parsing_continues() {
+        let input = "event: foo\ndata: not-json\n\nevent: text_delta\ndata: {\"text\":\"ok\"}\n\n";
+        let events = parse_sse_text(input).expect("parse should succeed");
+        // Malformed event is skipped; valid subsequent event is preserved
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "text_delta");
+    }
+
+    #[test]
+    fn malformed_json_only_returns_empty() {
         let input = "event: foo\ndata: not-json\n\n";
-        let result = parse_sse_text(input);
-        assert!(result.is_err());
+        let events = parse_sse_text(input).expect("parse should succeed");
+        assert!(events.is_empty());
     }
 
     #[test]

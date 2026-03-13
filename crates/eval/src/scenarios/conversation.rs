@@ -1,9 +1,10 @@
 //! Conversation scenarios — message flow, SSE, history.
 
+use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, MessageRole};
-use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
+use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval, validate_response};
 use crate::sse;
 
 #[tracing::instrument(skip_all)]
@@ -25,13 +26,18 @@ impl Scenario for ConversationSendSse {
             category: "conversation",
             requires_auth: true,
             requires_nous: true,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
                 let nous_list = client.list_nous().await?;
-                let nous_id = &nous_list[0].id;
+                let nous = nous_list
+                    .first()
+                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = &nous.id;
                 let key = super::unique_key("conv", "sse");
                 let session = client.create_session(nous_id, &key).await?;
                 let events = client
@@ -43,7 +49,7 @@ impl Scenario for ConversationSendSse {
                     "SSE stream should contain message_complete event",
                 )?;
                 let text = sse::extract_text(&events);
-                assert_eval(!text.is_empty(), "response text should not be empty")?;
+                validate_response(&self.meta(), &text)?;
                 let _ = client.close_session(&session.id).await;
                 Ok(())
             }
@@ -64,13 +70,18 @@ impl Scenario for ConversationHistoryReflects {
             category: "conversation",
             requires_auth: true,
             requires_nous: true,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
                 let nous_list = client.list_nous().await?;
-                let nous_id = &nous_list[0].id;
+                let nous = nous_list
+                    .first()
+                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = &nous.id;
                 let key = super::unique_key("conv", "history");
                 let session = client.create_session(nous_id, &key).await?;
                 let _ = client
@@ -118,13 +129,18 @@ impl Scenario for ConversationMultiTurn {
             category: "conversation",
             requires_auth: true,
             requires_nous: true,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
                 let nous_list = client.list_nous().await?;
-                let nous_id = &nous_list[0].id;
+                let nous = nous_list
+                    .first()
+                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = &nous.id;
                 let key = super::unique_key("conv", "multi");
                 let session = client.create_session(nous_id, &key).await?;
                 let _ = client
@@ -161,13 +177,18 @@ impl Scenario for ConversationEmptyRejected {
             category: "conversation",
             requires_auth: true,
             requires_nous: true,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
                 let nous_list = client.list_nous().await?;
-                let nous_id = &nous_list[0].id;
+                let nous = nous_list
+                    .first()
+                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = &nous.id;
                 let key = super::unique_key("conv", "empty");
                 let session = client.create_session(nous_id, &key).await?;
                 match client.send_message(&session.id, "").await {

@@ -19,6 +19,8 @@ impl Scenario for AuthRejectsNoToken {
             category: "auth",
             requires_auth: false,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
@@ -41,6 +43,8 @@ impl Scenario for AuthRejectsBadToken {
             category: "auth",
             requires_auth: false,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {

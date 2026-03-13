@@ -22,6 +22,8 @@ impl Scenario for NousListReturnsArray {
             category: "nous",
             requires_auth: true,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
@@ -50,6 +52,8 @@ impl Scenario for NousUnknownReturns404 {
             category: "nous",
             requires_auth: true,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {

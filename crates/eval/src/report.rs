@@ -188,6 +188,8 @@ mod tests {
                         category: "health",
                         requires_auth: false,
                         requires_nous: false,
+                        expected_contains: None,
+                        expected_pattern: None,
                     },
                     outcome: ScenarioOutcome::Passed {
                         duration: Duration::from_millis(50),
@@ -200,6 +202,8 @@ mod tests {
                         category: "session",
                         requires_auth: true,
                         requires_nous: true,
+                        expected_contains: None,
+                        expected_pattern: None,
                     },
                     outcome: ScenarioOutcome::Failed {
                         duration: Duration::from_millis(200),

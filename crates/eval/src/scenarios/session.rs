@@ -1,5 +1,6 @@
 //! Session CRUD lifecycle scenarios.
 
+use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, SessionStatus};
@@ -23,13 +24,18 @@ impl Scenario for SessionCreateAndGet {
             category: "session",
             requires_auth: true,
             requires_nous: true,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
                 let nous_list = client.list_nous().await?;
-                let nous_id = &nous_list[0].id;
+                let nous = nous_list
+                    .first()
+                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = &nous.id;
                 let key = super::unique_key("session", "create");
                 let session = client.create_session(nous_id, &key).await?;
                 assert_eval(!session.id.is_empty(), "session id should not be empty")?;
@@ -62,13 +68,18 @@ impl Scenario for SessionCloseArchives {
             category: "session",
             requires_auth: true,
             requires_nous: true,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
         Box::pin(
             async move {
                 let nous_list = client.list_nous().await?;
-                let nous_id = &nous_list[0].id;
+                let nous = nous_list
+                    .first()
+                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = &nous.id;
                 let key = super::unique_key("session", "close");
                 let session = client.create_session(nous_id, &key).await?;
                 client.close_session(&session.id).await?;
@@ -96,6 +107,8 @@ impl Scenario for SessionUnknown404 {
             category: "session",
             requires_auth: true,
             requires_nous: false,
+            expected_contains: None,
+            expected_pattern: None,
         }
     }
     fn run<'a>(&'a self, client: &'a EvalClient) -> ScenarioFuture<'a> {
