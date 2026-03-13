@@ -1,31 +1,98 @@
-# Lexicon — Named Concepts in Aletheia
+# Aletheia — Lexicon
 
 *Living registry. Updated as crates are added or renamed.*
-*For the naming methodology and layer test, see [gnomon.md](gnomon.md).*
+*For the naming methodology and construction system, see [gnomon.md](gnomon.md).*
 
 ---
 
-| Name | Greek | Replaces | Layer Test Summary |
-|------|-------|----------|--------------------|
-| **Aletheia** | ἀλήθεια | "system" | L1: Agent ecosystem — memory, orchestration, multi-nous cognition<br>L2: The substrate; everything else is housed within it<br>L3: Truth as unconcealment — the negation of forgetting (ἀ-λήθεια: not-hidden)<br>L4: The system itself practices unconcealment — surfacing latent knowledge, refusing to let things stay forgotten |
-| **Nous** | νοῦς | "agent" | L1: The agent pipeline — bootstrap, recall, execute, finalize<br>L2: The thinking unit; what Hermeneus, Organon, and Mneme serve<br>L3: Direct apprehension — the highest mode of knowing; distinct from discursive thought<br>L4: An agent named for direct understanding that acts via immediate perception |
-| **Hermeneus** | ἑρμηνεύς | "provider" | L1: Anthropic client, model routing, credential management<br>L2: The translation layer between nous and LLM backends<br>L3: Interpretation — Hermes' art of carrying meaning across different worlds<br>L4: A routing system named for interpretation that itself translates between domains |
-| **Organon** | ὄργανον | "tools" | L1: Tool registry, definitions, built-in tool set<br>L2: What nous reaches for when it needs to act in the world<br>L3: Aristotle's name for the instruments of thought — that by which the mind extends itself<br>L4: A tool system named for logical instruments, itself an instrument of mind |
-| **Mneme** | μνήμη | "store" | L1: Unified memory store: embeddings, knowledge graph, hybrid recall<br>L2: What nous draws on; persists across turns and sessions<br>L3: Memory as active faculty — the Muse's gift, not passive storage<br>L4: A memory system named for memory, which itself holds and recalls |
-| **Agora** | ἀγορά | "channels" | L1: Channel registry, ChannelProvider trait, Signal JSON-RPC client<br>L2: Where communication happens; the junction of all messaging pathways<br>L3: The gathering place — Greek civic space where voices meet and meaning is made public<br>L4: A communications hub named for the public space where discourse becomes collective |
-| **Semeion** | σημεῖον | "signal" | L1: Signal messaging integration (signal-cli subprocess) inside Agora<br>L2: One ChannelProvider within Agora — a specific way voices enter the system<br>L3: The sign, the mark — communication as semiotics; meaning carried in form<br>L4: A messaging module named for the sign, itself a system of signs |
-| **Pylon** | πυλών | "gateway" | L1: Axum HTTP gateway, SSE streaming, auth middleware<br>L2: The threshold — where external requests enter the system<br>L3: The gate — the architectural boundary between inside and outside<br>L4: An HTTP gateway named for the gate, which itself stands at the entrance |
-| **Diaporeia** | διαπορεία | "mcp-server" | L1: MCP server bridge — external AI agents access Aletheia tools and memory<br>L2: The passage through — where external agents cross into the system via MCP<br>L3: Passage through — the act of traversing a boundary; transit between worlds<br>L4: An MCP bridge named for passage through, itself the passage through which external agents reach Aletheia |
-| **Symbolon** | σύμβολον | "auth" | L1: JWT tokens, password hashing, RBAC policies<br>L2: The identity layer — what proves you are who you claim to be<br>L3: The token of recognition — two halves of a broken coin; identity as shared history<br>L4: An auth system named for proof of identity, itself a system of cryptographic tokens |
-| **Koina** | κοινά | "utils" | L1: Errors (snafu), tracing, fs utilities, safe wrappers<br>L2: The leaf node — no workspace deps; everything else builds on it<br>L3: The commons — what is held in common; the public utility of collective thought<br>L4: A utility crate named for shared things, itself shared by all other crates |
-| **Taxis** | τάξις | "config" | L1: Config loading (figment YAML cascade), path resolution, oikos hierarchy<br>L2: The ordering layer — resolves how configuration cascades from general to specific<br>L3: The arrangement that makes a collection coherent — Aristotle's word for ordered structure<br>L4: A config system named for ordering that itself imposes order on configuration |
-| **Melete** | μελέτη | "distillation" | L1: Context distillation, compression strategies, token budget management<br>L2: What refines what nous carries — the compression before each turn<br>L3: Disciplined practice — one of the original Muses; attending carefully to what was<br>L4: A distillation module named for practice, itself practicing careful compression |
-| **Dianoia** | διάνοια | "planning" | L1: Multi-phase planning orchestrator, project context tracking<br>L2: The planning layer — structured reasoning that connects vision to execution<br>L3: Discursive reasoning — Plato's divided line: thinking through problems step by step<br>L4: A planning system named for step-by-step reasoning that itself works in phases |
-| **Thesauros** | θησαυρός | "packs" | L1: Domain pack loader — knowledge, tools, config overlays<br>L2: What extends nous with domain knowledge; portable, self-contained extensions<br>L3: The storehouse — a treasury of accumulated knowledge held ready for use<br>L4: A knowledge store named for the treasure-house, itself a store of ready knowledge |
-| **Oikonomos** | οἰκονόμος | "daemon" | L1: Background task scheduling, cron jobs, lifecycle events, prosoche<br>L2: The household manager — runs autonomously while nous is active<br>L3: Household steward — the one who manages the oikos, keeps things in order<br>L4: A daemon named for the household manager, itself managing the system's household |
-| **Prosoche** | προσοχή | "heartbeat" | L1: Attention checks, system health monitoring, directive surfacing (inside Oikonomos)<br>L2: The attention cycle within the manager — what Oikonomos practices<br>L3: Sustained directed attention — the practice that makes unconcealment possible<br>L4: An attention system named for attention, itself attending carefully to system state |
-| **Theke** | θήκη | "vault" | L1: Tier-0 instance directory — human + nous collaborative space<br>L2: The first tier of the oikos hierarchy; what the operator curates<br>L3: A repository in the original sense — a place that holds what matters<br>L4: A vault named for the repository, itself the place where core knowledge is kept |
-| **Dokimion** | δοκίμιον | "eval" | L1: Behavioral eval framework — HTTP scenario runner<br>L2: A support crate — validates the system from outside the dependency graph<br>L3: The test, the proof — that which demonstrates whether something is genuine<br>L4: An eval framework named for proof, itself proving system behavior |
-| **Prostheke** | προσθήκη | "plugins" | L1: WASM plugin host (wasmtime) — extend the system with external tools (planned, M5)<br>L2: Attaches to Organon/Nous to extend capabilities without touching core crates<br>L3: The supplement, the addition — that which is added to make something more<br>L4: A plugin system named for addition, itself the mechanism for adding |
-| **Autarkeia** | αὐτάρκεια | "export/import" | L1: Agent export/import portability — carry a nous from one instance to another (planned, M5)<br>L2: Enables agent mobility; decouples nous identity from any specific instance<br>L3: Self-sufficiency — the Stoic virtue of needing nothing external; portable wholeness<br>L4: A portability system named for self-sufficiency, enabling nous to be complete in itself |
-| **Theatron** | θέατρον | "frontend" | L1: Presentation umbrella — TUI client and future UI surfaces<br>L2: The viewing place; where the system's unconcealment becomes visible to the operator<br>L3: The place for seeing — Greek theater where truth was made visible through performance<br>L4: A presentation layer named for the viewing place, itself the place where understanding is viewed |
+## Project Name
+
+**Aletheia** (ἀλήθεια) — Truth as unconcealment, the negation of forgetting.
+
+| Layer | Reading |
+|-------|---------|
+| L1 | Multi-agent cognitive runtime — memory, orchestration, multi-nous cognition |
+| L2 | The substrate; everything else is housed within it |
+| L3 | Truth as unconcealment — ἀ-λήθεια: not-hidden. Not truth as correspondence but truth as *revealing what was hidden* |
+| L4 | The system itself practices unconcealment — surfacing latent knowledge, refusing to let things stay forgotten |
+
+---
+
+## Crate Names
+
+### Leaf Layer
+
+| Crate | Greek | Over | L3 Essential Nature |
+|-------|-------|------|---------------------|
+| **Koina** | κοινά | "utils" | The commons — what is held in common. Errors (snafu), tracing, fs utilities, safe wrappers. The public utility of collective thought. |
+| **Symbolon** | σύμβολον | "auth" | The token of recognition — two halves of a broken coin. JWT tokens, password hashing, RBAC policies. Identity as shared history. |
+
+### Low Layer
+
+| Crate | Greek | Over | L3 Essential Nature |
+|-------|-------|------|---------------------|
+| **Taxis** | τάξις | "config" | The arrangement that makes a collection coherent — Aristotle's word for ordered structure. Config loading (figment YAML cascade), path resolution, oikos hierarchy. |
+| **Hermeneus** | ἑρμηνεύς | "provider" | Hermes' art of carrying meaning across worlds. Anthropic client, model routing, credential management. The translation layer between nous and LLM backends. |
+| **Mneme** | μνήμη | "store" | Memory as active faculty — the Muse's gift, not passive storage. Unified memory store: embeddings, knowledge graph, hybrid recall. |
+| **Organon** | ὄργανον | "tools" | Aristotle's name for the instruments of thought — that by which the mind extends itself. Tool registry, definitions, built-in tool set. |
+| **Agora** | ἀγορά | "channels" | The gathering place — Greek civic space where voices meet and meaning is made public. Channel registry, ChannelProvider trait, Signal JSON-RPC client. |
+| **Melete** | μελέτη | "distillation" | Disciplined practice — one of the original Muses. Context distillation, compression strategies, token budget management. Attending carefully to what was. |
+
+### Mid Layer
+
+| Crate | Greek | Over | L3 Essential Nature |
+|-------|-------|------|---------------------|
+| **Nous** | νοῦς | "agent" | Direct apprehension — the highest mode of knowing, distinct from discursive thought. The agent pipeline: bootstrap, recall, execute, finalize. |
+| **Dianoia** | διάνοια | "planning" | Discursive reasoning — Plato's divided line: thinking *through* problems step by step. Multi-phase planning orchestrator, project context tracking. |
+| **Thesauros** | θησαυρός | "packs" | The storehouse — a treasury of accumulated knowledge held ready for use. Domain pack loader: knowledge, tools, config overlays. |
+| **Dokimion** | δοκίμιον | "eval" | The test, the proof — that which demonstrates whether something is genuine. Behavioral evaluation framework, HTTP scenario runner. |
+
+### High Layer
+
+| Crate | Greek | Over | L3 Essential Nature |
+|-------|-------|------|---------------------|
+| **Pylon** | πυλών | "gateway" | The gate — the architectural boundary between inside and outside. Axum HTTP gateway, SSE streaming, auth middleware. |
+
+### Top Layer
+
+| Crate | Greek | Over | L3 Essential Nature |
+|-------|-------|------|---------------------|
+| **Aletheia** | ἀλήθεια | "binary" | The entrypoint. The system as a whole, invoked by name. CLI, serve mode, the single binary. |
+
+### Internal Modules
+
+| Name | Greek | Over | L3 Essential Nature |
+|------|-------|------|---------------------|
+| **Semeion** | σημεῖον | "signal" | The sign, the mark — communication as semiotics. Signal messaging integration inside Agora. |
+| **Oikonomos** | οἰκονόμος | "daemon" | The household steward — manages the oikos, keeps things in order. Background scheduling, cron, lifecycle events. |
+| **Prosoche** | προσοχή | "heartbeat" | Sustained directed attention — the practice that makes unconcealment possible. Attention checks, health monitoring, directive surfacing. |
+| **Theke** | θήκη | "vault" | A repository in the original sense — a place that holds what matters. Tier-0 instance directory, human + nous collaborative space. |
+| **Diaporeia** | διαπορεία | "mcp-server" | Passage through — transit between worlds. MCP server bridge for external AI agents. |
+
+### Planned
+
+| Name | Greek | Over | L3 Essential Nature |
+|------|-------|------|---------------------|
+| **Prostheke** | προσθήκη | "plugins" | The supplement, the addition. WASM plugin host (wasmtime) — extend the system without touching core. |
+| **Autarkeia** | αὐτάρκεια | "export/import" | Self-sufficiency — the Stoic virtue of needing nothing external. Agent portability across instances. |
+| **Theatron** | θέατρον | "frontend" | The place for seeing — Greek theater where truth was made visible. TUI client and future UI surfaces. |
+
+---
+
+## Key Topological Relationships
+
+- **Nous ↔ Dianoia** — Plato's divided line. Noesis (immediate apprehension) and dianoia (step-by-step reasoning). Both modes are necessary.
+- **Prosoche → Aletheia** — Sustained attention is the practice that makes unconcealment possible. You can't reveal what's hidden without attending carefully.
+- **Mneme ↔ Melete** — Memory holds what was experienced. Disciplined practice refines it into wisdom.
+- **Organon → Nous** — The instruments serve the mind. Tools extend the agent's reach.
+- **Agora → Nous** — Voices from the gathering place reach the mind. Channels feed the agent.
+
+---
+
+## Rejected Names
+
+| Name | Meaning | Why Rejected |
+|------|---------|-------------|
+| **Techne** (τέχνη) | Craft knowledge | Too generic. Every crate involves techne. |
+| **Logos** (λόγος) | Rational principle | Too overloaded. Means everything from "word" to "cosmic reason." |
+| **Sophia** (σοφία) | Wisdom | Aspirational rather than descriptive. The system pursues wisdom; it doesn't contain it. |
