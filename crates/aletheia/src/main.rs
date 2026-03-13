@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
 
+use commands::add_nous::AddNousArgs;
 use commands::agent_io::{
     ExportArgs, ExportSkillsArgs, ImportArgs, InitArgs, MigrateMemoryArgs, ReviewSkillsArgs,
     SeedSkillsArgs, TuiArgs,
@@ -108,6 +109,8 @@ enum Command {
     },
     /// Validate configuration without starting any services
     CheckConfig,
+    /// Scaffold a new nous agent directory
+    AddNous(AddNousArgs),
 }
 
 #[tokio::main]
@@ -169,6 +172,9 @@ async fn main() -> Result<()> {
         }
         Some(Command::CheckConfig) => {
             return commands::check_config::run(instance_root);
+        }
+        Some(Command::AddNous(a)) => {
+            return commands::add_nous::run(instance_root, &a);
         }
         None => {}
     }
