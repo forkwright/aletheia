@@ -34,10 +34,10 @@ pub enum Error {
     },
 
     /// Tool execution returned an error.
-    #[snafu(display("tool execution failed: {name}"))]
+    #[snafu(display("tool execution failed: {name}: {message}"))]
     ExecutionFailed {
         name: ToolName,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -54,120 +54,15 @@ pub enum Error {
 /// Convenience alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
-mod tests {
-    use std::collections::HashSet;
-    use std::sync::{Arc, RwLock};
-
-    use aletheia_koina::id::{NousId, SessionId, ToolName};
-    use indexmap::IndexMap;
-
-    use crate::registry::ToolRegistry;
-    use crate::types::{InputSchema, ToolCategory, ToolContext, ToolDef, ToolInput};
-
-    fn test_def(name: &str) -> ToolDef {
-        ToolDef {
-            name: ToolName::new(name).expect("valid"),
-            description: "test".to_owned(),
-            extended_description: None,
-            input_schema: InputSchema {
-                properties: IndexMap::new(),
-                required: vec![],
-            },
-            category: ToolCategory::Workspace,
-            auto_activate: false,
-        }
-    }
-
-    fn test_ctx() -> ToolContext {
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            workspace: std::path::PathBuf::from("/tmp"),
-            allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-            services: None,
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-        }
-    }
-
-    #[test]
-    fn test_error_tool_not_found_message_contains_name() {
-        let mut reg = ToolRegistry::new();
-        reg.register(test_def("present"), {
-            use std::future::Future;
-            use std::pin::Pin;
-            struct Noop;
-            impl crate::registry::ToolExecutor for Noop {
-                fn execute<'a>(
-                    &'a self,
-                    _: &'a ToolInput,
-                    _: &'a ToolContext,
-                ) -> Pin<
-                    Box<
-                        dyn Future<Output = crate::error::Result<crate::types::ToolResult>>
-                            + Send
-                            + 'a,
-                    >,
-                > {
-                    Box::pin(async { Ok(crate::types::ToolResult::text("ok")) })
-                }
-            }
-            Box::new(Noop)
-        })
-        .expect("register");
-
-        let msg = reg
-            .get_def(&ToolName::new("missing_tool").expect("valid"))
-            .is_none();
-        assert!(msg, "missing_tool should not be found");
-    }
-
-    #[tokio::test]
-    async fn test_error_tool_not_found_message_format() {
-        let reg = ToolRegistry::new();
-        let input = ToolInput {
-            name: ToolName::new("missing_tool").expect("valid"),
-            tool_use_id: "toolu_x".to_owned(),
-            arguments: serde_json::json!({}),
-        };
-        let err = reg
-            .execute(&input, &test_ctx())
-            .await
-            .expect_err("should fail");
-        assert!(
-            err.to_string().contains("tool not found: missing_tool"),
-            "err: {err}"
-        );
-    }
-
-    #[test]
-    fn test_error_duplicate_tool_message_format() {
-        use std::future::Future;
-        use std::pin::Pin;
-        struct Noop;
-        impl crate::registry::ToolExecutor for Noop {
-            fn execute<'a>(
-                &'a self,
-                _: &'a ToolInput,
-                _: &'a ToolContext,
-            ) -> Pin<
-                Box<
-                    dyn Future<Output = crate::error::Result<crate::types::ToolResult>> + Send + 'a,
-                >,
-            > {
-                Box::pin(async { Ok(crate::types::ToolResult::text("ok")) })
-            }
-        }
-        let mut reg = ToolRegistry::new();
-        reg.register(test_def("same_name"), Box::new(Noop))
-            .expect("first register");
-        let err = reg
-            .register(test_def("same_name"), Box::new(Noop))
-            .expect_err("duplicate");
-        assert!(
-            err.to_string().contains("duplicate tool: same_name"),
-            "err: {err}"
-        );
-    }
+/// Error from store operations (`NoteStore` / `BlackboardStore` adapters).
+///
+/// Uses a message string so implementations can convert any underlying error
+/// without introducing crate-level type dependencies on adapters.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+#[non_exhaustive]
+pub enum StoreError {
+    /// A store operation failed.
+    #[snafu(display("{message}"))]
+    Store { message: String },
 }

@@ -12,7 +12,7 @@ use crate::types::{
     ToolInput, ToolServices,
 };
 
-type BoxError = Box<dyn std::error::Error + Send + Sync>;
+use crate::error::StoreError;
 
 fn install_crypto_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -41,7 +41,7 @@ impl NoteStore for MockNoteStore {
         _nous_id: &str,
         category: &str,
         content: &str,
-    ) -> Result<i64, BoxError> {
+    ) -> Result<i64, StoreError> {
         let mut id = self.next_id.lock().unwrap();
         let note_id = *id;
         *id += 1;
@@ -54,11 +54,11 @@ impl NoteStore for MockNoteStore {
         Ok(note_id)
     }
 
-    fn get_notes(&self, _session_id: &str) -> Result<Vec<NoteEntry>, BoxError> {
+    fn get_notes(&self, _session_id: &str) -> Result<Vec<NoteEntry>, StoreError> {
         Ok(self.notes.lock().unwrap().clone())
     }
 
-    fn delete_note(&self, note_id: i64) -> Result<bool, BoxError> {
+    fn delete_note(&self, note_id: i64) -> Result<bool, StoreError> {
         let mut notes = self.notes.lock().unwrap();
         let len_before = notes.len();
         notes.retain(|n| n.id != note_id);
@@ -85,7 +85,7 @@ impl BlackboardStore for MockBlackboardStore {
         value: &str,
         author: &str,
         ttl_seconds: i64,
-    ) -> Result<(), BoxError> {
+    ) -> Result<(), StoreError> {
         let mut entries = self.entries.lock().unwrap();
         entries.retain(|e| e.key != key);
         entries.push(BlackboardEntry {
@@ -99,7 +99,7 @@ impl BlackboardStore for MockBlackboardStore {
         Ok(())
     }
 
-    fn read(&self, key: &str) -> Result<Option<BlackboardEntry>, BoxError> {
+    fn read(&self, key: &str) -> Result<Option<BlackboardEntry>, StoreError> {
         Ok(self
             .entries
             .lock()
@@ -109,11 +109,11 @@ impl BlackboardStore for MockBlackboardStore {
             .cloned())
     }
 
-    fn list(&self) -> Result<Vec<BlackboardEntry>, BoxError> {
+    fn list(&self) -> Result<Vec<BlackboardEntry>, StoreError> {
         Ok(self.entries.lock().unwrap().clone())
     }
 
-    fn delete(&self, key: &str, author: &str) -> Result<bool, BoxError> {
+    fn delete(&self, key: &str, author: &str) -> Result<bool, StoreError> {
         let mut entries = self.entries.lock().unwrap();
         let len_before = entries.len();
         entries.retain(|e| !(e.key == key && e.author_nous_id == author));

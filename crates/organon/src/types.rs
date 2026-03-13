@@ -559,17 +559,14 @@ pub trait NoteStore: Send + Sync {
         nous_id: &str,
         category: &str,
         content: &str,
-    ) -> std::result::Result<i64, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> std::result::Result<i64, crate::error::StoreError>;
 
     fn get_notes(
         &self,
         session_id: &str,
-    ) -> std::result::Result<Vec<NoteEntry>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> std::result::Result<Vec<NoteEntry>, crate::error::StoreError>;
 
-    fn delete_note(
-        &self,
-        note_id: i64,
-    ) -> std::result::Result<bool, Box<dyn std::error::Error + Send + Sync>>;
+    fn delete_note(&self, note_id: i64) -> std::result::Result<bool, crate::error::StoreError>;
 }
 
 /// Shared blackboard state with TTL.
@@ -580,22 +577,20 @@ pub trait BlackboardStore: Send + Sync {
         value: &str,
         author: &str,
         ttl_seconds: i64,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    ) -> std::result::Result<(), crate::error::StoreError>;
 
     fn read(
         &self,
         key: &str,
-    ) -> std::result::Result<Option<BlackboardEntry>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> std::result::Result<Option<BlackboardEntry>, crate::error::StoreError>;
 
-    fn list(
-        &self,
-    ) -> std::result::Result<Vec<BlackboardEntry>, Box<dyn std::error::Error + Send + Sync>>;
+    fn list(&self) -> std::result::Result<Vec<BlackboardEntry>, crate::error::StoreError>;
 
     fn delete(
         &self,
         key: &str,
         author: &str,
-    ) -> std::result::Result<bool, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> std::result::Result<bool, crate::error::StoreError>;
 }
 
 #[derive(Debug, Clone)]
@@ -625,7 +620,7 @@ pub struct SpawnRequest {
     pub task: String,
     /// Model override (None = role-based default).
     pub model: Option<String>,
-    /// Tool name whitelist (None = role-based defaults).
+    /// Tool name allowlist (None = role-based defaults).
     pub allowed_tools: Option<Vec<String>>,
     /// Maximum seconds before the sub-agent is killed.
     pub timeout_secs: u64,

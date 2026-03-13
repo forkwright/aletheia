@@ -1,4 +1,3 @@
-use anyhow::Result;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -26,11 +25,12 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("failed to install ring crypto provider");
 
     let cli = Cli::parse();
-    theatron_tui::run_tui(cli.url, cli.token, cli.agent, cli.session, cli.logout).await
+    theatron_tui::run_tui(cli.url, cli.token, cli.agent, cli.session, cli.logout).await?;
+    Ok(())
 }
