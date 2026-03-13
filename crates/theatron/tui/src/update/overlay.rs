@@ -305,11 +305,10 @@ mod tests {
 
         handle_close_overlay(&mut app);
         // Should cancel the edit, not close the overlay
-        if let Some(Overlay::Settings(s)) = &app.overlay {
-            assert!(s.editing.is_none());
-        } else {
-            panic!("overlay should still be Settings");
-        }
+        let Some(Overlay::Settings(s)) = &app.overlay else {
+            unreachable!("overlay should still be Settings");
+        };
+        assert!(s.editing.is_none());
     }
 
     #[test]
@@ -389,12 +388,11 @@ mod tests {
     async fn open_overlay_session_picker() {
         let mut app = test_app();
         handle_open_overlay(&mut app, OverlayKind::SessionPicker).await;
-        if let Some(Overlay::SessionPicker(picker)) = &app.overlay {
-            assert_eq!(picker.cursor, 0);
-            assert!(!picker.show_archived);
-        } else {
-            panic!("expected SessionPicker overlay");
-        }
+        let Some(Overlay::SessionPicker(picker)) = &app.overlay else {
+            unreachable!("expected SessionPicker overlay");
+        };
+        assert_eq!(picker.cursor, 0);
+        assert!(!picker.show_archived);
     }
 
     #[test]

@@ -81,11 +81,10 @@ mod tests {
     #[test]
     fn overlay_agent_picker_has_cursor() {
         let overlay = Overlay::AgentPicker { cursor: 3 };
-        if let Overlay::AgentPicker { cursor } = overlay {
-            assert_eq!(cursor, 3);
-        } else {
-            panic!("expected AgentPicker");
-        }
+        let Overlay::AgentPicker { cursor } = overlay else {
+            unreachable!("expected AgentPicker");
+        };
+        assert_eq!(cursor, 3);
     }
 
     #[test]
