@@ -4,18 +4,18 @@ Project conventions for AI coding agents working on this codebase.
 
 ## Standards
 
-Full reference: [docs/STANDARDS.md](docs/STANDARDS.md).
-
-@.claude/rules/rust.md
+Universal: [standards/STANDARDS.md](standards/STANDARDS.md)
+Rust: [standards/RUST.md](standards/RUST.md)
+Writing: [standards/WRITING.md](standards/WRITING.md)
+Shell: [standards/SHELL.md](standards/SHELL.md)
 
 ## Structure
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - crate workspace, module map, dependency graph, trait boundaries.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — crate workspace, module map, dependency graph, trait boundaries.
 
 ### Config
 
-- **Rust crates:** `instance/config/aletheia.toml` - figment cascade (defaults → TOML → env vars)
-- **Standards:** [docs/STANDARDS.md](docs/STANDARDS.md) - coding standards reference
+- **Rust crates:** `instance/config/aletheia.toml` — figment cascade (defaults → TOML → env vars)
 
 ## Commands
 
@@ -34,16 +34,16 @@ cargo clippy --workspace               # Lint (zero warnings)
 - **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
 - **Async:** Tokio actor model (`NousActor` pattern)
 - **Config:** figment YAML cascade in `taxis`
-- **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]` - every suppression justified
-- **Visibility:** `pub(crate)` by default - `pub` only for cross-crate API surface
-- **Naming:** Greek names per the gnomon convention ([docs/gnomon.md](docs/gnomon.md))
-- **No barrel files** - import from the file that owns the symbol
-- **Module imports flow downward** - higher layers depend on lower, never reverse
+- **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]` — every suppression justified
+- **Visibility:** `pub(crate)` by default — `pub` only for cross-crate API surface
+- **Naming:** Greek names per [docs/gnomon.md](docs/gnomon.md), registry at [docs/lexicon.md](docs/lexicon.md)
+- **No barrel files** — import from the file that owns the symbol
+- **Module imports flow downward** — higher layers depend on lower, never reverse
 
 ## Before Submitting
 
 1. `cargo test -p <affected-crate>` passes
-2. `cargo clippy --workspace` - zero warnings
+2. `cargo clippy --workspace` — zero warnings
 3. No `unwrap()` in library code
 4. New errors use snafu with context
 5. All lint suppressions use `#[expect]` with reason, not `#[allow]`

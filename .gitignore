@@ -106,3 +106,4 @@ __pycache__/
 *.egg-info/
 **/dist/
 !crates/*/dist/
+.claude/
