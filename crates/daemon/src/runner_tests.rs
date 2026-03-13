@@ -147,7 +147,7 @@ fn register_maintenance_tasks_respects_enabled() {
     let ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
     assert!(ids.contains(&"trace-rotation"));
     assert!(!ids.contains(&"drift-detection"));
-    assert!(ids.contains(&"db-size-monitor"));
+    assert!(ids.contains(&"db-monitor"));
     assert!(!ids.contains(&"retention-execution"));
 }
 
@@ -610,5 +610,31 @@ async fn in_flight_reported_in_status() {
     // Clean up — abort so the test doesn't hang.
     if let Some(task) = runner.in_flight.remove("inflight-task") {
         task.handle.abort();
+    }
+}
+
+/// IDs returned by `status()` for the core maintenance tasks must match the IDs
+/// accepted by `aletheia maintenance run <id>`.
+#[test]
+fn maintenance_status_ids_accepted_by_run() {
+    let run_accepted: &[&str] = &["trace-rotation", "drift-detection", "db-monitor"];
+
+    let token = CancellationToken::new();
+    let mut config = MaintenanceConfig::default();
+    config.trace_rotation.enabled = true;
+    config.drift_detection.enabled = true;
+    config.db_monitoring.enabled = true;
+
+    let mut runner = TaskRunner::new("system", token).with_maintenance(config);
+    runner.register_maintenance_tasks();
+
+    let statuses = runner.status();
+    let status_ids: Vec<&str> = statuses.iter().map(|s| s.id.as_str()).collect();
+
+    for id in run_accepted {
+        assert!(
+            status_ids.contains(id),
+            "run-accepted id '{id}' not found in status output — IDs are mismatched"
+        );
     }
 }
