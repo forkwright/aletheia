@@ -28,7 +28,7 @@ See [TECHNOLOGY.md](TECHNOLOGY.md) for technology decisions, dependency policy, 
 |-----------|---------|--------|
 | M0a | Oikos migration — instance structure, tool resolution, config cascade | Done |
 | M0b | Foundation crates — koina errors, taxis config, newtypes, tracing | Done |
-| M1 | Memory + LLM client — Anthropic streaming, CozoDB absorption, hybrid recall, embeddings | Done |
+| M1 | Memory + LLM client — Anthropic streaming, embedded Datalog engine, hybrid recall, embeddings | Done |
 | M2 | Agent core — tool registry, nous pipeline, bootstrap assembly, execute stage | Done |
 | M3 | Gateway + auth + channels — pylon HTTP, symbolon JWT, agora Signal, end-to-end wiring | Done |
 | M4 | Multi-nous + background — NousActor, daemon, dianoia planning, cross-nous sessions | Done |

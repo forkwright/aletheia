@@ -26,7 +26,7 @@ aletheia
 │   ├── embedding — EmbeddingProvider trait: candle (local default)
 │   ├── extract   — LLM-driven fact extraction, entity resolution
 │   ├── recall    — hybrid retrieval (vector + graph + BM25), MMR diversity
-│   └── engine/   — vendored Datalog + HNSW engine (mneme-engine feature gate)
+│   └── engine/   — embedded Datalog + HNSW engine (mneme-engine feature gate)
 ├── hermeneus     — Anthropic client, model routing, credentials, provider trait
 ├── organon       — tool registry + built-in tools
 ├── nous          — agent pipeline, bootstrap, recall, finalize, actor model
@@ -90,7 +90,7 @@ aletheia/                          # git root — the platform
 │   │
 │   ├── data/                     # Runtime stores
 │   │   ├── sessions.db
-│   │   └── cozo/                 #   CozoDB persistent storage (embedded)
+│   │   └── engine/               #   Datalog engine persistent storage (embedded)
 │   │
 │   └── signal/                   # signal-cli data
 │
@@ -113,7 +113,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 |-------|--------|------------|
 | `koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
 | `taxis` | Config loading (figment YAML cascade), path resolution, oikos hierarchy | koina |
-| `mneme` | Unified memory store, embedding provider trait, knowledge retrieval. Includes vendored CozoDB engine behind `mneme-engine` feature gate. | koina |
+| `mneme` | Unified memory store, embedding provider trait, knowledge retrieval. Includes embedded Datalog+HNSW engine behind `mneme-engine` feature gate. | koina |
 | `hermeneus` | Anthropic client, model routing, credential management, provider trait | koina |
 | `organon` | Tool registry, tool definitions, built-in tool set | koina, hermeneus |
 | `symbolon` | JWT tokens, password hashing, RBAC policies | koina |
@@ -154,7 +154,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 
 **Layer rules:**
 - **Leaf** (no workspace deps): `koina`
-- **Low** (koina only): `taxis`, `hermeneus`, `symbolon`, `mneme` (includes vendored CozoDB engine behind feature gate)
+- **Low** (koina only): `taxis`, `hermeneus`, `symbolon`, `mneme` (includes embedded Datalog+HNSW engine behind feature gate)
 - **Mid**: `melete` (koina + hermeneus), `organon` (koina + hermeneus), `agora` (koina + taxis), `daemon` (koina), `dianoia` (koina), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
 - **Top**: `aletheia` binary, `tui` (terminal dashboard)
@@ -212,7 +212,7 @@ strip = "symbols"
 
 - **koina is a true leaf node.** No workspace deps in Rust.
 - **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, jsonwebtoken).
-- **CozoDB engine is vendored** inside `mneme/src/engine/`, gated behind the `mneme-engine` feature.
+- **Datalog+HNSW engine is embedded** inside `mneme/src/engine/`, gated behind the `mneme-engine` feature.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
 - **dianoia depends only on koina** - planning context decoupled from the agent pipeline. No other application crate imports it.

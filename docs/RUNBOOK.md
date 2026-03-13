@@ -10,7 +10,7 @@ aletheia                         (port 18789)  -- Rust binary, API
 +-- daemon (oikonomos)           (in-process)  -- heartbeats, scheduled tasks, prosoche
 ```
 
-Memory (CozoDB, candle, SQLite) is embedded in the binary. No external databases or sidecars required.
+Memory (embedded engine, candle, SQLite) is embedded in the binary. No external databases or sidecars required.
 
 ## Quick Health Check
 
@@ -134,7 +134,7 @@ Router auto-failover handles 429/5xx across providers. Expired OAuth tokens need
 |------|---------|
 | `instance/config/aletheia.toml` | Main config |
 | `instance/data/sessions.db` | SQLite session store |
-| `instance/data/cozo/` | CozoDB knowledge graph (embedded) |
+| `instance/data/engine/` | Knowledge graph (embedded Datalog engine) |
 | `instance/nous/<id>/` | Agent workspaces |
 
 ## Pre-Restart Checklist

@@ -53,7 +53,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and tr
 | Top | `aletheia` (binary entrypoint) |
 
 **Models:** Anthropic (OAuth or API key). Complexity-based routing.
-**Memory:** CozoDB embedded for knowledge graph, long-term memory, and sessions.
+**Memory:** Embedded Datalog+HNSW engine for knowledge graph, long-term memory, and sessions.
 **Observability:** Structured tracing with tokio-tracing.
 
 ---

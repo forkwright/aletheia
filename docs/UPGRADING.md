@@ -48,7 +48,7 @@ Check `git log --oneline` or [GitHub releases](https://github.com/forkwright/ale
 
 SQLite schema migrations run automatically on startup via `SessionStore::open()`. No manual migration steps required.
 
-CozoDB (embedded knowledge store) manages its own schema versioning internally.
+The embedded Datalog engine (knowledge store) manages its own schema versioning internally.
 
 **Always back up before upgrading.** While migrations are tested, restoring from backup is the safest recovery path if something goes wrong.
 
@@ -90,5 +90,5 @@ Before any upgrade:
 ### Rollback Limitations
 
 - **SQLite migrations are forward-only.** If a newer version added tables or columns, the older binary may not understand the new schema. Restore from backup in this case.
-- **CozoDB schema changes** are also forward-only.
+- **Knowledge engine schema changes** are also forward-only.
 - **Config additions** in newer versions are silently ignored by older binaries (they use `serde(default)`), so config files are generally backwards-compatible.

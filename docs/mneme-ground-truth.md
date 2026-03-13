@@ -185,7 +185,7 @@ All tests verify real behavior, not just compilation. Tests assert on content, c
 
 ### Gate 9: Schema Integrity
 
-**CozoDB Knowledge Store DDL** (`knowledge_store.rs` KNOWLEDGE_DDL):
+**Knowledge Store DDL** (`knowledge_store.rs` KNOWLEDGE_DDL):
 All required fields present in the facts relation:
 - `id`, `valid_from` (keys)
 - `content`, `nous_id`, `confidence`, `tier`, `valid_to`, `superseded_by`, `source_session_id`, `recorded_at`
@@ -246,7 +246,7 @@ All public methods on KnowledgeStore have real implementations:
 
 The waves (PRs #593-#620) delivered genuine working capabilities, not just code that compiles:
 
-1. **Real CRUD operations** with CozoDB Datalog backend, verified by 8+ integration tests
+1. **Real CRUD operations** with Datalog backend, verified by 8+ integration tests
 2. **Real 6-factor recall scoring** with 44 unit tests and 2 property tests proving bounded output
 3. **Real extraction pipeline** with JSON parsing, vocab validation, and persist-to-store verified by 24 tests
 4. **Real backup/restore** with path injection prevention, verified by 19 tests

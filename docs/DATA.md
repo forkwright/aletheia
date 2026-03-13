@@ -7,7 +7,7 @@ What Aletheia stores, where it lives, and how to control it.
 | Data | Location | Format | Description |
 |------|----------|--------|-------------|
 | Sessions & messages | `instance/data/sessions.db` | SQLite (WAL) | Conversation history, usage stats, agent notes |
-| Knowledge graph | `instance/data/cozo/` | CozoDB | Entities, relationships, facts, embeddings |
+| Knowledge graph | `instance/data/engine/` | Embedded Datalog engine | Entities, relationships, facts, embeddings |
 | Workspace files | `instance/nous/{id}/` | Mixed | Per-agent identity, memory, tools, hooks |
 | Shared resources | `instance/shared/` | Mixed | Cross-agent tools, skills, coordination |
 | Collaborative space | `instance/theke/` | Mixed | Human + agent shared documents |
@@ -28,7 +28,7 @@ instance/
 ├── config/credentials/      # API keys
 ├── data/
 │   ├── sessions.db          # Session store (SQLite, WAL mode)
-│   ├── cozo/                # Knowledge graph (CozoDB)
+│   ├── engine/              # Knowledge graph (embedded Datalog engine)
 │   ├── backups/             # Database backups
 │   └── archive/sessions/    # Archived session JSON files
 ├── nous/{id}/               # Per-agent workspaces
@@ -47,7 +47,7 @@ Inbound message
   → Nous pipeline (LLM call)
   → Response stored (messages table)
   → Knowledge extraction (entities, relationships, facts)
-  → Knowledge graph (CozoDB)
+  → Knowledge graph (embedded Datalog engine)
   → Recall pipeline (vector search + graph traversal)
 ```
 
@@ -133,7 +133,7 @@ Also remove the agent's workspace: `rm -rf instance/nous/AGENT_ID/`
 
 ```bash
 rm instance/data/sessions.db
-rm -rf instance/data/cozo/
+rm -rf instance/data/engine/
 rm -rf instance/nous/*/memory/
 ```
 
