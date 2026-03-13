@@ -361,9 +361,12 @@ pub async fn run(args: Args) -> Result<()> {
     }
 
     daemon_runner.register_maintenance_tasks();
-    let daemon_handle = tokio::spawn(async move {
-        daemon_runner.run().await;
-    });
+    let daemon_handle = tokio::spawn(
+        async move {
+            daemon_runner.run().await;
+        }
+        .instrument(tracing::info_span!("daemon_runner")),
+    );
     info!("daemon started");
 
     // Wrap in Arc — shared between dispatcher and AppState
