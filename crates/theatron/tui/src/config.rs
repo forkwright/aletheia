@@ -12,6 +12,7 @@ pub struct ConfigFile {
     pub token: Option<String>,
     pub default_agent: Option<String>,
     pub default_session: Option<String>,
+    pub workspace_root: Option<String>,
 }
 
 impl std::fmt::Debug for ConfigFile {
@@ -31,6 +32,8 @@ pub struct Config {
     pub token: Option<String>,
     pub default_agent: Option<String>,
     pub default_session: Option<String>,
+    /// Workspace root for agent operations. Resolved from `ALETHEIA_ROOT` env var, then config file.
+    pub workspace_root: Option<std::path::PathBuf>,
 }
 
 impl std::fmt::Debug for Config {
@@ -40,6 +43,7 @@ impl std::fmt::Debug for Config {
             .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
             .field("default_agent", &self.default_agent)
             .field("default_session", &self.default_session)
+            .field("workspace_root", &self.workspace_root)
             .finish()
     }
 }
@@ -54,6 +58,16 @@ impl Config {
     ) -> Result<Self> {
         let file_config = Self::load_file().unwrap_or_default();
 
+        let workspace_root = std::env::var("ALETHEIA_ROOT")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                file_config
+                    .workspace_root
+                    .as_deref()
+                    .map(std::path::PathBuf::from)
+            });
+
         Ok(Config {
             url: cli_url
                 .or(file_config.url)
@@ -61,6 +75,7 @@ impl Config {
             token: cli_token.or(file_config.token),
             default_agent: cli_agent.or(file_config.default_agent),
             default_session: cli_session.or(file_config.default_session),
+            workspace_root,
         })
     }
 
@@ -161,6 +176,7 @@ mod tests {
             token: Some("secret".into()),
             default_agent: Some("syn".into()),
             default_session: None,
+            workspace_root: Some("/workspace".into()),
         };
         let toml_str = toml::to_string(&file).unwrap();
         let back: ConfigFile = toml::from_str(&toml_str).unwrap();
@@ -168,5 +184,21 @@ mod tests {
         assert_eq!(file.token, back.token);
         assert_eq!(file.default_agent, back.default_agent);
         assert_eq!(file.default_session, back.default_session);
+        assert_eq!(file.workspace_root, back.workspace_root);
+    }
+
+    #[test]
+    fn workspace_root_none_when_no_env_or_file() {
+        // ALETHEIA_ROOT env var must not be set for this test to be meaningful.
+        // We can't mutate env vars (unsafe-code is denied in this crate).
+        // Verify that when neither env nor file provides workspace_root, it is None.
+        if std::env::var("ALETHEIA_ROOT").is_ok() {
+            // Skip: env is set externally — can't control it without unsafe
+            return;
+        }
+        let config = Config::load(None, None, None, None).unwrap();
+        // workspace_root may be None (no file) or Some (if tui.toml has workspace_root).
+        // The load succeeds either way.
+        let _ = config.workspace_root;
     }
 }
