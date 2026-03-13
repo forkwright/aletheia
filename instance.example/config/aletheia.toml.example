@@ -21,8 +21,10 @@ mode = "token"            # token | none
 # [gateway.cors]
 # allowedOrigins = ["https://my-dashboard.local"]
 
-# [gateway.csrf]
-# enabled = true
+[gateway.csrf]
+enabled = true            # Require X-Requested-With: aletheia on state-changing requests
+# header_name = "x-requested-with"
+# header_value = "aletheia"
 
 # --- Agents ---
 [agents.defaults]
@@ -40,7 +42,10 @@ contextTokens = 200000
 [[agents.list]]
 id = "main"
 default = true
-workspace = "instance/nous/main"
+# Workspace path: either relative to instance root or absolute
+# Relative: workspace = "nous/main"
+# Absolute: workspace = "/srv/aletheia/instance/nous/main"
+workspace = "nous/main"
 
 # --- Channels ---
 # [channels.signal]

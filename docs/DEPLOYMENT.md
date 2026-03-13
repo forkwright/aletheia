@@ -102,11 +102,13 @@ ANTHROPIC_API_KEY=sk-ant-... aletheia init --yes --instance-root /srv/aletheia/i
 
 ### Manual: copy the example scaffold
 
+Copy the example scaffold to create your instance directory:
+
 ```bash
 cp -r instance.example instance
 ```
 
-Then configure `instance/config/aletheia.toml` (see below).
+Then configure `instance/config/aletheia.toml` (see below). The scaffold provides a template with all required directories and example configuration files.
 
 This creates the full directory scaffold:
 
@@ -139,12 +141,21 @@ The binary finds the instance directory in this order:
 
 ## Configuration
 
-The init wizard writes a complete `config/aletheia.toml`. If you are setting up manually, create one:
+The init wizard writes a complete `config/aletheia.toml`. If you are setting up manually, create one from `instance.example/config/aletheia.toml.example`:
+
+```bash
+# If you didn't use the init wizard
+cp instance/config/aletheia.toml.example instance/config/aletheia.toml
+```
+
+Then edit the file:
 
 ```yaml
 gateway:
   port: 18789
   bind: localhost
+  auth:
+    mode: token
 
 agents:
   defaults:
@@ -157,7 +168,74 @@ agents:
       workspace: instance/nous/main
 ```
 
+The workspace path can be relative (relative to the instance root) or absolute. In the example above, `instance/nous/main` is relative and will resolve to `./instance/instance/nous/main` when the instance root is `./instance`. For absolute paths, use the full filesystem path: `/srv/aletheia/instance/nous/main`.
+
 The config cascade loads in order (later wins): compiled defaults, YAML file, `ALETHEIA_` environment variables. See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference.
+
+---
+
+## Authentication
+
+### Auth modes
+
+The gateway supports two authentication modes configured via `gateway.auth.mode`:
+
+| Mode | Description | Use case |
+|------|-------------|----------|
+| `token` | Bearer token (JWT) authentication | Default, production deployments |
+| `none` | No authentication | Development, local deployments |
+
+### Token authentication (default)
+
+When `gateway.auth.mode = "token"`, all requests to `/api/v1/` endpoints require an `Authorization: Bearer <token>` header.
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer your-jwt-token" \
+  http://127.0.0.1:18789/api/v1/sessions
+```
+
+The token is a JWT signed by the server. To obtain a token, use the CLI:
+
+```bash
+aletheia --instance-root ./instance credential status
+```
+
+This displays the current token or a way to generate one. Tokens are managed by the `aletheia` CLI and stored in `instance/config/credentials/`.
+
+### POST/PUT/DELETE CSRF protection
+
+State-changing requests (POST, PUT, DELETE, PATCH) require a CSRF header by default. Enable CSRF in your config:
+
+```yaml
+[gateway.csrf]
+enabled = true
+```
+
+The default header is `X-Requested-With: aletheia`. Include this header on all state-changing requests:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer your-token" \
+  -H "X-Requested-With: aletheia" \
+  -H "Content-Type: application/json" \
+  -d '{"nous_id": "main"}' \
+  http://127.0.0.1:18789/api/v1/sessions
+```
+
+If CSRF is disabled in the config, the header is not required.
+
+### No authentication mode
+
+When `gateway.auth.mode = "none"`, the gateway accepts all requests without authentication:
+
+```yaml
+[gateway.auth]
+mode = "none"
+```
+
+**Security warning:** This mode is suitable only for local development. Never use in production or on exposed networks.
 
 ---
 
