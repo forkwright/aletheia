@@ -120,6 +120,41 @@ fn cosine_similarity_different_lengths() {
     assert!((sim - 0.0).abs() < f64::EPSILON);
 }
 
+#[test]
+fn cosine_similarity_antiparallel() {
+    // Anti-parallel vectors (exactly opposite direction) should give -1.0.
+    // This verifies the dot product sign is preserved and norms are not squared.
+    let a = vec![1.0, 0.0, 0.0];
+    let b = vec![-1.0, 0.0, 0.0];
+    let sim = cosine_similarity(&a, &b);
+    assert!(
+        (sim - (-1.0)).abs() < 1e-6,
+        "anti-parallel vectors should have sim ~-1.0, got {sim}"
+    );
+}
+
+#[test]
+fn cosine_similarity_scale_invariant() {
+    // Scaling one vector must not change the cosine similarity.
+    // This verifies the denominator uses norms (not squared norms).
+    let a = vec![1.0, 2.0, 3.0];
+    let b = vec![2.0, 4.0, 6.0]; // b = 2 * a → same direction
+    let sim = cosine_similarity(&a, &b);
+    assert!(
+        (sim - 1.0).abs() < 1e-6,
+        "parallel vectors (one scaled) should have sim ~1.0, got {sim}"
+    );
+
+    // Scaling in both dimensions independently should not change the angle.
+    let c = vec![3.0, 0.0];
+    let d = vec![0.0, 7.0]; // orthogonal regardless of scale
+    let sim2 = cosine_similarity(&c, &d);
+    assert!(
+        sim2.abs() < 1e-6,
+        "orthogonal vectors with unequal magnitudes should have sim ~0.0, got {sim2}"
+    );
+}
+
 // --- Intra-batch dedup ---
 
 #[test]

@@ -21,6 +21,14 @@ impl KnowledgeStore {
             !chunk.embedding.is_empty(),
             crate::error::EmptyEmbeddingSnafu
         );
+        // Validate dimension before storing — a mismatch corrupts the HNSW index.
+        ensure!(
+            chunk.embedding.len() == self.dim,
+            crate::error::EmbeddingDimensionMismatchSnafu {
+                expected: self.dim,
+                actual: chunk.embedding.len(),
+            }
+        );
         let params = embedding_to_params(chunk, self.dim);
         self.run_mut(&queries::upsert_embedding(), params)
     }
@@ -45,7 +53,22 @@ impl KnowledgeStore {
         params.insert("ef".to_owned(), DataValue::from(ef));
 
         let rows = self.run_read(queries::SEMANTIC_SEARCH, params)?;
-        let results = rows_to_recall_results(rows)?;
+        let mut results = rows_to_recall_results(rows)?;
+
+        // Filter out forgotten facts — the HNSW index does not carry is_forgotten.
+        let forgotten_ids = {
+            let ids: Vec<&str> = results
+                .iter()
+                .filter(|r| r.source_type == "fact")
+                .map(|r| r.source_id.as_str())
+                .collect();
+            self.query_forgotten_ids(&ids)?
+        };
+        if !forgotten_ids.is_empty() {
+            results.retain(|r| {
+                r.source_type != "fact" || !forgotten_ids.contains(r.source_id.as_str())
+            });
+        }
 
         let source_ids: Vec<crate::id::FactId> = results
             .iter()
@@ -281,16 +304,29 @@ impl KnowledgeStore {
             existing.iter().map(|r| r.id.as_str()).collect();
 
         for fact_id in &fact_ids {
-            // Try to find entity connections for this fact by checking entity neighborhoods
-            // Use the fact_id as a potential entity_id (facts often share IDs with their subject entities)
-            let entity_id = crate::id::EntityId::new_unchecked(*fact_id);
-            if let Ok(neighborhood) = self.entity_neighborhood(&entity_id) {
-                for row in &neighborhood.rows {
-                    // Extract neighbor entity IDs and find their associated facts
-                    if let Some(neighbor_id) = row.first().and_then(|v| v.get_str())
-                        && !existing_ids.contains(neighbor_id)
-                    {
-                        expanded_ids.insert(neighbor_id.to_owned());
+            // Look up which entities this fact references via the fact_entities relation.
+            // FactId and EntityId are distinct types — never cast one to the other.
+            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
+            let mut fparams = std::collections::BTreeMap::new();
+            fparams.insert(
+                "fid".to_owned(),
+                crate::engine::DataValue::Str((*fact_id).into()),
+            );
+            let Ok(entity_rows) = self.run_read(script, fparams) else {
+                continue;
+            };
+            for entity_row in &entity_rows.rows {
+                let Some(entity_id_str) = entity_row.first().and_then(|v| v.get_str()) else {
+                    continue;
+                };
+                let entity_id = crate::id::EntityId::new_unchecked(entity_id_str);
+                if let Ok(neighborhood) = self.entity_neighborhood(&entity_id) {
+                    for row in &neighborhood.rows {
+                        if let Some(neighbor_id) = row.first().and_then(|v| v.get_str())
+                            && !existing_ids.contains(neighbor_id)
+                        {
+                            expanded_ids.insert(neighbor_id.to_owned());
+                        }
                     }
                 }
             }
