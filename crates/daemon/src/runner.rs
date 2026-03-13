@@ -354,6 +354,10 @@ impl TaskRunner {
     }
 
     /// Check in-flight tasks for completion, timeout warnings, and hung task cancellation.
+    #[expect(
+        clippy::expect_used,
+        reason = "key existence verified by is_finished() check immediately before"
+    )]
     async fn check_in_flight(&mut self) {
         let task_ids: Vec<String> = self.in_flight.keys().cloned().collect();
 
@@ -444,6 +448,10 @@ impl TaskRunner {
     }
 
     /// Record a task failure: increment failures, apply backoff, possibly auto-disable.
+    #[expect(
+        clippy::expect_used,
+        reason = "arithmetic on small bounded values (delay nanos < i64::MAX, timestamp addition within valid jiff range)"
+    )]
     fn record_task_failure(&mut self, task_id: &str, reason: &str) {
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
             return;
@@ -528,15 +536,15 @@ impl TaskRunner {
             }
 
             // Check backoff.
-            if let Some(backoff_until) = self.tasks[i].backoff_until {
-                if now_instant < backoff_until {
-                    tracing::debug!(
-                        task_id = %self.tasks[i].def.id,
-                        remaining_secs = (backoff_until - now_instant).as_secs(),
-                        "skipping — in backoff period"
-                    );
-                    continue;
-                }
+            if let Some(backoff_until) = self.tasks[i].backoff_until
+                && now_instant < backoff_until
+            {
+                tracing::debug!(
+                    task_id = %self.tasks[i].def.id,
+                    remaining_secs = (backoff_until - now_instant).as_secs(),
+                    "skipping — in backoff period"
+                );
+                continue;
             }
 
             let action = self.tasks[i].def.action.clone();

@@ -11,6 +11,9 @@
 //! - Real `SessionStore` ↔ `SessionBlackboardAdapter` ↔ blackboard tool executor path
 //! - `KnowledgeSearchService` → memory tool executor wiring
 
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
+
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;

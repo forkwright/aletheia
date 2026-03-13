@@ -1,4 +1,5 @@
 //! Tests for core value type.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 use std::collections::{BTreeMap, HashMap};
 use std::mem::size_of;
 

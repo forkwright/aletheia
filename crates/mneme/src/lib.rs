@@ -91,6 +91,7 @@ mod assertions {
 /// `features = ["bundled"]`, so its symbols are isolated. Both features can
 /// be active in the same binary.
 #[cfg(all(test, feature = "sqlite", feature = "mneme-engine"))]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod coexistence_tests {
     use crate::knowledge_store::KnowledgeStore;
     use crate::store::SessionStore;

@@ -83,6 +83,10 @@ impl DriftDetector {
         Ok(report)
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "path is obtained by walking example_root so strip_prefix is guaranteed to succeed"
+    )]
     fn walk_example(&self, dir: &Path, report: &mut DriftReport) -> error::Result<()> {
         let entries = fs::read_dir(dir).context(error::MaintenanceIoSnafu {
             context: format!("reading example dir {}", dir.display()),
@@ -134,10 +138,10 @@ impl DriftDetector {
                 }
             } else {
                 // Exact match on filename component.
-                if let Some(name) = relative.file_name().and_then(|n| n.to_str()) {
-                    if name == pattern {
-                        return true;
-                    }
+                if let Some(name) = relative.file_name().and_then(|n| n.to_str())
+                    && name == pattern
+                {
+                    return true;
                 }
             }
         }
@@ -147,6 +151,8 @@ impl DriftDetector {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

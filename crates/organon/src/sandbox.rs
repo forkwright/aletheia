@@ -149,15 +149,15 @@ impl SandboxPolicy {
                    access: BitFlags<AccessFs>|
          -> std::io::Result<landlock::RulesetCreated> {
             for path in paths {
-                if path.exists() {
-                    if let Ok(fd) = PathFd::new(path) {
-                        rs = rs.add_rule(PathBeneath::new(fd, access)).map_err(|e| {
-                            std::io::Error::other(format!(
-                                "Landlock rule failed for {}: {e}",
-                                path.display()
-                            ))
-                        })?;
-                    }
+                if path.exists()
+                    && let Ok(fd) = PathFd::new(path)
+                {
+                    rs = rs.add_rule(PathBeneath::new(fd, access)).map_err(|e| {
+                        std::io::Error::other(format!(
+                            "Landlock rule failed for {}: {e}",
+                            path.display()
+                        ))
+                    })?;
                 }
             }
             Ok(rs)
@@ -280,6 +280,7 @@ pub fn apply_sandbox(cmd: &mut std::process::Command, policy: SandboxPolicy) {
 pub fn apply_sandbox(_cmd: &mut std::process::Command, _policy: SandboxPolicy) {}
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

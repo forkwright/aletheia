@@ -92,6 +92,7 @@ impl ChannelRegistry {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::future::Future;
     use std::pin::Pin;

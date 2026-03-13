@@ -222,6 +222,7 @@ fn graph_dirty_flag_multiple_marks() {
 // --- Engine-dependent tests ---
 
 #[cfg(feature = "mneme-engine")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod engine_tests {
     use crate::knowledge::{Entity, Relationship};
     use crate::knowledge_store::KnowledgeStore;

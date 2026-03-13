@@ -302,6 +302,7 @@ pub(crate) fn parse_vmrss(contents: &str) -> std::io::Result<u64> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

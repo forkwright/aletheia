@@ -1,4 +1,5 @@
 //! Tests for aggregation operators.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 use itertools::Itertools;
 
 use crate::engine::data::aggr::parse_aggr;

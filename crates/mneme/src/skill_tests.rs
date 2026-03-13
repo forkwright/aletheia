@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 
 const SAMPLE_SKILL: &str = r"# Website and Review Intelligence Gathering

@@ -1,4 +1,6 @@
 //! Roundtrip and comprehensive tests for melete distillation pipeline.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 
 use std::sync::Mutex;
 

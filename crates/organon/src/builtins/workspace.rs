@@ -1,4 +1,8 @@
 //! Workspace tool executors: read, write, edit, exec.
+#![expect(
+    clippy::expect_used,
+    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
+)]
 
 use std::future::Future;
 use std::io::Read as _;
@@ -248,10 +252,10 @@ impl ToolExecutor for WriteExecutor {
                 )));
             }
 
-            if let Some(parent) = path.parent() {
-                if let Err(e) = std::fs::create_dir_all(parent) {
-                    return Ok(err_result(format!("failed to create directories: {e}")));
-                }
+            if let Some(parent) = path.parent()
+                && let Err(e) = std::fs::create_dir_all(parent)
+            {
+                return Ok(err_result(format!("failed to create directories: {e}")));
             }
 
             let write_result = if append {

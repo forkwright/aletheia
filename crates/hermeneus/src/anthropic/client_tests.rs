@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "test assertions")]
 use std::time::Duration;
 
 use wiremock::matchers::{method, path};

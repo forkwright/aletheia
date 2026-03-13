@@ -1,5 +1,7 @@
 //! Integration tests for thesauros domain packs: loading, bootstrap injection, tool registration.
 
+#![expect(clippy::expect_used, reason = "test assertions")]
+
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 

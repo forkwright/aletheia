@@ -1,4 +1,5 @@
 //! Tests for expression evaluation.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 use crate::engine::{DataValue, DbInstance};
 
 #[test]

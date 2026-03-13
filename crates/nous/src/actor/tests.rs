@@ -1,3 +1,5 @@
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use std::sync::Mutex;
 
 use aletheia_hermeneus::provider::LlmProvider;

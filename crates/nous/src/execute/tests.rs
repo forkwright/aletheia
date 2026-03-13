@@ -1,3 +1,5 @@
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use crate::execute::dispatch::simple_hash;
 use std::collections::HashSet;
 use std::future::Future;

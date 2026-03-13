@@ -61,11 +61,11 @@ pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
     });
     // Operations pane: add tool call entry
     app.ops.push_tool_start(clean_name.clone(), None);
-    if let Some(ref agent_id) = app.focused_agent {
-        if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
-            agent.active_tool = Some(clean_name);
-            agent.tool_started_at = Some(std::time::Instant::now());
-        }
+    if let Some(ref agent_id) = app.focused_agent
+        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    {
+        agent.active_tool = Some(clean_name);
+        agent.tool_started_at = Some(std::time::Instant::now());
     }
 }
 
@@ -88,11 +88,11 @@ pub(crate) fn handle_stream_tool_result(
     // Operations pane: complete tool call
     app.ops
         .complete_tool(&tool_name, is_error, duration_ms, None);
-    if let Some(ref agent_id) = app.focused_agent {
-        if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
-            agent.active_tool = None;
-            agent.tool_started_at = None;
-        }
+    if let Some(ref agent_id) = app.focused_agent
+        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    {
+        agent.active_tool = None;
+        agent.tool_started_at = None;
     }
 }
 
@@ -176,11 +176,11 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     app.cached_markdown_lines.clear();
     app.active_turn_id = None;
     app.stream_rx = None;
-    if let Some(ref agent_id) = app.focused_agent {
-        if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
-            agent.status = AgentStatus::Idle;
-            agent.active_tool = None;
-        }
+    if let Some(ref agent_id) = app.focused_agent
+        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    {
+        agent.status = AgentStatus::Idle;
+        agent.active_tool = None;
     }
     // Operations pane: auto-hide when turn completes
     app.ops.auto_hide_if_configured();
@@ -198,12 +198,12 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     app.active_turn_id = None;
     app.stream_rx = None;
     // Reset agent status so sidebar shows idle, not stuck on "working"
-    if let Some(ref agent_id) = app.focused_agent {
-        if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
-            agent.status = AgentStatus::Idle;
-            agent.active_tool = None;
-            agent.tool_started_at = None;
-        }
+    if let Some(ref agent_id) = app.focused_agent
+        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    {
+        agent.status = AgentStatus::Idle;
+        agent.active_tool = None;
+        agent.tool_started_at = None;
     }
 }
 
@@ -219,12 +219,12 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     // can read any partial response received before the error.
     app.streaming_tool_calls.clear();
     // Reset agent status so sidebar shows idle, not stuck on "working"
-    if let Some(ref agent_id) = app.focused_agent {
-        if let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id) {
-            agent.status = AgentStatus::Idle;
-            agent.active_tool = None;
-            agent.tool_started_at = None;
-        }
+    if let Some(ref agent_id) = app.focused_agent
+        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    {
+        agent.status = AgentStatus::Idle;
+        agent.active_tool = None;
+        agent.tool_started_at = None;
     }
 }
 

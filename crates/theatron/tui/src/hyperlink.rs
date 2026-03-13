@@ -97,10 +97,10 @@ fn probe_hyperlink_support() -> bool {
     }
 
     // foot
-    if let Ok(term) = std::env::var("TERM") {
-        if term == "foot" || term == "foot-extra" {
-            return true;
-        }
+    if let Ok(term) = std::env::var("TERM")
+        && (term == "foot" || term == "foot-extra")
+    {
+        return true;
     }
 
     // Alacritty 0.14+ sets ALACRITTY_SOCKET

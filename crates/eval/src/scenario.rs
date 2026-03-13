@@ -91,6 +91,7 @@ pub fn assert_eq_eval<T: PartialEq + std::fmt::Debug>(
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

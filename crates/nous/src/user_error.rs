@@ -113,6 +113,7 @@ pub fn to_user_facing(error: &crate::error::Error) -> Option<UserFacingError> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

@@ -1,5 +1,7 @@
 //! Cross-crate tests for taxis oikos + cascade resolution.
 
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+
 use std::fs;
 use std::path::Path;
 

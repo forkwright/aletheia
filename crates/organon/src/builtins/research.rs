@@ -3,6 +3,10 @@
 //! Web search is now handled by Anthropic's server-side `web_search` tool,
 //! configured via `NousConfig.server_tools`. This module only provides
 //! `web_fetch` for direct URL retrieval.
+#![expect(
+    clippy::expect_used,
+    reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"
+)]
 
 use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -132,10 +136,10 @@ impl ToolExecutor for WebFetchExecutor {
                     // For redirects we can only check parsed IPs directly;
                     // full async DNS isn't available in the sync callback.
                     // Reject if the redirect target is an IP literal in a private range.
-                    if let Some(addr) = url.host_str().and_then(|h| h.parse::<IpAddr>().ok()) {
-                        if is_private_ip(&addr) {
-                            return attempt.stop();
-                        }
+                    if let Some(addr) = url.host_str().and_then(|h| h.parse::<IpAddr>().ok())
+                        && is_private_ip(&addr)
+                    {
+                        return attempt.stop();
                     }
                     // Limit redirect chain length
                     if attempt.previous().len() >= 10 {
@@ -354,6 +358,7 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};

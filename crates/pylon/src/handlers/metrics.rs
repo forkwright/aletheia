@@ -13,6 +13,7 @@ use crate::state::AppState;
 pub(crate) const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
 /// GET /metrics -- Prometheus text format exposition.
+#[expect(clippy::expect_used, reason = "Prometheus text encoding is infallible")]
 pub async fn expose(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let uptime = state.start_time.elapsed().as_secs_f64();
 
@@ -41,6 +42,7 @@ pub async fn expose(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use prometheus::{Encoder, TextEncoder};

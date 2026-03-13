@@ -257,6 +257,7 @@ impl fmt::Display for IdError {
 impl std::error::Error for IdError {}
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

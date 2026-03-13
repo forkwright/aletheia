@@ -432,10 +432,10 @@ fn content_with_cache_control(content: &Content) -> serde_json::Value {
                 .iter()
                 .map(|b| serde_json::to_value(b).unwrap_or_default())
                 .collect();
-            if let Some(last) = arr.last_mut() {
-                if let Some(obj) = last.as_object_mut() {
-                    obj.insert("cache_control".to_owned(), cc);
-                }
+            if let Some(last) = arr.last_mut()
+                && let Some(obj) = last.as_object_mut()
+            {
+                obj.insert("cache_control".to_owned(), cc);
             }
             serde_json::Value::Array(arr)
         }
@@ -535,6 +535,7 @@ pub(crate) struct WireMessageDeltaUsage {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::types::{Message, ToolDefinition};

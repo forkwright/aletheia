@@ -182,10 +182,10 @@ pub async fn list_facts(
     }
 
     // Apply fact_type filter
-    if let Some(ref ft) = query.fact_type {
-        if ft != "all" {
-            facts.retain(|f| f.fact_type == *ft);
-        }
+    if let Some(ref ft) = query.fact_type
+        && ft != "all"
+    {
+        facts.retain(|f| f.fact_type == *ft);
     }
 
     // Apply tier filter
@@ -495,6 +495,7 @@ pub(crate) fn truncate_content(s: &str, max: usize) -> String {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

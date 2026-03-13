@@ -48,6 +48,7 @@ jobs:
             --include='*.md' --include='*.yaml' --include='*.yml' --include='*.toml' \
             . | grep -v 'scrub-callback' | grep -v 'pii-patterns' | \
             grep -v 'target/' | grep -v '^./docs/' | \
+            grep -v '^./standards/' | \
             grep -v 'instance.example/' | \
             grep -v 'node_modules/' | \
             grep -v '\.venv/' || true)

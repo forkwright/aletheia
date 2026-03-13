@@ -27,7 +27,7 @@ version = "0.10.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/forkwright/aletheia"
-rust-version = "1.85"
+rust-version = "1.94"
 
 [workspace.lints.rust]
 future_incompatible = { level = "warn", priority = -1 }
@@ -47,6 +47,10 @@ dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 exit = "deny"
+
+# Panics in library code must be explicit and justified
+unwrap_used = "deny"
+expect_used = "deny"
 
 # Correctness: holding std::sync::Mutex across .await causes deadlocks
 await_holding_lock = "deny"

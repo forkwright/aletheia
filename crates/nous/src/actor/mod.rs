@@ -49,7 +49,7 @@ const DEGRADED_WINDOW: std::time::Duration = std::time::Duration::from_secs(600)
 /// A single nous agent running as a Tokio actor.
 ///
 /// Each actor owns its mutable state and processes messages sequentially
-/// from a bounded inbox. External code interacts via [`NousHandle`].
+/// from a bounded inbox. External code interacts via [`NousHandle`](crate::handle::NousHandle).
 pub struct NousActor {
     id: String,
     config: NousConfig,

@@ -1,4 +1,6 @@
 //! End-to-end integration tests: HTTP → pipeline → provider → persistence.
+
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![cfg(feature = "sqlite-tests")]
 
 use std::sync::{Arc, Mutex};

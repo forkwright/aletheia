@@ -1,5 +1,12 @@
 //! Execute stage — LLM call and tool iteration loop.
 
+// RwLock::read().expect() is infallible under normal operation; poisoning only
+// occurs on a prior panic which makes the process state undefined anyway.
+#![expect(
+    clippy::expect_used,
+    reason = "RwLock read is infallible under normal operation"
+)]
+
 mod dispatch;
 
 #[cfg(test)]
@@ -54,14 +61,14 @@ pub async fn execute(
         .build()
     })?;
 
-    if let Some(health) = providers.provider_health(provider.name()) {
-        if matches!(health, ProviderHealth::Down { .. }) {
-            return Err(error::PipelineStageSnafu {
-                stage: "execute",
-                message: format!("provider '{}' is currently unavailable", provider.name()),
-            }
-            .build());
+    if let Some(health) = providers.provider_health(provider.name())
+        && matches!(health, ProviderHealth::Down { .. })
+    {
+        return Err(error::PipelineStageSnafu {
+            stage: "execute",
+            message: format!("provider '{}' is currently unavailable", provider.name()),
         }
+        .build());
     }
 
     let mut messages = build_messages(&ctx.messages);
@@ -260,14 +267,14 @@ pub async fn execute_streaming(
         .build()
     })?;
 
-    if let Some(health) = providers.provider_health(provider.name()) {
-        if matches!(health, ProviderHealth::Down { .. }) {
-            return Err(error::PipelineStageSnafu {
-                stage: "execute",
-                message: format!("provider '{}' is currently unavailable", provider.name()),
-            }
-            .build());
+    if let Some(health) = providers.provider_health(provider.name())
+        && matches!(health, ProviderHealth::Down { .. })
+    {
+        return Err(error::PipelineStageSnafu {
+            stage: "execute",
+            message: format!("provider '{}' is currently unavailable", provider.name()),
         }
+        .build());
     }
 
     let mut messages = build_messages(&ctx.messages);

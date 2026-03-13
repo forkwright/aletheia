@@ -1,4 +1,8 @@
 //! AST for the datalog query language.
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet};
@@ -112,10 +116,10 @@ impl ImperativeStmt {
             }
             ImperativeStmt::Return { returns, .. } => {
                 for ret in returns {
-                    if let Left(prog) = ret {
-                        if let Some(name) = prog.prog.needs_write_lock() {
-                            collector.insert(name);
-                        }
+                    if let Left(prog) = ret
+                        && let Some(name) = prog.prog.needs_write_lock()
+                    {
+                        collector.insert(name);
                     }
                 }
             }
@@ -125,10 +129,10 @@ impl ImperativeStmt {
                 else_branch,
                 ..
             } => {
-                if let ImperativeCondition::Right(prog) = condition {
-                    if let Some(name) = prog.prog.needs_write_lock() {
-                        collector.insert(name);
-                    }
+                if let ImperativeCondition::Right(prog) = condition
+                    && let Some(name) = prog.prog.needs_write_lock()
+                {
+                    collector.insert(name);
                 }
                 for prog in then_branch.iter().chain(else_branch.iter()) {
                     prog.needs_write_locks(collector);

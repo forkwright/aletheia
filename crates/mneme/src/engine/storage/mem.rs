@@ -1,4 +1,8 @@
 //! In-memory storage backend.
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use crate::engine::error::InternalResult;
 use crate::engine::storage::error::{StorageResult, WriteInReadTransactionSnafu};
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
@@ -273,16 +277,16 @@ where
 {
     #[inline]
     fn fill_cache(&mut self) -> InternalResult<()> {
-        if self.change_cache.is_none() {
-            if let Some(kmv) = self.change_iter.next() {
-                self.change_cache = Some(kmv)
-            }
+        if self.change_cache.is_none()
+            && let Some(kmv) = self.change_iter.next()
+        {
+            self.change_cache = Some(kmv)
         }
 
-        if self.db_cache.is_none() {
-            if let Some(kv) = self.db_iter.next() {
-                self.db_cache = Some(kv);
-            }
+        if self.db_cache.is_none()
+            && let Some(kv) = self.db_iter.next()
+        {
+            self.db_cache = Some(kv);
         }
 
         Ok(())
@@ -362,16 +366,16 @@ struct CacheIter<'a> {
 impl CacheIter<'_> {
     #[inline]
     fn fill_cache(&mut self) -> InternalResult<()> {
-        if self.change_cache.is_none() {
-            if let Some(kmv) = self.change_iter.next() {
-                self.change_cache = Some(kmv)
-            }
+        if self.change_cache.is_none()
+            && let Some(kmv) = self.change_iter.next()
+        {
+            self.change_cache = Some(kmv)
         }
 
-        if self.db_cache.is_none() {
-            if let Some(kv) = self.db_iter.next() {
-                self.db_cache = Some(kv);
-            }
+        if self.db_cache.is_none()
+            && let Some(kv) = self.db_iter.next()
+        {
+            self.db_cache = Some(kv);
         }
 
         Ok(())

@@ -1,4 +1,5 @@
 //! Tests for built-in functions.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 use regex::Regex;
 use serde_json::json;
 use std::f64::consts::{E, PI};

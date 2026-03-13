@@ -379,6 +379,8 @@ impl<T> OptionalExt<T> for std::result::Result<T, rusqlite::Error> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

@@ -1,4 +1,5 @@
 //! Tests for temporal validity ranges.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
 use serde_json::json;

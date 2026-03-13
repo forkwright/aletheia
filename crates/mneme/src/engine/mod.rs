@@ -338,6 +338,7 @@ pub use crate::engine::runtime::db::Poison;
     clippy::result_large_err,
     reason = "test helpers — error size not critical"
 )]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 impl DbInstance {
     pub(crate) fn default() -> Self {
         crate::engine::storage::mem::new_mem_db().unwrap()
@@ -374,6 +375,7 @@ pub(crate) struct TestMultiTx {
     clippy::result_large_err,
     reason = "test helpers — error size not critical"
 )]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 impl TestMultiTx {
     pub(crate) fn run_script(
         &self,

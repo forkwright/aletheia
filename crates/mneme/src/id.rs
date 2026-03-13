@@ -128,6 +128,7 @@ impl fmt::Display for IdValidationError {
 impl std::error::Error for IdValidationError {}
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

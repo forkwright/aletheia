@@ -133,6 +133,7 @@ impl BlackboardStore for SessionBlackboardAdapter {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use aletheia_organon::types::NoteStore;

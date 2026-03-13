@@ -96,6 +96,7 @@ CREATE INDEX IF NOT EXISTS idx_notes_nous ON agent_notes(nous_id);
 ";
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use rusqlite::Connection;
 

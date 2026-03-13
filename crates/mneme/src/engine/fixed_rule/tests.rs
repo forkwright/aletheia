@@ -9,6 +9,7 @@
 //!   mirror edges internally — supply edges in ONE direction to avoid duplicates.
 //! - Algorithms that do not mirror (DegreeCentrality, BFS, DFS) expect explicit
 //!   bidirectional edges if undirected semantics are needed.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 
 #[cfg(test)]
 mod graph_algo_tests {

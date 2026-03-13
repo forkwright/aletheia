@@ -1,5 +1,7 @@
 //! Unit tests for CLI argument parsing.
 
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+
 use std::path::PathBuf;
 
 use super::{Cli, Command, commands::maintenance};

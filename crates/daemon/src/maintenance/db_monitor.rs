@@ -249,6 +249,8 @@ fn dir_size(path: &std::path::Path) -> error::Result<u64> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

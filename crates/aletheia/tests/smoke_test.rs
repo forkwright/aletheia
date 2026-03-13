@@ -4,6 +4,9 @@
 //! every subcommand is reachable, parses arguments, and produces useful output
 //! or graceful failures without a live server.
 
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
+
 use assert_cmd::Command;
 use predicates::prelude::*;
 

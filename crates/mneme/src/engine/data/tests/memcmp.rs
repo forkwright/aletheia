@@ -1,4 +1,5 @@
 //! Tests for memory-comparable encoding.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 use uuid::Uuid;
 
 use crate::engine::data::memcmp::{MemCmpEncoder, decode_bytes};
