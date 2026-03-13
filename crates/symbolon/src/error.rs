@@ -94,6 +94,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Auth database schema version table is corrupted or unreadable.
+    #[snafu(display("auth database schema is corrupted: {source}"))]
+    SchemaCorrupted {
+        source: rusqlite::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

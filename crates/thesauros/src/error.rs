@@ -17,7 +17,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Manifest file (pack.yaml) not found in pack directory.
+    /// Manifest file (pack.toml) not found in pack directory.
     #[snafu(display("manifest not found: {}", path.display()))]
     ManifestNotFound {
         path: PathBuf,
@@ -34,7 +34,7 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Failed to parse YAML manifest.
+    /// Failed to parse TOML manifest.
     #[snafu(display("failed to parse manifest at {}: {reason}", path.display()))]
     ParseManifest {
         path: PathBuf,
@@ -93,6 +93,24 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Pack name fails validation (must be 1–64 alphanumeric/hyphen characters).
+    #[snafu(display(
+        "invalid pack name '{name}': must be 1-64 characters, alphanumeric and hyphens only"
+    ))]
+    InvalidPackName {
+        name: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Pack version is an empty string.
+    #[snafu(display("pack '{pack}' has an empty version string"))]
+    InvalidPackVersion {
+        pack: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].
@@ -125,12 +143,12 @@ mod tests {
     #[test]
     fn parse_manifest_display() {
         let err = Error::ParseManifest {
-            path: PathBuf::from("/some/pack.yaml"),
+            path: PathBuf::from("/some/pack.toml"),
             reason: "expected mapping".to_owned(),
             location: snafu::Location::new("test", 0, 0),
         };
         let msg = err.to_string();
-        assert!(msg.contains("pack.yaml"));
+        assert!(msg.contains("pack.toml"));
         assert!(msg.contains("expected mapping"));
     }
 

@@ -301,7 +301,7 @@ impl AuthStore {
 // --- Schema initialization ---
 
 fn initialize(conn: &Connection) -> Result<()> {
-    let version = get_schema_version(conn);
+    let version = get_schema_version(conn)?;
 
     if version == 0 {
         info!("Initializing fresh auth database with schema v{SCHEMA_VERSION}");
@@ -313,17 +313,48 @@ fn initialize(conn: &Connection) -> Result<()> {
         .context(error::DatabaseSnafu)?;
     }
 
+    // Remove revoked tokens whose expiry has already passed.
+    // WHY: Prevents unbounded growth of the revoked_tokens table; entries are
+    // only needed until the token's natural expiry, so cleaning up on startup
+    // is sufficient for production workloads.
+    let cleaned = conn
+        .execute(
+            "DELETE FROM revoked_tokens WHERE expires_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            [],
+        )
+        .context(error::DatabaseSnafu)?;
+    if cleaned > 0 {
+        info!(
+            count = cleaned,
+            "cleaned up expired token revocations on startup"
+        );
+    }
+
     Ok(())
 }
 
-fn get_schema_version(conn: &Connection) -> u32 {
-    // Returns 0 when the table doesn't exist yet — triggers all migrations
+fn get_schema_version(conn: &Connection) -> Result<u32> {
+    // If the schema_version table does not yet exist this is a fresh database;
+    // return 0 to signal that all DDL should be applied.
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .context(error::DatabaseSnafu)?;
+
+    if !table_exists {
+        return Ok(0);
+    }
+
+    // The table exists — any failure to read the version signals corruption.
     conn.query_row(
         "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
         [],
         |row| row.get(0),
     )
-    .unwrap_or(0)
+    .context(error::SchemaCorruptedSnafu)
 }
 
 // --- Row mappers ---
@@ -391,7 +422,7 @@ mod tests {
     #[test]
     fn fresh_database_initializes() {
         let store = test_store();
-        let version = get_schema_version(store.conn());
+        let version = get_schema_version(store.conn()).unwrap();
         assert_eq!(version, SCHEMA_VERSION);
     }
 
@@ -399,8 +430,26 @@ mod tests {
     fn idempotent_initialization() {
         let store = test_store();
         initialize(store.conn()).unwrap();
-        let version = get_schema_version(store.conn());
+        let version = get_schema_version(store.conn()).unwrap();
         assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn schema_corruption_returns_error() {
+        let store = test_store();
+        // Drop the schema_version table to simulate corruption: the table
+        // exists but has been emptied/corrupted. We simulate by dropping and
+        // re-creating it empty, then verifying an error is returned.
+        store
+            .conn()
+            .execute_batch("DELETE FROM schema_version;")
+            .unwrap();
+        // Table exists but has no rows — SchemaCorrupted should be returned.
+        let result = get_schema_version(store.conn());
+        assert!(
+            matches!(result, Err(error::Error::SchemaCorrupted { .. })),
+            "expected SchemaCorrupted, got: {result:?}"
+        );
     }
 
     #[test]

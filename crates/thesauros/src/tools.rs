@@ -127,7 +127,11 @@ impl ToolExecutor for ShellToolExecutor {
             };
 
             if output.len() > MAX_OUTPUT_BYTES {
-                output.truncate(MAX_OUTPUT_BYTES);
+                // WHY: truncate() panics when the byte index falls inside a
+                // multi-byte character. floor_char_boundary() rounds down to
+                // the nearest valid char boundary, guaranteeing safety.
+                let boundary = output.floor_char_boundary(MAX_OUTPUT_BYTES);
+                output.truncate(boundary);
                 output.push_str("\n[output truncated]");
             }
 
@@ -148,6 +152,10 @@ pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) ->
     let mut errors = Vec::new();
 
     for pack in packs {
+        // Track the error count before processing this pack so we can
+        // compute per-pack failures without affecting counts from prior packs.
+        let errors_before = errors.len();
+
         for tool_def in &pack.manifest.tools {
             match prepare_tool(tool_def, &pack.root, &pack.manifest.name) {
                 Ok((def, executor)) => match registry.register(def, executor) {
@@ -173,7 +181,8 @@ pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) ->
         }
 
         if !pack.manifest.tools.is_empty() {
-            let registered = pack.manifest.tools.len() - errors.len();
+            let pack_errors = errors.len() - errors_before;
+            let registered = pack.manifest.tools.len() - pack_errors;
             if registered > 0 {
                 info!(
                     pack = %pack.manifest.name,
@@ -596,5 +605,107 @@ mod tests {
         let errors = register_pack_tools(&[], &mut registry);
         assert!(errors.is_empty());
         assert!(registry.definitions().is_empty());
+    }
+
+    #[test]
+    fn error_count_per_pack_not_cumulative() {
+        // Pack A: one invalid tool (missing command)
+        let dir_a = setup_pack_dir(&[]);
+        let pack_a = minimal_loaded_pack(
+            &dir_a,
+            vec![PackToolDef {
+                name: "bad_tool_a".to_owned(),
+                description: "Missing command".to_owned(),
+                command: "tools/nonexistent.sh".to_owned(),
+                timeout: 5000,
+                input_schema: None,
+            }],
+        );
+
+        // Pack B: one valid tool — must register successfully despite pack A's error.
+        let dir_b = setup_pack_dir(&[("tools/ok.sh", "#!/bin/sh\necho ok")]);
+        make_executable(&dir_b, "tools/ok.sh");
+        let pack_b = minimal_loaded_pack(
+            &dir_b,
+            vec![PackToolDef {
+                name: "good_tool_b".to_owned(),
+                description: "Good tool".to_owned(),
+                command: "tools/ok.sh".to_owned(),
+                timeout: 5000,
+                input_schema: None,
+            }],
+        );
+
+        let mut registry = ToolRegistry::new();
+        let errors = register_pack_tools(&[pack_a, pack_b], &mut registry);
+
+        // Exactly one error from pack A; pack B's tool registers successfully.
+        assert_eq!(
+            errors.len(),
+            1,
+            "expected one error from pack A, got: {errors:?}"
+        );
+        assert_eq!(
+            registry.definitions().len(),
+            1,
+            "pack B's tool should be registered"
+        );
+        assert_eq!(registry.definitions()[0].name.as_str(), "good_tool_b");
+    }
+
+    #[tokio::test]
+    async fn shell_executor_truncates_at_char_boundary() {
+        // Build output that contains a 3-byte UTF-8 sequence (U+2026 HORIZONTAL ELLIPSIS: 0xE2 0x80 0xA6)
+        // placed so it straddles the MAX_OUTPUT_BYTES boundary.
+        //
+        // We use a script that writes a known multi-byte sequence beyond the limit.
+        let ellipsis = "\u{2026}"; // 3 bytes: 0xE2 0x80 0xA6
+        // Fill output to MAX_OUTPUT_BYTES - 1 with ASCII 'a', then append the
+        // ellipsis so bytes [MAX_OUTPUT_BYTES-1 .. MAX_OUTPUT_BYTES+2) are the
+        // three bytes of U+2026. The old truncate() call would panic here.
+        let fill_len = MAX_OUTPUT_BYTES - 1;
+        let fill: String = "a".repeat(fill_len);
+        let full_output = format!("{fill}{ellipsis}extra");
+
+        // Write a script that prints the prepared string.
+        let script_content = format!("#!/bin/sh\nprintf '%s' '{full_output}'");
+        let dir = setup_pack_dir(&[("tools/multibyte.sh", &script_content)]);
+        make_executable(&dir, "tools/multibyte.sh");
+
+        let executor = ShellToolExecutor {
+            command_path: dir
+                .path()
+                .join("tools/multibyte.sh")
+                .canonicalize()
+                .unwrap(),
+            pack_root: dir.path().to_path_buf(),
+            timeout_ms: 5000,
+        };
+
+        let input = ToolInput {
+            name: ToolName::new("mb_tool").unwrap(),
+            tool_use_id: "toolu_mb".to_owned(),
+            arguments: serde_json::json!({}),
+        };
+        let ctx = ToolContext {
+            nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+            session_id: aletheia_koina::id::SessionId::new(),
+            workspace: dir.path().to_path_buf(),
+            allowed_roots: vec![],
+            services: None,
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+        };
+
+        // Must not panic, and result must be valid UTF-8 ending with the truncation marker.
+        let result = executor.execute(&input, &ctx).await.unwrap();
+        let text = result.content.text_summary();
+        assert!(text.is_char_boundary(0), "result must be valid UTF-8");
+        assert!(
+            text.contains("[output truncated]"),
+            "truncation marker expected"
+        );
+        assert!(text.len() <= MAX_OUTPUT_BYTES + "[output truncated]".len() + 2);
     }
 }

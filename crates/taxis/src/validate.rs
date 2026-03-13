@@ -36,6 +36,9 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
     }
 }
 
+/// Maximum allowed token budget for any single field.
+const MAX_TOKEN_BUDGET: u64 = 1_000_000;
+
 fn validate_agents(value: &Value, errors: &mut Vec<String>) {
     if let Some(defaults) = value.get("defaults") {
         check_positive_u32(defaults, "contextTokens", errors);
@@ -43,6 +46,40 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         check_positive_u32(defaults, "bootstrapMaxTokens", errors);
         check_positive_u32(defaults, "timeoutSeconds", errors);
         check_positive_u32(defaults, "thinkingBudget", errors);
+
+        // Cap token budgets at a sane maximum to prevent misconfiguration.
+        for field in &[
+            "contextTokens",
+            "maxOutputTokens",
+            "bootstrapMaxTokens",
+            "thinkingBudget",
+        ] {
+            if let Some(val) = defaults.get(field).and_then(Value::as_u64)
+                && val > MAX_TOKEN_BUDGET
+            {
+                errors.push(format!("{field} must not exceed {MAX_TOKEN_BUDGET} tokens"));
+            }
+        }
+
+        // Model IDs must not be empty strings.
+        if let Some(model) = defaults.get("model") {
+            if let Some(primary) = model.get("primary").and_then(Value::as_str)
+                && primary.is_empty()
+            {
+                errors.push("agents.defaults.model.primary must not be empty".to_owned());
+            }
+            if let Some(fallbacks) = model.get("fallbacks").and_then(Value::as_array) {
+                for (i, fallback) in fallbacks.iter().enumerate() {
+                    if let Some(s) = fallback.as_str()
+                        && s.is_empty()
+                    {
+                        errors.push(format!(
+                            "agents.defaults.model.fallbacks[{i}] must not be empty"
+                        ));
+                    }
+                }
+            }
+        }
 
         if let Some(val) = defaults.get("maxToolIterations").and_then(Value::as_u64)
             && (val == 0 || val > 200)
@@ -393,5 +430,70 @@ mod tests {
                 "source '{source}' should be valid"
             );
         }
+    }
+
+    #[test]
+    fn rejects_empty_model_primary() {
+        let section = json!({ "defaults": { "model": { "primary": "" } } });
+        let result = validate_section("agents", &section);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.errors.iter().any(|e| e.contains("model.primary")),
+            "expected model.primary error, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_model_fallback() {
+        let section = json!({ "defaults": { "model": { "primary": "claude-sonnet-4-6", "fallbacks": [""] } } });
+        let result = validate_section("agents", &section);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.errors.iter().any(|e| e.contains("fallbacks[0]")),
+            "expected fallbacks[0] error, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_model_ids() {
+        let section = json!({
+            "defaults": {
+                "model": {
+                    "primary": "claude-sonnet-4-6",
+                    "fallbacks": ["claude-haiku-3-5"]
+                }
+            }
+        });
+        assert!(validate_section("agents", &section).is_ok());
+    }
+
+    #[test]
+    fn rejects_token_budget_exceeding_maximum() {
+        for field in [
+            "contextTokens",
+            "maxOutputTokens",
+            "bootstrapMaxTokens",
+            "thinkingBudget",
+        ] {
+            let section = json!({ "defaults": { field: 1_000_001_u64 } });
+            let result = validate_section("agents", &section);
+            assert!(
+                result.is_err(),
+                "{field} exceeding MAX_TOKEN_BUDGET should be rejected"
+            );
+            let err = result.unwrap_err();
+            assert!(
+                err.errors.iter().any(|e| e.contains(field)),
+                "expected error mentioning {field}, got: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_token_budget_at_maximum() {
+        let section = json!({ "defaults": { "contextTokens": 1_000_000_u64 } });
+        assert!(validate_section("agents", &section).is_ok());
     }
 }

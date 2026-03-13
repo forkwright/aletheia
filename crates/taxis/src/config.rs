@@ -22,7 +22,7 @@ pub struct AletheiaConfig {
     pub embedding: EmbeddingSettings,
     /// Data lifecycle and retention policies.
     pub data: DataConfig,
-    /// External domain pack paths (directories containing pack.yaml).
+    /// External domain pack paths (directories containing pack.toml).
     pub packs: Vec<PathBuf>,
     /// Periodic maintenance task configuration (trace rotation, drift detection, etc.).
     pub maintenance: MaintenanceSettings,
