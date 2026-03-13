@@ -176,11 +176,9 @@ fn write_output(content: &str, path: Option<&std::path::Path>) -> Result<()> {
     match path {
         Some(p) => std::fs::write(p, content)
             .with_context(|| format!("failed to write to {}", p.display())),
-        None => {
-            std::io::stdout()
-                .write_all(content.as_bytes())
-                .context("failed to write to stdout")
-        }
+        None => std::io::stdout()
+            .write_all(content.as_bytes())
+            .context("failed to write to stdout"),
     }
 }
 
