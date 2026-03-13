@@ -464,11 +464,10 @@ impl KnowledgeStore {
             *relationships{src, dst},
             (src = $eid or dst = $eid)";
         let rows = self.run_read(script, params)?;
-        if let Some(row) = rows.rows.first() {
-            if let Some(val) = row.first() {
+        if let Some(row) = rows.rows.first()
+            && let Some(val) = row.first() {
                 return extract_int(val);
             }
-        }
         Ok(0)
     }
 

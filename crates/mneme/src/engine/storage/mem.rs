@@ -277,17 +277,15 @@ where
 {
     #[inline]
     fn fill_cache(&mut self) -> InternalResult<()> {
-        if self.change_cache.is_none() {
-            if let Some(kmv) = self.change_iter.next() {
+        if self.change_cache.is_none()
+            && let Some(kmv) = self.change_iter.next() {
                 self.change_cache = Some(kmv)
             }
-        }
 
-        if self.db_cache.is_none() {
-            if let Some(kv) = self.db_iter.next() {
+        if self.db_cache.is_none()
+            && let Some(kv) = self.db_iter.next() {
                 self.db_cache = Some(kv);
             }
-        }
 
         Ok(())
     }
@@ -366,17 +364,15 @@ struct CacheIter<'a> {
 impl CacheIter<'_> {
     #[inline]
     fn fill_cache(&mut self) -> InternalResult<()> {
-        if self.change_cache.is_none() {
-            if let Some(kmv) = self.change_iter.next() {
+        if self.change_cache.is_none()
+            && let Some(kmv) = self.change_iter.next() {
                 self.change_cache = Some(kmv)
             }
-        }
 
-        if self.db_cache.is_none() {
-            if let Some(kv) = self.db_iter.next() {
+        if self.db_cache.is_none()
+            && let Some(kv) = self.db_iter.next() {
                 self.db_cache = Some(kv);
             }
-        }
 
         Ok(())
     }

@@ -122,11 +122,10 @@ pub(crate) fn handle_sse_status_update(app: &mut App, nous_id: NousId, status: S
 
 #[tracing::instrument(skip_all, fields(%nous_id))]
 pub(crate) async fn handle_sse_session_created(app: &mut App, nous_id: NousId) {
-    if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
-        if let Ok(sessions) = app.client.sessions(&nous_id).await {
+    if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id)
+        && let Ok(sessions) = app.client.sessions(&nous_id).await {
             agent.sessions = sessions;
         }
-    }
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %session_id))]

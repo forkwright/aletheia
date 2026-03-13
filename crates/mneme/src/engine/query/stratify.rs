@@ -256,8 +256,8 @@ impl NormalFormProgram {
 
         let mut store_lifetimes = BTreeMap::new();
         for (fr, tos) in &stratified_graph {
-            if let Some(fr_idx) = invert_indices.get(fr) {
-                if let Some(fr_stratum) = invert_sort_result.get(fr_idx) {
+            if let Some(fr_idx) = invert_indices.get(fr)
+                && let Some(fr_stratum) = invert_sort_result.get(fr_idx) {
                     for to in tos.keys() {
                         let used_in = n_strata - 1 - *fr_stratum;
                         let magic_to = MagicSymbol::Muggle {
@@ -276,18 +276,16 @@ impl NormalFormProgram {
                         }
                     }
                 }
-            }
         }
 
         for (name, ruleset) in self.prog {
-            if let Some(scc_idx) = invert_indices.get(&name) {
-                if let Some(rev_stratum_idx) = invert_sort_result.get(scc_idx) {
+            if let Some(scc_idx) = invert_indices.get(&name)
+                && let Some(rev_stratum_idx) = invert_sort_result.get(scc_idx) {
                     let target = ret.get_mut(*rev_stratum_idx).expect(
                         "stratum index always valid: rev_stratum_idx derived from ret's range",
                     );
                     target.prog.insert(name, ruleset);
                 }
-            }
         }
 
         Ok((StratifiedNormalFormProgram(ret), store_lifetimes))

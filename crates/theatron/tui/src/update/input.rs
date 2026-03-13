@@ -110,11 +110,10 @@ pub(crate) fn handle_submit(app: &mut App) {
 }
 
 pub(crate) fn handle_copy_last_response(app: &mut App) {
-    if let Some(msg) = app.messages.iter().rev().find(|m| m.role == "assistant") {
-        if let Err(e) = crate::clipboard::copy_to_clipboard(&msg.text) {
+    if let Some(msg) = app.messages.iter().rev().find(|m| m.role == "assistant")
+        && let Err(e) = crate::clipboard::copy_to_clipboard(&msg.text) {
             tracing::error!("clipboard copy failed: {e}");
         }
-    }
 }
 
 // Blocking is intentional: the TUI is suspended (ratatui::restore) so the event
@@ -127,16 +126,14 @@ pub(crate) fn handle_compose_in_editor(app: &mut App) {
     ratatui::restore();
     let status = std::process::Command::new(&editor).arg(&tmpfile).status();
     let _ = ratatui::init();
-    if let Ok(s) = status {
-        if s.success() {
-            if let Ok(text) = std::fs::read_to_string(&tmpfile) {
+    if let Ok(s) = status
+        && s.success()
+            && let Ok(text) = std::fs::read_to_string(&tmpfile) {
                 let text = text.trim().to_string();
                 if !text.is_empty() {
                     app.send_message(&text);
                 }
             }
-        }
-    }
     let _ = std::fs::remove_file(&tmpfile);
 }
 

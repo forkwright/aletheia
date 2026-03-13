@@ -116,8 +116,8 @@ pub async fn send_message(
         .clone();
 
     // Pre-flight: verify provider exists for the model
-    if let Some(config) = state.nous_manager.get_config(nous_id) {
-        if state
+    if let Some(config) = state.nous_manager.get_config(nous_id)
+        && state
             .provider_registry
             .find_provider(&config.model)
             .is_none()
@@ -127,7 +127,6 @@ pub async fn send_message(
             }
             .build());
         }
-    }
 
     let session_key = session.session_key.clone();
     let (tx, rx) = mpsc::channel::<SseEvent>(32);

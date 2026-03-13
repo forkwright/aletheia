@@ -61,15 +61,14 @@ pub async fn execute(
         .build()
     })?;
 
-    if let Some(health) = providers.provider_health(provider.name()) {
-        if matches!(health, ProviderHealth::Down { .. }) {
+    if let Some(health) = providers.provider_health(provider.name())
+        && matches!(health, ProviderHealth::Down { .. }) {
             return Err(error::PipelineStageSnafu {
                 stage: "execute",
                 message: format!("provider '{}' is currently unavailable", provider.name()),
             }
             .build());
         }
-    }
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -267,15 +266,14 @@ pub async fn execute_streaming(
         .build()
     })?;
 
-    if let Some(health) = providers.provider_health(provider.name()) {
-        if matches!(health, ProviderHealth::Down { .. }) {
+    if let Some(health) = providers.provider_health(provider.name())
+        && matches!(health, ProviderHealth::Down { .. }) {
             return Err(error::PipelineStageSnafu {
                 stage: "execute",
                 message: format!("provider '{}' is currently unavailable", provider.name()),
             }
             .build());
         }
-    }
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();

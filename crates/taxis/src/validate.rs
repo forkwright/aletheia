@@ -44,89 +44,76 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         check_positive_u32(defaults, "timeoutSeconds", errors);
         check_positive_u32(defaults, "thinkingBudget", errors);
 
-        if let Some(val) = defaults.get("maxToolIterations").and_then(Value::as_u64) {
-            if val == 0 || val > 200 {
+        if let Some(val) = defaults.get("maxToolIterations").and_then(Value::as_u64)
+            && (val == 0 || val > 200) {
                 errors.push("maxToolIterations must be between 1 and 200".to_owned());
             }
-        }
 
-        if let Some(timeouts) = defaults.get("toolTimeouts") {
-            if let Some(val) = timeouts.get("defaultMs").and_then(Value::as_u64) {
-                if val == 0 {
+        if let Some(timeouts) = defaults.get("toolTimeouts")
+            && let Some(val) = timeouts.get("defaultMs").and_then(Value::as_u64)
+                && val == 0 {
                     errors.push("toolTimeouts.defaultMs must be positive".to_owned());
                 }
-            }
-        }
 
         // Bootstrap budget must fit within the context window.
         let context = defaults.get("contextTokens").and_then(Value::as_u64);
         let bootstrap = defaults.get("bootstrapMaxTokens").and_then(Value::as_u64);
-        if let (Some(ctx), Some(boot)) = (context, bootstrap) {
-            if boot >= ctx {
+        if let (Some(ctx), Some(boot)) = (context, bootstrap)
+            && boot >= ctx {
                 errors.push(format!(
                     "bootstrapMaxTokens ({boot}) must be less than contextTokens ({ctx})"
                 ));
             }
-        }
     }
 }
 
 const VALID_AUTH_MODES: &[&str] = &["none", "token", "jwt"];
 
 fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
-    if let Some(port) = value.get("port").and_then(Value::as_u64) {
-        if port == 0 || port > 65535 {
+    if let Some(port) = value.get("port").and_then(Value::as_u64)
+        && (port == 0 || port > 65535) {
             errors.push("port must be between 1 and 65535".to_owned());
         }
-    }
 
-    if let Some(auth) = value.get("auth") {
-        if let Some(mode) = auth.get("mode").and_then(Value::as_str) {
-            if !VALID_AUTH_MODES.contains(&mode) {
+    if let Some(auth) = value.get("auth")
+        && let Some(mode) = auth.get("mode").and_then(Value::as_str)
+            && !VALID_AUTH_MODES.contains(&mode) {
                 errors.push(format!(
                     "gateway.auth.mode '{mode}' is invalid; must be one of: none, token, jwt"
                 ));
             }
-        }
-    }
 
-    if let Some(cors) = value.get("cors") {
-        if let Some(val) = cors.get("maxAgeSecs").and_then(Value::as_u64) {
-            if val == 0 {
+    if let Some(cors) = value.get("cors")
+        && let Some(val) = cors.get("maxAgeSecs").and_then(Value::as_u64)
+            && val == 0 {
                 errors.push("cors.maxAgeSecs must be positive".to_owned());
             }
-        }
-    }
 
-    if let Some(body_limit) = value.get("bodyLimit") {
-        if let Some(val) = body_limit.get("maxBytes").and_then(Value::as_u64) {
-            if val == 0 {
+    if let Some(body_limit) = value.get("bodyLimit")
+        && let Some(val) = body_limit.get("maxBytes").and_then(Value::as_u64)
+            && val == 0 {
                 errors.push("bodyLimit.maxBytes must be positive".to_owned());
             }
-        }
-    }
 }
 
 fn validate_maintenance(value: &Value, errors: &mut Vec<String>) {
     if let Some(tr) = value.get("traceRotation") {
         check_positive_u32(tr, "maxAgeDays", errors);
-        if let Some(val) = tr.get("maxTotalSizeMb").and_then(Value::as_u64) {
-            if val == 0 {
+        if let Some(val) = tr.get("maxTotalSizeMb").and_then(Value::as_u64)
+            && val == 0 {
                 errors.push("traceRotation.maxTotalSizeMb must be positive".to_owned());
             }
-        }
     }
 
     if let Some(db) = value.get("dbMonitoring") {
         let warn = db.get("warnThresholdMb").and_then(Value::as_u64);
         let alert = db.get("alertThresholdMb").and_then(Value::as_u64);
-        if let (Some(w), Some(a)) = (warn, alert) {
-            if w > a {
+        if let (Some(w), Some(a)) = (warn, alert)
+            && w > a {
                 errors.push(
                     "dbMonitoring.warnThresholdMb must not exceed alertThresholdMb".to_owned(),
                 );
             }
-        }
     }
 }
 
@@ -138,33 +125,29 @@ fn validate_data(value: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_embedding(value: &Value, errors: &mut Vec<String>) {
-    if let Some(provider) = value.get("provider").and_then(Value::as_str) {
-        if provider.is_empty() {
+    if let Some(provider) = value.get("provider").and_then(Value::as_str)
+        && provider.is_empty() {
             errors.push("embedding.provider must not be empty".to_owned());
         }
-    }
 
-    if let Some(dim) = value.get("dimension").and_then(Value::as_u64) {
-        if dim == 0 {
+    if let Some(dim) = value.get("dimension").and_then(Value::as_u64)
+        && dim == 0 {
             errors.push("embedding.dimension must be positive".to_owned());
         }
-    }
 }
 
 fn validate_channels(value: &Value, errors: &mut Vec<String>) {
-    if let Some(signal) = value.get("signal") {
-        if let Some(accounts) = signal.get("accounts").and_then(Value::as_object) {
+    if let Some(signal) = value.get("signal")
+        && let Some(accounts) = signal.get("accounts").and_then(Value::as_object) {
             for (account_id, account) in accounts {
-                if let Some(port) = account.get("httpPort").and_then(Value::as_u64) {
-                    if port == 0 || port > 65535 {
+                if let Some(port) = account.get("httpPort").and_then(Value::as_u64)
+                    && (port == 0 || port > 65535) {
                         errors.push(format!(
                             "channels.signal.accounts.{account_id}.httpPort must be between 1 and 65535"
                         ));
                     }
-                }
             }
         }
-    }
 }
 
 fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
@@ -185,13 +168,12 @@ fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_credential(value: &Value, errors: &mut Vec<String>) {
-    if let Some(source) = value.get("source").and_then(Value::as_str) {
-        if !matches!(source, "auto" | "api-key" | "claude-code") {
+    if let Some(source) = value.get("source").and_then(Value::as_str)
+        && !matches!(source, "auto" | "api-key" | "claude-code") {
             errors.push(format!(
                 "credential.source must be \"auto\", \"api-key\", or \"claude-code\", got \"{source}\""
             ));
         }
-    }
 }
 
 fn check_positive_u32(parent: &Value, key: &str, errors: &mut Vec<String>) {
@@ -200,11 +182,10 @@ fn check_positive_u32(parent: &Value, key: &str, errors: &mut Vec<String>) {
             if n == 0 {
                 errors.push(format!("{key} must be positive"));
             }
-        } else if let Some(n) = val.as_i64() {
-            if n <= 0 {
+        } else if let Some(n) = val.as_i64()
+            && n <= 0 {
                 errors.push(format!("{key} must be positive"));
             }
-        }
     }
 }
 

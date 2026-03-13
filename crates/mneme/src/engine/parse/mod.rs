@@ -116,11 +116,10 @@ impl ImperativeStmt {
             }
             ImperativeStmt::Return { returns, .. } => {
                 for ret in returns {
-                    if let Left(prog) = ret {
-                        if let Some(name) = prog.prog.needs_write_lock() {
+                    if let Left(prog) = ret
+                        && let Some(name) = prog.prog.needs_write_lock() {
                             collector.insert(name);
                         }
-                    }
                 }
             }
             ImperativeStmt::If {
@@ -129,11 +128,10 @@ impl ImperativeStmt {
                 else_branch,
                 ..
             } => {
-                if let ImperativeCondition::Right(prog) = condition {
-                    if let Some(name) = prog.prog.needs_write_lock() {
+                if let ImperativeCondition::Right(prog) = condition
+                    && let Some(name) = prog.prog.needs_write_lock() {
                         collector.insert(name);
                     }
-                }
                 for prog in then_branch.iter().chain(else_branch.iter()) {
                     prog.needs_write_locks(collector);
                 }

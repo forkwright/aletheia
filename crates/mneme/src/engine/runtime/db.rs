@@ -632,8 +632,8 @@ impl<'s, S: Storage<'s>> Db<S> {
                     })
                     .try_collect()?;
                 let k_store = handle.encode_key_for_store(&keys, Default::default())?;
-                if has_indices {
-                    if let Some(existing) = tx.store_tx.get(&k_store, false)? {
+                if has_indices
+                    && let Some(existing) = tx.store_tx.get(&k_store, false)? {
                         let mut old = keys.clone();
                         extend_tuple_from_v(&mut old, &existing);
                         if is_delete || old != row {
@@ -646,7 +646,6 @@ impl<'s, S: Storage<'s>> Db<S> {
                             }
                         }
                     }
-                }
                 if is_delete {
                     tx.store_tx.del(&k_store)?;
                 } else {

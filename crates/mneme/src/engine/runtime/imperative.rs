@@ -54,11 +54,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                 callback_collector,
             )?,
         };
-        if let Right(pg) = &p {
-            if let Some(store_as) = &pg.store_as {
+        if let Right(pg) = &p
+            && let Some(store_as) = &pg.store_as {
                 tx.script_store_as_relation(self, store_as, &res, cur_vld)?;
             }
-        }
         Ok(!res.rows.is_empty())
     }
 
@@ -103,11 +102,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                                 relation.as_named_rows(tx)?
                             }
                         };
-                        if let Left(pg) = nxt {
-                            if let Some(store_as) = &pg.store_as {
+                        if let Left(pg) = nxt
+                            && let Some(store_as) = &pg.store_as {
                                 tx.script_store_as_relation(self, store_as, &nr, cur_vld)?;
                             }
-                        }
                         nr.next = current;
                         current = Some(Box::new(nr))
                     }

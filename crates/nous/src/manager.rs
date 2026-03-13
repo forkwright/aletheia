@@ -458,11 +458,10 @@ impl NousManager {
         }
 
         for (id, join_opt) in joins {
-            if let Some(join) = join_opt {
-                if let Err(e) = join.await {
+            if let Some(join) = join_opt
+                && let Err(e) = join.await {
                     warn!(nous_id = %id, error = %e, "actor task panicked");
                 }
-            }
         }
 
         info!("all actors stopped");

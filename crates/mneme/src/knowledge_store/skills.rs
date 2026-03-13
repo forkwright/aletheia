@@ -128,11 +128,10 @@ impl KnowledgeStore {
     ) -> crate::error::Result<Option<String>> {
         let skills = self.find_skills_for_nous(nous_id, 1000)?;
         for fact in skills {
-            if let Ok(content) = serde_json::from_str::<crate::skill::SkillContent>(&fact.content) {
-                if content.name == skill_name {
+            if let Ok(content) = serde_json::from_str::<crate::skill::SkillContent>(&fact.content)
+                && content.name == skill_name {
                     return Ok(Some(fact.id.to_string()));
                 }
-            }
         }
         Ok(None)
     }
@@ -384,11 +383,10 @@ impl KnowledgeStore {
             forget_reason = 'stale'";
 
         let rows = self.run_read(script, params)?;
-        if let Some(row) = rows.rows.first() {
-            if let Some(crate::engine::DataValue::Num(n)) = row.first() {
+        if let Some(row) = rows.rows.first()
+            && let Some(crate::engine::DataValue::Num(n)) = row.first() {
                 return Ok(usize::try_from(n.get_int().unwrap_or(0)).unwrap_or(0));
             }
-        }
         Ok(0)
     }
 

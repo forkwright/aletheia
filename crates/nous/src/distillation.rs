@@ -68,15 +68,14 @@ pub fn should_trigger_distillation(
     }
 
     // Signal 3: Stale + messages (7 days since last distill + 20 msgs)
-    if let Some(ref last) = session.last_distilled_at {
-        if let Ok(last_ts) = last.parse::<jiff::Timestamp>() {
+    if let Some(ref last) = session.last_distilled_at
+        && let Ok(last_ts) = last.parse::<jiff::Timestamp>() {
             let age = jiff::Timestamp::now().duration_since(last_ts);
             let days = age.as_secs() / 86_400;
             if days >= 7 && session.message_count >= 20 {
                 return Some(format!("stale ({days}d) + {} msgs", session.message_count));
             }
         }
-    }
 
     // Signal 4: Never distilled + enough messages (30+)
     if session.distillation_count == 0 && session.message_count >= 30 {
@@ -125,8 +124,8 @@ pub async fn maybe_distill(
 
     // Idempotency guard: skip if distillation was applied very recently (< 60s).
     // Protects against concurrent background tasks running duplicate distillations.
-    if let Some(ref last) = session.last_distilled_at {
-        if let Ok(last_ts) = last.parse::<jiff::Timestamp>() {
+    if let Some(ref last) = session.last_distilled_at
+        && let Ok(last_ts) = last.parse::<jiff::Timestamp>() {
             let age_secs = jiff::Timestamp::now().duration_since(last_ts).as_secs();
             if age_secs < 60 {
                 tracing::debug!(
@@ -136,7 +135,6 @@ pub async fn maybe_distill(
                 return Ok(None);
             }
         }
-    }
 
     info!(%session_id, %nous_id, %trigger, "triggering distillation");
 

@@ -213,7 +213,7 @@ pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
 define_op!(OP_JSON_OBJECT, op_json_object, 0, true);
 pub(crate) fn op_json_object(args: &[DataValue]) -> Result<DataValue> {
     snafu::ensure!(
-        args.len() % 2 == 0,
+        args.len().is_multiple_of(2),
         InvalidValueSnafu {
             message: "json_object requires an even number of arguments"
         }

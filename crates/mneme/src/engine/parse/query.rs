@@ -157,8 +157,8 @@ pub(crate) fn parse_query(
                     .build()
                     .into());
                 }
-                if head.is_empty() && name.is_prog_entry() {
-                    if let Ok(mut datalist) = DatalogParser::parse(Rule::param_list, data_part_str)
+                if head.is_empty() && name.is_prog_entry()
+                    && let Ok(mut datalist) = DatalogParser::parse(Rule::param_list, data_part_str)
                     {
                         for s in datalist
                             .next()
@@ -175,7 +175,6 @@ pub(crate) fn parse_query(
                             }
                         }
                     }
-                }
                 progs.insert(
                     name,
                     InputInlineRulesOrFixed::Fixed {
@@ -422,8 +421,8 @@ pub(crate) fn parse_query(
         disable_magic_rewrite,
     };
 
-    if prog.prog.is_empty() {
-        if let Some((
+    if prog.prog.is_empty()
+        && let Some((
             InputRelationHandle {
                 key_bindings,
                 dep_bindings,
@@ -437,7 +436,6 @@ pub(crate) fn parse_query(
             bindings.extend_from_slice(dep_bindings);
             make_empty_const_rule(&mut prog, &bindings);
         }
-    }
 
     match stored_relation {
         None => {}
@@ -474,13 +472,12 @@ pub(crate) fn parse_query(
         Some(Right((h, o))) => prog.out_opts.store_relation = Some((h, o, returning_mutation)),
     }
 
-    if prog.prog.is_empty() {
-        if let Some((handle, RelationOp::Create, _)) = &prog.out_opts.store_relation {
+    if prog.prog.is_empty()
+        && let Some((handle, RelationOp::Create, _)) = &prog.out_opts.store_relation {
             let mut bindings = handle.dep_bindings.clone();
             bindings.extend_from_slice(&handle.key_bindings);
             make_empty_const_rule(&mut prog, &bindings);
         }
-    }
 
     if !prog.out_opts.sorters.is_empty() {
         let head_args = prog.get_entry_out_head()?;

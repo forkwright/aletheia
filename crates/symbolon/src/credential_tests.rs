@@ -159,15 +159,14 @@ fn file_provider_detects_file_change() {
     assert_eq!(r1.secret, "token-v1");
 
     // Invalidate cache timestamp to force mtime check
-    if let Ok(mut guard) = provider.cached.write() {
-        if let Some(ref mut c) = *guard {
+    if let Ok(mut guard) = provider.cached.write()
+        && let Some(ref mut c) = *guard {
             c.checked_at = Instant::now()
                 .checked_sub(Duration::from_secs(60))
                 .unwrap_or(Instant::now());
             // Also change mtime to force reload
             c.mtime = SystemTime::UNIX_EPOCH;
         }
-    }
 
     let cred2 = CredentialFile {
         token: "token-v2".to_owned(),

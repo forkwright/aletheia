@@ -35,11 +35,10 @@ pub fn redact(config: &AletheiaConfig) -> Value {
 fn redact_sensitive_leaves(root: &mut Value) {
     for path in SENSITIVE_LEAVES {
         let json_pointer = format!("/{}", path.join("/"));
-        if let Some(val) = root.pointer_mut(&json_pointer) {
-            if val.is_string() || val.is_null() {
+        if let Some(val) = root.pointer_mut(&json_pointer)
+            && (val.is_string() || val.is_null()) {
                 *val = Value::String(REDACTED.to_owned());
             }
-        }
     }
 }
 

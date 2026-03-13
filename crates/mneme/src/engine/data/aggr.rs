@@ -414,11 +414,10 @@ impl AggrCollect {
 
 impl NormalAggrObj for AggrCollect {
     fn set(&mut self, value: &DataValue) -> Result<()> {
-        if let Some(limit) = self.limit {
-            if self.accum.len() >= limit {
+        if let Some(limit) = self.limit
+            && self.accum.len() >= limit {
                 return Ok(());
             }
-        }
         self.accum.push(value.clone());
         Ok(())
     }

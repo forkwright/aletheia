@@ -397,11 +397,10 @@ impl KnowledgeStore {
         let rows = self.run_read(&script, BTreeMap::<String, DataValue>::new())?;
         let mut ids = std::collections::HashSet::new();
         for row in rows.rows {
-            if let Some(val) = row.first() {
-                if let Ok(s) = extract_str(val) {
+            if let Some(val) = row.first()
+                && let Ok(s) = extract_str(val) {
                     ids.insert(s);
                 }
-            }
         }
         Ok(ids)
     }
@@ -462,14 +461,12 @@ impl KnowledgeStore {
         let mut pure_removed = Vec::new();
 
         for old in &removed {
-            if let Some(ref new_id) = old.superseded_by {
-                if added_ids.contains(new_id.as_str()) {
-                    if let Some(new_fact) = added.iter().find(|f| f.id == *new_id) {
+            if let Some(ref new_id) = old.superseded_by
+                && added_ids.contains(new_id.as_str())
+                    && let Some(new_fact) = added.iter().find(|f| f.id == *new_id) {
                         modified.push((old.clone(), new_fact.clone()));
                         continue;
                     }
-                }
-            }
             pure_removed.push(old.clone());
         }
 

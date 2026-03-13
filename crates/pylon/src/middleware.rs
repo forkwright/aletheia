@@ -192,22 +192,20 @@ impl RateLimiter {
 /// Checks `X-Forwarded-For` (reverse proxy) then `X-Real-IP`, falling back
 /// to `"127.0.0.1"` for direct connections.
 fn extract_client_key(request: &Request) -> String {
-    if let Some(xff) = request.headers().get("x-forwarded-for") {
-        if let Ok(s) = xff.to_str() {
+    if let Some(xff) = request.headers().get("x-forwarded-for")
+        && let Ok(s) = xff.to_str() {
             let ip = s.split(',').next().unwrap_or("").trim();
             if !ip.is_empty() {
                 return ip.to_owned();
             }
         }
-    }
-    if let Some(xri) = request.headers().get("x-real-ip") {
-        if let Ok(s) = xri.to_str() {
+    if let Some(xri) = request.headers().get("x-real-ip")
+        && let Ok(s) = xri.to_str() {
             let ip = s.trim();
             if !ip.is_empty() {
                 return ip.to_owned();
             }
         }
-    }
     "127.0.0.1".to_owned()
 }
 

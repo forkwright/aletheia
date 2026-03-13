@@ -536,8 +536,8 @@ impl TaskRunner {
             }
 
             // Check backoff.
-            if let Some(backoff_until) = self.tasks[i].backoff_until {
-                if now_instant < backoff_until {
+            if let Some(backoff_until) = self.tasks[i].backoff_until
+                && now_instant < backoff_until {
                     tracing::debug!(
                         task_id = %self.tasks[i].def.id,
                         remaining_secs = (backoff_until - now_instant).as_secs(),
@@ -545,7 +545,6 @@ impl TaskRunner {
                     );
                     continue;
                 }
-            }
 
             let action = self.tasks[i].def.action.clone();
             let nous_id = self.tasks[i].def.nous_id.clone();

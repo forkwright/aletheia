@@ -212,11 +212,10 @@ impl<'a> SessionTx<'a> {
                 let ks = ks?;
                 let key_part = &ks[1..];
                 found_tuples.insert(key_part.to_vec());
-                if let Some(k) = early_stopper {
-                    if found_tuples.len() >= k {
+                if let Some(k) = early_stopper
+                    && found_tuples.len() >= k {
                         break;
                     }
-                }
             }
         }
         let mut ret = vec![];
@@ -230,17 +229,15 @@ impl<'a> SessionTx<'a> {
                     .build(),
                 }
             })?;
-            if let Some((filter_code, span)) = filter_code {
-                if !eval_bytecode_pred(filter_code, &orig_tuple, stack, *span)? {
+            if let Some((filter_code, span)) = filter_code
+                && !eval_bytecode_pred(filter_code, &orig_tuple, stack, *span)? {
                     continue;
                 }
-            }
             ret.push(orig_tuple);
-            if let Some(k) = config.k {
-                if ret.len() >= k {
+            if let Some(k) = config.k
+                && ret.len() >= k {
                     break;
                 }
-            }
         }
         Ok(ret)
     }
@@ -300,7 +297,7 @@ pub(crate) struct Weights(pub(crate) f64, pub(crate) f64);
 
 /// Simpson's rule numerical integration over [a, b] with n subdivisions.
 fn integrate_simpson(f: impl Fn(f64) -> f64, a: f64, b: f64, n: usize) -> f64 {
-    let n = if n % 2 == 0 { n } else { n + 1 };
+    let n = if n.is_multiple_of(2) { n } else { n + 1 };
     let h = (b - a) / n as f64;
     let mut sum = f(a) + f(b);
     for i in 1..n {

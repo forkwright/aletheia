@@ -388,11 +388,10 @@ impl<'a> SessionTx<'a> {
                 cand_tuple.push(DataValue::from(score));
             }
 
-            if let Some((code, span)) = filter_code {
-                if !eval_bytecode_pred(code, &cand_tuple, stack, *span)? {
+            if let Some((code, span)) = filter_code
+                && !eval_bytecode_pred(code, &cand_tuple, stack, *span)? {
                     continue;
                 }
-            }
 
             ret.push(cand_tuple);
             if ret.len() >= config.k {

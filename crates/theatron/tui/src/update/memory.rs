@@ -96,15 +96,14 @@ pub fn handle_filter_backspace(app: &mut App) {
 }
 
 pub async fn handle_drill_in(app: &mut App) {
-    if app.memory.tab == MemoryTab::Facts {
-        if let Some(fact) = app.memory.selected_fact() {
+    if app.memory.tab == MemoryTab::Facts
+        && let Some(fact) = app.memory.selected_fact() {
             let fact_id = fact.id.clone();
             app.view_stack.push(View::FactDetail {
                 fact_id: fact_id.clone(),
             });
             load_fact_detail(app, &fact_id).await;
         }
-    }
 }
 
 pub fn handle_pop_back(app: &mut App) {

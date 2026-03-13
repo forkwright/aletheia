@@ -149,8 +149,8 @@ impl SandboxPolicy {
                    access: BitFlags<AccessFs>|
          -> std::io::Result<landlock::RulesetCreated> {
             for path in paths {
-                if path.exists() {
-                    if let Ok(fd) = PathFd::new(path) {
+                if path.exists()
+                    && let Ok(fd) = PathFd::new(path) {
                         rs = rs.add_rule(PathBeneath::new(fd, access)).map_err(|e| {
                             std::io::Error::other(format!(
                                 "Landlock rule failed for {}: {e}",
@@ -158,7 +158,6 @@ impl SandboxPolicy {
                             ))
                         })?;
                     }
-                }
             }
             Ok(rs)
         };

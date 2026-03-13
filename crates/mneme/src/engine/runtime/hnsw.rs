@@ -261,11 +261,10 @@ impl<'a> SessionTx<'a> {
             canary_tuple.push(DataValue::from(subidx as i64));
         }
         if let Some(v) = idx_table.get(self, &canary_tuple)? {
-            if let DataValue::Bytes(b) = &v[tuple_key.len() * 2 + 6] {
-                if b == hash.as_ref() {
+            if let DataValue::Bytes(b) = &v[tuple_key.len() * 2 + 6]
+                && b == hash.as_ref() {
                     return Ok(());
                 }
-            }
             self.hnsw_remove_vec(tuple_key, idx, subidx, orig_table, idx_table)?;
         }
 
@@ -819,12 +818,11 @@ impl<'a> SessionTx<'a> {
         stack: &mut Vec<DataValue>,
         tuple: &[DataValue],
     ) -> Result<bool> {
-        if let Some(code) = filter {
-            if !eval_bytecode_pred(code, tuple, stack, Default::default())? {
+        if let Some(code) = filter
+            && !eval_bytecode_pred(code, tuple, stack, Default::default())? {
                 self.hnsw_remove(orig_table, idx_table, tuple)?;
                 return Ok(false);
             }
-        }
         let mut extracted_vectors = vec![];
         for idx in &manifest.vec_fields {
             let val = tuple
@@ -1114,11 +1112,10 @@ impl<'a> SessionTx<'a> {
             let mut ret = vec![];
 
             while let Some((cand_key, OrderedFloat(distance))) = found_nn.pop() {
-                if let Some(r) = config.radius {
-                    if distance > r {
+                if let Some(r) = config.radius
+                    && distance > r {
                         continue;
                     }
-                }
 
                 let mut cand_tuple =
                     config.base_handle.get(self, &cand_key.0)?.ok_or_else(|| {
@@ -1172,11 +1169,10 @@ impl<'a> SessionTx<'a> {
                     cand_tuple.push(vec);
                 }
 
-                if let Some((code, span)) = filter_bytecode {
-                    if !eval_bytecode_pred(code, &cand_tuple, stack, *span)? {
+                if let Some((code, span)) = filter_bytecode
+                    && !eval_bytecode_pred(code, &cand_tuple, stack, *span)? {
                         continue;
                     }
-                }
 
                 ret.push(cand_tuple);
             }
