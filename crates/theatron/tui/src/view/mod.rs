@@ -236,8 +236,7 @@ fn render_chat_area(
     // spacer calculation is never applied to a mismatched estimate.
     let wrap_width = area.width.saturating_sub(2).max(1);
     let cache_fresh = app.virtual_scroll.len() == app.messages.len()
-        && (app.messages.is_empty()
-            || app.virtual_scroll.cached_width() == wrap_width);
+        && (app.messages.is_empty() || app.virtual_scroll.cached_width() == wrap_width);
     let filter_active = app.filter.active && !app.filter.text.is_empty();
 
     let (spacer_height, messages_height) = if cache_fresh && !filter_active {

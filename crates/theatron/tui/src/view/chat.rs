@@ -483,15 +483,20 @@ fn highlight_span(
 
         // Re-slice the original content by reconstructing from char indices
         if char_start > last_char_idx {
-            let before: String = content.chars().skip(last_char_idx).take(char_start - last_char_idx).collect();
+            let before: String = content
+                .chars()
+                .skip(last_char_idx)
+                .take(char_start - last_char_idx)
+                .collect();
             out.push(Span::styled(before, span.style));
         }
 
-        let highlighted: String = content.chars().skip(char_start).take(pattern_chars).collect();
-        out.push(Span::styled(
-            highlighted,
-            span.style.patch(highlight_style),
-        ));
+        let highlighted: String = content
+            .chars()
+            .skip(char_start)
+            .take(pattern_chars)
+            .collect();
+        out.push(Span::styled(highlighted, span.style.patch(highlight_style)));
         last_char_idx = char_end;
     }
 

@@ -91,10 +91,7 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
                             &fallback_label
                         }
                     };
-                    spans.push(Span::styled(
-                        format!("  {agent_label}"),
-                        theme.style_dim(),
-                    ));
+                    spans.push(Span::styled(format!("  {agent_label}"), theme.style_dim()));
                 }
 
                 if let Some(ref updated) = session.updated_at {
