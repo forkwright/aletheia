@@ -237,34 +237,36 @@ impl ChannelProvider for SignalProvider {
                 };
             };
 
-            let state = state_mutex.lock().await;
-            match &state.state {
-                ConnectionState::Connected => {
-                    drop(state);
-                    match client.send_message(&send_params).await {
-                        Ok(_) => SendResult {
-                            sent: true,
-                            error: None,
-                        },
-                        Err(e) => {
-                            // Buffer on transport failure
-                            if matches!(e, error::Error::Http { .. }) {
-                                let mut s = state_mutex.lock().await;
-                                s.enqueue(send_params);
-                            }
-                            SendResult {
-                                sent: false,
-                                error: Some(format!("{e}")),
-                            }
-                        }
-                    }
-                }
-                ConnectionState::Reconnecting { .. } | ConnectionState::Disconnected => {
-                    let mut s = state;
+            // Buffer immediately when the connection is known to be unavailable.
+            // For Connected state: attempt the send directly — no separate check-then-act,
+            // so there is no TOCTOU window. If the connection dropped since we last polled,
+            // the HTTP error handler below buffers the message.
+            {
+                let mut s = state_mutex.lock().await;
+                if s.state != ConnectionState::Connected {
                     s.enqueue(send_params);
-                    SendResult {
+                    return SendResult {
                         sent: false,
                         error: Some("connection unavailable, message buffered".to_owned()),
+                    };
+                }
+            }
+
+            match client.send_message(&send_params).await {
+                Ok(_) => SendResult {
+                    sent: true,
+                    error: None,
+                },
+                Err(e) => {
+                    // Buffer on transport failure (covers the case where the
+                    // connection dropped between the state check and this send).
+                    if matches!(e, error::Error::Http { .. }) {
+                        let mut s = state_mutex.lock().await;
+                        s.enqueue(send_params);
+                    }
+                    SendResult {
+                        sent: false,
+                        error: Some(format!("{e}")),
                     }
                 }
             }
@@ -343,7 +345,7 @@ async fn poll_loop(
     loop {
         match signal_client.receive(None).await {
             Ok(envelopes) => {
-                // Restore connection if we were reconnecting
+                // Restore connection if we were reconnecting.
                 {
                     let mut s = state.lock().await;
                     if s.state != ConnectionState::Connected {
@@ -351,12 +353,25 @@ async fn poll_loop(
                         s.state = ConnectionState::Connected;
 
                         let buffered = s.drain_all();
+                        drop(s); // release lock before sending
+
                         if !buffered.is_empty() {
                             tracing::info!(count = buffered.len(), "draining buffered messages");
-                            drop(s);
+                            let mut failed = Vec::new();
                             for params in buffered {
                                 if let Err(e) = signal_client.send_message(&params).await {
                                     tracing::warn!(error = %e, "failed to send buffered message");
+                                    failed.push(params);
+                                }
+                            }
+                            if !failed.is_empty() {
+                                tracing::warn!(
+                                    count = failed.len(),
+                                    "retaining undelivered messages in buffer for next connection"
+                                );
+                                let mut s = state.lock().await;
+                                for params in failed {
+                                    s.enqueue(params);
                                 }
                             }
                         }
@@ -388,7 +403,6 @@ async fn poll_loop(
                             s.state = ConnectionState::Reconnecting { attempt: next };
                             next
                         }
-                        ConnectionState::Disconnected => u32::MAX,
                     }
                 };
 

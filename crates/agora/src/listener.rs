@@ -1,10 +1,11 @@
 //! Unified channel listener — merges inbound messages from all providers.
 
 use std::future::Future;
+use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tracing::{info_span, instrument};
+use tokio::task::{JoinHandle, JoinSet};
+use tracing::{Instrument, info_span, instrument};
 
 use crate::semeion::SignalProvider;
 use crate::types::InboundMessage;
@@ -53,33 +54,50 @@ impl ChannelListener {
         }
     }
 
-    /// Run the listener loop, dispatching each message to the handler.
+    /// Run the listener loop, dispatching each message to the handler concurrently.
     ///
-    /// Returns when all senders are dropped (all polling tasks have stopped).
+    /// Each inbound message is dispatched to `handler` in a separate spawned task,
+    /// so a slow handler does not block delivery of subsequent messages.
+    ///
+    /// Returns after all senders are dropped (all polling tasks have stopped) and
+    /// all in-flight handler tasks have completed.
     #[instrument(skip_all)]
     pub async fn run<F, Fut>(mut self, handler: F)
     where
-        F: Fn(InboundMessage) -> Fut + Send + 'static,
-        Fut: Future<Output = ()> + Send,
+        F: Fn(InboundMessage) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
+        let handler = Arc::new(handler);
+        let mut set = JoinSet::new();
+
         if let Some(ref mut rx) = self.rx {
             while let Some(msg) = rx.recv().await {
-                let span = info_span!("inbound_message",
+                let span = info_span!(
+                    "inbound_message",
                     msg.channel = %msg.channel,
                     msg.source = %redact_phone(&msg.sender),
                 );
-                let _guard = span.enter();
-                handler(msg).await;
+                let h = Arc::clone(&handler);
+                set.spawn(async move { h(msg).await }.instrument(span));
             }
         }
+
+        // Wait for all in-flight handler tasks to complete.
+        while let Some(result) = set.join_next().await {
+            if let Err(e) = result {
+                tracing::warn!(error = %e, "handler task panicked");
+            }
+        }
+
         tracing::info!("all channels closed, listener stopping");
     }
 
-    /// Unwrap into the raw receiver for manual control.
+    /// Unwrap into the raw receiver and background task handles for manual control.
     ///
-    /// The background polling handles are kept alive — they stop
-    /// naturally when the receiver is dropped (closed channel).
-    pub fn into_receiver(mut self) -> mpsc::Receiver<InboundMessage> {
+    /// The returned handles represent the background polling tasks.  Callers can
+    /// abort them for immediate shutdown or await them for graceful drain.  Tasks
+    /// also stop naturally once the receiver is dropped (closed channel).
+    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, Vec<JoinHandle<()>>) {
         #[expect(
             clippy::expect_used,
             reason = "rx is None only if into_receiver was already called; calling it twice is a programming error and panic is appropriate"
@@ -88,9 +106,9 @@ impl ChannelListener {
             .rx
             .take()
             .expect("into_receiver called on consumed listener");
-        // Clear handles so Drop doesn't abort them
-        self.handles.clear();
-        rx
+        // Take the handles out before Drop can abort them.
+        let handles = std::mem::take(&mut self.handles);
+        (rx, handles)
     }
 
     /// Stop all polling tasks.
@@ -151,7 +169,7 @@ mod tests {
         tx.send(msg.clone()).await.expect("send");
         drop(tx);
 
-        let mut rx = listener.into_receiver();
+        let (mut rx, _handles) = listener.into_receiver();
         let received = rx.recv().await.expect("recv");
         assert_eq!(received.text, "hello");
         assert_eq!(received.sender, "+1234567890");
@@ -233,5 +251,23 @@ mod tests {
             !task_finished.load(std::sync::atomic::Ordering::Relaxed),
             "task should have been aborted, not completed"
         );
+    }
+
+    #[tokio::test]
+    async fn into_receiver_returns_handles() {
+        let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
+
+        let handle = tokio::spawn(async {
+            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+        });
+
+        let listener = ChannelListener::from_parts(rx, vec![handle]);
+        let (_rx, handles) = listener.into_receiver();
+
+        // Handles are returned — caller can abort them for graceful shutdown.
+        assert_eq!(handles.len(), 1);
+        for h in &handles {
+            h.abort();
+        }
     }
 }
