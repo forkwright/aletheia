@@ -607,3 +607,74 @@ fn test_write_tool_def_has_path_and_content_as_required() {
     assert!(def.input_schema.required.contains(&"path".to_owned()));
     assert!(def.input_schema.required.contains(&"content".to_owned()));
 }
+
+// -- Sandbox fallback integration ---------------------------------------
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn exec_permissive_sandbox_runs_tool_regardless_of_landlock_availability() {
+    // Permissive enforcement: tool must run whether or not Landlock is available
+    // on the kernel. This covers the graceful degradation path from #943.
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input("exec", serde_json::json!({ "command": "echo sandbox-permissive" }));
+    let result = ExecExecutor {
+        sandbox: crate::sandbox::SandboxConfig {
+            enabled: true,
+            enforcement: crate::sandbox::SandboxEnforcement::Permissive,
+            ..crate::sandbox::SandboxConfig::default()
+        },
+    }
+    .execute(&input, &ctx)
+    .await
+    .expect("execute");
+    assert!(!result.is_error, "tool must run in permissive mode: {:?}", result.content.text_summary());
+    assert!(
+        result.content.text_summary().contains("sandbox-permissive"),
+        "output must be captured: {}",
+        result.content.text_summary()
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() {
+    // Enforcing enforcement when Landlock is absent: must get a clear error
+    // naming Landlock and ABI — not an opaque "Permission denied".
+    // When Landlock IS available on the CI kernel, the command runs normally.
+    use crate::sandbox::probe_landlock_abi;
+
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input("exec", serde_json::json!({ "command": "echo unreachable" }));
+    let result = ExecExecutor {
+        sandbox: crate::sandbox::SandboxConfig {
+            enabled: true,
+            enforcement: crate::sandbox::SandboxEnforcement::Enforcing,
+            ..crate::sandbox::SandboxConfig::default()
+        },
+    }
+    .execute(&input, &ctx)
+    .await
+    .expect("execute");
+
+    match probe_landlock_abi() {
+        None => {
+            // Landlock unavailable: error result must name the cause clearly.
+            assert!(result.is_error, "enforcing mode must error when Landlock unavailable");
+            let msg = result.content.text_summary();
+            assert!(
+                msg.contains("sandbox setup failed"),
+                "error must indicate sandbox setup failure: {msg}"
+            );
+            assert!(
+                msg.contains("Landlock") || msg.contains("ABI"),
+                "error must name Landlock or ABI: {msg}"
+            );
+        }
+        Some(_) => {
+            // Landlock is available: execution proceeds normally, no opaque error.
+            assert!(!result.is_error, "enforcing mode must succeed when Landlock is available");
+        }
+    }
+}
