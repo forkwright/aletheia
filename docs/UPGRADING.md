@@ -1,6 +1,6 @@
 # Upgrading Aletheia
 
-## Upgrade Process
+## Upgrade process
 
 1. Check current version: `aletheia health` or `aletheia --version`
 2. Back up before upgrading:
@@ -24,7 +24,7 @@
    ```
 8. Verify: `aletheia health`
 
-### Building from Source
+### Building from source
 
 ```bash
 git fetch origin && git checkout vX.Y.Z
@@ -34,9 +34,9 @@ cargo build --release
 
 ---
 
-## Config Compatibility
+## Config compatibility
 
-The config system uses figment with `serde(default)` on all structs. New config fields added in newer versions automatically get their compiled defaults — no manual migration needed for minor versions.
+The config system uses figment with `serde(default)` on all structs. New config fields added in newer versions automatically get their compiled defaults; no manual migration needed for minor versions.
 
 Both `snake_case` and `camelCase` field names work via serde's `rename_all = "camelCase"`.
 
@@ -44,7 +44,7 @@ Check `git log --oneline` or [GitHub releases](https://github.com/forkwright/ale
 
 ---
 
-## Database Migration
+## Database migration
 
 SQLite schema migrations run automatically on startup via `SessionStore::open()`. No manual migration steps required.
 
@@ -59,14 +59,14 @@ The embedded Datalog engine (knowledge store) manages its own schema versioning 
 
 ## Rollback
 
-### Pre-Upgrade Checklist
+### Pre-upgrade checklist
 
 Before any upgrade:
-1. `aletheia backup` — creates timestamped database backup
+1. `aletheia backup`: creates timestamped database backup
 2. Save the current binary: `cp /usr/local/bin/aletheia /usr/local/bin/aletheia.prev`
 3. Record current version: `aletheia health | jq .version`
 
-### Rollback Procedure
+### Rollback procedure
 
 1. Stop the service:
    ```bash
@@ -87,7 +87,7 @@ Before any upgrade:
    ```
 5. Verify: `aletheia health`
 
-### Rollback Limitations
+### Rollback limitations
 
 - **SQLite migrations are forward-only.** If a newer version added tables or columns, the older binary may not understand the new schema. Restore from backup in this case.
 - **Knowledge engine schema changes** are also forward-only.

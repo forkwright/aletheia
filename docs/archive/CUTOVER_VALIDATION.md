@@ -1,6 +1,6 @@
-# Cutover Validation — Rust Binary Replaces TS Runtime
+# Cutover validation: Rust binary replaces TS runtime
 
-**STATUS: ARCHIVED** — This document describes validation work completed in early March 2026. The codebase has moved well beyond cutover (now at v0.10.1). File paths, line numbers, test counts, and specific claims are obsolete. Kept for historical reference only.
+**STATUS: ARCHIVED.** This document describes validation work completed in early March 2026. The codebase has moved well beyond cutover (now at v0.10.1). File paths, line numbers, test counts, and specific claims are obsolete. Kept for historical reference only.
 
 ---
 
@@ -9,7 +9,7 @@ Run against commit `08ffa14` on branch `feat/cutover-validation`, 2026-03-08.
 
 ---
 
-## Cutover Readiness
+## Cutover readiness
 
 | Area | Status | Notes |
 |------|--------|-------|
@@ -18,8 +18,8 @@ Run against commit `08ffa14` on branch `feat/cutover-validation`, 2026-03-08.
 | Clippy | ✅ | Zero warnings |
 | Fmt | ✅ | Fixed multi-line `#[expect]` in `mneme/src/knowledge_store.rs` |
 | Bootstrap | ✅ | SOUL.md required, all others gracefully skipped if absent |
-| Config | ⚠️ | `instance/config/aletheia.toml` is gitignored — operator must configure |
-| Sessions | ✅ | DB at `{instance_root}/data/sessions.db` — stable path, no migration needed |
+| Config | ⚠️ | `instance/config/aletheia.toml` is gitignored; operator must configure |
+| Sessions | ✅ | DB at `{instance_root}/data/sessions.db` (stable path, no migration needed) |
 | Service file | ✅ | Template at `instance.example/services/aletheia.service`; points to Rust binary |
 | Tool parity | ✅ | 32 tools registered; all TS-era tools present plus new ones |
 | Signal | ✅ | `build_signal_provider()` present; gated on config; warns gracefully if unconfigured |
@@ -28,7 +28,7 @@ Run against commit `08ffa14` on branch `feat/cutover-validation`, 2026-03-08.
 
 ---
 
-## Findings Detail
+## Findings detail
 
 ### Build (✅)
 
@@ -40,7 +40,7 @@ cargo clippy --workspace --exclude aletheia-mneme-engine --all-targets -- -D war
 cargo fmt --all -- --check → clean (after fix)
 ```
 
-**Fix applied:** `crates/mneme/src/knowledge_store.rs` — rustfmt reformatted a single-line
+**Fix applied:** `crates/mneme/src/knowledge_store.rs`: rustfmt reformatted a single-line
 `#[expect(clippy::too_many_lines, ...)]` to multi-line form. No logic change.
 
 ### Bootstrap (✅)
@@ -49,9 +49,9 @@ The bootstrap assembler (`crates/nous/src/bootstrap/mod.rs`) implements a three-
 `nous/{id}/` → `shared/` → `theke/`
 
 Priority handling:
-- **SOUL.md**: `Required` — returns `ContextAssembly` error if missing or unreadable
-- **USER.md, AGENTS.md, GOALS.md, TOOLS.md**: `Important` — silently skipped if absent
-- **MEMORY.md, IDENTITY.md, PROSOCHE.md, CONTEXT.md**: `Flexible` — silently skipped if absent
+- **SOUL.md**: `Required` (returns `ContextAssembly` error if missing or unreadable)
+- **USER.md, AGENTS.md, GOALS.md, TOOLS.md**: `Important` (silently skipped if absent)
+- **MEMORY.md, IDENTITY.md, PROSOCHE.md, CONTEXT.md**: `Flexible` (silently skipped if absent)
 
 The actor (`crates/nous/src/actor.rs:669`) validates SOUL.md at spawn time with a clear
 `WorkspaceValidation` error. All other missing files log a `debug` message and continue.
@@ -59,7 +59,7 @@ The actor (`crates/nous/src/actor.rs:669`) validates SOUL.md at spawn time with 
 **Operator requirement:** Each agent needs `instance/nous/{id}/SOUL.md` (or in `shared/` or `theke/`).
 No other file is required for the binary to start an agent.
 
-### Configuration (⚠️ — operator action required)
+### Configuration (⚠️, operator action required)
 
 `instance/config/aletheia.toml` is gitignored (operator-specific). The binary starts and
 warns gracefully without it (defaulting all settings). For production:
@@ -73,19 +73,19 @@ warns gracefully without it (defaulting all settings). For production:
 The config cascade (`figment`: defaults → YAML → env vars) means the binary can start with
 zero config and then be layered.
 
-### Session Continuity (✅)
+### Session continuity (✅)
 
 ```
 oikos.sessions_db() → {instance_root}/data/sessions.db
 ```
 
-Confirmed in `crates/taxis/src/oikos.rs:144`. The TS runtime was deleted in PR #601 — no
+Confirmed in `crates/taxis/src/oikos.rs:144`. The TS runtime was deleted in PR #601; no
 concurrent runtime to migrate away from. If `instance_root` is stable across the cutover,
 all existing session history is preserved.
 
-No existing `sessions.db` or `store.db` found in the dev checkout (expected — gitignored).
+No existing `sessions.db` or `store.db` found in the dev checkout (expected, gitignored).
 
-### Service File (✅)
+### Service file (✅)
 
 Template at `instance.example/services/aletheia.service`:
 
@@ -99,7 +99,7 @@ RestartSec=5
 - `EnvironmentFile=-__ALETHEIA_HOME__/instance/config/env` for env vars
 - Operator must replace `__ALETHEIA_HOME__` placeholder before installing
 
-### Tool Parity (✅)
+### Tool parity (✅)
 
 32 tools registered via `crates/organon/src/builtins/mod.rs:register_all()`:
 
@@ -117,10 +117,10 @@ TOOLS.md in each agent workspace is an `Important` (optional) file read from the
 The `summarize_tools()` API in `bootstrap/tools.rs` generates dynamic tool listings for
 the `/api/v1/nous/{id}/tools` endpoint and inline bootstrap injection.
 
-### Signal Integration (✅)
+### Signal integration (✅)
 
 Path verified in `crates/aletheia/src/main.rs`:
-1. `build_signal_provider(config.channels.signal)` — creates `Arc<SignalProvider>` if enabled
+1. `build_signal_provider(config.channels.signal)`: creates `Arc<SignalProvider>` if enabled
 2. Registered into `ChannelRegistry` at startup
 3. `start_inbound_dispatch()` starts the Signal listener loop
 4. `message` tool routes outbound through `ChannelProvider` interface
@@ -133,17 +133,17 @@ Trigger: `maybe_spawn_distillation()` called after every turn completion in `act
 
 Pipeline (`crates/nous/src/distillation.rs`):
 1. `should_trigger_distillation()` checks token usage and message count
-2. Background async task spawned — does not block the main turn
+2. Background async task spawned (does not block the main turn)
 3. `DistillEngine::distill()` calls LLM to produce summary
 4. `apply_distillation()` marks messages as distilled, inserts `[Distillation #N]` summary
 5. `record_distillation()` updates `distillation_count` + `last_distilled_at` on session
 
 **Survival across distillation:**
-- `working_state` — separate `sessions.working_state` column, not in message history → survives
-- `agent_notes` — `agent_notes` table, session-scoped, separate from messages → survives
+- `working_state`: separate `sessions.working_state` column, not in message history → survives
+- `agent_notes`: `agent_notes` table, session-scoped, separate from messages → survives
 - Verbatim tail messages are preserved (only oldest messages get distilled)
 
-### Eval Smoke Test (✅ — degraded, as expected)
+### Eval smoke test (✅, degraded as expected)
 
 ```bash
 ./target/release/aletheia -r instance/ --log-level warn &
@@ -194,13 +194,13 @@ None. The binary is complete and correct.
 **GO.**
 
 The Rust binary fully replaces the TypeScript runtime. All 10 TS runtime capabilities are
-implemented. The binary handles incomplete configuration gracefully. Tests are comprehensive
-and passing. The only prerequisites are operator-side instance configuration — none of which
+implemented. The binary handles incomplete configuration gracefully. Tests are complete
+and passing. The only prerequisites are operator-side instance configuration, none of which
 require code changes.
 
 ---
 
-## Deployment Checklist
+## Deployment checklist
 
 Exact commands to switch from TS to Rust (assuming instance is already at `~/aletheia/instance/`):
 

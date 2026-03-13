@@ -1,4 +1,4 @@
-# Technology Decisions
+# Technology decisions
 
 Technology decisions and dependency policy.
 
@@ -6,7 +6,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 
 ---
 
-## Decision Table
+## Decision table
 
 | Layer | Choice | Replaces | Rationale |
 |-------|--------|----------|-----------|
@@ -25,15 +25,15 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 | Errors | snafu + anyhow | AletheiaError hierarchy | snafu for library/mid-level enums (context wrapping, Location-based virtual stack traces, multiple variants from same source type - GreptimeDB pattern). anyhow for application entry. |
 | Logging | tracing + Langfuse | tslog | Spans, layers, OpenTelemetry. Langfuse for LLM-specific traces. |
 | CLI | clap | Commander | Compile-time validation |
-| JSON | serde_json | — | Standard Rust JSON; sonic-rs was evaluated but not adopted |
+| JSON | serde_json | n/a | Standard Rust JSON; sonic-rs was evaluated but not adopted |
 | Hashing | blake3 + foldhash | crypto.createHash / ahash | blake3 for content hashing (dedup, loop detection). foldhash for HashMap keys. |
 | Secrets | secrecy | None | `SecretString` / `SecretVec` - zeroizes on drop, redacts in Debug |
 | Hot reload | arc-swap + notify | SIGUSR1 | arc-swap for zero-downtime config swap. notify for file watching. |
 | Strings | compact_str | String | 24-byte inline for short strings (agent names, tool names, domain tags) |
 | Enums | strum | None | Derive Display, EnumString, EnumIter for all typed enums |
-| Git | gix | — | Rust-native git for workspace auto-commit. No subprocess. |
-| Password | argon2 | — | Password hashing for symbolon. Memory-hard. |
-| Cron | cron + jiff | — | cron for schedule parsing. jiff for time/date (by BurntSushi). |
+| Git | gix | n/a | Rust-native git for workspace auto-commit. No subprocess. |
+| Password | argon2 | n/a | Password hashing for symbolon. Memory-hard. |
+| Cron | cron + jiff | n/a | cron for schedule parsing. jiff for time/date (by BurntSushi). |
 | Concurrent maps | papaya | DashMap | Lock-free, better scaling under contention |
 | Seccomp | extrasafe | None | Declarative syscall filtering for sandboxed tools |
 | HTML | dom_smoothie | scraper | Readability extraction + HTML-to-Markdown, single pass |
@@ -46,11 +46,11 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 
 ---
 
-## Dependency Policy
+## Dependency policy
 
 ~55 direct crates across the workspace. Each crate uses 5-15. Lean for the scope.
 
-### Pinning Rules
+### Pinning rules
 
 - **Unstable crates** (pre-1.0, aggressive releases): pin exact version. Wrap in trait.
   - `wasmtime` - monthly major versions. Pin exact.
@@ -60,13 +60,13 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 - **Stable crates** (1.0+): pin minor (`"1.49"` not `"=1.49.0"`).
 - **Never vendor** unless forced by platform issues. Cargo.lock suffices.
 
-### Corrections from Audit
+### Corrections from audit
 
 - `serde_yml` is banned (unsound unsafe) - use `serde_yaml` if YAML parsing is needed
 - `async-trait` crate is unnecessary - use native `async fn in trait` (Rust 1.75+)
 - `thiserror` replaced by `snafu` for library crates (GreptimeDB pattern)
 
-### Cross-Compilation Notes
+### Cross-compilation notes
 
 - `candle`: pure Rust, cross-compiles cleanly. Feature-gated behind `embed-candle`.
 - `serde_json`: standard, no platform-specific concerns.
@@ -75,7 +75,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 
 ---
 
-## Crate-to-Module Mapping
+## Crate-to-module mapping
 
 | Crate | Key Dependencies |
 |-------|-----------------|

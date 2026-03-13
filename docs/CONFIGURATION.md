@@ -1,4 +1,4 @@
-# Configuration Reference
+# Configuration reference
 
 **File:** `instance/config/aletheia.toml`
 
@@ -12,7 +12,7 @@ Later layers override earlier ones. All field names use `snake_case` in YAML; `c
 
 ---
 
-## Table of Contents
+## Table of contents
 
 - [agents](#agents)
 - [gateway](#gateway)
@@ -46,7 +46,7 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `thinking_budget` | u32 | `10000` | Max tokens for extended thinking |
 | `max_tool_iterations` | u32 | `50` | Safety limit on consecutive tool use per turn |
 | `allowed_roots` | string[] | `[]` | Filesystem paths the agent may access |
-| `tool_timeouts` | object | see below | Per-tool execution timeout overrides |
+| `tool_timeouts` | object | see `agents.defaults.tool_timeouts` section | Per-tool execution timeout overrides |
 
 #### agents.defaults.caching
 
@@ -226,7 +226,7 @@ channels:
 
 ## bindings
 
-Array of routing rules mapping channel sources to agents. Evaluated in order — first match wins.
+Array of routing rules mapping channel sources to agents. Evaluated in order; first match wins.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -267,7 +267,7 @@ embedding:
   dimension: 384
 ```
 
-The `mock` provider returns zero vectors — useful for development without loading ML models.
+The `mock` provider returns zero vectors, useful for development without loading ML models.
 
 ---
 
@@ -405,7 +405,7 @@ sandbox:
 
 ---
 
-## Environment Variables
+## Environment variables
 
 Any config key can be set via environment variable with the `ALETHEIA_` prefix and double underscores for nesting:
 
@@ -420,7 +420,7 @@ The `ANTHROPIC_API_KEY` environment variable is read separately by the provider 
 
 ---
 
-## Minimal Config
+## Minimal config
 
 ```yaml
 agents:

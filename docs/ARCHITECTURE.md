@@ -14,7 +14,7 @@ Module and crate names use Greek terms reflecting their purpose (nous = mind, mn
 
 ---
 
-## The Binary
+## The binary
 
 ```text
 aletheia
@@ -44,7 +44,7 @@ aletheia
 
 ---
 
-## The Oikos (Instance Structure)
+## The Oikos (instance structure)
 
 Platform (tracked) vs. instance (gitignored). One directory, one boundary.
 
@@ -103,7 +103,7 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 
-## Rust Crate Workspace
+## Rust crate workspace
 
 Application crates in `crates/`, plus the `integration-tests` support crate.
 
@@ -124,19 +124,19 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 | `thesauros` | Domain pack loader - external knowledge, tools, config overlays | koina, organon |
 | `nous` | Agent pipeline, NousActor (tokio), bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
 | `pylon` | Axum HTTP gateway, SSE streaming, auth middleware | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
-| `diaporeia` | MCP server interface for external AI agents — `crates/diaporeia` | koina, taxis, nous, organon, mneme, symbolon |
-| `theatron-core` | Shared presentation types and traits for Aletheia UIs — `crates/theatron/core/` | nothing (leaf) |
-| `theatron-tui` | Terminal dashboard — `crates/theatron/tui/` | theatron-core, reqwest (standalone UI client) |
+| `diaporeia` | MCP server interface for external AI agents (`crates/diaporeia`) | koina, taxis, nous, organon, mneme, symbolon |
+| `theatron-core` | Shared presentation types and traits for Aletheia UIs (`crates/theatron/core/`) | nothing (leaf) |
+| `theatron-tui` | Terminal dashboard (`crates/theatron/tui/`) | theatron-core, reqwest (standalone UI client) |
 | `aletheia` | Binary entrypoint (Clap CLI) - wires all crates together | taxis, hermeneus, organon, mneme, nous, symbolon, pylon, agora, thesauros, daemon, dianoia, theatron-tui (optional) |
 
 **Support crates** (not part of the application dependency graph):
 
 | Crate | Domain | Depends On |
 |-------|--------|------------|
-| `eval` | Behavioral eval framework — HTTP scenario runner | nothing (leaf) |
+| `eval` | Behavioral eval framework (HTTP scenario runner) | nothing (leaf) |
 | `integration-tests` | Cross-crate integration test suite | koina, taxis, mneme, hermeneus, nous, organon, pylon, symbolon, thesauros |
 
-### Dependency Graph
+### Dependency graph
 
 ```text
                           aletheia (binary)
@@ -162,7 +162,7 @@ Application crates in `crates/`, plus the `integration-tests` support crate.
 
 Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
-### Trait Boundaries
+### Trait boundaries
 
 | Trait | Crate | Purpose |
 |-------|-------|---------|
@@ -170,7 +170,7 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 | `ChannelProvider` | agora | Send/receive on a messaging channel |
 | `LlmProvider` | hermeneus | LLM API calls |
 
-### Planned Crates
+### Planned crates
 
 | Crate | Domain | Milestone |
 |-------|--------|-----------|
@@ -179,9 +179,9 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
 ---
 
-## Adding Components
+## Adding components
 
-### Rust Crate
+### Rust crate
 
 1. Create `crates/<name>/` with `Cargo.toml` and `src/lib.rs`
 2. Add to workspace `members` in root `Cargo.toml`
@@ -191,7 +191,7 @@ Imports flow downward only. Lower-layer crates must not depend on higher layers.
 
 ---
 
-## Release Profile
+## Release profile
 
 ```toml
 [profile.dev]
@@ -208,7 +208,7 @@ strip = "symbols"
 
 ---
 
-## Structural Properties
+## Structural properties
 
 - **koina is a true leaf node.** No workspace deps in Rust.
 - **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, jsonwebtoken).

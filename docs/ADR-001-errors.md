@@ -1,4 +1,4 @@
-# ADR-001: snafu for Error Handling
+# ADR-001: snafu for error handling
 
 ## Status
 
@@ -83,8 +83,8 @@ fn set_timeout(ms: u64) -> Result<()> {
 
 ### Crate boundary convention
 
-- `source` field — internal error, walk the chain (wraps a lower-layer error)
-- `error` field — external error, stop walking (the external type is opaque)
+- `source` field: internal error, walk the chain (wraps a lower-layer error)
+- `error` field: external error, stop walking (the external type is opaque)
 
 ```rust
 // Internal: chain walks through this
@@ -115,7 +115,7 @@ test helpers where error matching is not the goal.
 
 - **Explicit context at every conversion site.** `.context(ReadConfigSnafu { path })` forces
   the author to name the failure mode and attach relevant data. `thiserror`'s `#[from]`
-  converts silently — the conversion point carries no context and no location.
+  converts silently; the conversion point carries no context and no location.
 
 - **`Location` tracking gives a virtual stack trace.** `#[snafu(implicit)]` on every
   variant captures `file!()`, `line!()`, and `column!()` at the `.context()` call, not
@@ -143,7 +143,7 @@ test helpers where error matching is not the goal.
 - **Two patterns in flight.** `crates/aletheia/` uses `anyhow`, library crates use
   `snafu`. The boundary is clear (binary vs library) but requires discipline.
 
-## Alternatives Considered
+## Alternatives considered
 
 ### thiserror
 
@@ -164,7 +164,7 @@ pub enum Error {
 **Why rejected:**
 
 1. `#[from]` performs the conversion automatically wherever `std::io::Error` appears,
-   with no context attached. The call site contributes nothing — you get the IO error
+   with no context attached. The call site contributes nothing; you get the IO error
    but not which file, which operation, or which layer triggered it.
 
 2. No location tracking. Errors surface where they are created (inside the low-level
@@ -175,7 +175,7 @@ pub enum Error {
    "config directory missing".
 
 4. With `thiserror`, two different failure modes that happen to share the same source
-   type (`std::io::Error`) cannot both use `#[from]` — one must fall back to manual
+   type (`std::io::Error`) cannot both use `#[from]`; one must fall back to manual
    `impl From<_>`. This creates inconsistency within the same enum.
 
 ### anyhow (everywhere)
@@ -184,11 +184,11 @@ pub enum Error {
 to report errors to a human, but it is wrong for libraries:
 
 1. Callers cannot match on `anyhow::Error`. Retry logic, circuit breakers, and HTTP
-   mappers must parse `Display` strings — fragile and untestable.
+   mappers must parse `Display` strings, which is fragile and untestable.
 
 2. `anyhow` errors are not `Send + Sync` by default in all configurations.
 
-3. It signals "I do not care what this error is" — which is appropriate for `main()`,
+3. It signals "I do not care what this error is," which is appropriate for `main()`,
    not for a library function that a caller might want to handle.
 
 ### Hand-rolled `impl std::error::Error`
@@ -203,7 +203,7 @@ from the derive macro. There is no reason to do it by hand.
 used in this codebase for exactly that: CLI error display. It is not a replacement for
 library error types; it wraps them for presentation.
 
-## Crate Error Inventory
+## Crate error inventory
 
 | Crate | Error type | Notes |
 |-------|-----------|-------|
@@ -225,9 +225,9 @@ library error types; it wraps them for presentation.
 
 ## References
 
-- [snafu docs](https://docs.rs/snafu) — context selectors, Location, ensure!
-- [GreptimeDB error handling](https://github.com/GreptimeTeam/greptide-db) — the pattern this codebase follows
-- `standards/RUST.md` — Error Handling section
-- `standards/RUST.md` — Error Handling rules (full Rust standards)
-- `crates/nous/src/error.rs` — canonical example with Location tracking
-- `crates/taxis/src/error.rs` — example with PathBuf fields
+- [snafu docs](https://docs.rs/snafu): context selectors, Location, ensure!
+- [GreptimeDB error handling](https://github.com/GreptimeTeam/greptide-db): the pattern this codebase follows
+- `standards/RUST.md`: Error Handling section
+- `standards/RUST.md`: Error Handling rules (full Rust standards)
+- `crates/nous/src/error.rs`: canonical example with Location tracking
+- `crates/taxis/src/error.rs`: example with PathBuf fields

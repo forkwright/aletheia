@@ -1,8 +1,8 @@
-# Data Sovereignty
+# Data sovereignty
 
 What Aletheia stores, where it lives, and how to control it.
 
-## Data Inventory
+## Data inventory
 
 | Data | Location | Format | Description |
 |------|----------|--------|-------------|
@@ -18,7 +18,7 @@ What Aletheia stores, where it lives, and how to control it.
 | Backups | `instance/data/backups/` | SQLite | Point-in-time session database copies |
 | Archives | `instance/data/archive/` | JSON | Retained session exports before deletion |
 
-## Storage Locations
+## Storage locations
 
 All data lives under the instance root directory. Default: `./instance`. Override with `ALETHEIA_ROOT` or the `-r` flag.
 
@@ -38,7 +38,7 @@ instance/
 └── signal/                  # Signal messenger data
 ```
 
-## Data Flow
+## Data flow
 
 ```text
 Inbound message
@@ -53,7 +53,7 @@ Inbound message
 
 All processing happens locally. The only external call is to the configured LLM provider (Anthropic by default) for inference.
 
-## Retention Defaults
+## Retention defaults
 
 Configured in `instance/config/aletheia.toml` under `data.retention`:
 
@@ -70,7 +70,7 @@ The retention policy only deletes **closed** sessions (archived or distilled). A
 
 When `archiveBeforeDelete` is true, each session is exported to `instance/data/archive/sessions/{session_id}.json` before removal.
 
-## Backup and Export
+## Backup and export
 
 ### Create a backup
 
@@ -139,7 +139,7 @@ rm -rf instance/nous/*/memory/
 
 The database will be recreated on next startup with the migration framework.
 
-## Third-Party Data Flows
+## Third-party data flows
 
 | Destination | Data Sent | When |
 |-------------|-----------|------|
@@ -148,7 +148,7 @@ The database will be recreated on next startup with the migration framework.
 
 **Everything else stays local.** The knowledge graph, embeddings, session history, agent workspaces, configuration, and credentials never leave your machine.
 
-## Privacy by Default
+## Privacy by default
 
 - **No telemetry.** No usage data, analytics, or crash reports.
 - **No phone-home.** No update checks, license validation, or beacon requests.

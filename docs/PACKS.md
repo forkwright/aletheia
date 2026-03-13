@@ -2,7 +2,7 @@
 
 A domain pack bundles knowledge, tools, and configuration overlays that extend an Aletheia agent without modifying the core runtime. Packs keep domain-specific content (company IP, schemas, runbooks) separate from generic agent infrastructure.
 
-## Directory Structure
+## Directory structure
 
 ```text
 my-pack/
@@ -61,7 +61,7 @@ description = "SQL query to execute"
 domains = ["healthcare", "sql"]
 ```
 
-## Context Entries
+## Context entries
 
 Each context entry maps to a file injected into the agent's system prompt at startup.
 
@@ -80,7 +80,7 @@ Priority controls inclusion order when the token budget is tight:
 
 The `agents` field filters which agents receive the section. An empty list means all agents. Values match against both agent IDs (e.g., `chiron`) and domain tags (e.g., `healthcare`).
 
-## Tool Definitions
+## Tool definitions
 
 Tools are shell commands exposed to the LLM as callable functions. The runtime pipes JSON to stdin and reads JSON from stdout.
 
@@ -126,7 +126,7 @@ Domain merging at startup:
 2. Pack overlay domains (union across all loaded packs)
 3. Combined domains stored on the agent's config
 
-## How It Works
+## How it works
 
 ### Bootstrap injection
 Context entries load into `PackSection` values, filter by agent ID and domain tags, convert to `BootstrapSection` values, and merge into the bootstrap assembler alongside workspace files (SOUL.md, USER.md, etc.). Pack sections participate in the same priority sorting and token budget as workspace files.
@@ -137,7 +137,7 @@ Tool definitions are validated (command exists, path is safe, schema parses), co
 ### Domain resolution
 At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domains)` on each loaded pack. A section matches if its `agents` list is empty, contains the agent ID, or contains any of the agent's domain tags.
 
-## How to Create a Custom Pack
+## How to create a custom pack
 
 1. **Create the pack directory** anywhere on the filesystem (e.g., `instance/packs/my-pack/`).
 
@@ -226,7 +226,7 @@ agents = ["healthcare"]
 domains = ["healthcare"]
 ```
 
-## Pack Resolution Order
+## Pack resolution order
 
 Packs are loaded in the order they appear in the `packs` config list. When multiple packs match an agent:
 
@@ -234,10 +234,10 @@ Packs are loaded in the order they appear in the `packs` config list. When multi
 - **Tools**: tool names must be unique across all packs; duplicates are rejected at startup
 - **Domain overlays**: merged (union) across all packs for each agent
 
-There is no override or shadowing mechanism — packs compose, they do not replace each other.
+There is no override or shadowing mechanism; packs compose, they do not replace each other.
 
-## See Also
+## See also
 
-- `instance.example/packs/starter/` — minimal working example
-- `docs/CONFIGURATION.md` — full `aletheia.yaml` reference
-- `crates/thesauros/` — pack loader source
+- `instance.example/packs/starter/`: minimal working example
+- `docs/CONFIGURATION.md`: full `aletheia.yaml` reference
+- `crates/thesauros/`: pack loader source

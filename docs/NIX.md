@@ -7,22 +7,22 @@ tags:
   - infrastructure
 ---
 
-# Nix Language & NixOS Standards
+# Nix language & NixOS standards
 
 > Companion to `standards/RUST.md`. This covers Nix the language, flake conventions, NixOS module patterns, and Aletheia-specific packaging decisions.
 
 ---
 
-## Table of Contents
+## Table of contents
 
 1. [Philosophy](#1-philosophy)
-2. [Language Fundamentals](#2-language-fundamentals)
-3. [Style & Formatting](#3-style--formatting)
-4. [Flake Structure](#4-flake-structure)
-5. [Module Patterns](#5-module-patterns)
-6. [Derivation & Packaging](#6-derivation--packaging)
-7. [Anti-Patterns](#7-anti-patterns)
-8. [Our Conventions](#8-our-conventions)
+2. [Language fundamentals](#2-language-fundamentals)
+3. [Style & formatting](#3-style--formatting)
+4. [Flake structure](#4-flake-structure)
+5. [Module patterns](#5-module-patterns)
+6. [Derivation & packaging](#6-derivation--packaging)
+7. [Anti-patterns](#7-anti-patterns)
+8. [Our conventions](#8-our-conventions)
 9. [Tooling](#9-tooling)
 10. [Reference](#10-reference)
 
@@ -42,15 +42,15 @@ Core mental model shift from imperative Linux:
 | Rollback = hope + backups | Rollback = `nixos-rebuild switch --rollback` |
 | "Works on my machine" | Reproducible by definition (same inputs → same outputs) |
 
-**Why this matters for Aletheia:** One flake, multiple deployment targets — server (worker-node), desktop (Metis replacement), USB recovery stick. The system state IS a git commit.
+**Why this matters for Aletheia:** One flake, multiple deployment targets: server (worker-node), desktop (Metis replacement), USB recovery stick. The system state IS a git commit.
 
 ---
 
-## 2. Language Fundamentals
+## 2. Language fundamentals
 
 ### Types
 
-Nix has very few types. This is intentional — simplicity enables reproducibility.
+Nix has very few types. This is intentional; simplicity enables reproducibility.
 
 **Primitive types:**
 
@@ -93,9 +93,9 @@ x: y: x + y
 { foo, bar, ... }: foo + bar
 ```
 
-### Key Expressions
+### Key expressions
 
-**`let ... in`** — Local bindings. The workhorse of factoring out code:
+**`let ... in`**: Local bindings. The workhorse of factoring out code:
 
 ```nix
 let
@@ -105,7 +105,7 @@ in
   pkgs.mkShell { name = "my-shell-${version}"; }
 ```
 
-**`if ... then ... else`** — Everything is an expression. `if` returns a value:
+**`if ... then ... else`**: Everything is an expression. `if` returns a value:
 
 ```nix
 {
@@ -113,7 +113,7 @@ in
 }
 ```
 
-**`inherit`** — Shorthand for `x = x` in attrsets. NOT OOP inheritance:
+**`inherit`**: Shorthand for `x = x` in attrsets. NOT OOP inheritance:
 
 ```nix
 let
@@ -124,14 +124,14 @@ in {
 }
 ```
 
-**`with`** — Brings attrset keys into scope. **Use sparingly** (see Anti-Patterns):
+**`with`**: Brings attrset keys into scope. **Use sparingly** (see Anti-Patterns):
 
 ```nix
 with pkgs; [ git curl jq ]
 # equivalent to: [ pkgs.git pkgs.curl pkgs.jq ]
 ```
 
-**`//`** — Shallow merge of attrsets. Right takes precedence:
+**`//`**: Shallow merge of attrsets. Right takes precedence:
 
 ```nix
 { a = 1; b = { x = 1; }; } // { b = 2; c = 3; }
@@ -150,11 +150,11 @@ Nix is lazily evaluated. Values are only computed when needed. This enables:
 
 ---
 
-## 3. Style & Formatting
+## 3. Style & formatting
 
 ### Formatter
 
-**nixfmt** (RFC 166) — the official Nix formatter, adopted by the NixOS project in 2024.
+**nixfmt** (RFC 166): the official Nix formatter, adopted by the NixOS project in 2024.
 
 ```bash
 # Format a file
@@ -166,7 +166,7 @@ nixfmt --check file.nix
 
 Not alejandra. nixfmt is the official standard now.
 
-### Naming Conventions
+### Naming conventions
 
 | Context | Convention | Example |
 |---------|-----------|---------|
@@ -191,7 +191,7 @@ Two spaces. No tabs. Consistent with our Rust style.
 
 Use comments to explain **why**, not what. Same philosophy as Rust standards.
 
-### String Style
+### String style
 
 ```nix
 # Short strings: double quotes
@@ -210,7 +210,7 @@ Use comments to explain **why**, not what. Same philosophy as Rust standards.
 
 ---
 
-## 4. Flake Structure
+## 4. Flake structure
 
 ### Anatomy
 
@@ -230,11 +230,11 @@ Every flake has three top-level attributes:
 }
 ```
 
-- `description` — Simple string. No Nix evaluation allowed at top level.
-- `inputs` — Flake references (other flakes, git repos, paths). Locked by `flake.lock`.
-- `outputs` — A function from inputs to an attrset following the flake schema.
+- `description`: Simple string. No Nix evaluation allowed at top level.
+- `inputs`: Flake references (other flakes, git repos, paths). Locked by `flake.lock`.
+- `outputs`: A function from inputs to an attrset following the flake schema.
 
-### Input Conventions
+### Input conventions
 
 ```nix
 inputs = {
@@ -257,7 +257,7 @@ inputs = {
 
 **Always use `.follows`** for transitive nixpkgs dependencies. Without it, different inputs can pull different nixpkgs versions, breaking the reproducibility guarantee.
 
-### Output Schema
+### Output schema
 
 ```nix
 outputs = { self, nixpkgs, crane, ... }: {
@@ -280,7 +280,7 @@ outputs = { self, nixpkgs, crane, ... }: {
 };
 ```
 
-### Multi-System Pattern
+### Multi-system pattern
 
 Don't repeat yourself per architecture. Use `lib.genAttrs` or a helper:
 
@@ -300,9 +300,9 @@ in {
 }
 ```
 
-Or use `flake-utils.lib.eachDefaultSystem` — but understand what it does. It's just a helper that generates the per-system attrsets. Don't put system-independent outputs (modules, overlays) inside it.
+Or use `flake-utils.lib.eachDefaultSystem`, but understand what it does. It's just a helper that generates the per-system attrsets. Don't put system-independent outputs (modules, overlays) inside it.
 
-### Lock File
+### Lock file
 
 `flake.lock` is auto-generated and pinpoints exact versions of all inputs. **Commit it.** It IS your reproducibility. Update intentionally:
 
@@ -314,11 +314,11 @@ nix flake lock --update-input nixpkgs  # Older syntax
 
 ---
 
-## 5. Module Patterns
+## 5. Module patterns
 
 NixOS modules are the building blocks of system configuration. A module is a function that returns an attrset with `imports`, `options`, and `config`.
 
-### Module Structure
+### Module structure
 
 ```nix
 { config, lib, pkgs, ... }:
@@ -368,17 +368,17 @@ in {
 }
 ```
 
-### Key Module Functions
+### Key module functions
 
 | Function | Priority | Purpose |
 |----------|----------|---------|
 | `lib.mkDefault` | 1000 | Set default value (overridable by normal assignment at priority 100) |
 | `lib.mkForce` | 50 | Force a value (overrides almost everything) |
 | `lib.mkOverride N` | N | Set with specific priority (lower number = higher priority) |
-| `lib.mkIf cond { ... }` | — | Conditional config. Only evaluates if `cond` is true. |
-| `lib.mkMerge [ ... ]` | — | Merge multiple config fragments. Use inside `config =`. |
-| `lib.mkEnableOption "desc"` | — | Shorthand for a boolean option with default `false`. |
-| `lib.mkPackageOption pkgs "name" {}` | — | Package option with default from pkgs. |
+| `lib.mkIf cond { ... }` | n/a | Conditional config. Only evaluates if `cond` is true. |
+| `lib.mkMerge [ ... ]` | n/a | Merge multiple config fragments. Use inside `config =`. |
+| `lib.mkEnableOption "desc"` | n/a | Shorthand for a boolean option with default `false`. |
+| `lib.mkPackageOption pkgs "name" {}` | n/a | Package option with default from pkgs. |
 | `lib.mkBefore content` | 500 | Place content before default in ordered merges (lists, strings). |
 | `lib.mkAfter content` | 1500 | Place content after default in ordered merges. |
 
@@ -392,7 +392,7 @@ let cfg = config.services.aletheia; in { ... }
 
 This avoids repeating `config.services.aletheia.enable` everywhere.
 
-### Pattern: Conditional blocks with mkIf + mkMerge
+### Pattern: conditional blocks with mkIf + mkMerge
 
 ```nix
 config = lib.mkMerge [
@@ -405,7 +405,7 @@ config = lib.mkMerge [
 ];
 ```
 
-### Pattern: Module composition
+### Pattern: module composition
 
 Split config into logical files. Use `imports` to compose:
 
@@ -428,7 +428,7 @@ modules/
 
 ---
 
-## 6. Derivation & Packaging
+## 6. Derivation & packaging
 
 ### Rust with Crane
 
@@ -480,7 +480,7 @@ in {
 | `buildRustPackage` (nixpkgs) | ❌ Avoid | Single-phase, rebuilds deps on every source change, requires `cargoHash` |
 | `naersk` | ❌ Avoid | Maintained but less composable than crane, smaller community |
 
-### NixOS Configuration
+### NixOS configuration
 
 ```nix
 nixosConfigurations.worker-node = nixpkgs.lib.nixosSystem {
@@ -499,7 +499,7 @@ nixosConfigurations.worker-node = nixpkgs.lib.nixosSystem {
 };
 ```
 
-### Development Shell
+### Development shell
 
 ```nix
 devShells.default = pkgs.mkShell {
@@ -516,9 +516,9 @@ devShells.default = pkgs.mkShell {
 
 ---
 
-## 7. Anti-Patterns
+## 7. Anti-patterns
 
-### ❌ `rec { ... }` — Avoid recursive attrsets
+### ❌ `rec { ... }`: avoid recursive attrsets
 
 ```nix
 # BAD: Easy to create infinite recursion by shadowing
@@ -542,7 +542,7 @@ let
 in attrset
 ```
 
-### ❌ `with` at file scope — Pollutes namespace
+### ❌ `with` at file scope: pollutes namespace
 
 ```nix
 # BAD: Where does `curl` come from? Static analysis can't tell.
@@ -571,7 +571,7 @@ with pkgs;
 # Prefer explicit pkgs.X for anything non-trivial.
 ```
 
-### ❌ Lookup paths (`<nixpkgs>`) — Non-reproducible
+### ❌ Lookup paths (`<nixpkgs>`): non-reproducible
 
 ```nix
 # BAD: Depends on $NIX_PATH environment variable
@@ -581,7 +581,7 @@ import <nixpkgs> {}
 import nixpkgs { system = "x86_64-linux"; config = {}; overlays = []; }
 ```
 
-### ❌ Unpinned `import <nixpkgs> {}` — Impure config
+### ❌ Unpinned `import <nixpkgs> {}`: impure config
 
 ```nix
 # BAD: System files can influence the result
@@ -647,9 +647,9 @@ flake-utils.lib.eachDefaultSystem (system: {
 
 ---
 
-## 8. Our Conventions
+## 8. Our conventions
 
-### Aletheia Flake Structure
+### Aletheia flake structure
 
 ```
 aletheia/
@@ -692,7 +692,7 @@ aletheia/
 11. **Checks gate CI.** `nix flake check` must pass. Include clippy, tests, formatting.
 12. **No lookup paths.** No `<nixpkgs>`. No `$NIX_PATH` dependencies.
 
-### Aletheia-Specific Packaging Notes
+### Aletheia-specific packaging notes
 
 From the [Nix integration plan](../planning/nix-integration.md):
 
@@ -745,7 +745,7 @@ nix why-depends ./result /nix/store/<hash>-foo
 
 ## 10. Reference
 
-### Useful Builtins
+### Useful builtins
 
 | Function | Purpose |
 |----------|---------|
@@ -764,7 +764,7 @@ nix why-depends ./result /nix/store/<hash>-foo
 | `builtins.toString x` | Convert to string (wider than interpolation) |
 | `builtins.typeOf x` | Returns type name as string |
 
-### Useful lib Functions
+### Useful lib functions
 
 | Function | Purpose |
 |----------|---------|
@@ -789,9 +789,9 @@ nix why-depends ./result /nix/store/<hash>-foo
 | `lib.traceValSeq x` | Deep-eval then print (debug) |
 | `lib.fix f` | Fixed-point combinator (self-referencing values) |
 
-### Learning Path
+### Learning path
 
-1. **Nix language:** [ayats.org/blog/nix-tuto-1](https://ayats.org/blog/nix-tuto-1) — best single tutorial
+1. **Nix language:** [ayats.org/blog/nix-tuto-1](https://ayats.org/blog/nix-tuto-1) (best single tutorial)
 2. **Derivations:** [ayats.org/blog/nix-tuto-2](https://ayats.org/blog/nix-tuto-2)
 3. **Flakes:** [Practical Nix flake anatomy](https://vtimofeenko.com/posts/practical-nix-flake-anatomy-a-guided-tour-of-flake.nix/)
 4. **NixOS modules:** [NixOS Modules Explained](https://saylesss88.github.io/NixOS_Modules_Explained_3.html)

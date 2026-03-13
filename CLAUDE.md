@@ -11,11 +11,11 @@ Shell: [standards/SHELL.md](standards/SHELL.md)
 
 ## Structure
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — crate workspace, module map, dependency graph, trait boundaries.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate workspace, module map, dependency graph, trait boundaries.
 
 ### Config
 
-- **Rust crates:** `instance/config/aletheia.toml` — figment cascade (defaults → TOML → env vars)
+- **Rust crates:** `instance/config/aletheia.toml` (figment cascade: defaults → TOML → env vars)
 
 ## Commands
 
@@ -27,28 +27,28 @@ cargo test -p aletheia-hermeneus       # Single crate
 cargo clippy --workspace               # Lint (zero warnings)
 ```
 
-## Key Patterns
+## Key patterns
 
 - **Errors:** `snafu` with `.context()` propagation and `Location` tracking
 - **IDs:** Newtypes for all domain IDs (`AgentId`, `SessionId`, `NousId`)
 - **Time:** `jiff` for time, `ulid` for IDs, `compact_str` for small strings
 - **Async:** Tokio actor model (`NousActor` pattern)
 - **Config:** figment YAML cascade in `taxis`
-- **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]` — every suppression justified
-- **Visibility:** `pub(crate)` by default — `pub` only for cross-crate API surface
+- **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
+- **Visibility:** `pub(crate)` by default; `pub` only for cross-crate API surface
 - **Naming:** Greek names per [docs/gnomon.md](docs/gnomon.md), registry at [docs/lexicon.md](docs/lexicon.md)
-- **No barrel files** — import from the file that owns the symbol
-- **Module imports flow downward** — higher layers depend on lower, never reverse
+- **No barrel files**: import from the file that owns the symbol
+- **Module imports flow downward**: higher layers depend on lower, never reverse
 
-## Before Submitting
+## Before submitting
 
 1. `cargo test -p <affected-crate>` passes
-2. `cargo clippy --workspace` — zero warnings
+2. `cargo clippy --workspace`: zero warnings
 3. No `unwrap()` in library code
 4. New errors use snafu with context
 5. All lint suppressions use `#[expect]` with reason, not `#[allow]`
 
-## Test Data & Instance Boundary
+## Test data & instance boundary
 
 - All test data MUST use synthetic identities (alice, bob, acme.corp, 192.168.1.100)
 - NEVER use real personal information in test fixtures or example data
@@ -56,7 +56,7 @@ cargo clippy --workspace               # Lint (zero warnings)
 - `instance.example/` shows the expected structure for fresh clones
 - CI PII scanner rejects commits with personal data patterns (`.github/pii-patterns.txt`)
 
-## Adding Tools
+## Adding tools
 
 Tools live in `crates/organon/`. Each tool implements the `ToolExecutor` trait:
 
@@ -97,7 +97,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | `check-config` | Validate configuration without starting services |
 | `completions <bash\|zsh\|fish>` | Generate shell completions |
 
-## API Endpoints
+## API endpoints
 
 ### Infrastructure
 
@@ -123,7 +123,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | GET | `/api/v1/sessions/{id}/history` | Conversation history (query: `limit`, `before`) |
 | GET | `/api/v1/events` | Global SSE event channel (TUI dashboard) |
 
-### Nous (Agents)
+### Nous (agents)
 
 | Method | Path | Purpose |
 |--------|------|---------|

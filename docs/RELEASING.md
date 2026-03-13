@@ -1,12 +1,12 @@
 # Releasing Aletheia
 
-## Version Scheme
+## Version scheme
 
 Semantic Versioning. Pre-1.0, MINOR bumps may include breaking changes with documented migration. PATCH bumps are backwards-compatible.
 
 The canonical version lives in `Cargo.toml` at `[workspace.package].version`. All crates inherit it via `version.workspace = true`.
 
-## Automated Release Process
+## Automated release process
 
 1. Merge conventional-commit-formatted PRs to `main`
 2. [release-please](https://github.com/googleapis/release-please) opens a
@@ -20,7 +20,7 @@ The canonical version lives in `Cargo.toml` at `[workspace.package].version`. Al
    - Generates and attaches an SBOM (SPDX)
    - Uploads everything to the GitHub Release
 
-## Supported Platforms
+## Supported platforms
 
 | Target | Runner | Method |
 |--------|--------|--------|
@@ -29,7 +29,7 @@ The canonical version lives in `Cargo.toml` at `[workspace.package].version`. Al
 | `x86_64-apple-darwin` | `macos-latest` | Native cross-compile |
 | `aarch64-apple-darwin` | `macos-latest` | Native cargo build |
 
-## Manual Release
+## Manual release
 
 When release-please fails or you need an out-of-band release:
 
@@ -46,7 +46,7 @@ git push origin main --tags
 
 The tag push triggers the release workflow.
 
-## Hotfix Process
+## Hotfix process
 
 ```bash
 # Branch from the release tag
@@ -62,7 +62,7 @@ git push origin hotfix/0.10.1 --tags
 
 The tag push builds binaries the same way. Merge the hotfix branch back to `main` afterwards.
 
-## Binary Verification
+## Binary verification
 
 Each binary has a `.sha256` companion file attached to the GitHub Release.
 
@@ -76,7 +76,7 @@ sha256sum -c aletheia-linux-amd64.sha256
 
 The SBOM (`aletheia-sbom.spdx.json`) is also attached to each release, listing all Cargo dependencies with versions.
 
-## Supply Chain
+## Supply chain
 
 - `cargo-audit` and `cargo-deny` run on every PR (`.github/workflows/security.yml`)
 - `deny.toml` enforces license policy and advisory checks

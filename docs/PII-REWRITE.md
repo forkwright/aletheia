@@ -1,11 +1,11 @@
-# PII History Rewrite
+# PII history rewrite
 
 Documents the git history rewrite performed to remove personally identifiable
 information from the Aletheia repository prior to public release.
 
-## What Was Found
+## What was found
 
-### Author/Committer Fields
+### Author/committer fields
 The following identities contained PII (real names, work emails, business names):
 
 | Identity | PII Type |
@@ -18,11 +18,11 @@ The following identities contained PII (real names, work emails, business names)
 Non-PII pseudonymous identities (`Aletheia`, `Syn`, `Demiurge`) were also
 consolidated for consistency.
 
-### Co-Authored-By Trailers
+### Co-authored-by trailers
 Multiple commit messages contained `Co-authored-by:` trailers with real names
 and emails. All were removed.
 
-### Commit Message Bodies
+### Commit message bodies
 Some commit messages referenced:
 - `REDACTED/aletheia` (GitHub username with real surname)
 - `/home/REDACTED/` (home directory paths)
@@ -33,12 +33,12 @@ Some commit messages referenced:
 `.github/pii-patterns.txt` contained a regex pattern matching a real surname.
 Genericized to `[A-Za-z]{3,}ample\b`.
 
-## What Was Changed
+## What was changed
 
 ### Tool
 `git filter-repo` with `--mailmap` and `--message-callback`.
 
-### Identity Consolidation (.mailmap)
+### Identity consolidation (.mailmap)
 All human identities were mapped to: `Cody <cody@aletheia.dev>`
 
 Bot identities were preserved:
@@ -46,7 +46,7 @@ Bot identities were preserved:
 - `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>`
 - `GitHub <noreply@github.com>` (committer for web merges)
 
-### Message Rewrites
+### Message rewrites
 | Pattern | Replacement |
 |---------|-------------|
 | `Co-authored-by:` trailers | Removed |
@@ -63,10 +63,10 @@ Bot identities were preserved:
 | `REDACTED` (username) | `cody` |
 | `REDACTED` (surname, word boundary) | `Cody` |
 
-### File Changes
+### File changes
 - `.github/pii-patterns.txt`: surname-specific regex → `[A-Za-z]{3,}ample\b`
 
-## How to Verify
+## How to verify
 
 ```bash
 # No PII in author/committer fields

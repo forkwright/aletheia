@@ -79,7 +79,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 #### Testing
 - Cross-crate integration test suite for cutover validation (#737)
 - Baseline tests for all 18 graph algorithms and KCore (#709)
-- Comprehensive markdown renderer test coverage (#673)
+- Complete markdown renderer test coverage (#673)
 - Phase B test hardening and instrumentation for mneme (#665)
 - Builtin tool executor tests for organon (#661)
 - mneme-engine and SQLite feature coexistence tests (#681)
@@ -135,7 +135,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [1.3.0] — Memory System Audit & Overhaul
+## [1.3.0]: memory system audit & overhaul
 
 ### Added
 
@@ -175,7 +175,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - JWT, RBAC, sessions, audit log, retention, and TLS
 - Zero-config onboarding and hermeneus OAuth credential pill
 - Research stack, service watchdog, and workspace tooling
-- Comprehensive test suite with >80% coverage
+- Complete test suite with >80% coverage
 
 ### Fixed
 - Path traversal, RCE, auth bypass, and credential exposure
@@ -189,7 +189,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [1.2.0] — Onboarding & Mac Support
+## [1.2.0]: onboarding & Mac support
 
 ### Added
 
