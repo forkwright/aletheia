@@ -59,7 +59,6 @@ pub enum Msg {
     DeselectMessage,                  // Esc — return to auto-scroll
     SelectFirst,                      // Home in selection mode
     SelectLast,                       // G or End in selection mode
-    OpenContextActions,               // Enter in selection mode — open popup
     MessageAction(MessageActionKind), // Action on selected message
 
     // --- Filter (`/` mode) ---
@@ -303,8 +302,20 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
+    #[expect(
+        dead_code,
+        reason = "constructed in context action overlay; creation pending keybinding wiring"
+    )]
     QuoteInReply,
+    #[expect(
+        dead_code,
+        reason = "constructed in context action overlay; creation pending keybinding wiring"
+    )]
     RateResponse,
+    #[expect(
+        dead_code,
+        reason = "constructed in context action overlay; creation pending keybinding wiring"
+    )]
     FlagForReview,
 }
 

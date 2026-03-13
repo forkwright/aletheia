@@ -40,7 +40,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::DeselectMessage => selection::handle_deselect(app),
         Msg::SelectFirst => selection::handle_select_first(app),
         Msg::SelectLast => selection::handle_select_last(app),
-        Msg::OpenContextActions => selection::handle_open_context_actions(app),
         Msg::MessageAction(action) => selection::handle_message_action(app, action),
 
         // --- Input ---
@@ -192,9 +191,15 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             streaming::handle_stream_tool_approval_resolved(app)
         }
         Msg::StreamPlanProposed { plan } => streaming::handle_stream_plan_proposed(app, plan),
-        Msg::StreamPlanStepStart { .. }
-        | Msg::StreamPlanStepComplete { .. }
-        | Msg::StreamPlanComplete { .. } => {}
+        Msg::StreamPlanStepStart { step_id, .. } => {
+            streaming::handle_stream_plan_step_start(app, step_id)
+        }
+        Msg::StreamPlanStepComplete {
+            step_id, status, ..
+        } => streaming::handle_stream_plan_step_complete(app, step_id, status),
+        Msg::StreamPlanComplete { status, .. } => {
+            streaming::handle_stream_plan_complete(app, status)
+        }
         Msg::StreamTurnComplete { outcome } => {
             streaming::handle_stream_turn_complete(app, outcome).await
         }

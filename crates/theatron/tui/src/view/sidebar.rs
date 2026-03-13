@@ -74,15 +74,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
         // Show active tool under working agents
         if let Some(ref tool) = agent.active_tool {
-            let elapsed = agent
-                .tool_started_at
-                .map(|t| t.elapsed().as_secs_f32())
-                .unwrap_or(0.0);
+            let elapsed = tool.started_at.elapsed().as_secs_f32();
             let ch = theme::spinner_frame(app.tick_count);
             lines.push(Line::from(vec![
                 Span::raw("     "),
                 Span::styled(
-                    format!("{} {} {:.1}s", ch, tool, elapsed),
+                    format!("{} {} {:.1}s", ch, tool.name, elapsed),
                     theme.style_muted(),
                 ),
             ]));
