@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_thread ON sessions(thread_id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id),
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant', 'tool_result')),
   content TEXT NOT NULL,
@@ -55,24 +55,26 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_messages_distilled ON messages(session_id, is_distilled, seq);
 
 CREATE TABLE IF NOT EXISTS usage (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id),
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_seq INTEGER NOT NULL,
   input_tokens INTEGER DEFAULT 0,
   output_tokens INTEGER DEFAULT 0,
   cache_read_tokens INTEGER DEFAULT 0,
   cache_write_tokens INTEGER DEFAULT 0,
   model TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(session_id, turn_seq)
 );
 
 CREATE INDEX IF NOT EXISTS idx_usage_session ON usage(session_id);
 
 CREATE TABLE IF NOT EXISTS distillations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id),
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   messages_before INTEGER NOT NULL,
   messages_after INTEGER NOT NULL,
   tokens_before INTEGER NOT NULL,
@@ -82,9 +84,11 @@ CREATE TABLE IF NOT EXISTS distillations (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE INDEX IF NOT EXISTS idx_distillations_session ON distillations(session_id);
+
 CREATE TABLE IF NOT EXISTS agent_notes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL REFERENCES sessions(id),
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   nous_id TEXT NOT NULL,
   category TEXT NOT NULL DEFAULT 'context' CHECK(category IN ('task', 'decision', 'preference', 'correction', 'context')),
   content TEXT NOT NULL,
@@ -107,7 +111,7 @@ mod tests {
     fn fresh_database_initializes_via_migration() {
         let conn = Connection::open_in_memory().expect("in-memory SQLite opens");
         let result = migration::run_migrations(&conn).expect("initial migration succeeds");
-        assert_eq!(result.current_version, 3);
+        assert_eq!(result.current_version, 4);
     }
 
     #[test]
@@ -117,7 +121,7 @@ mod tests {
         migration::run_migrations(&conn).expect("idempotent second migration succeeds");
 
         let version = migration::get_schema_version(&conn);
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
     }
 
     #[test]

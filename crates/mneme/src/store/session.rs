@@ -84,36 +84,53 @@ impl SessionStore {
         model: Option<&str>,
         parent_session_id: Option<&str>,
     ) -> Result<Session> {
-        // Check for active session
-        if let Some(session) = self.find_session(nous_id, session_key)? {
-            return Ok(session);
-        }
+        let session_type = SessionType::from_key(session_key);
 
-        // Check for archived/distilled session — reactivate
-        let mut stmt = self
+        // WHY: Atomic conditional insert. ON CONFLICT(nous_id, session_key) DO NOTHING
+        // eliminates the TOCTOU window between "check if exists" and "create if not".
+        // Two concurrent callers both reach this INSERT; one wins, one is silently
+        // ignored. Both then SELECT the same row below.
+        let rows_inserted = self
             .conn
-            .prepare_cached(
-                "SELECT id FROM sessions WHERE nous_id = ?1 AND session_key = ?2 AND status != 'active' ORDER BY updated_at DESC LIMIT 1",
+            .execute(
+                "INSERT INTO sessions (id, nous_id, session_key, parent_session_id, model, session_type)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(nous_id, session_key) DO NOTHING",
+                rusqlite::params![id, nous_id, session_key, parent_session_id, model, session_type.as_str()],
             )
             .context(error::DatabaseSnafu)?;
 
-        let archived_id: Option<String> = stmt
-            .query_row([nous_id, session_key], |row| row.get(0))
-            .optional()
+        if rows_inserted > 0 {
+            info!(id, nous_id, session_key, %session_type, "created session");
+        }
+
+        // Fetch the session — either just-created or pre-existing.
+        let mut stmt = self
+            .conn
+            .prepare_cached("SELECT * FROM sessions WHERE nous_id = ?1 AND session_key = ?2")
             .context(error::DatabaseSnafu)?;
 
-        if let Some(archived_id) = archived_id {
+        let session = stmt
+            .query_row([nous_id, session_key], map_session)
+            .optional()
+            .context(error::DatabaseSnafu)?
+            .ok_or_else(|| {
+                error::SessionCreateSnafu {
+                    nous_id: nous_id.to_owned(),
+                }
+                .build()
+            })?;
+
+        // Reactivate if the existing session is not active.
+        if session.status != SessionStatus::Active {
             self.conn
                 .execute(
                     "UPDATE sessions SET status = 'active', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
-                    [&archived_id],
+                    [&session.id],
                 )
                 .context(error::DatabaseSnafu)?;
-            info!(
-                id = archived_id,
-                nous_id, session_key, "reactivated archived session"
-            );
-            return self.find_session_by_id(&archived_id)?.ok_or_else(|| {
+            info!(id = session.id, nous_id, session_key, "reactivated session");
+            return self.find_session_by_id(&session.id)?.ok_or_else(|| {
                 error::SessionCreateSnafu {
                     nous_id: nous_id.to_owned(),
                 }
@@ -121,8 +138,7 @@ impl SessionStore {
             });
         }
 
-        // Create new
-        self.create_session(id, nous_id, session_key, parent_session_id, model)
+        Ok(session)
     }
 
     /// List sessions, optionally filtered by nous ID.
