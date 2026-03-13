@@ -8,7 +8,9 @@ pub(crate) mod params;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
+use snafu::{OptionExt as _, ResultExt as _};
 
+use crate::error::{NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu};
 use crate::server::DiaporeiaServer;
 
 /// Register all tools on the server via the `#[tool_router]` macro.
@@ -31,7 +33,8 @@ impl DiaporeiaServer {
         let store = self.state.session_store.lock().await;
         let session = store
             .find_or_create_session(&session_id, &params.nous_id, session_key, None, None)
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SessionStoreSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         let json = serde_json::to_string_pretty(&serde_json::json!({
             "id": session.id,
@@ -41,7 +44,8 @@ impl DiaporeiaServer {
             "message_count": session.message_count,
             "created_at": session.created_at,
         }))
-        .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        .context(SerializationSnafu {})
+        .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
@@ -57,7 +61,8 @@ impl DiaporeiaServer {
         let store = self.state.session_store.lock().await;
         let sessions = store
             .list_sessions(params.nous_id.as_deref())
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SessionStoreSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         let summaries: Vec<serde_json::Value> = sessions
             .iter()
@@ -75,7 +80,8 @@ impl DiaporeiaServer {
             .collect();
 
         let json = serde_json::to_string_pretty(&summaries)
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
@@ -92,17 +98,21 @@ impl DiaporeiaServer {
             .state
             .nous_manager
             .get(&params.nous_id)
-            .ok_or_else(|| {
-                rmcp::ErrorData::internal_error(
-                    format!("nous agent not found: {}", params.nous_id),
-                    None,
-                )
-            })?;
+            .context(NousNotFoundSnafu {
+                id: params.nous_id.clone(),
+            })
+            .map_err(rmcp::ErrorData::from)?;
 
         let result = handle
             .send_turn(&params.session_key, &params.content)
             .await
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .map_err(|e| {
+                PipelineSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             result.content,
@@ -118,7 +128,8 @@ impl DiaporeiaServer {
         let store = self.state.session_store.lock().await;
         let messages = store
             .get_history(&params.session_id, params.limit)
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SessionStoreSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         let history: Vec<serde_json::Value> = messages
             .iter()
@@ -133,7 +144,8 @@ impl DiaporeiaServer {
             .collect();
 
         let json = serde_json::to_string_pretty(&history)
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
@@ -162,7 +174,8 @@ impl DiaporeiaServer {
             .collect();
 
         let json = serde_json::to_string_pretty(&list)
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
@@ -179,17 +192,21 @@ impl DiaporeiaServer {
             .state
             .nous_manager
             .get(&params.nous_id)
-            .ok_or_else(|| {
-                rmcp::ErrorData::internal_error(
-                    format!("nous agent not found: {}", params.nous_id),
-                    None,
-                )
-            })?;
+            .context(NousNotFoundSnafu {
+                id: params.nous_id.clone(),
+            })
+            .map_err(rmcp::ErrorData::from)?;
 
         let status = handle
             .status()
             .await
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .map_err(|e| {
+                PipelineSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
+            .map_err(rmcp::ErrorData::from)?;
 
         let json = serde_json::to_string_pretty(&serde_json::json!({
             "id": status.id,
@@ -199,7 +216,8 @@ impl DiaporeiaServer {
             "panic_count": status.panic_count,
             "uptime_secs": status.uptime.as_secs(),
         }))
-        .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        .context(SerializationSnafu {})
+        .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
@@ -216,12 +234,10 @@ impl DiaporeiaServer {
             .state
             .nous_manager
             .get(&params.nous_id)
-            .ok_or_else(|| {
-                rmcp::ErrorData::internal_error(
-                    format!("nous agent not found: {}", params.nous_id),
-                    None,
-                )
-            })?;
+            .context(NousNotFoundSnafu {
+                id: params.nous_id.clone(),
+            })
+            .map_err(rmcp::ErrorData::from)?;
 
         let defs = self.state.tool_registry.definitions();
         let tools: Vec<serde_json::Value> = defs
@@ -236,7 +252,8 @@ impl DiaporeiaServer {
             .collect();
 
         let json = serde_json::to_string_pretty(&tools)
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
@@ -286,7 +303,8 @@ impl DiaporeiaServer {
         });
 
         let json = serde_json::to_string_pretty(&redacted)
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
@@ -324,7 +342,8 @@ impl DiaporeiaServer {
         });
 
         let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+            .context(SerializationSnafu {})
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,

@@ -16,6 +16,7 @@
 
 pub mod error;
 mod resources;
+pub(crate) mod sanitize;
 pub mod server;
 pub mod state;
 mod tools;

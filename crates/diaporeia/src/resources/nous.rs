@@ -5,7 +5,9 @@
 use rmcp::model::{
     RawResourceTemplate, ReadResourceRequestParams, ResourceContents, ResourceTemplate,
 };
+use snafu::ResultExt as _;
 
+use crate::error::WorkspaceFileSnafu;
 use crate::state::DiaporeiaState;
 
 /// Workspace files exposed as resources.
@@ -79,12 +81,9 @@ pub(crate) fn read_resource(
     };
 
     let file_path = state.oikos.nous_file(nous_id, filename);
-    let content = std::fs::read_to_string(&file_path).map_err(|e| {
-        rmcp::ErrorData::internal_error(
-            format!("failed to read {}: {e}", file_path.display()),
-            None,
-        )
-    })?;
+    let content = std::fs::read_to_string(&file_path)
+        .context(WorkspaceFileSnafu {})
+        .map_err(rmcp::ErrorData::from)?;
 
     Ok(vec![ResourceContents::text(content, uri)])
 }
