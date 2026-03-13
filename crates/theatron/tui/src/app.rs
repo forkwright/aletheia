@@ -87,9 +87,6 @@ pub struct App {
     // Success toast (auto-dismiss after 5s)
     pub success_toast: Option<ErrorToast>,
 
-    // Success toast (auto-dismiss after 5s)
-    pub success_toast: Option<ErrorToast>,
-
     // @mention tab completion state
     pub tab_completion: Option<TabCompletion>,
 
