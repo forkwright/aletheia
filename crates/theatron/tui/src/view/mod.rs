@@ -85,25 +85,24 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         status_bar::render(app, frame, vertical[bottom_idx], theme);
     }
 
-    // Toast at bottom (error or success)
+    // Toast at bottom — error takes priority over success when both are present
     if has_toast {
-        if let Some(ref toast) = app.error_toast {
-            let toast_line = ratatui::text::Line::from(vec![
+        let toast_line = if let Some(ref toast) = app.error_toast {
+            ratatui::text::Line::from(vec![
                 ratatui::text::Span::styled(" \u{2717} ", theme.style_error_bold()),
                 ratatui::text::Span::styled(&toast.message, theme.style_error()),
-            ]);
-            let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
-                .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
-            frame.render_widget(toast_widget, vertical[toast_idx]);
+            ])
         } else if let Some(ref toast) = app.success_toast {
-            let toast_line = ratatui::text::Line::from(vec![
+            ratatui::text::Line::from(vec![
                 ratatui::text::Span::styled(" \u{2713} ", theme.style_success_bold()),
-                ratatui::text::Span::styled(&toast.message, theme.style_success_bold()),
-            ]);
-            let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
-                .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
-            frame.render_widget(toast_widget, vertical[toast_idx]);
-        }
+                ratatui::text::Span::styled(&toast.message, theme.style_success()),
+            ])
+        } else {
+            unreachable!("has_toast is true only when a toast exists")
+        };
+        let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
+            .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+        frame.render_widget(toast_widget, vertical[toast_idx]);
     }
 
     // Responsive: hide sidebar on narrow terminals

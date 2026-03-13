@@ -321,4 +321,19 @@ mod tests {
         update(&mut app, Msg::ShowError("bad".to_string())).await;
         assert!(app.error_toast.is_some());
     }
+
+    #[tokio::test]
+    async fn show_success_sets_success_toast_not_error_toast() {
+        let mut app = test_app();
+        update(&mut app, Msg::ShowSuccess("done".to_string())).await;
+        assert!(app.success_toast.is_some());
+        assert!(app.error_toast.is_none());
+    }
+
+    #[tokio::test]
+    async fn show_success_message_stored() {
+        let mut app = test_app();
+        update(&mut app, Msg::ShowSuccess("saved".to_string())).await;
+        assert_eq!(app.success_toast.as_ref().unwrap().message, "saved");
+    }
 }

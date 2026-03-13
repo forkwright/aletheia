@@ -82,7 +82,6 @@ pub struct App {
 
     // Error toast (auto-dismiss after 5s)
     pub error_toast: Option<ErrorToast>,
-
     // Success toast (auto-dismiss after 5s)
     pub success_toast: Option<ErrorToast>,
 
