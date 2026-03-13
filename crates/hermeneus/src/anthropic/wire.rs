@@ -443,13 +443,7 @@ fn content_with_cache_control(content: &Content) -> serde_json::Value {
 }
 
 fn parse_stop_reason(s: &str) -> Result<StopReason, String> {
-    match s {
-        "end_turn" => Ok(StopReason::EndTurn),
-        "tool_use" => Ok(StopReason::ToolUse),
-        "max_tokens" => Ok(StopReason::MaxTokens),
-        "stop_sequence" => Ok(StopReason::StopSequence),
-        other => Err(format!("unknown stop_reason: {other}")),
-    }
+    s.parse()
 }
 
 // ---------------------------------------------------------------------------
@@ -530,8 +524,16 @@ pub(crate) struct WireMessageDeltaBody {
 }
 
 #[derive(Debug, Deserialize)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "field names mirror the Anthropic wire format exactly"
+)]
 pub(crate) struct WireMessageDeltaUsage {
     pub output_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_input_tokens: u64,
+    #[serde(default)]
+    pub cache_read_input_tokens: u64,
 }
 
 #[cfg(test)]

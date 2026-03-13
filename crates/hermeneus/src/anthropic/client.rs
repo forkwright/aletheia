@@ -15,11 +15,12 @@ use tracing::{Instrument as _, info, info_span};
 use std::collections::HashMap;
 
 use crate::error::{self, Result};
+use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
 use crate::types::{CompletionRequest, CompletionResponse, TokenCount};
 use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 
-use super::stream::{StreamAccumulator, StreamEvent, parse_sse_stream};
+use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
 use super::wire::WireRequest;
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
@@ -47,6 +48,7 @@ pub struct AnthropicProvider {
     api_version: String,
     max_retries: u32,
     pricing: HashMap<String, ModelPricing>,
+    health: Arc<ProviderHealthTracker>,
 }
 
 /// Static credential provider for backward-compatible `from_config()`.
@@ -118,6 +120,7 @@ impl AnthropicProvider {
             api_version: DEFAULT_API_VERSION.to_owned(),
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             pricing: config.pricing.clone(),
+            health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
         })
     }
 
@@ -139,6 +142,7 @@ impl AnthropicProvider {
             api_version: DEFAULT_API_VERSION.to_owned(),
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             pricing: config.pricing.clone(),
+            health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
         })
     }
 
@@ -155,7 +159,7 @@ impl AnthropicProvider {
     pub async fn complete_streaming(
         &self,
         request: &CompletionRequest,
-        mut on_event: impl FnMut(StreamEvent),
+        mut on_event: impl FnMut(StreamEvent) + Send,
     ) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
             llm.provider = "anthropic",
@@ -179,8 +183,16 @@ impl AnthropicProvider {
     async fn complete_streaming_inner(
         &self,
         request: &CompletionRequest,
-        on_event: &mut impl FnMut(StreamEvent),
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        if let Err(health) = self.health.check_available() {
+            tracing::warn!(?health, "circuit-breaker open; streaming request rejected");
+            return Err(error::ApiRequestSnafu {
+                message: format!("provider circuit-breaker open: {health:?}"),
+            }
+            .build());
+        }
+
         let start = Instant::now();
         let mut ttft: Option<std::time::Duration> = None;
 
@@ -202,7 +214,7 @@ impl AnthropicProvider {
             let headers = self.build_headers()?;
 
             // HTTP-level errors (connection, non-200 status)
-            let response = match self
+            let mut response = match self
                 .client
                 .post(format!("{}/v1/messages", self.base_url))
                 .headers(headers)
@@ -212,7 +224,9 @@ impl AnthropicProvider {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = Some(super::error::map_request_error(&e));
+                    let err = super::error::map_request_error(&e);
+                    self.health.record_error(&err);
+                    last_error = Some(err);
                     continue;
                 }
             };
@@ -220,6 +234,7 @@ impl AnthropicProvider {
             if !response.status().is_success() {
                 let status = response.status().as_u16();
                 let err = super::error::map_error_response(response).await;
+                self.health.record_error(&err);
                 // Non-retryable HTTP status: 401, 400-level (except 429)
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
@@ -242,18 +257,11 @@ impl AnthropicProvider {
                 continue;
             }
 
-            // Read the full response body and parse SSE from it
-            let response_bytes = response.bytes().await.map_err(|e| {
-                error::ApiRequestSnafu {
-                    message: format!("failed to read streaming response body: {e}"),
-                }
-                .build()
-            })?;
-            let reader = std::io::Cursor::new(response_bytes);
+            // Parse SSE events incrementally as bytes arrive from the response stream.
             let mut accumulator = StreamAccumulator::new();
             let mut content_started = false;
 
-            let stream_result = parse_sse_stream(reader, &mut accumulator, &mut |event| {
+            let stream_result = parse_sse_response(&mut response, &mut accumulator, &mut |event| {
                 if matches!(
                     event,
                     StreamEvent::TextDelta { .. }
@@ -266,11 +274,13 @@ impl AnthropicProvider {
                     content_started = true;
                 }
                 on_event(event);
-            });
+            })
+            .await;
 
             match stream_result {
                 Ok(()) => {
                     let resp = accumulator.finish();
+                    self.health.record_success();
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "LLM call duration fits in u64"
@@ -322,6 +332,7 @@ impl AnthropicProvider {
                     // produce duplicates. Propagate immediately.
                     if content_started {
                         tracing::error!("SSE error after content started streaming — cannot retry");
+                        self.health.record_error(&e);
                         #[expect(
                             clippy::cast_possible_truncation,
                             reason = "LLM call duration fits in u64"
@@ -342,9 +353,11 @@ impl AnthropicProvider {
                     // Only retry RateLimited (overloaded/429); other errors are terminal.
                     if matches!(e, error::Error::RateLimited { .. }) {
                         tracing::warn!("SSE stream returned retryable error before content");
+                        self.health.record_error(&e);
                         last_error = Some(e);
                         continue;
                     }
+                    self.health.record_error(&e);
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "LLM call duration fits in u64"
@@ -496,6 +509,17 @@ impl AnthropicProvider {
         &self,
         request: &CompletionRequest,
     ) -> Result<CompletionResponse> {
+        if let Err(health) = self.health.check_available() {
+            tracing::warn!(
+                ?health,
+                "circuit-breaker open; non-streaming request rejected"
+            );
+            return Err(error::ApiRequestSnafu {
+                message: format!("provider circuit-breaker open: {health:?}"),
+            }
+            .build());
+        }
+
         let start = Instant::now();
 
         let wire = WireRequest::from_request(request, None);
@@ -520,7 +544,9 @@ impl AnthropicProvider {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = Some(super::error::map_request_error(&e));
+                    let err = super::error::map_request_error(&e);
+                    self.health.record_error(&err);
+                    last_error = Some(err);
                     continue;
                 }
             };
@@ -540,6 +566,7 @@ impl AnthropicProvider {
                             .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
                     });
                 if let Ok(ref resp) = parsed {
+                    self.health.record_success();
                     #[expect(
                         clippy::cast_possible_truncation,
                         reason = "LLM call duration fits in u64"
@@ -586,6 +613,7 @@ impl AnthropicProvider {
             }
 
             let err = super::error::map_error_response(response).await;
+            self.health.record_error(&err);
 
             // Non-retryable: 401, 400-level (except 429).
             if status == 401 || ((400..500).contains(&status) && status != 429) {
@@ -669,12 +697,27 @@ impl LlmProvider for AnthropicProvider {
         true
     }
 
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        request: &'a CompletionRequest,
+        on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
+        Box::pin(self.complete_streaming_inner(request, on_event))
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-/// Estimate cost using config-based pricing, falling back to hardcoded defaults.
+/// Estimate cost using configured pricing.
+///
+/// Returns `0.0` and logs a warning when no pricing is configured for the
+/// model — callers display cost as "unknown" rather than a misleading figure.
 #[expect(
     clippy::cast_precision_loss,
     reason = "token counts are small enough for f64 precision"
@@ -685,16 +728,12 @@ fn estimate_cost(
     input_tokens: u64,
     output_tokens: u64,
 ) -> f64 {
-    let (in_rate, out_rate) = if let Some(p) = pricing.get(model) {
-        (p.input_cost_per_mtok, p.output_cost_per_mtok)
-    } else if model.contains("opus") {
-        (15.0, 75.0)
-    } else if model.contains("haiku") {
-        (0.80, 4.0)
-    } else {
-        (3.0, 15.0)
+    let Some(p) = pricing.get(model) else {
+        tracing::warn!(model, "no pricing configured for model; cost reported as 0");
+        return 0.0;
     };
-    (input_tokens as f64 * in_rate + output_tokens as f64 * out_rate) / 1_000_000.0
+    (input_tokens as f64 * p.input_cost_per_mtok + output_tokens as f64 * p.output_cost_per_mtok)
+        / 1_000_000.0
 }
 
 pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> Duration {

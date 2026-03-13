@@ -496,6 +496,20 @@ impl std::fmt::Display for StopReason {
     }
 }
 
+impl std::str::FromStr for StopReason {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "end_turn" => Ok(Self::EndTurn),
+            "tool_use" => Ok(Self::ToolUse),
+            "max_tokens" => Ok(Self::MaxTokens),
+            "stop_sequence" => Ok(Self::StopSequence),
+            other => Err(format!("unknown stop_reason: {other}")),
+        }
+    }
+}
+
 /// Token usage for a completion.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Usage {

@@ -4,8 +4,7 @@
 //! blocks into a final [`CompletionResponse`], and emits [`StreamEvent`]s
 //! to a callback for real-time UI updates.
 
-use std::io::BufRead;
-
+use reqwest::Response;
 use tracing::warn;
 
 use crate::error::{self, Result};
@@ -228,7 +227,13 @@ impl StreamAccumulator {
             }
             WireStreamEvent::MessageDelta { delta, usage } => {
                 self.output_tokens = usage.output_tokens;
-                let stop_reason = parse_stop_reason_lenient(&delta.stop_reason);
+                // Accumulate cache token deltas reported in the streaming message_delta event.
+                self.cache_write_tokens += usage.cache_creation_input_tokens;
+                self.cache_read_tokens += usage.cache_read_input_tokens;
+                let stop_reason = delta
+                    .stop_reason
+                    .parse::<StopReason>()
+                    .unwrap_or(StopReason::EndTurn);
                 self.stop_reason = Some(stop_reason);
                 on_event(StreamEvent::MessageStop {
                     stop_reason,
@@ -331,8 +336,9 @@ impl StreamAccumulator {
 /// Uses lossy UTF-8 conversion so that proxy-injected non-UTF8 bytes do not
 /// abort the stream — replacement characters (`\u{FFFD}`) appear in event
 /// data instead of causing an error.
+#[cfg(test)]
 pub(crate) fn parse_sse_stream(
-    mut reader: impl BufRead,
+    mut reader: impl std::io::BufRead,
     accumulator: &mut StreamAccumulator,
     on_event: &mut impl FnMut(StreamEvent),
 ) -> Result<()> {
@@ -394,13 +400,68 @@ fn convert_wire_usage(wire: &WireUsage) -> Usage {
     }
 }
 
-fn parse_stop_reason_lenient(s: &str) -> StopReason {
-    match s {
-        "tool_use" => StopReason::ToolUse,
-        "max_tokens" => StopReason::MaxTokens,
-        "stop_sequence" => StopReason::StopSequence,
-        _ => StopReason::EndTurn,
+/// Parse SSE events incrementally from a live HTTP response stream.
+///
+/// Reads the response body byte-by-byte via [`Response::chunk`], accumulating
+/// bytes until a newline and dispatching complete SSE events as they arrive.
+/// Unlike `parse_sse_stream` (test-only sync variant), this does not buffer the entire response body
+/// before parsing — each event is processed as soon as the final byte of its
+/// `data:` line is received.
+///
+/// Uses lossy UTF-8 so proxy-injected non-UTF-8 bytes produce replacement
+/// characters (`\u{FFFD}`) rather than aborting the stream.
+pub(crate) async fn parse_sse_response(
+    response: &mut Response,
+    accumulator: &mut StreamAccumulator,
+    on_event: &mut impl FnMut(StreamEvent),
+) -> Result<()> {
+    // WHY: Pre-allocated buffer for the current line; SSE lines are short.
+    let mut line_buf: Vec<u8> = Vec::with_capacity(256);
+    let mut current_event_type = String::new();
+    let mut current_data = String::new();
+
+    loop {
+        let chunk = response.chunk().await.map_err(|e| {
+            error::ApiRequestSnafu {
+                message: format!("stream read error: {e}"),
+            }
+            .build()
+        })?;
+
+        let Some(bytes) = chunk else { break };
+
+        for &byte in &bytes {
+            if byte == b'\n' {
+                let line_cow = String::from_utf8_lossy(&line_buf);
+                let line = line_cow.trim_end_matches('\r');
+
+                if line.is_empty() {
+                    if !current_data.is_empty() && current_event_type != "ping" {
+                        let event: WireStreamEvent =
+                            serde_json::from_str(&current_data).map_err(|e| {
+                                error::ApiRequestSnafu {
+                                    message: format!("stream parse error: {e}"),
+                                }
+                                .build()
+                            })?;
+                        accumulator.process_event(event, on_event)?;
+                    }
+                    current_event_type.clear();
+                    current_data.clear();
+                } else if let Some(et) = line.strip_prefix("event: ") {
+                    et.clone_into(&mut current_event_type);
+                } else if let Some(data) = line.strip_prefix("data: ") {
+                    data.clone_into(&mut current_data);
+                }
+                // Ignore other SSE lines (id:, retry:, comments).
+                line_buf.clear();
+            } else {
+                line_buf.push(byte);
+            }
+        }
     }
+
+    Ok(())
 }
 
 #[cfg(test)]

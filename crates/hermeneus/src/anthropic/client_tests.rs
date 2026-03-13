@@ -242,32 +242,25 @@ async fn complete_malformed_body() {
 // --- estimate_cost unit tests ---
 
 #[test]
-fn estimate_cost_opus() {
+fn estimate_cost_no_pricing_returns_zero() {
+    // Without configured pricing, cost is always 0.0 regardless of model.
     let pricing = HashMap::new();
-    let cost = estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100);
-    assert!((cost - 0.0225).abs() < 0.0001);
-}
-
-#[test]
-fn estimate_cost_sonnet() {
-    let pricing = HashMap::new();
-    let cost = estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100);
-    assert!((cost - 0.0045).abs() < 0.0001);
-}
-
-#[test]
-fn estimate_cost_haiku() {
-    let pricing = HashMap::new();
-    let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1000, 100);
-    assert!((cost - 0.0012).abs() < 0.0001);
-}
-
-#[test]
-fn estimate_cost_unknown_defaults_to_sonnet() {
-    let pricing = HashMap::new();
-    let cost_unknown = estimate_cost(&pricing, "some-unknown-model", 1000, 100);
-    let cost_sonnet = estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100);
-    assert!((cost_unknown - cost_sonnet).abs() < 0.0001);
+    assert_eq!(
+        estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100),
+        0.0
+    );
+    assert_eq!(
+        estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100),
+        0.0
+    );
+    assert_eq!(
+        estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1000, 100),
+        0.0
+    );
+    assert_eq!(
+        estimate_cost(&pricing, "some-unknown-model", 1000, 100),
+        0.0
+    );
 }
 
 #[test]
