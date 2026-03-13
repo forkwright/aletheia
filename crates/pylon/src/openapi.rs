@@ -20,6 +20,7 @@ use utoipa::OpenApi;
     ),
     paths(
         crate::handlers::health::check,
+        crate::handlers::metrics::expose,
         // Sessions
         crate::handlers::sessions::list_sessions,
         crate::handlers::sessions::create,
@@ -58,6 +59,8 @@ use utoipa::OpenApi;
         crate::handlers::sessions::RenameSessionRequest,
         crate::handlers::sessions::SendMessageRequest,
         crate::handlers::sessions::SessionResponse,
+        crate::handlers::sessions::ListSessionsResponse,
+        crate::handlers::sessions::SessionListItem,
         crate::handlers::sessions::HistoryResponse,
         crate::handlers::sessions::HistoryMessage,
         crate::handlers::nous::NousListResponse,

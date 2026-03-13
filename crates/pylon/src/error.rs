@@ -189,9 +189,32 @@ impl IntoResponse for ApiError {
 impl From<aletheia_mneme::error::Error> for ApiError {
     #[track_caller]
     fn from(err: aletheia_mneme::error::Error) -> Self {
-        Self::Internal {
-            message: err.to_string(),
-            location: snafu::Location::default(),
+        use aletheia_mneme::error::Error;
+        match err {
+            Error::SessionNotFound { id, .. } => Self::SessionNotFound {
+                id,
+                location: snafu::Location::default(),
+            },
+            Error::FactNotFound { id, .. } => Self::NotFound {
+                path: format!("fact/{id}"),
+                location: snafu::Location::default(),
+            },
+            // Validation errors are the caller's fault — expose the message.
+            Error::EmptyContent { .. }
+            | Error::ContentTooLong { .. }
+            | Error::InvalidConfidence { .. }
+            | Error::InvalidTimestamp { .. }
+            | Error::EmptyEntityName { .. }
+            | Error::InvalidWeight { .. }
+            | Error::EmptyEmbedding { .. }
+            | Error::EmptyEmbeddingContent { .. } => Self::BadRequest {
+                message: err.to_string(),
+                location: snafu::Location::default(),
+            },
+            _ => Self::Internal {
+                message: err.to_string(),
+                location: snafu::Location::default(),
+            },
         }
     }
 }
@@ -446,5 +469,48 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let msg = body_message(response);
         assert!(msg.contains("content must not be empty"));
+    }
+
+    #[test]
+    fn mneme_session_not_found_maps_to_404() {
+        let mneme_err = aletheia_mneme::error::Error::SessionNotFound {
+            id: "ses-01abc".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let api_err = ApiError::from(mneme_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn mneme_fact_not_found_maps_to_404() {
+        let mneme_err = aletheia_mneme::error::Error::FactNotFound {
+            id: "fact-01abc".to_owned(),
+            location: snafu::Location::default(),
+        };
+        let api_err = ApiError::from(mneme_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn mneme_empty_content_maps_to_400() {
+        let mneme_err = aletheia_mneme::error::Error::EmptyContent {
+            location: snafu::Location::default(),
+        };
+        let api_err = ApiError::from(mneme_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn mneme_invalid_confidence_maps_to_400() {
+        let mneme_err = aletheia_mneme::error::Error::InvalidConfidence {
+            value: 1.5,
+            location: snafu::Location::default(),
+        };
+        let api_err = ApiError::from(mneme_err);
+        let response = api_err.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
