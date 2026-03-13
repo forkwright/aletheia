@@ -152,10 +152,16 @@ async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerErr
 
     info!(addr = %bind_addr, tls = false, "pylon listening");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context(ServeSnafu)
+    // WHY: `into_make_service_with_connect_info` injects `ConnectInfo<SocketAddr>`
+    // into request extensions so the rate limiter reads the real peer address
+    // rather than spoofable `X-Forwarded-For` headers.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context(ServeSnafu)
 }
 
 #[cfg(feature = "tls")]
@@ -202,7 +208,7 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
 
     axum_server::bind_rustls(addr, tls_config)
         .handle(handle)
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .await
         .context(ServeSnafu)
 }

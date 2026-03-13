@@ -336,6 +336,64 @@ impl ToolExecutor for EditExecutor {
     }
 }
 
+/// Parse a command string into a program and argument list.
+///
+/// Supports single-quoted strings (literal), double-quoted strings (with
+/// backslash escaping for `\\`, `\"`, `\n`, `\t`), and bare whitespace-
+/// separated tokens. Shell metacharacters (`|`, `&`, `;`, `$`, etc.) are
+/// treated as literal characters, preventing shell injection.
+///
+/// WHY: Executing LLM input through `sh -c` allows shell metacharacters to
+/// be interpreted, enabling injection of arbitrary commands. Parsing into
+/// explicit args avoids the shell entirely.
+fn parse_command_args(command: &str) -> std::result::Result<(String, Vec<String>), String> {
+    let mut tokens: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut chars = command.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match (c, in_single_quote, in_double_quote) {
+            ('\'', false, false) => in_single_quote = true,
+            ('\'', true, _) => in_single_quote = false,
+            ('"', false, false) => in_double_quote = true,
+            ('"', _, true) => in_double_quote = false,
+            ('\\', false, true) => match chars.next() {
+                Some('\\') | None => current.push('\\'),
+                Some('"') => current.push('"'),
+                Some('n') => current.push('\n'),
+                Some('t') => current.push('\t'),
+                Some(other) => {
+                    current.push('\\');
+                    current.push(other);
+                }
+            },
+            (c, false, false) if c.is_whitespace() => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            (c, _, _) => current.push(c),
+        }
+    }
+
+    if in_single_quote {
+        return Err("unterminated single quote".to_owned());
+    }
+    if in_double_quote {
+        return Err("unterminated double quote".to_owned());
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    let mut iter = tokens.into_iter();
+    let program = iter.next().ok_or_else(|| "command is empty".to_owned())?;
+    let args: Vec<String> = iter.collect();
+    Ok((program, args))
+}
+
 struct ExecExecutor {
     sandbox: crate::sandbox::SandboxConfig,
 }
@@ -357,9 +415,13 @@ impl ToolExecutor for ExecExecutor {
                 )));
             }
 
-            let mut cmd = Command::new("sh");
-            cmd.arg("-c")
-                .arg(command)
+            let (program, args) = match parse_command_args(command) {
+                Ok(p) => p,
+                Err(e) => return Ok(err_result(format!("invalid command syntax: {e}"))),
+            };
+
+            let mut cmd = Command::new(&program);
+            cmd.args(&args)
                 .current_dir(&ctx.workspace)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());

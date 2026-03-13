@@ -242,6 +242,7 @@ async fn complete_malformed_body() {
 // --- estimate_cost unit tests ---
 
 #[test]
+#[allow(clippy::float_cmp, reason = "exact zero comparison in pricing test")]
 fn estimate_cost_no_pricing_returns_zero() {
     // Without configured pricing, cost is always 0.0 regardless of model.
     let pricing = HashMap::new();
@@ -264,6 +265,7 @@ fn estimate_cost_no_pricing_returns_zero() {
 }
 
 #[test]
+#[allow(clippy::float_cmp, reason = "exact comparison in pricing test")]
 fn estimate_cost_uses_config_pricing() {
     let mut pricing = HashMap::new();
     pricing.insert(
@@ -279,6 +281,7 @@ fn estimate_cost_uses_config_pricing() {
 }
 
 #[test]
+#[allow(clippy::float_cmp, reason = "exact comparison in pricing test")]
 fn estimate_cost_config_overrides_default() {
     let mut pricing = HashMap::new();
     pricing.insert(

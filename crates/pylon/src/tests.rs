@@ -1180,6 +1180,9 @@ async fn csrf_allows_post_with_correct_header() {
         csrf_enabled: true,
         ..SecurityConfig::default()
     };
+    // WHY: The CSRF token is now a per-instance CSPRNG value. Read it from
+    // the SecurityConfig so the test sends the correct token, not "aletheia".
+    let csrf_token = security.csrf_header_value.clone();
     let router = build_router(state, &security);
 
     let token = default_token();
@@ -1188,7 +1191,7 @@ async fn csrf_allows_post_with_correct_header() {
         .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
-        .header("x-requested-with", "aletheia")
+        .header("x-requested-with", csrf_token)
         .body(Body::from(
             serde_json::to_vec(&serde_json::json!({
                 "nous_id": "syn",
@@ -2334,7 +2337,16 @@ fn security_config_default_values() {
     assert_eq!(config.body_limit_bytes, 1_048_576);
     assert!(config.csrf_enabled);
     assert_eq!(config.csrf_header_name, "x-requested-with");
-    assert_eq!(config.csrf_header_value, "aletheia");
+    // WHY: The default CSRF token is now a CSPRNG-generated 32-char hex string
+    // rather than the static "aletheia" value, which was guessable.
+    assert_eq!(config.csrf_header_value.len(), 32);
+    assert!(
+        config
+            .csrf_header_value
+            .chars()
+            .all(|c| c.is_ascii_hexdigit())
+    );
+    assert_ne!(config.csrf_header_value, "aletheia");
     assert!(!config.tls_enabled);
     assert!(config.tls_cert_path.is_none());
     assert!(config.tls_key_path.is_none());
@@ -2505,6 +2517,9 @@ async fn csrf_allows_delete_with_correct_header() {
         csrf_enabled: true,
         ..SecurityConfig::default()
     };
+    // WHY: The CSRF token is now a per-instance CSPRNG value. Read it from
+    // the SecurityConfig so the test sends the correct token, not "aletheia".
+    let csrf_token = security.csrf_header_value.clone();
     let router = build_router(Arc::clone(&state), &security);
 
     let token = default_token();
@@ -2514,7 +2529,7 @@ async fn csrf_allows_delete_with_correct_header() {
         .uri("/api/v1/sessions")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
-        .header("x-requested-with", "aletheia")
+        .header("x-requested-with", csrf_token.clone())
         .body(Body::from(
             serde_json::to_vec(&serde_json::json!({
                 "nous_id": "syn",
@@ -2533,7 +2548,7 @@ async fn csrf_allows_delete_with_correct_header() {
         .method("DELETE")
         .uri(format!("/api/v1/sessions/{id}"))
         .header("authorization", format!("Bearer {token}"))
-        .header("x-requested-with", "aletheia")
+        .header("x-requested-with", csrf_token)
         .body(Body::empty())
         .unwrap();
 
