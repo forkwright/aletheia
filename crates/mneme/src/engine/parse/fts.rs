@@ -209,8 +209,17 @@ mod tests {
             /// Valid single-word queries must always parse successfully.
             #[test]
             fn fts_single_word_parses(word in "[a-zA-Z]{1,30}") {
-                let upper = word.to_uppercase();
-                prop_assume!(!matches!(upper.as_str(), "AND" | "OR" | "NOT" | "NEAR"));
+                // NOTE: pest grammar matches keywords greedily, so words
+                // starting with AND/OR/NOT/NEAR confuse the parser.
+                let conflicts_with_kw = |w: &str| {
+                    let u = w.to_uppercase();
+                    matches!(u.as_str(), "AND" | "OR" | "NOT" | "NEAR")
+                        || u.starts_with("AND")
+                        || u.starts_with("OR")
+                        || u.starts_with("NOT")
+                        || u.starts_with("NEAR")
+                };
+                prop_assume!(!conflicts_with_kw(&word));
                 parse_fts_query(&word).expect("single word should parse");
             }
 
