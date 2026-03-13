@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use tokio::sync::Mutex;
@@ -87,6 +88,11 @@ pub struct NousActor {
     started_at: Instant,
     /// Background tasks (extraction, distillation, skill analysis).
     background_tasks: JoinSet<()>,
+    /// Set to `true` while processing a turn; `false` when idle.
+    /// Shared with the manager's `ActorEntry` so health checks can
+    /// distinguish a busy actor from an unresponsive one without queuing
+    /// through the inbox.
+    active_turn: Arc<AtomicBool>,
 }
 
 impl NousActor {
@@ -112,6 +118,7 @@ impl NousActor {
         #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
         tool_services: Option<Arc<ToolServices>>,
         extra_bootstrap: Vec<BootstrapSection>,
+        active_turn: Arc<AtomicBool>,
     ) -> Self {
         // Build the skill loader from the knowledge store when available.
         #[cfg(feature = "knowledge-store")]
@@ -157,6 +164,7 @@ impl NousActor {
             panic_timestamps: Vec::new(),
             started_at: Instant::now(),
             background_tasks: JoinSet::new(),
+            active_turn,
         }
     }
 

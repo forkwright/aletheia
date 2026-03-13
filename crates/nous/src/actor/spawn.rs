@@ -1,6 +1,7 @@
 //! Actor spawning and workspace validation.
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
@@ -50,10 +51,12 @@ pub fn spawn(
     extra_bootstrap: Vec<BootstrapSection>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
     cancel: CancellationToken,
-) -> (NousHandle, tokio::task::JoinHandle<()>) {
+) -> (NousHandle, tokio::task::JoinHandle<()>, Arc<AtomicBool>) {
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);
     let id = config.id.clone();
     let handle = NousHandle::new(id.clone(), tx);
+
+    let active_turn = Arc::new(AtomicBool::new(false));
 
     let actor = NousActor::new(
         id.clone(),
@@ -72,12 +75,13 @@ pub fn spawn(
         knowledge_store,
         tool_services,
         extra_bootstrap,
+        Arc::clone(&active_turn),
     );
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);
     let join_handle = tokio::spawn(async move { actor.run().await }.instrument(span));
 
-    (handle, join_handle)
+    (handle, join_handle, active_turn)
 }
 
 /// Validate the workspace directory exists and required files are resolvable.

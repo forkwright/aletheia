@@ -1,6 +1,7 @@
 //! Turn execution — handles individual turns with panic boundary protection.
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, warn};
@@ -37,6 +38,7 @@ impl NousActor {
 
         self.lifecycle = NousLifecycle::Active;
         self.active_session = Some(session_key.clone());
+        self.active_turn.store(true, Ordering::Release);
 
         let result = self
             .execute_turn_with_panic_boundary(
@@ -65,6 +67,7 @@ impl NousActor {
         if self.lifecycle != NousLifecycle::Degraded {
             self.lifecycle = NousLifecycle::Idle;
         }
+        self.active_turn.store(false, Ordering::Release);
 
         // Ignore send error — caller may have dropped the receiver
         let _ = reply.send(result);
@@ -91,6 +94,7 @@ impl NousActor {
 
         self.lifecycle = NousLifecycle::Active;
         self.active_session = Some(session_key.clone());
+        self.active_turn.store(true, Ordering::Release);
 
         let result = self
             .execute_streaming_turn_with_panic_boundary(
@@ -119,6 +123,7 @@ impl NousActor {
         if self.lifecycle != NousLifecycle::Degraded {
             self.lifecycle = NousLifecycle::Idle;
         }
+        self.active_turn.store(false, Ordering::Release);
 
         let _ = reply.send(result);
     }
