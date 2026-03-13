@@ -377,33 +377,48 @@ impl KnowledgeStore {
             .collect())
     }
 
-    /// Return the set of fact IDs (from the given results) that are currently forgotten.
-    fn forgotten_fact_ids(
+    /// Return the subset of the given fact IDs that are currently marked as forgotten.
+    ///
+    /// Used by sibling search methods (e.g. `search_vectors`) that retrieve results
+    /// from indices which do not carry the `is_forgotten` flag.
+    pub(super) fn query_forgotten_ids(
         &self,
-        results: &[super::HybridResult],
+        ids: &[&str],
     ) -> crate::error::Result<std::collections::HashSet<String>> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
-        // Build a Datalog query that checks each ID.
-        let id_list: Vec<String> = results
+        if ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+
+        let id_list: Vec<String> = ids
             .iter()
-            .map(|r| format!("'{}'", r.id.as_str().replace('\'', "''")))
+            .map(|id| format!("'{}'", id.replace('\'', "''")))
             .collect();
         let script = format!(
             r"?[id] := *facts{{id, is_forgotten}}, is_forgotten == true, id in [{}]",
             id_list.join(", ")
         );
         let rows = self.run_read(&script, BTreeMap::<String, DataValue>::new())?;
-        let mut ids = std::collections::HashSet::new();
+        let mut result = std::collections::HashSet::new();
         for row in rows.rows {
             if let Some(val) = row.first()
                 && let Ok(s) = extract_str(val)
             {
-                ids.insert(s);
+                result.insert(s);
             }
         }
-        Ok(ids)
+        Ok(result)
+    }
+
+    /// Return the set of fact IDs (from the given results) that are currently forgotten.
+    fn forgotten_fact_ids(
+        &self,
+        results: &[super::HybridResult],
+    ) -> crate::error::Result<std::collections::HashSet<String>> {
+        let ids: Vec<&str> = results.iter().map(|r| r.id.as_str()).collect();
+        self.query_forgotten_ids(&ids)
     }
 
     /// Query facts valid at a specific point in time.
