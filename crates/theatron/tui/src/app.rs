@@ -516,6 +516,7 @@ pub(crate) mod test_helpers {
             token: None,
             default_agent: None,
             default_session: None,
+            workspace_root: None,
         };
         let client = ApiClient::new(&config.url, config.token.clone()).unwrap();
         let theme = THEME.clone();

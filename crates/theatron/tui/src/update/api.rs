@@ -164,6 +164,7 @@ pub(crate) fn handle_tick(app: &mut App) {
     if app.success_toast.as_ref().is_some_and(|t| t.is_expired()) {
         app.success_toast = None;
     }
+    super::sse::check_sse_reconnect_timeout(app);
 }
 
 /// Sanitize session fields that may contain external data.
