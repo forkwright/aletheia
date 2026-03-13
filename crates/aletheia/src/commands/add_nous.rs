@@ -54,10 +54,7 @@ fn validate_name(name: &str) -> Result<()> {
     if name.is_empty() {
         bail!("agent name cannot be empty");
     }
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-')
-    {
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         bail!("agent name must contain only alphanumeric characters and hyphens");
     }
     if name.starts_with('-') || name.ends_with('-') {
@@ -69,9 +66,7 @@ fn validate_name(name: &str) -> Result<()> {
 fn validate_provider(provider: &str) -> Result<()> {
     match provider {
         "anthropic" | "openai" => Ok(()),
-        other => bail!(
-            "unsupported provider: {other}\nSupported providers: anthropic, openai"
-        ),
+        other => bail!("unsupported provider: {other}\nSupported providers: anthropic, openai"),
     }
 }
 
@@ -152,14 +147,14 @@ fn scaffold_directory(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         "WORKFLOWS.md",
     ] {
         let header = filename.trim_end_matches(".md");
-        write_file(
-            &nous_dir.join(filename),
-            &format!("# {header}\n"),
-        )?;
+        write_file(&nous_dir.join(filename), &format!("# {header}\n"))?;
     }
 
-    for gitkeep in &["memory/.gitkeep", "workspace/drafts/.gitkeep", "workspace/scripts/.gitkeep"]
-    {
+    for gitkeep in &[
+        "memory/.gitkeep",
+        "workspace/drafts/.gitkeep",
+        "workspace/scripts/.gitkeep",
+    ] {
         write_file(&nous_dir.join(gitkeep), "")?;
     }
 
@@ -187,11 +182,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         );
     }
 
-    let workspace = format!(
-        "{}/nous/{}",
-        oikos.root().display(),
-        args.name
-    );
+    let workspace = format!("{}/nous/{}", oikos.root().display(), args.name);
 
     config.agents.list.push(NousDefinition {
         id: args.name.clone(),
@@ -219,11 +210,8 @@ fn try_register(name: &str) {
     use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 
     let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, 18789);
-    let server_running = TcpStream::connect_timeout(
-        &addr.into(),
-        std::time::Duration::from_secs(1),
-    )
-    .is_ok();
+    let server_running =
+        TcpStream::connect_timeout(&addr.into(), std::time::Duration::from_secs(1)).is_ok();
 
     if server_running {
         println!(
@@ -231,9 +219,7 @@ fn try_register(name: &str) {
              aletheia"
         );
     } else {
-        println!(
-            "Server not running. The new agent will be loaded on next server start."
-        );
+        println!("Server not running. The new agent will be loaded on next server start.");
     }
 }
 
@@ -246,14 +232,19 @@ fn print_summary(oikos: &Oikos, args: &AddNousArgs) {
     println!("  Model:      {}", args.model);
     println!();
     println!("Next steps:");
-    println!("  1. Edit {}/SOUL.md to define the agent's identity", nous_dir.display());
-    println!("  2. Edit {}/TOOLS.md to configure available tools", nous_dir.display());
+    println!(
+        "  1. Edit {}/SOUL.md to define the agent's identity",
+        nous_dir.display()
+    );
+    println!(
+        "  2. Edit {}/TOOLS.md to configure available tools",
+        nous_dir.display()
+    );
     println!("  3. Start the server: aletheia");
 }
 
 fn write_file(path: &std::path::Path, content: &str) -> Result<()> {
-    std::fs::write(path, content)
-        .with_context(|| format!("failed to write: {}", path.display()))
+    std::fs::write(path, content).with_context(|| format!("failed to write: {}", path.display()))
 }
 
 fn capitalize(s: &str) -> String {
@@ -365,6 +356,9 @@ mod tests {
         let result = run(Some(&dir.path().to_path_buf()), &args);
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("already exists"), "expected 'already exists' in: {msg}");
+        assert!(
+            msg.contains("already exists"),
+            "expected 'already exists' in: {msg}"
+        );
     }
 }
