@@ -310,6 +310,7 @@ dependencies = [
  "cron",
  "flate2",
  "jiff",
+ "rusqlite",
  "serde",
  "serde_json",
  "snafu",

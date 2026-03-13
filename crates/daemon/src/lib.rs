@@ -18,6 +18,8 @@ pub mod prosoche;
 pub mod runner;
 /// Scheduling primitives: cron, interval, one-shot, and active time windows.
 pub mod schedule;
+/// SQLite-backed persistence for daemon task execution state.
+pub mod state;
 
 #[cfg(test)]
 mod assertions {

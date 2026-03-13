@@ -194,6 +194,29 @@ pub(crate) async fn execute_builtin(
                 permission_issues = report.permission_issues.len(),
                 "maintenance: drift detection complete"
             );
+
+            // Emit WARN-level alerts for each drift finding with structured fields.
+            for path in &report.missing_files {
+                tracing::warn!(
+                    metric = "missing_file",
+                    path = %path.display(),
+                    expected = "present",
+                    actual = "absent",
+                    checked_at = %report.checked_at.map(|ts| ts.to_string()).as_deref().unwrap_or("unknown"),
+                    "drift alert: file missing from instance"
+                );
+            }
+            for path in &report.extra_files {
+                tracing::warn!(
+                    metric = "extra_file",
+                    path = %path.display(),
+                    expected = "absent",
+                    actual = "present",
+                    checked_at = %report.checked_at.map(|ts| ts.to_string()).as_deref().unwrap_or("unknown"),
+                    "drift alert: unexpected file in instance"
+                );
+            }
+
             Ok(ExecutionResult {
                 success: true,
                 output: Some(format!(
@@ -263,13 +286,34 @@ pub(crate) async fn execute_builtin(
             })
         }
         BuiltinTask::SessionRetention => {
+            let Some(executor) = retention_executor else {
+                tracing::warn!(
+                    nous_id = %nous_id,
+                    "session retention NOT_IMPLEMENTED: no retention executor configured"
+                );
+                return Ok(ExecutionResult {
+                    success: false,
+                    output: Some("NOT_IMPLEMENTED: no retention executor configured".to_owned()),
+                });
+            };
+            let summary = tokio::task::spawn_blocking(move || executor.execute_retention())
+                .await
+                .context(error::BlockingJoinSnafu {
+                    context: "session retention",
+                })??;
             tracing::info!(
                 nous_id = %nous_id,
-                "session retention not yet wired — requires store access from daemon"
+                sessions = summary.sessions_cleaned,
+                messages = summary.messages_cleaned,
+                bytes_freed = summary.bytes_freed,
+                "maintenance: session retention complete"
             );
             Ok(ExecutionResult {
                 success: true,
-                output: None,
+                output: Some(format!(
+                    "{} sessions, {} messages cleaned, {} bytes freed",
+                    summary.sessions_cleaned, summary.messages_cleaned, summary.bytes_freed
+                )),
             })
         }
     }
@@ -282,13 +326,13 @@ async fn execute_knowledge_task(
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
 ) -> Result<ExecutionResult> {
     let Some(executor) = knowledge_executor else {
-        tracing::info!(
+        tracing::warn!(
             task = ?builtin,
-            "knowledge maintenance skipped — no executor configured"
+            "knowledge maintenance NOT_IMPLEMENTED: no executor configured — task did not run"
         );
         return Ok(ExecutionResult {
-            success: true,
-            output: Some("skipped — no executor".to_owned()),
+            success: false,
+            output: Some("NOT_IMPLEMENTED: no executor configured".to_owned()),
         });
     };
 
