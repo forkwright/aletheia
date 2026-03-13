@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2
 
   secret-scan:
     runs-on: ubuntu-latest
@@ -38,7 +38,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@v3.93.7
+        uses: trufflesecurity/trufflehog@c3e599b7163e8198a55467f3133db0e7b2a492cb # v3.93.7
         with:
           extra_args: --only-verified
 
@@ -49,7 +49,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Gitleaks scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml

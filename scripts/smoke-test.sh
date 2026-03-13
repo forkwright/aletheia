@@ -18,20 +18,17 @@ set -euo pipefail
 # ── Colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
 # ── State ─────────────────────────────────────────────────────────────────────
 PASS=0
 FAIL=0
-SKIP=0
 FAILURES=()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 pass() { echo -e "  ${GREEN}✓${RESET} $1"; PASS=$(( PASS + 1 )); }
 fail() { echo -e "  ${RED}✗${RESET} $1"; FAIL=$(( FAIL + 1 )); FAILURES+=("$1"); }
-skip() { echo -e "  ${YELLOW}○${RESET} $1 (skipped)"; SKIP=$(( SKIP + 1 )); }
 section() { echo -e "\n${BOLD}$1${RESET}"; }
 
 # Run the binary and check the exit code and optional output pattern.
@@ -202,14 +199,15 @@ fi
 section "Import (missing file — expect error)"
 check "import with missing file exits non-zero" 1 "" -- \
     import /nonexistent/path/to/agent.json --dry-run 2>/dev/null || true
-IMPORT_EXIT=0
-"$BINARY" import /nonexistent/file.agent.json 2>&1 | grep -qiE "no such|not found|error|cannot" \
-    && pass "import missing file produces useful error" \
-    || fail "import missing file produced no error message"
+if "$BINARY" import /nonexistent/file.agent.json 2>&1 | grep -qiE "no such|not found|error|cannot"; then
+    pass "import missing file produces useful error"
+else
+    fail "import missing file produced no error message"
+fi
 
 section "Seed-skills (dry-run with missing dir — expect error)"
 SEED_EXIT=0
-SEED_OUT=$("$BINARY" seed-skills --dir /nonexistent/dir --nous-id test-id --dry-run 2>&1) || SEED_EXIT=$?
+"$BINARY" seed-skills --dir /nonexistent/dir --nous-id test-id --dry-run >/dev/null 2>&1 || SEED_EXIT=$?
 if [[ "$SEED_EXIT" -ne 0 ]]; then
     pass "seed-skills with missing dir exits non-zero"
 else
@@ -226,10 +224,10 @@ else
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
-TOTAL=$(( PASS + FAIL + SKIP ))
+TOTAL=$(( PASS + FAIL ))
 echo ""
 echo "────────────────────────────────────"
-echo -e "${BOLD}Results${RESET}: $TOTAL tests — ${GREEN}$PASS passed${RESET}, ${RED}$FAIL failed${RESET}, ${YELLOW}$SKIP skipped${RESET}"
+echo -e "${BOLD}Results${RESET}: $TOTAL tests — ${GREEN}$PASS passed${RESET}, ${RED}$FAIL failed${RESET}"
 
 if [[ "${#FAILURES[@]}" -gt 0 ]]; then
     echo ""

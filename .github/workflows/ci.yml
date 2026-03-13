@@ -52,7 +52,7 @@ jobs:
             grep -v 'instance.example/' | \
             grep -v 'node_modules/' | \
             grep -v '\.venv/' || true)
-          if [ -n "$HITS" ]; then
+          if [[ -n "$HITS" ]]; then
             echo "::error::PII patterns detected in tracked files:"
             echo "$HITS"
             exit 1
