@@ -332,25 +332,6 @@ pub(crate) async fn resolve_session(
     Ok(session.id)
 }
 
-pub(crate) async fn store_message(
-    state: &Arc<AppState>,
-    session_id: &str,
-    role: aletheia_mneme::types::Role,
-    content: &str,
-    token_estimate: i64,
-) -> Result<i64, ApiError> {
-    let state_clone = Arc::clone(state);
-    let sid = session_id.to_owned();
-    let content = content.to_owned();
-    tokio::task::spawn_blocking(move || {
-        let store = state_clone.session_store.blocking_lock();
-        store
-            .append_message(&sid, role, &content, None, None, token_estimate)
-            .map_err(ApiError::from)
-    })
-    .await?
-}
-
 pub(crate) async fn find_session(
     state: &Arc<AppState>,
     id: &str,
