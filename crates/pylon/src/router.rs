@@ -25,6 +25,10 @@ use crate::security::SecurityConfig;
 use crate::state::AppState;
 
 /// Build the Axum router with all routes and middleware.
+#[expect(
+    clippy::too_many_lines,
+    reason = "router construction requires assembling all routes and ordered middleware layers; extraction would obscure the stack ordering"
+)]
 pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     crate::metrics::init();
 
@@ -83,7 +87,10 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 
     // Rate limiting — per-IP sliding window, applied before business logic
     if security.rate_limit_enabled {
-        let limiter = Arc::new(RateLimiter::new(security.rate_limit_requests_per_minute));
+        let limiter = Arc::new(
+            RateLimiter::new(security.rate_limit_requests_per_minute)
+                .with_trust_proxy(security.trust_proxy),
+        );
         router = router
             .layer(axum::middleware::from_fn(rate_limit))
             .layer(axum::Extension(limiter));
@@ -188,7 +195,24 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
         security.allowed_origins.is_empty() || security.allowed_origins.iter().any(|o| o == "*");
 
     if is_permissive {
-        return CorsLayer::permissive();
+        // WHY: `CorsLayer::permissive()` sets `Access-Control-Allow-Credentials: true`
+        // while echoing the request origin, which permits credential-bearing cross-origin
+        // requests from any site. Build the layer explicitly with a wildcard `*` origin
+        // so browsers never combine credentials with an unrestricted origin.
+        return CorsLayer::new()
+            .allow_origin(tower_http::cors::Any)
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([
+                HeaderName::from_static("content-type"),
+                HeaderName::from_static("authorization"),
+                HeaderName::from_static("x-requested-with"),
+            ]);
     }
 
     let origins: Vec<HeaderValue> = security
@@ -199,10 +223,17 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
 
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
-        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([
             HeaderName::from_static("content-type"),
             HeaderName::from_static("authorization"),
+            HeaderName::from_static("x-requested-with"),
         ])
         .max_age(Duration::from_secs(security.cors_max_age_secs))
 }

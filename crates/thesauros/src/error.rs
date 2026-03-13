@@ -51,6 +51,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Context file path escapes the pack root directory.
+    #[snafu(display("context file path escapes pack root: {}", path.display()))]
+    ContextFileEscape {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Tool command script not found at declared path.
     #[snafu(display("tool command not found: {}", path.display()))]
     ToolCommandNotFound {

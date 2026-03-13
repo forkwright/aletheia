@@ -44,6 +44,9 @@ prometheus = { workspace = true }
 # Types
 ulid = { workspace = true }
 
+# Cryptographic random number generation (CSRF token generation)
+rand = { workspace = true }
+
 # Internal crates
 aletheia-taxis = { path = "../taxis" }
 aletheia-hermeneus = { path = "../hermeneus" }

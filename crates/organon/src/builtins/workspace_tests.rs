@@ -417,7 +417,10 @@ async fn test_edit_preserves_surrounding_content() {
 async fn test_exec_failed_command_reports_nonzero_exit_code() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
-    let input = tool_input("exec", serde_json::json!({ "command": "exit 42" }));
+    // WHY: Use explicit `sh -c 'exit 42'` to test non-zero exit codes.
+    // Exec no longer passes the whole string to a shell — the shell is invoked
+    // explicitly here as the program, which is safe.
+    let input = tool_input("exec", serde_json::json!({ "command": "sh -c 'exit 42'" }));
     let result = ExecExecutor {
         sandbox: crate::sandbox::SandboxConfig::disabled(),
     }
@@ -432,7 +435,12 @@ async fn test_exec_failed_command_reports_nonzero_exit_code() {
 async fn test_exec_stderr_captured_in_output() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
-    let input = tool_input("exec", serde_json::json!({ "command": "echo errline >&2" }));
+    // WHY: Shell redirection (>&2) is a shell feature, not available without
+    // an explicit shell invocation. The program is `sh`, not a raw string.
+    let input = tool_input(
+        "exec",
+        serde_json::json!({ "command": "sh -c 'echo errline >&2'" }),
+    );
     let result = ExecExecutor {
         sandbox: crate::sandbox::SandboxConfig::disabled(),
     }
@@ -467,9 +475,11 @@ async fn test_exec_working_directory_is_workspace() {
 async fn test_exec_output_format_includes_exit_then_stdout_then_stderr() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
+    // WHY: Shell features (>&2, semicolons) require explicit shell invocation
+    // now that exec no longer passes the command through sh -c.
     let input = tool_input(
         "exec",
-        serde_json::json!({ "command": "printf 'out'; echo err >&2" }),
+        serde_json::json!({ "command": "sh -c \"printf 'out'; echo err >&2\"" }),
     );
     let result = ExecExecutor {
         sandbox: crate::sandbox::SandboxConfig::disabled(),
@@ -690,4 +700,76 @@ async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() 
             );
         }
     }
+}
+
+// -- parse_command_args -------------------------------------------------
+
+#[test]
+fn parse_command_args_splits_simple_command() {
+    let (prog, args) = parse_command_args("echo hello world").expect("parse");
+    assert_eq!(prog, "echo");
+    assert_eq!(args, ["hello", "world"]);
+}
+
+#[test]
+fn parse_command_args_handles_single_quoted_string() {
+    let (prog, args) = parse_command_args("echo 'hello world'").expect("parse");
+    assert_eq!(prog, "echo");
+    assert_eq!(args, ["hello world"]);
+}
+
+#[test]
+fn parse_command_args_handles_double_quoted_string() {
+    let (prog, args) = parse_command_args("echo \"hello world\"").expect("parse");
+    assert_eq!(prog, "echo");
+    assert_eq!(args, ["hello world"]);
+}
+
+#[test]
+fn parse_command_args_handles_backslash_escape_in_double_quotes() {
+    let (prog, args) = parse_command_args("echo \"a\\\"b\"").expect("parse");
+    assert_eq!(prog, "echo");
+    assert_eq!(args, ["a\"b"]);
+}
+
+#[test]
+fn parse_command_args_rejects_unterminated_single_quote() {
+    let err = parse_command_args("echo 'hello").expect_err("should fail");
+    assert!(err.contains("unterminated single quote"));
+}
+
+#[test]
+fn parse_command_args_rejects_empty_command() {
+    let err = parse_command_args("").expect_err("should fail");
+    assert!(err.contains("empty"));
+}
+
+#[test]
+fn parse_command_args_rejects_whitespace_only_command() {
+    let err = parse_command_args("   ").expect_err("should fail");
+    assert!(err.contains("empty"));
+}
+
+#[test]
+fn parse_command_args_treats_shell_metacharacters_as_literals() {
+    // WHY: Shell injection prevention — semicolons, pipes, and ampersands must
+    // not be interpreted as command separators or operators when the LLM
+    // includes them in a command string.
+    let (prog, args) = parse_command_args("echo hello; rm -rf /").expect("parse");
+    assert_eq!(prog, "echo");
+    assert_eq!(args, ["hello;", "rm", "-rf", "/"]);
+}
+
+#[test]
+fn parse_command_args_treats_dollar_sign_as_literal() {
+    let (prog, args) = parse_command_args("echo $HOME").expect("parse");
+    assert_eq!(prog, "echo");
+    assert_eq!(args, ["$HOME"]);
+}
+
+#[test]
+fn parse_command_args_program_only() {
+    let (prog, args) = parse_command_args("ls").expect("parse");
+    assert_eq!(prog, "ls");
+    assert!(args.is_empty());
 }

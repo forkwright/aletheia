@@ -144,6 +144,10 @@ pub struct RateLimiter {
     max_requests: u32,
     window: Duration,
     state: Mutex<HashMap<String, (Instant, u32)>>,
+    /// When true, `X-Forwarded-For` / `X-Real-IP` headers are trusted for
+    /// client IP resolution. Enable only when pylon sits behind a trusted
+    /// reverse proxy that strips these headers from untrusted clients.
+    trust_proxy: bool,
 }
 
 impl RateLimiter {
@@ -152,7 +156,14 @@ impl RateLimiter {
             max_requests: requests_per_minute,
             window: Duration::from_secs(60),
             state: Mutex::new(HashMap::new()),
+            trust_proxy: false,
         }
+    }
+
+    #[must_use]
+    pub fn with_trust_proxy(mut self, trust_proxy: bool) -> Self {
+        self.trust_proxy = trust_proxy;
+        self
     }
 
     /// Check whether the given client key is within the rate limit.
@@ -187,28 +198,48 @@ impl RateLimiter {
     }
 }
 
-/// Extract the best available client identifier from request headers.
+/// Extract the best available client identifier for rate limiting.
 ///
-/// Checks `X-Forwarded-For` (reverse proxy) then `X-Real-IP`, falling back
-/// to `"127.0.0.1"` for direct connections.
-fn extract_client_key(request: &Request) -> String {
-    if let Some(xff) = request.headers().get("x-forwarded-for")
-        && let Ok(s) = xff.to_str()
-    {
-        let ip = s.split(',').next().unwrap_or("").trim();
-        if !ip.is_empty() {
-            return ip.to_owned();
+/// Priority order:
+/// 1. Peer TCP address from `ConnectInfo<SocketAddr>` (most trustworthy)
+/// 2. `X-Forwarded-For` / `X-Real-IP` headers — only when `trust_proxy` is
+///    true, because clients control these headers and can spoof them
+/// 3. Fallback literal `"peer"` (`ConnectInfo` not injected by the server)
+///
+/// WHY: Using `X-Forwarded-For` by default allows any client to set an
+/// arbitrary IP and bypass per-IP rate limits. Only trusted reverse proxies
+/// should supply these headers, controlled by the `trust_proxy` flag.
+fn extract_client_key(request: &Request, trust_proxy: bool) -> String {
+    use axum::extract::ConnectInfo;
+    use std::net::SocketAddr;
+
+    // Prefer the actual peer address — not spoofable.
+    if let Some(info) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
+        return info.0.ip().to_string();
+    }
+
+    // Only consult proxy headers when explicitly trusted.
+    if trust_proxy {
+        if let Some(xff) = request.headers().get("x-forwarded-for")
+            && let Ok(s) = xff.to_str()
+        {
+            let ip = s.split(',').next().unwrap_or("").trim();
+            if !ip.is_empty() {
+                return ip.to_owned();
+            }
+        }
+        if let Some(xri) = request.headers().get("x-real-ip")
+            && let Ok(s) = xri.to_str()
+        {
+            let ip = s.trim();
+            if !ip.is_empty() {
+                return ip.to_owned();
+            }
         }
     }
-    if let Some(xri) = request.headers().get("x-real-ip")
-        && let Ok(s) = xri.to_str()
-    {
-        let ip = s.trim();
-        if !ip.is_empty() {
-            return ip.to_owned();
-        }
-    }
-    "127.0.0.1".to_owned()
+
+    // ConnectInfo was not injected (e.g. testing without real TCP).
+    "peer".to_owned()
 }
 
 /// Middleware that enforces per-IP rate limiting.
@@ -222,7 +253,7 @@ pub async fn rate_limit(request: Request, next: Next) -> Response {
         return next.run(request).await;
     };
 
-    let client = extract_client_key(&request);
+    let client = extract_client_key(&request, limiter.trust_proxy);
     if let Some(retry_after) = limiter.check(&client) {
         let mut response = (
             StatusCode::TOO_MANY_REQUESTS,

@@ -158,14 +158,30 @@ pub fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
 
 /// Resolve a context entry path relative to the pack root.
 ///
-/// Returns the absolute path, or an error if the file does not exist.
+/// Returns the canonical absolute path, or an error if the file does not
+/// exist or if the resolved path escapes the pack root directory.
 pub fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<PathBuf> {
     let resolved = pack_root.join(&entry.path);
     ensure!(
         resolved.is_file(),
         error::ContextFileNotFoundSnafu { path: &resolved }
     );
-    Ok(resolved)
+
+    // WHY: `pack_root.join(path)` does not prevent `../` sequences from
+    // escaping the pack directory. Canonicalize resolves all symlinks and
+    // parent-dir components, then verify the result is still under the root.
+    let canonical = resolved
+        .canonicalize()
+        .context(error::ReadFileSnafu { path: resolved })?;
+    let canonical_root = pack_root.canonicalize().context(error::ReadFileSnafu {
+        path: pack_root.to_path_buf(),
+    })?;
+    ensure!(
+        canonical.starts_with(&canonical_root),
+        error::ContextFileEscapeSnafu { path: &canonical }
+    );
+
+    Ok(canonical)
 }
 
 #[cfg(test)]
@@ -294,6 +310,37 @@ domains = ["healthcare", "analytics", "sql"]
         };
         let err = resolve_context_path(dir.path(), &entry).unwrap_err();
         assert!(matches!(err, error::Error::ContextFileNotFound { .. }));
+    }
+
+    #[test]
+    fn resolve_context_path_blocks_parent_dir_traversal() {
+        // Create the "outer" file that the traversal path would target.
+        let outer = TempDir::new().unwrap();
+        fs::write(outer.path().join("secret.md"), "secret content").unwrap();
+
+        // Create the pack directory; it has no legitimate files.
+        let pack = TempDir::new().unwrap();
+
+        // Build a relative path that tries to escape via `../`.
+        let traversal = format!(
+            "../{}/secret.md",
+            outer.path().file_name().unwrap().to_string_lossy()
+        );
+
+        let entry = ContextEntry {
+            path: traversal,
+            priority: Priority::Important,
+            agents: vec![],
+            truncatable: false,
+        };
+        let err = resolve_context_path(pack.path(), &entry).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                error::Error::ContextFileEscape { .. } | error::Error::ContextFileNotFound { .. }
+            ),
+            "traversal path must be rejected, got: {err}"
+        );
     }
 
     #[test]
