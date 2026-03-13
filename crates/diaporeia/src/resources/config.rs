@@ -3,7 +3,9 @@
 use rmcp::model::{
     RawResourceTemplate, ReadResourceRequestParams, ResourceContents, ResourceTemplate,
 };
+use snafu::ResultExt as _;
 
+use crate::error::SerializationSnafu;
 use crate::state::DiaporeiaState;
 
 /// Build resource templates for config resources.
@@ -53,7 +55,8 @@ pub(crate) async fn read_resource(
     });
 
     let json = serde_json::to_string_pretty(&redacted)
-        .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        .context(SerializationSnafu {})
+        .map_err(rmcp::ErrorData::from)?;
 
     Ok(vec![ResourceContents::text(json, uri)])
 }

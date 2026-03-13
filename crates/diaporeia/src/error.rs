@@ -68,8 +68,73 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Convert a diaporeia `Error` into an rmcp `ErrorData` for tool return types.
+///
+/// Maps each variant to the appropriate MCP error code and strips server-side
+/// file paths from the message before it reaches the client.
 impl From<Error> for rmcp::ErrorData {
     fn from(err: Error) -> Self {
-        rmcp::ErrorData::internal_error(err.to_string(), None)
+        let message = crate::sanitize::strip_paths(&err.to_string());
+        match &err {
+            // Client provided an invalid agent or session ID — tell them what wasn't found.
+            Error::NousNotFound { .. } | Error::SessionNotFound { .. } => {
+                rmcp::ErrorData::invalid_params(message, None)
+            }
+            // Server-side failures — expose a sanitized message, never internal details.
+            Error::Pipeline { .. }
+            | Error::SessionStore { .. }
+            | Error::Serialization { .. }
+            | Error::Transport { .. }
+            | Error::WorkspaceFile { .. } => rmcp::ErrorData::internal_error(message, None),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nous_not_found_maps_to_invalid_params() {
+        let err = NousNotFoundSnafu {
+            id: "missing-agent".to_string(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(mcp.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert!(mcp.message.contains("missing-agent"));
+    }
+
+    #[test]
+    fn session_not_found_maps_to_invalid_params() {
+        let err = SessionNotFoundSnafu {
+            id: "no-such-session".to_string(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(mcp.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn pipeline_error_maps_to_internal_error() {
+        let err = PipelineSnafu {
+            message: "actor channel closed".to_string(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(mcp.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+    }
+
+    #[test]
+    fn pipeline_error_strips_server_path() {
+        let err = PipelineSnafu {
+            message: "error reading /home/alice/project/nous.rs: permission denied".to_string(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert!(
+            !mcp.message.contains("/home/alice"),
+            "server path must not reach the client"
+        );
+        assert!(mcp.message.contains("[server path]"));
     }
 }
