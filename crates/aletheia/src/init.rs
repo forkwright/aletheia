@@ -45,12 +45,35 @@ pub(crate) enum InitError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+    #[snafu(display(
+        "--non-interactive requires {missing}\n\
+         Set via flag or environment variable."
+    ))]
+    NonInteractiveMissingFlag {
+        missing: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
+
+/// Arguments for [`run`].
+pub(crate) struct RunArgs {
+    pub root: Option<std::path::PathBuf>,
+    /// Lenient non-interactive: skip prompts, apply defaults for missing values.
+    pub yes: bool,
+    /// Strict non-interactive: skip prompts, require --instance-path explicitly.
+    pub non_interactive: bool,
+    pub api_key: Option<String>,
+    pub auth_mode: Option<String>,
+    pub api_provider: Option<String>,
+    pub model: Option<String>,
 }
 
 /// User choices collected during the interactive (or non-interactive) flow.
 struct Answers {
     root: PathBuf,
     api_key: Option<String>,
+    api_provider: String,
     model: String,
     agent_id: String,
     agent_name: String,
@@ -64,6 +87,7 @@ impl Default for Answers {
         Self {
             root: PathBuf::from("./instance"),
             api_key: None,
+            api_provider: "anthropic".to_owned(),
             model: "claude-sonnet-4-6".to_owned(),
             agent_id: "main".to_owned(),
             agent_name: "Main".to_owned(),
@@ -74,30 +98,72 @@ impl Default for Answers {
     }
 }
 
-pub(crate) fn run(
-    root: PathBuf,
-    non_interactive: bool,
-    api_key: Option<String>,
-) -> Result<(), InitError> {
-    let mut answers = Answers {
+pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
+    let RunArgs {
         root,
+        yes,
+        non_interactive,
         api_key,
-        ..Answers::default()
-    };
+        auth_mode,
+        api_provider,
+        model,
+    } = args;
 
-    if non_interactive {
-        if answers.api_key.is_none() {
+    let is_non_interactive = non_interactive || yes;
+
+    let answers = if non_interactive {
+        // Strict non-interactive: --instance-path is required; everything else has defaults.
+        let root = root.ok_or_else(|| {
+            NonInteractiveMissingFlagSnafu {
+                missing: "--instance-path (or env ALETHEIA_INSTANCE_PATH)".to_owned(),
+            }
+            .build()
+        })?;
+
+        if api_key.is_none() {
             eprintln!("Warning: no API key provided. Set --api-key or ANTHROPIC_API_KEY.");
             eprintln!("         The server will start in degraded mode without credentials.");
         }
+
+        Answers {
+            root,
+            api_key,
+            api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
+            model: model.unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
+            auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
+            ..Answers::default()
+        }
+    } else if yes {
+        // Lenient non-interactive: skip prompts, apply defaults for missing values.
+        let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
+
+        if api_key.is_none() {
+            eprintln!("Warning: no API key provided. Set --api-key or ANTHROPIC_API_KEY.");
+            eprintln!("         The server will start in degraded mode without credentials.");
+        }
+
+        Answers {
+            root,
+            api_key,
+            api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
+            model: model.unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
+            auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
+            ..Answers::default()
+        }
     } else {
-        answers = collect_interactive(answers)?;
-    }
+        // Interactive mode.
+        let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
+        collect_interactive(Answers {
+            root,
+            api_key,
+            ..Answers::default()
+        })?
+    };
 
     // Pre-check: existing instance
     let config_path = answers.root.join("config/aletheia.toml");
     if config_path.exists() {
-        if non_interactive {
+        if is_non_interactive {
             println!(
                 "Instance already exists at {}. Skipping (delete config/aletheia.toml to re-initialize).",
                 answers.root.display()
@@ -116,7 +182,7 @@ pub(crate) fn run(
 
     scaffold(&answers)?;
 
-    if non_interactive {
+    if is_non_interactive {
         println!("Instance created at {}", answers.root.display());
     } else {
         cliclack::outro(format!(
@@ -259,7 +325,7 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
 
     // Write credential
     if let Some(ref key) = answers.api_key {
-        let cred_path = root.join("config/credentials/anthropic.json");
+        let cred_path = root.join(format!("config/credentials/{}.json", answers.api_provider));
         let cred_json = serde_json::json!({ "token": key });
         let json_str = serde_json::to_string_pretty(&cred_json).context(SerializeJsonSnafu)?;
         std::fs::write(&cred_path, json_str).context(WriteFileSnafu {
@@ -538,5 +604,119 @@ mod tests {
         let cred_path = dir.path().join("config/credentials/anthropic.json");
         let mode = std::fs::metadata(&cred_path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "credential file should be 0600");
+    }
+
+    // --- Non-interactive integration tests ---
+
+    #[test]
+    fn non_interactive_creates_valid_instance() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = run(RunArgs {
+            root: Some(dir.path().to_path_buf()),
+            yes: false,
+            non_interactive: true,
+            api_key: None,
+            auth_mode: None,
+            api_provider: None,
+            model: None,
+        });
+        assert!(
+            result.is_ok(),
+            "non-interactive init should succeed: {result:?}"
+        );
+
+        assert!(dir.path().join("config/aletheia.toml").exists());
+        assert!(dir.path().join("data").is_dir());
+        assert!(dir.path().join("nous/main").is_dir());
+
+        let config_str = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        let config: toml::Value = toml::from_str(&config_str).unwrap();
+        assert_eq!(
+            config["gateway"]["auth"]["mode"].as_str(),
+            Some("none"),
+            "default auth_mode should be none"
+        );
+        assert_eq!(
+            config["agents"]["defaults"]["model"]["primary"].as_str(),
+            Some("claude-sonnet-4-6"),
+            "default model should be claude-sonnet-4-6"
+        );
+    }
+
+    #[test]
+    fn non_interactive_respects_explicit_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = run(RunArgs {
+            root: Some(dir.path().to_path_buf()),
+            yes: false,
+            non_interactive: true,
+            api_key: Some("sk-ant-test-key".to_owned()),
+            auth_mode: Some("token".to_owned()),
+            api_provider: Some("anthropic".to_owned()),
+            model: Some("claude-opus-4-6".to_owned()),
+        });
+        assert!(
+            result.is_ok(),
+            "non-interactive init should succeed: {result:?}"
+        );
+
+        let config_str = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        let config: toml::Value = toml::from_str(&config_str).unwrap();
+        assert_eq!(
+            config["gateway"]["auth"]["mode"].as_str(),
+            Some("token"),
+            "auth_mode should reflect --auth-mode flag"
+        );
+        assert_eq!(
+            config["agents"]["defaults"]["model"]["primary"].as_str(),
+            Some("claude-opus-4-6"),
+            "model should reflect --model flag"
+        );
+
+        let cred: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("config/credentials/anthropic.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cred["token"].as_str(), Some("sk-ant-test-key"));
+    }
+
+    #[test]
+    fn non_interactive_without_instance_path_returns_error() {
+        let result = run(RunArgs {
+            root: None,
+            yes: false,
+            non_interactive: true,
+            api_key: None,
+            auth_mode: None,
+            api_provider: None,
+            model: None,
+        });
+        assert!(
+            result.is_err(),
+            "missing --instance-path should be an error"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("--instance-path") || msg.contains("ALETHEIA_INSTANCE_PATH"),
+            "error should name the missing flag: {msg}"
+        );
+    }
+
+    #[test]
+    fn yes_flag_uses_default_instance_path() {
+        let dir = tempfile::tempdir().unwrap();
+        // -y without explicit path: creates ./instance inside tmp — we provide a path
+        // here to avoid writing to the real cwd.
+        let result = run(RunArgs {
+            root: Some(dir.path().to_path_buf()),
+            yes: true,
+            non_interactive: false,
+            api_key: None,
+            auth_mode: None,
+            api_provider: None,
+            model: None,
+        });
+        assert!(result.is_ok(), "-y init should succeed: {result:?}");
+        assert!(dir.path().join("config/aletheia.toml").exists());
     }
 }

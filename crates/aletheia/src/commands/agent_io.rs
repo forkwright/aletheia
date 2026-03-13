@@ -132,15 +132,32 @@ pub struct TuiArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct InitArgs {
-    /// Instance root directory
-    #[arg(short = 'r', long, default_value = "./instance")]
-    pub instance_root: PathBuf,
-    /// Accept all defaults (non-interactive)
+    /// Instance root directory (default in interactive/-y mode: ./instance)
+    #[arg(
+        short = 'r',
+        long,
+        visible_alias = "instance-path",
+        env = "ALETHEIA_INSTANCE_PATH"
+    )]
+    pub instance_root: Option<PathBuf>,
+    /// Accept all defaults without prompts
     #[arg(short = 'y', long)]
     pub yes: bool,
-    /// API key (non-interactive mode)
+    /// Run without interactive prompts; --instance-path is required
+    #[arg(long)]
+    pub non_interactive: bool,
+    /// Anthropic API key
     #[arg(long, env = "ANTHROPIC_API_KEY")]
     pub api_key: Option<String>,
+    /// Authentication mode: none, token (default: none)
+    #[arg(long, env = "ALETHEIA_AUTH_MODE")]
+    pub auth_mode: Option<String>,
+    /// LLM API provider (default: anthropic)
+    #[arg(long, env = "ALETHEIA_API_PROVIDER")]
+    pub api_provider: Option<String>,
+    /// Model identifier (default: claude-sonnet-4-6)
+    #[arg(long, env = "ALETHEIA_MODEL")]
+    pub model: Option<String>,
 }
 
 use aletheia_mneme::store::SessionStore;
