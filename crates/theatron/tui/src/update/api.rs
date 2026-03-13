@@ -146,6 +146,12 @@ pub(crate) fn handle_show_error(app: &mut App, msg: String) {
 }
 
 #[tracing::instrument(skip_all)]
+// SAFETY: sanitized at ingestion — success messages may contain external data.
+pub(crate) fn handle_show_success(app: &mut App, msg: String) {
+    app.success_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
+}
+
+#[tracing::instrument(skip_all)]
 pub(crate) fn handle_dismiss_error(app: &mut App) {
     app.error_toast = None;
 }
@@ -155,6 +161,9 @@ pub(crate) fn handle_tick(app: &mut App) {
     app.tick_count = app.tick_count.wrapping_add(1);
     if app.error_toast.as_ref().is_some_and(|t| t.is_expired()) {
         app.error_toast = None;
+    }
+    if app.success_toast.as_ref().is_some_and(|t| t.is_expired()) {
+        app.success_toast = None;
     }
 }
 
@@ -362,6 +371,16 @@ mod tests {
         handle_show_error(&mut app, "test error".to_string());
         assert!(app.error_toast.is_some());
         assert_eq!(app.error_toast.as_ref().unwrap().message, "test error");
+    }
+
+    #[test]
+    fn handle_show_success_sets_success_toast_not_error_toast() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        handle_show_success(&mut app, "all good".to_string());
+        assert!(app.success_toast.is_some());
+        assert!(app.error_toast.is_none());
+        assert_eq!(app.success_toast.as_ref().unwrap().message, "all good");
     }
 
     #[test]

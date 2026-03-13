@@ -466,34 +466,77 @@ fn highlight_span(
 ) {
     let content = &span.content;
 
-    // Bail early without allocating: non-ASCII content cannot be safely byte-indexed
-    // after lowercasing (byte offsets may shift), and an empty pattern matches nothing.
-    if pattern.is_empty() || !content.is_ascii() {
+    if pattern.is_empty() {
         out.push(span.clone());
         return;
     }
 
-    let content_lower = content.to_lowercase();
+    // WHY: to_lowercase() can expand byte length for some chars (e.g. ß -> ss), so
+    // byte offsets from match_indices on content_lower do not map back to content.
+    // We work in char space instead: collect (char_index, char) pairs for both the
+    // original and its lowercase, match the pattern char-by-char on the lowercase
+    // sequence, then map matched char ranges back to byte ranges in the original.
+    let content_chars: Vec<char> = content.chars().collect();
+    let lower_chars: Vec<char> = content_chars.iter().flat_map(|c| c.to_lowercase()).collect();
+    let pattern_chars: Vec<char> = pattern.chars().collect();
 
-    let mut last_end = 0;
-    for (start, _) in content_lower.match_indices(pattern) {
-        let end = start + pattern.len();
-        if start > last_end {
-            out.push(Span::styled(
-                content[last_end..start].to_string(),
-                span.style,
-            ));
-        }
-        out.push(Span::styled(
-            content[start..end].to_string(),
-            span.style.patch(highlight_style),
-        ));
-        last_end = end;
-    }
-    if last_end < content.len() {
-        out.push(Span::styled(content[last_end..].to_string(), span.style));
-    } else if last_end == 0 {
+    // WHY: to_lowercase can produce a different number of chars than the original
+    // (e.g. ß -> [s, s]), so lower_chars and content_chars may have different lengths.
+    // We skip highlighting for such content rather than produce misaligned slices.
+    if lower_chars.len() != content_chars.len() {
         out.push(span.clone());
+        return;
+    }
+
+    let n = content_chars.len();
+    let p = pattern_chars.len();
+
+    // Pre-compute byte offsets for each char boundary in the original content.
+    let char_byte_offsets: Vec<usize> = content.char_indices().map(|(b, _)| b).collect();
+
+    let mut last_char = 0usize;
+    let mut matched_any = false;
+
+    let mut i = 0;
+    while i + p <= n {
+        if lower_chars[i..i + p] == pattern_chars[..] {
+            matched_any = true;
+
+            if i > last_char {
+                let start_byte = char_byte_offsets[last_char];
+                let end_byte = char_byte_offsets[i];
+                out.push(Span::styled(
+                    content[start_byte..end_byte].to_string(),
+                    span.style,
+                ));
+            }
+
+            let match_start_byte = char_byte_offsets[i];
+            let match_end_byte = if i + p < n {
+                char_byte_offsets[i + p]
+            } else {
+                content.len()
+            };
+            out.push(Span::styled(
+                content[match_start_byte..match_end_byte].to_string(),
+                span.style.patch(highlight_style),
+            ));
+
+            last_char = i + p;
+            i = last_char;
+        } else {
+            i += 1;
+        }
+    }
+
+    if !matched_any {
+        out.push(span.clone());
+        return;
+    }
+
+    if last_char < n {
+        let tail_byte = char_byte_offsets[last_char];
+        out.push(Span::styled(content[tail_byte..].to_string(), span.style));
     }
 }
 
@@ -658,5 +701,77 @@ fn render_streaming(
             Span::styled(format!(" {}", name), theme.style_assistant()),
             Span::styled(format!(" {} thinking…", ch), theme.style_muted()),
         ]));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Style;
+    use ratatui::text::Span;
+
+    fn plain_span(s: &'static str) -> Span<'static> {
+        Span::raw(s)
+    }
+
+    #[test]
+    fn highlight_span_ascii_match_highlights_portion() {
+        let span = plain_span("hello world");
+        let highlight = Style::default().bg(ratatui::style::Color::Yellow);
+        let mut out = Vec::new();
+        highlight_span(&span, "world", highlight, &mut out);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].content, "hello ");
+        assert_eq!(out[1].content, "world");
+        assert!(out[1].style.bg.is_some());
+    }
+
+    #[test]
+    fn highlight_span_no_match_returns_original_span() {
+        let span = plain_span("hello world");
+        let highlight = Style::default().bg(ratatui::style::Color::Yellow);
+        let mut out = Vec::new();
+        highlight_span(&span, "xyz", highlight, &mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].content, "hello world");
+    }
+
+    #[test]
+    fn highlight_span_empty_pattern_returns_original_span() {
+        let span = plain_span("hello");
+        let highlight = Style::default().bg(ratatui::style::Color::Yellow);
+        let mut out = Vec::new();
+        highlight_span(&span, "", highlight, &mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].content, "hello");
+    }
+
+    #[test]
+    fn highlight_span_non_ascii_with_match_highlights() {
+        let span = Span::raw("café au lait");
+        let highlight = Style::default().bg(ratatui::style::Color::Yellow);
+        let mut out = Vec::new();
+        highlight_span(&span, "au", highlight, &mut out);
+        assert!(out.iter().any(|s| s.content.as_ref() == "au" && s.style.bg.is_some()));
+    }
+
+    #[test]
+    fn highlight_span_non_ascii_no_match_returns_original() {
+        let span = Span::raw("héllo wörld");
+        let highlight = Style::default().bg(ratatui::style::Color::Yellow);
+        let mut out = Vec::new();
+        highlight_span(&span, "xyz", highlight, &mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].content.as_ref(), "héllo wörld");
+    }
+
+    #[test]
+    fn highlight_span_multiple_matches() {
+        let span = plain_span("abcabc");
+        let highlight = Style::default().bg(ratatui::style::Color::Yellow);
+        let mut out = Vec::new();
+        highlight_span(&span, "abc", highlight, &mut out);
+        let highlighted: Vec<_> = out.iter().filter(|s| s.style.bg.is_some()).collect();
+        assert_eq!(highlighted.len(), 2);
     }
 }
