@@ -338,7 +338,7 @@ pub async fn execute_streaming(
 
         let tx = stream_tx.clone();
         let response = match streaming_provider
-            .complete_streaming(&request, |event| {
+            .complete_streaming(&request, &mut |event| {
                 let _ = tx.try_send(TurnStreamEvent::LlmDelta(event));
             })
             .await
