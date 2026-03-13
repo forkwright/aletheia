@@ -183,9 +183,10 @@ pub async fn list_facts(
 
     // Apply fact_type filter
     if let Some(ref ft) = query.fact_type
-        && ft != "all" {
-            facts.retain(|f| f.fact_type == *ft);
-        }
+        && ft != "all"
+    {
+        facts.retain(|f| f.fact_type == *ft);
+    }
 
     // Apply tier filter
     if let Some(ref tier) = query.tier {

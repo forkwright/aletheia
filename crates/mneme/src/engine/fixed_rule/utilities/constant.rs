@@ -98,15 +98,16 @@ impl FixedRule for Constant {
             match row {
                 DataValue::List(tuple) => {
                     if let Some(l) = &last_len
-                        && *l != tuple.len() {
-                            return Err(FixedRuleError::InvalidInput {
-                                rule: "Constant".to_string(),
-                                message: "Constant head must have the same arity as the data given"
-                                    .to_string(),
-                                location: snafu::location!(),
-                            }
-                            .into());
-                        };
+                        && *l != tuple.len()
+                    {
+                        return Err(FixedRuleError::InvalidInput {
+                            rule: "Constant".to_string(),
+                            message: "Constant head must have the same arity as the data given"
+                                .to_string(),
+                            location: snafu::location!(),
+                        }
+                        .into());
+                    };
                     last_len = Some(tuple.len());
                     tuples.push(DataValue::List(tuple));
                 }

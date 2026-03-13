@@ -268,31 +268,35 @@ impl CredentialProvider for FileCredentialProvider {
     fn get_credential(&self) -> Option<Credential> {
         // Check cache validity
         if let Ok(guard) = self.cached.read()
-            && let Some(cached) = guard.as_ref() {
-                if cached.checked_at.elapsed() < FILE_MTIME_CHECK_INTERVAL {
+            && let Some(cached) = guard.as_ref()
+        {
+            if cached.checked_at.elapsed() < FILE_MTIME_CHECK_INTERVAL {
+                return Some(Credential {
+                    secret: cached.token.clone(),
+                    source: CredentialSource::File,
+                });
+            }
+            // Check if file changed
+            if let Some(mtime) = self.current_mtime()
+                && mtime == cached.mtime
+            {
+                // File unchanged — update check timestamp and return cached
+                drop(guard);
+                if let Ok(mut w) = self.cached.write()
+                    && let Some(ref mut c) = *w
+                {
+                    c.checked_at = Instant::now();
+                }
+                if let Ok(g) = self.cached.read()
+                    && let Some(c) = g.as_ref()
+                {
                     return Some(Credential {
-                        secret: cached.token.clone(),
+                        secret: c.token.clone(),
                         source: CredentialSource::File,
                     });
                 }
-                // Check if file changed
-                if let Some(mtime) = self.current_mtime()
-                    && mtime == cached.mtime {
-                        // File unchanged — update check timestamp and return cached
-                        drop(guard);
-                        if let Ok(mut w) = self.cached.write()
-                            && let Some(ref mut c) = *w {
-                                c.checked_at = Instant::now();
-                            }
-                        if let Ok(g) = self.cached.read()
-                            && let Some(c) = g.as_ref() {
-                                return Some(Credential {
-                                    secret: c.token.clone(),
-                                    source: CredentialSource::File,
-                                });
-                            }
-                    }
             }
+        }
 
         // Cache miss or stale — reload
         self.reload().map(|token| Credential {
@@ -377,12 +381,13 @@ impl CredentialProvider for RefreshingCredentialProvider {
         // Try in-memory refreshed token first
         if let Ok(guard) = self.state.read()
             && let Some(ref s) = *guard
-                && !s.current_token.is_empty() {
-                    return Some(Credential {
-                        secret: s.current_token.clone(),
-                        source: CredentialSource::OAuth,
-                    });
-                }
+            && !s.current_token.is_empty()
+        {
+            return Some(Credential {
+                secret: s.current_token.clone(),
+                source: CredentialSource::OAuth,
+            });
+        }
         // Fall back to file read
         self.file_provider.get_credential()
     }
@@ -588,13 +593,14 @@ pub fn claude_code_provider(path: &Path) -> Option<Box<dyn CredentialProvider>> 
     }
     let cred = CredentialFile::load(path)?;
     if cred.has_refresh_token()
-        && let Some(refreshing) = RefreshingCredentialProvider::new(path.to_path_buf()) {
-            info!(
-                path = %path.display(),
-                "Claude Code credentials found (OAuth auto-refresh)"
-            );
-            return Some(Box::new(refreshing));
-        }
+        && let Some(refreshing) = RefreshingCredentialProvider::new(path.to_path_buf())
+    {
+        info!(
+            path = %path.display(),
+            "Claude Code credentials found (OAuth auto-refresh)"
+        );
+        return Some(Box::new(refreshing));
+    }
     info!(
         path = %path.display(),
         "Claude Code credentials found (static token)"

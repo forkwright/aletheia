@@ -121,12 +121,12 @@ pub async fn send_message(
             .provider_registry
             .find_provider(&config.model)
             .is_none()
-        {
-            return Err(InternalSnafu {
-                message: format!("no provider for model {}", config.model),
-            }
-            .build());
+    {
+        return Err(InternalSnafu {
+            message: format!("no provider for model {}", config.model),
         }
+        .build());
+    }
 
     let session_key = session.session_key.clone();
     let (tx, rx) = mpsc::channel::<SseEvent>(32);

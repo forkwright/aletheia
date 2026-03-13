@@ -389,9 +389,10 @@ impl<'a> SessionTx<'a> {
             }
 
             if let Some((code, span)) = filter_code
-                && !eval_bytecode_pred(code, &cand_tuple, stack, *span)? {
-                    continue;
-                }
+                && !eval_bytecode_pred(code, &cand_tuple, stack, *span)?
+            {
+                continue;
+            }
 
             ret.push(cand_tuple);
             if ret.len() >= config.k {

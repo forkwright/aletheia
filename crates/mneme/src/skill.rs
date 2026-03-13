@@ -199,9 +199,10 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
 
     // Use "When to Use" section as description if main description is empty
     if description.is_empty()
-        && let Some(when_lines) = sections.get("when to use") {
-            description = when_lines.join(" ");
-        }
+        && let Some(when_lines) = sections.get("when to use")
+    {
+        description = when_lines.join(" ");
+    }
 
     if description.is_empty() {
         return Err(err("no description found"));

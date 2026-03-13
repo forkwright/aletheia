@@ -494,24 +494,25 @@ impl KnowledgeStore {
         config: &ConsolidationConfig,
     ) -> Result<(), ConsolidationError> {
         if let Some(last_time) = self.last_consolidation_time(nous_id)?
-            && let Some(last_ts) = crate::knowledge::parse_timestamp(&last_time) {
-                let now = jiff::Timestamp::now();
-                if let Ok(span) = now.since(last_ts) {
-                    let total_minutes = i64::from(span.get_hours()) * 60 + span.get_minutes();
-                    #[expect(
-                        clippy::cast_precision_loss,
-                        reason = "elapsed minutes as f64 is fine for rate limiting"
-                    )]
-                    let elapsed_hours = total_minutes as f64 / 60.0;
-                    if elapsed_hours < config.rate_limit_hours {
-                        return Err(RateLimitedSnafu {
-                            elapsed_hours,
-                            min_hours: config.rate_limit_hours,
-                        }
-                        .build());
+            && let Some(last_ts) = crate::knowledge::parse_timestamp(&last_time)
+        {
+            let now = jiff::Timestamp::now();
+            if let Ok(span) = now.since(last_ts) {
+                let total_minutes = i64::from(span.get_hours()) * 60 + span.get_minutes();
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "elapsed minutes as f64 is fine for rate limiting"
+                )]
+                let elapsed_hours = total_minutes as f64 / 60.0;
+                if elapsed_hours < config.rate_limit_hours {
+                    return Err(RateLimitedSnafu {
+                        elapsed_hours,
+                        min_hours: config.rate_limit_hours,
                     }
+                    .build());
                 }
             }
+        }
         Ok(())
     }
 }

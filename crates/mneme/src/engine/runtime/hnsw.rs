@@ -262,9 +262,10 @@ impl<'a> SessionTx<'a> {
         }
         if let Some(v) = idx_table.get(self, &canary_tuple)? {
             if let DataValue::Bytes(b) = &v[tuple_key.len() * 2 + 6]
-                && b == hash.as_ref() {
-                    return Ok(());
-                }
+                && b == hash.as_ref()
+            {
+                return Ok(());
+            }
             self.hnsw_remove_vec(tuple_key, idx, subidx, orig_table, idx_table)?;
         }
 
@@ -819,10 +820,11 @@ impl<'a> SessionTx<'a> {
         tuple: &[DataValue],
     ) -> Result<bool> {
         if let Some(code) = filter
-            && !eval_bytecode_pred(code, tuple, stack, Default::default())? {
-                self.hnsw_remove(orig_table, idx_table, tuple)?;
-                return Ok(false);
-            }
+            && !eval_bytecode_pred(code, tuple, stack, Default::default())?
+        {
+            self.hnsw_remove(orig_table, idx_table, tuple)?;
+            return Ok(false);
+        }
         let mut extracted_vectors = vec![];
         for idx in &manifest.vec_fields {
             let val = tuple
@@ -1113,9 +1115,10 @@ impl<'a> SessionTx<'a> {
 
             while let Some((cand_key, OrderedFloat(distance))) = found_nn.pop() {
                 if let Some(r) = config.radius
-                    && distance > r {
-                        continue;
-                    }
+                    && distance > r
+                {
+                    continue;
+                }
 
                 let mut cand_tuple =
                     config.base_handle.get(self, &cand_key.0)?.ok_or_else(|| {
@@ -1170,9 +1173,10 @@ impl<'a> SessionTx<'a> {
                 }
 
                 if let Some((code, span)) = filter_bytecode
-                    && !eval_bytecode_pred(code, &cand_tuple, stack, *span)? {
-                        continue;
-                    }
+                    && !eval_bytecode_pred(code, &cand_tuple, stack, *span)?
+                {
+                    continue;
+                }
 
                 ret.push(cand_tuple);
             }

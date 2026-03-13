@@ -31,10 +31,11 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
 pub(crate) fn handle_close_overlay(app: &mut App) {
     // Settings edit mode: Esc cancels the edit, not the overlay
     if let Some(Overlay::Settings(ref s)) = app.overlay
-        && s.editing.is_some() {
-            super::settings::handle_edit_escape(app);
-            return;
-        }
+        && s.editing.is_some()
+    {
+        super::settings::handle_edit_escape(app);
+        return;
+    }
     if let Some(Overlay::ToolApproval(ref approval)) = app.overlay {
         let turn_id = approval.turn_id.clone();
         let tool_id = approval.tool_id.clone();

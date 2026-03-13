@@ -422,15 +422,16 @@ impl Expr {
                 ..
             } = self
                 && op1.name == OP_NEGATE.name
-                    && let Some(Expr::Apply {
-                        op: op2,
-                        args: arg2,
-                        ..
-                    }) = arg1.first()
-                        && op2.name == OP_NEGATE.name {
-                            let mut new_self = arg2[0].clone();
-                            mem::swap(self, &mut new_self);
-                        }
+                && let Some(Expr::Apply {
+                    op: op2,
+                    args: arg2,
+                    ..
+                }) = arg1.first()
+                && op2.name == OP_NEGATE.name
+            {
+                let mut new_self = arg2[0].clone();
+                mem::swap(self, &mut new_self);
+            }
         }
         Ok(())
     }
@@ -515,66 +516,71 @@ impl Expr {
                 n if n == OP_GE.name || n == OP_GT.name => {
                     if let Some(symb) = args[0].get_binding()
                         && let Some(val) = args[1].get_const()
-                            && target == symb {
-                                let tar_val = match val.get_int() {
-                                    Some(i) => DataValue::from(i),
-                                    None => val.clone(),
-                                };
-                                return Ok(ValueRange::lower_bound(tar_val));
-                            }
+                        && target == symb
+                    {
+                        let tar_val = match val.get_int() {
+                            Some(i) => DataValue::from(i),
+                            None => val.clone(),
+                        };
+                        return Ok(ValueRange::lower_bound(tar_val));
+                    }
                     if let Some(symb) = args[1].get_binding()
                         && let Some(val) = args[0].get_const()
-                            && target == symb {
-                                let tar_val = match val.get_float() {
-                                    Some(i) => DataValue::from(i),
-                                    None => val.clone(),
-                                };
-                                return Ok(ValueRange::upper_bound(tar_val));
-                            }
+                        && target == symb
+                    {
+                        let tar_val = match val.get_float() {
+                            Some(i) => DataValue::from(i),
+                            None => val.clone(),
+                        };
+                        return Ok(ValueRange::upper_bound(tar_val));
+                    }
                     ValueRange::default()
                 }
                 n if n == OP_LE.name || n == OP_LT.name => {
                     if let Some(symb) = args[0].get_binding()
                         && let Some(val) = args[1].get_const()
-                            && target == symb {
-                                let tar_val = match val.get_float() {
-                                    Some(i) => DataValue::from(i),
-                                    None => val.clone(),
-                                };
+                        && target == symb
+                    {
+                        let tar_val = match val.get_float() {
+                            Some(i) => DataValue::from(i),
+                            None => val.clone(),
+                        };
 
-                                return Ok(ValueRange::upper_bound(tar_val));
-                            }
+                        return Ok(ValueRange::upper_bound(tar_val));
+                    }
                     if let Some(symb) = args[1].get_binding()
                         && let Some(val) = args[0].get_const()
-                            && target == symb {
-                                let tar_val = match val.get_int() {
-                                    Some(i) => DataValue::from(i),
-                                    None => val.clone(),
-                                };
+                        && target == symb
+                    {
+                        let tar_val = match val.get_int() {
+                            Some(i) => DataValue::from(i),
+                            None => val.clone(),
+                        };
 
-                                return Ok(ValueRange::lower_bound(tar_val));
-                            }
+                        return Ok(ValueRange::lower_bound(tar_val));
+                    }
                     ValueRange::default()
                 }
                 n if n == OP_STARTS_WITH.name => {
                     if let Some(symb) = args[0].get_binding()
                         && let Some(val) = args[1].get_const()
-                            && target == symb {
-                                let s = val.get_str().ok_or_else(|| {
-                                    InternalError::from(
-                                        TypeMismatchSnafu {
-                                            op: "prefix scan".to_string(),
-                                            expected: format!("a string value, got {:?}", val),
-                                        }
-                                        .build(),
-                                    )
-                                })?;
-                                let lower = DataValue::from(s);
-                                let mut upper = CompactString::from(s);
-                                upper.push(LARGEST_UTF_CHAR);
-                                let upper = DataValue::Str(upper);
-                                return Ok(ValueRange::new(lower, upper));
-                            }
+                        && target == symb
+                    {
+                        let s = val.get_str().ok_or_else(|| {
+                            InternalError::from(
+                                TypeMismatchSnafu {
+                                    op: "prefix scan".to_string(),
+                                    expected: format!("a string value, got {:?}", val),
+                                }
+                                .build(),
+                            )
+                        })?;
+                        let lower = DataValue::from(s);
+                        let mut upper = CompactString::from(s);
+                        upper.push(LARGEST_UTF_CHAR);
+                        let upper = DataValue::Str(upper);
+                        return Ok(ValueRange::new(lower, upper));
+                    }
                     ValueRange::default()
                 }
                 _ => ValueRange::default(),

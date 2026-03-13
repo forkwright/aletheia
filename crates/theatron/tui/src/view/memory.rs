@@ -304,13 +304,15 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             .enumerate()
             .filter(|(_, f)| {
                 if let Some(tf) = type_filter
-                    && f.fact_type != tf {
-                        return false;
-                    }
+                    && f.fact_type != tf
+                {
+                    return false;
+                }
                 if let Some(tf) = tier_filter
-                    && f.tier != tf {
-                        return false;
-                    }
+                    && f.tier != tf
+                {
+                    return false;
+                }
                 if filter.is_empty() {
                     return true;
                 }

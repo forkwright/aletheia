@@ -85,15 +85,17 @@ impl<'s, S: Storage<'s>> Db<S> {
                     if let Some(fst) = it.next() {
                         for cb_id in it {
                             if let Some(cb) = cbs.get(cb_id)
-                                && cb.sender.send((op, new.clone(), old.clone())).is_err() {
-                                    to_remove.push(*cb_id)
-                                }
+                                && cb.sender.send((op, new.clone(), old.clone())).is_err()
+                            {
+                                to_remove.push(*cb_id)
+                            }
                         }
 
                         if let Some(cb) = cbs.get(fst)
-                            && cb.sender.send((op, new, old)).is_err() {
-                                to_remove.push(*fst)
-                            }
+                            && cb.sender.send((op, new, old)).is_err()
+                        {
+                            to_remove.push(*fst)
+                        }
                     }
                 }
             }
@@ -106,9 +108,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                 .expect("event_callbacks lock poisoned");
             for removing_id in &to_remove {
                 if let Some(removed) = cbs.remove(removing_id)
-                    && let Some(set) = cb_dir.get_mut(&removed.dependent) {
-                        set.remove(removing_id);
-                    }
+                    && let Some(set) = cb_dir.get_mut(&removed.dependent)
+                {
+                    set.remove(removing_id);
+                }
             }
         }
     }

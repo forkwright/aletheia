@@ -94,10 +94,11 @@ fn collect_signal_scores(
     for row in input.iter()? {
         let row = row?;
         if let (Some(id_val), Some(score_val)) = (row.first(), row.get(1))
-            && let Some(id_str) = id_val.get_str() {
-                let score = score_val.get_float().unwrap_or(0.0);
-                scores.insert(CompactString::from(id_str), score);
-            }
+            && let Some(id_str) = id_val.get_str()
+        {
+            let score = score_val.get_float().unwrap_or(0.0);
+            scores.insert(CompactString::from(id_str), score);
+        }
     }
     Ok(scores)
 }

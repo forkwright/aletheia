@@ -149,14 +149,15 @@ pub(crate) fn collapse_to_replacements(hunks: &[DiffHunk]) -> Vec<DiffHunk> {
                     DiffChange::Delete(old_text) => {
                         // Look ahead for adjacent Insert
                         if i + 1 < changes.len()
-                            && let DiffChange::Insert(new_text) = &changes[i + 1] {
-                                collapsed.push(DiffChange::Replace {
-                                    old: old_text.clone(),
-                                    new: new_text.clone(),
-                                });
-                                i += 2;
-                                continue;
-                            }
+                            && let DiffChange::Insert(new_text) = &changes[i + 1]
+                        {
+                            collapsed.push(DiffChange::Replace {
+                                old: old_text.clone(),
+                                new: new_text.clone(),
+                            });
+                            i += 2;
+                            continue;
+                        }
                         collapsed.push(changes[i].clone());
                     }
                     _ => collapsed.push(changes[i].clone()),

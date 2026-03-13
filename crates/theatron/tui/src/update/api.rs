@@ -119,9 +119,10 @@ pub(crate) async fn handle_session_picker_archive(app: &mut App) {
         Ok(()) => {
             if let Some(ref agent_id) = app.focused_agent
                 && let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id)
-                    && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id) {
-                        session.status = Some("archived".to_string());
-                    }
+                && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
+            {
+                session.status = Some("archived".to_string());
+            }
             if app.focused_session_id.as_ref() == Some(&session_id) {
                 app.messages.clear();
                 app.virtual_scroll.clear();
@@ -195,9 +196,10 @@ pub(crate) fn extract_text_content(content: &Option<serde_json::Value>) -> Optio
             return None;
         }
         if s.starts_with('[')
-            && let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(s) {
-                return extract_texts_from_array(&parsed);
-            }
+            && let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(s)
+        {
+            return extract_texts_from_array(&parsed);
+        }
         return Some(s.to_string());
     }
 
@@ -214,9 +216,10 @@ fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
     for block in arr {
         if block.get("type").and_then(|t| t.as_str()) == Some("text")
             && let Some(t) = block.get("text").and_then(|t| t.as_str())
-                && !t.is_empty() {
-                    texts.push(t.to_string());
-                }
+            && !t.is_empty()
+        {
+            texts.push(t.to_string());
+        }
     }
 
     if texts.is_empty() {

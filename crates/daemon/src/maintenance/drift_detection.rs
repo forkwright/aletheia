@@ -139,9 +139,10 @@ impl DriftDetector {
             } else {
                 // Exact match on filename component.
                 if let Some(name) = relative.file_name().and_then(|n| n.to_str())
-                    && name == pattern {
-                        return true;
-                    }
+                    && name == pattern
+                {
+                    return true;
+                }
             }
         }
 

@@ -389,9 +389,10 @@ mod tests {
         let mut app = app_with_settings();
         // Modify a field
         if let Some(Overlay::Settings(s)) = &mut app.overlay
-            && let Some(field) = s.current_field_mut() {
-                field.value = serde_json::Value::Number(999.into());
-            }
+            && let Some(field) = s.current_field_mut()
+        {
+            field.value = serde_json::Value::Number(999.into());
+        }
         handle_reset(&mut app);
         if let Some(Overlay::Settings(s)) = &app.overlay {
             assert!(!s.has_changes());

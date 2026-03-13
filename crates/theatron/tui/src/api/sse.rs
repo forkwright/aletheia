@@ -56,9 +56,10 @@ impl SseConnection {
                             }
                             Ok(EsEvent::Message(msg)) => {
                                 if let Some(parsed) = parse_sse_event(&msg.event, &msg.data)
-                                    && tx.send(parsed).await.is_err() {
-                                        return; // Receiver dropped, shut down
-                                    }
+                                    && tx.send(parsed).await.is_err()
+                                {
+                                    return; // Receiver dropped, shut down
+                                }
                             }
                             Err(e) => {
                                 tracing::warn!("SSE error: {e}");

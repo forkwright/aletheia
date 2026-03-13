@@ -137,9 +137,10 @@ impl ToolExecutor for WebFetchExecutor {
                     // full async DNS isn't available in the sync callback.
                     // Reject if the redirect target is an IP literal in a private range.
                     if let Some(addr) = url.host_str().and_then(|h| h.parse::<IpAddr>().ok())
-                        && is_private_ip(&addr) {
-                            return attempt.stop();
-                        }
+                        && is_private_ip(&addr)
+                    {
+                        return attempt.stop();
+                    }
                     // Limit redirect chain length
                     if attempt.previous().len() >= 10 {
                         return attempt.stop();

@@ -319,9 +319,10 @@ async fn execute_rename(app: &mut App, name: &str) {
         Ok(()) => {
             if let Some(ref agent_id) = app.focused_agent
                 && let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id)
-                    && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id) {
-                        session.display_name = Some(name.clone());
-                    }
+                && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
+            {
+                session.display_name = Some(name.clone());
+            }
             app.error_toast = Some(ErrorToast::new(format!("Renamed to: {name}")));
         }
         Err(e) => {
@@ -344,9 +345,10 @@ async fn execute_archive(app: &mut App) {
         Ok(()) => {
             if let Some(ref agent_id) = app.focused_agent
                 && let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id)
-                    && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id) {
-                        session.status = Some("archived".to_string());
-                    }
+                && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
+            {
+                session.status = Some("archived".to_string());
+            }
             app.messages.clear();
             app.focused_session_id = None;
             app.scroll_to_bottom();
@@ -372,9 +374,10 @@ async fn execute_unarchive(app: &mut App) {
         Ok(()) => {
             if let Some(ref agent_id) = app.focused_agent
                 && let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id)
-                    && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id) {
-                        session.status = Some("active".to_string());
-                    }
+                && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
+            {
+                session.status = Some("active".to_string());
+            }
             app.error_toast = Some(ErrorToast::new("Session restored".into()));
         }
         Err(e) => {

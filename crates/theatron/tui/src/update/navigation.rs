@@ -47,29 +47,31 @@ pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
 pub(crate) async fn handle_next_agent(app: &mut App) {
     app.save_scroll_state();
     if let Some(ref current) = app.focused_agent
-        && let Some(idx) = app.agents.iter().position(|a| a.id == *current) {
-            let next = (idx + 1) % app.agents.len();
-            let id = app.agents[next].id.clone();
-            app.focused_agent = Some(id);
-            app.load_focused_session().await;
-            app.restore_scroll_state();
-        }
+        && let Some(idx) = app.agents.iter().position(|a| a.id == *current)
+    {
+        let next = (idx + 1) % app.agents.len();
+        let id = app.agents[next].id.clone();
+        app.focused_agent = Some(id);
+        app.load_focused_session().await;
+        app.restore_scroll_state();
+    }
 }
 
 pub(crate) async fn handle_prev_agent(app: &mut App) {
     app.save_scroll_state();
     if let Some(ref current) = app.focused_agent
-        && let Some(idx) = app.agents.iter().position(|a| a.id == *current) {
-            let prev = if idx == 0 {
-                app.agents.len() - 1
-            } else {
-                idx - 1
-            };
-            let id = app.agents[prev].id.clone();
-            app.focused_agent = Some(id);
-            app.load_focused_session().await;
-            app.restore_scroll_state();
-        }
+        && let Some(idx) = app.agents.iter().position(|a| a.id == *current)
+    {
+        let prev = if idx == 0 {
+            app.agents.len() - 1
+        } else {
+            idx - 1
+        };
+        let id = app.agents[prev].id.clone();
+        app.focused_agent = Some(id);
+        app.load_focused_session().await;
+        app.restore_scroll_state();
+    }
 }
 
 pub(crate) fn handle_toggle_sidebar(app: &mut App) {

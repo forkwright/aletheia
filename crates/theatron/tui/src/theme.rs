@@ -371,9 +371,10 @@ fn detect_color_depth() -> ColorDepth {
 
     // Check TERM for 256-color support
     if let Ok(term) = std::env::var("TERM")
-        && term.contains("256color") {
-            return ColorDepth::Color256;
-        }
+        && term.contains("256color")
+    {
+        return ColorDepth::Color256;
+    }
 
     // tmux usually supports 256 colors minimum
     if std::env::var("TMUX").is_ok() {

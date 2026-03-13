@@ -268,9 +268,10 @@ fn parse_diff_from_output(output: &str, tool_name: &str) -> Option<OpsDiffEntry>
                 additions.push(stripped.to_string());
             }
         } else if let Some(stripped) = line.strip_prefix('-')
-            && !stripped.is_empty() {
-                deletions.push(stripped.to_string());
-            }
+            && !stripped.is_empty()
+        {
+            deletions.push(stripped.to_string());
+        }
     }
 
     if additions.is_empty() && deletions.is_empty() {

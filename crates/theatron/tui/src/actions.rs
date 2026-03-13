@@ -83,16 +83,17 @@ impl App {
             let prefix = &text_before_cursor[at_pos + 1..];
 
             if let Some(ref mut tc) = self.tab_completion
-                && (tc.prefix == prefix || (!tc.candidates.is_empty() && tc.insert_start == at_pos)) {
-                    tc.index = (tc.index + 1) % tc.candidates.len();
-                    let candidate = &tc.candidates[tc.index];
+                && (tc.prefix == prefix || (!tc.candidates.is_empty() && tc.insert_start == at_pos))
+            {
+                tc.index = (tc.index + 1) % tc.candidates.len();
+                let candidate = &tc.candidates[tc.index];
 
-                    self.input
-                        .text
-                        .replace_range(at_pos..self.input.cursor, &format!("@{} ", candidate));
-                    self.input.cursor = at_pos + 1 + candidate.len() + 1;
-                    return;
-                }
+                self.input
+                    .text
+                    .replace_range(at_pos..self.input.cursor, &format!("@{} ", candidate));
+                self.input.cursor = at_pos + 1 + candidate.len() + 1;
+                return;
+            }
 
             let candidates: Vec<String> = self
                 .agents

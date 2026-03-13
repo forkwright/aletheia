@@ -288,9 +288,10 @@ impl KnowledgeStore {
                 for row in &neighborhood.rows {
                     // Extract neighbor entity IDs and find their associated facts
                     if let Some(neighbor_id) = row.first().and_then(|v| v.get_str())
-                        && !existing_ids.contains(neighbor_id) {
-                            expanded_ids.insert(neighbor_id.to_owned());
-                        }
+                        && !existing_ids.contains(neighbor_id)
+                    {
+                        expanded_ids.insert(neighbor_id.to_owned());
+                    }
                 }
             }
         }

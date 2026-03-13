@@ -253,9 +253,10 @@ impl ToolExecutor for WriteExecutor {
             }
 
             if let Some(parent) = path.parent()
-                && let Err(e) = std::fs::create_dir_all(parent) {
-                    return Ok(err_result(format!("failed to create directories: {e}")));
-                }
+                && let Err(e) = std::fs::create_dir_all(parent)
+            {
+                return Ok(err_result(format!("failed to create directories: {e}")));
+            }
 
             let write_result = if append {
                 std::fs::OpenOptions::new()

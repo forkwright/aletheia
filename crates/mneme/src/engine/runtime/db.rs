@@ -632,20 +632,18 @@ impl<'s, S: Storage<'s>> Db<S> {
                     })
                     .try_collect()?;
                 let k_store = handle.encode_key_for_store(&keys, Default::default())?;
-                if has_indices
-                    && let Some(existing) = tx.store_tx.get(&k_store, false)? {
-                        let mut old = keys.clone();
-                        extend_tuple_from_v(&mut old, &existing);
-                        if is_delete || old != row {
-                            for (idx_rel, extractor) in handle.indices.values() {
-                                let idx_tup =
-                                    extractor.iter().map(|i| old[*i].clone()).collect_vec();
-                                let encoded =
-                                    idx_rel.encode_key_for_store(&idx_tup, Default::default())?;
-                                tx.store_tx.del(&encoded)?;
-                            }
+                if has_indices && let Some(existing) = tx.store_tx.get(&k_store, false)? {
+                    let mut old = keys.clone();
+                    extend_tuple_from_v(&mut old, &existing);
+                    if is_delete || old != row {
+                        for (idx_rel, extractor) in handle.indices.values() {
+                            let idx_tup = extractor.iter().map(|i| old[*i].clone()).collect_vec();
+                            let encoded =
+                                idx_rel.encode_key_for_store(&idx_tup, Default::default())?;
+                            tx.store_tx.del(&encoded)?;
                         }
                     }
+                }
                 if is_delete {
                     tx.store_tx.del(&k_store)?;
                 } else {

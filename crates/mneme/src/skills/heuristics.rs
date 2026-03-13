@@ -323,9 +323,10 @@ fn completion_score(tool_calls: &[ToolCallRecord]) -> f64 {
     }
     // Ends with Write/Edit (synthesis)
     if let Some(last) = tool_calls.last()
-        && matches!(tool_category(&last.tool_name), ToolCategory::Write) {
-            return 0.15;
-        }
+        && matches!(tool_category(&last.tool_name), ToolCategory::Write)
+    {
+        return 0.15;
+    }
     0.0
 }
 

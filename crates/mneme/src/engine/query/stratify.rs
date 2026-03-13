@@ -257,35 +257,37 @@ impl NormalFormProgram {
         let mut store_lifetimes = BTreeMap::new();
         for (fr, tos) in &stratified_graph {
             if let Some(fr_idx) = invert_indices.get(fr)
-                && let Some(fr_stratum) = invert_sort_result.get(fr_idx) {
-                    for to in tos.keys() {
-                        let used_in = n_strata - 1 - *fr_stratum;
-                        let magic_to = MagicSymbol::Muggle {
-                            inner: (*to).clone(),
-                        };
-                        match store_lifetimes.entry(magic_to) {
-                            Entry::Vacant(e) => {
-                                e.insert(used_in);
-                            }
-                            Entry::Occupied(mut o) => {
-                                let existing = *o.get();
-                                if used_in > existing {
-                                    o.insert(used_in);
-                                }
+                && let Some(fr_stratum) = invert_sort_result.get(fr_idx)
+            {
+                for to in tos.keys() {
+                    let used_in = n_strata - 1 - *fr_stratum;
+                    let magic_to = MagicSymbol::Muggle {
+                        inner: (*to).clone(),
+                    };
+                    match store_lifetimes.entry(magic_to) {
+                        Entry::Vacant(e) => {
+                            e.insert(used_in);
+                        }
+                        Entry::Occupied(mut o) => {
+                            let existing = *o.get();
+                            if used_in > existing {
+                                o.insert(used_in);
                             }
                         }
                     }
                 }
+            }
         }
 
         for (name, ruleset) in self.prog {
             if let Some(scc_idx) = invert_indices.get(&name)
-                && let Some(rev_stratum_idx) = invert_sort_result.get(scc_idx) {
-                    let target = ret.get_mut(*rev_stratum_idx).expect(
-                        "stratum index always valid: rev_stratum_idx derived from ret's range",
-                    );
-                    target.prog.insert(name, ruleset);
-                }
+                && let Some(rev_stratum_idx) = invert_sort_result.get(scc_idx)
+            {
+                let target = ret
+                    .get_mut(*rev_stratum_idx)
+                    .expect("stratum index always valid: rev_stratum_idx derived from ret's range");
+                target.prog.insert(name, ruleset);
+            }
         }
 
         Ok((StratifiedNormalFormProgram(ret), store_lifetimes))

@@ -263,9 +263,10 @@ impl App {
 
         if let Some(agent_id) = self.focused_agent.clone() {
             if let Ok(sessions) = self.client.sessions(&agent_id).await
-                && let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id) {
-                    agent.sessions = sessions;
-                }
+                && let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id)
+            {
+                agent.sessions = sessions;
+            }
             self.load_focused_session().await;
 
             // Create initial tab for the default agent/session
@@ -310,9 +311,10 @@ impl App {
 
             if needs_load
                 && let Ok(sessions) = self.client.sessions(&agent_id).await
-                    && let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id) {
-                        agent.sessions = sessions;
-                    }
+                && let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id)
+            {
+                agent.sessions = sessions;
+            }
         }
 
         let agent = match self.agents.iter().find(|a| a.id == agent_id) {

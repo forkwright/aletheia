@@ -216,9 +216,10 @@ impl Goal for Option<u32> {
 
     fn visit(&mut self, node: u32) {
         if let Some(u) = &self
-            && *u == node {
-                self.take();
-            }
+            && *u == node
+        {
+            self.take();
+        }
     }
 
     fn iter(&self, _total: u32) -> Box<dyn Iterator<Item = u32> + '_> {

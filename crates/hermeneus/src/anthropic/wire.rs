@@ -433,9 +433,10 @@ fn content_with_cache_control(content: &Content) -> serde_json::Value {
                 .map(|b| serde_json::to_value(b).unwrap_or_default())
                 .collect();
             if let Some(last) = arr.last_mut()
-                && let Some(obj) = last.as_object_mut() {
-                    obj.insert("cache_control".to_owned(), cc);
-                }
+                && let Some(obj) = last.as_object_mut()
+            {
+                obj.insert("cache_control".to_owned(), cc);
+            }
             serde_json::Value::Array(arr)
         }
     }

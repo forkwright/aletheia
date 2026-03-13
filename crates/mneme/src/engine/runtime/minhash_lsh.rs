@@ -213,9 +213,10 @@ impl<'a> SessionTx<'a> {
                 let key_part = &ks[1..];
                 found_tuples.insert(key_part.to_vec());
                 if let Some(k) = early_stopper
-                    && found_tuples.len() >= k {
-                        break;
-                    }
+                    && found_tuples.len() >= k
+                {
+                    break;
+                }
             }
         }
         let mut ret = vec![];
@@ -230,14 +231,16 @@ impl<'a> SessionTx<'a> {
                 }
             })?;
             if let Some((filter_code, span)) = filter_code
-                && !eval_bytecode_pred(filter_code, &orig_tuple, stack, *span)? {
-                    continue;
-                }
+                && !eval_bytecode_pred(filter_code, &orig_tuple, stack, *span)?
+            {
+                continue;
+            }
             ret.push(orig_tuple);
             if let Some(k) = config.k
-                && ret.len() >= k {
-                    break;
-                }
+                && ret.len() >= k
+            {
+                break;
+            }
         }
         Ok(ret)
     }

@@ -150,14 +150,15 @@ impl SandboxPolicy {
          -> std::io::Result<landlock::RulesetCreated> {
             for path in paths {
                 if path.exists()
-                    && let Ok(fd) = PathFd::new(path) {
-                        rs = rs.add_rule(PathBeneath::new(fd, access)).map_err(|e| {
-                            std::io::Error::other(format!(
-                                "Landlock rule failed for {}: {e}",
-                                path.display()
-                            ))
-                        })?;
-                    }
+                    && let Ok(fd) = PathFd::new(path)
+                {
+                    rs = rs.add_rule(PathBeneath::new(fd, access)).map_err(|e| {
+                        std::io::Error::other(format!(
+                            "Landlock rule failed for {}: {e}",
+                            path.display()
+                        ))
+                    })?;
+                }
             }
             Ok(rs)
         };
