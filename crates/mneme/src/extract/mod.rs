@@ -395,7 +395,14 @@ Rules:
 
     /// Persist an extraction to the knowledge store.
     #[cfg(feature = "mneme-engine")]
-    #[instrument(skip(self, store))]
+    #[instrument(
+        skip(self, store, extraction),
+        fields(
+            entity_count = extraction.entities.len(),
+            relationship_count = extraction.relationships.len(),
+            fact_count = extraction.facts.len(),
+        )
+    )]
     #[expect(
         clippy::too_many_lines,
         reason = "sequential extraction pipeline: entities → relationships → facts"
