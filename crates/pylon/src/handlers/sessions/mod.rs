@@ -75,9 +75,22 @@ pub async fn create(
 
     let session = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
-        store
-            .find_or_create_session(&id_clone, &nid, &skey, Some(&model), None)
-            .map_err(ApiError::from)
+        match store.find_or_create_session(&id_clone, &nid, &skey, Some(&model), None) {
+            Ok(session) => Ok(session),
+            Err(e) if is_unique_constraint_violation(&e) => {
+                // WHY: Two concurrent POST requests both passed the "find existing" check
+                // and raced to INSERT. The schema's UNIQUE(nous_id, session_key) constraint
+                // caught the duplicate. Return whichever session won the race.
+                store
+                    .find_session(&nid, &skey)
+                    .map_err(ApiError::from)?
+                    .ok_or_else(|| ApiError::Internal {
+                        message: "session missing after constraint violation".to_owned(),
+                        location: snafu::Location::default(),
+                    })
+            }
+            Err(e) => Err(ApiError::from(e)),
+        }
     })
     .await??;
 
@@ -95,7 +108,7 @@ pub async fn create(
     path = "/api/v1/sessions",
     params(("nous_id" = Option<String>, Query, description = "Filter sessions by agent ID")),
     responses(
-        (status = 200, description = "Session list"),
+        (status = 200, description = "Session list", body = ListSessionsResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -376,13 +389,34 @@ pub(crate) async fn resolve_session(
 
     let session = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
-        store
-            .find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None)
-            .map_err(ApiError::from)
+        match store.find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None) {
+            Ok(session) => Ok(session),
+            Err(e) if is_unique_constraint_violation(&e) => {
+                // WHY: Concurrent stream requests may race to create the same session.
+                // Fall back to returning whichever session won the INSERT race.
+                store
+                    .find_session(&aid, &skey)
+                    .map_err(ApiError::from)?
+                    .ok_or_else(|| ApiError::Internal {
+                        message: "session missing after constraint violation".to_owned(),
+                        location: snafu::Location::default(),
+                    })
+            }
+            Err(e) => Err(ApiError::from(e)),
+        }
     })
     .await??;
 
     Ok(session.id)
+}
+
+/// Returns `true` when a mneme error is a `SQLite` UNIQUE constraint violation.
+///
+/// `SQLite` always includes "UNIQUE constraint failed" in the error message for
+/// constraint violations. We match on the string because pylon does not take a
+/// direct rusqlite dependency — the type lives inside mneme's `Database` variant.
+fn is_unique_constraint_violation(err: &aletheia_mneme::error::Error) -> bool {
+    err.to_string().contains("UNIQUE constraint failed")
 }
 
 pub(crate) async fn find_session(

@@ -12,7 +12,14 @@ use crate::state::AppState;
 /// Prometheus content type for the metrics endpoint.
 pub(crate) const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
-/// GET /metrics -- Prometheus text format exposition.
+/// GET /metrics — Prometheus text-format metrics exposition.
+#[utoipa::path(
+    get,
+    path = "/metrics",
+    responses(
+        (status = 200, description = "Prometheus text-format metrics", content_type = "text/plain"),
+    ),
+)]
 #[expect(clippy::expect_used, reason = "Prometheus text encoding is infallible")]
 pub async fn expose(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let uptime = state.start_time.elapsed().as_secs_f64();
