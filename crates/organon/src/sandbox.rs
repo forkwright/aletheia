@@ -282,11 +282,7 @@ pub fn probe_landlock_abi() -> Option<i32> {
             LANDLOCK_CREATE_RULESET_VERSION,
         )
     };
-    if v >= 1 {
-        Some(v as i32)
-    } else {
-        None
-    }
+    if v >= 1 { i32::try_from(v).ok() } else { None }
 }
 
 #[cfg(not(target_os = "linux"))]

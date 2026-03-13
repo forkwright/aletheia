@@ -1,5 +1,6 @@
 //! `aletheia export <session-id>` — export a session as Markdown or JSON.
 
+use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::PathBuf;
 
@@ -134,20 +135,20 @@ async fn fetch_history(
 fn render_markdown(session: &SessionResponse, history: &HistoryResponse) -> String {
     let mut out = String::new();
 
-    out.push_str(&format!("# Session: {}\n", session.session_key));
-    out.push_str(&format!("Started: {}\n", session.created_at));
+    let _ = writeln!(out, "# Session: {}", session.session_key);
+    let _ = writeln!(out, "Started: {}", session.created_at);
 
     for msg in &history.messages {
         out.push_str("\n---\n\n");
         match msg.role.as_str() {
             "tool" => {
                 let name = msg.tool_name.as_deref().unwrap_or("unknown");
-                out.push_str(&format!("## Tool Call: {name} — {}\n", msg.created_at));
-                out.push_str(&format!("**Output:** {}\n", msg.content));
+                let _ = writeln!(out, "## Tool Call: {name} — {}", msg.created_at);
+                let _ = writeln!(out, "**Output:** {}", msg.content);
             }
             role => {
                 let heading = capitalize_first(role);
-                out.push_str(&format!("## {heading} — {}\n", msg.created_at));
+                let _ = writeln!(out, "## {heading} — {}", msg.created_at);
                 out.push_str(&msg.content);
                 out.push('\n');
             }
@@ -186,6 +187,10 @@ fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
         None => String::new(),
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        Some(c) => {
+            let mut s = c.to_uppercase().collect::<String>();
+            s.push_str(chars.as_str());
+            s
+        }
     }
 }

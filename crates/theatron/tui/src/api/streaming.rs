@@ -71,19 +71,16 @@ pub fn stream_message(
                     Err(reqwest_eventsource::Error::InvalidStatusCode(status, resp)) => {
                         let reason = status.canonical_reason().unwrap_or("Unknown");
                         let body = resp.text().await.unwrap_or_default();
-                        let message = if let Ok(json) =
-                            serde_json::from_str::<serde_json::Value>(&body)
-                        {
-                            json.get("message")
-                                .or_else(|| json.get("error"))
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
-                                .unwrap_or_else(|| {
-                                    format!("{} {}", status.as_u16(), reason)
-                                })
-                        } else {
-                            format!("{} {}", status.as_u16(), reason)
-                        };
+                        let message =
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                                json.get("message")
+                                    .or_else(|| json.get("error"))
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| format!("{} {}", status.as_u16(), reason))
+                            } else {
+                                format!("{} {}", status.as_u16(), reason)
+                            };
                         let _ = tx.send(StreamEvent::Error(message)).await;
                         es.close();
                         break;

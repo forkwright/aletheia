@@ -73,8 +73,7 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
             .unwrap_or(true)
     {
         app.error_toast = Some(ErrorToast::new(
-            "Server unreachable after 5 minutes. Check: journalctl --user -eu aletheia"
-                .to_string(),
+            "Server unreachable after 5 minutes. Check: journalctl --user -eu aletheia".to_string(),
         ));
     }
 }

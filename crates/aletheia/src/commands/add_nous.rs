@@ -168,10 +168,7 @@ fn scaffold_directory(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
 fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     let config_result = loader::load_config(oikos);
-    let mut config: AletheiaConfig = match config_result {
-        Ok(c) => c,
-        Err(_) => AletheiaConfig::default(),
-    };
+    let mut config: AletheiaConfig = config_result.unwrap_or_default();
 
     let already_listed = config.agents.list.iter().any(|a| a.id == args.name);
     if already_listed {
