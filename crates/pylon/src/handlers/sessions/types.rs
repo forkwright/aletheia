@@ -62,21 +62,29 @@ pub struct HistoryParams {
 }
 
 /// Response for `GET /api/v1/sessions` (list).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ListSessionsResponse {
+    /// Session summaries matching the query.
     pub sessions: Vec<SessionListItem>,
 }
 
 /// Session summary for list endpoints.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionListItem {
+    /// Session identifier.
     pub id: String,
+    /// Nous agent that owns this session.
     pub nous_id: String,
+    /// Client-chosen deduplication key.
     pub session_key: String,
+    /// Lifecycle status (e.g. `"active"`, `"archived"`).
     pub status: String,
+    /// Total messages stored in this session.
     pub message_count: i64,
+    /// ISO 8601 last-updated timestamp.
     pub updated_at: String,
+    /// Human-readable display name, if set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
 }
