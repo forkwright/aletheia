@@ -3,14 +3,18 @@ use std::collections::HashMap;
 use crate::api::types::ActiveTurn;
 use crate::app::App;
 use crate::id::{NousId, SessionId};
+use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
 use crate::state::{AgentState, AgentStatus};
+
+const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 #[tracing::instrument(skip_all)]
 // SAFETY: sanitized at ingestion — agent data from API is sanitized here on SSE reconnect.
 pub(crate) async fn handle_sse_connected(app: &mut App) {
     let was_disconnected = !app.sse_connected;
     app.sse_connected = true;
+    app.sse_disconnected_at = None;
 
     if was_disconnected {
         tracing::info!("SSE reconnected — reloading agent state");
@@ -50,6 +54,29 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_sse_disconnected(app: &mut App) {
     app.sse_connected = false;
+    if app.sse_disconnected_at.is_none() {
+        app.sse_disconnected_at = Some(std::time::Instant::now());
+    }
+}
+
+/// Called on each tick to detect prolonged disconnection and surface an error.
+pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
+    if app.sse_connected {
+        return;
+    }
+    if let Some(disconnected_at) = app.sse_disconnected_at
+        && disconnected_at.elapsed() >= RECONNECT_TIMEOUT
+        && app
+            .error_toast
+            .as_ref()
+            .map(|t| !t.message.starts_with("Server unreachable"))
+            .unwrap_or(true)
+    {
+        app.error_toast = Some(ErrorToast::new(
+            "Server unreachable after 5 minutes. Check: journalctl --user -eu aletheia"
+                .to_string(),
+        ));
+    }
 }
 
 #[tracing::instrument(skip_all, fields(turn_count = active_turns.len()))]
@@ -174,6 +201,51 @@ mod tests {
         app.sse_connected = true;
         handle_sse_disconnected(&mut app);
         assert!(!app.sse_connected);
+    }
+
+    #[test]
+    fn sse_disconnected_records_timestamp() {
+        let mut app = test_app();
+        app.sse_connected = true;
+        handle_sse_disconnected(&mut app);
+        assert!(app.sse_disconnected_at.is_some());
+    }
+
+    #[test]
+    fn sse_disconnected_does_not_overwrite_existing_timestamp() {
+        let mut app = test_app();
+        // Use a past instant to simulate "disconnected 10s ago"
+        let earlier = std::time::Instant::now();
+        app.sse_disconnected_at = Some(earlier);
+        handle_sse_disconnected(&mut app);
+        // Timestamp must remain at the original disconnect time, not reset
+        assert_eq!(app.sse_disconnected_at, Some(earlier));
+    }
+
+    #[test]
+    fn check_timeout_no_error_when_connected() {
+        let mut app = test_app();
+        app.sse_connected = true;
+        check_sse_reconnect_timeout(&mut app);
+        assert!(app.error_toast.is_none());
+    }
+
+    #[test]
+    fn check_timeout_no_error_when_disconnected_briefly() {
+        let mut app = test_app();
+        app.sse_connected = false;
+        app.sse_disconnected_at = Some(std::time::Instant::now());
+        check_sse_reconnect_timeout(&mut app);
+        assert!(app.error_toast.is_none());
+    }
+
+    #[test]
+    fn check_timeout_no_error_when_no_disconnect_time() {
+        let mut app = test_app();
+        app.sse_connected = false;
+        app.sse_disconnected_at = None;
+        check_sse_reconnect_timeout(&mut app);
+        assert!(app.error_toast.is_none());
     }
 
     #[test]

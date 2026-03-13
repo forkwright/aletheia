@@ -7,10 +7,14 @@ use crate::state::Overlay;
 
 /// Open the diff viewer with uncommitted changes (git diff).
 pub(crate) async fn handle_diff_open(app: &mut App) {
-    let output = tokio::task::spawn_blocking(|| {
-        std::process::Command::new("git")
-            .args(["diff", "HEAD"])
-            .output()
+    let workspace = app.config.workspace_root.clone();
+    let output = tokio::task::spawn_blocking(move || {
+        let mut cmd = std::process::Command::new("git");
+        cmd.args(["diff", "HEAD"]);
+        if let Some(root) = workspace {
+            cmd.current_dir(root);
+        }
+        cmd.output()
     })
     .await;
 

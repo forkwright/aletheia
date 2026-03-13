@@ -40,7 +40,7 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     left_spans.extend(agent_identity_spans(app, theme));
 
     left_spans.push(Span::styled(" │ ", theme.style_dim()));
-    left_spans.push(connection_indicator_span(app, theme));
+    left_spans.extend(connection_indicator_spans(app, theme));
 
     if let Some(idx) = app.selected_message {
         left_spans.push(Span::styled(" │ ", theme.style_dim()));
@@ -114,11 +114,16 @@ fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     spans
 }
 
-fn connection_indicator_span(app: &App, theme: &Theme) -> Span<'static> {
+fn connection_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     if app.sse_connected {
-        Span::styled("●", theme.style_success())
+        vec![Span::styled("●", theme.style_success())]
+    } else if app.sse_disconnected_at.is_some() {
+        vec![
+            Span::styled("○", theme.style_error()),
+            Span::styled(" Reconnecting…", theme.style_dim()),
+        ]
     } else {
-        Span::styled("○", theme.style_error())
+        vec![Span::styled("○", theme.style_error())]
     }
 }
 
