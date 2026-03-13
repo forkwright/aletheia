@@ -108,6 +108,14 @@ pub enum ApiError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Feature not yet implemented (501).
+    #[snafu(display("not implemented: {message}"))]
+    NotImplemented {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 impl IntoResponse for ApiError {
@@ -134,6 +142,7 @@ impl IntoResponse for ApiError {
                 "validation_failed",
                 Some(serde_json::json!({ "errors": errors })),
             ),
+            Self::NotImplemented { .. } => (StatusCode::NOT_IMPLEMENTED, "not_implemented", None),
         };
 
         // Extract retry-after value before moving self for Display

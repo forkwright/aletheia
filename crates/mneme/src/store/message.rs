@@ -53,6 +53,94 @@ impl SessionStore {
         Ok(next_seq)
     }
 
+    /// Get message history for a session with optional `seq < before_seq` filter.
+    ///
+    /// The `before_seq` filter is applied at the SQL level so the database
+    /// only returns rows that satisfy `seq < before_seq` — the LIMIT clause
+    /// then operates on that already-filtered set.
+    #[instrument(skip(self))]
+    pub fn get_history_filtered(
+        &self,
+        session_id: &str,
+        limit: Option<i64>,
+        before_seq: Option<i64>,
+    ) -> Result<Vec<Message>> {
+        let mut messages = Vec::new();
+
+        match (limit, before_seq) {
+            (Some(limit), Some(before)) => {
+                let mut stmt = self
+                    .conn
+                    .prepare_cached(
+                        "SELECT * FROM (\
+                           SELECT * FROM messages \
+                           WHERE session_id = ?1 AND is_distilled = 0 AND seq < ?3 \
+                           ORDER BY seq DESC LIMIT ?2\
+                         ) ORDER BY seq ASC",
+                    )
+                    .context(error::DatabaseSnafu)?;
+                let rows = stmt
+                    .query_map(rusqlite::params![session_id, limit, before], map_message)
+                    .context(error::DatabaseSnafu)?;
+                for row in rows {
+                    messages.push(row.context(error::DatabaseSnafu)?);
+                }
+            }
+            (Some(limit), None) => {
+                let mut stmt = self
+                    .conn
+                    .prepare_cached(
+                        "SELECT * FROM (\
+                           SELECT * FROM messages \
+                           WHERE session_id = ?1 AND is_distilled = 0 \
+                           ORDER BY seq DESC LIMIT ?2\
+                         ) ORDER BY seq ASC",
+                    )
+                    .context(error::DatabaseSnafu)?;
+                let rows = stmt
+                    .query_map(rusqlite::params![session_id, limit], map_message)
+                    .context(error::DatabaseSnafu)?;
+                for row in rows {
+                    messages.push(row.context(error::DatabaseSnafu)?);
+                }
+            }
+            (None, Some(before)) => {
+                let mut stmt = self
+                    .conn
+                    .prepare_cached(
+                        "SELECT * FROM messages \
+                         WHERE session_id = ?1 AND is_distilled = 0 AND seq < ?2 \
+                         ORDER BY seq ASC",
+                    )
+                    .context(error::DatabaseSnafu)?;
+                let rows = stmt
+                    .query_map(rusqlite::params![session_id, before], map_message)
+                    .context(error::DatabaseSnafu)?;
+                for row in rows {
+                    messages.push(row.context(error::DatabaseSnafu)?);
+                }
+            }
+            (None, None) => {
+                let mut stmt = self
+                    .conn
+                    .prepare_cached(
+                        "SELECT * FROM messages \
+                         WHERE session_id = ?1 AND is_distilled = 0 \
+                         ORDER BY seq ASC",
+                    )
+                    .context(error::DatabaseSnafu)?;
+                let rows = stmt
+                    .query_map([session_id], map_message)
+                    .context(error::DatabaseSnafu)?;
+                for row in rows {
+                    messages.push(row.context(error::DatabaseSnafu)?);
+                }
+            }
+        }
+
+        Ok(messages)
+    }
+
     /// Get message history for a session.
     #[instrument(skip(self))]
     pub fn get_history(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {

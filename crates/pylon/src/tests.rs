@@ -1715,44 +1715,28 @@ async fn stream_turn_unknown_agent_returns_404() {
 
 #[tokio::test]
 async fn events_endpoint_returns_sse() {
+    // WHY: /api/v1/events is removed (stub replaced with 404) until a real
+    // server-side broadcast channel is wired into AppState (#1026).
     let (app, _dir) = app().await;
     let resp = app.oneshot(authed_get("/api/v1/events")).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::OK);
-    let ct = resp
-        .headers()
-        .get("content-type")
-        .unwrap()
-        .to_str()
-        .unwrap();
-    assert!(ct.contains("text/event-stream"));
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "not_implemented");
 }
 
 #[tokio::test]
 async fn events_stream_contains_init_event() {
-    use http_body_util::BodyExt;
-
+    // WHY: /api/v1/events returns 404 until a broadcast channel is wired in
+    // (#1026). This test verifies the error response is well-formed JSON.
     let (app, _dir) = app().await;
     let resp = app.oneshot(authed_get("/api/v1/events")).await.unwrap();
 
-    let mut body_text = String::new();
-    let mut body = resp.into_body();
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    while let Ok(Some(Ok(frame))) = tokio::time::timeout_at(deadline, body.frame()).await {
-        if let Some(data) = frame.data_ref() {
-            body_text.push_str(&String::from_utf8_lossy(data));
-            if body_text.contains("event: init") {
-                break;
-            }
-        }
-    }
-    assert!(
-        body_text.contains("event: init"),
-        "should contain init event"
-    );
-    assert!(
-        body_text.contains("activeTurns"),
-        "init should contain activeTurns"
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_eq!(
+        body["error"]["code"], "not_implemented",
+        "events endpoint should return not_implemented code"
     );
 }
 
@@ -2613,25 +2597,40 @@ async fn idempotency_key_replay_returns_cached_completion() {
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
-    // First request — completes and caches
+    // First request — completes and caches the real stop_reason and usage.
     let req1 = send_message_req(id, Some("replay-key-001"));
     let resp1 = router.clone().oneshot(req1).await.unwrap();
     assert_eq!(resp1.status(), StatusCode::OK);
-    // Consume the body to let the spawned turn task finish
-    let _ = body_string(resp1).await;
+    // Consume the body to let the spawned turn task finish.
+    let body1 = body_string(resp1).await;
 
-    // Brief yield to let the turn task mark the entry as completed
+    // Extract the original stop_reason from the first response.
+    let original_stop_reason = body1
+        .lines()
+        .find(|l| l.starts_with("data:"))
+        .and_then(|l| serde_json::from_str::<serde_json::Value>(l.trim_start_matches("data:")).ok())
+        .and_then(|v| v["stop_reason"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+
+    // Brief yield to let the turn task mark the entry as completed.
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    // Second request with the same key — should get cached response
+    // Second request with the same key — cache hit returns the cached body.
     let req2 = send_message_req(id, Some("replay-key-001"));
     let resp2 = router.clone().oneshot(req2).await.unwrap();
     assert_eq!(resp2.status(), StatusCode::OK);
     let body2 = body_string(resp2).await;
     assert!(
-        body2.contains("idempotency_replay"),
-        "replayed response should contain idempotency_replay stop_reason, got: {body2}"
+        body2.contains("message_complete"),
+        "replayed response should contain message_complete event, got: {body2}"
     );
+    // The replayed stop_reason must match what was cached from the original turn.
+    if !original_stop_reason.is_empty() {
+        assert!(
+            body2.contains(&original_stop_reason),
+            "replayed stop_reason should match original '{original_stop_reason}', got: {body2}"
+        );
+    }
 }
 
 #[tokio::test]

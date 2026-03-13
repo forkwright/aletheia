@@ -296,6 +296,11 @@ pub async fn rename(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Maximum number of messages returnable per history request.
+const MAX_HISTORY_LIMIT: u32 = 1000;
+/// Default number of messages when no limit is supplied.
+const DEFAULT_HISTORY_LIMIT: u32 = 50;
+
 /// GET /api/v1/sessions/{id}/history — get conversation history.
 #[utoipa::path(
     get,
@@ -321,18 +326,25 @@ pub async fn history(
 ) -> Result<Json<HistoryResponse>, ApiError> {
     let _ = find_session(&state, &id).await?;
 
+    // Cap limit at MAX_HISTORY_LIMIT and apply a sensible default so a single
+    // request cannot fetch an unbounded number of messages.
+    let limit = params
+        .limit
+        .unwrap_or(DEFAULT_HISTORY_LIMIT)
+        .min(MAX_HISTORY_LIMIT);
+    let before_seq = params.before;
+
     let state_clone = Arc::clone(&state);
     let id_clone = id.clone();
-    let limit = params.limit;
     let messages = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
         store
-            .get_history(&id_clone, limit.map(i64::from))
+            .get_history_filtered(&id_clone, Some(i64::from(limit)), before_seq)
             .map_err(ApiError::from)
     })
     .await??;
 
-    let mut items: Vec<HistoryMessage> = messages
+    let items: Vec<HistoryMessage> = messages
         .into_iter()
         .map(|m| HistoryMessage {
             id: m.id,
@@ -344,10 +356,6 @@ pub async fn history(
             created_at: m.created_at,
         })
         .collect();
-
-    if let Some(before) = params.before {
-        items.retain(|m| m.seq < before);
-    }
 
     Ok(Json(HistoryResponse { messages: items }))
 }

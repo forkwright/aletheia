@@ -50,14 +50,16 @@ pub(crate) enum LookupResult {
     /// Key not seen before — caller should proceed with the request.
     Miss,
     /// A previous request with this key completed — return the cached response.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "fields reserved for non-SSE endpoints that replay full cached responses"
-        )
-    )]
-    Hit { status: StatusCode, body: String },
+    Hit {
+        // WHY: Reserved for non-SSE endpoints that replay the HTTP status code
+        // directly. SSE handlers use only `body` (the serialized event payload).
+        #[cfg_attr(
+            not(test),
+            expect(dead_code, reason = "reserved for non-SSE endpoints")
+        )]
+        status: StatusCode,
+        body: String,
+    },
     /// A request with this key is still in progress.
     Conflict,
 }
