@@ -359,6 +359,16 @@ pub fn apply_sandbox(
     _cmd: &mut std::process::Command,
     _policy: SandboxPolicy,
 ) -> std::io::Result<()> {
+    // WHY: Landlock and seccomp are Linux-only kernel interfaces. On other
+    // platforms the sandbox is a no-op. Log once per process so operators
+    // know sandbox enforcement is absent without spamming every tool call.
+    static WARN_ONCE: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    WARN_ONCE.get_or_init(|| {
+        tracing::warn!(
+            "sandbox enforcement unavailable on non-Linux platforms; \
+             tool execution runs without filesystem or syscall restrictions"
+        );
+    });
     Ok(())
 }
 

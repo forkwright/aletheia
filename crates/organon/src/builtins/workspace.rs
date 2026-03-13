@@ -388,7 +388,13 @@ impl ToolExecutor for ExecExecutor {
                     Ok(Some(s)) => break s,
                     Ok(None) => {
                         if Instant::now() >= deadline {
-                            // Dropping `guard` kills and reaps the child.
+                            // INVARIANT: kill() must always be followed by wait() to
+                            // prevent zombie accumulation. If the process exited between
+                            // try_wait() returning None and this kill(), kill() returns
+                            // ESRCH (safe to ignore); wait() still reaps the zombie
+                            // because no other caller can have waited on this child.
+                            let _ = guard.get_mut().kill();
+                            let _ = guard.get_mut().wait();
                             return Ok(err_result(format!(
                                 "command timed out after {timeout_ms}ms"
                             )));

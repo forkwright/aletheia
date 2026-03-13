@@ -59,9 +59,12 @@ impl ToolExecutor for EnableToolExecutor {
                 )));
             };
 
-            // Check if already active
+            // WHY: Single write lock for the check-and-set: acquiring a read
+            // lock to check then dropping it before acquiring a write lock
+            // creates a TOCTOU window where a concurrent caller can insert
+            // the same tool between the two acquisitions.
             {
-                let Ok(active) = ctx.active_tools.read() else {
+                let Ok(mut active) = ctx.active_tools.write() else {
                     return Ok(ToolResult::error(
                         "internal error: active_tools lock poisoned",
                     ));
@@ -69,15 +72,6 @@ impl ToolExecutor for EnableToolExecutor {
                 if active.contains(&tool_name) {
                     return Ok(ToolResult::text(format!("'{name}' is already active.")));
                 }
-            }
-
-            // Activate
-            {
-                let Ok(mut active) = ctx.active_tools.write() else {
-                    return Ok(ToolResult::error(
-                        "internal error: active_tools lock poisoned",
-                    ));
-                };
                 active.insert(tool_name);
             }
 
