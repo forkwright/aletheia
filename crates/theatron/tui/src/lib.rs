@@ -7,7 +7,7 @@ mod clipboard;
 mod command;
 mod config;
 pub(crate) mod diff;
-pub(crate) mod error;
+pub mod error;
 mod events;
 mod highlight;
 mod hyperlink;
@@ -41,8 +41,7 @@ use crate::hyperlink::OscLink;
 
 /// Entry point for the TUI, callable from the main `aletheia` binary or standalone.
 ///
-/// Returns `anyhow::Result` as the public boundary so the binary crate can use
-/// anyhow for top-level error reporting. All internal code uses `crate::error::Error`.
+/// Returns a typed snafu error. Binary callers may convert with `.map_err(anyhow::Error::from)`.
 #[tracing::instrument(skip_all, fields(url, agent))]
 pub async fn run_tui(
     url: Option<String>,
@@ -50,10 +49,8 @@ pub async fn run_tui(
     agent: Option<String>,
     session: Option<String>,
     logout: bool,
-) -> anyhow::Result<()> {
-    run_tui_inner(url, token, agent, session, logout)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))
+) -> Result<(), error::Error> {
+    run_tui_inner(url, token, agent, session, logout).await
 }
 
 async fn run_tui_inner(

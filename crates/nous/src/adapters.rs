@@ -5,9 +5,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use aletheia_mneme::store::SessionStore;
+use aletheia_organon::error::{StoreError, StoreSnafu};
 use aletheia_organon::types::{BlackboardEntry, BlackboardStore, NoteEntry, NoteStore};
-
-type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Acquire the store lock from a synchronous trait method inside an async context.
 ///
@@ -26,6 +25,13 @@ where
     })
 }
 
+fn store_err(e: impl std::fmt::Display) -> StoreError {
+    StoreSnafu {
+        message: e.to_string(),
+    }
+    .build()
+}
+
 /// Adapts `SessionStore` note methods to the `NoteStore` trait.
 pub struct SessionNoteAdapter(pub Arc<Mutex<SessionStore>>);
 
@@ -36,19 +42,17 @@ impl NoteStore for SessionNoteAdapter {
         nous_id: &str,
         category: &str,
         content: &str,
-    ) -> Result<i64, BoxError> {
+    ) -> Result<i64, StoreError> {
         with_store(&self.0, |store| {
             store
                 .add_note(session_id, nous_id, category, content)
-                .map_err(|e| Box::new(e) as BoxError)
+                .map_err(store_err)
         })
     }
 
-    fn get_notes(&self, session_id: &str) -> Result<Vec<NoteEntry>, BoxError> {
+    fn get_notes(&self, session_id: &str) -> Result<Vec<NoteEntry>, StoreError> {
         with_store(&self.0, |store| {
-            let notes = store
-                .get_notes(session_id)
-                .map_err(|e| Box::new(e) as BoxError)?;
+            let notes = store.get_notes(session_id).map_err(store_err)?;
             Ok(notes
                 .into_iter()
                 .map(|n| NoteEntry {
@@ -61,11 +65,9 @@ impl NoteStore for SessionNoteAdapter {
         })
     }
 
-    fn delete_note(&self, note_id: i64) -> Result<bool, BoxError> {
+    fn delete_note(&self, note_id: i64) -> Result<bool, StoreError> {
         with_store(&self.0, |store| {
-            store
-                .delete_note(note_id)
-                .map_err(|e| Box::new(e) as BoxError)
+            store.delete_note(note_id).map_err(store_err)
         })
     }
 }
@@ -80,19 +82,17 @@ impl BlackboardStore for SessionBlackboardAdapter {
         value: &str,
         author: &str,
         ttl_seconds: i64,
-    ) -> Result<(), BoxError> {
+    ) -> Result<(), StoreError> {
         with_store(&self.0, |store| {
             store
                 .blackboard_write(key, value, author, ttl_seconds)
-                .map_err(|e| Box::new(e) as BoxError)
+                .map_err(store_err)
         })
     }
 
-    fn read(&self, key: &str) -> Result<Option<BlackboardEntry>, BoxError> {
+    fn read(&self, key: &str) -> Result<Option<BlackboardEntry>, StoreError> {
         with_store(&self.0, |store| {
-            let row = store
-                .blackboard_read(key)
-                .map_err(|e| Box::new(e) as BoxError)?;
+            let row = store.blackboard_read(key).map_err(store_err)?;
             Ok(row.map(|r| BlackboardEntry {
                 key: r.key,
                 value: r.value,
@@ -104,11 +104,9 @@ impl BlackboardStore for SessionBlackboardAdapter {
         })
     }
 
-    fn list(&self) -> Result<Vec<BlackboardEntry>, BoxError> {
+    fn list(&self) -> Result<Vec<BlackboardEntry>, StoreError> {
         with_store(&self.0, |store| {
-            let rows = store
-                .blackboard_list()
-                .map_err(|e| Box::new(e) as BoxError)?;
+            let rows = store.blackboard_list().map_err(store_err)?;
             Ok(rows
                 .into_iter()
                 .map(|r| BlackboardEntry {
@@ -123,11 +121,9 @@ impl BlackboardStore for SessionBlackboardAdapter {
         })
     }
 
-    fn delete(&self, key: &str, author: &str) -> Result<bool, BoxError> {
+    fn delete(&self, key: &str, author: &str) -> Result<bool, StoreError> {
         with_store(&self.0, |store| {
-            store
-                .blackboard_delete(key, author)
-                .map_err(|e| Box::new(e) as BoxError)
+            store.blackboard_delete(key, author).map_err(store_err)
         })
     }
 }

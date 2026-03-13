@@ -425,7 +425,7 @@ mod tests {
         );
 
         assert!(!result.variants.is_empty());
-        assert!(result.latency_ms < 5000); // sanity check
+        assert!(result.latency_ms < 5000); // validation: latency is within acceptable bounds
     }
 
     #[test]

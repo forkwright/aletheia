@@ -6171,7 +6171,6 @@ dependencies = [
 name = "theatron-tui"
 version = "0.10.0"
 dependencies = [
- "anyhow",
  "arboard",
  "base64 0.22.1",
  "clap",

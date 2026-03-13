@@ -117,7 +117,7 @@ impl Schedule {
     /// Returns `None` for `Startup` (already ran) or `Once` with a past timestamp.
     #[expect(
         clippy::expect_used,
-        reason = "chrono/jiff timestamp conversions are within valid ranges; interval durations fit in i64 nanos for any reasonable schedule"
+        reason = "timestamp conversions are within valid ranges; interval durations fit in i64 nanos for any reasonable schedule"
     )]
     pub fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
@@ -125,10 +125,11 @@ impl Schedule {
                 let schedule = cron::Schedule::from_str(expr).context(error::InvalidCronSnafu {
                     expression: expr.clone(),
                 })?;
+                // chrono::Utc is required by the `cron` crate iterator API.
                 let next = schedule.upcoming(chrono::Utc).next();
                 Ok(next.map(|dt| {
                     jiff::Timestamp::from_second(dt.timestamp())
-                        .expect("chrono timestamp in valid range")
+                        .expect("cron timestamp within valid jiff range")
                 }))
             }
             Self::Interval(duration) => {
@@ -157,7 +158,7 @@ impl Schedule {
     /// and `now` that was missed, and it's within the last 24 hours.
     #[expect(
         clippy::expect_used,
-        reason = "chrono/jiff timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow"
+        reason = "timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow"
     )]
     pub fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
@@ -178,14 +179,15 @@ impl Schedule {
             expression: expr.clone(),
         })?;
 
-        let last_run_chrono = chrono::DateTime::from_timestamp(last_run.as_second(), 0)
-            .expect("jiff timestamp in valid range");
+        // chrono::DateTime is required by the `cron` crate's `.after()` API.
+        let last_run_dt = chrono::DateTime::from_timestamp(last_run.as_second(), 0)
+            .expect("jiff timestamp within valid range");
 
         // Check if there's any scheduled run between last_run and now.
-        let next_after_last = schedule.after(&last_run_chrono).next();
+        let next_after_last = schedule.after(&last_run_dt).next();
         if let Some(next) = next_after_last {
             let next_ts = jiff::Timestamp::from_second(next.timestamp())
-                .expect("chrono timestamp in valid range");
+                .expect("cron timestamp within valid jiff range");
             // If the next scheduled run after last_run is before now, we missed it.
             Ok(next_ts < now)
         } else {

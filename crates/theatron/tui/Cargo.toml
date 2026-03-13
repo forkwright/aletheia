@@ -48,8 +48,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = "0.2"
 
-# Error handling — anyhow only for the run_tui() public boundary; snafu for all internals
-anyhow = "1"
+# Error handling — snafu for all error types
 snafu = { workspace = true }
 
 # Futures

@@ -595,7 +595,7 @@ mod tests {
     #[cfg(feature = "knowledge-store")]
     #[test]
     fn rank_skills_returns_sorted_order() {
-        // Sanity check: ranking returns the right number and doesn't panic
+        // Validation: ranking returns the right number and doesn't panic
         let facts: Vec<Fact> = vec![
             make_fact("a", "content", 0.9, 5),
             make_fact("b", "content", 0.1, 1),
