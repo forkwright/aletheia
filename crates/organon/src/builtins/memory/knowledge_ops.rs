@@ -414,3 +414,97 @@ pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(memory_audit_def(), Box::new(MemoryAuditExecutor))?;
     Ok(())
 }
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+    use std::sync::{Arc, RwLock};
+
+    use aletheia_koina::id::{NousId, SessionId, ToolName};
+
+    use crate::registry::ToolExecutor;
+    use crate::types::{ToolContext, ToolInput};
+
+    use super::{MemoryAuditExecutor, MemorySearchExecutor};
+
+    fn test_ctx_no_services() -> ToolContext {
+        ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            workspace: PathBuf::from("/tmp/test"),
+            allowed_roots: vec![PathBuf::from("/tmp")],
+            services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
+        }
+    }
+
+    fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
+        ToolInput {
+            name: ToolName::new(name).expect("valid"),
+            tool_use_id: "toolu_test".to_owned(),
+            arguments: args,
+        }
+    }
+
+    #[tokio::test]
+    async fn memory_search_returns_error_result_when_services_absent() {
+        let ctx = test_ctx_no_services();
+        let input = tool_input(
+            "memory_search",
+            serde_json::json!({ "query": "alice preferences" }),
+        );
+        let result = MemorySearchExecutor
+            .execute(&input, &ctx)
+            .await
+            .expect("execute");
+        assert!(
+            result.is_error,
+            "must be an error when no services: {}",
+            result.content.text_summary()
+        );
+        assert!(
+            result.content.text_summary().contains("not configured"),
+            "error must mention services: {}",
+            result.content.text_summary()
+        );
+    }
+
+    #[tokio::test]
+    async fn memory_audit_returns_error_result_when_services_absent() {
+        let ctx = test_ctx_no_services();
+        let input = tool_input("memory_audit", serde_json::json!({}));
+        let result = MemoryAuditExecutor
+            .execute(&input, &ctx)
+            .await
+            .expect("execute");
+        assert!(result.is_error);
+        assert!(result.content.text_summary().contains("not configured"));
+    }
+
+    #[test]
+    fn memory_search_def_requires_query_field() {
+        let mut reg = crate::registry::ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("memory_search").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert!(def.input_schema.required.contains(&"query".to_owned()));
+    }
+
+    #[test]
+    fn memory_search_def_is_auto_activate() {
+        let mut reg = crate::registry::ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::new("memory_search").expect("valid");
+        let def = reg.get_def(&name).expect("found");
+        assert!(def.auto_activate, "memory_search must be auto-activated");
+    }
+
+    #[test]
+    fn knowledge_ops_registers_five_tools() {
+        let mut reg = crate::registry::ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        assert_eq!(reg.definitions().len(), 5);
+    }
+}
