@@ -115,7 +115,7 @@ const DEFAULT_LOOP_WINDOW: usize = 50;
 /// Maximum cycle length tested during the cycle-detection pass.
 ///
 /// Patterns longer than this are not detected. Limiting the scan keeps
-/// detection O(CYCLE_DETECTION_MAX_LEN × threshold) per call, which is
+/// detection O(`CYCLE_DETECTION_MAX_LEN` × threshold) per call, which is
 /// negligible for practical threshold and cycle-length values.
 const CYCLE_DETECTION_MAX_LEN: usize = 10;
 
