@@ -12,8 +12,6 @@ pub enum ConnectionState {
     Connected,
     /// Attempting to reconnect after failure.
     Reconnecting { attempt: u32 },
-    /// Permanently disconnected (manual intervention needed).
-    Disconnected,
 }
 
 /// Outbound message queued during disconnection.
