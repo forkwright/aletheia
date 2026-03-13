@@ -154,7 +154,7 @@ const PROTECTED_FILES: &[&str] = &[
     "TOOLS.md",
     "MEMORY.md",
     ".claude/settings.json",
-    ".claude/rules",
+    "standards",
 ];
 
 /// Check if a resolved path matches a protected file pattern.

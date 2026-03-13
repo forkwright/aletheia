@@ -21,7 +21,7 @@ Rust workspace with 16 crates. TUI client.
 
 ## Standards
 
-- [STANDARDS](docs/STANDARDS.md): Coding standards
+- [STANDARDS](standards/STANDARDS.md): Coding standards
 - [CLAUDE](CLAUDE.md): AI agent workspace rules and conventions
 
 ## Agents
@@ -46,4 +46,4 @@ Rust workspace with 16 crates. TUI client.
 - `tui/`: Terminal UI client (workspace member)
 - `instance.example/nous/_template/`: Template agent workspace (SOUL.md, USER.md, AGENTS.md)
 - `instance.example/config/`: Example gateway config
-- `.claude/rules/`: Rust coding rules for AI agents
+- `standards/`: Coding standards for AI agents
