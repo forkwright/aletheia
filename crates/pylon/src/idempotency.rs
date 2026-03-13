@@ -136,6 +136,7 @@ impl IdempotencyCache {
 
     /// Number of entries currently in the cache (for testing).
     #[cfg(test)]
+    #[expect(clippy::expect_used, reason = "test helper")]
     fn len(&self) -> usize {
         self.inner.lock().expect("lock").entries.len()
     }
