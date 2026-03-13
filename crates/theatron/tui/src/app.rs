@@ -64,6 +64,8 @@ pub struct App {
     // SSE
     sse: Option<SseConnection>,
     pub sse_connected: bool,
+    /// When the SSE stream last disconnected. Cleared on successful reconnect.
+    pub sse_disconnected_at: Option<std::time::Instant>,
 
     // Scroll
     pub scroll_offset: usize,
@@ -82,6 +84,9 @@ pub struct App {
 
     // Error toast (auto-dismiss after 5s)
     pub error_toast: Option<ErrorToast>,
+    // Success toast (auto-dismiss after 5s)
+    pub success_toast: Option<ErrorToast>,
+
     // Success toast (auto-dismiss after 5s)
     pub success_toast: Option<ErrorToast>,
 
@@ -156,6 +161,7 @@ impl App {
             stream_rx: None,
             sse: None,
             sse_connected: false,
+            sse_disconnected_at: None,
             scroll_offset: 0,
             auto_scroll: true,
             scroll_states: HashMap::new(),
@@ -510,6 +516,7 @@ pub(crate) mod test_helpers {
             token: None,
             default_agent: None,
             default_session: None,
+            workspace_root: None,
         };
         let client = ApiClient::new(&config.url, config.token.clone()).unwrap();
         let theme = THEME.clone();
@@ -536,6 +543,7 @@ pub(crate) mod test_helpers {
             stream_rx: None,
             sse: None,
             sse_connected: false,
+            sse_disconnected_at: None,
             scroll_offset: 0,
             auto_scroll: true,
             scroll_states: HashMap::new(),
@@ -619,6 +627,8 @@ mod tests {
         assert_eq!(app.scroll_offset, 0);
         assert_eq!(app.terminal_width, 120);
         assert_eq!(app.terminal_height, 40);
+        assert!(!app.sse_connected);
+        assert!(app.sse_disconnected_at.is_none());
     }
 
     #[test]

@@ -85,24 +85,25 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         status_bar::render(app, frame, vertical[bottom_idx], theme);
     }
 
-    // Toast at bottom — error takes priority over success when both are present
+    // Toast at bottom (error or success)
     if has_toast {
-        let toast_line = if let Some(ref toast) = app.error_toast {
-            ratatui::text::Line::from(vec![
+        if let Some(ref toast) = app.error_toast {
+            let toast_line = ratatui::text::Line::from(vec![
                 ratatui::text::Span::styled(" \u{2717} ", theme.style_error_bold()),
                 ratatui::text::Span::styled(&toast.message, theme.style_error()),
-            ])
+            ]);
+            let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
+                .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+            frame.render_widget(toast_widget, vertical[toast_idx]);
         } else if let Some(ref toast) = app.success_toast {
-            ratatui::text::Line::from(vec![
+            let toast_line = ratatui::text::Line::from(vec![
                 ratatui::text::Span::styled(" \u{2713} ", theme.style_success_bold()),
-                ratatui::text::Span::styled(&toast.message, theme.style_success()),
-            ])
-        } else {
-            unreachable!("has_toast is true only when a toast exists")
-        };
-        let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
-            .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
-        frame.render_widget(toast_widget, vertical[toast_idx]);
+                ratatui::text::Span::styled(&toast.message, theme.style_success_bold()),
+            ]);
+            let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
+                .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
+            frame.render_widget(toast_widget, vertical[toast_idx]);
+        }
     }
 
     // Responsive: hide sidebar on narrow terminals
@@ -225,20 +226,47 @@ fn render_chat_area(
 
     let filter_height: u16 = if app.filter.editing { 1 } else { 0 };
 
+    let available_body = area
+        .height
+        .saturating_sub(input_height)
+        .saturating_sub(filter_height);
+
+    // WHY: virtual scroll cache gives content height without re-rendering. When it's stale
+    // or filter is active (filter bypasses virtual scroll), fall back to full-height so the
+    // spacer calculation is never applied to a mismatched estimate.
+    let wrap_width = area.width.saturating_sub(2).max(1);
+    let cache_fresh = app.virtual_scroll.len() == app.messages.len()
+        && (app.messages.is_empty()
+            || app.virtual_scroll.cached_width() == wrap_width);
+    let filter_active = app.filter.active && !app.filter.text.is_empty();
+
+    let (spacer_height, messages_height) = if cache_fresh && !filter_active {
+        // WHY: +1 for the top padding line chat::render always emits before message content.
+        let content_rows = (app.virtual_scroll.total_height() as u16).saturating_add(1);
+        if content_rows < available_body {
+            (available_body - content_rows, content_rows.max(3))
+        } else {
+            (0, available_body.max(3))
+        }
+    } else {
+        (0, available_body.max(3))
+    };
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(3),                // messages
-            Constraint::Length(filter_height), // filter bar (when editing)
-            Constraint::Length(input_height),  // input (grows with text)
+            Constraint::Length(spacer_height),
+            Constraint::Length(messages_height),
+            Constraint::Length(filter_height),
+            Constraint::Length(input_height),
         ])
         .split(area);
 
-    let osc_links = chat::render(app, frame, layout[0], theme);
+    let osc_links = chat::render(app, frame, layout[1], theme);
     if app.filter.editing {
-        filter_bar::render(app, frame, layout[1], theme);
+        filter_bar::render(app, frame, layout[2], theme);
     }
-    input::render(app, frame, layout[2], theme);
+    input::render(app, frame, layout[3], theme);
     osc_links
 }
 

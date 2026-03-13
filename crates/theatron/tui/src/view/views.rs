@@ -37,6 +37,10 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
                 Span::styled("No sessions found.", theme.style_dim()),
             ]));
         } else {
+            let distinct_nous_ids: std::collections::HashSet<&str> =
+                agent.sessions.iter().map(|s| s.nous_id.as_ref()).collect();
+            let show_agent_label = distinct_nous_ids.len() > 1;
+
             for (idx, session) in agent.sessions.iter().enumerate() {
                 let is_focused = app
                     .focused_session_id
@@ -70,13 +74,40 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
                     Span::styled(format!("{}. {}", idx + 1, session.key), name_style),
                 ];
 
+                if show_agent_label {
+                    let fallback_label: String;
+                    // WHY: char_indices().nth(8) instead of &s[..8] — byte slicing panics
+                    // on non-ASCII boundaries; IDs are ASCII in practice but the panic is avoidable.
+                    let agent_label = match app.agents.iter().find(|a| a.id == session.nous_id) {
+                        Some(a) => a.name.as_str(),
+                        None => {
+                            let nous_id_str: &str = session.nous_id.as_ref();
+                            let end = nous_id_str
+                                .char_indices()
+                                .nth(8)
+                                .map(|(b, _)| b)
+                                .unwrap_or(nous_id_str.len());
+                            fallback_label = nous_id_str[..end].to_string();
+                            &fallback_label
+                        }
+                    };
+                    spans.push(Span::styled(
+                        format!("  {agent_label}"),
+                        theme.style_dim(),
+                    ));
+                }
+
                 if let Some(ref updated) = session.updated_at {
                     let time_str = updated
                         .split('T')
                         .nth(1)
                         .and_then(|t| t.split('.').next())
                         .unwrap_or(updated);
-                    spans.push(Span::styled(format!("  {time_str}"), theme.style_dim()));
+                    let separator = if show_agent_label { " |" } else { "" };
+                    spans.push(Span::styled(
+                        format!("{separator}  {time_str}"),
+                        theme.style_dim(),
+                    ));
                 }
 
                 lines.push(Line::from(spans));

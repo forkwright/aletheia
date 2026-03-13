@@ -146,7 +146,6 @@ pub(crate) fn handle_show_error(app: &mut App, msg: String) {
 }
 
 #[tracing::instrument(skip_all)]
-// SAFETY: sanitized at ingestion — success messages may contain external data.
 pub(crate) fn handle_show_success(app: &mut App, msg: String) {
     app.success_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
 }
