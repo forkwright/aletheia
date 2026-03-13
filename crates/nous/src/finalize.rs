@@ -8,6 +8,7 @@
 
 use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
+use ulid::Ulid;
 
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::{Role, UsageRecord};
@@ -15,6 +16,20 @@ use aletheia_mneme::types::{Role, UsageRecord};
 use crate::error;
 use crate::pipeline::TurnResult;
 use crate::session::SessionState;
+
+/// Convert a ULID to a globally unique `i64` for use as `turn_seq` in the
+/// usage table.
+///
+/// Uses the upper 63 bits of the 128-bit ULID value. A ULID's upper 48 bits
+/// are a millisecond timestamp, so the result is monotonically increasing
+/// within each millisecond and practically unique across restarts.
+fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
+    // ULID is a 128-bit value. Shift right 65 bits to keep the upper 63
+    // bits (47-bit timestamp + 16-bit randomness prefix), then cast to i64.
+    // The mask guarantees the sign bit is zero, so the cast can never wrap.
+    let raw = u128::from(*ulid);
+    ((raw >> 65) & 0x7FFF_FFFF_FFFF_FFFF) as i64
+}
 
 /// Configuration for the finalize stage.
 #[derive(Debug, Clone)]
@@ -66,14 +81,22 @@ pub fn finalize(
     config: &FinalizeConfig,
 ) -> error::Result<FinalizeResult> {
     // Dedup guard: check if this turn was already finalized (usage record exists).
-    #[expect(clippy::cast_possible_wrap, reason = "turn counter fits in i64")]
-    let turn_seq = session.turn as i64;
+    //
+    // WHY(#1036): Use turn_id (a fresh ULID from next_turn) as the unique key
+    // instead of the sequential turn counter. The sequential counter resets to 0
+    // after an actor restart with session adoption, causing false dedup hits that
+    // silently discard new turns. The ULID is globally unique per invocation.
+    //
+    // The turn_id's upper 63 bits are used as turn_seq. A ULID's upper bits carry
+    // the millisecond timestamp, making this value monotonically increasing.
+    let turn_seq = turn_seq_from_ulid(&session.turn_id);
     if store
         .usage_exists_for_turn(&session.id, turn_seq)
         .context(error::StoreSnafu)?
     {
         warn!(
             turn = session.turn,
+            turn_id = %session.turn_id,
             "finalize called twice for same turn, skipping duplicate"
         );
         return Ok(FinalizeResult {
@@ -165,7 +188,7 @@ pub fn finalize(
         #[expect(clippy::cast_possible_wrap, reason = "token counts fit in i64")]
         let record = UsageRecord {
             session_id: session.id.clone(),
-            turn_seq: session.turn as i64,
+            turn_seq,
             input_tokens: result.usage.input_tokens as i64,
             output_tokens: result.usage.output_tokens as i64,
             cache_read_tokens: result.usage.cache_read_tokens as i64,

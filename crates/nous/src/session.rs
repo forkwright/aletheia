@@ -1,6 +1,7 @@
 //! Session manager — creates, finds, and manages agent sessions.
 
 use tracing::{info, instrument};
+use ulid::Ulid;
 
 use crate::config::NousConfig;
 
@@ -17,6 +18,12 @@ pub struct SessionState {
     pub model: String,
     /// Turn counter (sequential within session).
     pub turn: u64,
+    /// Globally unique ID for the current turn.
+    ///
+    /// Generated fresh on every [`next_turn`](Self::next_turn) call.
+    /// Used by the finalize stage as a globally unique dedup key, replacing
+    /// the local `turn` counter which resets after actor restarts.
+    pub turn_id: Ulid,
     /// Running token estimate.
     pub token_estimate: i64,
     /// Number of distillations performed.
@@ -44,6 +51,7 @@ impl SessionState {
             session_key,
             model: config.model.clone(),
             turn: 0,
+            turn_id: Ulid::new(),
             token_estimate: 0,
             distillation_count: 0,
             thinking_enabled: config.thinking_enabled,
@@ -54,8 +62,13 @@ impl SessionState {
     }
 
     /// Advance to the next turn.
+    ///
+    /// Generates a fresh [`Ulid`] as `turn_id` so each invocation has a
+    /// globally unique dedup key, even after actor restarts with session
+    /// adoption from the database.
     pub fn next_turn(&mut self) -> u64 {
         self.turn += 1;
+        self.turn_id = Ulid::new();
         self.turn
     }
 

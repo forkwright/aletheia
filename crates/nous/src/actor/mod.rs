@@ -93,6 +93,10 @@ pub struct NousActor {
     /// distinguish a busy actor from an unresponsive one without queuing
     /// through the inbox.
     active_turn: Arc<AtomicBool>,
+    /// Guards against concurrent distillation when two turns finish close together.
+    /// WHY: Background distillation is async; a second turn can finish while the
+    /// first turn's distillation task is still running, triggering a duplicate.
+    distillation_in_progress: Arc<AtomicBool>,
 }
 
 impl NousActor {
@@ -165,6 +169,7 @@ impl NousActor {
             started_at: Instant::now(),
             background_tasks: JoinSet::new(),
             active_turn,
+            distillation_in_progress: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -253,7 +258,10 @@ impl NousActor {
                     }
                 } => {
                     if let Some(envelope) = envelope {
-                        self.handle_cross_message(envelope).await;
+                        let from = envelope.message.from.clone();
+                        if let Err(e) = self.handle_cross_message(envelope).await {
+                            warn!(nous_id = %self.id, from = %from, error = %e, "cross-nous message processing failed");
+                        }
                     }
                 }
                 () = self.cancel.cancelled() => {
@@ -274,7 +282,10 @@ impl NousActor {
     /// Cancel-safe. No state is modified before the `.await` point — only
     /// local variables are prepared from the envelope. If cancelled, the
     /// actor remains in a consistent state.
-    async fn handle_cross_message(&mut self, envelope: CrossNousEnvelope) {
+    async fn handle_cross_message(
+        &mut self,
+        envelope: CrossNousEnvelope,
+    ) -> crate::error::Result<()> {
         let from = &envelope.message.from;
         let session_key = format!("cross:{from}");
         let content = envelope.message.content.clone();
@@ -284,10 +295,9 @@ impl NousActor {
         match self.execute_turn(&session_key, &content).await {
             Ok(result) => {
                 debug!(from = %from, content_len = result.content.len(), "cross-nous turn completed");
+                Ok(())
             }
-            Err(e) => {
-                warn!(from = %from, error = %e, "cross-nous turn failed");
-            }
+            Err(e) => Err(e),
         }
     }
 
