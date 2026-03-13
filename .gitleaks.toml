@@ -38,4 +38,5 @@ paths = [
   '''\.gitleaks\.toml''',
   '''docs/SECURITY\.md''',
   '''SECURITY\.md''',
+  'docs/DEPLOYMENT.md',
 ]
