@@ -227,7 +227,7 @@ library error types; it wraps them for presentation.
 
 - [snafu docs](https://docs.rs/snafu) — context selectors, Location, ensure!
 - [GreptimeDB error handling](https://github.com/GreptimeTeam/greptide-db) — the pattern this codebase follows
-- `docs/STANDARDS.md` — Error Handling (Rust) section
-- `.claude/rules/rust.md` — Error Handling rules
+- `standards/RUST.md` — Error Handling section
+- `standards/RUST.md` — Error Handling rules (full Rust standards)
 - `crates/nous/src/error.rs` — canonical example with Location tracking
 - `crates/taxis/src/error.rs` — example with PathBuf fields
