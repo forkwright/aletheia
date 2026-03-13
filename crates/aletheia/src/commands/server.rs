@@ -697,7 +697,7 @@ fn start_inbound_dispatch(
     let handle = if let Some(provider) = signal_provider {
         let listener = ChannelListener::start(provider, None);
         info!("signal channel listener started");
-        let rx = listener.into_receiver();
+        let (rx, _poll_handles) = listener.into_receiver();
 
         let default_nous_id = config
             .agents
