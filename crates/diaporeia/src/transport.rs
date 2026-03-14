@@ -28,8 +28,6 @@ pub fn streamable_http_router(state: Arc<DiaporeiaState>) -> axum::Router {
 /// Reads JSON-RPC from stdin, writes to stdout. Blocks until the connection
 /// closes or the shutdown token fires.
 pub async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
-    use snafu::IntoError;
-
     let server = DiaporeiaServer::with_state(state);
     let service = server
         .serve(rmcp::transport::io::stdio())
@@ -38,14 +36,14 @@ pub async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
             error::TransportSnafu {
                 message: e.to_string(),
             }
-            .into_error(snafu::NoneError)
+            .build()
         })?;
 
     service.waiting().await.map_err(|e| {
         error::TransportSnafu {
             message: e.to_string(),
         }
-        .into_error(snafu::NoneError)
+        .build()
     })?;
 
     Ok(())
