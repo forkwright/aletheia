@@ -25,6 +25,8 @@ use crate::security::SecurityConfig;
 use crate::state::AppState;
 
 /// Build the Axum router with all routes and middleware.
+// NOTE(#940): 130 lines — route and middleware layer assembly where ordering matters.
+// Extraction would obscure the middleware stack ordering that is critical for correctness.
 #[expect(
     clippy::too_many_lines,
     reason = "router construction requires assembling all routes and ordered middleware layers; extraction would obscure the stack ordering"
