@@ -1,7 +1,7 @@
 use super::*;
 use crate::types::{
-    CacheControl, CompletionRequest, Content, ContentBlock, Message, Role, StopReason,
-    ThinkingConfig, ToolDefinition,
+    CompletionRequest, Content, ContentBlock, Message, Role, StopReason, ThinkingConfig,
+    ToolDefinition,
 };
 
 #[test]

@@ -49,13 +49,13 @@ pub(crate) fn str2vld(s: &str) -> Result<ValidityTs> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub(super) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     let d: f64 = Date::now() / 1000.;
     Ok(DataValue::from(d))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(super) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     let now = SystemTime::now();
     Ok(DataValue::from(
         now.duration_since(UNIX_EPOCH)
@@ -65,7 +65,7 @@ pub(super) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
 }
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
-pub(super) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let millis = match &args[0] {
         DataValue::Validity(vld) => vld.timestamp.0.0 / 1000,
         v => {
@@ -112,7 +112,7 @@ pub(super) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
 }
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
-pub(super) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let s = args[0].get_str().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "parse_timestamp",
@@ -131,7 +131,7 @@ pub(super) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
-pub(super) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
     let mut rng = rand::rng();
     let uuid_ctx = uuid::v1::Context::new(rng.random());
     #[cfg(target_arch = "wasm32")]
@@ -155,12 +155,12 @@ pub(super) fn op_rand_uuid_v1(_args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::uuid(id))
 }
 
-pub(super) fn op_rand_uuid_v4(_args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_rand_uuid_v4(_args: &[DataValue]) -> Result<DataValue> {
     let id = uuid::Uuid::new_v4();
     Ok(DataValue::uuid(id))
 }
 
-pub(super) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Uuid(UuidWrapper(id)) => match id.get_timestamp() {
             None => DataValue::Null,
@@ -180,11 +180,11 @@ pub(super) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_rand_float(_args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_rand_float(_args: &[DataValue]) -> Result<DataValue> {
     Ok(rand::rng().random::<f64>().into())
 }
 
-pub(super) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
     let prob = match &args[0] {
         DataValue::Num(n) => {
             let f = n.get_float();
@@ -207,7 +207,7 @@ pub(super) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(rand::rng().random_bool(prob)))
 }
 
-pub(super) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
     let lower = &args[0].get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "rand_int",
@@ -225,7 +225,7 @@ pub(super) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
     Ok(rand::rng().random_range(*lower..=*upper).into())
 }
 
-pub(super) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
     match &args[0] {
         DataValue::List(l) => Ok(l
             .choose(&mut rand::rng())
@@ -246,7 +246,7 @@ pub(super) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
     let ts = args[0].get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "validity",

@@ -9,7 +9,7 @@ use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::engine::data::value::{DataValue, Num, Vector};
 
-pub(super) fn ensure_same_value_type(a: &DataValue, b: &DataValue) -> Result<()> {
+pub(crate) fn ensure_same_value_type(a: &DataValue, b: &DataValue) -> Result<()> {
     use DataValue::*;
     if !matches!(
         (a, b),
@@ -32,7 +32,7 @@ pub(super) fn ensure_same_value_type(a: &DataValue, b: &DataValue) -> Result<()>
     Ok(())
 }
 
-pub(super) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
     if args.len() == 1 {
         return Ok(args[0].clone());
     }
@@ -98,7 +98,7 @@ pub(super) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
     if args.len() == 1 {
         return Ok(args[0].clone());
     }
@@ -164,7 +164,7 @@ pub(super) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_eq(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_eq(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Float(f)), DataValue::Num(Num::Int(i)))
         | (DataValue::Num(Num::Int(i)), DataValue::Num(Num::Float(f))) => *i as f64 == *f,
@@ -172,7 +172,7 @@ pub(super) fn op_eq(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
-pub(super) fn op_neq(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_neq(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Float(f)), DataValue::Num(Num::Int(i)))
         | (DataValue::Num(Num::Int(i)), DataValue::Num(Num::Float(f))) => *i as f64 != *f,
@@ -180,7 +180,7 @@ pub(super) fn op_neq(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
-pub(super) fn op_gt(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_gt(args: &[DataValue]) -> Result<DataValue> {
     ensure_same_value_type(&args[0], &args[1])?;
     Ok(DataValue::from(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Float(l)), DataValue::Num(Num::Int(r))) => *l > *r as f64,
@@ -189,7 +189,7 @@ pub(super) fn op_gt(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
-pub(super) fn op_ge(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_ge(args: &[DataValue]) -> Result<DataValue> {
     ensure_same_value_type(&args[0], &args[1])?;
     Ok(DataValue::from(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Float(l)), DataValue::Num(Num::Int(r))) => *l >= *r as f64,
@@ -198,7 +198,7 @@ pub(super) fn op_ge(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
-pub(super) fn op_lt(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_lt(args: &[DataValue]) -> Result<DataValue> {
     ensure_same_value_type(&args[0], &args[1])?;
     Ok(DataValue::from(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Float(l)), DataValue::Num(Num::Int(r))) => *l < (*r as f64),
@@ -207,7 +207,7 @@ pub(super) fn op_lt(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
-pub(super) fn op_le(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_le(args: &[DataValue]) -> Result<DataValue> {
     ensure_same_value_type(&args[0], &args[1])?;
     Ok(DataValue::from(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Float(l)), DataValue::Num(Num::Int(r))) => *l <= (*r as f64),
@@ -216,7 +216,7 @@ pub(super) fn op_le(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
-pub(super) fn op_add(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_add(args: &[DataValue]) -> Result<DataValue> {
     let mut i_accum = 0i64;
     let mut f_accum = 0.0f64;
     for arg in args {
@@ -240,7 +240,7 @@ pub(super) fn op_add(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_max(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_max(args: &[DataValue]) -> Result<DataValue> {
     let res = args
         .iter()
         .try_fold(None, |accum, nxt| match (accum, nxt) {
@@ -258,7 +258,7 @@ pub(super) fn op_max(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_min(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_min(args: &[DataValue]) -> Result<DataValue> {
     let res = args
         .iter()
         .try_fold(None, |accum, nxt| match (accum, nxt) {
@@ -276,7 +276,7 @@ pub(super) fn op_min(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
     Ok(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
             DataValue::Num(Num::Int(*a - *b))
@@ -350,7 +350,7 @@ pub(super) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
     let mut i_accum = 1i64;
     let mut f_accum = 1.0f64;
     for arg in args {
@@ -374,7 +374,7 @@ pub(super) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_div(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
     Ok(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
             DataValue::Num(Num::Float((*a as f64) / (*b as f64)))
@@ -442,7 +442,7 @@ pub(super) fn op_div(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_minus(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_minus(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(-(*i))),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(-(*f))),
@@ -458,7 +458,7 @@ pub(super) fn op_minus(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_abs(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_abs(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(i.abs())),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.abs())),
@@ -474,7 +474,7 @@ pub(super) fn op_abs(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_signum(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_signum(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(i.signum())),
         DataValue::Num(Num::Float(f)) => {
@@ -498,7 +498,7 @@ pub(super) fn op_signum(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_floor(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_floor(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.floor())),
@@ -512,7 +512,7 @@ pub(super) fn op_floor(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_ceil(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_ceil(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.ceil())),
@@ -526,7 +526,7 @@ pub(super) fn op_ceil(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_round(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_round(args: &[DataValue]) -> Result<DataValue> {
     Ok(match &args[0] {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.round())),
@@ -540,7 +540,7 @@ pub(super) fn op_round(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
     let a = match &args[0] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
@@ -561,7 +561,7 @@ pub(super) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.sqrt())))
 }
 
-pub(super) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
     let a = match &args[0] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
@@ -582,7 +582,7 @@ pub(super) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.exp())))
 }
 
-pub(super) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
     let a = match &args[0] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
@@ -603,7 +603,7 @@ pub(super) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.exp2())))
 }
 
-pub(super) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
     let a = match &args[0] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
@@ -624,7 +624,7 @@ pub(super) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.ln())))
 }
 
-pub(super) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
     let a = match &args[0] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
@@ -645,7 +645,7 @@ pub(super) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.log2())))
 }
 
-pub(super) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
     let a = match &args[0] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
@@ -666,7 +666,7 @@ pub(super) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.log10())))
 }
 
-pub(super) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
     let a = match &args[0] {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
@@ -712,7 +712,7 @@ pub(super) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Num(Num::Float(a.powf(b))))
 }
 
-pub(super) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
     Ok(match (&args[0], &args[1]) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
             if *b == 0 {
@@ -743,7 +743,7 @@ pub(super) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-pub(super) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
     let left = &args[0];
     let right = args[1].get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -755,7 +755,7 @@ pub(super) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(right.contains(left)))
 }
 
-pub(super) fn op_coalesce(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_coalesce(args: &[DataValue]) -> Result<DataValue> {
     for val in args {
         if *val != DataValue::Null {
             return Ok(val.clone());

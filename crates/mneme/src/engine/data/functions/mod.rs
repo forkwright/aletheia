@@ -15,14 +15,14 @@ mod trig;
 mod utility;
 mod vector;
 
-use aggregate::*;
-use bits::*;
-use math::*;
-use string::*;
-use temporal::*;
-use trig::*;
-use utility::*;
-use vector::*;
+pub(crate) use aggregate::*;
+pub(crate) use bits::*;
+pub(crate) use math::*;
+pub(crate) use string::*;
+pub(crate) use temporal::*;
+pub(crate) use trig::*;
+pub(crate) use utility::*;
+pub(crate) use vector::*;
 
 macro_rules! define_op {
     ($name:ident, $lower:ident, $min_arity:expr, $vararg:expr) => {

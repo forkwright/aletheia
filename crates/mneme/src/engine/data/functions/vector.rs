@@ -11,7 +11,7 @@ use crate::engine::data::relation::VecElementType;
 use crate::engine::data::value::{DataValue, Vector};
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
-pub(super) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
     let t = match args.get(1) {
         Some(DataValue::Str(s)) => match s as &str {
             "F32" | "Float" => VecElementType::F32,
@@ -197,7 +197,7 @@ pub(super) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
     let len = args[0].get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "rand_vec",
@@ -245,7 +245,7 @@ pub(super) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_l2_normalize(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_l2_normalize(args: &[DataValue]) -> Result<DataValue> {
     let a = &args[0];
     match a {
         DataValue::Vec(Vector::F32(a)) => {
@@ -264,7 +264,7 @@ pub(super) fn op_l2_normalize(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
     let a = &args[0];
     let b = &args[1];
     match (a, b) {
@@ -298,7 +298,7 @@ pub(super) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
     let a = &args[0];
     let b = &args[1];
     match (a, b) {
@@ -332,7 +332,7 @@ pub(super) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-pub(super) fn op_cos_dist(args: &[DataValue]) -> Result<DataValue> {
+pub(crate) fn op_cos_dist(args: &[DataValue]) -> Result<DataValue> {
     let a = &args[0];
     let b = &args[1];
     match (a, b) {
