@@ -1,6 +1,6 @@
 //! Session management and message streaming handlers.
 
-// `pub(crate)` so utoipa-generated `__path_*` types are visible to the OpenAPI derive.
+// WHY: pub(crate) so utoipa-generated `__path_*` types are visible to the OpenAPI derive.
 pub(crate) mod streaming;
 mod types;
 

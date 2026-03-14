@@ -25,8 +25,6 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
     }
 }
 
-// -- GrepExecutor -------------------------------------------------------
-
 #[tokio::test]
 async fn grep_finds_pattern() {
     let dir = tempfile::tempdir().expect("tmpdir");
@@ -90,8 +88,6 @@ async fn grep_no_matches_not_error() {
     assert_eq!(result.content.text_summary(), "No matches found.");
 }
 
-// -- FindExecutor -------------------------------------------------------
-
 #[tokio::test]
 async fn find_locates_files() {
     let dir = tempfile::tempdir().expect("tmpdir");
@@ -139,8 +135,6 @@ async fn find_max_depth() {
     assert!(text.contains("shallow"));
     assert!(!text.contains("deep"));
 }
-
-// -- LsExecutor ---------------------------------------------------------
 
 #[tokio::test]
 async fn ls_lists_directory() {
@@ -205,8 +199,6 @@ async fn ls_dirs_sorted_before_files() {
     );
 }
 
-// -- Path validation ----------------------------------------------------
-
 #[tokio::test]
 async fn path_validation_rejects_outside_roots() {
     let dir = tempfile::tempdir().expect("tmpdir");
@@ -222,8 +214,6 @@ async fn path_validation_rejects_outside_roots() {
     assert!(err.to_string().contains("outside allowed roots"));
 }
 
-// -- Registration -------------------------------------------------------
-
 #[tokio::test]
 async fn all_tools_registered() {
     let mut reg = crate::registry::ToolRegistry::new();
@@ -234,8 +224,6 @@ async fn all_tools_registered() {
         assert!(reg.get_def(&tn).is_some(), "{name} should be registered");
     }
 }
-
-// -- Parameter validation -----------------------------------------------
 
 #[tokio::test]
 async fn test_grep_when_pattern_argument_missing_returns_error() {
@@ -260,8 +248,6 @@ async fn test_find_when_pattern_argument_missing_returns_error() {
         .expect_err("missing pattern should error");
     assert!(err.to_string().contains("missing or invalid field"));
 }
-
-// -- Grep result formatting ---------------------------------------------
 
 #[tokio::test]
 async fn test_grep_max_results_limits_output_lines() {
@@ -321,8 +307,6 @@ async fn test_grep_returns_error_result_for_invalid_path_outside_roots() {
     assert!(err.to_string().contains("outside allowed roots"));
 }
 
-// -- Find result formatting ---------------------------------------------
-
 #[tokio::test]
 async fn test_find_empty_results_returns_not_error_message() {
     let dir = tempfile::tempdir().expect("tmpdir");
@@ -369,8 +353,6 @@ async fn test_find_max_results_limits_output() {
         "expected at most 3 results, got {line_count}"
     );
 }
-
-// -- Ls result formatting -----------------------------------------------
 
 #[tokio::test]
 async fn test_ls_nonexistent_directory_returns_error_result() {
@@ -436,8 +418,6 @@ async fn test_ls_uses_workspace_when_path_not_specified() {
     assert!(!result.is_error);
     assert!(result.content.text_summary().contains("sentinel.txt"));
 }
-
-// -- Helper function unit tests -----------------------------------------
 
 #[test]
 fn test_is_glob_pattern_detects_star() {
@@ -512,8 +492,6 @@ fn test_truncate_output_exactly_at_limit_unchanged() {
     let result = truncate_output(exactly.clone());
     assert_eq!(result, exactly, "exactly at limit should be unchanged");
 }
-
-// -- Tool definition schema tests ---------------------------------------
 
 #[test]
 fn test_grep_def_has_pattern_as_required() {

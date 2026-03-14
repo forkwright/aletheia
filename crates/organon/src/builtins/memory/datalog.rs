@@ -135,8 +135,6 @@ pub(super) fn format_as_markdown_table(result: &crate::types::DatalogResult) -> 
     out
 }
 
-// --- Tool Definition ---
-
 fn datalog_query_def() -> ToolDef {
     ToolDef {
         name: ToolName::new("datalog_query").expect("valid tool name"),
@@ -194,8 +192,6 @@ fn datalog_query_def() -> ToolDef {
         auto_activate: false,
     }
 }
-
-// --- Registration ---
 
 pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(datalog_query_def(), Box::new(DatalogQueryExecutor))?;

@@ -212,7 +212,6 @@ mod tests {
                 .unwrap();
         }
 
-        // Re-open: state should survive.
         let store2 = TaskStateStore::open(&db_path).unwrap();
         let loaded = store2.load_all().unwrap();
         assert_eq!(loaded.len(), 1);

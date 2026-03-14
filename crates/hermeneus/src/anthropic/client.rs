@@ -213,7 +213,6 @@ impl AnthropicProvider {
 
             let headers = self.build_headers()?;
 
-            // HTTP-level errors (connection, non-200 status)
             let mut response = match self
                 .client
                 .post(format!("{}/v1/messages", self.base_url))
@@ -257,7 +256,6 @@ impl AnthropicProvider {
                 continue;
             }
 
-            // Parse SSE events incrementally as bytes arrive from the response stream.
             let mut accumulator = StreamAccumulator::new();
             let mut content_started = false;
 
@@ -615,7 +613,6 @@ impl AnthropicProvider {
             let err = super::error::map_error_response(response).await;
             self.health.record_error(&err);
 
-            // Non-retryable: 401, 400-level (except 429).
             if status == 401 || ((400..500).contains(&status) && status != 429) {
                 #[expect(
                     clippy::cast_possible_truncation,
@@ -636,7 +633,6 @@ impl AnthropicProvider {
                 return Err(err);
             }
 
-            // Retryable: 429, 5xx, network errors.
             last_error = Some(err);
         }
 

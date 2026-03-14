@@ -118,7 +118,6 @@ pub async fn update_section(
         });
     }
 
-    // Validate
     if let Err(err) = aletheia_taxis::validate::validate_section(&section, &body) {
         return Err(ApiError::ValidationFailed {
             errors: err.errors,
@@ -126,7 +125,6 @@ pub async fn update_section(
         });
     }
 
-    // Deep-merge into current config (body patches only changed fields)
     let mut config = state.config.write().await;
     let mut config_value = serde_json::to_value(&*config).map_err(|e| ApiError::Internal {
         message: format!("failed to serialize config: {e}"),
@@ -152,7 +150,6 @@ pub async fn update_section(
             }
         })?;
 
-    // Persist to disk
     aletheia_taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| {
         ApiError::Internal {
             message: format!("failed to write config: {e}"),
@@ -160,14 +157,12 @@ pub async fn update_section(
         }
     })?;
 
-    // Identify restart-required fields
     let restart_required: Vec<String> = aletheia_taxis::reload::restart_prefixes()
         .iter()
         .filter(|p| p.starts_with(&format!("{section}.")))
         .map(|p| (*p).to_owned())
         .collect();
 
-    // Update in-memory config
     *config = new_config;
     let redacted = aletheia_taxis::redact::redact(&config);
     let section_value = redacted.get(&section).cloned().unwrap_or_else(|| {

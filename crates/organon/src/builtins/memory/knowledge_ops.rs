@@ -21,8 +21,6 @@ use crate::builtins::workspace::{extract_opt_u64, extract_str};
 
 use super::require_services;
 
-// --- Memory Search ---
-
 struct MemorySearchExecutor;
 
 impl ToolExecutor for MemorySearchExecutor {
@@ -68,8 +66,6 @@ fn format_results(results: &[crate::types::MemoryResult]) -> String {
         })
 }
 
-// --- Memory Correct ---
-
 struct MemoryCorrectExecutor;
 
 impl ToolExecutor for MemoryCorrectExecutor {
@@ -103,8 +99,6 @@ impl ToolExecutor for MemoryCorrectExecutor {
     }
 }
 
-// --- Memory Retract ---
-
 struct MemoryRetractExecutor;
 
 impl ToolExecutor for MemoryRetractExecutor {
@@ -132,8 +126,6 @@ impl ToolExecutor for MemoryRetractExecutor {
         })
     }
 }
-
-// --- Memory Forget ---
 
 struct MemoryForgetExecutor;
 
@@ -165,8 +157,6 @@ impl ToolExecutor for MemoryForgetExecutor {
         })
     }
 }
-
-// --- Memory Audit ---
 
 struct MemoryAuditExecutor;
 
@@ -226,8 +216,6 @@ impl ToolExecutor for MemoryAuditExecutor {
         })
     }
 }
-
-// --- Tool Definitions ---
 
 fn memory_search_def() -> ToolDef {
     ToolDef {
@@ -408,8 +396,6 @@ fn memory_audit_def() -> ToolDef {
         auto_activate: false,
     }
 }
-
-// --- Registration ---
 
 pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(memory_search_def(), Box::new(MemorySearchExecutor))?;

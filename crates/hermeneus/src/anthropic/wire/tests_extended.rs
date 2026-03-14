@@ -108,10 +108,6 @@ fn wire_request_no_cache_system_is_string() {
     assert_eq!(json["system"], "test");
 }
 
-// -----------------------------------------------------------------------
-// Turn-level cache_control tests
-// -----------------------------------------------------------------------
-
 #[test]
 fn cache_turns_marks_text_content_as_blocks() {
     let req = CompletionRequest {

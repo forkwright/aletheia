@@ -388,8 +388,6 @@ async fn independent_child_tokens_isolated() {
     let _ = tokio::time::timeout(Duration::from_secs(2), handle_b).await;
 }
 
-// --- Exponential backoff tests ---
-
 #[test]
 fn backoff_applied_on_failure() {
     let token = CancellationToken::new();
@@ -432,8 +430,6 @@ fn backoff_cleared_on_success() {
     assert!(runner.tasks[0].backoff_until.is_none());
     assert_eq!(runner.tasks[0].consecutive_failures, 0);
 }
-
-// --- Hung task detection tests ---
 
 #[tokio::test]
 async fn hung_task_cancelled_after_2x_timeout() {
@@ -478,8 +474,6 @@ async fn hung_task_cancelled_after_2x_timeout() {
     assert!(!runner.in_flight.contains_key("hung-task"));
     assert_eq!(runner.tasks[0].consecutive_failures, 1);
 }
-
-// --- Missed cron catch-up tests ---
 
 #[test]
 fn missed_cron_catchup_fires_on_startup() {
@@ -552,8 +546,6 @@ fn missed_cron_catchup_skips_disabled_catch_up() {
 
     assert_eq!(runner.tasks[0].next_run.unwrap(), future_run);
 }
-
-// --- Task metrics tests ---
 
 #[test]
 fn task_metrics_on_success() {

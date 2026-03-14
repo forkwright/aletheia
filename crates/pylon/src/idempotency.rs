@@ -98,7 +98,6 @@ impl IdempotencyCache {
             };
         }
 
-        // Evict oldest if at capacity
         while inner.entries.len() >= inner.capacity {
             if let Some(oldest_key) = inner.order.pop_front() {
                 inner.entries.remove(&oldest_key);
@@ -157,7 +156,6 @@ impl CacheInner {
                     break;
                 }
             } else {
-                // Stale order entry — remove it
                 self.order.pop_front();
             }
         }
@@ -174,16 +172,12 @@ mod tests {
         let cache = IdempotencyCache::new();
         let key = "test-key-001";
 
-        // First lookup: miss, inserted as InFlight
         assert!(matches!(cache.check_or_insert(key), LookupResult::Miss));
 
-        // Second lookup while in-flight: conflict
         assert!(matches!(cache.check_or_insert(key), LookupResult::Conflict));
 
-        // Complete the entry
         cache.complete(key, StatusCode::OK, r#"{"ok":true}"#.to_owned());
 
-        // Third lookup: hit with cached response
         match cache.check_or_insert(key) {
             LookupResult::Hit { status, body } => {
                 assert_eq!(status, StatusCode::OK);
@@ -218,7 +212,6 @@ mod tests {
             cache.check_or_insert(&format!("key-{i}"));
         }
 
-        // Oldest (key-0) should be evicted
         assert_eq!(cache.len(), 3);
         let inner = cache.inner.lock().unwrap();
         assert!(!inner.entries.contains_key("key-0"));
@@ -232,12 +225,11 @@ mod tests {
                 entries: HashMap::new(),
                 order: VecDeque::new(),
                 capacity: DEFAULT_CAPACITY,
-                ttl: Duration::from_millis(0), // immediate expiry
+                ttl: Duration::from_millis(0),
             }),
         };
 
         cache.check_or_insert("expired-key");
-        // Next call triggers eviction of the expired entry, then inserts fresh
         assert!(matches!(
             cache.check_or_insert("expired-key"),
             LookupResult::Miss

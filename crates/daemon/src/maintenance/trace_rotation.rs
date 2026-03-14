@@ -85,10 +85,8 @@ impl TraceRotator {
 
         let mut entries = self.list_trace_files()?;
 
-        // Sort by modification time ascending (oldest first).
         entries.sort_by_key(|e| e.modified);
 
-        // Calculate total size.
         let total_size_bytes: u64 = entries.iter().map(|e| e.size).sum();
         let max_bytes = self.config.max_total_size_mb * 1024 * 1024;
 
@@ -109,7 +107,6 @@ impl TraceRotator {
             }
         }
 
-        // Rotate eligible files.
         for entry in &to_rotate {
             let dest = self
                 .config
@@ -139,7 +136,6 @@ impl TraceRotator {
             report.bytes_freed += entry.size;
         }
 
-        // Prune old archives beyond max_archives.
         report.files_pruned = self.prune_archives()?;
 
         Ok(report)
@@ -157,7 +153,6 @@ impl TraceRotator {
             })?;
             let path = entry.path();
 
-            // Skip directories (including archive/).
             if path.is_dir() {
                 continue;
             }
@@ -244,7 +239,6 @@ impl TraceRotator {
             archives.push((path, modified, metadata.len()));
         }
 
-        // Sort oldest first.
         archives.sort_by_key(|(_, modified, _)| *modified);
 
         let mut pruned = 0u32;
@@ -302,8 +296,6 @@ mod tests {
         let report = rotator.rotate().expect("rotation succeeds");
 
         assert_eq!(report.files_rotated, 1);
-        // Rename-and-reopen: original path gets a fresh empty file so active
-        // writers can continue without stalling.
         assert!(
             file.exists(),
             "replacement file should exist at original path"
@@ -345,7 +337,6 @@ mod tests {
         let config = make_config(tmp.path());
         fs::create_dir_all(&config.archive_dir).unwrap();
 
-        // Create 5 archives, max is 3.
         for i in 0..5 {
             fs::write(config.archive_dir.join(format!("archive-{i}.log")), "data").unwrap();
         }
@@ -375,11 +366,9 @@ mod tests {
         let report = rotator.rotate().expect("rotation succeeds");
 
         assert_eq!(report.files_rotated, 1);
-        // Original should be gone, .gz should exist.
         assert!(!config.archive_dir.join("trace.log").exists());
         assert!(config.archive_dir.join("trace.log.gz").exists());
 
-        // Verify decompression.
         let compressed = fs::read(config.archive_dir.join("trace.log.gz")).unwrap();
         let mut decoder = flate2::read::GzDecoder::new(&compressed[..]);
         let mut decompressed = String::new();
@@ -428,7 +417,6 @@ mod tests {
         config.max_age_days = 9999;
         config.max_total_size_mb = 9999;
         fs::create_dir_all(&config.trace_dir).unwrap();
-        // Empty trace dir — nothing to rotate.
 
         let rotator = TraceRotator::new(config);
         let report = rotator.rotate().expect("rotation succeeds");
@@ -453,8 +441,6 @@ mod tests {
 
         assert_eq!(report.files_rotated, 3);
         assert!(report.bytes_freed > 0);
-
-        // All should be in archive.
         assert!(config.archive_dir.join("trace-1.log").exists());
         assert!(config.archive_dir.join("trace-2.log").exists());
         assert!(config.archive_dir.join("trace-3.log").exists());

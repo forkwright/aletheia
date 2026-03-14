@@ -49,8 +49,6 @@ fn valid_wire_response_json() -> serde_json::Value {
     })
 }
 
-// --- from_config tests ---
-
 #[test]
 fn from_config_missing_api_key() {
     let config = ProviderConfig {
@@ -91,8 +89,6 @@ fn from_config_valid() {
         "debug should show base_url: {debug}"
     );
 }
-
-// --- wiremock integration tests ---
 
 #[tokio::test]
 async fn complete_success() {
@@ -239,8 +235,6 @@ async fn complete_malformed_body() {
     );
 }
 
-// --- estimate_cost unit tests ---
-
 #[test]
 #[allow(clippy::float_cmp, reason = "exact zero comparison in pricing test")]
 fn estimate_cost_no_pricing_returns_zero() {
@@ -295,8 +289,6 @@ fn estimate_cost_config_overrides_default() {
     // (1000 * 20.0 + 100 * 100.0) / 1_000_000 = 30000 / 1_000_000 = 0.03
     assert!((cost - 0.03).abs() < 0.0001);
 }
-
-// --- backoff_delay unit tests ---
 
 #[test]
 fn backoff_delay_respects_retry_after() {

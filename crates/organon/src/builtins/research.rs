@@ -33,8 +33,6 @@ fn require_services(
         .ok_or_else(|| ToolResult::error("tool services not configured"))
 }
 
-// --- SSRF protection ---
-
 /// Blocked cloud metadata hostnames.
 const BLOCKED_HOSTNAMES: &[&str] = &["localhost", "metadata.google.internal"];
 
@@ -63,7 +61,6 @@ async fn validate_url_not_internal(url_str: &str) -> std::result::Result<(), Str
 
     let host = parsed.host_str().ok_or("URL has no host")?;
 
-    // Block known metadata / internal hostnames
     let host_lower = host.to_lowercase();
     for blocked in BLOCKED_HOSTNAMES {
         if host_lower == *blocked {
@@ -71,7 +68,6 @@ async fn validate_url_not_internal(url_str: &str) -> std::result::Result<(), Str
         }
     }
 
-    // Resolve DNS and check every address
     let port = parsed.port_or_known_default().unwrap_or(80);
     let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host(format!("{host}:{port}"))
         .await
@@ -91,8 +87,6 @@ async fn validate_url_not_internal(url_str: &str) -> std::result::Result<(), Str
     Ok(())
 }
 
-// --- web_fetch ---
-
 struct WebFetchExecutor;
 
 impl ToolExecutor for WebFetchExecutor {
@@ -110,17 +104,14 @@ impl ToolExecutor for WebFetchExecutor {
             let url = extract_str(&input.arguments, "url", &input.name)?;
             let max_length = extract_opt_u64(&input.arguments, "maxLength").unwrap_or(50_000);
 
-            // Basic URL validation
             if !url.starts_with("http://") && !url.starts_with("https://") {
                 return Ok(ToolResult::error("URL must start with http:// or https://"));
             }
 
-            // SSRF protection: resolve hostname and block private/internal IPs
             if let Err(msg) = validate_url_not_internal(url).await {
                 return Ok(ToolResult::error(msg));
             }
 
-            // Build a client that checks redirects against private IPs
             let ssrf_safe_client = reqwest::Client::builder()
                 .redirect(redirect::Policy::custom(|attempt| {
                     let url = attempt.url();
@@ -141,7 +132,6 @@ impl ToolExecutor for WebFetchExecutor {
                     {
                         return attempt.stop();
                     }
-                    // Limit redirect chain length
                     if attempt.previous().len() >= 10 {
                         return attempt.stop();
                     }
@@ -264,7 +254,6 @@ fn strip_html_tags(html: &str) -> String {
             continue;
         }
 
-        // Decode common HTML entities
         if bytes[i] == b'&' {
             if i + 4 <= bytes.len() && &bytes[i..i + 4] == b"&lt;" {
                 result.push('<');
@@ -313,8 +302,6 @@ fn strip_html_tags(html: &str) -> String {
 
     result.trim().to_owned()
 }
-
-// --- Definition ---
 
 fn web_fetch_def() -> ToolDef {
     ToolDef {

@@ -25,10 +25,6 @@ use crate::types::{
 
 const MAX_OUTPUT_BYTES: usize = 50 * 1024;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) -> Result<PathBuf> {
     if raw.is_empty() {
         return Err(error::InvalidInputSnafu {
@@ -172,10 +168,6 @@ fn is_protected_file(path: &Path, workspace: &Path) -> Option<&'static str> {
 fn err_result(msg: String) -> ToolResult {
     ToolResult::error(msg)
 }
-
-// ---------------------------------------------------------------------------
-// Executors
-// ---------------------------------------------------------------------------
 
 struct ReadExecutor;
 
@@ -503,10 +495,6 @@ impl ToolExecutor for ExecExecutor {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tool definitions (schemas unchanged)
-// ---------------------------------------------------------------------------
-
 /// Register workspace tool executors.
 pub fn register(registry: &mut ToolRegistry, sandbox: crate::sandbox::SandboxConfig) -> Result<()> {
     registry.register(read_def(), Box::new(ReadExecutor))?;
@@ -670,10 +658,6 @@ fn exec_def() -> ToolDef {
         auto_activate: true,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[path = "workspace_tests.rs"]

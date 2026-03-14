@@ -275,8 +275,6 @@ fn test_input_schema_type_is_object_in_json_schema() {
     assert_eq!(json["type"], "object");
 }
 
-// --- ServerToolConfig tests ---
-
 #[test]
 fn server_tool_config_default_disables_all() {
     let config = ServerToolConfig::default();

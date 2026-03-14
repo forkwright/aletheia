@@ -57,6 +57,7 @@ pub struct DbInfo {
 }
 
 /// Health status of a database based on size thresholds.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DbStatus {
     /// Size is within normal bounds.

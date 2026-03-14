@@ -157,6 +157,7 @@ pub enum ContentBlock {
 /// Tool result content — simple text or rich content blocks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum ToolResultContent {
     /// Simple text result (most common case, backward compatible).
     Text(String),
@@ -292,6 +293,7 @@ pub struct CacheControl {
 }
 
 /// The type of cache control.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CacheControlType {
     #[serde(rename = "ephemeral")]
@@ -310,6 +312,7 @@ impl CacheControl {
 /// Caching strategy for prompt caching.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum CachingStrategy {
     #[default]
     Auto,
@@ -336,6 +339,7 @@ impl Default for CachingConfig {
 /// Control tool use behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum ToolChoice {
     #[serde(rename = "auto")]
     Auto,

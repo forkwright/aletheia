@@ -145,17 +145,15 @@ impl IntoResponse for ApiError {
             Self::NotImplemented { .. } => (StatusCode::NOT_IMPLEMENTED, "not_implemented", None),
         };
 
-        // Extract retry-after value before moving self for Display
+        // WHY: retry_after_secs must be extracted before self is moved into client_message construction below.
         let retry_after_secs = if let Self::RateLimited { retry_after_ms, .. } = &self {
-            // Convert ms to seconds (ceiling division so 1500ms → 2s)
             Some(retry_after_ms.div_ceil(1000))
         } else {
             None
         };
 
-        // For 5xx errors: log full internal details (request_id is in the active span) and
-        // return a generic message so internal paths, SQL, panic text, and provider details
-        // are never exposed to clients. (#827, #846, #847)
+        // WHY: 5xx errors log full details internally but return a generic message so SQL paths,
+        // panic text, and provider details are never exposed to clients (#827, #846, #847).
         let client_message = if status.is_server_error() {
             tracing::error!(error = %self, "internal server error");
             "An internal error occurred".to_owned()
@@ -173,7 +171,7 @@ impl IntoResponse for ApiError {
 
         let mut response = (status, Json(body)).into_response();
 
-        // RFC 6585: 429 responses SHOULD include a Retry-After header.
+        // WHY: RFC 6585 requires Retry-After on 429 responses.
         if let Some(secs) = retry_after_secs {
             response.headers_mut().insert(
                 axum::http::header::RETRY_AFTER,
@@ -199,7 +197,7 @@ impl From<aletheia_mneme::error::Error> for ApiError {
                 path: format!("fact/{id}"),
                 location: snafu::Location::default(),
             },
-            // Validation errors are the caller's fault — expose the message.
+            // WHY: validation errors are the caller's fault and are safe to expose.
             Error::EmptyContent { .. }
             | Error::ContentTooLong { .. }
             | Error::InvalidConfidence { .. }
@@ -384,8 +382,6 @@ mod tests {
         static_assertions::assert_impl_all!(ApiError: Send, Sync);
     }
 
-    // --- Sanitization tests (#827, #846, #847) ---
-
     /// Helper: extract the `message` field from an `ErrorResponse` JSON body.
     fn body_message(response: Response) -> String {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -426,7 +422,6 @@ mod tests {
 
     #[tokio::test]
     async fn join_error_returns_generic_message() {
-        // JoinError converts to Internal, which must be sanitized.
         let join_err = tokio::spawn(async { panic!("database connection string leaked") })
             .await
             .unwrap_err();
@@ -450,7 +445,6 @@ mod tests {
         };
         let api_err = ApiError::from(hermeneus_err);
         let response = api_err.into_response();
-        // Maps to ServiceUnavailable (503) — must be sanitized.
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let msg = body_message(response);
         assert_eq!(msg, "An internal error occurred");
@@ -460,7 +454,6 @@ mod tests {
 
     #[test]
     fn bad_request_message_is_preserved() {
-        // 4xx messages are user-facing and must NOT be sanitized.
         let err = ApiError::BadRequest {
             message: "content must not be empty".to_owned(),
             location: snafu::Location::default(),

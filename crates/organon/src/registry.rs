@@ -512,23 +512,21 @@ mod tests {
         assert_eq!(tools[0].name, "enable_tool");
     }
 
-    // -- Additional registry tests ------------------------------------------
-
     #[test]
-    fn test_registry_new_has_no_definitions() {
+    fn empty_registry_has_no_definitions() {
         let reg = ToolRegistry::new();
         assert!(reg.definitions().is_empty());
     }
 
     #[test]
-    fn test_registry_default_is_same_as_new() {
+    fn default_registry_equals_new_registry() {
         let reg1 = ToolRegistry::new();
         let reg2 = ToolRegistry::default();
         assert_eq!(reg1.definitions().len(), reg2.definitions().len());
     }
 
     #[test]
-    fn test_definitions_preserves_insertion_order() {
+    fn definitions_preserves_insertion_order() {
         let mut reg = ToolRegistry::new();
         let (e1, _) = mock_executor("ok");
         let (e2, _) = mock_executor("ok");
@@ -545,7 +543,7 @@ mod tests {
     }
 
     #[test]
-    fn test_to_hermeneus_tools_schema_includes_required_fields() {
+    fn schema_includes_required_fields() {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
         let def = ToolDef {
@@ -574,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn test_to_hermeneus_tools_schema_includes_enum_values() {
+    fn schema_includes_enum_values() {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
         let def = ToolDef {
@@ -605,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn test_to_hermeneus_tools_schema_includes_default_values() {
+    fn schema_includes_default_values() {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
         let def = ToolDef {
@@ -634,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lazy_catalog_includes_description() {
+    fn lazy_catalog_includes_description() {
         let mut reg = ToolRegistry::new();
         let (exec, _) = mock_executor("ok");
         reg.register(
@@ -659,7 +657,7 @@ mod tests {
     }
 
     #[test]
-    fn test_definitions_for_category_returns_empty_when_no_match() {
+    fn definitions_for_category_returns_empty_when_no_match() {
         let mut reg = ToolRegistry::new();
         let (e1, _) = mock_executor("ok");
         reg.register(test_def("read", ToolCategory::Workspace), e1)
@@ -669,7 +667,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_execute_unknown_tool_returns_tool_not_found_error() {
+    async fn execute_returns_tool_not_found_for_unknown_name() {
         let reg = ToolRegistry::new();
         let input = ToolInput {
             name: ToolName::new("ghost").expect("valid"),

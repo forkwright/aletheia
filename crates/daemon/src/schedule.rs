@@ -9,6 +9,7 @@ use snafu::ResultExt;
 use crate::error::{self, Result};
 
 /// When a task should run.
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Schedule {
     /// Cron expression (e.g., `"0 */45 8-23 * * *"` for every 45min 8am-11pm).
@@ -63,6 +64,7 @@ impl Default for TaskDef {
 }
 
 /// What a background task does.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum TaskAction {
     /// Execute a shell command.
@@ -79,6 +81,7 @@ pub enum TaskAction {
 }
 
 /// Built-in maintenance tasks.
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BuiltinTask {
     /// Prosoche attention check.
@@ -125,7 +128,7 @@ impl Schedule {
                 let schedule = cron::Schedule::from_str(expr).context(error::InvalidCronSnafu {
                     expression: expr.clone(),
                 })?;
-                // chrono::Utc is required by the `cron` crate iterator API.
+                // WHY: chrono::Utc is required by the cron crate's iterator API.
                 let next = schedule.upcoming(chrono::Utc).next();
                 Ok(next.map(|dt| {
                     jiff::Timestamp::from_second(dt.timestamp())
@@ -170,7 +173,6 @@ impl Schedule {
             .checked_sub(jiff::SignedDuration::from_hours(24))
             .expect("24h subtraction overflow");
 
-        // Don't catch up windows older than 24 hours.
         if last_run < twenty_four_hours_ago {
             return Ok(false);
         }
@@ -179,16 +181,14 @@ impl Schedule {
             expression: expr.clone(),
         })?;
 
-        // chrono::DateTime is required by the `cron` crate's `.after()` API.
+        // WHY: chrono::DateTime is required by the cron crate's after() API.
         let last_run_dt = chrono::DateTime::from_timestamp(last_run.as_second(), 0)
             .expect("jiff timestamp within valid range");
 
-        // Check if there's any scheduled run between last_run and now.
         let next_after_last = schedule.after(&last_run_dt).next();
         if let Some(next) = next_after_last {
             let next_ts = jiff::Timestamp::from_second(next.timestamp())
                 .expect("cron timestamp within valid jiff range");
-            // If the next scheduled run after last_run is before now, we missed it.
             Ok(next_ts < now)
         } else {
             Ok(false)
@@ -211,10 +211,8 @@ impl Schedule {
         let hour = u8::try_from(now.hour()).expect("hour in u8 range");
 
         if start <= end {
-            // Normal window: e.g., 9-17
             hour >= start && hour < end
         } else {
-            // Overnight window: e.g., 22-06
             hour >= start || hour < end
         }
     }
@@ -320,7 +318,6 @@ mod tests {
 
     #[test]
     fn in_window_full_day() {
-        // 0-24 should always be active (every hour is >= 0 and < 24)
         assert!(Schedule::in_window(Some((0, 24))));
     }
 

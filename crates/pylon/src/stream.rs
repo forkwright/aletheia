@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 /// SSE event emitted to the client during message streaming.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum SseEvent {
     /// Incremental text output from the assistant.
     #[serde(rename = "text_delta")]
@@ -72,6 +73,7 @@ impl SseEvent {
 /// to avoid changing the per-session message API shape.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum WebchatEvent {
     TurnStart {
         #[serde(rename = "sessionId")]

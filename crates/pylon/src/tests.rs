@@ -35,8 +35,6 @@ fn test_security_config() -> SecurityConfig {
     }
 }
 
-// --- Mock Provider ---
-
 struct MockProvider {
     response: CompletionResponse,
 }
@@ -90,8 +88,6 @@ impl LlmProvider for MockProvider {
     }
 }
 
-// --- JWT Test Helpers ---
-
 fn test_jwt_manager() -> Arc<JwtManager> {
     Arc::new(JwtManager::new(JwtConfig {
         signing_key: SecretString::from("test-secret-key-for-jwt".to_owned()),
@@ -106,8 +102,6 @@ fn default_token() -> String {
         .issue_access("test-user", aletheia_symbolon::types::Role::Operator, None)
         .expect("test token")
 }
-
-// --- Test Helpers ---
 
 async fn test_state() -> (Arc<AppState>, tempfile::TempDir) {
     test_state_with_provider(true).await
@@ -265,8 +259,6 @@ async fn create_test_session(app: &axum::Router) -> serde_json::Value {
     body_json(resp).await
 }
 
-// --- Auth Tests ---
-
 #[tokio::test]
 async fn health_no_auth_required() {
     let (app, _dir) = app().await;
@@ -389,8 +381,6 @@ async fn missing_bearer_prefix() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-// --- Health Tests ---
-
 #[tokio::test]
 async fn health_returns_200() {
     let (app, _dir) = app().await;
@@ -445,8 +435,6 @@ async fn health_checks_have_expected_shape() {
     );
     assert!(names.contains(&"providers"), "missing providers check");
 }
-
-// --- Session CRUD Tests ---
 
 #[tokio::test]
 async fn create_session_returns_201() {
@@ -538,8 +526,6 @@ async fn close_unknown_session_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// --- History Tests ---
-
 #[tokio::test]
 async fn history_empty_for_new_session() {
     let (router, _dir) = app().await;
@@ -603,8 +589,6 @@ async fn history_with_limit() {
     let body = body_json(resp).await;
     assert_eq!(body["messages"].as_array().unwrap().len(), 3);
 }
-
-// --- SSE Message Tests ---
 
 #[tokio::test]
 async fn send_message_returns_sse_content_type() {
@@ -722,8 +706,6 @@ async fn send_message_stores_in_history() {
     assert_eq!(messages[0]["content"], "Hello!");
 }
 
-// --- Error Format Tests ---
-
 #[tokio::test]
 async fn error_response_has_consistent_structure() {
     let (app, _dir) = app().await;
@@ -783,8 +765,6 @@ async fn malformed_send_body_returns_error() {
     );
 }
 
-// --- Nous Tests ---
-
 #[tokio::test]
 async fn list_nous_returns_agents() {
     let (app, _dir) = app().await;
@@ -835,8 +815,6 @@ async fn get_nous_tools() {
     assert!(body["tools"].is_array());
 }
 
-// --- Concurrent access ---
-
 #[tokio::test]
 async fn concurrent_session_creation() {
     let (state, _dir) = test_state().await;
@@ -864,8 +842,6 @@ async fn concurrent_session_creation() {
     }
 }
 
-// --- SSE with no provider ---
-
 #[tokio::test]
 async fn send_message_no_provider_returns_error() {
     let (state, _dir) = test_state_with_provider(false).await;
@@ -882,8 +858,6 @@ async fn send_message_no_provider_returns_error() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
-
-// --- Actor-routed tests ---
 
 #[tokio::test]
 async fn send_message_routes_through_actor() {
@@ -1074,8 +1048,6 @@ async fn missing_auth_header_returns_401() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-// --- Security Header Tests ---
-
 #[tokio::test]
 async fn security_headers_present_on_response() {
     let (app, _dir) = app().await;
@@ -1123,8 +1095,6 @@ async fn hsts_header_present_when_tls_enabled() {
     );
 }
 
-// --- Body Limit Tests ---
-
 #[tokio::test]
 async fn oversized_body_returns_413() {
     let (state, _dir) = test_state().await;
@@ -1148,8 +1118,6 @@ async fn oversized_body_returns_413() {
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
-
-// --- CSRF Tests ---
 
 #[tokio::test]
 async fn csrf_rejects_post_without_header() {
@@ -1218,8 +1186,6 @@ async fn csrf_allows_get_without_header() {
 
     assert_eq!(resp.status(), StatusCode::OK);
 }
-
-// --- OpenAPI Tests ---
 
 #[tokio::test]
 async fn openapi_spec_returns_valid_json() {
@@ -1300,8 +1266,6 @@ async fn openapi_spec_has_schemas() {
     assert!(schemas.contains_key("HealthResponse"));
     assert!(schemas.contains_key("NousStatus"));
 }
-
-// --- Metrics Tests ---
 
 #[tokio::test]
 async fn metrics_returns_200_with_prometheus_content_type() {
@@ -1389,8 +1353,6 @@ async fn metrics_counters_increment_after_request() {
     );
 }
 
-// --- CORS Tests ---
-
 #[tokio::test]
 async fn cors_permissive_when_no_origins_configured() {
     let (state, _dir) = test_state().await;
@@ -1432,8 +1394,6 @@ async fn cors_rejects_unlisted_origin() {
     let allow_origin = resp.headers().get("access-control-allow-origin");
     assert!(allow_origin.is_none() || allow_origin.unwrap() != "http://evil.example.com");
 }
-
-// --- Auth mode "none" bypasses JWT ---
 
 async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
@@ -1481,8 +1441,6 @@ async fn auth_mode_none_injects_anonymous_identity() {
 
     assert_eq!(resp.status(), StatusCode::OK);
 }
-
-// --- Session list with filter ---
 
 #[tokio::test]
 async fn list_sessions_returns_empty_initially() {
@@ -1541,8 +1499,6 @@ async fn list_sessions_filter_by_nous_id() {
     assert!(sessions2.is_empty());
 }
 
-// --- POST archive endpoint ---
-
 #[tokio::test]
 async fn archive_via_post_returns_204() {
     let (router, _dir) = app().await;
@@ -1570,8 +1526,6 @@ async fn archive_unknown_session_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// --- Create session with unknown nous ---
-
 #[tokio::test]
 async fn create_session_unknown_nous_returns_404() {
     let (app, _dir) = app().await;
@@ -1589,8 +1543,6 @@ async fn create_session_unknown_nous_returns_404() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "nous_not_found");
 }
-
-// --- History with before filter ---
 
 #[tokio::test]
 async fn history_before_filter() {
@@ -1628,8 +1580,6 @@ async fn history_before_filter() {
     let messages = body["messages"].as_array().unwrap();
     assert!(messages.iter().all(|m| m["seq"].as_i64().unwrap() < 3));
 }
-
-// --- Stream turn (TUI protocol) ---
 
 #[tokio::test]
 async fn stream_turn_returns_sse() {
@@ -1714,8 +1664,6 @@ async fn stream_turn_unknown_agent_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// --- Events SSE ---
-
 #[tokio::test]
 async fn events_endpoint_returns_sse() {
     // WHY: /api/v1/events is removed (stub replaced with 404) until a real
@@ -1742,8 +1690,6 @@ async fn events_stream_contains_init_event() {
         "events endpoint should return not_implemented code"
     );
 }
-
-// --- Config handler tests ---
 
 #[tokio::test]
 async fn config_get_requires_auth() {
@@ -1799,8 +1745,6 @@ async fn config_update_invalid_section_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// --- Nous tools for unknown nous ---
-
 #[tokio::test]
 async fn nous_tools_unknown_returns_404() {
     let (app, _dir) = app().await;
@@ -1813,8 +1757,6 @@ async fn nous_tools_unknown_returns_404() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "nous_not_found");
 }
-
-// --- Nous list auth required ---
 
 #[tokio::test]
 async fn nous_list_requires_auth() {
@@ -1847,8 +1789,6 @@ async fn nous_tools_requires_auth() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-// --- Config requires auth ---
-
 #[tokio::test]
 async fn config_section_requires_auth() {
     let (app, _dir) = app().await;
@@ -1859,8 +1799,6 @@ async fn config_section_requires_auth() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
-
-// --- Gateway config redaction ---
 
 #[tokio::test]
 async fn gateway_config_signing_key_is_redacted() {
@@ -1891,8 +1829,6 @@ async fn gateway_config_signing_key_is_redacted() {
     // Non-secret fields must still be present and correct.
     assert_eq!(body["port"], 18789);
 }
-
-// --- Router: Method Not Allowed ---
 
 #[tokio::test]
 async fn put_on_sessions_returns_405() {
@@ -1936,8 +1872,6 @@ async fn post_on_health_returns_405() {
     assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
 
-// --- Request ID injection ---
-
 #[tokio::test]
 async fn request_id_present_in_error_responses() {
     let (app, _dir) = app().await;
@@ -1951,8 +1885,6 @@ async fn request_id_present_in_error_responses() {
     assert!(!request_id.is_empty());
     assert!(request_id.len() >= 20, "request_id should be a ULID");
 }
-
-// --- SseEvent serialization ---
 
 #[test]
 fn sse_event_type_text_delta() {
@@ -2048,8 +1980,6 @@ fn sse_event_error_serialization() {
     assert_eq!(json["code"], "turn_failed");
     assert_eq!(json["message"], "provider error");
 }
-
-// --- TUI stream event type tests ---
 
 #[test]
 fn tui_event_turn_start_type() {
@@ -2163,8 +2093,6 @@ fn tui_event_turn_complete_serialization() {
     assert_eq!(outcome["cacheReadTokens"], 10);
     assert_eq!(outcome["cacheWriteTokens"], 20);
 }
-
-// --- Error type tests ---
 
 #[test]
 fn api_error_session_not_found_status_code() {
@@ -2327,8 +2255,6 @@ fn api_error_validation_failed_includes_errors() {
     assert_eq!(errors.len(), 2);
 }
 
-// --- SecurityConfig tests ---
-
 #[test]
 fn security_config_default_values() {
     let config = SecurityConfig::default();
@@ -2362,8 +2288,6 @@ fn security_config_from_gateway() {
     assert!(config.csrf_enabled);
     assert_eq!(config.cors_max_age_secs, 3600);
 }
-
-// --- deep_merge tests ---
 
 #[test]
 fn deep_merge_overwrites_scalar() {
@@ -2404,8 +2328,6 @@ fn deep_merge_replaces_non_object_with_object() {
     assert_eq!(base["key"]["nested"], true);
 }
 
-// --- Session response fields ---
-
 #[tokio::test]
 async fn session_response_has_all_expected_fields() {
     let (app, _dir) = app().await;
@@ -2420,8 +2342,6 @@ async fn session_response_has_all_expected_fields() {
     assert!(session["created_at"].is_string());
     assert!(session["updated_at"].is_string());
 }
-
-// --- History response structure ---
 
 #[tokio::test]
 async fn history_messages_have_expected_fields() {
@@ -2459,8 +2379,6 @@ async fn history_messages_have_expected_fields() {
     assert!(msg["created_at"].is_string());
 }
 
-// --- Nous status response fields ---
-
 #[tokio::test]
 async fn nous_status_response_has_all_fields() {
     let (app, _dir) = app().await;
@@ -2476,8 +2394,6 @@ async fn nous_status_response_has_all_fields() {
     assert!(body["max_tool_iterations"].is_number());
     assert!(body["status"].is_string());
 }
-
-// --- CSRF with wrong header value ---
 
 #[tokio::test]
 async fn csrf_rejects_wrong_header_value() {
@@ -2507,8 +2423,6 @@ async fn csrf_rejects_wrong_header_value() {
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
-
-// --- CSRF allows DELETE with correct header ---
 
 #[tokio::test]
 async fn csrf_allows_delete_with_correct_header() {
@@ -2555,8 +2469,6 @@ async fn csrf_allows_delete_with_correct_header() {
     let resp = router.clone().oneshot(delete_req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 }
-
-// --- Idempotency-Key Tests (#866) ---
 
 /// Helper: build a POST send-message request with an optional Idempotency-Key header.
 fn send_message_req(session_id: &str, idempotency_key: Option<&str>) -> Request<Body> {
@@ -2704,8 +2616,6 @@ async fn idempotency_key_64_chars_accepted() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
-
-// --- SSE stream correctness tests ---
 
 /// Parse every `data:` line in an SSE body into JSON values.
 ///

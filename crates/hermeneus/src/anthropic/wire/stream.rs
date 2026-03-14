@@ -2,10 +2,6 @@ use serde::Deserialize;
 
 use super::response::{WireErrorDetail, WireUsage};
 
-// ---------------------------------------------------------------------------
-// Streaming wire types
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 pub(crate) enum WireStreamEvent {
