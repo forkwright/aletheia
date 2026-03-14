@@ -1,0 +1,57 @@
+use std::collections::BTreeMap;
+
+use crate::engine::data::program::MagicSymbol;
+use crate::engine::data::symb::Symbol;
+use crate::engine::data::tuple::TupleIter;
+use crate::engine::error::InternalResult as Result;
+use crate::engine::runtime::temp_store::EpochStore;
+use crate::engine::runtime::transact::SessionTx;
+use itertools::Itertools;
+
+use super::RelAlgebra;
+
+#[derive(Debug)]
+pub(crate) struct ReorderRA {
+    pub(crate) relation: Box<RelAlgebra>,
+    pub(crate) new_order: Vec<Symbol>,
+}
+
+impl ReorderRA {
+    pub(crate) fn bindings(&self) -> Vec<Symbol> {
+        self.new_order.clone()
+    }
+    pub(crate) fn iter<'a>(
+        &'a self,
+        tx: &'a SessionTx<'_>,
+        delta_rule: Option<&MagicSymbol>,
+        stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+    ) -> Result<TupleIter<'a>> {
+        let old_order = self.relation.bindings_after_eliminate();
+        let old_order_indices: BTreeMap<_, _> = old_order
+            .into_iter()
+            .enumerate()
+            .map(|(k, v)| (v, k))
+            .collect();
+        let reorder_indices = self
+            .new_order
+            .iter()
+            .map(|k| {
+                *old_order_indices
+                    .get(k)
+                    .expect("program logic error: reorder indices mismatch")
+            })
+            .collect_vec();
+        Ok(Box::new(
+            self.relation
+                .iter(tx, delta_rule, stores)?
+                .map_ok(move |tuple| {
+                    let old = tuple;
+
+                    reorder_indices
+                        .iter()
+                        .map(|i| old[*i].clone())
+                        .collect_vec()
+                }),
+        ))
+    }
+}
