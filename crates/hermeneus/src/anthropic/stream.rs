@@ -270,10 +270,16 @@ impl StreamAccumulator {
                     name,
                     input_json,
                 } => {
-                    let input = serde_json::from_str(&input_json).unwrap_or_else(|e| {
-                        warn!(error = %e, tool = %name, "failed to parse tool input JSON");
+                    // An empty string means no input_json_delta events were sent — the
+                    // tool takes no arguments.  Skip parsing to avoid a spurious WARN.
+                    let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
-                    });
+                    } else {
+                        serde_json::from_str(&input_json).unwrap_or_else(|e| {
+                            warn!(error = %e, tool = %name, "failed to parse tool input JSON");
+                            serde_json::Value::Object(serde_json::Map::default())
+                        })
+                    };
                     ContentBlock::ToolUse { id, name, input }
                 }
                 BlockBuilder::Thinking { text, signature } => ContentBlock::Thinking {
@@ -289,10 +295,15 @@ impl StreamAccumulator {
                     name,
                     input_json,
                 } => {
-                    let input = serde_json::from_str(&input_json).unwrap_or_else(|e| {
-                        warn!(error = %e, tool = %name, "failed to parse server tool input JSON");
+                    // Same empty-input guard as ToolUse above.
+                    let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
-                    });
+                    } else {
+                        serde_json::from_str(&input_json).unwrap_or_else(|e| {
+                            warn!(error = %e, tool = %name, "failed to parse server tool input JSON");
+                            serde_json::Value::Object(serde_json::Map::default())
+                        })
+                    };
                     ContentBlock::ServerToolUse { id, name, input }
                 }
                 BlockBuilder::WebSearchToolResult {
@@ -780,5 +791,42 @@ data: {\"type\":\"message_stop\"}\n\
         assert!(events.is_empty(), "no events from empty stream");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
         assert!(response.content.is_empty());
+    }
+
+    /// Tools with no parameters send a `tool_use` block with zero `input_json_delta`
+    /// events — the accumulated input string stays empty.  The parser must not
+    /// emit a WARN and must return an empty object as the input value.
+    #[test]
+    fn tool_use_with_no_input_produces_empty_object_without_warning() {
+        let sse = "\
+event: message_start\n\
+data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_no_input\",\"model\":\"claude-haiku-4-5-20251001\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\
+\n\
+event: content_block_start\n\
+data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_noop\",\"name\":\"get_time\"}}\n\
+\n\
+event: content_block_stop\n\
+data: {\"type\":\"content_block_stop\",\"index\":0}\n\
+\n\
+event: message_delta\n\
+data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":3}}\n\
+\n\
+event: message_stop\n\
+data: {\"type\":\"message_stop\"}\n\
+\n";
+
+        let (_, response) = collect_events(sse);
+        assert_eq!(response.stop_reason, StopReason::ToolUse);
+        match &response.content[0] {
+            ContentBlock::ToolUse { id, name, input } => {
+                assert_eq!(id, "toolu_noop");
+                assert_eq!(name, "get_time");
+                assert!(
+                    input.as_object().is_some_and(serde_json::Map::is_empty),
+                    "expected empty object, got: {input}"
+                );
+            }
+            other => panic!("expected ToolUse, got: {other:?}"),
+        }
     }
 }
