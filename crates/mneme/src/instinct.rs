@@ -113,7 +113,7 @@ impl ToolOutcome {
 
 /// An aggregated behavioral pattern derived from tool observations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BehavioralPattern {
+pub(crate) struct BehavioralPattern {
     /// Human-readable pattern description.
     pub pattern: String,
     /// Tool name this pattern is about.
@@ -159,7 +159,7 @@ impl BehavioralPattern {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub enum ContextCategory {
+pub(crate) enum ContextCategory {
     /// File operations, grep, code-related queries.
     Code,
     /// Web search, API lookups, documentation.
@@ -232,6 +232,13 @@ impl ContextCategory {
     }
 
     /// Parse from stored string.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "reserved for future context category deserialization"
+        )
+    )]
     #[must_use]
     pub fn from_str_lossy(s: &str) -> Self {
         match s {
@@ -417,7 +424,8 @@ pub fn truncate_context_summary(summary: &str) -> String {
 }
 
 /// Datalog DDL for the `tool_observations` relation.
-pub const TOOL_OBSERVATIONS_DDL: &str = r":create tool_observations {
+#[expect(dead_code, reason = "DDL string for tool observation table setup")]
+pub(crate) const TOOL_OBSERVATIONS_DDL: &str = r":create tool_observations {
     id: String =>
     tool_name: String,
     parameters: String,
@@ -431,8 +439,15 @@ pub const TOOL_OBSERVATIONS_DDL: &str = r":create tool_observations {
 ///
 /// Groups by (`tool_name`, `context_category`), computes success rates, and
 /// returns patterns that meet the minimum thresholds.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "behavioral analysis internal; exercised by crate tests"
+    )
+)]
 #[must_use]
-pub fn aggregate_observations(observations: &[ToolObservation]) -> Vec<BehavioralPattern> {
+pub(crate) fn aggregate_observations(observations: &[ToolObservation]) -> Vec<BehavioralPattern> {
     use std::collections::HashMap;
 
     #[derive(Default)]
@@ -513,7 +528,14 @@ pub fn aggregate_observations(observations: &[ToolObservation]) -> Vec<Behaviora
 ///
 /// Low stability means the fact must be confirmed through continued observation
 /// or it decays naturally via FSRS.
-pub const INSTINCT_STABILITY_HOURS: f64 = 168.0;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "behavioral analysis internal; exercised by crate tests"
+    )
+)]
+pub(crate) const INSTINCT_STABILITY_HOURS: f64 = 168.0;
 
 #[cfg(test)]
 #[path = "instinct_tests.rs"]

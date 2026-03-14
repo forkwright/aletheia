@@ -287,7 +287,7 @@ pub struct ToolDefinition {
 
 /// Cache control directive for prompt caching.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CacheControl {
+pub(crate) struct CacheControl {
     #[serde(rename = "type")]
     pub kind: CacheControlType,
 }
@@ -295,7 +295,7 @@ pub struct CacheControl {
 /// The type of cache control.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum CacheControlType {
+pub(crate) enum CacheControlType {
     #[serde(rename = "ephemeral")]
     Ephemeral,
 }
@@ -313,7 +313,7 @@ impl CacheControl {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum CachingStrategy {
+pub(crate) enum CachingStrategy {
     #[default]
     Auto,
     Disabled,
@@ -321,7 +321,14 @@ pub enum CachingStrategy {
 
 /// Configuration for prompt caching behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CachingConfig {
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "prompt caching wire types; not yet wired into provider"
+    )
+)]
+pub(crate) struct CachingConfig {
     pub enabled: bool,
     #[serde(default)]
     pub strategy: CachingStrategy,

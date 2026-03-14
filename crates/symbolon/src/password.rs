@@ -10,7 +10,7 @@ use crate::error::{self, Result};
 /// Hash a password with Argon2id (OWASP-recommended defaults).
 ///
 /// Returns the PHC-formatted hash string suitable for storage.
-pub fn hash_password(password: &SecretString) -> Result<String> {
+pub(crate) fn hash_password(password: &SecretString) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
 
@@ -29,7 +29,7 @@ pub fn hash_password(password: &SecretString) -> Result<String> {
 ///
 /// Returns `Ok(true)` if the password matches, `Ok(false)` if it does not.
 /// Returns `Err` only if the hash string is malformed.
-pub fn verify_password(password: &SecretString, hash: &str) -> Result<bool> {
+pub(crate) fn verify_password(password: &SecretString, hash: &str) -> Result<bool> {
     let parsed_hash = PasswordHash::new(hash).map_err(|e| {
         error::HashSnafu {
             message: e.to_string(),

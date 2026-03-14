@@ -3,7 +3,6 @@
 //! Rewrites natural language queries into multiple search variants before
 //! hybrid search, improving recall for queries that use different terminology
 //! than the stored knowledge (e.g., "Cody's truck" vs "Cummins diesel").
-
 use std::time::Instant;
 
 use tracing::instrument;
@@ -300,6 +299,7 @@ pub trait HasId {
 
 /// Trait for types that have a mutable RRF score.
 pub trait HasRrfScore {
+    #[expect(dead_code, reason = "trait getter not yet called by merge logic")]
     fn rrf_score(&self) -> f64;
     fn set_rrf_score(&mut self, score: f64);
 }

@@ -6,6 +6,13 @@
 //! - Enhanced scoring functions that augment epistemic tier, relationship proximity, and access frequency
 //! - Background recomputation of `PageRank` + `Louvain` stored in `graph_scores`
 //! - Cache invalidation via [`GraphDirtyFlag`](crate::graph_intelligence::GraphDirtyFlag)
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "module internals; only exercised by crate-level tests"
+    )
+)]
 
 use std::collections::{HashMap, HashSet};
 
@@ -264,7 +271,7 @@ impl crate::knowledge_store::KnowledgeStore {
         Ok(())
     }
 
-    /// Load a [`GraphContext`] from the `graph_scores` relation.
+    /// Load a `GraphContext` from the `graph_scores` relation.
     ///
     /// Populates pageranks and cluster assignments. Caller should then fill
     /// `context_clusters`, `proximity`, and `chain_lengths` based on query context.
@@ -383,7 +390,7 @@ impl crate::knowledge_store::KnowledgeStore {
     /// Compute per-entity domain volatility from supersession patterns.
     ///
     /// Joins `facts`, `fact_entities`, and supersession chain data to produce
-    /// [`DomainVolatility`](crate::succession::DomainVolatility) scores for all entities with linked facts.
+    /// `DomainVolatility` scores for all entities with linked facts.
     pub fn compute_domain_volatility(
         &self,
     ) -> crate::error::Result<Vec<crate::succession::DomainVolatility>> {
@@ -544,7 +551,7 @@ impl crate::knowledge_store::KnowledgeStore {
         })
     }
 
-    /// Build a full [`GraphContext`] for a recall query.
+    /// Build a full `GraphContext` for a recall query.
     ///
     /// Loads cached graph scores, computes BFS proximity from seed entities,
     /// populates context clusters, and computes supersession chain lengths.

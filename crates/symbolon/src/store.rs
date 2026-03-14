@@ -1,4 +1,11 @@
 //! `SQLite` auth store for users, API keys, and token revocation.
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "auth facade internals; only exercised by crate-level tests"
+    )
+)]
 
 use std::path::Path;
 
@@ -10,10 +17,10 @@ use crate::error::{self, Result};
 use crate::types::{ApiKeyRecord, Role, User};
 
 /// Current schema version.
-pub const SCHEMA_VERSION: u32 = 1;
+pub(crate) const SCHEMA_VERSION: u32 = 1;
 
 /// Base DDL for the auth database.
-pub const DDL: &str = r"
+pub(crate) const DDL: &str = r"
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -51,13 +58,13 @@ CREATE TABLE IF NOT EXISTS schema_version (
 ";
 
 /// Auth store backed by `SQLite`.
-pub struct AuthStore {
+pub(crate) struct AuthStore {
     conn: Connection,
 }
 
 impl AuthStore {
     /// Open (or create) the auth store at the given path.
-    pub fn open(path: &Path) -> Result<Self> {
+    pub(crate) fn open(path: &Path) -> Result<Self> {
         info!("Opening auth store at {}", path.display());
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
 
@@ -73,7 +80,7 @@ impl AuthStore {
     }
 
     /// Open an in-memory auth store (for testing).
-    pub fn open_in_memory() -> Result<Self> {
+    pub(crate) fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory().context(error::DatabaseSnafu)?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .context(error::DatabaseSnafu)?;
@@ -83,13 +90,13 @@ impl AuthStore {
 
     /// Get a reference to the underlying connection.
     #[must_use]
-    pub fn conn(&self) -> &Connection {
+    pub(crate) fn conn(&self) -> &Connection {
         &self.conn
     }
 
     /// Create a new user.
     #[instrument(skip(self, password_hash))]
-    pub fn create_user(
+    pub(crate) fn create_user(
         &self,
         id: &str,
         username: &str,
@@ -125,7 +132,7 @@ impl AuthStore {
     }
 
     /// Find a user by username.
-    pub fn find_user_by_username(&self, username: &str) -> Result<Option<User>> {
+    pub(crate) fn find_user_by_username(&self, username: &str) -> Result<Option<User>> {
         let mut stmt = self
             .conn
             .prepare_cached(
@@ -139,7 +146,7 @@ impl AuthStore {
     }
 
     /// Update a user's role.
-    pub fn update_user_role(&self, username: &str, role: Role) -> Result<()> {
+    pub(crate) fn update_user_role(&self, username: &str, role: Role) -> Result<()> {
         let rows = self
             .conn
             .execute(
@@ -159,7 +166,7 @@ impl AuthStore {
     }
 
     /// Delete a user by username.
-    pub fn delete_user(&self, username: &str) -> Result<bool> {
+    pub(crate) fn delete_user(&self, username: &str) -> Result<bool> {
         let rows = self
             .conn
             .execute("DELETE FROM users WHERE username = ?1", [username])
@@ -168,7 +175,7 @@ impl AuthStore {
     }
 
     /// Store an API key record.
-    pub fn store_api_key(&self, record: &ApiKeyRecord) -> Result<()> {
+    pub(crate) fn store_api_key(&self, record: &ApiKeyRecord) -> Result<()> {
         self.conn
             .execute(
                 "INSERT INTO api_keys (id, prefix, key_hash, role, nous_id, expires_at)
@@ -187,7 +194,7 @@ impl AuthStore {
     }
 
     /// Find an API key by its blake3 hash. Returns `None` if not found.
-    pub fn find_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRecord>> {
+    pub(crate) fn find_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRecord>> {
         let mut stmt = self
             .conn
             .prepare_cached(
@@ -202,7 +209,7 @@ impl AuthStore {
     }
 
     /// Update the `last_used_at` timestamp for an API key.
-    pub fn touch_api_key(&self, id: &str) -> Result<()> {
+    pub(crate) fn touch_api_key(&self, id: &str) -> Result<()> {
         self.conn
             .execute(
                 "UPDATE api_keys SET last_used_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
@@ -213,7 +220,7 @@ impl AuthStore {
     }
 
     /// Revoke an API key by ID.
-    pub fn revoke_api_key(&self, id: &str) -> Result<()> {
+    pub(crate) fn revoke_api_key(&self, id: &str) -> Result<()> {
         let rows = self
             .conn
             .execute(
@@ -233,7 +240,7 @@ impl AuthStore {
     }
 
     /// List all API keys (metadata only).
-    pub fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
+    pub(crate) fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
         let mut stmt = self
             .conn
             .prepare_cached(
@@ -254,7 +261,7 @@ impl AuthStore {
     }
 
     /// Revoke a JWT by its `jti`.
-    pub fn revoke_token(&self, jti: &str, expires_at: &str) -> Result<()> {
+    pub(crate) fn revoke_token(&self, jti: &str, expires_at: &str) -> Result<()> {
         self.conn
             .execute(
                 "INSERT OR IGNORE INTO revoked_tokens (jti, expires_at) VALUES (?1, ?2)",
@@ -265,7 +272,7 @@ impl AuthStore {
     }
 
     /// Check if a JWT has been revoked.
-    pub fn is_token_revoked(&self, jti: &str) -> Result<bool> {
+    pub(crate) fn is_token_revoked(&self, jti: &str) -> Result<bool> {
         let mut stmt = self
             .conn
             .prepare_cached("SELECT 1 FROM revoked_tokens WHERE jti = ?1")
@@ -280,7 +287,7 @@ impl AuthStore {
     }
 
     /// Remove revocation entries for tokens that have already expired.
-    pub fn cleanup_expired_revocations(&self) -> Result<usize> {
+    pub(crate) fn cleanup_expired_revocations(&self) -> Result<usize> {
         let rows = self
             .conn
             .execute(

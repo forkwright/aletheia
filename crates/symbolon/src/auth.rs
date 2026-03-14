@@ -1,4 +1,8 @@
 //! Unified auth facade composing JWT, API keys, password auth, and RBAC.
+#![expect(
+    dead_code,
+    reason = "auth facade internals; only exercised by crate-level tests"
+)]
 
 use std::path::Path;
 use std::time::Duration;
@@ -15,27 +19,27 @@ use crate::types::{Action, ApiKeyRecord, Claims, Role, TokenKind, TokenPair};
 
 /// Configuration for the auth service.
 #[derive(Default)]
-pub struct AuthConfig {
+pub(crate) struct AuthConfig {
     /// JWT configuration.
     pub jwt: JwtConfig,
 }
 
 /// The main auth service — wraps JWT, API keys, and password auth.
-pub struct AuthService {
+pub(crate) struct AuthService {
     jwt: JwtManager,
     store: AuthStore,
 }
 
 impl AuthService {
     /// Create a new auth service backed by a `SQLite` database.
-    pub fn new(config: AuthConfig, db_path: &Path) -> Result<Self> {
+    pub(crate) fn new(config: AuthConfig, db_path: &Path) -> Result<Self> {
         let store = AuthStore::open(db_path)?;
         let jwt = JwtManager::new(config.jwt);
         Ok(Self { jwt, store })
     }
 
     /// Create an auth service with an in-memory database (for testing).
-    pub fn in_memory(config: AuthConfig) -> Result<Self> {
+    pub(crate) fn in_memory(config: AuthConfig) -> Result<Self> {
         let store = AuthStore::open_in_memory()?;
         let jwt = JwtManager::new(config.jwt);
         Ok(Self { jwt, store })
@@ -43,13 +47,13 @@ impl AuthService {
 
     /// Get a reference to the underlying store.
     #[must_use]
-    pub fn store(&self) -> &AuthStore {
+    pub(crate) fn store(&self) -> &AuthStore {
         &self.store
     }
 
     /// Register a new user with a hashed password.
     #[instrument(skip(self, password))]
-    pub fn register_user(
+    pub(crate) fn register_user(
         &self,
         username: &str,
         password: &SecretString,
@@ -62,7 +66,7 @@ impl AuthService {
 
     /// Authenticate via username + password. Returns a JWT pair.
     #[instrument(skip(self, password))]
-    pub fn login(&self, username: &str, password: &SecretString) -> Result<TokenPair> {
+    pub(crate) fn login(&self, username: &str, password: &SecretString) -> Result<TokenPair> {
         let user = self
             .store
             .find_user_by_username(username)?
@@ -83,12 +87,12 @@ impl AuthService {
     }
 
     /// Authenticate via API key. Returns claims.
-    pub fn authenticate_api_key(&self, raw_key: &str) -> Result<Claims> {
+    pub(crate) fn authenticate_api_key(&self, raw_key: &str) -> Result<Claims> {
         api_key::validate(&self.store, raw_key)
     }
 
     /// Validate a JWT token. Checks signature, expiry, and revocation.
-    pub fn validate_token(&self, token: &str) -> Result<Claims> {
+    pub(crate) fn validate_token(&self, token: &str) -> Result<Claims> {
         let claims = self.jwt.validate(token)?;
 
         if self.store.is_token_revoked(&claims.jti)? {
@@ -103,7 +107,7 @@ impl AuthService {
 
     /// Refresh a JWT pair using a refresh token.
     #[instrument(skip(self, refresh_token))]
-    pub fn refresh_token(&self, refresh_token: &str) -> Result<TokenPair> {
+    pub(crate) fn refresh_token(&self, refresh_token: &str) -> Result<TokenPair> {
         let claims = self.jwt.validate(refresh_token)?;
 
         if claims.kind != TokenKind::Refresh {
@@ -132,14 +136,14 @@ impl AuthService {
     }
 
     /// Logout by revoking a JWT (adds its jti to the revocation list).
-    pub fn logout(&self, token: &str) -> Result<()> {
+    pub(crate) fn logout(&self, token: &str) -> Result<()> {
         let claims = self.jwt.validate(token)?;
         let expires_at = format_unix_iso(claims.exp);
         self.store.revoke_token(&claims.jti, &expires_at)
     }
 
     /// Generate a new API key.
-    pub fn generate_api_key(
+    pub(crate) fn generate_api_key(
         &self,
         prefix: &str,
         role: Role,
@@ -150,17 +154,21 @@ impl AuthService {
     }
 
     /// Revoke an API key.
-    pub fn revoke_api_key(&self, key_id: &str) -> Result<()> {
+    pub(crate) fn revoke_api_key(&self, key_id: &str) -> Result<()> {
         api_key::revoke(&self.store, key_id)
     }
 
     /// List all API keys.
-    pub fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
+    pub(crate) fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
         api_key::list(&self.store)
     }
 
     /// Check if claims authorize the given action. Returns `Ok(())` if allowed.
-    pub fn authorize(&self, claims: &Claims, action: &Action) -> Result<()> {
+    #[expect(
+        clippy::unused_self,
+        reason = "method semantically belongs to AuthService instance"
+    )]
+    pub(crate) fn authorize(&self, claims: &Claims, action: &Action) -> Result<()> {
         if is_authorized(claims, action) {
             Ok(())
         } else {

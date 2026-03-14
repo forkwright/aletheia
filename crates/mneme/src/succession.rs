@@ -15,6 +15,13 @@
 //! - Stable domain (volatility ≈ 0) → 1.5× base stability
 //! - Neutral (volatility = 0.5) → 1.0× (unchanged)
 //! - Volatile domain (volatility ≈ 1) → 0.5× base stability
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "module internals; only exercised by crate-level tests"
+    )
+)]
 
 use crate::id::EntityId;
 use crate::knowledge::{EpistemicTier, FactType};

@@ -6,7 +6,7 @@
 /// API key generation, validation, and revocation.
 pub mod api_key;
 /// Unified auth facade composing JWT, API keys, passwords, and RBAC.
-pub mod auth;
+pub(crate) mod auth;
 /// Credential provider implementations for LLM API key resolution.
 pub mod credential;
 /// Symbolon-specific error types and result alias.
