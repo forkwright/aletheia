@@ -1,6 +1,6 @@
 # SQL
 
-> Additive to STANDARDS.md. Read that first. Everything here is SQL-specific.
+> Additive to README.md. Read that first. Everything here is SQL-specific.
 >
 > Covers: PostgreSQL, SQLite, Redshift, mneme Datalog, Room (Android). Dialect-specific notes are marked.
 >

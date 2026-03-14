@@ -515,7 +515,7 @@ fn code_execution_server_tool_definition_serde() {
 
 // --- Proptest serde roundtrip tests ---
 //
-// Per project standards (standards/STANDARDS.md): every type that implements
+// Per project standards (standards/TESTING.md): every type that implements
 // Serialize + Deserialize gets a roundtrip property test.
 
 mod proptests {

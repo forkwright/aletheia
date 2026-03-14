@@ -1,6 +1,6 @@
 # Python
 
-> Additive to STANDARDS.md. Read that first. Everything here is Python-specific.
+> Additive to README.md. Read that first. Everything here is Python-specific.
 >
 > **Key decisions:** 3.13+, uv packages, ruff lint/format, mypy strict, anyio async, polars data, msgspec serialization, pydantic at boundaries, loguru logging.
 

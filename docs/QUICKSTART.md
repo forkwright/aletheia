@@ -56,5 +56,6 @@ Requires [signal-cli](https://github.com/AsamK/signal-cli) and a registered phon
 
 - [CONFIGURATION.md](CONFIGURATION.md) - config reference
 - [DEPLOYMENT.md](DEPLOYMENT.md) - production setup
+- [troubleshooting.md](troubleshooting.md) - common issues and fixes
 - [WORKSPACE_FILES.md](WORKSPACE_FILES.md) - agent workspace files
 - [ARCHITECTURE.md](ARCHITECTURE.md) - system architecture and extension points
