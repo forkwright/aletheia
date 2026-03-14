@@ -5,14 +5,18 @@ mod dispatch;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashSet;
+
 use snafu::ResultExt;
 use tracing::{debug, info, instrument, warn};
 
 use aletheia_hermeneus::health::ProviderHealth;
-use aletheia_hermeneus::provider::ProviderRegistry;
+use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
 use aletheia_hermeneus::types::{
-    CompletionRequest, Content, ContentBlock, Message, Role, StopReason, ThinkingConfig,
+    CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
+    ThinkingConfig,
 };
+use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolContext;
 use tokio::sync::mpsc;
@@ -25,31 +29,15 @@ use crate::stream::TurnStreamEvent;
 
 use dispatch::{build_messages, classify_signals, dispatch_tools, dispatch_tools_streaming};
 
-/// Execute stage — calls the LLM and iterates on tool use.
-///
-/// This is the core agent loop. It:
-/// 1. Builds a `CompletionRequest` from pipeline context
-/// 2. Calls the LLM
-/// 3. Processes `tool_use` blocks by dispatching to the `ToolRegistry`
-/// 4. Feeds tool results back and re-calls the LLM
-/// 5. Repeats until `EndTurn`, `MaxTokens`, or iteration limit
-#[expect(
-    clippy::too_many_lines,
-    reason = "health check additions keep the loop cohesive"
-)]
-#[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
-pub async fn execute(
-    ctx: &PipelineContext,
-    session: &SessionState,
-    config: &NousConfig,
-    providers: &ProviderRegistry,
-    tools: &ToolRegistry,
-    tool_ctx: &ToolContext,
-) -> error::Result<TurnResult> {
-    let provider = providers.find_provider(&config.model).ok_or_else(|| {
+/// Resolve the LLM provider for `model` and verify it is not marked down.
+fn resolve_provider_checked<'a>(
+    providers: &'a ProviderRegistry,
+    model: &str,
+) -> error::Result<&'a dyn LlmProvider> {
+    let provider = providers.find_provider(model).ok_or_else(|| {
         error::PipelineStageSnafu {
             stage: "execute",
-            message: format!("no provider for model: {}", config.model),
+            message: format!("no provider for model: {model}"),
         }
         .build()
     })?;
@@ -64,6 +52,107 @@ pub async fn execute(
         .build());
     }
 
+    Ok(provider)
+}
+
+/// Read the current active-tools set and derive server-tool definitions.
+///
+/// Returns `(active_set, server_tools)` so callers can also filter local tool
+/// definitions against the same snapshot of `active`.
+fn resolve_active_server_tools(
+    tool_ctx: &ToolContext,
+    config: &NousConfig,
+) -> (HashSet<ToolName>, Vec<ServerToolDefinition>) {
+    let active = tool_ctx
+        .active_tools
+        .read()
+        .unwrap_or_else(|poisoned| {
+            warn!("active_tools lock poisoned by prior panic, recovering with last value");
+            poisoned.into_inner()
+        })
+        .clone();
+
+    let server_tools = if let Some(services) = tool_ctx.services.as_deref() {
+        let mut st = services.server_tool_config.active_definitions(&active);
+        // WHY: also include raw server_tools from NousConfig for backward compatibility
+        st.extend(config.server_tools.clone());
+        st
+    } else {
+        config.server_tools.clone()
+    };
+
+    (active, server_tools)
+}
+
+/// Extracted text, tool uses, and server-tool flags from a single LLM response.
+struct ResponseExtract {
+    text_parts: Vec<String>,
+    tool_uses: Vec<(String, String, serde_json::Value)>,
+    saw_server_web_search: bool,
+    saw_server_code_execution: bool,
+}
+
+/// Process response content blocks into text, tool-use tuples, and server-tool flags.
+fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtract {
+    let mut extract = ResponseExtract {
+        text_parts: Vec::new(),
+        tool_uses: Vec::new(),
+        saw_server_web_search: false,
+        saw_server_code_execution: false,
+    };
+
+    for block in content {
+        match block {
+            ContentBlock::Text { text, .. } => extract.text_parts.push(text.clone()),
+            ContentBlock::ToolUse { id, name, input } => {
+                extract
+                    .tool_uses
+                    .push((id.clone(), name.clone(), input.clone()));
+            }
+            ContentBlock::Thinking { thinking, .. } => {
+                debug!(len = thinking.len(), "thinking block received");
+            }
+            ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
+                extract.saw_server_web_search = true;
+            }
+            ContentBlock::ServerToolUse { name, .. } if name == "code_execution" => {
+                extract.saw_server_code_execution = true;
+            }
+            ContentBlock::CodeExecutionResult {
+                code, return_code, ..
+            } => {
+                extract.saw_server_code_execution = true;
+                debug!(
+                    code_len = code.len(),
+                    return_code, "server code execution result received"
+                );
+            }
+            _ => {}
+        }
+    }
+
+    extract
+}
+
+/// Execute stage — calls the LLM and iterates on tool use.
+///
+/// This is the core agent loop. It:
+/// 1. Builds a `CompletionRequest` from pipeline context
+/// 2. Calls the LLM
+/// 3. Processes `tool_use` blocks by dispatching to the `ToolRegistry`
+/// 4. Feeds tool results back and re-calls the LLM
+/// 5. Repeats until `EndTurn`, `MaxTokens`, or iteration limit
+#[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
+pub async fn execute(
+    ctx: &PipelineContext,
+    session: &SessionState,
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    tools: &ToolRegistry,
+    tool_ctx: &ToolContext,
+) -> error::Result<TurnResult> {
+    let provider = resolve_provider_checked(providers, &config.model)?;
+
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
@@ -74,14 +163,10 @@ pub async fn execute(
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
 
-    let thinking = if config.thinking_enabled {
-        Some(ThinkingConfig {
-            enabled: true,
-            budget_tokens: config.thinking_budget,
-        })
-    } else {
-        None
-    };
+    let thinking = config.thinking_enabled.then_some(ThinkingConfig {
+        enabled: true,
+        budget_tokens: config.thinking_budget,
+    });
 
     loop {
         iterations += 1;
@@ -91,25 +176,8 @@ pub async fn execute(
             break;
         }
 
-        let active = tool_ctx
-            .active_tools
-            .read()
-            .unwrap_or_else(|poisoned| {
-                warn!("active_tools lock poisoned by prior panic, recovering with last value");
-                poisoned.into_inner()
-            })
-            .clone();
+        let (active, server_tools) = resolve_active_server_tools(tool_ctx, config);
         let tool_defs = tools.to_hermeneus_tools_filtered(&active);
-
-        // WHY: derive server tools on each iteration so enable_tool activations take effect
-        let server_tools = if let Some(services) = tool_ctx.services.as_deref() {
-            let mut st = services.server_tool_config.active_definitions(&active);
-            // WHY: also include raw server_tools from NousConfig for backward compatibility
-            st.extend(config.server_tools.clone());
-            st
-        } else {
-            config.server_tools.clone()
-        };
 
         let request = CompletionRequest {
             model: config.model.clone(),
@@ -144,42 +212,14 @@ pub async fn execute(
         total_usage.cache_write_tokens += response.usage.cache_write_tokens;
         total_usage.llm_calls += 1;
 
-        let mut text_parts: Vec<String> = Vec::new();
-        let mut tool_uses: Vec<(String, String, serde_json::Value)> = Vec::new();
-
-        for block in &response.content {
-            match block {
-                ContentBlock::Text { text, .. } => text_parts.push(text.clone()),
-                ContentBlock::ToolUse { id, name, input } => {
-                    tool_uses.push((id.clone(), name.clone(), input.clone()));
-                }
-                ContentBlock::Thinking { thinking, .. } => {
-                    debug!(len = thinking.len(), "thinking block received");
-                }
-                ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
-                    used_server_web_search = true;
-                }
-                ContentBlock::ServerToolUse { name, .. } if name == "code_execution" => {
-                    used_server_code_execution = true;
-                }
-                ContentBlock::CodeExecutionResult {
-                    code, return_code, ..
-                } => {
-                    used_server_code_execution = true;
-                    debug!(
-                        code_len = code.len(),
-                        return_code, "server code execution result received"
-                    );
-                }
-                _ => {}
-            }
-        }
-
-        final_content = text_parts.join("");
+        let extracted = process_response_blocks(&response.content);
+        used_server_web_search |= extracted.saw_server_web_search;
+        used_server_code_execution |= extracted.saw_server_code_execution;
+        final_content = extracted.text_parts.join("");
         final_stop_reason = response.stop_reason.to_string();
 
         // WHY: only break on no local tool uses — server tool results don't require client tool_result
-        if tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
+        if extracted.tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
             break;
         }
 
@@ -189,7 +229,7 @@ pub async fn execute(
         });
 
         let tool_results = dispatch_tools(
-            &tool_uses,
+            &extracted.tool_uses,
             tools,
             tool_ctx,
             &mut loop_detector,
@@ -234,7 +274,7 @@ pub async fn execute(
 /// `complete()` otherwise. Tool start/result events are emitted via the channel.
 #[expect(
     clippy::too_many_lines,
-    reason = "streaming variant parallels execute() structure"
+    reason = "streaming agent loop parallels execute() with provider callback — one cohesive operation"
 )]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub async fn execute_streaming(
@@ -246,30 +286,12 @@ pub async fn execute_streaming(
     tool_ctx: &ToolContext,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
 ) -> error::Result<TurnResult> {
-    let streaming_provider = providers.find_streaming_provider(&config.model);
-
-    // NOTE: fall back to non-streaming execute if no streaming provider is registered for this model
-    let Some(streaming_provider) = streaming_provider else {
+    let Some(streaming_provider) = providers.find_streaming_provider(&config.model) else {
+        // NOTE: fall back to non-streaming execute if no streaming provider is registered
         return execute(ctx, session, config, providers, tools, tool_ctx).await;
     };
 
-    let provider = providers.find_provider(&config.model).ok_or_else(|| {
-        error::PipelineStageSnafu {
-            stage: "execute",
-            message: format!("no provider for model: {}", config.model),
-        }
-        .build()
-    })?;
-
-    if let Some(health) = providers.provider_health(provider.name())
-        && matches!(health, ProviderHealth::Down { .. })
-    {
-        return Err(error::PipelineStageSnafu {
-            stage: "execute",
-            message: format!("provider '{}' is currently unavailable", provider.name()),
-        }
-        .build());
-    }
+    let provider = resolve_provider_checked(providers, &config.model)?;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -281,14 +303,10 @@ pub async fn execute_streaming(
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
 
-    let thinking = if config.thinking_enabled {
-        Some(ThinkingConfig {
-            enabled: true,
-            budget_tokens: config.thinking_budget,
-        })
-    } else {
-        None
-    };
+    let thinking = config.thinking_enabled.then_some(ThinkingConfig {
+        enabled: true,
+        budget_tokens: config.thinking_budget,
+    });
 
     let tool_defs = tools.to_hermeneus_tools();
 
@@ -301,21 +319,7 @@ pub async fn execute_streaming(
         }
 
         // WHY: derive server tools on each iteration so enable_tool activations take effect
-        let active = tool_ctx
-            .active_tools
-            .read()
-            .unwrap_or_else(|poisoned| {
-                warn!("active_tools lock poisoned by prior panic, recovering with last value");
-                poisoned.into_inner()
-            })
-            .clone();
-        let server_tools = if let Some(services) = tool_ctx.services.as_deref() {
-            let mut st = services.server_tool_config.active_definitions(&active);
-            st.extend(config.server_tools.clone());
-            st
-        } else {
-            config.server_tools.clone()
-        };
+        let (_active, server_tools) = resolve_active_server_tools(tool_ctx, config);
 
         let request = CompletionRequest {
             model: config.model.clone(),
@@ -356,41 +360,13 @@ pub async fn execute_streaming(
         total_usage.cache_write_tokens += response.usage.cache_write_tokens;
         total_usage.llm_calls += 1;
 
-        let mut text_parts: Vec<String> = Vec::new();
-        let mut tool_uses: Vec<(String, String, serde_json::Value)> = Vec::new();
-
-        for block in &response.content {
-            match block {
-                ContentBlock::Text { text, .. } => text_parts.push(text.clone()),
-                ContentBlock::ToolUse { id, name, input } => {
-                    tool_uses.push((id.clone(), name.clone(), input.clone()));
-                }
-                ContentBlock::Thinking { thinking, .. } => {
-                    debug!(len = thinking.len(), "thinking block received");
-                }
-                ContentBlock::ServerToolUse { name, .. } if name == "web_search" => {
-                    used_server_web_search = true;
-                }
-                ContentBlock::ServerToolUse { name, .. } if name == "code_execution" => {
-                    used_server_code_execution = true;
-                }
-                ContentBlock::CodeExecutionResult {
-                    code, return_code, ..
-                } => {
-                    used_server_code_execution = true;
-                    debug!(
-                        code_len = code.len(),
-                        return_code, "server code execution result received"
-                    );
-                }
-                _ => {}
-            }
-        }
-
-        final_content = text_parts.join("");
+        let extracted = process_response_blocks(&response.content);
+        used_server_web_search |= extracted.saw_server_web_search;
+        used_server_code_execution |= extracted.saw_server_code_execution;
+        final_content = extracted.text_parts.join("");
         final_stop_reason = response.stop_reason.to_string();
 
-        if tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
+        if extracted.tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
             break;
         }
 
@@ -400,7 +376,7 @@ pub async fn execute_streaming(
         });
 
         let tool_results = dispatch_tools_streaming(
-            &tool_uses,
+            &extracted.tool_uses,
             tools,
             tool_ctx,
             &mut loop_detector,
