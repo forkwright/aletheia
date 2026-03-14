@@ -50,6 +50,8 @@ fn default_session_key() -> String {
 pub struct ListSessionsParams {
     /// Filter sessions by agent ID.
     pub nous_id: Option<String>,
+    /// Maximum number of sessions to return.
+    pub limit: Option<u32>,
 }
 
 /// Query parameters for `GET /api/v1/sessions/{id}/history`.

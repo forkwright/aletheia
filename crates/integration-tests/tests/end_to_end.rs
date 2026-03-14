@@ -560,14 +560,13 @@ async fn close_session_archives_it() {
     let resp = router.clone().oneshot(req).await.expect("close session");
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
+    // DELETE archives the session; subsequent GET must return 404 (#1251).
     let resp = router
         .clone()
         .oneshot(harness.authed_get(&format!("/api/v1/sessions/{id}")))
         .await
-        .expect("get archived session");
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert_eq!(body["status"], "archived");
+        .expect("get after delete");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

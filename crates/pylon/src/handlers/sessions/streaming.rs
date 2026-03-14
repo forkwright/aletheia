@@ -9,12 +9,14 @@ use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
 use tracing::{Instrument, instrument, warn};
 
 use aletheia_hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use aletheia_nous::pipeline::TurnResult;
 use aletheia_nous::stream::TurnStreamEvent;
+
+use aletheia_mneme::types::SessionStatus;
 
 use crate::error::{ApiError, BadRequestSnafu, ConflictSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::Claims;
@@ -100,6 +102,15 @@ pub async fn send_message(
     }
 
     let session = find_session(&state, &session_id).await?;
+
+    // WHY: archived sessions must not accept new messages (#1250).
+    if session.status != SessionStatus::Active {
+        return Err(ConflictSnafu {
+            message: "cannot send message to a session that is not active",
+        }
+        .build());
+    }
+
     let content = body.content;
 
     if content.is_empty() {
@@ -433,29 +444,34 @@ pub async fn stream_turn(
     ))
 }
 
-/// GET /api/v1/events — global SSE event channel.
+/// GET /api/v1/events — global SSE keep-alive channel.
 ///
-/// Returns 404 until a server-side `tokio::sync::broadcast` channel is wired
-/// into `AppState`. Clients should poll `/api/v1/sessions/{id}/messages` for
-/// per-session events instead.
+/// Returns a persistent SSE connection with periodic keep-alive comments.
+/// Full server-side broadcast (system events, agent status changes) requires
+/// wiring a `tokio::sync::broadcast` channel into `AppState` — that is tracked
+/// in issue #1248 and is out of scope here.
 #[utoipa::path(
     get,
     path = "/api/v1/events",
     responses(
-        (status = 404, description = "Global event stream not yet available", body = crate::error::ErrorResponse),
+        (status = 200, description = "Global SSE keep-alive stream", content_type = "text/event-stream"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
-pub async fn events(_claims: Claims) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
-    (
-        axum::http::StatusCode::NOT_FOUND,
-        axum::Json(serde_json::json!({
-            "error": {
-                "code": "not_implemented",
-                "message": "global event stream is not yet available"
-            }
-        })),
+pub async fn events(
+    _claims: Claims,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    // WHY: emit periodic comment-only events so the connection stays alive and
+    // proxies do not close it. Real domain events require a broadcast channel
+    // wired into AppState — deferred to issue #1248.
+    let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(30)))
+        .map(|_| Ok::<Event, Infallible>(Event::default().comment("keepalive")));
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
     )
 }
 
