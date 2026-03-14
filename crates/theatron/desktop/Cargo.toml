@@ -1,0 +1,16 @@
+[package]
+name = "theatron-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Dioxus desktop state model for the Aletheia UI"
+publish = false
+
+[dependencies]
+theatron-core = { path = "../core" }
+compact_str = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

@@ -20,6 +20,7 @@ members = [
     "crates/thesauros",
     "crates/theatron/core",
     "crates/theatron/tui",
+    "crates/theatron/desktop",
 ]
 
 [workspace.package]
