@@ -47,10 +47,6 @@ impl LlmProvider for MockProvider {
     fn name(&self) -> &str {
         "mock"
     }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 fn test_config() -> NousConfig {
@@ -375,10 +371,6 @@ impl LlmProvider for PanickingProvider {
     #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
     fn name(&self) -> &str {
         "panicking-mock"
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 

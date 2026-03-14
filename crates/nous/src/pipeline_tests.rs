@@ -299,10 +299,6 @@ async fn run_pipeline_simple() {
         fn name(&self) -> &str {
             "mock"
         }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
     }
 
     let dir = TempDir::new().unwrap();

@@ -75,10 +75,6 @@ impl LlmProvider for MockProvider {
     fn name(&self) -> &str {
         "mock"
     }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 async fn start_test_server() -> (String, String, tempfile::TempDir) {

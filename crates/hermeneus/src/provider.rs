@@ -3,7 +3,6 @@
 //! Defines the interface all providers must implement. Types are modeled
 //! on the Anthropic Messages API; other providers adapt to this surface.
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -11,7 +10,7 @@ use std::pin::Pin;
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
-use crate::types::{CompletionRequest, CompletionResponse, TokenCount};
+use crate::types::{CompletionRequest, CompletionResponse};
 
 /// Trait for LLM providers.
 ///
@@ -43,33 +42,6 @@ pub trait LlmProvider: Send + Sync {
     /// Provider name for logging and diagnostics.
     fn name(&self) -> &str;
 
-    /// Estimate input tokens for a request (without calling the API).
-    ///
-    /// Default implementation returns `None` (unknown). Providers that
-    /// support local tokenization should override this.
-    fn estimate_tokens(&self, _text: &str) -> Option<u64> {
-        None
-    }
-
-    /// Count tokens for a request via the provider's API.
-    /// Returns None if the provider doesn't support server-side counting.
-    fn count_tokens<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Option<TokenCount>>> + Send + 'a>> {
-        Box::pin(async { Ok(None) })
-    }
-
-    /// Whether this provider supports prompt caching.
-    fn supports_caching(&self) -> bool {
-        false
-    }
-
-    /// Whether this provider supports citation tracking.
-    fn supports_citations(&self) -> bool {
-        false
-    }
-
     /// Whether this provider supports streaming completions.
     fn supports_streaming(&self) -> bool {
         false
@@ -90,9 +62,6 @@ pub trait LlmProvider: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         self.complete(request)
     }
-
-    /// Downcast to concrete type for provider-specific features.
-    fn as_any(&self) -> &dyn Any;
 }
 
 /// Per-model pricing rates for cost estimation.
@@ -277,10 +246,6 @@ mod tests {
         )]
         fn name(&self) -> &str {
             "mock"
-        }
-
-        fn as_any(&self) -> &dyn Any {
-            self
         }
     }
 

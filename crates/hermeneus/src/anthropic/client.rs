@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
-use crate::types::{CompletionRequest, CompletionResponse, TokenCount};
+use crate::types::{CompletionRequest, CompletionResponse};
 use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
@@ -394,49 +394,6 @@ impl AnthropicProvider {
         }))
     }
 
-    /// Count tokens for a request via the Anthropic `count_tokens` endpoint.
-    pub async fn count_tokens_request(&self, request: &CompletionRequest) -> Result<TokenCount> {
-        #[derive(serde::Deserialize)]
-        struct CountResponse {
-            input_tokens: u64,
-        }
-
-        let wire = WireRequest::from_request(request, None);
-        let body = serde_json::to_string(&wire).context(error::ParseResponseSnafu)?;
-        let headers = self.build_headers()?;
-
-        let response = self
-            .client
-            .post(format!("{}/v1/messages/count_tokens", self.base_url))
-            .headers(headers)
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| {
-                error::ApiRequestSnafu {
-                    message: format!("count_tokens request failed: {e}"),
-                }
-                .build()
-            })?;
-
-        if !response.status().is_success() {
-            return Err(super::error::map_error_response(response).await);
-        }
-
-        let text = response.text().await.map_err(|e| {
-            error::ApiRequestSnafu {
-                message: format!("failed to read count_tokens response: {e}"),
-            }
-            .build()
-        })?;
-
-        let parsed: CountResponse =
-            serde_json::from_str(&text).context(error::ParseResponseSnafu)?;
-        Ok(TokenCount {
-            input_tokens: parsed.input_tokens,
-        })
-    }
-
     fn build_headers(&self) -> Result<HeaderMap> {
         let credential = self.credential_provider.get_credential().ok_or_else(|| {
             error::AuthFailedSnafu {
@@ -682,21 +639,6 @@ impl LlmProvider for AnthropicProvider {
         "anthropic"
     }
 
-    fn count_tokens<'a>(
-        &'a self,
-        request: &'a CompletionRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Option<TokenCount>>> + Send + 'a>> {
-        Box::pin(async move { self.count_tokens_request(request).await.map(Some) })
-    }
-
-    fn supports_caching(&self) -> bool {
-        true
-    }
-
-    fn supports_citations(&self) -> bool {
-        true
-    }
-
     fn supports_streaming(&self) -> bool {
         true
     }
@@ -707,10 +649,6 @@ impl LlmProvider for AnthropicProvider {
         on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(self.complete_streaming_inner(request, on_event))
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 

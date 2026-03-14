@@ -84,10 +84,6 @@ impl LlmProvider for MockProvider {
     fn name(&self) -> &str {
         "mock"
     }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 /// Captures all LLM requests for inspection.
@@ -149,10 +145,6 @@ impl LlmProvider for CapturingMockProvider {
     #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
     fn name(&self) -> &str {
         "mock-capturing"
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 
@@ -216,10 +208,6 @@ impl LlmProvider for SequentialMockProvider {
     fn name(&self) -> &str {
         "mock-sequential"
     }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 /// Returns an error from the LLM.
@@ -251,10 +239,6 @@ impl LlmProvider for ErrorProvider {
     #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
     fn name(&self) -> &str {
         "mock-error"
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }
 

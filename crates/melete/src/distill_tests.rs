@@ -104,10 +104,6 @@ impl LlmProvider for MockProvider {
     fn name(&self) -> &str {
         "mock-distill"
     }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 fn text_msg(role: Role, text: &str) -> Message {

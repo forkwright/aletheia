@@ -67,13 +67,6 @@ impl Default for TaskDef {
 pub enum TaskAction {
     /// Execute a shell command.
     Command(String),
-    /// Call a tool by name with JSON arguments.
-    Tool {
-        name: String,
-        args: serde_json::Value,
-    },
-    /// Send a prompt to the nous for processing.
-    Prompt(String),
     /// Run a built-in maintenance function.
     Builtin(BuiltinTask),
 }
@@ -83,8 +76,6 @@ pub enum TaskAction {
 pub enum BuiltinTask {
     /// Prosoche attention check.
     Prosoche,
-    /// Session retention policy enforcement.
-    SessionRetention,
     /// Rotate and compress old trace files.
     TraceRotation,
     /// Compare instance against template for configuration drift.

@@ -42,10 +42,6 @@ impl LlmProvider for MockProvider {
     fn name(&self) -> &str {
         "mock"
     }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
