@@ -269,7 +269,7 @@ impl SessionStore {
     ///
     /// WHY: The former approach shifted undistilled seq values up by 1 before inserting at seq 0.
     /// That caused a `UNIQUE(session_id, seq)` violation whenever consecutive undistilled messages
-    /// existed (e.g. seq [3,4,5]: shifting 3→4 conflicts with existing 4). The shift is also
+    /// existed (e.g. seq \[3,4,5\]: shifting 3→4 conflicts with existing 4). The shift is also
     /// unnecessary because the UNIQUE constraint is only violated if seq 0 already exists —
     /// deleting the old summary first makes seq 0 available without any renumbering.
     #[instrument(skip(self, content))]
