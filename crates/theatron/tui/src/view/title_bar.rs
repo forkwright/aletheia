@@ -33,7 +33,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         Span::styled("aletheia", theme.style_accent()),
     ];
 
-    // Breadcrumbs — show navigation path when not at Home
     if !app.view_stack.is_home() {
         let breadcrumbs = app.view_stack.breadcrumbs();
         let last_idx = breadcrumbs.len() - 1;
@@ -42,13 +41,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
         for (i, crumb) in breadcrumbs.iter().enumerate() {
             if i == last_idx {
-                // Current view — bold
                 spans.push(Span::styled(
                     crumb.to_string(),
                     theme.style_fg().add_modifier(Modifier::BOLD),
                 ));
             } else {
-                // Parent views — dim
                 spans.push(Span::styled(crumb.to_string(), theme.style_dim()));
                 spans.push(Span::styled(" > ", theme.style_dim()));
             }

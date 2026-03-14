@@ -139,9 +139,7 @@ impl App {
                     auto_scroll: self.auto_scroll,
                 },
             );
-            // Prune stale entries once the map exceeds MAX_SCROLL_STATES.
-            // Retain only agents present in the current roster so that sessions
-            // closed or removed do not hold memory indefinitely.
+            // NOTE: prune stale entries once the map exceeds MAX_SCROLL_STATES, retaining only agents in the current roster
             if self.scroll_states.len() > MAX_SCROLL_STATES {
                 let active: Vec<_> = self.agents.iter().map(|a| a.id.clone()).collect();
                 self.scroll_states.retain(|k, _| active.contains(k));

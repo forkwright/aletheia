@@ -12,7 +12,6 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
               use wildcard or abbreviated patterns"
 )]
 pub enum Msg {
-    // --- Terminal input ---
     CharInput(char),
     Backspace,
     Delete,
@@ -20,17 +19,16 @@ pub enum Msg {
     CursorRight,
     CursorHome,
     CursorEnd,
-    DeleteWord,  // Ctrl+W
-    ClearLine,   // Ctrl+U
-    DeleteToEnd, // Ctrl+K
+    DeleteWord,
+    ClearLine,
+    DeleteToEnd,
     HistoryUp,
     HistoryDown,
-    Submit,           // Enter — send message
-    CopyLastResponse, // Ctrl+Y — copy last assistant response to clipboard
-    ComposeInEditor,  // Ctrl+E — open $EDITOR for multi-line compose
-    Quit,             // Ctrl+C or Ctrl+Q
+    Submit,
+    CopyLastResponse,
+    ComposeInEditor,
+    Quit,
 
-    // --- Command palette ---
     CommandPaletteOpen,
     CommandPaletteClose,
     CommandPaletteInput(char),
@@ -41,72 +39,64 @@ pub enum Msg {
     CommandPaletteDown,
     CommandPaletteTab,
 
-    NewSession,              // Ctrl+N — start new topic
-    SessionPickerNewSession, // 'n' in session picker — create and switch
-    SessionPickerArchive,    // 'd' in session picker — archive selected
+    NewSession,
+    SessionPickerNewSession,
+    SessionPickerArchive,
 
-    // --- Tabs ---
-    TabNew,         // Ctrl+T — open new tab (session picker)
-    TabClose,       // Ctrl+W — close current tab
-    TabNext,        // Ctrl+Tab or gt — next tab
-    TabPrev,        // Ctrl+Shift+Tab or gT — previous tab
-    TabJump(usize), // Alt+1..9 — jump to tab N (0-indexed)
-    GPrefix,        // 'g' prefix for two-key sequences (gt/gT)
+    TabNew,
+    TabClose,
+    TabNext,
+    TabPrev,
+    TabJump(usize),
+    GPrefix,
 
-    // --- Message selection ---
-    SelectPrev,                       // k or Up in selection mode
-    SelectNext,                       // j or Down in selection mode
-    DeselectMessage,                  // Esc — return to auto-scroll
-    SelectFirst,                      // Home in selection mode
-    SelectLast,                       // G or End in selection mode
-    MessageAction(MessageActionKind), // Action on selected message
+    SelectPrev,
+    SelectNext,
+    DeselectMessage,
+    SelectFirst,
+    SelectLast,
+    MessageAction(MessageActionKind),
 
-    // --- Filter (`/` mode) ---
     FilterOpen,
     FilterClose,
     FilterInput(char),
     FilterBackspace,
-    FilterClear,     // Ctrl+U — clear text, stay in edit mode
-    FilterConfirm,   // Enter — lock filter, exit edit mode
-    FilterNextMatch, // n — jump to next match
-    FilterPrevMatch, // N — jump to previous match
+    FilterClear,
+    FilterConfirm,
+    FilterNextMatch,
+    FilterPrevMatch,
 
-    // --- Navigation ---
     ScrollUp,
     ScrollDown,
     ScrollPageUp,
     ScrollPageDown,
     ScrollToBottom,
     FocusAgent(NousId),
-    NextAgent, // Ctrl+Tab or similar
+    NextAgent,
     PrevAgent,
 
-    // --- View stack navigation ---
-    ViewDrillIn, // Enter — push detail view based on context
-    ViewPopBack, // Esc — pop to previous view
+    ViewDrillIn,
+    ViewPopBack,
 
-    // --- Layout ---
-    ToggleSidebar,   // Ctrl+F
-    ToggleThinking,  // Ctrl+T
-    ToggleOpsPane,   // Ctrl+O or :ops
-    OpsFocusSwitch,  // Tab — switch focus between chat and ops
-    OpsScrollUp,     // k / Up in ops pane
-    OpsScrollDown,   // j / Down in ops pane
-    OpsSelectPrev,   // k in ops pane with selection
-    OpsSelectNext,   // j in ops pane with selection
-    OpsToggleExpand, // Enter in ops pane — expand/collapse selected item
+    ToggleSidebar,
+    ToggleThinking,
+    ToggleOpsPane,
+    OpsFocusSwitch,
+    OpsScrollUp,
+    OpsScrollDown,
+    OpsSelectPrev,
+    OpsSelectNext,
+    OpsToggleExpand,
     OpenOverlay(OverlayKind),
     CloseOverlay,
     Resize(u16, u16),
 
-    // --- Overlay interaction ---
     OverlayUp,
     OverlayDown,
     OverlaySelect,
     OverlayFilter(char),
     OverlayFilterBackspace,
 
-    // --- SSE global events ---
     SseConnected,
     SseDisconnected,
     SseInit {
@@ -153,7 +143,6 @@ pub enum Msg {
         nous_id: NousId,
     },
 
-    // --- Streaming response events ---
     StreamTurnStart {
         session_id: SessionId,
         nous_id: NousId,
@@ -207,7 +196,6 @@ pub enum Msg {
     },
     StreamError(String),
 
-    // --- API responses ---
     AgentsLoaded(Vec<Agent>),
     SessionsLoaded {
         nous_id: NousId,
@@ -223,12 +211,10 @@ pub enum Msg {
     AuthResult(AuthOutcome),
     ApiError(String),
 
-    // --- Settings ---
     SettingsLoaded(serde_json::Value),
     SettingsSaved,
     SettingsSaveError(String),
 
-    // --- Memory inspector ---
     MemoryOpen,
     MemoryClose,
     MemoryTabNext,
@@ -269,19 +255,17 @@ pub enum Msg {
     MemoryPageDown,
     MemoryPageUp,
 
-    // --- Errors / toasts ---
     ShowError(String),
     ShowSuccess(String),
     DismissError,
 
-    // --- Diff viewer ---
-    DiffOpen,       // :diff command — show uncommitted changes
-    DiffClose,      // Esc in diff view
-    DiffCycleMode,  // 'm' in diff view
-    DiffScrollUp,   // scroll up in diff view
-    DiffScrollDown, // scroll down in diff view
-    DiffPageUp,     // page up in diff view
-    DiffPageDown,   // page down in diff view
+    DiffOpen,
+    DiffClose,
+    DiffCycleMode,
+    DiffScrollUp,
+    DiffScrollDown,
+    DiffPageUp,
+    DiffPageDown,
     /// Auto-triggered diff from file modification tool result.
     DiffFromToolResult {
         path: String,
@@ -289,7 +273,6 @@ pub enum Msg {
         new_content: String,
     },
 
-    // --- Timer ---
     Tick,
 }
 

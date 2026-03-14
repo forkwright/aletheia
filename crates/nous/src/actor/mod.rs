@@ -124,13 +124,11 @@ impl NousActor {
         extra_bootstrap: Vec<BootstrapSection>,
         active_turn: Arc<AtomicBool>,
     ) -> Self {
-        // Build the skill loader from the knowledge store when available.
         #[cfg(feature = "knowledge-store")]
         let skill_loader = knowledge_store
             .as_ref()
             .map(|ks| crate::skills::SkillLoader::new(Arc::clone(ks)));
 
-        // Build the BM25 text search from the knowledge store when available.
         #[cfg(feature = "knowledge-store")]
         let text_search: Option<Arc<dyn crate::recall::TextSearch>> =
             knowledge_store
@@ -192,7 +190,6 @@ impl NousActor {
         info!(lifecycle = %self.lifecycle, "actor started");
 
         loop {
-            // Reap completed background tasks
             self.reap_background_tasks();
 
             tokio::select! {
@@ -271,7 +268,6 @@ impl NousActor {
             }
         }
 
-        // Drain remaining background tasks before exiting
         while self.background_tasks.join_next().await.is_some() {}
 
         info!(lifecycle = %self.lifecycle, panic_count = self.panic_count, "actor stopped");
@@ -358,8 +354,7 @@ impl NousActor {
     /// Cancel-safe. The inner `resolve_skills` spawns a separate Tokio task for
     /// the blocking search; cancelling this future at the await point loses the
     /// skill result but leaves no inconsistent state.
-    // Without the knowledge-store feature the body has no `.await` — that is
-    // intentional; the function stays async so callers can `.await` uniformly.
+    // WHY: body has no .await without knowledge-store feature — kept async so callers .await uniformly
     #[cfg_attr(
         not(feature = "knowledge-store"),
         expect(
@@ -377,7 +372,7 @@ impl NousActor {
                     .await;
             }
         }
-        // Suppress unused-variable warning when feature is off
+        // WHY: suppress unused-variable warning when tui feature is off
         #[cfg(not(feature = "knowledge-store"))]
         let _ = content;
 

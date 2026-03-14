@@ -50,7 +50,6 @@ impl NousActor {
             .await;
 
         if let Ok(ref turn_result) = result {
-            // Update per-session cumulative token count for spending cap enforcement.
             if let Some(session) = self.sessions.get_mut(&session_key) {
                 session.cumulative_tokens = session
                     .cumulative_tokens
@@ -63,13 +62,13 @@ impl NousActor {
         }
 
         self.active_session = None;
-        // Preserve degraded state — only reset to Idle if not degraded
+        // WHY: only reset to Idle if not degraded — preserve degraded state
         if self.lifecycle != NousLifecycle::Degraded {
             self.lifecycle = NousLifecycle::Idle;
         }
         self.active_turn.store(false, Ordering::Release);
 
-        // Ignore send error — caller may have dropped the receiver
+        // WHY: ignore send error — caller may have dropped the receiver
         let _ = reply.send(result);
     }
 
@@ -107,7 +106,6 @@ impl NousActor {
             .await;
 
         if let Ok(ref turn_result) = result {
-            // Update per-session cumulative token count for spending cap enforcement.
             if let Some(session) = self.sessions.get_mut(&session_key) {
                 session.cumulative_tokens = session
                     .cumulative_tokens
@@ -120,11 +118,13 @@ impl NousActor {
         }
 
         self.active_session = None;
+        // WHY: only reset to Idle if not degraded — preserve degraded state
         if self.lifecycle != NousLifecycle::Degraded {
             self.lifecycle = NousLifecycle::Idle;
         }
         self.active_turn.store(false, Ordering::Release);
 
+        // WHY: ignore send error — caller may have dropped the receiver
         let _ = reply.send(result);
     }
 
@@ -138,8 +138,7 @@ impl NousActor {
         content: &str,
         caller_span: tracing::Span,
     ) -> crate::error::Result<TurnResult> {
-        // Spawn the pipeline in a separate task so panics are caught by the
-        // JoinHandle rather than propagating into the actor loop.
+        // WHY: pipeline spawned in separate task so panics are caught by JoinHandle, not the actor loop
         let result = self
             .spawn_pipeline_task(session_key, session_id, content, None, caller_span)
             .await;
@@ -181,7 +180,6 @@ impl NousActor {
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         caller_span: tracing::Span,
     ) -> Result<crate::error::Result<TurnResult>, tokio::task::JoinError> {
-        // Prepare all data needed by the pipeline before spawning
         let session = self
             .sessions
             .entry(session_key.to_owned())
@@ -335,7 +333,6 @@ impl NousActor {
         self.panic_count += 1;
         self.panic_timestamps.push(std::time::Instant::now());
 
-        // Prune timestamps outside the window
         let cutoff = std::time::Instant::now()
             .checked_sub(DEGRADED_WINDOW)
             .unwrap_or(self.started_at);
@@ -366,8 +363,7 @@ impl NousActor {
             .sessions
             .entry(session_key.to_owned())
             .or_insert_with(|| {
-                // Cross-nous messages don't carry a database session ID;
-                // generate a fresh one and let finalize create the DB row.
+                // WHY: cross-nous messages carry no database session ID — generate one so finalize can create the DB row
                 let id = SessionId::new().to_string();
                 debug!(session_key, session_id = %id, "creating new session");
                 SessionState::new(id, session_key.to_owned(), &self.config)
@@ -399,7 +395,6 @@ impl NousActor {
             )),
         };
 
-        // Merge static domain-pack sections with dynamic skill sections.
         let mut extra_bootstrap = self.extra_bootstrap.clone();
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 

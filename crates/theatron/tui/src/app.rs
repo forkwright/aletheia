@@ -42,94 +42,70 @@ pub struct App {
     pub highlighter: crate::highlight::Highlighter,
     pub should_quit: bool,
 
-    // Dashboard state
     pub agents: Vec<AgentState>,
     pub focused_agent: Option<NousId>,
     pub messages: Vec<ChatMessage>,
     pub focused_session_id: Option<SessionId>,
     pub daily_cost_cents: u32,
 
-    // Input
     pub input: InputState,
 
-    // Layout
     pub sidebar_visible: bool,
     pub thinking_expanded: bool,
 
-    // Overlay
     pub overlay: Option<Overlay>,
 
-    // Streaming state
     pub active_turn_id: Option<TurnId>,
     pub streaming_text: String,
     pub streaming_thinking: String,
     pub streaming_tool_calls: Vec<ToolCallInfo>,
     pub(crate) stream_rx: Option<mpsc::Receiver<StreamEvent>>,
 
-    // SSE
     sse: Option<SseConnection>,
     pub sse_connected: bool,
     /// When the SSE stream last disconnected. Cleared on successful reconnect.
     pub sse_disconnected_at: Option<std::time::Instant>,
 
-    // Scroll
     pub scroll_offset: usize,
     pub auto_scroll: bool,
     pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
 
-    // Virtual scroll — O(viewport) rendering for large message lists
     pub(crate) virtual_scroll: VirtualScroll,
 
-    // Markdown cache — avoid re-parsing on every frame
     pub cached_markdown_text: String,
     pub cached_markdown_lines: Vec<ratatui::text::Line<'static>>,
 
-    // Tick counter for spinner animation
     pub tick_count: u64,
 
-    // Error toast (auto-dismiss after 5s)
     pub error_toast: Option<ErrorToast>,
-    // Success toast (auto-dismiss after 5s)
     pub success_toast: Option<ErrorToast>,
 
-    // @mention tab completion state
     pub tab_completion: Option<TabCompletion>,
 
-    // Terminal size for responsive layout
     pub terminal_width: u16,
     pub terminal_height: u16,
 
-    // Command palette (`:` mode)
     pub command_palette: CommandPaletteState,
 
-    // Status bar enhanced fields
     pub session_cost_cents: u32,
     pub context_usage_pct: Option<u8>,
     pub selection: SelectionContext,
 
-    // Message selection (None = auto-scroll mode, Some(index) = message selected)
     pub selected_message: Option<usize>,
     pub tool_expanded: HashSet<crate::id::ToolId>,
 
-    // Live filter (`/` mode)
     pub filter: FilterState,
 
-    // Stack-based navigation (Enter drills in, Esc pops out)
     pub view_stack: ViewStack,
 
-    // Per-view scroll state preservation
     pub(crate) view_scroll_states: HashMap<usize, SavedScrollState>,
 
-    // Operations pane (right-side panel)
     pub ops: OpsState,
 
-    // Multi-session tab bar
     pub(crate) tab_bar: TabBar,
 
-    // Vim `g` prefix pending (for gt/gT two-key sequences)
     pub(crate) pending_g: bool,
 
-    // Memory inspector panel state
     pub memory: MemoryInspectorState,
 }
 
@@ -232,8 +208,7 @@ impl App {
             }
         }
 
-        // SAFETY: sanitized at ingestion — all agent fields from API are sanitized here.
-        // Best-effort: if agent fetch fails, start with empty list and show error toast.
+        // NOTE: Best-effort agent fetch — on failure, start with empty list and show toast.
         let agents = match self.client.agents().await {
             Ok(a) => a,
             Err(e) => {
@@ -279,7 +254,6 @@ impl App {
             }
             self.load_focused_session().await;
 
-            // Create initial tab for the default agent/session
             let agent_name = self
                 .agents
                 .iter()
@@ -361,7 +335,6 @@ impl App {
 
             match self.client.history(&session_id).await {
                 Ok(history) => {
-                    // SAFETY: sanitized at ingestion — all message fields from API.
                     self.messages = history
                         .into_iter()
                         .filter_map(|m| {
@@ -384,8 +357,8 @@ impl App {
                             })
                         })
                         .collect();
-                    // Stale streaming markdown from the previous session must not
-                    // bleed through when the user switches agents.
+                    // WHY: Clear stale streaming markdown so it doesn't bleed through
+                    // when the user switches agents mid-stream.
                     self.cached_markdown_text.clear();
                     self.cached_markdown_lines.clear();
                     self.rebuild_virtual_scroll();
@@ -624,7 +597,7 @@ mod tests {
     use crate::state::{ChatMessage, OpsState};
 
     #[test]
-    fn test_app_constructs_with_defaults() {
+    fn app_constructs_with_default_state() {
         let app = test_app();
         assert!(!app.should_quit);
         assert!(app.auto_scroll);
@@ -641,7 +614,7 @@ mod tests {
     }
 
     #[test]
-    fn test_app_with_messages_populates() {
+    fn app_populates_state_from_message_list() {
         let app = test_app_with_messages(vec![("user", "hello"), ("assistant", "hi there")]);
         assert_eq!(app.messages.len(), 2);
         assert_eq!(app.messages[0].role, "user");

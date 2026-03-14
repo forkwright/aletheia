@@ -4,8 +4,6 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-// ── Public types ─────────────────────────────────────────────────────────────
-
 /// A link found during markdown rendering, positioned within the markdown lines.
 ///
 /// Line index and column are **relative** to the `Vec<Line>` returned by
@@ -38,8 +36,6 @@ pub(crate) struct OscLink {
     pub accent: (u8, u8, u8),
 }
 
-// ── Sequence helpers ──────────────────────────────────────────────────────────
-
 /// Format an OSC 8 hyperlink **opening** sequence.
 ///
 /// Format: `ESC ] 8 ;; URL BEL`
@@ -51,8 +47,6 @@ pub fn osc8_open(url: &str) -> String {
 pub const fn osc8_close() -> &'static str {
     "\x1b]8;;\x07"
 }
-
-// ── Terminal capability detection ─────────────────────────────────────────────
 
 /// Returns `true` if the running terminal is known to support OSC 8 hyperlinks.
 ///
@@ -68,7 +62,7 @@ pub fn supports_hyperlinks() -> bool {
 }
 
 fn probe_hyperlink_support() -> bool {
-    // TERM_PROGRAM — most reliable signal on macOS and some Linux terminals
+    // NOTE: TERM_PROGRAM — most reliable signal on macOS and some Linux terminals
     if let Ok(prog) = std::env::var("TERM_PROGRAM") {
         match prog.as_str() {
             "iTerm.app" | "WezTerm" | "ghostty" | "Ghostty" | "kitty" => return true,
@@ -76,42 +70,40 @@ fn probe_hyperlink_support() -> bool {
         }
     }
 
-    // Ghostty
+    // NOTE: Ghostty
     if std::env::var("GHOSTTY_BIN_DIR").is_ok() || std::env::var("GHOSTTY_RESOURCES_DIR").is_ok() {
         return true;
     }
 
-    // WezTerm
+    // NOTE: WezTerm
     if std::env::var("WEZTERM_EXECUTABLE").is_ok() || std::env::var("WEZTERM_PANE").is_ok() {
         return true;
     }
 
-    // Kitty
+    // NOTE: Kitty
     if std::env::var("KITTY_PID").is_ok() || std::env::var("KITTY_WINDOW_ID").is_ok() {
         return true;
     }
 
-    // Windows Terminal
+    // NOTE: Windows Terminal
     if std::env::var("WT_SESSION").is_ok() {
         return true;
     }
 
-    // foot
+    // NOTE: foot
     if let Ok(term) = std::env::var("TERM")
         && (term == "foot" || term == "foot-extra")
     {
         return true;
     }
 
-    // Alacritty 0.14+ sets ALACRITTY_SOCKET
+    // NOTE: Alacritty
     if std::env::var("ALACRITTY_SOCKET").is_ok() {
         return true;
     }
 
     false
 }
-
-// ── URL detection ─────────────────────────────────────────────────────────────
 
 /// Extract HTTP/HTTPS URLs from plain text.
 ///
@@ -169,8 +161,6 @@ fn trim_trailing_punct(url: &str) -> usize {
     end
 }
 
-// ── File-path link detection (bonus feature, not yet wired into renderer) ─────
-
 /// Detect `path/to/file.rs` and `path/to/file.rs:LINE` patterns in text.
 ///
 /// Returns `(start, end, path, url)` where `url` is a `file://` URL suitable
@@ -210,8 +200,6 @@ fn detect_file_paths(text: &str) -> Vec<(usize, usize, &str, String)> {
     }
     out
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

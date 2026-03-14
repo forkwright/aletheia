@@ -114,7 +114,6 @@ impl VirtualScroll {
             };
         }
 
-        // Compute top line (from top of content).
         let top_line = if auto_scroll {
             total.saturating_sub(vh)
         } else {
@@ -125,24 +124,21 @@ impl VirtualScroll {
 
         let bottom_line = top_line + vh;
 
-        // Binary search for the first item whose cumulative end > top_line.
-        // prefix_sums[i+1] = end of item i. We want the first i where prefix_sums[i+1] > top_line.
+        // NOTE: item_at_line binary-searches prefix_sums to find the item containing top_line.
         let first_item = self.item_at_line(top_line);
         let last_item = self.item_at_line(bottom_line.min(total));
 
-        // Line offset within first item for smooth sub-item scrolling.
         let first_item_start = self.prefix_sums[first_item];
         let line_offset = top_line.saturating_sub(first_item_start) as u16;
 
-        // Apply buffer zone.
         let start = first_item.saturating_sub(self.buffer);
         let end = (last_item + 1 + self.buffer).min(self.item_heights.len());
 
         ViewportSlice {
             range: start..end,
             line_offset: if start < first_item {
-                // Buffer items above — render them but don't offset into them.
-                // The offset applies from the start of the rendered range.
+                // NOTE: Buffer items above are rendered; add their height so the
+                // line_offset is relative to the start of the rendered range, not first_item.
                 let buffer_height: u64 = self.prefix_sums[first_item] - self.prefix_sums[start];
                 (buffer_height as u16).saturating_add(line_offset)
             } else {
@@ -157,21 +153,16 @@ impl VirtualScroll {
         if line == 0 {
             return 0;
         }
-        // We want the first i where prefix_sums[i+1] > line,
+        // NOTE: binary search — find first i where prefix_sums[i+1] > line,
         // i.e. the item whose cumulative range includes `line`.
-        // prefix_sums has len = n+1. Search in prefix_sums[1..] for the
-        // partition point where prefix_sums[i] <= line.
         let n = self.item_heights.len();
         if n == 0 {
             return 0;
         }
 
-        // Binary search: find largest i such that prefix_sums[i] <= line.
-        // That means item (i-1) ends at prefix_sums[i], so the line is in item i
-        // unless prefix_sums[i] == line exactly (then it's the start of item i).
+        // NOTE: partition_point returns the first index where prefix_sums[idx] > line,
+        // so the item containing `line` is idx - 1 (prefix_sums[idx-1] <= line < prefix_sums[idx]).
         let idx = self.prefix_sums.partition_point(|&s| s <= line);
-        // idx is the first index where prefix_sums[idx] > line.
-        // The item containing `line` is idx - 1 (since prefix_sums[idx-1] <= line < prefix_sums[idx]).
         idx.saturating_sub(1).min(n.saturating_sub(1))
     }
 
@@ -217,12 +208,9 @@ pub(crate) fn estimate_message_height(text_len: usize, has_tools: bool, width: u
     let w = width.max(1) as usize;
     let header = 1u16;
     let tools = if has_tools { 1u16 } else { 0 };
-    // Rough estimate: each line of text is ~width chars.
-    // Add 1 for partial last line. Newlines add extra lines.
     let content = if text_len == 0 {
         0u16
     } else {
-        // Count at least 1 line, plus wrapping
         (text_len / w + 1).min(u16::MAX as usize) as u16
     };
     let blank = 1u16;

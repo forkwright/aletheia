@@ -174,40 +174,40 @@ impl Theme {
         Self {
             colors: Colors {
                 bg: Color::Reset,
-                surface: Color::Indexed(235),        // #262626
-                surface_bright: Color::Indexed(237), // #3a3a3a
-                surface_dim: Color::Indexed(233),    // #121212
-                accent: Color::Indexed(111),         // #87afff
-                accent_dim: Color::Indexed(67),      // #5f87af
+                surface: Color::Indexed(235),
+                surface_bright: Color::Indexed(237),
+                surface_dim: Color::Indexed(233),
+                accent: Color::Indexed(111),
+                accent_dim: Color::Indexed(67),
             },
             text: TextColors {
-                fg: Color::Indexed(253),       // #dadada
-                fg_muted: Color::Indexed(245), // #8a8a8a
-                fg_dim: Color::Indexed(240),   // #585858
+                fg: Color::Indexed(253),
+                fg_muted: Color::Indexed(245),
+                fg_dim: Color::Indexed(240),
                 user: Color::Indexed(111),
                 assistant: Color::Indexed(114),
                 system: Color::Indexed(245),
             },
             borders: Borders {
-                normal: Color::Indexed(238), // #444444
+                normal: Color::Indexed(238),
                 focused: Color::Indexed(111),
-                separator: Color::Indexed(236), // #303030
+                separator: Color::Indexed(236),
                 selected: Color::Indexed(111),
             },
             status: StatusColors {
-                success: Color::Indexed(114), // #87d787
-                warning: Color::Indexed(221), // #ffd75f
-                error: Color::Indexed(167),   // #d75f5f
-                info: Color::Indexed(111),    // #87afff
+                success: Color::Indexed(114),
+                warning: Color::Indexed(221),
+                error: Color::Indexed(167),
+                info: Color::Indexed(111),
                 spinner: Color::Indexed(221),
                 idle: Color::Indexed(240),
                 streaming: Color::Indexed(114),
-                compacting: Color::Indexed(177), // #d787ff
+                compacting: Color::Indexed(177),
             },
             code: CodeColors {
-                fg: Color::Indexed(252),   // #d0d0d0
-                bg: Color::Indexed(236),   // #303030
-                lang: Color::Indexed(242), // #6c6c6c
+                fg: Color::Indexed(252),
+                bg: Color::Indexed(236),
+                lang: Color::Indexed(242),
             },
             thinking: ThinkingColors {
                 fg: Color::Indexed(242),
@@ -348,7 +348,7 @@ impl Theme {
 
 /// Detect terminal color capability from environment variables.
 fn detect_color_depth() -> ColorDepth {
-    // Check COLORTERM first — most reliable indicator
+    // WHY: COLORTERM is the most reliable indicator — check it before TERM.
     if let Ok(ct) = std::env::var("COLORTERM") {
         match ct.as_str() {
             "truecolor" | "24bit" => return ColorDepth::TrueColor,
@@ -356,7 +356,6 @@ fn detect_color_depth() -> ColorDepth {
         }
     }
 
-    // Known true-color terminals
     if let Ok(tp) = std::env::var("TERM_PROGRAM") {
         match tp.as_str() {
             "iTerm.app" | "WezTerm" | "Alacritty" | "kitty" => return ColorDepth::TrueColor,
@@ -364,19 +363,17 @@ fn detect_color_depth() -> ColorDepth {
         }
     }
 
-    // GNOME Terminal sets COLORTERM=truecolor but check VTE_VERSION as backup
+    // NOTE: GNOME Terminal sets COLORTERM=truecolor, but VTE_VERSION is a reliable backup.
     if std::env::var("VTE_VERSION").is_ok() {
         return ColorDepth::TrueColor;
     }
 
-    // Check TERM for 256-color support
     if let Ok(term) = std::env::var("TERM")
         && term.contains("256color")
     {
         return ColorDepth::Color256;
     }
 
-    // tmux usually supports 256 colors minimum
     if std::env::var("TMUX").is_ok() {
         return ColorDepth::Color256;
     }

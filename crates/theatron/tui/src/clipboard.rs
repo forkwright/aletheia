@@ -1,7 +1,6 @@
 /// Copy text to the system clipboard.
 /// Tries arboard (native) first, falls back to OSC52 escape sequence.
 pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
-    // Try native clipboard via arboard
     match arboard::Clipboard::new() {
         Ok(mut clipboard) => match clipboard.set_text(text) {
             Ok(()) => {
@@ -28,7 +27,7 @@ fn copy_osc52(text: &str) -> Result<(), String> {
 
     let encoded = STANDARD.encode(text.as_bytes());
 
-    // Check if we're in tmux — need passthrough wrapper
+    // NOTE: tmux requires an OSC52 passthrough wrapper for the escape sequence to reach the terminal
     let seq = if std::env::var("TMUX").is_ok() {
         format!("\x1bPtmux;\x1b\x1b]52;c;{}\x07\x1b\\", encoded)
     } else {

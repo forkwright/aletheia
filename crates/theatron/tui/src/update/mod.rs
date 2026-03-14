@@ -20,13 +20,11 @@ pub(crate) use api::extract_text_content;
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn update(app: &mut App, msg: Msg) {
-    // Clear pending_g on any message except GPrefix itself
     if !matches!(msg, Msg::GPrefix | Msg::Tick) {
         app.pending_g = false;
     }
 
     match msg {
-        // --- Tabs ---
         Msg::TabNew => tabs::handle_tab_new(app),
         Msg::TabClose => tabs::handle_tab_close(app),
         Msg::TabNext => tabs::handle_tab_next(app),
@@ -34,7 +32,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::TabJump(n) => tabs::handle_tab_jump(app, n),
         Msg::GPrefix => tabs::handle_g_prefix(app),
 
-        // --- Message selection ---
         Msg::SelectPrev => selection::handle_select_prev(app),
         Msg::SelectNext => selection::handle_select_next(app),
         Msg::DeselectMessage => selection::handle_deselect(app),
@@ -42,9 +39,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::SelectLast => selection::handle_select_last(app),
         Msg::MessageAction(action) => selection::handle_message_action(app, action),
 
-        // --- Input ---
         Msg::CharInput(c) => {
-            // If a message is selected and a non-action char arrives, deselect first
             if app.selected_message.is_some() {
                 selection::handle_deselect(app);
             }
@@ -65,7 +60,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::CopyLastResponse => input::handle_copy_last_response(app),
         Msg::ComposeInEditor => input::handle_compose_in_editor(app),
 
-        // --- Filter ---
         Msg::FilterOpen => filter::handle_open(app),
         Msg::FilterClose => filter::handle_close(app),
         Msg::FilterInput(c) => filter::handle_input(app, c),
@@ -75,7 +69,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::FilterNextMatch => filter::handle_next_match(app),
         Msg::FilterPrevMatch => filter::handle_prev_match(app),
 
-        // --- Command palette ---
         Msg::CommandPaletteOpen => command::handle_open(app),
         Msg::CommandPaletteClose => command::handle_close(app),
         Msg::CommandPaletteInput(c) => command::handle_input(app, c),
@@ -86,7 +79,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::CommandPaletteDown => command::handle_down(app),
         Msg::CommandPaletteTab => command::handle_tab(app),
 
-        // --- Navigation ---
         Msg::ScrollUp => navigation::handle_scroll_up(app),
         Msg::ScrollDown => navigation::handle_scroll_down(app),
         Msg::ScrollPageUp => navigation::handle_scroll_page_up(app),
@@ -108,7 +100,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::ViewDrillIn => view_nav::handle_drill_in(app),
         Msg::ViewPopBack => view_nav::handle_pop_back(app),
 
-        // --- Overlay ---
         Msg::OpenOverlay(kind) => overlay::handle_open_overlay(app, kind).await,
         Msg::CloseOverlay => overlay::handle_close_overlay(app),
         Msg::OverlayUp => overlay::handle_overlay_up(app),
@@ -133,7 +124,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             }
         }
 
-        // --- SSE ---
         Msg::SseConnected => sse::handle_sse_connected(app).await,
         Msg::SseDisconnected => sse::handle_sse_disconnected(app),
         Msg::SseInit { active_turns } => sse::handle_sse_init(app, active_turns),
@@ -162,7 +152,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         }
         Msg::SseDistillAfter { nous_id } => sse::handle_sse_distill_after(app, nous_id).await,
 
-        // --- Streaming ---
         Msg::StreamTurnStart {
             turn_id, nous_id, ..
         } => streaming::handle_stream_turn_start(app, turn_id, nous_id),
@@ -206,7 +195,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::StreamTurnAbort { reason } => streaming::handle_stream_turn_abort(app, reason),
         Msg::StreamError(msg) => streaming::handle_stream_error(app, msg),
 
-        // --- API ---
         Msg::AgentsLoaded(agents) => api::handle_agents_loaded(app, agents),
         Msg::SessionsLoaded { nous_id, sessions } => {
             api::handle_sessions_loaded(app, nous_id, sessions)
@@ -220,7 +208,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::SettingsLoaded(config) => settings::handle_loaded(app, config),
         Msg::SettingsSaved => settings::handle_saved(app),
         Msg::SettingsSaveError(msg) => settings::handle_save_error(app, msg),
-        // --- Memory inspector ---
         Msg::MemoryOpen => memory::handle_open(app).await,
         Msg::MemoryClose => memory::handle_close(app),
         Msg::MemoryTabNext => memory::handle_tab_next(app),
@@ -261,7 +248,6 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::ShowError(msg) => api::handle_show_error(app, msg),
         Msg::ShowSuccess(msg) => api::handle_show_success(app, msg),
         Msg::DismissError => api::handle_dismiss_error(app),
-        // --- Diff viewer ---
         Msg::DiffOpen => diff::handle_diff_open(app).await,
         Msg::DiffClose => diff::handle_diff_close(app),
         Msg::DiffCycleMode => diff::handle_diff_cycle_mode(app),

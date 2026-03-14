@@ -48,7 +48,6 @@ pub(crate) fn handle_cursor_end(app: &mut App) {
 
 pub(crate) fn handle_delete_word(app: &mut App) {
     let mut pos = app.input.cursor;
-    // Skip trailing whitespace using Unicode char boundaries
     while pos > 0 {
         let prev = app.prev_char_boundary(pos);
         let is_ws = app.input.text[prev..pos]
@@ -61,7 +60,6 @@ pub(crate) fn handle_delete_word(app: &mut App) {
             break;
         }
     }
-    // Skip word characters (non-whitespace)
     while pos > 0 {
         let prev = app.prev_char_boundary(pos);
         let is_ws = app.input.text[prev..pos]
@@ -136,9 +134,7 @@ pub(crate) fn handle_copy_last_response(app: &mut App) {
     }
 }
 
-// Blocking is intentional: the TUI is suspended (ratatui::restore) so the event
-// loop is paused. The editor runs in the foreground terminal. No async work can
-// proceed while the terminal is owned by the child process.
+// WHY: blocking is intentional — TUI is suspended so the event loop is paused
 pub(crate) fn handle_compose_in_editor(app: &mut App) {
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
     let tmpfile = std::env::temp_dir().join("aletheia-compose.md");

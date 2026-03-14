@@ -59,7 +59,6 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
     if let Some(ref detail) = app.memory.detail {
         let f = &detail.fact;
 
-        // Header
         lines.push(Line::from(vec![
             Span::raw(" "),
             Span::styled(
@@ -69,7 +68,6 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
         ]));
         lines.push(Line::raw(""));
 
-        // Metadata
         let tier_label = MemoryInspectorState::tier_abbrev(&f.tier);
         lines.push(meta_line(theme, "ID", &f.id));
         lines.push(meta_line(
@@ -115,7 +113,6 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
 
         lines.push(Line::raw(""));
 
-        // Content
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled("Content:", theme.style_fg().add_modifier(Modifier::BOLD)),
@@ -127,7 +124,6 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
             ]));
         }
 
-        // Relationships
         if !detail.relationships.is_empty() {
             lines.push(Line::raw(""));
             lines.push(Line::from(vec![
@@ -147,7 +143,6 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
             }
         }
 
-        // Similar facts
         if !detail.similar.is_empty() {
             lines.push(Line::raw(""));
             lines.push(Line::from(vec![
@@ -181,7 +176,6 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
         ]));
     }
 
-    // Confidence editing overlay
     if app.memory.editing_confidence {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
@@ -198,7 +192,6 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
         ]));
     }
 
-    // Help bar
     lines.push(Line::raw(""));
     let mut help = vec![
         Span::raw("  "),
@@ -244,7 +237,6 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         spans.push(Span::styled(tab.label(), style));
     }
 
-    // Sort indicator
     spans.push(Span::raw("  "));
     let arrow = if app.memory.sort_asc { "↑" } else { "↓" };
     spans.push(Span::styled(
@@ -252,7 +244,6 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         theme.style_dim(),
     ));
 
-    // Search indicator
     if app.memory.search_active {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
@@ -262,7 +253,6 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         spans.push(Span::styled("▌", theme.style_accent()));
     }
 
-    // Filter indicator
     if app.memory.filter_editing {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
@@ -286,7 +276,6 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
-    // Column header
     let header_style = theme.style_dim().add_modifier(Modifier::BOLD);
     lines.push(Line::from(vec![
         Span::styled("  ", Style::default()),
@@ -310,7 +299,7 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
     } else {
         let filter = app.memory.filter_text.to_lowercase();
-        let visible_height = area.height.saturating_sub(1) as usize; // -1 for header
+        let visible_height = area.height.saturating_sub(1) as usize;
         let content_width = area.width.saturating_sub(RESERVED_COLUMN_WIDTH) as usize;
 
         let type_filter = app.memory.type_filter.as_deref();
@@ -423,7 +412,6 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         ]));
         lines.push(Line::raw(""));
 
-        // Render entities as a list with relationship counts
         for (i, entity) in app.memory.entities.iter().enumerate() {
             let is_selected = i == app.memory.selected;
             let marker = if is_selected { "▸ " } else { "  " };
@@ -450,7 +438,6 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             ]));
         }
 
-        // Render relationships as ASCII edges
         if !app.memory.relationships.is_empty() {
             lines.push(Line::raw(""));
             lines.push(Line::from(vec![

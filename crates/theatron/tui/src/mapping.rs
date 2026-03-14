@@ -74,36 +74,33 @@ impl App {
             return Some(msg);
         }
 
-        // Vim g-prefix two-key sequences (gt = next tab, gT = prev tab)
+        // WHY: g-prefix must intercept before normal key routing so gt/gT are
+        // treated as two-key sequences; after 'g' is consumed, the second char falls through.
         if self.pending_g {
             return match (key.modifiers, key.code) {
                 (KeyModifiers::NONE, KeyCode::Char('t')) => Some(Msg::TabNext),
                 (KeyModifiers::SHIFT, KeyCode::Char('T')) => Some(Msg::TabPrev),
-                // Any other key after g: cancel pending, treat g+key as normal input
                 (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
-                    // 'g' was consumed; pass the second char as input
                     Some(Msg::CharInput(c))
                 }
                 _ => None,
             };
         }
 
-        // Memory inspector has its own key handling
         if self.is_memory_view() {
             return self.map_memory_key(key);
         }
 
-        // View stack: Esc pops back when not at Home (takes priority over selection deselect)
+        // WHY: ViewPopBack takes priority over DeselectMessage so Esc always unwinds
+        // the view stack before affecting selection state.
         if !self.view_stack.is_home() && matches!((key.modifiers, key.code), (_, KeyCode::Esc)) {
             return Some(Msg::ViewPopBack);
         }
 
-        // Selection mode — single-letter keys become actions
         if self.selected_message.is_some() {
             return self.map_selection_key(key);
         }
 
-        // If ops pane is focused, route keys there
         if self.ops.visible && self.ops.focused_pane == crate::state::FocusedPane::Operations {
             return self.map_ops_pane_key(key);
         }
@@ -116,7 +113,6 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('b')) => Some(Msg::ToggleThinking),
             (KeyModifiers::CONTROL, KeyCode::Char('o')) => Some(Msg::ToggleOpsPane),
 
-            // Tab management
             (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::TabNew),
             (KeyModifiers::CONTROL, KeyCode::Char('w')) if self.input.text.is_empty() => {
                 Some(Msg::TabClose)
@@ -135,7 +131,6 @@ impl App {
                 Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
             }
 
-            // Tab switching: Ctrl+Tab or gt next, BackTab or gT prev
             (_, KeyCode::Tab) if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Some(Msg::TabNext)
             }
@@ -143,7 +138,6 @@ impl App {
                 Some(Msg::TabPrev)
             }
 
-            // Alt+1..9 jump to tab
             (KeyModifiers::ALT, KeyCode::Char(c @ '1'..='9')) => {
                 let n = (c as usize) - ('1' as usize);
                 Some(Msg::TabJump(n))
@@ -174,7 +168,8 @@ impl App {
             (_, KeyCode::End) if self.input.text.is_empty() => Some(Msg::ScrollToBottom),
             (_, KeyCode::End) => Some(Msg::CursorEnd),
 
-            // Up/Down with empty input enters selection mode; otherwise history nav
+            // WHY: Up/Down with empty input enters selection mode rather than history nav,
+            // matching the modal editing convention where arrow keys in read state navigate messages.
             (_, KeyCode::Up) if self.input.text.is_empty() && !self.messages.is_empty() => {
                 Some(Msg::SelectPrev)
             }
@@ -210,7 +205,6 @@ impl App {
                 Some(Msg::SelectPrev)
             }
 
-            // Vim g-prefix: 'g' on empty input starts two-key sequence
             (KeyModifiers::NONE, KeyCode::Char('g'))
                 if self.input.text.is_empty() && self.tab_bar.len() > 1 =>
             {
@@ -249,7 +243,6 @@ impl App {
     )]
     fn map_selection_key(&self, key: KeyEvent) -> Option<Msg> {
         match (key.modifiers, key.code) {
-            // Ctrl combos pass through to global handlers
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
             (KeyModifiers::CONTROL, KeyCode::Char('f')) => Some(Msg::ToggleSidebar),
@@ -268,11 +261,9 @@ impl App {
                 Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
             }
 
-            // Shift+Up/Down scroll (before bare Up/Down)
             (KeyModifiers::SHIFT, KeyCode::Up) => Some(Msg::ScrollUp),
             (KeyModifiers::SHIFT, KeyCode::Down) => Some(Msg::ScrollDown),
 
-            // Navigation
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => Some(Msg::SelectNext),
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Some(Msg::SelectPrev),
             (_, KeyCode::Esc) => Some(Msg::DeselectMessage),
@@ -280,7 +271,6 @@ impl App {
             (_, KeyCode::Home) => Some(Msg::SelectFirst),
             (_, KeyCode::End) | (KeyModifiers::SHIFT, KeyCode::Char('G')) => Some(Msg::SelectLast),
 
-            // Actions
             (KeyModifiers::NONE, KeyCode::Char('c')) => {
                 Some(Msg::MessageAction(MessageActionKind::Copy))
             }
@@ -304,7 +294,6 @@ impl App {
             (_, KeyCode::PageDown) => Some(Msg::ScrollPageDown),
             (_, KeyCode::F(1)) => Some(Msg::OpenOverlay(OverlayKind::Help)),
 
-            // Any other character deselects and inserts into input
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => Some(Msg::CharInput(c)),
 
             _ => None,
@@ -378,7 +367,6 @@ impl App {
     }
 
     fn map_memory_key(&self, key: KeyEvent) -> Option<Msg> {
-        // Global shortcuts pass through
         match (key.modifiers, key.code) {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => return Some(Msg::Quit),
@@ -386,7 +374,6 @@ impl App {
             _ => {}
         }
 
-        // Confidence editing mode
         if self.memory.editing_confidence {
             return match (key.modifiers, key.code) {
                 (_, KeyCode::Enter) => Some(Msg::MemoryConfidenceSubmit),
@@ -397,7 +384,6 @@ impl App {
             };
         }
 
-        // Search editing mode
         if self.memory.search_active {
             return match (key.modifiers, key.code) {
                 (_, KeyCode::Enter) => Some(Msg::MemorySearchSubmit),
@@ -410,7 +396,6 @@ impl App {
             };
         }
 
-        // Filter editing mode
         if self.memory.filter_editing {
             return match (key.modifiers, key.code) {
                 (_, KeyCode::Esc) => Some(Msg::MemoryFilterClose),
@@ -423,7 +408,6 @@ impl App {
             };
         }
 
-        // Fact detail view
         if matches!(
             self.view_stack.current(),
             crate::state::view_stack::View::FactDetail { .. }
@@ -437,7 +421,6 @@ impl App {
             };
         }
 
-        // Memory inspector main view
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc) => Some(Msg::MemoryClose),
             (_, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
@@ -482,7 +465,6 @@ impl App {
             return self.map_settings_overlay_key(key);
         }
 
-        // Diff viewer has its own keybindings
         if self.is_diff_view_overlay() {
             return match (key.modifiers, key.code) {
                 (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {

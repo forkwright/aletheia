@@ -10,6 +10,7 @@ use crate::pipeline::TurnResult;
 use crate::stream::TurnStreamEvent;
 
 /// Messages sent to a [`NousActor`](crate::actor::NousActor) via its inbox.
+#[non_exhaustive]
 pub enum NousMessage {
     /// Process a user message in a session.
     Turn {
@@ -47,6 +48,7 @@ pub enum NousMessage {
 }
 
 /// Lifecycle state machine for a nous actor.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NousLifecycle {
     /// Processing a turn or background task.

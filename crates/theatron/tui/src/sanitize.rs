@@ -20,79 +20,71 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
     while i < len {
         let b = bytes[i];
 
-        // 7-bit ESC introducer
+        // NOTE: 7-bit ESC introducer — 0x1B
         if b == 0x1B && i + 1 < len {
             let next = bytes[i + 1];
             match next {
-                // CSI: ESC [
+                // NOTE: CSI — ESC [
                 b'[' => {
                     i = skip_csi(bytes, i + 2);
                     continue;
                 }
-                // OSC: ESC ]
+                // NOTE: OSC — ESC ]
                 b']' => {
                     i = skip_osc(bytes, i + 2);
                     continue;
                 }
-                // DCS: ESC P
+                // NOTE: DCS — ESC P
                 b'P' => {
                     i = skip_until_st(bytes, i + 2);
                     continue;
                 }
-                // APC: ESC _
+                // NOTE: APC — ESC _
                 b'_' => {
                     i = skip_until_st(bytes, i + 2);
                     continue;
                 }
-                // SOS: ESC X
+                // NOTE: SOS — ESC X
                 b'X' => {
                     i = skip_until_st(bytes, i + 2);
                     continue;
                 }
-                // PM: ESC ^
+                // NOTE: PM — ESC ^
                 b'^' => {
                     i = skip_until_st(bytes, i + 2);
                     continue;
                 }
-                // ESC ( — character set designation (e.g., ESC(B)
+                // NOTE: ESC ( — character set designation, e.g., ESC(B for ASCII
                 b'(' | b')' | b'*' | b'+' if i + 2 < len => {
                     i += 3;
                     continue;
                 }
-                // Two-byte ESC sequences (e.g., ESC =, ESC >, ESC 7, ESC 8, etc.)
+                // NOTE: two-byte ESC sequences such as ESC =, ESC >, ESC 7
                 0x20..=0x7E => {
                     i += 2;
                     continue;
                 }
                 _ => {
-                    // Bare ESC followed by something unexpected — skip the ESC
+                    // NOTE: unrecognized ESC sequence — skip the ESC byte
                     i += 1;
                     continue;
                 }
             }
         }
 
-        // 8-bit C1 control characters (0x80-0x9F)
+        // NOTE: 8-bit C1 control characters (0x80–0x9F)
         if (0x80..=0x9F).contains(&b) {
-            // Only hit for single-byte values in valid UTF-8 context.
-            // In practice, UTF-8 multi-byte sequences start with 0xC0+,
-            // so 0x80-0x9F as a leading byte means Latin-1 C1 controls.
-            // However, in valid UTF-8 these bytes only appear as continuation
-            // bytes (never as leading bytes). We handle the U+0080..U+009F
-            // Unicode codepoints via char iteration below.
-            // For raw bytes, skip them.
             i += 1;
             continue;
         }
 
-        // C0 control characters
+        // NOTE: C0 control characters (0x00–0x1F)
         if b < 0x20 {
             match b {
                 b'\n' | b'\r' | b'\t' => {
                     out.push(b as char);
                 }
                 _ => {
-                    // Replace with Unicode control picture (U+2400 block)
                     out.push(control_picture(b));
                 }
             }
@@ -100,55 +92,52 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
             continue;
         }
 
-        // DEL
+        // NOTE: DEL — 0x7F
         if b == 0x7F {
-            out.push('\u{2421}'); // ␡
+            out.push('\u{2421}');
             i += 1;
             continue;
         }
 
-        // Normal byte — but we need to handle multi-byte UTF-8 correctly.
-        // Decode the next UTF-8 character.
         if let Some((ch, char_len)) = decode_utf8_char(bytes, i) {
-            // Check for Unicode C1 control characters (U+0080 to U+009F)
+            // NOTE: Unicode C1 control characters (U+0080–U+009F) — handle as named sequences
             if ('\u{0080}'..='\u{009F}').contains(&ch) {
                 match ch {
-                    // 8-bit CSI
+                    // NOTE: 8-bit CSI — U+009B
                     '\u{009B}' => {
                         i = skip_csi(bytes, i + char_len);
                         continue;
                     }
-                    // 8-bit OSC
+                    // NOTE: 8-bit OSC — U+009D
                     '\u{009D}' => {
                         i = skip_osc(bytes, i + char_len);
                         continue;
                     }
-                    // 8-bit DCS
+                    // NOTE: 8-bit DCS — U+0090
                     '\u{0090}' => {
                         i = skip_until_st(bytes, i + char_len);
                         continue;
                     }
-                    // 8-bit APC
+                    // NOTE: 8-bit APC — U+009F
                     '\u{009F}' => {
                         i = skip_until_st(bytes, i + char_len);
                         continue;
                     }
-                    // 8-bit SOS
+                    // NOTE: 8-bit SOS — U+0098
                     '\u{0098}' => {
                         i = skip_until_st(bytes, i + char_len);
                         continue;
                     }
-                    // 8-bit PM
+                    // NOTE: 8-bit PM — U+009E
                     '\u{009E}' => {
                         i = skip_until_st(bytes, i + char_len);
                         continue;
                     }
-                    // 8-bit ST — just drop it
+                    // NOTE: 8-bit ST — U+009C, drop
                     '\u{009C}' => {
                         i += char_len;
                         continue;
                     }
-                    // Other C1 — drop silently
                     _ => {
                         i += char_len;
                         continue;
@@ -158,7 +147,7 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
             out.push(ch);
             i += char_len;
         } else {
-            // Invalid UTF-8 byte — skip
+            // NOTE: invalid UTF-8 byte — skip
             i += 1;
         }
     }
@@ -170,12 +159,11 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
 fn needs_sanitization(s: &str) -> bool {
     for &b in s.as_bytes() {
         match b {
-            // C0 controls (except tab=0x09, LF=0x0A, CR=0x0D) and DEL
+            // NOTE: replace C0 controls (except HT/LF/CR) and DEL with control pictures
             0x00..=0x08 | 0x0B..=0x0C | 0x0E..=0x1F | 0x7F => return true,
             _ => {}
         }
     }
-    // Also check for Unicode C1 control characters
     for ch in s.chars() {
         if ('\u{0080}'..='\u{009F}').contains(&ch) {
             return true;
@@ -188,15 +176,12 @@ fn needs_sanitization(s: &str) -> bool {
 fn skip_csi(bytes: &[u8], start: usize) -> usize {
     let mut i = start;
     let len = bytes.len();
-    // Parameter bytes
     while i < len && (0x30..=0x3F).contains(&bytes[i]) {
         i += 1;
     }
-    // Intermediate bytes
     while i < len && (0x20..=0x2F).contains(&bytes[i]) {
         i += 1;
     }
-    // Final byte
     if i < len && (0x40..=0x7E).contains(&bytes[i]) {
         i += 1;
     }
@@ -209,18 +194,19 @@ fn skip_osc(bytes: &[u8], start: usize) -> usize {
     let len = bytes.len();
     while i < len {
         if bytes[i] == 0x07 {
-            return i + 1; // BEL terminator
+            return i + 1;
         }
         if bytes[i] == 0x1B && i + 1 < len && bytes[i + 1] == b'\\' {
-            return i + 2; // ST = ESC \
+            return i + 2;
         }
-        // 8-bit ST (U+009C as UTF-8: 0xC2 0x9C)
+        // NOTE: 8-bit ST as UTF-8 (U+009C = 0xC2 0x9C)
         if bytes[i] == 0xC2 && i + 1 < len && bytes[i + 1] == 0x9C {
             return i + 2;
         }
         i += 1;
     }
-    len // Unterminated — consume to end
+    // NOTE: unterminated sequence — consume to end of input
+    len
 }
 
 /// Skip until ST (ESC \ or 8-bit ST). Used for DCS, APC, SOS, PM.
@@ -229,53 +215,52 @@ fn skip_until_st(bytes: &[u8], start: usize) -> usize {
     let len = bytes.len();
     while i < len {
         if bytes[i] == 0x1B && i + 1 < len && bytes[i + 1] == b'\\' {
-            return i + 2; // ST = ESC \
+            return i + 2;
         }
-        // 8-bit ST (U+009C as UTF-8: 0xC2 0x9C)
+        // NOTE: 8-bit ST as UTF-8 (U+009C = 0xC2 0x9C)
         if bytes[i] == 0xC2 && i + 1 < len && bytes[i + 1] == 0x9C {
             return i + 2;
         }
         i += 1;
     }
-    len // Unterminated — consume to end
+    // NOTE: unterminated sequence — consume to end of input
+    len
 }
 
 /// Map a C0 control byte to its Unicode control picture character (U+2400 block).
 fn control_picture(byte: u8) -> char {
     match byte {
-        0x00 => '\u{2400}', // ␀ NUL
-        0x01 => '\u{2401}', // ␁ SOH
-        0x02 => '\u{2402}', // ␂ STX
-        0x03 => '\u{2403}', // ␃ ETX
-        0x04 => '\u{2404}', // ␄ EOT
-        0x05 => '\u{2405}', // ␅ ENQ
-        0x06 => '\u{2406}', // ␆ ACK
-        0x07 => '\u{2407}', // ␇ BEL
-        0x08 => '\u{2408}', // ␈ BS
-        // 0x09 = TAB (safe, handled before this)
-        // 0x0A = LF (safe, handled before this)
-        0x0B => '\u{240B}', // ␋ VT
-        0x0C => '\u{240C}', // ␌ FF
-        // 0x0D = CR (safe, handled before this)
-        0x0E => '\u{240E}', // ␎ SO
-        0x0F => '\u{240F}', // ␏ SI
-        0x10 => '\u{2410}', // ␐ DLE
-        0x11 => '\u{2411}', // ␑ DC1
-        0x12 => '\u{2412}', // ␒ DC2
-        0x13 => '\u{2413}', // ␓ DC3
-        0x14 => '\u{2414}', // ␔ DC4
-        0x15 => '\u{2415}', // ␕ NAK
-        0x16 => '\u{2416}', // ␖ SYN
-        0x17 => '\u{2417}', // ␗ ETB
-        0x18 => '\u{2418}', // ␘ CAN
-        0x19 => '\u{2419}', // ␙ EM
-        0x1A => '\u{241A}', // ␚ SUB
-        0x1B => '\u{241B}', // ␛ ESC
-        0x1C => '\u{241C}', // ␜ FS
-        0x1D => '\u{241D}', // ␝ GS
-        0x1E => '\u{241E}', // ␞ RS
-        0x1F => '\u{241F}', // ␟ US
-        _ => '\u{FFFD}',    // fallback replacement character
+        0x00 => '\u{2400}',
+        0x01 => '\u{2401}',
+        0x02 => '\u{2402}',
+        0x03 => '\u{2403}',
+        0x04 => '\u{2404}',
+        0x05 => '\u{2405}',
+        0x06 => '\u{2406}',
+        0x07 => '\u{2407}',
+        0x08 => '\u{2408}',
+        // NOTE: 0x09 TAB, 0x0A LF, 0x0D CR are safe and handled earlier
+        0x0B => '\u{240B}',
+        0x0C => '\u{240C}',
+        0x0E => '\u{240E}',
+        0x0F => '\u{240F}',
+        0x10 => '\u{2410}',
+        0x11 => '\u{2411}',
+        0x12 => '\u{2412}',
+        0x13 => '\u{2413}',
+        0x14 => '\u{2414}',
+        0x15 => '\u{2415}',
+        0x16 => '\u{2416}',
+        0x17 => '\u{2417}',
+        0x18 => '\u{2418}',
+        0x19 => '\u{2419}',
+        0x1A => '\u{241A}',
+        0x1B => '\u{241B}',
+        0x1C => '\u{241C}',
+        0x1D => '\u{241D}',
+        0x1E => '\u{241E}',
+        0x1F => '\u{241F}',
+        _ => '\u{FFFD}',
     }
 }
 

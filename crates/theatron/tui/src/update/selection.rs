@@ -10,7 +10,6 @@ pub(crate) fn handle_select_prev(app: &mut App) {
     }
     match app.selected_message {
         None => {
-            // Enter selection mode on last message
             let idx = count - 1;
             app.selected_message = Some(idx);
             app.auto_scroll = false;
@@ -31,7 +30,6 @@ pub(crate) fn handle_select_next(app: &mut App) {
     }
     match app.selected_message {
         None => {
-            // Enter selection mode on last message
             let idx = count - 1;
             app.selected_message = Some(idx);
             app.auto_scroll = false;
@@ -110,7 +108,6 @@ fn action_yank_code_block(app: &mut App, idx: usize) {
             }
         }
     } else {
-        // No code block — copy full message
         match crate::clipboard::copy_to_clipboard(text) {
             Ok(()) => show_toast(app, "No code block found — copied full message"),
             Err(e) => {
@@ -140,7 +137,6 @@ fn action_delete(app: &mut App, idx: usize) {
         return;
     }
     app.messages.remove(idx);
-    // Fix selection index after removal
     let count = app.messages.len();
     if count == 0 {
         app.selected_message = None;
@@ -166,7 +162,6 @@ fn action_open_links(app: &mut App, idx: usize) {
             }
         }
         n => {
-            // Open the first link and notify about the rest
             if let Err(e) = open::that(&urls[0]) {
                 tracing::error!("failed to open URL: {e}");
                 show_toast(app, "Failed to open link");
@@ -183,7 +178,6 @@ fn action_inspect(app: &mut App, idx: usize) {
         show_toast(app, "No tool calls to inspect");
         return;
     }
-    // Toggle expanded state for all tool calls on this message
     let key = crate::id::ToolId::from(format!("msg:{idx}"));
     if app.tool_expanded.contains(&key) {
         app.tool_expanded.remove(&key);
@@ -249,7 +243,7 @@ fn extract_first_code_block(text: &str) -> Option<String> {
 fn extract_urls(text: &str) -> Vec<String> {
     let mut urls = Vec::new();
     for word in text.split_whitespace() {
-        // Handle markdown link syntax: [text](url)
+        // NOTE: handle markdown link syntax [text](url) before falling through to plain URL detection
         if let Some(paren_start) = word.find("](") {
             let url_part = &word[paren_start + 2..];
             let candidate = url_part

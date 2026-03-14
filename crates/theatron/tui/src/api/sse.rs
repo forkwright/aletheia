@@ -54,7 +54,7 @@ impl SseConnection {
                         let maybe_event = tokio::time::timeout(READ_TIMEOUT, es.next()).await;
                         let event = match maybe_event {
                             Ok(Some(event)) => event,
-                            Ok(None) => break, // stream ended cleanly
+                            Ok(None) => break,
                             Err(_elapsed) => {
                                 // WHY: No event received within READ_TIMEOUT. A healthy
                                 // server sends pings more frequently than this window, so
@@ -78,7 +78,8 @@ impl SseConnection {
                                 if let Some(parsed) = parse_sse_event(&msg.event, &msg.data)
                                     && tx.send(parsed).await.is_err()
                                 {
-                                    return; // Receiver dropped, shut down
+                                    // WHY: receiver dropped — shut down the SSE loop
+                                    return;
                                 }
                             }
                             Err(reqwest_eventsource::Error::InvalidStatusCode(status, resp)) => {

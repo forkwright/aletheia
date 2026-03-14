@@ -39,7 +39,6 @@ pub(crate) fn handle_drill_in(app: &mut App) {
 
     match current {
         View::Home => {
-            // If a message is selected, drill into message detail
             if let Some(idx) = app.selected_message {
                 save_view_scroll(app);
                 app.view_stack
@@ -49,7 +48,6 @@ pub(crate) fn handle_drill_in(app: &mut App) {
                 return;
             }
 
-            // Otherwise drill into sessions for the focused agent
             let agent_id = app.focused_agent.clone();
             if let Some(agent_id) = agent_id {
                 save_view_scroll(app);
@@ -59,7 +57,6 @@ pub(crate) fn handle_drill_in(app: &mut App) {
             }
         }
         View::Sessions { ref agent_id } => {
-            // Drill into the focused session's conversation
             let agent_id = agent_id.clone();
             let session_id = app.focused_session_id.clone();
             if let Some(session_id) = session_id {
@@ -73,7 +70,6 @@ pub(crate) fn handle_drill_in(app: &mut App) {
             }
         }
         View::Conversation { .. } => {
-            // Drill into message detail if a message is selected
             if let Some(idx) = app.selected_message {
                 save_view_scroll(app);
                 app.view_stack
@@ -82,9 +78,7 @@ pub(crate) fn handle_drill_in(app: &mut App) {
                 app.auto_scroll = true;
             }
         }
-        View::MessageDetail { .. } | View::MemoryInspector | View::FactDetail { .. } => {
-            // Leaf views or views with their own drill-in handling
-        }
+        View::MessageDetail { .. } | View::MemoryInspector | View::FactDetail { .. } => {}
     }
 }
 
@@ -93,7 +87,6 @@ pub(crate) fn handle_drill_in(app: &mut App) {
 /// At Home, Esc deselects the message (existing behavior) or does nothing.
 pub(crate) fn handle_pop_back(app: &mut App) {
     if app.view_stack.is_home() {
-        // At home, Esc deselects if there's a selection, otherwise no-op
         if app.selected_message.is_some() {
             app.selected_message = None;
         }

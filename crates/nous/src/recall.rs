@@ -332,7 +332,6 @@ impl RecallStage {
     ) -> error::Result<RecallStageResult> {
         let k = self.config.max_results * 3;
 
-        // Cycle 1: embed and search with original query
         let query_vec = embed(query, embedding_provider)?;
         let raw_cycle1 = search(vector_search, query_vec, k)?;
 
@@ -341,7 +340,6 @@ impl RecallStage {
             return Ok(RecallStageResult::empty());
         }
 
-        // Rank cycle 1 for terminology discovery (clone raw for later merge)
         let candidates_c1 = self.build_candidates(raw_cycle1.clone(), nous_id);
         let ranked_c1 = self.engine.rank(candidates_c1);
 
@@ -353,7 +351,6 @@ impl RecallStage {
             return Ok(self.finalize_results(ranked_c1, remaining_budget));
         }
 
-        // Build refined query: original + discovered terms + gap entities
         let mut refined = String::from(query);
         for term in &terms {
             refined.push(' ');
@@ -371,11 +368,9 @@ impl RecallStage {
             "cycle 2 with refined query"
         );
 
-        // Cycle 2: embed and search with refined query
         let refined_vec = embed(&refined, embedding_provider)?;
         let raw_cycle2 = search(vector_search, refined_vec, k)?;
 
-        // Merge and deduplicate by source_id
         let mut seen: HashSet<String> = HashSet::new();
         let mut merged: Vec<KnowledgeRecallResult> = Vec::new();
         for r in raw_cycle1 {
@@ -497,8 +492,6 @@ impl RecallStage {
     }
 }
 
-// --- Helpers ---
-
 fn embed(query: &str, provider: &dyn EmbeddingProvider) -> error::Result<Vec<f32>> {
     provider.embed(query).map_err(|e| {
         error::RecallEmbeddingSnafu {
@@ -520,8 +513,6 @@ fn search(
         .build()
     })
 }
-
-// --- Stopword list ---
 
 static STOPWORDS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     HashSet::from([
@@ -659,8 +650,6 @@ fn is_stopword(word: &str) -> bool {
     STOPWORDS.contains(word)
 }
 
-// --- Terminology discovery ---
-
 /// Extract domain-specific terms from first-pass results not present in the original query.
 ///
 /// Splits result content on whitespace, filters stopwords and short words,
@@ -688,8 +677,6 @@ fn discover_terminology(results: &[ScoredResult], original_query: &str) -> Vec<S
     terms.into_iter().take(5).map(|(t, _)| t).collect()
 }
 
-// --- Gap detection ---
-
 /// Detect entity references in results that aren't captured as result IDs.
 ///
 /// Scans for capitalized multi-word phrases (2+ consecutive capitalized words)
@@ -700,7 +687,6 @@ fn detect_gaps(results: &[ScoredResult]) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
 
     for result in results {
-        // Capitalized multi-word phrases
         let words: Vec<&str> = result.content.split_whitespace().collect();
         let mut i = 0;
         while i < words.len() {
@@ -720,7 +706,6 @@ fn detect_gaps(results: &[ScoredResult]) -> Vec<String> {
             }
         }
 
-        // Quoted strings
         for quoted in extract_quoted_strings(&result.content) {
             if !source_ids.contains(quoted.as_str()) && seen.insert(quoted.clone()) {
                 gaps.push(quoted);
@@ -745,8 +730,6 @@ fn extract_quoted_strings(text: &str) -> Vec<String> {
         .map(|(_, part)| (*part).to_owned())
         .collect()
 }
-
-// --- Formatting ---
 
 /// Format scored results as a markdown section.
 #[must_use]

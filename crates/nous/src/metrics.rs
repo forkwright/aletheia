@@ -1,7 +1,6 @@
 //! Prometheus metric definitions for the agent pipeline.
 
-// Prometheus metric registration panics only if a duplicate name is registered
-// (programmer error), so .expect() is appropriate in LazyLock initializers.
+// WHY: registration panics only on duplicate name (programmer error), so .expect() is appropriate in LazyLock
 #![expect(
     clippy::expect_used,
     reason = "metric registration is infallible at startup"

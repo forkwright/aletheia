@@ -111,8 +111,7 @@ impl ApiClient {
     }
 
     fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        // WHY: Authorization is already in the client's default headers (set at build time).
-        // No per-request header injection needed — the token does not change after construction.
+        // NOTE: no per-request header injection — token is fixed at construction
         self.client.request(method, self.url(path))
     }
 
@@ -396,9 +395,7 @@ impl ApiClient {
         let daily: DailyResponse = resp.json().await.context(HttpSnafu {
             operation: "costs response",
         })?;
-        // Get today's entry (last in list)
         let today_cost = daily.daily.last().map(|d| d.cost).unwrap_or(0.0);
-        // Convert dollars to cents
         Ok((today_cost * 100.0) as u32)
     }
 

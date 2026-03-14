@@ -3,14 +3,13 @@ use crate::app::App;
 pub(crate) fn handle_open(app: &mut App) {
     app.filter.open();
     update_match_counts(app);
-    // Rebuild so the virtual scroll is fresh when the user exits filter mode.
+    // WHY: rebuild ensures virtual scroll reflects current state before the user exits filter mode
     app.rebuild_virtual_scroll();
 }
 
 pub(crate) fn handle_close(app: &mut App) {
     app.filter.close();
-    // Rebuild before scrolling to bottom so the virtual scroll reflects the
-    // full message list now that filtered rendering is deactivated.
+    // WHY: rebuild before scrolling to bottom so virtual scroll reflects the full message list
     app.rebuild_virtual_scroll();
     app.scroll_to_bottom();
 }
@@ -42,8 +41,7 @@ pub(crate) fn handle_confirm(app: &mut App) {
     } else {
         app.filter.confirm();
     }
-    // Rebuild so the virtual scroll is consistent with any layout changes that
-    // occurred while filter mode was active.
+    // WHY: rebuild so virtual scroll is consistent with any layout changes during filter mode
     app.rebuild_virtual_scroll();
 }
 

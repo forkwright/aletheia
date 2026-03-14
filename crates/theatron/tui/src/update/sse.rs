@@ -111,7 +111,6 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
         app.load_focused_session().await;
     }
 
-    // Mark background tabs as unread
     app.tab_bar.mark_unread(&nous_id, &session_id);
 }
 

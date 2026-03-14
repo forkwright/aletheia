@@ -189,7 +189,6 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
     let mut suggestions: Vec<Suggestion> = Vec::new();
 
     if query.is_empty() {
-        // Show all static commands + agent entries
         for cmd in COMMANDS {
             suggestions.push(Suggestion {
                 label: cmd.name.to_string(),
@@ -205,7 +204,6 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
             suggestions.push(agent_suggestion(agent, 0));
         }
     } else {
-        // Fuzzy match static commands
         for cmd in COMMANDS {
             if let Some(score) = best_match(&matcher, cmd, query) {
                 suggestions.push(Suggestion {
@@ -220,7 +218,6 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
             }
         }
 
-        // Inject dynamic agent suggestions
         for agent in agents {
             let mut best: Option<i64> = None;
             if let Some(s) = matcher.fuzzy_match(&agent.name, query) {
@@ -229,7 +226,7 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
             if let Some(s) = matcher.fuzzy_match(&agent.id, query) {
                 best = best.map_or(Some(s), |prev| Some(prev.max(s)));
             }
-            // Also match "agent <name>" as a compound
+            // NOTE: Also match "agent <name>" as a compound so typing "agent syn" surfaces the agent.
             let compound = format!("agent {}", agent.name);
             if let Some(s) = matcher.fuzzy_match(&compound, query) {
                 best = best.map_or(Some(s), |prev| Some(prev.max(s)));
@@ -241,7 +238,7 @@ pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> 
     }
 
     suggestions.sort_by(|a, b| b.score.cmp(&a.score));
-    // Show more on empty input (initial palette open), but still cap for display
+    // NOTE: Show more results on empty input (initial open) than for active queries.
     let limit = if query.is_empty() {
         MAX_SUGGESTIONS_INITIAL
     } else {

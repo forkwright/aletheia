@@ -6,8 +6,6 @@
 //! Skills are injected at `SectionPriority::Flexible`, so they are truncated
 //! before workspace identity files under budget pressure.
 
-// ── Always-available pure utilities ─────────────────────────────────────────
-
 /// Maximum characters of task context to send as the BM25 query.
 ///
 /// Longer queries dilute BM25 scores; keep the signal tight.
@@ -30,13 +28,12 @@ pub(crate) fn extract_task_context(content: &str) -> String {
         return trimmed.to_owned();
     }
 
-    // Truncate to MAX_CONTEXT_CHARS at a valid char boundary
     let mut end = MAX_CONTEXT_CHARS;
     while end > 0 && !trimmed.is_char_boundary(end) {
         end -= 1;
     }
 
-    // Prefer breaking at a word boundary
+    // WHY: prefer breaking at word boundary to avoid cutting mid-word
     let word_end = trimmed[..end].rfind(' ').unwrap_or(end);
     trimmed[..word_end].trim_end().to_owned()
 }
@@ -57,9 +54,7 @@ fn sanitize_fts_query(input: &str) -> String {
             result.push(' ');
             prev_space = true;
         }
-        // Other punctuation is dropped
     }
-    // Trim trailing space
     if result.ends_with(' ') {
         result.pop();
     }
@@ -76,7 +71,7 @@ pub(crate) fn format_skill_as_markdown(skill: &aletheia_mneme::skill::SkillConte
     if !skill.steps.is_empty() {
         md.push_str("\n\n**Steps:**\n");
         for (i, step) in skill.steps.iter().enumerate() {
-            // writeln! on String never returns Err
+            // SAFETY: writeln! on String is infallible
             let _ = writeln!(md, "{}. {}", i + 1, step);
         }
     }
@@ -91,8 +86,6 @@ pub(crate) fn format_skill_as_markdown(skill: &aletheia_mneme::skill::SkillConte
 
     md
 }
-
-// ── knowledge-store-only items ───────────────────────────────────────────────
 
 #[cfg(feature = "knowledge-store")]
 use std::sync::Arc;
@@ -185,7 +178,7 @@ impl SkillLoader {
             return vec![];
         }
 
-        // Fetch 2× candidates to have headroom for ranking
+        // WHY: fetch 2x candidates to have headroom for ranking
         let fetch_limit = max_skills.saturating_mul(2).max(4);
         let store = Arc::clone(&self.knowledge_store);
         let nous_id_owned = nous_id.to_owned();
@@ -217,7 +210,7 @@ impl SkillLoader {
 
         let sections: Vec<BootstrapSection> = selected.iter().map(fact_to_section).collect();
 
-        // Increment access counts in the background — do not block the pipeline
+        // WHY: background increment avoids blocking the pipeline
         if !selected.is_empty() {
             let ids: Vec<_> = selected.iter().map(|f| f.id.clone()).collect();
             let store = Arc::clone(&self.knowledge_store);
@@ -298,7 +291,7 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
                 reason = "age in seconds converted to days; sub-second precision is not needed"
             )]
             let age_days = ((now_secs - reference_secs).max(0) as f64) / 86_400.0;
-            // Half-life of 30 days: recency = 2^(-age/30)
+            // NOTE: half-life of 30 days: recency = 2^(-age/30)
             let recency_score = 2_f64.powf(-age_days / 30.0);
 
             let score = 0.40 * position_score
@@ -310,14 +303,9 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
         })
         .collect();
 
-    // Sort descending by score
     scored.sort_by(|(a, _), (b, _)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
     scored.into_iter().map(|(_, fact)| fact).collect()
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "test assertions")]

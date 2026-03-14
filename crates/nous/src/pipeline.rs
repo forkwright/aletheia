@@ -87,6 +87,7 @@ pub struct PipelineMessage {
 }
 
 /// Guard stage result.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GuardResult {
     /// Request is allowed.
@@ -141,7 +142,6 @@ impl LoopDetector {
         let signature = format!("{tool_name}:{input_hash}");
         self.history.push_back(signature.clone());
 
-        // Evict oldest entry if over window cap
         if self.history.len() > self.window {
             self.history.pop_front();
         }
@@ -149,19 +149,15 @@ impl LoopDetector {
         let n = self.history.len();
         let t = self.threshold as usize;
 
-        // Check for N consecutive identical calls
         let recent = self.history.iter().rev().take(t);
         let all_same = recent.clone().count() >= t && recent.clone().all(|s| *s == signature);
         if all_same {
             return Some(signature);
         }
 
-        // Check for repeating sequence cycles (A→B→C→A etc.).
-        //
-        // A cycle of length L is confirmed when the last L×threshold history
-        // entries consist of exactly `threshold` repetitions of the same
-        // L-length pattern.  The inner comparison uses `VecDeque::get` so no
-        // allocation is required.
+        // NOTE: cycle detection — a cycle of length L is confirmed when the last L×threshold
+        // history entries consist of exactly `threshold` repetitions of the same L-length pattern;
+        // `VecDeque::get` is used to avoid allocation in the inner comparison.
         for cycle_len in 2..=CYCLE_DETECTION_MAX_LEN {
             let needed = cycle_len * t;
             if n < needed {
@@ -409,7 +405,6 @@ pub async fn run_pipeline(
     let _pipeline_guard = pipeline_span.enter();
     let mut stages_completed: u32 = 0;
 
-    // Stage 1: Context (with domain pack sections if any)
     let mut ctx = PipelineContext::default();
     {
         let span = info_span!(
@@ -437,7 +432,6 @@ pub async fn run_pipeline(
         stages_completed += 1;
     }
 
-    // Stage 1.5: Recall
     {
         let span = info_span!(
             "pipeline_stage",
@@ -456,7 +450,7 @@ pub async fn run_pipeline(
         )]
         let budget = ctx.remaining_tokens.max(0) as u64;
 
-        // BM25-only fallback when mock embedding provider is in use.
+        // NOTE: BM25-only fallback when mock embedding provider is in use.
         // Vector recall would produce meaningless results from hash-based embeddings.
         if is_mock_embedding {
             if let Some(ts) = text_search {
@@ -510,7 +504,6 @@ pub async fn run_pipeline(
         stages_completed += 1;
     }
 
-    // Stage 2: History
     {
         let span = info_span!(
             "pipeline_stage",
@@ -521,13 +514,13 @@ pub async fn run_pipeline(
         let _guard = span.enter();
         let start = Instant::now();
 
-        // Waterfall: unused system-prompt budget flows into the history budget
+        // NOTE: Waterfall — unused system-prompt budget flows into the history budget
         // so tokens not consumed by bootstrap or recall are not wasted.
         ctx.history_budget += ctx.remaining_tokens.max(0);
 
         let history_config = HistoryConfig::default();
         if let Some(store_mutex) = session_store {
-            // Guard is scoped to this block and dropped before the execute .await below
+            // WHY: guard scoped and dropped before execute .await
             let store = store_mutex.lock().await;
             let (messages, hist_result) = history::load_history(
                 &store,
@@ -561,7 +554,6 @@ pub async fn run_pipeline(
         stages_completed += 1;
     }
 
-    // Stage 3: Guard
     {
         let span = info_span!(
             "pipeline_stage",
@@ -610,9 +602,6 @@ pub async fn run_pipeline(
         }
     }
 
-    // Stage 4: Resolve (stub)
-
-    // Stage 5: Execute
     let result;
     {
         let span = info_span!(
@@ -626,8 +615,7 @@ pub async fn run_pipeline(
         let _guard = span.enter();
         let start = Instant::now();
 
-        // Compute the effective execute timeout: prefer per-stage budget, fall
-        // back to remaining time from total pipeline budget, whichever is tighter.
+        // NOTE: prefer per-stage budget, fall back to remaining time from total pipeline budget, whichever is tighter.
         let execute_secs = pipeline_config.stage_budget.execute_secs;
         let effective_execute_timeout = match (execute_secs > 0, total_timeout) {
             (true, Some(total)) => {
@@ -694,7 +682,6 @@ pub async fn run_pipeline(
         stages_completed += 1;
     }
 
-    // Stage 6: Finalize
     {
         let span = info_span!(
             "pipeline_stage",
@@ -742,8 +729,6 @@ pub async fn run_pipeline(
         stages_completed += 1;
     }
 
-    // Record tool observations for the instinct system (behavioral memory).
-    // This is non-blocking and does not affect the pipeline result.
     if !result.tool_calls.is_empty() {
         crate::instinct::record_observations(&result.tool_calls, &input.content, &config.id);
     }

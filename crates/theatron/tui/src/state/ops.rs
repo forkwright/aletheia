@@ -1,6 +1,7 @@
 //! State for the operations pane — right-side panel showing thinking, tool calls, and diffs.
 
 /// Which pane currently has keyboard focus.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FocusedPane {
     #[default]
@@ -9,6 +10,7 @@ pub enum FocusedPane {
 }
 
 /// Status of a tool call in the operations pane.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpsToolStatus {
     Running,

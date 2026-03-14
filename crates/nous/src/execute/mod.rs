@@ -91,7 +91,6 @@ pub async fn execute(
             break;
         }
 
-        // Rebuild tool list each iteration so enable_tool activations take effect
         let active = tool_ctx
             .active_tools
             .read()
@@ -102,10 +101,10 @@ pub async fn execute(
             .clone();
         let tool_defs = tools.to_hermeneus_tools_filtered(&active);
 
-        // Derive server tools from config + active_tools (enable_tool activations)
+        // WHY: derive server tools on each iteration so enable_tool activations take effect
         let server_tools = if let Some(services) = tool_ctx.services.as_deref() {
             let mut st = services.server_tool_config.active_definitions(&active);
-            // Also include any raw server_tools from NousConfig for backward compat
+            // WHY: also include raw server_tools from NousConfig for backward compatibility
             st.extend(config.server_tools.clone());
             st
         } else {
@@ -179,8 +178,7 @@ pub async fn execute(
         final_content = text_parts.join("");
         final_stop_reason = response.stop_reason.to_string();
 
-        // Only break if there are no LOCAL tool uses to dispatch.
-        // Server tool results (web search, code execution) do not require client tool_result.
+        // WHY: only break on no local tool uses — server tool results don't require client tool_result
         if tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
             break;
         }
@@ -250,7 +248,7 @@ pub async fn execute_streaming(
 ) -> error::Result<TurnResult> {
     let streaming_provider = providers.find_streaming_provider(&config.model);
 
-    // Fall back to non-streaming if no streaming provider available
+    // NOTE: fall back to non-streaming execute if no streaming provider is registered for this model
     let Some(streaming_provider) = streaming_provider else {
         return execute(ctx, session, config, providers, tools, tool_ctx).await;
     };
@@ -302,7 +300,7 @@ pub async fn execute_streaming(
             break;
         }
 
-        // Derive server tools from ServerToolConfig + NousConfig
+        // WHY: derive server tools on each iteration so enable_tool activations take effect
         let active = tool_ctx
             .active_tools
             .read()

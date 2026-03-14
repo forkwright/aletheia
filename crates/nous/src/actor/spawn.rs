@@ -115,7 +115,6 @@ pub(crate) async fn validate_workspace(oikos: &Oikos, nous_id: &str) -> crate::e
         .build());
     }
 
-    // Log warnings for missing optional workspace files
     for filename in &[
         "USER.md",
         "AGENTS.md",

@@ -110,8 +110,7 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
-        // Capture OSC 8 link data produced during the render pass.
-        // We use Cell so the draw closure can move data out without needing &mut app.
+        // NOTE: Cell lets the draw closure move link data out without needing &mut app.
         let link_cell: std::cell::Cell<Vec<hyperlink::OscLink>> = std::cell::Cell::new(Vec::new());
         terminal
             .draw(|frame| link_cell.set(app.view(frame)))
@@ -120,11 +119,9 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
             })?;
         let osc_links = link_cell.into_inner();
 
-        // Post-render: emit OSC 8 sequences over the already-rendered text.
-        // This works because OSC 8 is independent of visual rendering —
-        // we re-write the link text at its exact screen position wrapped in
-        // OSC 8 open/close sequences, which tells the terminal those cells
-        // are a clickable hyperlink without altering their visual appearance.
+        // NOTE: Emit OSC 8 sequences post-render. OSC 8 is independent of visual
+        // rendering — re-writing link text wrapped in open/close sequences marks those
+        // cells clickable without altering their visual appearance.
         if !osc_links.is_empty() {
             emit_osc8_links(terminal.backend_mut(), &osc_links).context(IoSnafu {
                 context: "emit osc8 links",
@@ -193,7 +190,7 @@ fn emit_osc8_links<W: std::io::Write>(writer: &mut W, links: &[OscLink]) -> std:
             SetForegroundColor(Color::Rgb { r, g, b }),
             SetAttribute(Attribute::Underlined),
             crossterm::style::Print(format!(
-                "{}{}{}", // OSC8_open + text + OSC8_close in one Print
+                "{}{}{}",
                 crate::hyperlink::osc8_open(&link.url),
                 link.text,
                 crate::hyperlink::osc8_close(),

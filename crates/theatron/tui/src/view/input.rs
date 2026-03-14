@@ -18,9 +18,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         theme.colors.accent
     };
 
-    let prompt_width = prompt_str.len(); // ASCII-only prompt, bytes == display columns
+    // NOTE: ASCII-only prompt — bytes equal display columns
+    let prompt_width = prompt_str.len();
     let content_width = area.width.max(1) as usize;
-    let visible_rows = area.height.saturating_sub(1) as usize; // subtract top border
+    let visible_rows = area.height.saturating_sub(1) as usize;
 
     let text = app.input.text.as_str();
     let cursor_byte = app.input.cursor;
@@ -31,7 +32,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let (cursor_row, cursor_col) =
         cursor_visual_position(&line_ranges, text, cursor_byte, prompt_width);
 
-    // Scroll to keep cursor visible (cursor_row is 0-indexed).
     let scroll = if visible_rows > 0 {
         (cursor_row as usize).saturating_sub(visible_rows - 1)
     } else {
@@ -42,7 +42,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let has_above = scroll > 0;
     let has_below = scroll + visible_rows < total_rows;
 
-    // Build one ratatui Line per word-wrapped visual line.
     let mut ratatui_lines: Vec<Line<'static>> = Vec::with_capacity(total_rows);
     for (i, &(start, end)) in line_ranges.iter().enumerate() {
         let line_text = text[start..end].to_string();
@@ -56,7 +55,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
     }
 
-    // Scroll indicator: annotate the last visible row when lines are hidden.
     if has_above || has_below {
         let indicator = match (has_above, has_below) {
             (true, true) => " ↕",
@@ -78,9 +76,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         .scroll((scroll as u16, 0));
     frame.render_widget(paragraph, area);
 
-    // Position terminal cursor.
     let visible_row = (cursor_row as usize).saturating_sub(scroll);
-    let cursor_y = area.y + 1 + visible_row as u16; // +1 for top border
+    let cursor_y = area.y + 1 + visible_row as u16;
     let cursor_x = area.x + cursor_col;
     frame.set_cursor_position((cursor_x, cursor_y));
 }
@@ -120,7 +117,7 @@ pub(crate) fn word_wrap_lines(
             break;
         }
 
-        // Count display columns and find the last whitespace within `avail` columns.
+        // NOTE: count display columns and track the last whitespace within `avail` columns
         let mut last_ws_byte: Option<usize> = None; // byte offset within `remaining`
         let mut byte_at_avail: usize = remaining.len(); // byte offset of char at position `avail`
         let mut col_width = 0usize;
@@ -136,20 +133,19 @@ pub(crate) fn word_wrap_lines(
             col_width += UnicodeWidthChar::width(c).unwrap_or(1);
         }
 
-        // If remaining text fits entirely, this is the last line.
+        // NOTE: if remaining text fits entirely, this is the last line
         if col_width < avail || UnicodeWidthStr::width(remaining) <= avail {
             lines.push((pos, pos + remaining.len()));
             break;
         }
 
-        // Determine the break point.
         if let Some(ws_b) = last_ws_byte {
-            // Break at the last whitespace: exclude it from both lines.
+            // NOTE: break at the last whitespace — exclude it from both lines
             let ws_len = remaining[ws_b..].chars().next().map_or(1, |c| c.len_utf8());
             lines.push((pos, pos + ws_b));
             pos += ws_b + ws_len; // skip over the whitespace
         } else {
-            // No whitespace within `avail` — char-wrap at the boundary.
+            // NOTE: no whitespace within `avail` — char-wrap at the boundary
             lines.push((pos, pos + byte_at_avail));
             pos += byte_at_avail;
         }

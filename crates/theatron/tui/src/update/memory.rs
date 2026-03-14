@@ -9,7 +9,6 @@ use crate::state::view_stack::View;
 pub async fn handle_open(app: &mut App) {
     app.view_stack.push(View::MemoryInspector);
     app.memory.loading = true;
-    // Load facts from the API
     load_facts(app).await;
 }
 
@@ -185,7 +184,7 @@ pub async fn handle_confidence_submit(app: &mut App) {
         .selected_fact()
         .map(|f| (f.id.clone(), f.confidence));
     if let Some((id, prev_conf)) = selected {
-        // Optimistic update: apply locally before the API round-trip.
+        // NOTE: optimistic update — applied locally before the API round-trip to avoid UI lag
         if let Some(f) = app.memory.facts.iter_mut().find(|f| f.id == id) {
             f.confidence = conf;
         }
@@ -195,7 +194,7 @@ pub async fn handle_confidence_submit(app: &mut App) {
                 app.error_toast = Some(ErrorToast::new(format!("Confidence set to {conf:.2}")));
             }
             Err(e) => {
-                // Revert the optimistic update on failure.
+                // NOTE: revert the optimistic update on failure
                 if let Some(f) = app.memory.facts.iter_mut().find(|f| f.id == id) {
                     f.confidence = prev_conf;
                 }
@@ -232,7 +231,7 @@ pub async fn handle_search_submit(app: &mut App) {
         return;
     }
     app.memory.search_active = false;
-    // Perform search via local fuzzy filtering for now
+    // NOTE: local fuzzy filtering — server-side semantic search not yet wired in
     let query = app.memory.search_query.to_lowercase();
     let terms: Vec<&str> = query.split_whitespace().collect();
 
@@ -287,8 +286,6 @@ pub fn handle_search_close(app: &mut App) {
     app.memory.search_results.clear();
 }
 
-// --- Data loading ---
-
 pub fn handle_facts_loaded(app: &mut App, facts: Vec<MemoryFact>, total: usize) {
     app.memory.facts = facts;
     app.memory.total_facts = total;
@@ -304,8 +301,6 @@ pub fn handle_detail_loaded(app: &mut App, detail: FactDetail) {
 pub fn handle_action_result(app: &mut App, message: String) {
     app.error_toast = Some(ErrorToast::new(message));
 }
-
-// --- Internal helpers ---
 
 async fn load_facts(app: &mut App) {
     let client = app.client.clone();
@@ -341,7 +336,7 @@ async fn load_fact_detail(app: &mut App, fact_id: &str) {
             tracing::debug!("failed to load fact detail: {e}");
         }
     }
-    // Fallback: create minimal detail from local data
+    // NOTE: fallback to local data when API detail fetch fails
     if let Some(fact) = app.memory.facts.iter().find(|f| f.id == fact_id) {
         app.memory.detail = Some(FactDetail {
             fact: fact.clone(),

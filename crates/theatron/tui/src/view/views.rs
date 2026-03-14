@@ -145,7 +145,6 @@ pub(crate) fn render_message_detail(
     lines.push(Line::raw(""));
 
     if let Some(msg) = app.messages.get(message_index) {
-        // Header
         let role_label = match msg.role.as_str() {
             "user" => "You",
             "assistant" => "Assistant",
@@ -159,7 +158,6 @@ pub(crate) fn render_message_detail(
             ),
         ]));
 
-        // Metadata
         if let Some(ref model) = msg.model {
             lines.push(Line::from(vec![
                 Span::raw("  "),
@@ -178,7 +176,6 @@ pub(crate) fn render_message_detail(
 
         lines.push(Line::raw(""));
 
-        // Tool calls
         if !msg.tool_calls.is_empty() {
             lines.push(Line::from(vec![
                 Span::raw("  "),
@@ -206,7 +203,6 @@ pub(crate) fn render_message_detail(
             lines.push(Line::raw(""));
         }
 
-        // Full content
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled("Content:", theme.style_fg().add_modifier(Modifier::BOLD)),
@@ -265,18 +261,12 @@ pub(crate) fn render_for_view(
     theme: &Theme,
 ) -> Vec<OscLink> {
     match app.view_stack.current() {
-        View::Home => {
-            // Home view uses the existing chat area rendering
-            super::render_chat_area(app, frame, area, theme)
-        }
+        View::Home => super::render_chat_area(app, frame, area, theme),
         View::Sessions { .. } => {
             render_sessions(app, frame, area, theme);
             Vec::new()
         }
-        View::Conversation { .. } => {
-            // Conversation view reuses the chat area rendering
-            super::render_chat_area(app, frame, area, theme)
-        }
+        View::Conversation { .. } => super::render_chat_area(app, frame, area, theme),
         View::MessageDetail { message_index } => {
             render_message_detail(app, frame, area, theme, *message_index);
             Vec::new()

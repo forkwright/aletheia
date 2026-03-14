@@ -29,7 +29,7 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
 }
 
 pub(crate) fn handle_close_overlay(app: &mut App) {
-    // Settings edit mode: Esc cancels the edit, not the overlay
+    // NOTE: Esc in settings edit mode cancels the edit, not the overlay itself
     if let Some(Overlay::Settings(ref s)) = app.overlay
         && s.editing.is_some()
     {

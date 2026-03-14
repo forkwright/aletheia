@@ -149,6 +149,7 @@ pub struct StageTimingRecord {
 }
 
 /// How a pipeline stage completed.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StageTimingStatus {
     /// Stage ran to completion within its time budget.
