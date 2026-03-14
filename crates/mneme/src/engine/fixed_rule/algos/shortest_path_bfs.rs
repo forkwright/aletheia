@@ -17,6 +17,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct ShortestPathBFS;
 
 impl FixedRule for ShortestPathBFS {
+    #[expect(
+        clippy::expect_used,
+        reason = "ensure_min_len(1) guarantees tuples are non-empty"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

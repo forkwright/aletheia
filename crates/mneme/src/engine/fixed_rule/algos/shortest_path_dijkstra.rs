@@ -23,6 +23,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct ShortestPathDijkstra;
 
 impl FixedRule for ShortestPathDijkstra {
+    #[expect(
+        clippy::expect_used,
+        reason = "termination set checked len() == 1 before .next()"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -368,6 +372,10 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                 }
 
                 impl CollectPath {
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "chain initialized with [target] and only extended, never empty"
+                    )]
                     fn collect(
                         &mut self,
                         chain: &[u32],

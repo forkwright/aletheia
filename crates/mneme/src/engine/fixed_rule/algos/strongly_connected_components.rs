@@ -36,6 +36,10 @@ impl StronglyConnectedComponent {
 
 #[cfg(feature = "graph-algo")]
 impl FixedRule for StronglyConnectedComponent {
+    #[expect(
+        clippy::expect_used,
+        reason = "indices bounded by graph size; tuples guaranteed non-empty"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -121,6 +125,10 @@ impl TarjanSccG {
 
         Ok(low_map.into_values().collect_vec())
     }
+    #[expect(
+        clippy::expect_used,
+        reason = "ids[at] set on entry before recursive use"
+    )]
     fn dfs(&mut self, at: u32) {
         self.stack.push(at);
         self.on_stack[at as usize] = true;

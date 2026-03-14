@@ -182,6 +182,10 @@ impl RelationHandle {
         );
         Ok(NamedRows::new(headers, rows))
     }
+    #[expect(
+        clippy::expect_used,
+        reason = "arg_uses and mapper guaranteed non-empty by callers"
+    )]
     pub(crate) fn choose_index(
         &self,
         arg_uses: &[IndexPositionUse],
@@ -557,6 +561,10 @@ pub fn decode_tuple_from_kv(key: &[u8], val: &[u8], size_hint: Option<usize>) ->
     tup
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "storage layer invariant — msgpack corruption is unrecoverable"
+)]
 pub fn extend_tuple_from_v(key: &mut Tuple, val: &[u8]) {
     if !val.is_empty() {
         // INVARIANT: storage layer writes well-formed msgpack tuples; deserialization only fails on data corruption
@@ -792,6 +800,10 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "pest parse success guarantees at least one pair"
+    )]
     pub(crate) fn create_minhash_lsh_index(&mut self, config: &MinHashLshConfig) -> Result<()> {
         // Get relation handle
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
@@ -934,6 +946,10 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "pest parse success guarantees at least one pair"
+    )]
     pub(crate) fn create_fts_index(&mut self, config: &FtsIndexConfig) -> Result<()> {
         // Get relation handle
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
@@ -1087,6 +1103,10 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "pest parse success guarantees at least one pair"
+    )]
     pub(crate) fn create_hnsw_index(&mut self, config: &HnswIndexConfig) -> Result<()> {
         // Get relation handle
         let mut rel_handle = self.get_relation(&config.base_relation, true)?;
@@ -1489,6 +1509,10 @@ impl<'a> SessionTx<'a> {
         Ok(())
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "RwLock poisoning is unrecoverable — propagating would leave caches inconsistent"
+    )]
     pub(crate) fn remove_index(
         &mut self,
         rel_name: &Symbol,

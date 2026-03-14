@@ -46,6 +46,10 @@ impl FixedRule for LabelPropagation {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "candidate_labels guaranteed non-empty by take_while on non-empty source"
+)]
 fn label_propagation(
     graph: &DirectedCsrGraph<f32>,
     max_iter: usize,

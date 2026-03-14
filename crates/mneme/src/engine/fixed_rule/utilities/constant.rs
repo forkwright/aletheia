@@ -17,6 +17,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct Constant;
 
 impl FixedRule for Constant {
+    #[expect(
+        clippy::expect_used,
+        reason = "data shape validated by init_options before run"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -41,6 +45,10 @@ impl FixedRule for Constant {
         Ok(())
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "data shape validated by init_options before arity"
+    )]
     fn arity(
         &self,
         options: &BTreeMap<CompactString, Expr>,

@@ -16,6 +16,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct TopSort;
 
 impl FixedRule for TopSort {
+    #[expect(
+        clippy::expect_used,
+        reason = "val_id produced by graph traversal, always in bounds"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,

@@ -60,6 +60,10 @@ impl FixedRule for CommunityDetectionLouvain {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "collected guaranteed non-empty immediately after push"
+)]
 fn louvain(
     graph: &DirectedCsrGraph<f32>,
     delta: f32,
