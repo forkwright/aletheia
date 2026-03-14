@@ -1,0 +1,1 @@
+{"agents":{"defaults":{"model":{"primary":"claude-sonnet-4-20250514"},"contextTokens":200000},"list":[]},"gateway":{"port":3000,"bindLocal":true},"channels":{},"bindings":[],"embedding":{},"data":{},"maintenance":{},"pricing":{},"sandbox":{},"credential":{}}
