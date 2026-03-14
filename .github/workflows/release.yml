@@ -27,20 +27,26 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact: aletheia-linux-amd64
+            artifact: aletheia-linux-x86_64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact: aletheia-linux-arm64
+            artifact: aletheia-linux-aarch64
             cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
-            artifact: aletheia-macos-amd64
+            artifact: aletheia-macos-x86_64
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact: aletheia-macos-arm64
+            artifact: aletheia-macos-aarch64
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
@@ -56,28 +62,31 @@ jobs:
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} --features recall
+        run: cargo build --release --target ${{ matrix.target }} --features recall,embed-candle
 
       - name: Build (cross)
         if: ${{ matrix.cross }}
-        run: cross build --release --target ${{ matrix.target }} --features recall
+        run: cross build --release --target ${{ matrix.target }} --features recall,embed-candle
 
       - name: Rename binary
-        run: cp target/${{ matrix.target }}/release/aletheia ${{ matrix.artifact }}
+        run: |
+          bin="${{ matrix.artifact }}-${{ steps.version.outputs.version }}"
+          cp "target/${{ matrix.target }}/release/aletheia" "$bin"
+          echo "BIN=$bin" >> "$GITHUB_ENV"
 
       - name: Generate checksum (Linux)
         if: runner.os == 'Linux'
-        run: sha256sum ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+        run: sha256sum "$BIN" > "$BIN.sha256"
 
       - name: Generate checksum (macOS)
         if: runner.os == 'macOS'
-        run: shasum -a 256 ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+        run: shasum -a 256 "$BIN" > "$BIN.sha256"
 
       - name: Upload binary and checksum
         run: |
           gh release upload "${GITHUB_REF#refs/tags/}" \
-            ${{ matrix.artifact }} \
-            ${{ matrix.artifact }}.sha256 \
+            "$BIN" \
+            "$BIN.sha256" \
             --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
