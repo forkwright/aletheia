@@ -10,15 +10,35 @@ pub trait TokenEstimator: Send + Sync {
     fn estimate(&self, text: &str) -> u64;
 }
 
-/// Character-based token estimator: 1 token ≈ 4 characters (ceiling division).
+/// Character-based token estimator: 1 token ≈ N characters (ceiling division).
 ///
 /// Conservative estimate suitable for budget planning. Actual token counts
 /// from the Anthropic API will be lower, giving natural headroom.
-pub struct CharEstimator;
+/// `chars_per_token` is configurable via `agents.defaults.chars_per_token`
+/// in `aletheia.toml`; the default of 4 preserves prior behaviour.
+pub struct CharEstimator {
+    chars_per_token: u64,
+}
+
+impl CharEstimator {
+    /// Create an estimator with an explicit characters-per-token divisor.
+    #[must_use]
+    pub fn new(chars_per_token: u64) -> Self {
+        Self { chars_per_token }
+    }
+}
+
+impl Default for CharEstimator {
+    fn default() -> Self {
+        // WHY: 4 chars per token is the classic heuristic for English text and
+        //      matches the historical hardcoded value — no behaviour change.
+        Self { chars_per_token: 4 }
+    }
+}
 
 impl TokenEstimator for CharEstimator {
     fn estimate(&self, text: &str) -> u64 {
-        (text.len() as u64).div_ceil(4)
+        (text.len() as u64).div_ceil(self.chars_per_token)
     }
 }
 
@@ -253,28 +273,28 @@ mod tests {
 
     #[test]
     fn char_estimator_empty_string() {
-        assert_eq!(CharEstimator.estimate(""), 0);
+        assert_eq!(CharEstimator::default().estimate(""), 0);
     }
 
     #[test]
     fn char_estimator_exact_multiple() {
         // 8 chars / 4 = 2 tokens
-        assert_eq!(CharEstimator.estimate("abcdefgh"), 2);
+        assert_eq!(CharEstimator::default().estimate("abcdefgh"), 2);
     }
 
     #[test]
     fn char_estimator_rounds_up() {
         // 5 chars -> ceil(5/4) = 2
-        assert_eq!(CharEstimator.estimate("hello"), 2);
+        assert_eq!(CharEstimator::default().estimate("hello"), 2);
         // 1 char -> ceil(1/4) = 1
-        assert_eq!(CharEstimator.estimate("a"), 1);
+        assert_eq!(CharEstimator::default().estimate("a"), 1);
         // 3 chars -> ceil(3/4) = 1
-        assert_eq!(CharEstimator.estimate("abc"), 1);
+        assert_eq!(CharEstimator::default().estimate("abc"), 1);
     }
 
     #[test]
     fn char_estimator_single_char() {
-        assert_eq!(CharEstimator.estimate("x"), 1);
+        assert_eq!(CharEstimator::default().estimate("x"), 1);
     }
 
     #[test]

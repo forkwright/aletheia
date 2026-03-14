@@ -244,7 +244,7 @@ pub(crate) fn fact_to_section(fact: &Fact) -> BootstrapSection {
         fact.content.clone()
     };
 
-    let tokens = CharEstimator.estimate(&content);
+    let tokens = CharEstimator::default().estimate(&content);
 
     BootstrapSection {
         name: format!("[skill] {}", fact.id),

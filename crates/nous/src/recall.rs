@@ -157,6 +157,23 @@ pub struct RecallConfig {
     /// Per-factor scoring weights applied when building candidates.
     #[serde(default)]
     pub weights: RecallWeights,
+    /// Per-factor engine scoring weights for the mneme `RecallEngine`.
+    ///
+    /// Controls the weighted combination of retrieval signals. Wired from
+    /// `agents.defaults.recall.engine_weights` at startup; defaults match
+    /// the mneme engine built-in values for zero behavioural change.
+    #[serde(default)]
+    pub engine_weights: aletheia_taxis::config::RecallEngineWeights,
+    /// Characters per token for recall budget estimation.
+    ///
+    /// Wired from `agents.defaults.chars_per_token` at startup.
+    /// Default: 4 (1 token ≈ 4 chars).
+    #[serde(default = "default_chars_per_token")]
+    pub chars_per_token: u64,
+}
+
+fn default_chars_per_token() -> u64 {
+    4
 }
 
 impl Default for RecallConfig {
@@ -169,6 +186,8 @@ impl Default for RecallConfig {
             iterative: false,
             max_cycles: 2,
             weights: RecallWeights::default(),
+            engine_weights: aletheia_taxis::config::RecallEngineWeights::default(),
+            chars_per_token: default_chars_per_token(),
         }
     }
 }
@@ -189,6 +208,11 @@ impl From<aletheia_taxis::config::RecallSettings> for RecallConfig {
                 relationship_proximity: s.weights.relationship_proximity,
                 access_frequency: s.weights.access_frequency,
             },
+            engine_weights: s.engine_weights,
+            // NOTE: chars_per_token is forwarded separately from AgentDefaults
+            //       via NousConfig; the From conversion cannot carry it since
+            //       RecallSettings does not own that field.
+            chars_per_token: default_chars_per_token(),
         }
     }
 }
@@ -224,11 +248,20 @@ pub struct RecallStage {
 }
 
 impl RecallStage {
-    /// Create a recall stage with default scoring weights.
+    /// Create a recall stage, wiring operator-configured engine weights.
     #[must_use]
     pub fn new(config: RecallConfig) -> Self {
+        let ew = &config.engine_weights;
+        let engine_weights = aletheia_mneme::recall::RecallWeights {
+            vector_similarity: ew.vector_similarity,
+            decay: ew.decay,
+            relevance: ew.relevance,
+            epistemic_tier: ew.epistemic_tier,
+            relationship_proximity: ew.relationship_proximity,
+            access_frequency: ew.access_frequency,
+        };
         Self {
-            engine: RecallEngine::new(),
+            engine: RecallEngine::with_weights(engine_weights),
             config,
         }
     }
@@ -467,17 +500,14 @@ impl RecallStage {
             .collect()
     }
 
-    #[expect(
-        clippy::unused_self,
-        reason = "will use config fields when budget strategy is extended"
-    )]
     fn format_within_budget(&self, results: &[ScoredResult], budget: u64) -> (usize, String, u64) {
+        let cpt = self.config.chars_per_token;
         let mut included = Vec::with_capacity(results.len());
 
         for result in results {
             included.push(result);
             let section = format_section(&included);
-            let tokens = estimate_tokens(&section);
+            let tokens = estimate_tokens(&section, cpt);
             if tokens > budget {
                 included.pop();
                 break;
@@ -489,7 +519,7 @@ impl RecallStage {
         }
 
         let section = format_section(&included);
-        let tokens = estimate_tokens(&section);
+        let tokens = estimate_tokens(&section, cpt);
         (included.len(), section, tokens)
     }
 }
@@ -749,11 +779,15 @@ pub fn format_section(results: &[&ScoredResult]) -> String {
     out
 }
 
-/// Estimate token count from text length (~4 chars per token, ceiling).
+/// Estimate token count from text length using a configurable character divisor.
+///
+/// `chars_per_token` is the number of characters assumed per token. Use
+/// `RecallConfig::chars_per_token` for operator-configurable behaviour, or
+/// pass `4` directly in tests and contexts without a live config.
 #[must_use]
-pub fn estimate_tokens(text: &str) -> u64 {
+pub fn estimate_tokens(text: &str, chars_per_token: u64) -> u64 {
     let len = text.len() as u64;
-    len.div_ceil(4)
+    len.div_ceil(chars_per_token.max(1))
 }
 
 #[cfg(test)]
