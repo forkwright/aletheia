@@ -111,4 +111,3 @@ mod coexistence_tests {
         drop(ss);
     }
 }
-
