@@ -231,6 +231,7 @@ pub(crate) fn estimate_message_height(text_len: usize, has_tools: bool, width: u
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 

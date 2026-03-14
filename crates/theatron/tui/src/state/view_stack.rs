@@ -67,8 +67,11 @@ impl ViewStack {
     }
 
     /// The currently active view (top of stack).
+    #[expect(
+        clippy::expect_used,
+        reason = "ViewStack invariant: stack is never empty — new() initialises with Home and pop() guards the minimum"
+    )]
     pub fn current(&self) -> &View {
-        // SAFETY: invariant guarantees at least one element.
         self.stack.last().expect("ViewStack invariant: never empty")
     }
 

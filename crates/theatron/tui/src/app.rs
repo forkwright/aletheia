@@ -30,6 +30,11 @@ pub use crate::state::{
     TabCompletion, ToolApprovalOverlay, ToolCallInfo, View, ViewStack,
 };
 
+/// Default terminal width used before the first resize event arrives.
+const DEFAULT_TERMINAL_WIDTH: u16 = 120;
+/// Default terminal height used before the first resize event arrives.
+const DEFAULT_TERMINAL_HEIGHT: u16 = 40;
+
 pub struct App {
     pub config: Config,
     pub client: ApiClient,
@@ -169,8 +174,8 @@ impl App {
             error_toast: None,
             success_toast: None,
             tab_completion: None,
-            terminal_width: 120,
-            terminal_height: 40,
+            terminal_width: DEFAULT_TERMINAL_WIDTH,
+            terminal_height: DEFAULT_TERMINAL_HEIGHT,
             command_palette: CommandPaletteState::default(),
             session_cost_cents: 0,
             context_usage_pct: None,
@@ -505,6 +510,10 @@ impl App {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "test helper; ApiClient construction failure indicates a bug in test setup"
+)]
 pub(crate) mod test_helpers {
     use super::*;
     use std::collections::{HashMap, HashSet};
@@ -554,8 +563,8 @@ pub(crate) mod test_helpers {
             error_toast: None,
             success_toast: None,
             tab_completion: None,
-            terminal_width: 120,
-            terminal_height: 40,
+            terminal_width: DEFAULT_TERMINAL_WIDTH,
+            terminal_height: DEFAULT_TERMINAL_HEIGHT,
             command_palette: CommandPaletteState::default(),
             session_cost_cents: 0,
             context_usage_pct: None,
@@ -611,6 +620,7 @@ pub(crate) mod test_helpers {
 #[cfg(test)]
 mod tests {
     use super::test_helpers::*;
+    use super::{DEFAULT_TERMINAL_HEIGHT, DEFAULT_TERMINAL_WIDTH};
     use crate::state::{ChatMessage, OpsState};
 
     #[test]
@@ -624,8 +634,8 @@ mod tests {
         assert!(app.messages.is_empty());
         assert!(app.agents.is_empty());
         assert_eq!(app.scroll_offset, 0);
-        assert_eq!(app.terminal_width, 120);
-        assert_eq!(app.terminal_height, 40);
+        assert_eq!(app.terminal_width, DEFAULT_TERMINAL_WIDTH);
+        assert_eq!(app.terminal_height, DEFAULT_TERMINAL_HEIGHT);
         assert!(!app.sse_connected);
         assert!(app.sse_disconnected_at.is_none());
     }
