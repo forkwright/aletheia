@@ -64,17 +64,21 @@ pub async fn run(args: Args) -> Result<()> {
 
     info!("aletheia starting");
 
-    // WHY: root cancellation token — child tokens propagated to every actor and daemon task
+    // Root cancellation token — cancelled on SIGTERM/SIGINT.
+    // Child tokens are propagated to every actor and daemon task.
     let shutdown_token = CancellationToken::new();
 
+    // Oikos — instance directory resolution
     let oikos = match &args.instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
     info!(root = %oikos.root().display(), "instance discovered");
 
+    // Startup validation — fail fast before any actors or stores initialise
     oikos.validate().context("instance layout invalid")?;
 
+    // Config cascade: defaults → TOML → env
     let config = load_config(&oikos).context("failed to load config")?;
     info!(
         port = config.gateway.port,
@@ -82,6 +86,7 @@ pub async fn run(args: Args) -> Result<()> {
         "config loaded"
     );
 
+    // Validate all config sections — fail fast before any actors or stores initialise.
     let config_value =
         serde_json::to_value(&config).context("failed to serialize config for validation")?;
     for section in &[
@@ -101,6 +106,7 @@ pub async fn run(args: Args) -> Result<()> {
     }
     info!("config validated");
 
+    // JWT key validation — fail if auth mode requires JWT and the key is still the placeholder.
     let jwt_key = config
         .gateway
         .auth
@@ -120,6 +126,7 @@ pub async fn run(args: Args) -> Result<()> {
         );
     }
 
+    // Validate per-agent workspace paths — fatal if any agent workspace is invalid.
     for agent in &config.agents.list {
         oikos.validate_workspace_path(&agent.workspace).with_context(|| {
             format!(
@@ -129,9 +136,11 @@ pub async fn run(args: Args) -> Result<()> {
         })?;
     }
 
+    // Domain packs — load external knowledge packs declared in config
     let loaded_packs = aletheia_thesauros::loader::load_packs(&config.packs);
     let packs = Arc::new(loaded_packs);
 
+    // Session store
     let db_path = oikos.sessions_db();
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
@@ -143,14 +152,17 @@ pub async fn run(args: Args) -> Result<()> {
     ));
     info!(path = %db_path.display(), "session store opened");
 
+    // JWT manager — use the resolved key (validated above; placeholder only reaches here when mode="none").
     let jwt_manager = JwtManager::new(JwtConfig {
         signing_key: SecretString::from(effective_jwt_key),
         ..JwtConfig::default()
     });
 
+    // Build shared registries — single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry(&config, &oikos));
     let mut tool_registry = build_tool_registry(&config.sandbox)?;
 
+    // Register domain pack tools alongside builtins
     let tool_errors = aletheia_thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
     for err in &tool_errors {
         warn!(error = %err, "failed to register pack tool");
@@ -159,6 +171,7 @@ pub async fn run(args: Args) -> Result<()> {
     let tool_registry = Arc::new(tool_registry);
     let oikos_arc = Arc::new(oikos);
 
+    // Embedding provider — drives recall query embedding
     let embedding_config = EmbeddingConfig {
         provider: config.embedding.provider.clone(),
         model: config.embedding.model.clone(),
@@ -174,10 +187,13 @@ pub async fn run(args: Args) -> Result<()> {
         "embedding provider created"
     );
 
+    // Cross-nous router for inter-agent messaging
     let cross_router = Arc::new(CrossNousRouter::default());
 
+    // Build signal provider early so it can be shared with tool services
     let signal_provider = build_signal_provider(&config.channels.signal);
 
+    // Build tool services for communication + memory executors
     let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = {
         let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
             Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
@@ -214,6 +230,7 @@ pub async fn run(args: Args) -> Result<()> {
         )
     };
 
+    // Knowledge store for vector search and extraction persistence
     #[cfg(feature = "recall")]
     let knowledge_store = {
         let kb_path = oikos_arc.knowledge_db();
@@ -228,6 +245,7 @@ pub async fn run(args: Args) -> Result<()> {
         info!(path = %kb_path.display(), dim = 384, "knowledge store opened (fjall)");
         Some(store)
     };
+    // Wire vector search from KnowledgeStore
     #[cfg(feature = "recall")]
     let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> =
         knowledge_store.as_ref().map(|ks| {
@@ -238,6 +256,7 @@ pub async fn run(args: Args) -> Result<()> {
     #[cfg(not(feature = "recall"))]
     let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = None;
 
+    // Knowledge search adapter for tool layer
     #[cfg(feature = "recall")]
     let knowledge_search: Option<Arc<dyn aletheia_organon::types::KnowledgeSearchService>> =
         knowledge_store.as_ref().map(|ks| {
@@ -262,7 +281,8 @@ pub async fn run(args: Args) -> Result<()> {
         server_tool_config: aletheia_organon::types::ServerToolConfig::default(),
     });
 
-    // WHY: clone knowledge_store Arc before moving into NousManager — needed for daemon executor
+    // Spawn nous actors
+    // Clone knowledge_store Arc before moving into NousManager — needed for daemon executor.
     #[cfg(feature = "recall")]
     let knowledge_store_for_daemon = knowledge_store.clone();
 
@@ -286,6 +306,7 @@ pub async fn run(args: Args) -> Result<()> {
         for agent_def in &config.agents.list {
             let resolved = resolve_nous(&config, &agent_def.id);
 
+            // Merge domains from static config and pack overlays
             let mut domains = resolved.domains.clone();
             for pack in packs.iter() {
                 for d in pack.domains_for_agent(&agent_def.id) {
@@ -294,11 +315,6 @@ pub async fn run(args: Args) -> Result<()> {
                     }
                 }
             }
-
-            let mut recall: aletheia_nous::recall::RecallConfig = resolved.recall.into();
-            // WHY: chars_per_token lives on AgentDefaults (LLM-level setting),
-            //      not on RecallSettings, so it must be forwarded explicitly.
-            recall.chars_per_token = u64::from(resolved.chars_per_token);
 
             let nous_config = NousConfig {
                 id: resolved.id,
@@ -315,14 +331,12 @@ pub async fn run(args: Args) -> Result<()> {
                 server_tools: Vec::new(),
                 cache_enabled: resolved.cache_enabled,
                 session_token_cap: 500_000,
-                recall,
-                chars_per_token: resolved.chars_per_token,
+                recall: resolved.recall.into(),
             };
             nous_manager
                 .spawn(
                     nous_config,
                     PipelineConfig {
-                        history_budget_ratio: resolved.history_budget_ratio,
                         extraction: Some(aletheia_mneme::extract::ExtractionConfig::default()),
                         ..PipelineConfig::default()
                     },
@@ -332,11 +346,13 @@ pub async fn run(args: Args) -> Result<()> {
         info!(count = nous_manager.count(), "nous actors spawned");
     }
 
+    // Daemon — background maintenance tasks
     let maintenance_config = maintenance::build_config(&oikos_arc, &config.maintenance);
     let daemon_token = shutdown_token.child_token();
     let mut daemon_runner =
         TaskRunner::new("system", daemon_token).with_maintenance(maintenance_config);
 
+    // Wire knowledge maintenance executor when recall feature is enabled
     #[cfg(feature = "recall")]
     if let Some(ks) = knowledge_store_for_daemon.as_ref() {
         let km_executor = Arc::new(
@@ -354,14 +370,18 @@ pub async fn run(args: Args) -> Result<()> {
     );
     info!("daemon started");
 
+    // Wrap in Arc — shared between dispatcher and AppState
     let nous_manager = Arc::new(nous_manager);
 
+    // Signal ready — all actors spawned, safe to accept inbound messages
     nous_manager.ready();
 
+    // Channel registry + inbound dispatch (gated on ready signal)
     let ready_rx = nous_manager.ready_rx();
     let (_channel_registry, _dispatch_handle) =
         start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref());
 
+    // Daemon runners — per-agent background task scheduling
     let daemon_bridge = Arc::new(daemon_bridge::NousDaemonBridge::new(Arc::clone(
         &nous_manager,
     )));
@@ -399,6 +419,7 @@ pub async fn run(args: Args) -> Result<()> {
         info!(count = config.agents.list.len(), "daemon runners spawned");
     }
 
+    // Pylon HTTP gateway — shares registries with NousManager
     let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc).unwrap_or_else(|e| {
         tracing::warn!("failed to load config, using defaults: {e}");
         aletheia_taxis::config::AletheiaConfig::default()
@@ -422,23 +443,31 @@ pub async fn run(args: Args) -> Result<()> {
         knowledge_store,
     });
 
-    let diaporeia_state = Arc::new(aletheia_diaporeia::state::DiaporeiaState {
-        session_store: Arc::clone(&state.session_store),
-        nous_manager: Arc::clone(&state.nous_manager),
-        tool_registry: Arc::clone(&state.tool_registry),
-        oikos: Arc::clone(&state.oikos),
-        start_time: state.start_time,
-        config: Arc::clone(&state.config),
-        shutdown: shutdown_token.clone(),
-    });
-    let mcp_router = aletheia_diaporeia::transport::streamable_http_router(diaporeia_state);
-    info!("diaporeia MCP server mounted at /mcp");
-
     let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
-    let app = build_router(state.clone(), &security).merge(mcp_router);
+
+    #[cfg(feature = "mcp")]
+    let app = {
+        // Diaporeia MCP server — shares state with pylon, zero overhead.
+        let diaporeia_state = Arc::new(aletheia_diaporeia::state::DiaporeiaState {
+            session_store: Arc::clone(&state.session_store),
+            nous_manager: Arc::clone(&state.nous_manager),
+            tool_registry: Arc::clone(&state.tool_registry),
+            oikos: Arc::clone(&state.oikos),
+            start_time: state.start_time,
+            config: Arc::clone(&state.config),
+            shutdown: shutdown_token.clone(),
+        });
+        let mcp_router = aletheia_diaporeia::transport::streamable_http_router(diaporeia_state);
+        info!("diaporeia MCP server mounted at /mcp");
+        build_router(state.clone(), &security).merge(mcp_router)
+    };
+
+    #[cfg(not(feature = "mcp"))]
+    let app = build_router(state.clone(), &security);
 
     let port = args.port.unwrap_or(config.gateway.port);
-    // NOTE: resolve bind address: CLI flag > config > default 127.0.0.1; "lan" = 0.0.0.0, "localhost" = 127.0.0.1
+    // Resolve bind address: CLI flag > config gateway.bind > default 127.0.0.1.
+    // "lan" is a semantic alias for "0.0.0.0" (listen on all interfaces).
     let bind_host = args.bind.as_deref().unwrap_or(&config.gateway.bind);
     let bind_addr_str = match bind_host {
         "lan" => "0.0.0.0",
@@ -446,11 +475,11 @@ pub async fn run(args: Args) -> Result<()> {
         other => other,
     };
 
-    // WHY: warn when auth is disabled — every request gets Operator role
+    // Warn unconditionally when auth is disabled — every request is granted Operator role.
     if config.gateway.auth.mode == "none" {
         warn!("auth mode is 'none' -- all requests granted Operator role");
     }
-    // WHY: additionally warn when auth is disabled on non-localhost — exposes to network
+    // Additionally warn if auth is disabled on a non-localhost bind address.
     if config.gateway.auth.mode == "none"
         && bind_addr_str != "127.0.0.1"
         && bind_addr_str != "localhost"
@@ -479,6 +508,8 @@ pub async fn run(args: Args) -> Result<()> {
 
     info!(addr = %bind_addr, "pylon listening");
 
+    // Axum graceful shutdown: wait for OS signal, then cancel root token so
+    // all subsystems observe shutdown simultaneously.
     let token_for_signal = shutdown_token.clone();
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
@@ -489,18 +520,21 @@ pub async fn run(args: Args) -> Result<()> {
         .await
         .context("server error")?;
 
-    // WHY: drain order matters —
+    // ── Drain ordering ──────────────────────────────────────────────────────
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
     // 2. Root token is cancelled — daemon tasks observe it and exit their loops.
     // 3. Wait for system daemon to finish in-flight maintenance work.
     // 4. Drain nous actors with a timeout, flushing fjall WAL and other state.
     //    Awaiting join handles ensures Arc<Database> drops, checkpointing the WAL.
     // 5. Drop AppState (session store, registries).
+    // ────────────────────────────────────────────────────────────────────────
 
     info!("shutting down");
 
     let shutdown_timeout = std::time::Duration::from_secs(10);
 
+    // Step 2–3: daemon runners have already observed token cancel via child tokens.
+    // Await system daemon handle to confirm it has exited.
     match tokio::time::timeout(shutdown_timeout, daemon_handle).await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => warn!(error = %e, "system daemon panicked during shutdown"),
@@ -510,8 +544,10 @@ pub async fn run(args: Args) -> Result<()> {
         ),
     }
 
+    // Step 4: drain nous actors — cancel tokens fire, messages drain, WAL flushed.
     state.nous_manager.drain(shutdown_timeout).await;
 
+    // Step 5: AppState and session store drop here as `state` goes out of scope.
     drop(state);
 
     info!("shutdown complete");
@@ -543,34 +579,38 @@ fn build_provider_registry(
             })
             .collect();
 
+    // Build credential chain: file (with refresh) → env
     let cred_file = oikos.credentials().join("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
-    if cred_file.exists()
-        && let Some(cred) = CredentialFile::load(&cred_file)
-    {
-        if cred.has_refresh_token() {
-            if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
-                info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)");
-                chain.push(Box::new(refreshing));
+    if cred_file.exists() {
+        // Check if file has a refresh token for OAuth mode
+        if let Some(cred) = CredentialFile::load(&cred_file) {
+            if cred.has_refresh_token() {
+                if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
+                    info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)");
+                    chain.push(Box::new(refreshing));
+                } else {
+                    info!(path = %cred_file.display(), "credential file found (static)");
+                    chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
+                }
             } else {
-                info!(path = %cred_file.display(), "credential file found (static)");
+                info!(path = %cred_file.display(), "credential file found (static API key)");
                 chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
             }
-        } else {
-            info!(path = %cred_file.display(), "credential file found (static API key)");
-            chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
         }
     }
 
-    // NOTE: ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention — always treat as OAuth
+    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention — always treat as OAuth
     chain.push(Box::new(EnvCredentialProvider::with_source(
         "ANTHROPIC_AUTH_TOKEN",
         CredentialSource::OAuth,
     )));
-    // NOTE: ANTHROPIC_API_KEY auto-detects OAuth tokens by sk-ant-oat prefix
+    // ANTHROPIC_API_KEY: auto-detects OAuth tokens by sk-ant-oat prefix
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
 
+    // Claude Code credentials file — lowest priority in the chain.
+    // Enabled when credential.source is "auto" (default) or "claude-code".
     let cred_source = config.credential.source.as_str();
     if matches!(cred_source, "auto" | "claude-code") {
         let cc_path = config
@@ -584,6 +624,7 @@ fn build_provider_registry(
             if let Some(provider) = claude_code_provider(&path) {
                 chain.push(provider);
             } else if cred_source == "claude-code" {
+                // Explicit claude-code source but file missing/invalid — warn loudly
                 warn!(
                     path = %path.display(),
                     "credential.source is \"claude-code\" but credentials file not found or invalid"
@@ -594,6 +635,7 @@ fn build_provider_registry(
 
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
 
+    // Resolve once at startup for logging
     if let Some(cred) = credential_chain.get_credential() {
         info!(source = %cred.source, "credential resolved");
     } else {
@@ -633,7 +675,6 @@ fn build_tool_registry(
         },
         extra_read_paths: sandbox_settings.extra_read_paths.clone(),
         extra_write_paths: sandbox_settings.extra_write_paths.clone(),
-        extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
     };
     builtins::register_all_with_sandbox(&mut registry, sandbox)
         .context("failed to register builtin tools")?;
@@ -769,6 +810,8 @@ async fn shutdown_signal() {
         () = terminate => info!("received SIGTERM"),
     }
 }
+
+// -- Tool service adapters -------------------------------------------------
 
 mod tool_adapters {
     use std::future::Future;
