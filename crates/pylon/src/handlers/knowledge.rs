@@ -256,23 +256,33 @@ pub async fn get_fact(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
-    let all_facts = get_all_facts(&state);
-    let fact = all_facts
-        .into_iter()
-        .find(|f| f.id.to_string() == id)
-        .ok_or_else(|| ApiError::NotFound {
+    // WHY: The previous implementation called get_all_facts which hardcoded
+    // nous_id: None, causing get_stored_facts to always return an empty Vec
+    // (it requires nous_id.is_some() to query the store). Bug #1252.
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let facts = store
+            .read_facts_by_id(&id)
+            .map_err(|e| ApiError::Internal {
+                message: e.to_string(),
+                location: snafu::Location::default(),
+            })?;
+        let fact = facts.into_iter().next().ok_or_else(|| ApiError::NotFound {
             path: format!("fact/{id}"),
             location: snafu::Location::default(),
         })?;
-
-    let relationships = get_fact_relationships(&state, &fact);
-    let similar = get_similar_facts(&state, &fact);
-
-    Ok(Json(FactDetailResponse {
-        fact,
-        relationships,
-        similar,
-    }))
+        let relationships = get_fact_relationships(&state, &fact);
+        let similar = get_similar_facts(&state, &fact);
+        return Ok(Json(FactDetailResponse {
+            fact,
+            relationships,
+            similar,
+        }));
+    }
+    Err(ApiError::NotFound {
+        path: format!("fact/{id}"),
+        location: snafu::Location::default(),
+    })
 }
 
 /// GET /api/v1/knowledge/entities
@@ -470,7 +480,21 @@ pub async fn search(
     // Enforce pagination bound.
     query.limit = query.limit.min(MAX_SEARCH_LIMIT);
 
-    let all_facts = get_all_facts(&state);
+    // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
+    // The previous call to get_all_facts hardcoded nous_id: None, causing the store
+    // to return empty even when facts were persisted under a specific agent (Bug #1252).
+    let facts_query = FactsQuery {
+        nous_id: query.nous_id.clone(),
+        sort: default_sort(),
+        order: default_order(),
+        filter: None,
+        fact_type: None,
+        tier: None,
+        limit: 10_000,
+        offset: 0,
+        include_forgotten: false,
+    };
+    let all_facts = get_stored_facts(&state, &facts_query);
     let query_lower = query.q.to_lowercase();
     let query_terms: Vec<&str> = query_lower.split_whitespace().collect();
 
@@ -527,9 +551,23 @@ pub async fn search(
 )]
 pub async fn timeline(
     State(state): State<Arc<AppState>>,
-    Query(_query): Query<FactsQuery>,
+    Query(query): Query<FactsQuery>,
 ) -> Result<Json<TimelineResponse>, ApiError> {
-    let facts = get_all_facts(&state);
+    // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
+    // The previous call to get_all_facts hardcoded nous_id: None, causing the store
+    // to return empty even when facts were persisted under a specific agent (Bug #1252).
+    let timeline_query = FactsQuery {
+        nous_id: query.nous_id,
+        sort: default_sort(),
+        order: default_order(),
+        filter: None,
+        fact_type: None,
+        tier: None,
+        limit: 10_000,
+        offset: 0,
+        include_forgotten: false,
+    };
+    let facts = get_stored_facts(&state, &timeline_query);
     let mut events: Vec<TimelineEvent> = Vec::new();
 
     for fact in &facts {
@@ -586,21 +624,6 @@ fn get_stored_facts(state: &AppState, query: &FactsQuery) -> Vec<aletheia_mneme:
     #[cfg(not(feature = "knowledge-store"))]
     let _ = (state, query);
     Vec::new()
-}
-
-fn get_all_facts(state: &AppState) -> Vec<aletheia_mneme::knowledge::Fact> {
-    let query = FactsQuery {
-        nous_id: None,
-        sort: default_sort(),
-        order: default_order(),
-        filter: None,
-        fact_type: None,
-        tier: None,
-        limit: 10000,
-        offset: 0,
-        include_forgotten: true,
-    };
-    get_stored_facts(state, &query)
 }
 
 fn get_stored_entities(_state: &AppState) -> Vec<aletheia_mneme::knowledge::Entity> {
