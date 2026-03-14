@@ -34,6 +34,61 @@ fn credential_file_malformed_returns_none() {
     assert!(CredentialFile::load(&path).is_none());
 }
 
+// --- claudeAiOauth wrapper tests ---
+
+#[test]
+fn credential_file_load_claude_code_oauth_wrapper() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    std::fs::write(
+        &path,
+        r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped","expiresAt":9999999999000}}"#,
+    )
+    .unwrap();
+
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, "sk-ant-oat-wrapped");
+    assert_eq!(loaded.refresh_token.as_deref(), Some("rt-wrapped"));
+    assert_eq!(loaded.expires_at, Some(9_999_999_999_000));
+    assert!(loaded.has_refresh_token());
+}
+
+#[test]
+fn credential_file_load_wrapped_no_refresh_token() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    std::fs::write(
+        &path,
+        r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-no-rt"}}"#,
+    )
+    .unwrap();
+
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, "sk-ant-oat-no-rt");
+    assert!(!loaded.has_refresh_token());
+}
+
+#[test]
+fn credential_file_load_flat_takes_precedence_over_wrapper() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    std::fs::write(
+        &path,
+        r#"{"token":"flat-token","claudeAiOauth":{"accessToken":"wrapped-token"}}"#,
+    )
+    .unwrap();
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, "flat-token");
+}
+
+#[test]
+fn credential_file_load_wrapper_missing_key_returns_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    std::fs::write(&path, r#"{"someOtherKey":{"value":1}}"#).unwrap();
+    assert!(CredentialFile::load(&path).is_none());
+}
+
 #[test]
 fn has_refresh_token() {
     let with = CredentialFile {
@@ -105,6 +160,124 @@ fn env_provider_with_source_forces_oauth() {
     let provider = EnvCredentialProvider::with_source(var, CredentialSource::OAuth);
     let cred = provider.get_credential().unwrap();
     assert_eq!(cred.source, CredentialSource::OAuth);
+    unsafe { std::env::remove_var(var) };
+}
+
+// --- expired OAuth env var fallthrough tests ---
+
+/// Build a synthetic token with the OAuth prefix and a dot-segmented payload
+/// carrying the given exp (seconds since epoch). Prefix satisfies
+/// `starts_with(OAUTH_TOKEN_PREFIX)`; payload carries the exp claim; stub
+/// signature is unused (no verification is performed).
+fn make_test_oauth_token(exp_secs: u64) -> String {
+    fn base64url_encode(input: &[u8]) -> String {
+        const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mut out = String::new();
+        for chunk in input.chunks(3) {
+            let mut buf = [0u8; 3];
+            for (i, &b) in chunk.iter().enumerate() {
+                buf[i] = b;
+            }
+            let n = (u32::from(buf[0]) << 16) | (u32::from(buf[1]) << 8) | u32::from(buf[2]);
+            out.push(TABLE[((n >> 18) & 0x3F) as usize] as char);
+            out.push(TABLE[((n >> 12) & 0x3F) as usize] as char);
+            if chunk.len() > 1 {
+                out.push(TABLE[((n >> 6) & 0x3F) as usize] as char);
+            }
+            if chunk.len() > 2 {
+                out.push(TABLE[(n & 0x3F) as usize] as char);
+            }
+        }
+        out
+    }
+
+    let payload_json = format!(r#"{{"exp":{exp_secs}}}"#);
+    let payload_b64 = base64url_encode(payload_json.as_bytes());
+    format!("sk-ant-oat.{payload_b64}.stub")
+}
+
+#[test]
+fn decode_jwt_exp_roundtrips_known_value() {
+    let token = make_test_oauth_token(42_000);
+    let exp = decode_jwt_exp_secs(&token);
+    assert_eq!(exp, Some(42_000));
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test-only env var manipulation")]
+fn env_provider_expired_oauth_falls_through() {
+    let var = "ALETHEIA_TEST_EXPIRED_OAUTH_505";
+    let expired_token = make_test_oauth_token(1); // epoch 1 is always in the past
+    // SAFETY: test uses unique var name, no concurrent access
+    unsafe { std::env::set_var(var, &expired_token) };
+    let provider = EnvCredentialProvider::new(var);
+    assert!(
+        provider.get_credential().is_none(),
+        "expired OAuth token should cause fallthrough"
+    );
+    unsafe { std::env::remove_var(var) };
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test-only env var manipulation")]
+fn env_provider_valid_oauth_returns_credential() {
+    let var = "ALETHEIA_TEST_VALID_OAUTH_505";
+    let future_secs = unix_epoch_ms() / 1000 + 7200;
+    let valid_token = make_test_oauth_token(future_secs);
+    // SAFETY: test uses unique var name, no concurrent access
+    unsafe { std::env::set_var(var, &valid_token) };
+    let provider = EnvCredentialProvider::new(var);
+    let cred = provider.get_credential().unwrap();
+    assert_eq!(cred.secret, valid_token);
+    assert_eq!(cred.source, CredentialSource::OAuth);
+    unsafe { std::env::remove_var(var) };
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test-only env var manipulation")]
+fn env_provider_opaque_oauth_without_exp_is_returned() {
+    // Opaque token with OAuth prefix but no parseable exp must not be dropped.
+    let var = "ALETHEIA_TEST_OPAQUE_OAUTH_505";
+    let opaque = "sk-ant-oat-opaque-no-dots";
+    // SAFETY: test uses unique var name, no concurrent access
+    unsafe { std::env::set_var(var, opaque) };
+    let provider = EnvCredentialProvider::new(var);
+    let cred = provider.get_credential().unwrap();
+    assert_eq!(cred.secret, opaque);
+    assert_eq!(cred.source, CredentialSource::OAuth);
+    unsafe { std::env::remove_var(var) };
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test-only env var manipulation")]
+fn chain_falls_through_expired_oauth_env_to_file_provider() {
+    let var = "ALETHEIA_TEST_CHAIN_EXPIRED_505";
+    let expired_token = make_test_oauth_token(1);
+    // SAFETY: test uses unique var name, no concurrent access
+    unsafe { std::env::set_var(var, &expired_token) };
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    let cred_file = CredentialFile {
+        token: "sk-ant-api-file-fallback".to_owned(),
+        refresh_token: None,
+        expires_at: None,
+        scopes: None,
+        subscription_type: None,
+    };
+    cred_file.save(&path).unwrap();
+
+    let chain = CredentialChain::new(vec![
+        Box::new(EnvCredentialProvider::new(var)),
+        Box::new(FileCredentialProvider::new(path)),
+    ]);
+
+    let resolved = chain.get_credential().unwrap();
+    assert_eq!(
+        resolved.secret, "sk-ant-api-file-fallback",
+        "chain should skip expired env token and use file provider"
+    );
+
     unsafe { std::env::remove_var(var) };
 }
 
@@ -286,6 +459,22 @@ async fn claude_code_provider_with_access_token_alias() {
     let provider = claude_code_provider(&path).expect("should return provider");
     let resolved = provider.get_credential().unwrap();
     assert_eq!(resolved.secret, "sk-ant-oat-cc-token");
+    assert_eq!(resolved.source, CredentialSource::OAuth);
+}
+
+#[tokio::test]
+async fn claude_code_provider_with_claude_code_oauth_wrapper() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    std::fs::write(
+        &path,
+        r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped"}}"#,
+    )
+    .unwrap();
+
+    let provider = claude_code_provider(&path).expect("should return provider for wrapped format");
+    let resolved = provider.get_credential().unwrap();
+    assert_eq!(resolved.secret, "sk-ant-oat-wrapped");
     assert_eq!(resolved.source, CredentialSource::OAuth);
 }
 
