@@ -76,8 +76,7 @@ mod linux {
 
         if probe_landlock_abi().is_none() {
             // Landlock unavailable: must get a clear error, not an opaque OS error.
-            let err = apply_sandbox(&mut cmd, policy)
-                .unwrap_err();
+            let err = apply_sandbox(&mut cmd, policy).unwrap_err();
             let msg = err.to_string();
             assert!(
                 msg.contains("Landlock") || msg.contains("ABI"),
