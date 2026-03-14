@@ -290,6 +290,7 @@ fn parse_diff_from_output(output: &str, tool_name: &str) -> Option<OpsDiffEntry>
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 

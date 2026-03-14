@@ -1,7 +1,7 @@
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
-use super::error::{AuthSnafu, HttpSnafu, Result, ServerSnafu};
+use super::error::{ApiError, AuthSnafu, HttpSnafu, Result, ServerSnafu};
 use super::types::*;
 
 /// Percent-encode a value for use in a URL path segment.
@@ -37,7 +37,7 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
 
     if let Some(t) = token {
         let auth_value = header::HeaderValue::from_str(&format!("Bearer {t}"))
-            .expect("token must be a valid header value");
+            .map_err(|_invalid| ApiError::InvalidToken)?;
         headers.insert(header::AUTHORIZATION, auth_value);
     }
 

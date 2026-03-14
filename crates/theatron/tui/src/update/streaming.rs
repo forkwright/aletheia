@@ -254,6 +254,7 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
     use crate::api::types::PlanStep;

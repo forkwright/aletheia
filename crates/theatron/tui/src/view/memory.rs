@@ -1,6 +1,25 @@
 //! Rendering for the memory inspector panel views.
 
 use ratatui::Frame;
+
+/// Height of the tab bar row in the memory inspector layout.
+const TAB_BAR_HEIGHT: u16 = 2;
+/// Minimum height for the content area in the memory inspector layout.
+const CONTENT_MIN_HEIGHT: u16 = 3;
+/// Height of the status/help bar at the bottom of the memory inspector.
+const STATUS_BAR_HEIGHT: u16 = 1;
+/// Column width reserved for confidence, tier, and type columns in the facts table.
+const RESERVED_COLUMN_WIDTH: u16 = 28;
+/// Maximum number of relationships shown in the graph view before truncating.
+const RELATIONSHIP_DISPLAY_LIMIT: usize = 20;
+/// Maximum content length for similar-fact snippets shown in the detail view.
+const SIMILAR_FACT_TRUNCATE_LEN: usize = 60;
+/// Column width for the fact type field in the facts table.
+const FACT_TYPE_COLUMN_WIDTH: usize = 10;
+/// Confidence threshold above which a fact is considered high-confidence.
+const CONFIDENCE_HIGH_THRESHOLD: f64 = 0.8;
+/// Confidence threshold above which a fact is considered medium-confidence.
+const CONFIDENCE_MED_THRESHOLD: f64 = 0.5;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -15,9 +34,9 @@ pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: 
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2), // tab bar
-            Constraint::Min(3),    // content
-            Constraint::Length(1), // status/help bar
+            Constraint::Length(TAB_BAR_HEIGHT),
+            Constraint::Min(CONTENT_MIN_HEIGHT),
+            Constraint::Length(STATUS_BAR_HEIGHT),
         ])
         .split(area);
 
@@ -139,7 +158,7 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
                 ),
             ]));
             for sim in &detail.similar {
-                let truncated = truncate(&sim.content, 60);
+                let truncated = truncate(&sim.content, SIMILAR_FACT_TRUNCATE_LEN);
                 lines.push(Line::from(vec![
                     Span::raw("    "),
                     Span::styled(
@@ -292,7 +311,7 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     } else {
         let filter = app.memory.filter_text.to_lowercase();
         let visible_height = area.height.saturating_sub(1) as usize; // -1 for header
-        let content_width = area.width.saturating_sub(28) as usize; // space for columns
+        let content_width = area.width.saturating_sub(RESERVED_COLUMN_WIDTH) as usize;
 
         let type_filter = app.memory.type_filter.as_deref();
         let tier_filter = app.memory.tier_filter.as_deref();
@@ -340,7 +359,11 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             let tier_str = format!("{} ", MemoryInspectorState::tier_abbrev(&fact.tier));
             let tier_style = tier_style(theme, &fact.tier);
 
-            let type_str = format!("{:<10} ", truncate(&fact.fact_type, 10));
+            let type_str = format!(
+                "{:<width$} ",
+                truncate(&fact.fact_type, FACT_TYPE_COLUMN_WIDTH),
+                width = FACT_TYPE_COLUMN_WIDTH
+            );
 
             let content = truncate(&fact.content.replace('\n', " "), content_width);
             let content_style = if fact.is_forgotten {
@@ -437,7 +460,12 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                     theme.style_fg().add_modifier(Modifier::BOLD),
                 ),
             ]));
-            for rel in app.memory.relationships.iter().take(20) {
+            for rel in app
+                .memory
+                .relationships
+                .iter()
+                .take(RELATIONSHIP_DISPLAY_LIMIT)
+            {
                 lines.push(Line::from(vec![
                     Span::raw("    "),
                     Span::styled(&rel.src, theme.style_accent()),
@@ -561,9 +589,9 @@ fn meta_line<'a>(theme: &'a Theme, label: &'a str, value: &str) -> Line<'a> {
 }
 
 fn confidence_style(theme: &Theme, conf: f64) -> Style {
-    if conf >= 0.8 {
+    if conf >= CONFIDENCE_HIGH_THRESHOLD {
         theme.style_success()
-    } else if conf >= 0.5 {
+    } else if conf >= CONFIDENCE_MED_THRESHOLD {
         theme.style_warning()
     } else {
         theme.style_error()

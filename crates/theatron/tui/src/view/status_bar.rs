@@ -3,6 +3,10 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+
+/// Rows consumed by the status bar, tab bar, and input area above and below the chat pane.
+/// Used to estimate the visible viewport height for scrollbar position calculation.
+const CHAT_AREA_HEIGHT_OFFSET: u16 = 6;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::App;
@@ -163,7 +167,7 @@ fn format_cost(cents: u32) -> String {
 }
 
 fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
-    let viewport = app.terminal_height.saturating_sub(6); // approximate chat area
+    let viewport = app.terminal_height.saturating_sub(CHAT_AREA_HEIGHT_OFFSET);
     match app
         .virtual_scroll
         .scrollbar_position(app.scroll_offset, app.auto_scroll, viewport)

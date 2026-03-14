@@ -253,6 +253,7 @@ pub struct SessionsResponse {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 

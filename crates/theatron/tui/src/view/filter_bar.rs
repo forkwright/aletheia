@@ -1,6 +1,11 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
+
+/// Number of ticks per full cursor blink cycle (on + off).
+const BLINK_PERIOD_TICKS: u64 = 6;
+/// Number of ticks the cursor is visible within each blink cycle.
+const BLINK_ON_TICKS: u64 = 3;
 use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr;
 
@@ -10,7 +15,11 @@ use crate::theme::Theme;
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let width = area.width as usize;
 
-    let cursor_char = if app.tick_count % 6 < 3 { "█" } else { " " };
+    let cursor_char = if app.tick_count % BLINK_PERIOD_TICKS < BLINK_ON_TICKS {
+        "█"
+    } else {
+        " "
+    };
     let (before_cursor, after_cursor) = app.filter.text.split_at(app.filter.cursor);
 
     let mut left_spans = vec![

@@ -1,6 +1,9 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
+
+/// Fixed column width for command labels in the suggestion list.
+const COMMAND_LABEL_DISPLAY_WIDTH: usize = 12;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -57,7 +60,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 },
             ),
             Span::styled("●", Style::default().fg(category_color)),
-            Span::styled(format!(" {:<12}", suggestion.label), name_style),
+            Span::styled(
+                format!(" {:<COMMAND_LABEL_DISPLAY_WIDTH$}", suggestion.label),
+                name_style,
+            ),
             Span::styled(&suggestion.description, theme.style_muted()),
         ];
 

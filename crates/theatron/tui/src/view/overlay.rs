@@ -10,13 +10,30 @@ use crate::diff;
 use crate::keybindings;
 use crate::theme::Theme;
 
+/// Width percentage for the default (help/agent/session) popup.
+const POPUP_WIDTH_PCT: u16 = 60;
+/// Height percentage for the default popup.
+const POPUP_HEIGHT_PCT: u16 = 70;
+/// Width percentage for compact overlays (context actions).
+const COMPACT_POPUP_WIDTH_PCT: u16 = 40;
+/// Height percentage for compact overlays.
+const COMPACT_POPUP_HEIGHT_PCT: u16 = 50;
+/// Width percentage for the diff view overlay.
+const DIFF_POPUP_WIDTH_PCT: u16 = 80;
+/// Height percentage for the diff view overlay.
+const DIFF_POPUP_HEIGHT_PCT: u16 = 85;
+/// Column width reserved for the key label in the help overlay keybinding list.
+const HELP_KEY_COLUMN_WIDTH: usize = 13;
+/// Maximum number of tool-input lines shown in the tool approval overlay before truncating.
+const TOOL_APPROVAL_INPUT_LINES: usize = 10;
+
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let overlay = match &app.overlay {
         Some(o) => o,
         None => return,
     };
 
-    let popup_area = centered_rect(60, 70, area);
+    let popup_area = centered_rect(POPUP_WIDTH_PCT, POPUP_HEIGHT_PCT, area);
 
     // Clear the area under the overlay
     frame.render_widget(Clear, popup_area);
@@ -32,15 +49,15 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         Overlay::ToolApproval(approval) => render_tool_approval(frame, popup_area, approval, theme),
         Overlay::PlanApproval(plan) => render_plan_approval(frame, popup_area, plan, theme),
         Overlay::ContextActions(ctx) => {
-            let compact_area = centered_rect(40, 50, area);
+            let compact_area =
+                centered_rect(COMPACT_POPUP_WIDTH_PCT, COMPACT_POPUP_HEIGHT_PCT, area);
             frame.render_widget(Clear, compact_area);
             render_context_actions(frame, compact_area, ctx, theme);
         }
         Overlay::SystemStatus => render_system_status(app, frame, popup_area, theme),
         Overlay::Settings(settings) => super::settings::render(settings, frame, area, theme),
         Overlay::DiffView(diff_state) => {
-            // Diff overlay uses a larger area (80% x 85%)
-            let diff_area = centered_rect(80, 85, area);
+            let diff_area = centered_rect(DIFF_POPUP_WIDTH_PCT, DIFF_POPUP_HEIGHT_PCT, area);
             frame.render_widget(Clear, diff_area);
             render_diff_view(diff_state, frame, diff_area, theme);
         }
@@ -100,7 +117,7 @@ fn render_help(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         lines.push(Line::raw(""));
         for kb in bindings {
             lines.push(Line::from(vec![
-                Span::styled(format!("  {:<13}", kb.keys), key_style),
+                Span::styled(format!("  {:<HELP_KEY_COLUMN_WIDTH$}", kb.keys), key_style),
                 Span::styled(kb.description, desc_style),
             ]));
         }
@@ -309,13 +326,13 @@ fn render_tool_approval(
 
     // Truncated input display
     let input_str = serde_json::to_string_pretty(&approval.input).unwrap_or_default();
-    for line in input_str.lines().take(10) {
+    for line in input_str.lines().take(TOOL_APPROVAL_INPUT_LINES) {
         lines.push(Line::from(Span::styled(
             format!("  {}", line),
             theme.style_dim(),
         )));
     }
-    if input_str.lines().count() > 10 {
+    if input_str.lines().count() > TOOL_APPROVAL_INPUT_LINES {
         lines.push(Line::from(Span::styled("  …", theme.style_dim())));
     }
 

@@ -13,6 +13,10 @@ const THINKING_TRUNCATE_LINES: usize = 20;
 const TOOL_OUTPUT_TRUNCATE_LINES: usize = 15;
 const JSON_TRUNCATE_BYTES: usize = 300;
 const MS_PER_SECOND: u64 = 1000;
+/// Minimum column width reserved for the chat pane when calculating ops pane size.
+const MIN_CHAT_PANE_WIDTH: u16 = 40;
+/// Minimum column width for the operations pane.
+const MIN_OPS_PANE_WIDTH: u16 = 20;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let ops = &app.ops;
@@ -382,11 +386,9 @@ fn render_diff(
 
 /// Calculate the width for the ops pane in columns, respecting minimum widths.
 pub fn ops_pane_width(total_width: u16, pct: u16) -> u16 {
-    let min_chat = 40u16;
-    let min_ops = 20u16;
-    let available = total_width.saturating_sub(min_chat);
+    let available = total_width.saturating_sub(MIN_CHAT_PANE_WIDTH);
     let desired = (total_width as u32 * pct as u32 / 100) as u16;
-    desired.clamp(min_ops, available.max(min_ops))
+    desired.clamp(MIN_OPS_PANE_WIDTH, available.max(MIN_OPS_PANE_WIDTH))
 }
 
 #[cfg(test)]

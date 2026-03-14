@@ -123,6 +123,10 @@ fn probe_hyperlink_support() -> bool {
 /// The caller is responsible for skipping code blocks and inline code —
 /// those contexts should not be passed to this function.
 pub fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
+    #[expect(
+        clippy::expect_used,
+        reason = "regex is a compile-time string literal and is always valid"
+    )]
     static URL_RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"https?://[^\s<>{}|\\^`\[\]'"]+"#).expect("hyperlink URL regex is valid")
     });
@@ -176,6 +180,10 @@ fn trim_trailing_punct(url: &str) -> usize {
 /// Not yet called by the renderer; kept in `#[cfg(test)]` until wired in.
 #[cfg(test)]
 fn detect_file_paths(text: &str) -> Vec<(usize, usize, &str, String)> {
+    #[expect(
+        clippy::expect_used,
+        reason = "regex is a compile-time string literal and is always valid"
+    )]
     static PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
         // crates/foo/src/bar.rs:142  or  src/foo.rs  or  ./src/foo.ts
         Regex::new(r"(?:\.{0,2}/)?(?:[a-zA-Z0-9_\-]+/)+[a-zA-Z0-9_\-]+\.[a-zA-Z]{1,6}(?::[0-9]+)?")
