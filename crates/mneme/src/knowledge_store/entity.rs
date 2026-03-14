@@ -79,8 +79,6 @@ impl KnowledgeStore {
         )
     }
 
-    // --- Entity deduplication ---
-
     /// Find duplicate entity candidates for a given nous.
     ///
     /// Loads all entities, groups by type, and runs the 3-phase candidate
@@ -107,26 +105,19 @@ impl KnowledgeStore {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
-        // 1. Load both entities
         let canonical = self.load_entity(canonical_id)?;
         let merged = self.load_entity(merged_id)?;
 
-        // 2. Redirect relationships: update edges where merged entity is src
         let redirected_src = self.redirect_relationships_src(merged_id, canonical_id)?;
-        // Update edges where merged entity is dst
         let redirected_dst = self.redirect_relationships_dst(merged_id, canonical_id)?;
         let relationships_redirected = redirected_src + redirected_dst;
 
-        // 3. Transfer fact_entities mappings
         let facts_transferred = self.transfer_fact_entities(merged_id, canonical_id)?;
 
-        // 4. Add merged entity's name as alias on canonical
         self.add_alias_to_entity(canonical_id, &merged.name)?;
 
-        // 5. Delete merged entity
         self.delete_entity(merged_id)?;
 
-        // 6. Record in merge_audit
         let now = jiff::Timestamp::now();
         let now_str = crate::knowledge::format_timestamp(&now);
         let mut params = BTreeMap::new();
@@ -160,7 +151,6 @@ impl KnowledgeStore {
             params,
         )?;
 
-        // 7. Remove from pending_merges if present
         let mut rm_params = BTreeMap::new();
         rm_params.insert(
             "entity_a".to_owned(),
@@ -170,7 +160,7 @@ impl KnowledgeStore {
             "entity_b".to_owned(),
             DataValue::Str(merged_id.as_str().into()),
         );
-        // Try both orderings — non-critical cleanup, log on failure
+        // WHY: Try both orderings; pending_merges may store (a,b) or (b,a).
         if let Err(e) = self.run_mut(
             r"?[entity_a, entity_b] <- [[$entity_a, $entity_b]]
             :rm pending_merges {entity_a, entity_b}",
@@ -314,12 +304,10 @@ impl KnowledgeStore {
         let candidates = crate::dedup::generate_candidates(&entities, &|_a, _b| 0.0);
         let (auto_merge, review) = crate::dedup::classify_candidates(candidates);
 
-        // Store review candidates
         for c in &review {
             self.store_pending_merge(c)?;
         }
 
-        // Execute auto-merges
         let entity_map: std::collections::HashMap<&str, &crate::dedup::EntityInfo> =
             entities.iter().map(|e| (e.id.as_str(), e)).collect();
 
@@ -327,7 +315,6 @@ impl KnowledgeStore {
         let mut merged_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for c in &auto_merge {
-            // Skip if either entity was already merged in this run
             if merged_ids.contains(c.entity_a.as_str()) || merged_ids.contains(c.entity_b.as_str())
             {
                 continue;
@@ -358,8 +345,6 @@ impl KnowledgeStore {
 
         Ok(records)
     }
-
-    // --- Internal entity dedup helpers ---
 
     /// Load all entities as lightweight `EntityInfo` structs.
     pub(super) fn load_entity_infos(
@@ -392,7 +377,6 @@ impl KnowledgeStore {
             let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
                 .unwrap_or_else(jiff::Timestamp::now);
 
-            // Count relationships for this entity
             let rel_count = self.count_relationships(&id_str)?;
 
             entities.push(crate::dedup::EntityInfo {
@@ -481,7 +465,6 @@ impl KnowledgeStore {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
 
-        // Read all relationships where src = from_id
         let mut params = BTreeMap::new();
         params.insert(
             "from_id".to_owned(),
@@ -502,9 +485,7 @@ impl KnowledgeStore {
             let weight = extract_float(&row[3])?;
             let created_at = extract_str(&row[4])?;
 
-            // Skip self-referential edges that would be created
             if dst == to_id.as_str() {
-                // Remove the old edge only
                 let mut rm_params = BTreeMap::new();
                 rm_params.insert("src".to_owned(), DataValue::Str(from_id.as_str().into()));
                 rm_params.insert("dst".to_owned(), DataValue::Str(dst.into()));
@@ -515,7 +496,6 @@ impl KnowledgeStore {
                 continue;
             }
 
-            // Insert redirected edge
             let mut put_params = BTreeMap::new();
             put_params.insert("src".to_owned(), DataValue::Str(to_id.as_str().into()));
             put_params.insert("dst".to_owned(), DataValue::Str(dst.into()));
@@ -528,7 +508,6 @@ impl KnowledgeStore {
                 put_params,
             )?;
 
-            // Remove old edge
             let mut rm_params = BTreeMap::new();
             rm_params.insert("src".to_owned(), DataValue::Str(from_id.as_str().into()));
             rm_params.insert(
@@ -573,7 +552,6 @@ impl KnowledgeStore {
             let weight = extract_float(&row[3])?;
             let created_at = extract_str(&row[4])?;
 
-            // Skip self-referential
             if src == to_id.as_str() {
                 let mut rm_params = BTreeMap::new();
                 rm_params.insert("src".to_owned(), DataValue::Str(src.into()));
@@ -585,7 +563,6 @@ impl KnowledgeStore {
                 continue;
             }
 
-            // Insert redirected edge
             let mut put_params = BTreeMap::new();
             put_params.insert("src".to_owned(), DataValue::Str(src.into()));
             put_params.insert("dst".to_owned(), DataValue::Str(to_id.as_str().into()));
@@ -598,7 +575,6 @@ impl KnowledgeStore {
                 put_params,
             )?;
 
-            // Remove old edge
             let mut rm_params = BTreeMap::new();
             rm_params.insert(
                 "src".to_owned(),

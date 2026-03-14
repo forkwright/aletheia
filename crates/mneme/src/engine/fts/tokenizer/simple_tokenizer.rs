@@ -65,7 +65,7 @@ mod tests {
     use crate::engine::fts::tokenizer::{SimpleTokenizer, TextAnalyzer, Token};
 
     #[test]
-    fn test_simple_tokenizer() {
+    fn simple_tokenizer_splits_on_punctuation_and_whitespace() {
         let tokens = token_stream_helper("Hello, happy tax payer!");
         assert_eq!(tokens.len(), 4);
         assert_token(&tokens[0], 0, "Hello", 0, 5);

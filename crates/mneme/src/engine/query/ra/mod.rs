@@ -706,7 +706,6 @@ impl RelAlgebra {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::engine::DbInstance;
     use crate::engine::data::value::DataValue;
@@ -721,7 +720,7 @@ mod tests {
         ?[x] := a = 3, data[x, a]
         "#,
             )
-            .unwrap()
+            .expect("RA query must succeed in test")
             .rows;
         assert_eq!(
             res,

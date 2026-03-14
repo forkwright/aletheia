@@ -19,6 +19,7 @@ pub trait RewriteProvider: Send + Sync {
 
 /// Errors from the query rewriting pipeline.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum RewriteError {
     /// The LLM provider returned an error.
     LlmCall(String),
@@ -132,15 +133,10 @@ impl QueryRewriter {
         let response = provider.complete(&system, &user_message)?;
         let mut variants = parse_rewrite_response(&response)?;
 
-        // Enforce max_variants limit
         variants.truncate(self.config.max_variants);
-
-        // Ensure original query is included if configured
         if self.config.include_original && !variants.iter().any(|v| v == query) {
             variants.insert(0, query.to_owned());
         }
-
-        // Deduplicate while preserving order
         let mut seen = std::collections::HashSet::new();
         variants.retain(|v| seen.insert(v.clone()));
 
@@ -178,11 +174,8 @@ fn build_user_message(query: &str, context: Option<&str>) -> String {
 fn parse_rewrite_response(response: &str) -> Result<Vec<String>, RewriteError> {
     let trimmed = strip_code_fences(response);
 
-    // Try parsing as a JSON array of strings
     let variants: Vec<String> =
         serde_json::from_str(trimmed).map_err(|e| RewriteError::ParseResponse(e.to_string()))?;
-
-    // Filter out empty strings
     let variants: Vec<String> = variants.into_iter().filter(|v| !v.is_empty()).collect();
 
     if variants.is_empty() {
@@ -235,6 +228,7 @@ impl Default for TieredSearchConfig {
 
 /// Which search tier produced the final results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SearchTier {
     /// Single-query hybrid search (BM25 + vector).
     Fast,
@@ -319,8 +313,6 @@ pub trait HasRrfScore {
 mod tests {
     use super::*;
 
-    // --- Mock provider ---
-
     struct MockProvider {
         response: String,
     }
@@ -346,8 +338,6 @@ mod tests {
             Err(RewriteError::LlmCall("rate limited".to_owned()))
         }
     }
-
-    // --- QueryRewriter tests ---
 
     #[test]
     fn rewrite_produces_variants() {
@@ -494,8 +484,6 @@ mod tests {
         assert!(result.latency_ms < 1000);
     }
 
-    // --- parse_rewrite_response tests ---
-
     #[test]
     fn parse_valid_response() {
         let variants =
@@ -528,8 +516,6 @@ mod tests {
             .expect("JSON array with empty strings parses");
         assert_eq!(variants, vec!["a", "b"]);
     }
-
-    // --- RRF merge tests ---
 
     #[derive(Debug, Clone)]
     struct TestResult {
@@ -676,8 +662,6 @@ mod tests {
         }
     }
 
-    // --- TieredSearchConfig tests ---
-
     #[test]
     fn tiered_config_defaults() {
         let config = TieredSearchConfig::default();
@@ -688,16 +672,12 @@ mod tests {
         assert_eq!(config.graph_expansion_limit, 5);
     }
 
-    // --- SearchTier display ---
-
     #[test]
     fn search_tier_display() {
         assert_eq!(SearchTier::Fast.to_string(), "fast");
         assert_eq!(SearchTier::Enhanced.to_string(), "enhanced");
         assert_eq!(SearchTier::GraphEnhanced.to_string(), "graph-enhanced");
     }
-
-    // --- System prompt tests ---
 
     #[test]
     fn system_prompt_contains_instructions() {

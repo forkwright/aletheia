@@ -71,6 +71,7 @@ impl Display for NullableColType {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[non_exhaustive]
 pub enum ColType {
     Any,
     Bool,
@@ -93,6 +94,7 @@ pub enum ColType {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, serde::Deserialize, serde::Serialize)]
+#[non_exhaustive]
 pub enum VecElementType {
     F32,
     F64,

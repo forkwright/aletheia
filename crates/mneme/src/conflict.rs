@@ -17,10 +17,6 @@ use snafu::Snafu;
 use crate::id::FactId;
 use crate::knowledge::EpistemicTier;
 
-// ---------------------------------------------------------------------------
-// Error
-// ---------------------------------------------------------------------------
-
 /// Errors from the conflict detection pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
@@ -41,10 +37,6 @@ pub enum ConflictError {
         location: snafu::Location,
     },
 }
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 /// How a new fact relates to an existing one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,10 +110,6 @@ pub enum ConflictAction {
     Drop,
 }
 
-// ---------------------------------------------------------------------------
-// Provider trait
-// ---------------------------------------------------------------------------
-
 /// Minimal LLM interface for conflict classification.
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
@@ -140,10 +128,6 @@ pub trait ConflictClassifier: Send + Sync {
         new_tier: &str,
     ) -> Result<String, ConflictError>;
 }
-
-// ---------------------------------------------------------------------------
-// Pipeline
-// ---------------------------------------------------------------------------
 
 /// A fact prepared for conflict detection with its embedding.
 #[cfg(any(feature = "mneme-engine", test))]
@@ -192,10 +176,6 @@ const CANDIDATE_DISTANCE_THRESHOLD: f64 = 0.28;
 #[cfg(feature = "mneme-engine")]
 const MAX_CANDIDATES: usize = 5;
 
-// ---------------------------------------------------------------------------
-// Phase 1: Intra-batch dedup
-// ---------------------------------------------------------------------------
-
 /// Remove duplicates within an extraction batch.
 ///
 /// Two facts are considered duplicates if they have string-exact content
@@ -216,7 +196,6 @@ pub(crate) fn intra_batch_dedup(
         let mut replace_idx = None;
 
         for (i, existing) in kept.iter().enumerate() {
-            // String-exact check
             if fact.content == existing.content {
                 if fact.confidence > existing.confidence {
                     replace_idx = Some(i);
@@ -224,8 +203,6 @@ pub(crate) fn intra_batch_dedup(
                 is_dup = true;
                 break;
             }
-
-            // Cosine similarity check
             let sim = cosine_similarity(&fact.embedding, &existing.embedding);
             if sim >= INTRA_BATCH_DEDUP_THRESHOLD {
                 if fact.confidence > existing.confidence {
@@ -272,10 +249,6 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     dot / denom
 }
 
-// ---------------------------------------------------------------------------
-// Phase 2: Candidate retrieval
-// ---------------------------------------------------------------------------
-
 /// Retrieve conflict candidates from the knowledge store for a single fact.
 ///
 /// Uses HNSW vector search with cosine distance ≤ 0.28 (similarity ≥ 0.72),
@@ -293,7 +266,6 @@ pub(crate) fn retrieve_candidates(
     use crate::engine::DataValue;
     use std::collections::BTreeMap;
 
-    // Use HNSW vector search to find similar facts
     let recall_results = store
         .search_vectors(fact.embedding.clone(), MAX_CANDIDATES as i64, 50)
         .map_err(|e| {
@@ -307,18 +279,14 @@ pub(crate) fn retrieve_candidates(
         return Ok(Vec::new());
     }
 
-    // For each vector hit that is a fact, look up the full fact record
     let mut candidates = Vec::new();
     for result in &recall_results {
         if result.source_type != "fact" {
             continue;
         }
-        // Distance threshold: cosine distance ≤ 0.28
         if result.distance > CANDIDATE_DISTANCE_THRESHOLD {
             continue;
         }
-
-        // Look up the full fact to check validity and tier
         let fact_id = &result.source_id;
         let script = r"
             ?[id, content, confidence, tier, valid_to, nous_id] :=
@@ -339,13 +307,10 @@ pub(crate) fn retrieve_candidates(
         })?;
 
         for row in &query_result.rows {
-            // Check nous_id matches
             let row_nous_id = row.get(5).and_then(|v| v.get_str()).unwrap_or("");
             if row_nous_id != nous_id {
                 continue;
             }
-
-            // Check valid_to is far future (fact is currently valid)
             let valid_to = row.get(4).and_then(|v| v.get_str()).unwrap_or("");
             if !valid_to.is_empty() && !valid_to.starts_with("9999-") {
                 continue;
@@ -374,14 +339,9 @@ pub(crate) fn retrieve_candidates(
         }
     }
 
-    // Cap at MAX_CANDIDATES
     candidates.truncate(MAX_CANDIDATES);
     Ok(candidates)
 }
-
-// ---------------------------------------------------------------------------
-// Phase 3: LLM classification
-// ---------------------------------------------------------------------------
 
 /// Build the classification prompt for the LLM.
 #[cfg(test)]
@@ -445,20 +405,15 @@ pub(crate) fn classify_against_candidates(
         )?;
 
         if let Some(classification) = ConflictClassification::parse(&response) {
-            // Return the first non-Unrelated classification, or the last one
+            // WHY: Return first non-Unrelated classification; Unrelated is weakest signal.
             if classification != ConflictClassification::Unrelated {
                 return Ok(Some((classification, idx)));
             }
         }
     }
 
-    // All classified as Unrelated (or unparseable)
     Ok(Some((ConflictClassification::Unrelated, 0)))
 }
-
-// ---------------------------------------------------------------------------
-// Phase 4: Action resolution
-// ---------------------------------------------------------------------------
 
 /// Determine the action based on classification, confidence, and tier.
 ///
@@ -476,21 +431,17 @@ pub(crate) fn resolve_action(
 ) -> ConflictAction {
     match classification {
         ConflictClassification::Contradicts => {
-            // Tier protection: Verified never superseded by Assumed
+            // WHY: Verified facts are never superseded by Assumed-tier facts.
             if candidate.existing_tier == EpistemicTier::Verified
                 && new_fact.tier == EpistemicTier::Assumed
             {
                 return ConflictAction::Drop;
             }
-
-            // Correction facts always win contradictions
             if new_fact.is_correction {
                 return ConflictAction::Supersede {
                     old_id: candidate.existing_fact_id.clone(),
                 };
             }
-
-            // Higher confidence wins; ties go to the newer fact
             if new_fact.confidence >= candidate.existing_confidence {
                 ConflictAction::Supersede {
                     old_id: candidate.existing_fact_id.clone(),
@@ -500,13 +451,12 @@ pub(crate) fn resolve_action(
             }
         }
         ConflictClassification::Refines => {
-            // Tier protection: Verified never superseded by Assumed
+            // WHY: Verified facts are never superseded by Assumed-tier facts.
             if candidate.existing_tier == EpistemicTier::Verified
                 && new_fact.tier == EpistemicTier::Assumed
             {
                 return ConflictAction::Drop;
             }
-
             ConflictAction::Supersede {
                 old_id: candidate.existing_fact_id.clone(),
             }
@@ -516,10 +466,6 @@ pub(crate) fn resolve_action(
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Full pipeline
-// ---------------------------------------------------------------------------
 
 /// Run the full 4-phase conflict detection pipeline on a batch of facts.
 ///
@@ -534,10 +480,7 @@ pub fn detect_conflicts(
     nous_id: &str,
     classifier: &dyn ConflictClassifier,
 ) -> Result<BatchConflictResult, ConflictError> {
-    // Phase 1: Intra-batch dedup
     let (deduped, batch_duplicates_dropped) = intra_batch_dedup(facts);
-
-    // Phases 2–4: per-fact candidate retrieval + classification + resolution
     let mut resolved = Vec::with_capacity(deduped.len());
     for fact in deduped {
         let candidates = retrieve_candidates(store, &fact, nous_id)?;
@@ -561,10 +504,6 @@ pub fn detect_conflicts(
         batch_duplicates_dropped,
     })
 }
-
-// ---------------------------------------------------------------------------
-// Correction detection
-// ---------------------------------------------------------------------------
 
 /// Patterns that indicate a correction fact.
 #[cfg(any(feature = "mneme-engine", test))]
@@ -595,10 +534,6 @@ pub(crate) fn is_correction_heuristic(content: &str) -> bool {
 pub(crate) fn apply_correction_boost(confidence: f64) -> f64 {
     (confidence + 0.2).min(1.0)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[path = "conflict_tests.rs"]

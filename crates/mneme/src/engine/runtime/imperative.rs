@@ -1,6 +1,6 @@
 //! Imperative script execution.
 #![expect(
-    clippy::unwrap_used,
+    clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
 use std::collections::{BTreeMap, BTreeSet};
@@ -383,7 +383,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                 started_at: since_the_epoch,
                 poison: poison.clone(),
             };
-            self.running_queries.lock().unwrap().insert(qid, q_handle);
+            self.running_queries
+                .lock()
+                .expect("lock poisoned")
+                .insert(qid, q_handle);
             let _guard = RunningQueryCleanup {
                 id: qid,
                 running_queries: self.running_queries.clone(),

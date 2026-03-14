@@ -13,6 +13,7 @@ use crate::engine::{DbCore as Db, NamedRows, Storage};
 
 /// Represents the kind of operation that triggered the callback
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CallbackOp {
     /// Triggered by Put operations
     Put,

@@ -1,5 +1,5 @@
 //! Tests for core value type.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use std::collections::{BTreeMap, HashMap};
 use std::mem::size_of;
 
@@ -23,7 +23,7 @@ fn show_size() {
 
 #[test]
 fn utf8() {
-    let c = char::from_u32(0x10FFFF).unwrap();
+    let c = char::from_u32(0x10FFFF).expect("test assertion");
     let mut s = String::new();
     s.push(c);
     println!("{}", s);

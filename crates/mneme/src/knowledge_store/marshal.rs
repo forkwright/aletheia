@@ -1,5 +1,3 @@
-// --- Conversion helpers ---
-
 #[cfg(feature = "mneme-engine")]
 pub(super) fn fact_to_params(
     fact: &crate::knowledge::Fact,
@@ -169,10 +167,6 @@ pub(super) fn embedding_to_params(
     p
 }
 
-// ---------------------------------------------------------------------------
-// Dedup helpers
-// ---------------------------------------------------------------------------
-
 /// Compute Jaccard overlap between two tool lists.
 ///
 /// Returns 1.0 for identical sets, 0.0 for disjoint.
@@ -238,8 +232,6 @@ fn lcs_char_length(a: &[char], b: &[char]) -> usize {
     dp[idx(m, n)]
 }
 
-// Parse rows from FULL_CURRENT_FACTS into Vec<Fact>.
-// Columns: id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id
 #[cfg(feature = "mneme-engine")]
 #[expect(
     clippy::too_many_lines,
@@ -377,11 +369,6 @@ pub(super) fn rows_to_facts(
     Ok(out)
 }
 
-// Parse rows from a raw all-fields fact scan (used by read_facts_by_id).
-// Columns: id(0), valid_from(1), content(2), nous_id(3), confidence(4), tier(5),
-//          valid_to(6), superseded_by(7), source_session_id(8), recorded_at(9),
-//          access_count(10), last_accessed_at(11), stability_hours(12), fact_type(13),
-//          is_forgotten(14), forgotten_at(15), forget_reason(16).
 #[cfg(feature = "mneme-engine")]
 #[expect(
     clippy::too_many_lines,
@@ -511,7 +498,6 @@ pub(super) fn rows_to_raw_facts(
     Ok(out)
 }
 
-// Parse rows from FACTS_AT_TIME into Vec<Fact> (partial — only has id, content, confidence, tier).
 #[cfg(feature = "mneme-engine")]
 pub(super) fn rows_to_facts_partial(
     rows: crate::engine::NamedRows,
@@ -568,8 +554,6 @@ pub(super) fn rows_to_facts_partial(
     Ok(out)
 }
 
-// Parse rows from SEMANTIC_SEARCH into Vec<RecallResult>.
-// Columns: id, content, source_type, source_id, dist
 #[cfg(feature = "mneme-engine")]
 pub(super) fn rows_to_recall_results(
     rows: crate::engine::NamedRows,
@@ -618,16 +602,11 @@ pub(super) fn rows_to_recall_results(
     Ok(out)
 }
 
-// Build the hybrid Datalog query with dynamic graph sub-rules.
-// When seed_entities is empty, graph is an empty relation.
-// When non-empty, seeds are expanded inline (avoids is_in() built-in dependency).
-// Double-quote characters are escaped in interpolated entity IDs.
 #[cfg(feature = "mneme-engine")]
 pub(super) fn build_hybrid_query(q: &super::HybridQuery) -> String {
     use super::queries;
 
     let graph_rules = if q.seed_entities.is_empty() {
-        // Empty graph relation — graph signal contributes 0 to RRF
         "graph[id, score] <- []".to_owned()
     } else {
         let seed_data: Vec<String> = q
@@ -647,8 +626,6 @@ pub(super) fn build_hybrid_query(q: &super::HybridQuery) -> String {
     queries::HYBRID_SEARCH_BASE.replace("{GRAPH_RULES}", &graph_rules)
 }
 
-// Parse rows from ReciprocalRankFusion output into Vec<HybridResult>.
-// Columns: id (Str), rrf_score (Float), bm25_rank (Int), vec_rank (Int), graph_rank (Int)
 #[cfg(feature = "mneme-engine")]
 pub(super) fn rows_to_hybrid_results(
     rows: crate::engine::NamedRows,
@@ -693,8 +670,7 @@ pub(super) fn rows_to_hybrid_results(
             graph_rank,
         });
     }
-    // Sort by rrf_score descending (RRF output is unordered since it comes through :order in Datalog,
-    // but :order is applied by the engine — this is a safety sort for correctness)
+    // WHY: Safety sort; Datalog :order is applied by the engine but we re-sort for correctness guarantee.
     out.sort_by(|a, b| {
         b.rrf_score
             .partial_cmp(&a.rrf_score)
@@ -702,8 +678,6 @@ pub(super) fn rows_to_hybrid_results(
     });
     Ok(out)
 }
-
-// --- DataValue extraction utilities ---
 
 #[cfg(feature = "mneme-engine")]
 pub(super) fn extract_str(val: &crate::engine::DataValue) -> crate::error::Result<String> {

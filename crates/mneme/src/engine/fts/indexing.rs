@@ -171,8 +171,6 @@ impl<'a> SessionTx<'a> {
                 .zip(tos.iter())
                 .zip(positions.iter())
                 .map(|(_, p)| PositionInfo {
-                    // from: f.get_int().unwrap() as u32,
-                    // to: t.get_int().unwrap() as u32,
                     position: p.get_int().expect("FTS position is always an integer") as u32,
                 })
                 .collect_vec();

@@ -2,6 +2,7 @@
 
 /// Result of normalizing a raw relationship type against the controlled vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RelationType {
     /// Matched a known vocabulary type (canonical uppercase form).
     Valid(&'static str),

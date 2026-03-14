@@ -1,5 +1,5 @@
 //! Tests for memory-comparable encoding.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use uuid::Uuid;
 
 use crate::engine::data::memcmp::{MemCmpEncoder, decode_bytes};
@@ -45,7 +45,7 @@ fn encode_decode_num() {
 #[test]
 fn test_encode_decode_uuid() {
     let uuid = DataValue::Uuid(UuidWrapper(
-        Uuid::parse_str("dd85b19a-5fde-11ed-a88e-1774a7698039").unwrap(),
+        Uuid::parse_str("dd85b19a-5fde-11ed-a88e-1774a7698039").expect("test assertion"),
     ));
     let mut encoder = vec![];
     encoder.encode_datavalue(&uuid);

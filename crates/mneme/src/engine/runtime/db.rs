@@ -3,6 +3,10 @@
     clippy::unwrap_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::default::Default;
@@ -45,7 +49,7 @@ pub(crate) struct RunningQueryCleanup {
 
 impl Drop for RunningQueryCleanup {
     fn drop(&mut self) {
-        let mut map = self.running_queries.lock().unwrap(); // INVARIANT: lock is not poisoned
+        let mut map = self.running_queries.lock().expect("lock poisoned");
         if let Some(handle) = map.remove(&self.id) {
             handle.poison.0.store(true, Ordering::Relaxed);
         }
@@ -288,7 +292,7 @@ impl<'s, S: Storage<'s>> Db<S> {
 
     /// This returns the set of fixed rule implementations for this specific backend.
     pub fn get_fixed_rules(&'s self) -> BTreeMap<String, Arc<Box<dyn FixedRule>>> {
-        return self.fixed_rules.read().unwrap().clone(); // INVARIANT: lock is not poisoned
+        return self.fixed_rules.read().expect("lock poisoned").clone();
     }
 
     /// Backup the running database into an Sqlite file.
@@ -330,8 +334,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     where
         R: FixedRule + 'static,
     {
-        match self.fixed_rules.write().unwrap().entry(name) {
-            // INVARIANT: lock is not poisoned
+        match self.fixed_rules.write().expect("lock poisoned").entry(name) {
             Entry::Vacant(ent) => {
                 ent.insert(Arc::new(Box::new(rule_impl)));
                 Ok(())
@@ -353,7 +356,12 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             .fail()?;
         }
-        Ok(self.fixed_rules.write().unwrap().remove(name).is_some()) // INVARIANT: lock is not poisoned
+        Ok(self
+            .fixed_rules
+            .write()
+            .expect("lock poisoned")
+            .remove(name)
+            .is_some())
     }
 
     /// Register callback channel to receive changes when the requested relation are successfully committed.
@@ -374,7 +382,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             sender,
         };
 
-        let mut guard = self.event_callbacks.write().unwrap(); // INVARIANT: lock is not poisoned
+        let mut guard = self.event_callbacks.write().expect("lock poisoned");
         let new_id = self.callback_count.fetch_add(1, Ordering::SeqCst);
         guard
             .1
@@ -389,7 +397,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Unregister callbacks/channels to run when changes to relations are committed.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn unregister_callback(&self, id: u32) -> bool {
-        let mut guard = self.event_callbacks.write().unwrap(); // INVARIANT: lock is not poisoned
+        let mut guard = self.event_callbacks.write().expect("lock poisoned");
         let ret = guard.0.remove(&id);
         if let Some(cb) = &ret {
             guard.1.get_mut(&cb.dependent).unwrap().remove(&id);
@@ -408,7 +416,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         let mut collected = vec![];
         let mut pending = vec![];
         {
-            let locks = self.relation_locks.read().unwrap(); // INVARIANT: lock is not poisoned
+            let locks = self.relation_locks.read().expect("lock poisoned");
             for rel in rels {
                 match locks.get(rel) {
                     None => {
@@ -419,7 +427,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
         }
         if !pending.is_empty() {
-            let mut locks = self.relation_locks.write().unwrap(); // INVARIANT: lock is not poisoned
+            let mut locks = self.relation_locks.write().expect("lock poisoned");
             for rel in pending {
                 let lock = locks.entry(rel.clone()).or_default().clone();
                 collected.push(lock);

@@ -1,4 +1,3 @@
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 
@@ -1070,8 +1069,9 @@ mod tests {
             FactType::Task,
             FactType::Observation,
         ] {
-            let json = serde_json::to_string(&ft).unwrap();
-            let back: FactType = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&ft).expect("FactType serialization must succeed");
+            let back: FactType =
+                serde_json::from_str(&json).expect("FactType deserialization must succeed");
             assert_eq!(ft, back, "roundtrip failed for {ft:?}");
         }
     }

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Lifecycle status of a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum SessionStatus {
     /// Session is live and accepting new messages.
     Active,
@@ -35,6 +36,7 @@ impl std::fmt::Display for SessionStatus {
 /// Session type — classifies session lifecycle behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum SessionType {
     /// Long-lived conversational session (the default).
     Primary,

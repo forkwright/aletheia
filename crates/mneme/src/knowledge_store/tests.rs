@@ -54,7 +54,6 @@ reach[a, c] := reach[a, b], edge[b, c]
     }
 }
 
-// --- DDL and non-engine unit tests ---
 #[cfg_attr(
     feature = "mneme-engine",
     expect(
@@ -67,7 +66,6 @@ mod ddl_tests {
 
     #[test]
     fn ddl_templates_are_valid_strings() {
-        // Verify DDL templates don't panic on formatting
         assert!(KNOWLEDGE_DDL.len() == 6);
         let emb = embeddings_ddl(1024);
         assert!(emb.contains("1024"));
@@ -600,8 +598,6 @@ mod knowledge_store_tests {
         }
     }
 
-    // ---- CRUD: Facts ----
-
     #[test]
     fn insert_fact_and_retrieve() {
         let store = make_store();
@@ -649,8 +645,6 @@ mod knowledge_store_tests {
         assert!((results[0].confidence - 0.95).abs() < f64::EPSILON);
     }
 
-    // ---- CRUD: Entities ----
-
     #[test]
     fn insert_entity_and_query_neighborhood() {
         let store = make_store();
@@ -660,7 +654,6 @@ mod knowledge_store_tests {
         let rows = store
             .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
             .expect("neighborhood");
-        // No relationships yet, so empty result set is fine (no panic)
         assert!(rows.rows.is_empty());
     }
 
@@ -673,7 +666,6 @@ mod knowledge_store_tests {
             .insert_entity(&entity)
             .expect("insert entity with aliases");
 
-        // Verify via raw query that the entity was stored
         let rows = store
             .run_query(
                 r"?[id, name, aliases] := *entities{id, name, aliases}, id = 'e1'",
@@ -682,8 +674,6 @@ mod knowledge_store_tests {
             .expect("raw query");
         assert_eq!(rows.rows.len(), 1);
     }
-
-    // ---- CRUD: Relationships ----
 
     #[test]
     fn insert_relationship_and_retrieve_neighborhood() {
@@ -720,20 +710,15 @@ mod knowledge_store_tests {
             .insert_relationship(&make_relationship("e1", "e2", "knows", 0.8))
             .expect("insert rel");
 
-        // e1 neighborhood should include e2
         let from_e1 = store
             .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
             .expect("e1 neighborhood");
         assert!(!from_e1.rows.is_empty());
 
-        // e2 neighborhood may or may not include e1 (depends on query directionality)
-        // Just verify it doesn't error
         let _from_e2 = store
             .entity_neighborhood(&crate::id::EntityId::new_unchecked("e2"))
             .expect("e2 neighborhood");
     }
-
-    // ---- CRUD: Embeddings ----
 
     #[test]
     fn insert_embedding_and_search() {
@@ -753,8 +738,6 @@ mod knowledge_store_tests {
         assert_eq!(results[0].source_type, "fact");
         assert_eq!(results[0].source_id, "f1");
     }
-
-    // ---- Forget / Unforget ----
 
     #[test]
     fn forget_fact_excludes_from_query() {
@@ -794,13 +777,11 @@ mod knowledge_store_tests {
             )
             .expect("forget");
 
-        // Verify excluded from recall
         let results = store
             .query_facts("agent-a", "2026-06-01", 10)
             .expect("query");
         assert!(results.is_empty(), "forgotten fact excluded from recall");
 
-        // Unforget
         let restored = store
             .unforget_fact(&crate::id::FactId::new_unchecked("f1"))
             .expect("unforget");
@@ -808,7 +789,6 @@ mod knowledge_store_tests {
         assert!(restored.forgotten_at.is_none());
         assert!(restored.forget_reason.is_none());
 
-        // Verify returned to recall
         let results = store
             .query_facts("agent-a", "2026-06-01", 10)
             .expect("query after unforget");
@@ -862,7 +842,6 @@ mod knowledge_store_tests {
             );
         }
 
-        // Verify all appear in list_forgotten
         let forgotten_list = store
             .list_forgotten("agent-a", 100)
             .expect("list_forgotten");
@@ -913,11 +892,6 @@ mod knowledge_store_tests {
         );
     }
 
-    // The remaining tests are identical to the original — truncated for brevity in this
-    // decomposition but the full content is preserved below.
-
-    // ---- Increment Access ----
-
     #[test]
     fn increment_access_updates_count() {
         let store = make_store();
@@ -952,13 +926,10 @@ mod knowledge_store_tests {
     #[test]
     fn increment_access_nonexistent_id_is_silent() {
         let store = make_store();
-        // Should not error — silently skips missing facts
         store
             .increment_access(&[crate::id::FactId::new_unchecked("nonexistent")])
             .expect("increment nonexistent should not error");
     }
-
-    // ---- Schema Version ----
 
     #[test]
     fn schema_version_returns_current() {
@@ -966,8 +937,6 @@ mod knowledge_store_tests {
         let version = store.schema_version().expect("schema version");
         assert_eq!(version, KnowledgeStore::SCHEMA_VERSION);
     }
-
-    // ---- Search: query_facts filters ----
 
     #[test]
     fn query_facts_filters_by_nous_id() {
@@ -1033,7 +1002,6 @@ mod knowledge_store_tests {
             .query_facts("agent-a", "2026-06-01", 100)
             .expect("query");
 
-        // Should only return the active fact
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id.as_str(), "f-active");
     }
@@ -1059,8 +1027,6 @@ mod knowledge_store_tests {
             .expect("query nonexistent nous");
         assert!(results.is_empty());
     }
-
-    // ---- Search: point-in-time ----
 
     #[test]
     fn query_facts_at_returns_snapshot() {
@@ -1088,8 +1054,6 @@ mod knowledge_store_tests {
         assert!(results.is_empty());
     }
 
-    // ---- Search: vectors ----
-
     #[test]
     fn search_vectors_empty_store_returns_empty() {
         let store = make_store();
@@ -1103,7 +1067,6 @@ mod knowledge_store_tests {
     fn search_vectors_returns_nearest() {
         let store = make_store();
 
-        // Insert two embeddings with different vectors
         let mut chunk_a = make_embedding("emb-a", "Rust programming", "f1", "agent-a");
         chunk_a.embedding = vec![1.0, 0.0, 0.0, 0.0];
         store.insert_embedding(&chunk_a).expect("insert emb-a");
@@ -1144,8 +1107,6 @@ mod knowledge_store_tests {
             .expect("search k=3");
         assert_eq!(results.len(), 3);
     }
-
-    // ---- Edge Cases ----
 
     #[test]
     fn insert_fact_empty_content_rejected() {
@@ -1188,7 +1149,6 @@ mod knowledge_store_tests {
         let e1 = make_entity("e1", "Rust", "language");
         store.insert_entity(&e1).expect("insert first");
 
-        // Same ID, updated name
         let e1_updated = make_entity("e1", "Rust Lang", "language");
         store.insert_entity(&e1_updated).expect("upsert");
 
@@ -1198,7 +1158,6 @@ mod knowledge_store_tests {
                 std::collections::BTreeMap::new(),
             )
             .expect("raw query");
-        // Same ID → upsert (one row)
         assert_eq!(rows.rows.len(), 1);
     }
 
@@ -1218,7 +1177,6 @@ mod knowledge_store_tests {
                 std::collections::BTreeMap::new(),
             )
             .expect("raw query");
-        // Different IDs → two separate entities
         assert_eq!(rows.rows.len(), 2);
     }
 
@@ -1319,8 +1277,6 @@ mod knowledge_store_tests {
         assert_eq!(rows.rows.len(), 1);
     }
 
-    // ---- Raw Query / Mut Query ----
-
     #[test]
     fn run_query_returns_results() {
         let store = make_store();
@@ -1337,7 +1293,6 @@ mod knowledge_store_tests {
             .insert_fact(&make_fact("f1", "agent-a", "Mutable test"))
             .expect("insert");
 
-        // Use run_mut_query to delete the fact
         let mut params = std::collections::BTreeMap::new();
         params.insert("id".to_owned(), crate::engine::DataValue::Str("f1".into()));
         store
@@ -1352,8 +1307,6 @@ mod knowledge_store_tests {
             .expect("query after delete");
         assert!(results.is_empty());
     }
-
-    // ---- Relationship queries ----
 
     #[test]
     fn entity_neighborhood_2hop() {
@@ -1379,7 +1332,6 @@ mod knowledge_store_tests {
         let rows = store
             .entity_neighborhood(&crate::id::EntityId::new_unchecked("e1"))
             .expect("2-hop neighborhood");
-        // Should include both e2 (1-hop) and e3 (2-hop)
         assert!(
             rows.rows.len() >= 2,
             "2-hop neighborhood should find at least 2 results, got {}",
@@ -1395,8 +1347,6 @@ mod knowledge_store_tests {
             .expect("neighborhood of missing entity should succeed");
         assert!(rows.rows.is_empty());
     }
-
-    // ---- Async wrappers ----
 
     #[tokio::test]
     async fn insert_fact_async_works() {
@@ -1503,8 +1453,6 @@ mod knowledge_store_tests {
             .expect("found");
         assert_eq!(found.access_count, 1);
     }
-
-    // --- Bi-temporal query tests ---
 
     fn make_temporal_fact(
         id: &str,
@@ -2165,8 +2113,6 @@ mod knowledge_store_tests {
         assert!(!results.is_empty());
     }
 
-    // --- Skill query tests ---
-
     fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&str]) -> Fact {
         let content = serde_json::to_string(&crate::skill::SkillContent {
             name: skill_name.to_owned(),
@@ -2331,8 +2277,6 @@ mod knowledge_store_tests {
             "search should find docker skill"
         );
     }
-
-    // ── Skill quality lifecycle tests ──────────────────────────────────────
 
     #[test]
     fn skill_usage_tracking_via_increment_access() {
@@ -2585,8 +2529,6 @@ mod knowledge_store_tests {
     }
 }
 
-// --- Search correctness regression tests (#1113–#1117) ---
-
 #[cfg(all(test, feature = "mneme-engine"))]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod search_correctness_tests {
@@ -2661,7 +2603,6 @@ mod search_correctness_tests {
             ))
             .expect("insert forgotten embedding");
 
-        // Forget sv-forgotten after inserting the embedding.
         store
             .forget_fact(
                 &crate::id::FactId::new_unchecked("sv-forgotten"),

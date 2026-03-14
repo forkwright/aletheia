@@ -34,7 +34,7 @@ mod tests {
     use crate::engine::fts::tokenizer::Tokenizer;
 
     #[test]
-    fn test_empty_tokenizer() {
+    fn empty_tokenizer_produces_no_tokens() {
         let tokenizer = super::EmptyTokenizer;
         let mut empty = tokenizer.token_stream("whatever string");
         assert!(!empty.advance());

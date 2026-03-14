@@ -24,6 +24,7 @@ use crate::engine::runtime::relation::AccessLevel;
 use crate::engine::{Expr, FixedRule};
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SysOp {
     Compact,
     ListColumns(Symbol),
@@ -85,6 +86,7 @@ pub struct HnswIndexConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub enum HnswDistance {
     L2,
     InnerProduct,

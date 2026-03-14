@@ -1,4 +1,4 @@
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 
 fn make_fact(content: &str, confidence: f64, embedding: Vec<f32>) -> FactForConflictCheck {
@@ -420,7 +420,8 @@ fn classify_no_candidates_returns_none() {
         response: "CONTRADICTS".to_owned(),
     };
     let fact = make_fact("test", 0.8, vec![1.0]);
-    let result = classify_against_candidates(&classifier, &fact, &[]).unwrap();
+    let result = classify_against_candidates(&classifier, &fact, &[])
+        .expect("classify_against_candidates must not fail");
     assert!(result.is_none());
 }
 
@@ -437,9 +438,10 @@ fn classify_returns_classification() {
         EpistemicTier::Inferred,
         0.85,
     )];
-    let result = classify_against_candidates(&classifier, &fact, &candidates).unwrap();
+    let result = classify_against_candidates(&classifier, &fact, &candidates)
+        .expect("classify must succeed");
     assert!(result.is_some());
-    let (classification, idx) = result.unwrap();
+    let (classification, idx) = result.expect("result must be Some when candidates are present");
     assert_eq!(classification, ConflictClassification::Refines);
     assert_eq!(idx, 0);
 }
@@ -474,8 +476,8 @@ fn classify_each_type_produces_correct_action() {
             0.85,
         )];
         let (classification, idx) = classify_against_candidates(&classifier, &fact, &candidates)
-            .unwrap()
-            .unwrap();
+            .expect("classify must succeed")
+            .expect("must be Some when candidates exist");
         let action = resolve_action(&classification, &candidates[idx], &fact);
         assert_eq!(action, expected_action, "failed for {response}");
     }
@@ -493,7 +495,7 @@ fn no_candidates_results_in_insert() {
         &fact,
         &candidates,
     )
-    .unwrap();
+    .expect("classify must succeed with empty candidates");
     assert!(
         result.is_none(),
         "no candidates should return None (insert)"
@@ -549,8 +551,9 @@ fn classification_serde_roundtrip() {
         ConflictClassification::Supplements,
         ConflictClassification::Unrelated,
     ] {
-        let json = serde_json::to_string(&class).unwrap();
-        let back: ConflictClassification = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&class).expect("serialization must succeed");
+        let back: ConflictClassification =
+            serde_json::from_str(&json).expect("deserialization must succeed");
         assert_eq!(class, back);
     }
 }

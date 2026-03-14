@@ -652,7 +652,6 @@ impl NormalFormInlineRule {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::engine::DbInstance;
     use serde_json::json;
@@ -671,7 +670,10 @@ mod tests {
             :disable_magic_rewrite true
         "#;
 
-        let res = db.run_default(query).unwrap().into_json();
+        let res = db
+            .run_default(query)
+            .expect("magic rewrite query must succeed")
+            .into_json();
         assert_eq!(res["rows"], json!([[0], [1]]));
     }
 }

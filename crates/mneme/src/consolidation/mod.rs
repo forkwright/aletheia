@@ -21,10 +21,6 @@ use crate::id::{EntityId, FactId};
 #[cfg(feature = "mneme-engine")]
 mod engine;
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
 /// Thresholds and limits for fact consolidation.
 #[derive(Debug, Clone)]
 pub struct ConsolidationConfig {
@@ -51,10 +47,6 @@ impl Default for ConsolidationConfig {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Error
-// ---------------------------------------------------------------------------
 
 /// Errors from the fact consolidation pipeline.
 #[derive(Debug, Snafu)]
@@ -96,12 +88,9 @@ pub enum ConsolidationError {
     },
 }
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 /// Why a consolidation was triggered.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ConsolidationTrigger {
     /// An entity accumulated more than the threshold of active facts.
     EntityOverflow {
@@ -194,10 +183,6 @@ pub struct ConsolidationAuditRecord {
     pub consolidated_at: String,
 }
 
-// ---------------------------------------------------------------------------
-// LLM provider trait
-// ---------------------------------------------------------------------------
-
 /// Minimal LLM interface for fact consolidation.
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
@@ -206,10 +191,6 @@ pub trait ConsolidationProvider: Send + Sync {
     /// Send a consolidation prompt and return the raw response.
     fn consolidate(&self, system: &str, user_message: &str) -> Result<String, ConsolidationError>;
 }
-
-// ---------------------------------------------------------------------------
-// Consolidation prompt
-// ---------------------------------------------------------------------------
 
 /// Build the system prompt for the consolidation LLM call.
 #[must_use]
@@ -256,7 +237,6 @@ pub fn consolidation_user_message(facts: &[(FactId, String, f64, String)]) -> St
 pub fn parse_consolidation_response(
     response: &str,
 ) -> Result<Vec<LlmConsolidatedEntry>, ConsolidationError> {
-    // Try to find JSON array in the response (LLM may include preamble)
     let json_str = extract_json_array(response).unwrap_or(response);
     serde_json::from_str(json_str).context(ParseResponseSnafu)
 }
@@ -289,7 +269,6 @@ pub struct LlmRelationshipEntry {
 /// Extract the first JSON array from a string that may contain surrounding text.
 fn extract_json_array(s: &str) -> Option<&str> {
     let start = s.find('[')?;
-    // Find the matching closing bracket
     let mut depth = 0i32;
     for (i, ch) in s[start..].char_indices() {
         match ch {
@@ -305,10 +284,6 @@ fn extract_json_array(s: &str) -> Option<&str> {
     }
     None
 }
-
-// ---------------------------------------------------------------------------
-// Candidate identification queries
-// ---------------------------------------------------------------------------
 
 /// Datalog query: find entities with more than N active facts older than the age gate.
 ///
@@ -396,10 +371,6 @@ pub const CLUSTER_FACTS_FOR_CONSOLIDATION: &str = r"
 :sort -confidence
 ";
 
-// ---------------------------------------------------------------------------
-// Audit DDL
-// ---------------------------------------------------------------------------
-
 /// Datalog DDL for the `consolidation_audit` relation.
 pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
     id: String =>
@@ -412,19 +383,19 @@ pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
     consolidated_at: String
 }";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /// Compute the age cutoff timestamp (now - `min_age_days`).
 #[cfg(feature = "mneme-engine")]
 pub(crate) fn age_cutoff(min_age_days: u32) -> String {
     let now = jiff::Timestamp::now();
+    #[expect(
+        clippy::expect_used,
+        reason = "overflow only occurs for extreme min_age_days values beyond practical use"
+    )]
     let cutoff = now
         .checked_sub(jiff::SignedDuration::from_hours(
             i64::from(min_age_days) * 24,
         ))
-        .unwrap_or(now);
+        .expect("age cutoff subtraction overflows only for extreme min_age_days values");
     crate::knowledge::format_timestamp(&cutoff)
 }
 
@@ -439,10 +410,6 @@ pub(crate) fn batch_facts(
         .map(<[(FactId, String, f64, String)]>::to_vec)
         .collect()
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[path = "consolidation_tests.rs"]
