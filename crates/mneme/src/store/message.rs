@@ -281,7 +281,7 @@ impl SessionStore {
 
         // Insert summary at seq 0
         #[expect(clippy::cast_possible_wrap, reason = "summary length fits in i64")]
-        let token_estimate = content.len() as i64 / 4;
+        let token_estimate = (content.len() as i64 + 3) / 4;
         tx.execute(
             "INSERT INTO messages (session_id, seq, role, content, is_distilled, token_estimate, created_at)
              VALUES (?1, 0, 'system', ?2, 0, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
