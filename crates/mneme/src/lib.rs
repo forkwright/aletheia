@@ -77,6 +77,8 @@ pub mod vocab;
 
 #[cfg(test)]
 mod succession_tests;
+#[cfg(test)]
+mod phase_f_integration_tests;
 
 #[cfg(all(test, feature = "sqlite"))]
 mod assertions {
