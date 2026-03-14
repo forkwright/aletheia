@@ -290,6 +290,65 @@ fn estimate_cost_config_overrides_default() {
     assert!((cost - 0.03).abs() < 0.0001);
 }
 
+/// Family resolution: pricing keyed under a versioned alias should apply to
+/// any model in the same family.
+///
+/// Scenario: operator configured pricing for `claude-sonnet-4-6` (the short
+/// alias shipped in older configs).  The model actually used is the dated
+/// snapshot `claude-sonnet-4-20250514`.  `estimate_cost` must use the
+/// `claude-sonnet-4-6` entry rather than returning 0.0.
+#[test]
+fn estimate_cost_family_resolution_uses_alias_pricing() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-sonnet-4-6".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 3.0,
+            output_cost_per_mtok: 15.0,
+        },
+    );
+    // 1 000 000 input tokens at $3/M + 0 output = $3.00
+    let cost = estimate_cost(&pricing, "claude-sonnet-4-20250514", 1_000_000, 0);
+    assert!(
+        (cost - 3.0).abs() < 0.0001,
+        "expected ~$3.00 via family resolution, got {cost}"
+    );
+}
+
+#[test]
+fn estimate_cost_haiku_family_resolution() {
+    // Haiku family: "claude-haiku-4-5" covers "claude-haiku-4-5-20251001".
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-haiku-4-5".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 0.8,
+            output_cost_per_mtok: 4.0,
+        },
+    );
+    // 1 000 000 output tokens at $4/M = $4.00
+    let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 0, 1_000_000);
+    assert!(
+        (cost - 4.0).abs() < 0.0001,
+        "expected ~$4.00 via family resolution, got {cost}"
+    );
+}
+
+#[test]
+fn model_family_strips_last_segment() {
+    assert_eq!(model_family("claude-sonnet-4-20250514"), "claude-sonnet-4");
+    assert_eq!(model_family("claude-sonnet-4-6"), "claude-sonnet-4");
+    assert_eq!(
+        model_family("claude-haiku-4-5-20251001"),
+        "claude-haiku-4-5"
+    );
+    assert_eq!(model_family("claude-haiku-4-5"), "claude-haiku-4");
+    assert_eq!(model_family("claude-opus-4-20250514"), "claude-opus-4");
+    assert_eq!(model_family("claude-opus-4-6"), "claude-opus-4");
+    // No dash at all: returns the model name unchanged.
+    assert_eq!(model_family("somemodel"), "somemodel");
+}
+
 #[test]
 fn backoff_delay_respects_retry_after() {
     let err = error::RateLimitedSnafu {

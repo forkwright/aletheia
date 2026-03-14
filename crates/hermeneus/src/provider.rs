@@ -94,13 +94,60 @@ pub struct ProviderConfig {
 
 impl Default for ProviderConfig {
     fn default() -> Self {
+        // Built-in pricing for all first-party Anthropic models (USD per million tokens).
+        // Operator configs are merged on top, so these act as sensible fallbacks.
+        // Prices last verified against https://www.anthropic.com/pricing (2025-10-01).
+        let pricing = HashMap::from([
+            (
+                "claude-opus-4-6".to_owned(),
+                ModelPricing {
+                    input_cost_per_mtok: 15.0,
+                    output_cost_per_mtok: 75.0,
+                },
+            ),
+            (
+                "claude-opus-4-20250514".to_owned(),
+                ModelPricing {
+                    input_cost_per_mtok: 15.0,
+                    output_cost_per_mtok: 75.0,
+                },
+            ),
+            (
+                "claude-sonnet-4-6".to_owned(),
+                ModelPricing {
+                    input_cost_per_mtok: 3.0,
+                    output_cost_per_mtok: 15.0,
+                },
+            ),
+            (
+                "claude-sonnet-4-20250514".to_owned(),
+                ModelPricing {
+                    input_cost_per_mtok: 3.0,
+                    output_cost_per_mtok: 15.0,
+                },
+            ),
+            (
+                "claude-haiku-4-5".to_owned(),
+                ModelPricing {
+                    input_cost_per_mtok: 0.8,
+                    output_cost_per_mtok: 4.0,
+                },
+            ),
+            (
+                "claude-haiku-4-5-20251001".to_owned(),
+                ModelPricing {
+                    input_cost_per_mtok: 0.8,
+                    output_cost_per_mtok: 4.0,
+                },
+            ),
+        ]);
         Self {
             provider_type: "anthropic".to_owned(),
             api_key: None,
             base_url: None,
             default_model: Some("claude-opus-4-20250514".to_owned()),
             max_retries: Some(3),
-            pricing: HashMap::new(),
+            pricing,
         }
     }
 }
@@ -304,7 +351,25 @@ mod tests {
             config.default_model.as_deref(),
             Some("claude-opus-4-20250514")
         );
-        assert!(config.pricing.is_empty());
+        // Default pricing must cover the models used by background tasks.
+        assert!(
+            config.pricing.contains_key("claude-haiku-4-5-20251001"),
+            "missing default pricing for claude-haiku-4-5-20251001"
+        );
+        assert!(
+            config.pricing.contains_key("claude-sonnet-4-20250514"),
+            "missing default pricing for claude-sonnet-4-20250514"
+        );
+        // Spot-check values for haiku.
+        let haiku = &config.pricing["claude-haiku-4-5-20251001"];
+        assert!(
+            (haiku.input_cost_per_mtok - 0.8).abs() < f64::EPSILON,
+            "unexpected haiku input price"
+        );
+        assert!(
+            (haiku.output_cost_per_mtok - 4.0).abs() < f64::EPSILON,
+            "unexpected haiku output price"
+        );
     }
 
     #[test]
