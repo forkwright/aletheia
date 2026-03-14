@@ -628,19 +628,27 @@ impl App {
             },
             StreamEvent::TextDelta(text) => Msg::StreamTextDelta(text),
             StreamEvent::ThinkingDelta(text) => Msg::StreamThinkingDelta(text),
-            StreamEvent::ToolStart { tool_name, tool_id } => {
-                Msg::StreamToolStart { tool_name, tool_id }
-            }
+            StreamEvent::ToolStart {
+                tool_name,
+                tool_id,
+                input,
+            } => Msg::StreamToolStart {
+                tool_name,
+                tool_id,
+                input,
+            },
             StreamEvent::ToolResult {
                 tool_name,
                 tool_id,
                 is_error,
                 duration_ms,
+                result,
             } => Msg::StreamToolResult {
                 tool_name,
                 tool_id,
                 is_error,
                 duration_ms,
+                result,
             },
             StreamEvent::ToolApprovalRequired {
                 turn_id,
