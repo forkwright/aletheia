@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use crate::id::{NousId, SessionId, ToolId, TurnId};
-use crate::state::chat::{ArcVec, ChatMessage, SavedScrollState, ToolCallInfo};
+use crate::state::chat::{ArcVec, ChatMessage, MarkdownCache, SavedScrollState, ToolCallInfo};
 use crate::state::filter::FilterState;
 use crate::state::input::InputState;
 use crate::state::ops::OpsState;
@@ -28,8 +28,7 @@ pub(crate) struct TabState {
     pub(crate) streaming_thinking: String,
     pub(crate) streaming_tool_calls: Vec<ToolCallInfo>,
     pub(crate) active_turn_id: Option<TurnId>,
-    pub(crate) cached_markdown_text: String,
-    pub(crate) cached_markdown_lines: Vec<ratatui::text::Line<'static>>,
+    pub(crate) markdown_cache: MarkdownCache,
     pub(crate) ops: OpsState,
 }
 
@@ -73,8 +72,7 @@ impl TabState {
             streaming_thinking: String::new(),
             streaming_tool_calls: Vec::new(),
             active_turn_id: None,
-            cached_markdown_text: String::new(),
-            cached_markdown_lines: Vec::new(),
+            markdown_cache: MarkdownCache::default(),
             ops: OpsState::default(),
         }
     }

@@ -15,8 +15,7 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
     app.streaming_text.clear();
     app.streaming_thinking.clear();
     app.streaming_tool_calls.clear();
-    app.cached_markdown_text.clear();
-    app.cached_markdown_lines.clear();
+    app.markdown_cache.clear();
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Streaming;
     }
@@ -29,12 +28,12 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
     app.streaming_text.push_str(&clean);
-    let delta = app.streaming_text.len() as i64 - app.cached_markdown_text.len() as i64;
+    let delta = app.streaming_text.len() as i64 - app.markdown_cache.text.len() as i64;
     if delta >= 64 || text.contains('\n') {
         let width = app.terminal_width.saturating_sub(2).max(1) as usize;
-        app.cached_markdown_lines =
+        app.markdown_cache.lines =
             crate::markdown::render(&app.streaming_text, width, &app.theme, &app.highlighter).0;
-        app.cached_markdown_text = app.streaming_text.clone();
+        app.markdown_cache.text = app.streaming_text.clone();
     }
     if app.auto_scroll {
         app.scroll_offset = 0;
@@ -202,8 +201,7 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     app.streaming_text.clear();
     app.streaming_thinking.clear();
     app.streaming_tool_calls.clear();
-    app.cached_markdown_text.clear();
-    app.cached_markdown_lines.clear();
+    app.markdown_cache.clear();
     app.active_turn_id = None;
     app.stream_rx = None;
     if let Some(ref agent_id) = app.focused_agent
@@ -525,7 +523,7 @@ mod tests {
         let mut app = test_app();
         handle_stream_text_delta(&mut app, "line1\nline2".to_string());
         // newline should trigger markdown re-render
-        assert!(!app.cached_markdown_text.is_empty());
+        assert!(!app.markdown_cache.text.is_empty());
     }
 
     #[test]
@@ -535,7 +533,7 @@ mod tests {
         // Trigger a cache update via newline
         handle_stream_text_delta(&mut app, "hello\nworld".to_string());
         // Cache should be populated (width is passed correctly even if _width is unused internally)
-        assert_eq!(app.cached_markdown_text, "hello\nworld");
+        assert_eq!(app.markdown_cache.text, "hello\nworld");
     }
 
     fn make_outcome() -> TurnOutcome {
