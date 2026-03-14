@@ -50,6 +50,16 @@ impl SandboxConfig {
 
     #[must_use]
     pub fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy {
+        if !self.enabled {
+            return SandboxPolicy {
+                enabled: false,
+                read_paths: Vec::new(),
+                write_paths: Vec::new(),
+                exec_paths: Vec::new(),
+                enforcement: self.enforcement,
+            };
+        }
+
         let mut read_paths = vec![
             PathBuf::from("/usr"),
             PathBuf::from("/lib"),
@@ -69,9 +79,13 @@ impl SandboxConfig {
         ];
 
         write_paths.push(workspace.to_path_buf());
+
+        // WHY: allowed_roots grant read-only access to shared data that agents
+        // may inspect but must not modify. Write access is limited to the
+        // workspace and extra_write_paths, which are operator-controlled.
         for root in allowed_roots {
-            if !write_paths.contains(root) {
-                write_paths.push(root.clone());
+            if !read_paths.contains(root) {
+                read_paths.push(root.clone());
             }
         }
 
@@ -85,6 +99,7 @@ impl SandboxConfig {
         }
 
         SandboxPolicy {
+            enabled: true,
             read_paths,
             write_paths,
             exec_paths,
@@ -96,6 +111,11 @@ impl SandboxConfig {
 /// Runtime sandbox policy with resolved paths.
 #[derive(Debug, Clone)]
 pub struct SandboxPolicy {
+    /// Whether sandbox restrictions are applied at all.
+    ///
+    /// When `false`, `apply_sandbox` returns immediately without registering
+    /// any `pre_exec` hook. Callers need not check this field separately.
+    pub enabled: bool,
     pub read_paths: Vec<PathBuf>,
     pub write_paths: Vec<PathBuf>,
     pub exec_paths: Vec<PathBuf>,
@@ -320,15 +340,20 @@ pub fn probe_landlock_abi() -> Option<i32> {
 /// # Safety
 ///
 /// This uses [`std::os::unix::process::CommandExt::pre_exec`] which runs
-/// between fork and exec in the child process. The sandbox operations
-/// (Landlock ruleset, seccomp filter) use kernel syscalls that are
-/// async-signal-safe.
+/// between fork and exec in the child process. The underlying Landlock and
+/// seccomp syscalls are async-signal-safe, but the crate wrappers perform
+/// heap allocations. See the inline `SAFETY` and `WARNING` comments for the
+/// full risk analysis.
 #[cfg(target_os = "linux")]
 pub fn apply_sandbox(
     cmd: &mut std::process::Command,
     policy: SandboxPolicy,
 ) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
+
+    if !policy.enabled {
+        return Ok(());
+    }
 
     // WHY: LANDLOCK_ABI initializes on first access, logging the result once.
     // Re-probing on every call is unnecessary; the kernel ABI is stable.
@@ -355,10 +380,24 @@ pub fn apply_sandbox(
         (Some(_), _) => {}
     }
 
-    // SAFETY: Landlock and seccomp operations use direct kernel syscalls
-    // (landlock_create_ruleset, landlock_add_rule, landlock_restrict_self,
-    // prctl/PR_SET_SECCOMP) which are async-signal-safe. No heap allocation
-    // or mutex acquisition occurs in the child process.
+    // SAFETY: The closure runs between fork and exec in the child process.
+    // The Landlock and seccomp syscalls themselves (landlock_create_ruleset,
+    // landlock_add_rule, landlock_restrict_self, prctl/PR_SET_SECCOMP) are
+    // async-signal-safe. policy.apply() is the sole entry point; it calls no
+    // signal-unsafe libc functions beyond those syscalls.
+    //
+    // WARNING: The landlock and seccompiler crate wrappers perform heap
+    // allocations between fork and exec (Ruleset data structures, BTreeMap
+    // for syscall rules, BpfProgram compilation). In a multi-threaded parent
+    // process, fork copies the allocator state into the child, including any
+    // arena mutex that another thread held at the moment of fork. If the child
+    // then calls malloc, it may deadlock on that copied mutex.
+    // Modern per-thread allocator arenas (glibc ptmalloc, jemalloc) make this
+    // unlikely in practice — each thread has its own arena — but the risk is
+    // not zero on arena exhaustion when threads share an arena.
+    // No deadlock has been observed in production use.
+    // TODO(#1140): pre-compile seccomp BPF in the parent and use raw Landlock
+    // syscalls in the child to eliminate all post-fork allocations.
     #[expect(
         unsafe_code,
         reason = "pre_exec requires unsafe; runs sandbox setup between fork and exec"
@@ -409,6 +448,28 @@ mod tests {
     }
 
     #[test]
+    fn disabled_config_returns_disabled_policy() {
+        let config = SandboxConfig::disabled();
+        let policy = config.build_policy(Path::new("/tmp/ws"), &[PathBuf::from("/extra")]);
+        assert!(
+            !policy.enabled,
+            "disabled config must produce disabled policy"
+        );
+        assert!(
+            policy.read_paths.is_empty(),
+            "disabled policy has no read paths"
+        );
+        assert!(
+            policy.write_paths.is_empty(),
+            "disabled policy has no write paths"
+        );
+        assert!(
+            policy.exec_paths.is_empty(),
+            "disabled policy has no exec paths"
+        );
+    }
+
+    #[test]
     fn config_serde_roundtrip() {
         let config = SandboxConfig {
             enabled: true,
@@ -453,12 +514,19 @@ mod tests {
     }
 
     #[test]
-    fn policy_includes_allowed_roots() {
+    fn policy_includes_allowed_roots_as_read_only() {
         let config = SandboxConfig::default();
         let workspace = PathBuf::from("/home/agent/workspace");
         let extra = PathBuf::from("/shared/data");
         let policy = config.build_policy(&workspace, std::slice::from_ref(&extra));
-        assert!(policy.write_paths.contains(&extra));
+        assert!(
+            policy.read_paths.contains(&extra),
+            "allowed_roots must appear in read_paths"
+        );
+        assert!(
+            !policy.write_paths.contains(&extra),
+            "allowed_roots must not appear in write_paths — read-only access only"
+        );
     }
 
     #[test]
@@ -651,6 +719,7 @@ mod tests {
         ];
 
         let policy = SandboxPolicy {
+            enabled: true,
             read_paths,
             write_paths,
             exec_paths,
@@ -781,6 +850,7 @@ mod tests {
         let workspace = tempfile::tempdir().expect("create workspace");
         let outside = tempfile::tempdir().expect("create outside dir");
         let policy = SandboxPolicy {
+            enabled: true,
             read_paths: vec![
                 PathBuf::from("/usr"),
                 PathBuf::from("/lib"),
