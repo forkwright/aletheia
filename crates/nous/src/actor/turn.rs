@@ -166,6 +166,8 @@ impl NousActor {
         self.handle_pipeline_result(result, session_key)
     }
 
+    // NOTE(#940): 113 lines — setup and spawn a single pipeline task with streaming
+    // bridge. The sequential setup + spawn is one cohesive operation.
     /// Spawn the pipeline as a separate tokio task to catch panics.
     ///
     /// When `db_session_id` is `Some`, the actor adopts that ID for the

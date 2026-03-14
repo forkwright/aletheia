@@ -323,6 +323,8 @@ async fn run_extraction(
     }
 }
 
+// NOTE(#940): 113 lines — extract → persist → handle lifecycle for skill extraction.
+// Single cohesive async operation, splitting would obscure the three-phase flow.
 /// Run LLM skill extraction as a background task. Logs results, never panics.
 async fn run_skill_extraction(
     model: &str,

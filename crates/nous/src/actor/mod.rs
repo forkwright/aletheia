@@ -171,6 +171,8 @@ impl NousActor {
         }
     }
 
+    // NOTE(#940): 92 lines — actor message loop with tokio::select!. Under the 100-line
+    // threshold but noted for completeness; the select loop is one cohesive operation.
     /// Run the actor loop until shutdown or all handles are dropped.
     ///
     /// # Cancel safety

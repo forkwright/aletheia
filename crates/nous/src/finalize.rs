@@ -66,6 +66,8 @@ pub struct FinalizeResult {
 /// The nous actor creates sessions in memory (not in `SQLite`). Before
 /// appending messages we ensure the session record exists in the store,
 /// avoiding a FOREIGN KEY constraint violation on the `messages` table.
+// NOTE(#940): 120 lines — sequential persistence pipeline: persist assistant message,
+// store tool results, update session, emit events. One cohesive commit sequence.
 #[expect(
     clippy::too_many_lines,
     reason = "sequential persist pipeline with dedup guard adds a few lines over the limit"
