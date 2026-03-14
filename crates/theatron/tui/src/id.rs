@@ -71,6 +71,7 @@ impl_id!(ToolId);
 impl_id!(PlanId);
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 

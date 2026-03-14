@@ -26,6 +26,10 @@ pub enum ApiError {
     /// Credentials rejected by the gateway.
     #[snafu(display("authentication failed: token expired or invalid"))]
     Auth,
+
+    /// Token contains characters that are not valid in an HTTP header value.
+    #[snafu(display("invalid token: contains characters not valid in HTTP headers"))]
+    InvalidToken,
 }
 
 pub(crate) type Result<T> = std::result::Result<T, ApiError>;

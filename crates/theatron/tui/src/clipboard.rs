@@ -47,6 +47,7 @@ fn copy_osc52(text: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     #[test]
     fn copy_osc52_generates_valid_sequence() {

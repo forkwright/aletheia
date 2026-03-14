@@ -1,6 +1,17 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
+
+/// Width percentage for the settings popup.
+const POPUP_WIDTH_PCT: u16 = 70;
+/// Height percentage for the settings popup.
+const POPUP_HEIGHT_PCT: u16 = 85;
+/// Fixed column width for field labels (padded with spaces on the right).
+const LABEL_COLUMN_WIDTH: usize = 28;
+/// Fixed column width for displayed field values.
+const VALUE_COLUMN_WIDTH: usize = 12;
+/// Lines emitted per settings section: one blank line + one header line + one blank line.
+const LINES_PER_SECTION: usize = 3;
 use ratatui::symbols;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
@@ -11,7 +22,7 @@ use crate::state::settings::{FieldType, SaveStatus, SettingsOverlay};
 use crate::theme::Theme;
 
 pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let popup = centered_rect(70, 85, area);
+    let popup = centered_rect(POPUP_WIDTH_PCT, POPUP_HEIGHT_PCT, area);
     frame.render_widget(Clear, popup);
 
     let mut lines: Vec<Line> = Vec::new();
@@ -66,7 +77,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
             if selected && let Some(ref edit) = overlay.editing {
                 lines.push(Line::from(vec![
                     Span::raw(format!("  {} ", marker)),
-                    Span::styled(format!("{:<28}", field.label), label_style),
+                    Span::styled(format!("{:<LABEL_COLUMN_WIDTH$}", field.label), label_style),
                     Span::styled(
                         &edit.buffer,
                         Style::default()
@@ -78,8 +89,8 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
             } else {
                 lines.push(Line::from(vec![
                     Span::raw(format!("  {} ", marker)),
-                    Span::styled(format!("{:<28}", field.label), label_style),
-                    Span::styled(format!("{:<12}", value_str), value_style),
+                    Span::styled(format!("{:<LABEL_COLUMN_WIDTH$}", field.label), label_style),
+                    Span::styled(format!("{:<VALUE_COLUMN_WIDTH$}", value_str), value_style),
                     Span::styled(tag, tag_style),
                     Span::styled(restart, Style::default().fg(theme.status.warning)),
                 ]));
@@ -196,7 +207,7 @@ fn estimate_cursor_line(overlay: &SettingsOverlay) -> usize {
     let mut line = 0;
     let mut field_idx = 0;
     for section in &overlay.sections {
-        line += 3; // blank + header + blank
+        line += LINES_PER_SECTION;
         for _ in &section.fields {
             if field_idx == overlay.cursor {
                 return line;

@@ -541,6 +541,7 @@ fn current_style(stack: &[Style]) -> Style {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
     use ratatui::style::{Color, Modifier};

@@ -1,4 +1,5 @@
 //! TUI entry point for the Aletheia client.
+#![deny(clippy::unwrap_used, clippy::expect_used)]
 
 mod actions;
 mod api;
@@ -100,9 +101,12 @@ async fn run_tui_inner(
     result
 }
 
+/// Tick interval in milliseconds — drives spinner animation and cursor blink (~30 fps).
+const TICK_INTERVAL_MS: u64 = 33;
+
 async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result<()> {
     let mut term_events = EventStream::new();
-    let mut tick = tokio::time::interval(std::time::Duration::from_millis(33));
+    let mut tick = tokio::time::interval(std::time::Duration::from_millis(TICK_INTERVAL_MS));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
@@ -220,6 +224,7 @@ async fn recv_stream(
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 
