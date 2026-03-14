@@ -132,6 +132,7 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "tool_start" => Some(StreamEvent::ToolStart {
             tool_name: str_field(&json, "toolName", event_type)?.to_string(),
             tool_id: ToolId::from(str_field(&json, "toolId", event_type)?.to_string()),
+            input: json.get("input").cloned(),
         }),
         "tool_result" => {
             let tool_name = str_field(&json, "toolName", event_type)?.to_string();
@@ -155,11 +156,16 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
                     );
                     None
                 })?;
+            let result = json
+                .get("result")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             Some(StreamEvent::ToolResult {
                 tool_name,
                 tool_id,
                 is_error,
                 duration_ms,
+                result,
             })
         }
         "tool_approval_required" => Some(StreamEvent::ToolApprovalRequired {

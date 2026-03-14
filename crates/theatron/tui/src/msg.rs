@@ -153,12 +153,14 @@ pub enum Msg {
     StreamToolStart {
         tool_name: String,
         tool_id: ToolId,
+        input: Option<serde_json::Value>,
     },
     StreamToolResult {
         tool_name: String,
         tool_id: ToolId,
         is_error: bool,
         duration_ms: u64,
+        result: Option<String>,
     },
     StreamToolApprovalRequired {
         turn_id: TurnId,

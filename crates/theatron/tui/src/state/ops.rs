@@ -27,6 +27,10 @@ pub struct OpsToolCall {
     pub status: OpsToolStatus,
     pub duration_ms: Option<u64>,
     pub expanded: bool,
+    /// Primary argument extracted from input (path, command, pattern, etc.)
+    pub primary_arg: Option<String>,
+    /// Error summary for failed tool calls, extracted from result text.
+    pub error_message: Option<String>,
 }
 
 /// A single thinking block in the operations pane.
@@ -212,6 +216,9 @@ impl OpsState {
 
     /// Start a new tool call.
     pub fn push_tool_start(&mut self, name: String, input_json: Option<String>) {
+        let primary_arg = input_json
+            .as_deref()
+            .and_then(|j| extract_primary_arg(j, &name));
         self.tool_calls.push(OpsToolCall {
             name,
             input_json,
@@ -219,6 +226,8 @@ impl OpsState {
             status: OpsToolStatus::Running,
             duration_ms: None,
             expanded: false,
+            primary_arg,
+            error_message: None,
         });
     }
 
@@ -237,14 +246,65 @@ impl OpsState {
                 OpsToolStatus::Complete
             };
             tc.duration_ms = Some(duration_ms);
-            if let Some(out) = output {
-                if let Some(diff) = parse_diff_from_output(&out, name) {
+            if let Some(ref out) = output {
+                if is_error {
+                    tc.error_message = Some(truncate_error(out));
+                }
+                if let Some(diff) = parse_diff_from_output(out, name) {
                     self.diffs.push(diff);
                 }
-                tc.output = Some(out);
             }
+            tc.output = output;
         }
     }
+}
+
+/// Maximum length for the inline primary arg display.
+const PRIMARY_ARG_MAX_LEN: usize = 40;
+
+/// Maximum length for the inline error summary.
+const ERROR_MAX_LEN: usize = 80;
+
+/// Fields to try, in priority order, when extracting the primary arg from tool input JSON.
+const PRIMARY_ARG_KEYS: &[&str] = &[
+    "file_path",
+    "path",
+    "command",
+    "pattern",
+    "query",
+    "url",
+    "glob",
+];
+
+/// Extract the most informative argument from a tool's input JSON.
+fn extract_primary_arg(json_str: &str, _tool_name: &str) -> Option<String> {
+    let obj: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    let map = obj.as_object()?;
+
+    for key in PRIMARY_ARG_KEYS {
+        if let Some(val) = map.get(*key).and_then(|v| v.as_str())
+            && !val.is_empty()
+        {
+            return Some(truncate_str(val, PRIMARY_ARG_MAX_LEN));
+        }
+    }
+    None
+}
+
+/// Truncate a string to `max_len` chars, appending "…" if truncated.
+fn truncate_str(s: &str, max_len: usize) -> String {
+    if s.chars().count() <= max_len {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_len.saturating_sub(1)).collect();
+        format!("{truncated}\u{2026}")
+    }
+}
+
+/// Extract a one-line error summary from tool result text.
+fn truncate_error(text: &str) -> String {
+    let first_line = text.lines().next().unwrap_or(text);
+    truncate_str(first_line, ERROR_MAX_LEN)
 }
 
 /// Try to parse a unified diff from a tool output string.
@@ -355,6 +415,8 @@ mod tests {
             status: OpsToolStatus::Running,
             duration_ms: None,
             expanded: false,
+            primary_arg: None,
+            error_message: None,
         });
         state.scroll_offset = 10;
         state.selected_item = Some(0);
@@ -589,5 +651,94 @@ mod tests {
     #[test]
     fn ops_auto_show_default_is_auto() {
         assert_eq!(OpsAutoShow::default(), OpsAutoShow::Auto);
+    }
+
+    #[test]
+    fn extract_primary_arg_path() {
+        let json = r#"{"file_path":"/src/main.rs","content":"fn main() {}"}"#;
+        let arg = extract_primary_arg(json, "read_file");
+        assert_eq!(arg.as_deref(), Some("/src/main.rs"));
+    }
+
+    #[test]
+    fn extract_primary_arg_command() {
+        let json = r#"{"command":"cargo test","timeout":30000}"#;
+        let arg = extract_primary_arg(json, "exec");
+        assert_eq!(arg.as_deref(), Some("cargo test"));
+    }
+
+    #[test]
+    fn extract_primary_arg_pattern() {
+        let json = r#"{"pattern":"fn main","path":"src/"}"#;
+        // "path" comes before "pattern" in priority order
+        let arg = extract_primary_arg(json, "grep");
+        assert_eq!(arg.as_deref(), Some("src/"));
+    }
+
+    #[test]
+    fn extract_primary_arg_none_for_empty_json() {
+        let json = r#"{}"#;
+        let arg = extract_primary_arg(json, "some_tool");
+        assert!(arg.is_none());
+    }
+
+    #[test]
+    fn extract_primary_arg_truncates_long_values() {
+        let mut long_path = "/".to_string();
+        long_path.push_str(&"a".repeat(100));
+        let json = format!(r#"{{"file_path":"{long_path}"}}"#);
+        let arg = extract_primary_arg(&json, "read_file").unwrap();
+        assert!(arg.chars().count() <= PRIMARY_ARG_MAX_LEN);
+        assert!(arg.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn push_tool_start_extracts_primary_arg() {
+        let mut state = OpsState::default();
+        let input = r#"{"file_path":"src/lib.rs"}"#.to_string();
+        state.push_tool_start("read_file".to_string(), Some(input));
+        assert_eq!(
+            state.tool_calls[0].primary_arg.as_deref(),
+            Some("src/lib.rs")
+        );
+    }
+
+    #[test]
+    fn complete_tool_error_extracts_message() {
+        let mut state = OpsState::default();
+        state.push_tool_start("exec".to_string(), None);
+        state.complete_tool(
+            "exec",
+            true,
+            200,
+            Some("Permission denied: /etc/shadow\ndetailed trace...".to_string()),
+        );
+        assert_eq!(state.tool_calls[0].status, OpsToolStatus::Failed);
+        assert_eq!(
+            state.tool_calls[0].error_message.as_deref(),
+            Some("Permission denied: /etc/shadow")
+        );
+    }
+
+    #[test]
+    fn complete_tool_success_no_error_message() {
+        let mut state = OpsState::default();
+        state.push_tool_start("read_file".to_string(), None);
+        state.complete_tool("read_file", false, 150, Some("file contents".to_string()));
+        assert!(state.tool_calls[0].error_message.is_none());
+    }
+
+    #[test]
+    fn truncate_error_takes_first_line() {
+        let text = "line one\nline two\nline three";
+        assert_eq!(truncate_error(text), "line one");
+    }
+
+    #[test]
+    fn truncate_error_truncates_long_line() {
+        let long = "x".repeat(200);
+        let result = truncate_error(&long);
+        assert!(result.chars().count() <= ERROR_MAX_LEN);
+        assert!(result.ends_with('\u{2026}'));
     }
 }

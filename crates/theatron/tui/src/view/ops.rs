@@ -267,11 +267,22 @@ fn render_tool_call(
         ),
     ];
 
+    if let Some(ref arg) = tc.primary_arg {
+        header.push(Span::styled(format!(" {arg}"), theme.style_muted()));
+    }
+
     if let Some(ref dur) = duration_str {
         header.push(Span::styled(dur.clone(), theme.style_dim()));
     }
 
     lines.push(Line::from(header));
+
+    if let Some(ref err) = tc.error_message {
+        lines.push(Line::from(vec![
+            Span::raw("   "),
+            Span::styled(format!("\u{2514} {err}"), theme.style_error()),
+        ]));
+    }
 
     if tc.expanded {
         if let Some(ref input) = tc.input_json {
