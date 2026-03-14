@@ -90,6 +90,7 @@ impl From<Error> for rmcp::ErrorData {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use snafu::IntoError as _;
 
