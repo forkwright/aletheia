@@ -64,9 +64,28 @@ pub struct CredentialFile {
 
 impl CredentialFile {
     /// Read and parse a credential file.
+    ///
+    /// Accepts two on-disk layouts:
+    ///
+    /// * **Flat** — `{"token": "...", "refreshToken": "..."}` (native) or with the
+    ///   `"accessToken"` alias produced by older Claude Code versions.
+    /// * **Wrapped** — `{"claudeAiOauth": {"accessToken": "...", ...}}` — the nested
+    ///   format written by current Claude Code releases.
+    ///
+    /// WHY: Claude Code changed its `.credentials.json` layout to nest all OAuth fields
+    /// under a `claudeAiOauth` top-level key. Without unwrapping it, fresh credentials
+    /// are invisible and the chain falls back to a stale env-var token.
     pub fn load(path: &Path) -> Option<Self> {
         let contents = std::fs::read_to_string(path).ok()?;
-        serde_json::from_str(&contents).ok()
+
+        // Try flat format first (native "token" field or "accessToken" alias).
+        if let Ok(cred) = serde_json::from_str::<Self>(&contents) {
+            return Some(cred);
+        }
+
+        // Try claudeAiOauth wrapper format written by current Claude Code releases.
+        let outer: serde_json::Value = serde_json::from_str(&contents).ok()?;
+        serde_json::from_value(outer.get("claudeAiOauth")?.clone()).ok()
     }
 
     /// Write the credential file atomically (write to temp, rename).
@@ -145,6 +164,78 @@ fn default_expires_in() -> u64 {
 /// OAuth token prefix used by Claude Code for OAuth access tokens.
 const OAUTH_TOKEN_PREFIX: &str = "sk-ant-oat";
 
+/// Decode a base64url-encoded string (no padding required) into raw bytes.
+///
+/// WHY: extracts JWT payload segments to read `exp` claims without pulling in a
+/// dedicated crate for this ~30-line function. Base64url differs from standard
+/// Base64 only in the `+`/`-` and `/`/`_` substitutions and the omission of `=` padding.
+fn base64url_decode(s: &str) -> Option<Vec<u8>> {
+    /// Map a single base64url character to its 6-bit value.
+    fn char_val(b: u8) -> Option<u8> {
+        match b {
+            b'A'..=b'Z' => Some(b - b'A'),
+            b'a'..=b'z' => Some(b - b'a' + 26),
+            b'0'..=b'9' => Some(b - b'0' + 52),
+            b'-' | b'+' => Some(62),
+            b'_' | b'/' => Some(63),
+            b'=' => Some(0), // padding — treated as zero bits
+            _ => None,
+        }
+    }
+
+    let bytes = s.as_bytes();
+    // Strip trailing padding before computing output length.
+    let end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
+    let bytes = &bytes[..end];
+
+    let mut out = Vec::with_capacity(bytes.len() * 6 / 8 + 1);
+    let mut buf: u32 = 0;
+    let mut bits: u32 = 0;
+
+    for &b in bytes {
+        let v = char_val(b)?;
+        buf = (buf << 6) | u32::from(v);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            // SAFETY: bits is 0-7 after decrement, so buf >> bits yields a value
+            // whose lowest 8 bits are the decoded byte; upper bits are stripped.
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "bits is 0-7 so buf >> bits fits in u8; upper bits are overflow from accumulation"
+            )]
+            out.push((buf >> bits) as u8);
+        }
+    }
+
+    Some(out)
+}
+
+/// Attempt to extract the `exp` (expiry, seconds since epoch) claim from a
+/// dot-segmented token without verifying its signature.
+///
+/// WHY: OAuth access tokens stored in env vars carry no separate expiry metadata;
+/// reading the `exp` claim embedded in the token's payload segment is the only
+/// non-network way to detect a stale token and allow fallthrough to a refreshable
+/// file-based provider.
+///
+/// NOTE: signature is intentionally not verified — only the expiry claim is read.
+/// Returns `None` when the token has no recognisable payload segment or no `exp`
+/// field; the caller must treat `None` as "expiry unknown" (do not fall through).
+fn decode_jwt_exp_secs(token: &str) -> Option<u64> {
+    // Dot-segmented format: ignore the first segment (vendor prefix or JWT header)
+    // and decode the second segment as a JSON object containing the exp claim.
+    let mut segs = token.splitn(4, '.');
+    let _first = segs.next()?;
+    let payload_b64 = segs.next()?;
+
+    let payload = base64url_decode(payload_b64)?;
+    let value: serde_json::Value = serde_json::from_slice(&payload).ok()?;
+
+    // exp is stored as a u64 integer (seconds since epoch) per the JWT spec (RFC 7519).
+    value.get("exp").and_then(serde_json::Value::as_u64)
+}
+
 /// Reads a credential from an environment variable.
 ///
 /// Automatically detects OAuth tokens by the `sk-ant-oat` prefix and
@@ -178,17 +269,37 @@ impl CredentialProvider for EnvCredentialProvider {
     fn get_credential(&self) -> Option<Credential> {
         std::env::var(&self.var_name).ok().and_then(|v| {
             if v.is_empty() {
-                None
-            } else {
-                let source = self.force_source.clone().unwrap_or_else(|| {
-                    if v.starts_with(OAUTH_TOKEN_PREFIX) {
-                        CredentialSource::OAuth
-                    } else {
-                        CredentialSource::Environment
-                    }
-                });
-                Some(Credential { secret: v, source })
+                return None;
             }
+
+            // When the env var holds an OAuth access token, check whether it has
+            // an embedded expiry claim. If the token appears expired, fall through
+            // to the next provider — typically a file-based provider with a live
+            // refresh token — rather than blocking the chain with a stale credential.
+            // WHY: static env var tokens cannot be refreshed; a refreshable file
+            // provider downstream must get a chance to supply a valid credential.
+            if v.starts_with(OAUTH_TOKEN_PREFIX)
+                && let Some(exp_secs) = decode_jwt_exp_secs(&v)
+            {
+                let now_secs = unix_epoch_ms() / 1000;
+                if exp_secs < now_secs {
+                    warn!(
+                        var = %self.var_name,
+                        "OAuth token from environment variable appears expired \
+                         — falling through to next provider"
+                    );
+                    return None;
+                }
+            }
+
+            let source = self.force_source.clone().unwrap_or_else(|| {
+                if v.starts_with(OAUTH_TOKEN_PREFIX) {
+                    CredentialSource::OAuth
+                } else {
+                    CredentialSource::Environment
+                }
+            });
+            Some(Credential { secret: v, source })
         })
     }
 
