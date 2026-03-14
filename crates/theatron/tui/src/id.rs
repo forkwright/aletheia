@@ -1,5 +1,6 @@
 //! Newtype wrappers for domain identifiers in the TUI layer.
 
+use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -11,9 +12,12 @@ pub struct NousId(String);
 #[serde(transparent)]
 pub struct SessionId(String);
 
+// WHY: Decimal u64 strings are at most 20 bytes (u64::MAX), always within
+// CompactString's 24-byte inline limit. NousId (≤64 bytes), SessionId
+// (26-byte ULID), ToolId (≤128 bytes), and PlanId (variable) exceed it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct TurnId(String);
+pub struct TurnId(CompactString);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -33,13 +37,13 @@ macro_rules! impl_id {
 
         impl From<String> for $ty {
             fn from(s: String) -> Self {
-                Self(s)
+                Self(s.into())
             }
         }
 
         impl From<&str> for $ty {
             fn from(s: &str) -> Self {
-                Self(s.to_string())
+                Self(s.into())
             }
         }
 
@@ -98,5 +102,20 @@ mod tests {
         let session = SessionId::from("agent".to_string());
         // These are different types — can't accidentally compare or swap them
         assert_eq!(&*nous, &*session);
+    }
+
+    #[test]
+    fn turn_id_serde_roundtrip() {
+        let id = TurnId::from("42".to_string());
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(json, r#""42""#);
+        let back: TurnId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, back);
+    }
+
+    #[test]
+    fn turn_id_max_value_fits_inline() {
+        let max = TurnId::from(u64::MAX.to_string());
+        assert_eq!(&*max, "18446744073709551615");
     }
 }
