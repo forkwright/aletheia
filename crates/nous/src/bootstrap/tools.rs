@@ -19,8 +19,12 @@ pub struct ToolSummary {
 }
 
 /// Expanded tool description for on-demand loading.
+#[expect(
+    dead_code,
+    reason = "tool expansion not yet wired into bootstrap pipeline"
+)]
 #[derive(Debug, Clone)]
-pub struct ToolExpanded {
+pub(crate) struct ToolExpanded {
     /// Tool name.
     pub name: String,
     /// Full description text.
@@ -43,8 +47,12 @@ pub fn summarize_tools(registry: &ToolRegistry) -> Vec<ToolSummary> {
 }
 
 /// Generate expanded descriptions for selected tool definitions.
+#[expect(
+    dead_code,
+    reason = "tool expansion not yet wired into bootstrap pipeline"
+)]
 #[must_use]
-pub fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
+pub(crate) fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
     defs.iter()
         .map(|def| ToolExpanded {
             name: def.name.as_str().to_owned(),
@@ -64,8 +72,15 @@ pub fn expand_tools(defs: &[&ToolDef]) -> Vec<ToolExpanded> {
 }
 
 /// Format tool summaries as a markdown section for the system prompt.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "tool expansion not yet wired into bootstrap pipeline"
+    )
+)]
 #[must_use]
-pub fn format_tool_summary_section(summaries: &[ToolSummary]) -> String {
+pub(crate) fn format_tool_summary_section(summaries: &[ToolSummary]) -> String {
     if summaries.is_empty() {
         return String::new();
     }

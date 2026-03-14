@@ -130,7 +130,7 @@ use crate::config::StageBudget;
 use std::time::{Duration, Instant};
 
 /// Tracks wall-clock time per pipeline stage and enforces limits.
-pub struct TimeBudget {
+pub(crate) struct TimeBudget {
     pipeline_start: Instant,
     stage_budgets: StageBudget,
     stage_elapsed: Vec<StageTimingRecord>,
@@ -139,10 +139,15 @@ pub struct TimeBudget {
 
 /// Timing record for a completed pipeline stage.
 #[derive(Debug, Clone)]
-pub struct StageTimingRecord {
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
+)]
+pub(crate) struct StageTimingRecord {
     /// Stage name (e.g. "context", "execute").
     pub name: String,
     /// Wall-clock time the stage consumed.
+    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     pub elapsed: Duration,
     /// Whether the stage completed normally, timed out, or was skipped.
     pub status: StageTimingStatus,
@@ -151,15 +156,24 @@ pub struct StageTimingRecord {
 /// How a pipeline stage completed.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StageTimingStatus {
-    /// Stage ran to completion within its time budget.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
+)]
+pub(crate) enum StageTimingStatus {
     Completed,
     /// Stage exceeded its time limit and was cut short.
+    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     TimedOut,
     /// Stage was not executed (e.g. total budget exhausted).
+    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     Skipped,
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "time budget not yet wired into pipeline stages")
+)]
 impl TimeBudget {
     /// Create a new time budget from per-stage limits.
     #[must_use]
@@ -241,6 +255,7 @@ impl TimeBudget {
 
     /// Total wall-clock time since the pipeline started.
     #[must_use]
+    #[expect(dead_code, reason = "time budget not yet wired into pipeline stages")]
     pub fn total_elapsed(&self) -> Duration {
         self.pipeline_start.elapsed()
     }

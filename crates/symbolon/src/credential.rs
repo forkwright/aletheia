@@ -70,7 +70,7 @@ impl CredentialFile {
     }
 
     /// Write the credential file atomically (write to temp, rename).
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+    pub(crate) fn save(&self, path: &Path) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -110,7 +110,8 @@ impl CredentialFile {
     /// Whether the token needs refresh (expired or within threshold).
     #[must_use]
     #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
-    pub fn needs_refresh(&self) -> bool {
+    #[expect(dead_code, reason = "credential internal; no caller yet")]
+    pub(crate) fn needs_refresh(&self) -> bool {
         match self.seconds_remaining() {
             Some(remaining) => remaining < REFRESH_THRESHOLD_SECS as i64,
             None => false,
@@ -220,7 +221,8 @@ impl FileCredentialProvider {
 
     /// The credential file path.
     #[must_use]
-    pub fn path(&self) -> &Path {
+    #[expect(dead_code, reason = "credential internal; no caller yet")]
+    pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 
@@ -349,7 +351,8 @@ impl RefreshingCredentialProvider {
     }
 
     /// Signal the background refresh task to stop.
-    pub fn shutdown(&self) {
+    #[expect(dead_code, reason = "credential internal; no caller yet")]
+    pub(crate) fn shutdown(&self) {
         self.shutdown.store(true, Ordering::Relaxed);
     }
 }

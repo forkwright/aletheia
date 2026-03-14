@@ -35,7 +35,7 @@ impl std::fmt::Debug for JwtConfig {
 
 /// The insecure placeholder key used when no explicit key is configured.
 /// Server startup MUST reject this value when auth is enabled.
-pub const INSECURE_DEFAULT_KEY: &str = "CHANGE-ME-IN-PRODUCTION";
+pub(crate) const INSECURE_DEFAULT_KEY: &str = "CHANGE-ME-IN-PRODUCTION";
 
 impl Default for JwtConfig {
     fn default() -> Self {
@@ -50,8 +50,9 @@ impl Default for JwtConfig {
 
 impl JwtConfig {
     /// Returns `true` if the signing key is the insecure placeholder.
+    #[expect(dead_code, reason = "auth guard helper; no caller yet outside tests")]
     #[must_use]
-    pub fn has_insecure_key(&self) -> bool {
+    pub(crate) fn has_insecure_key(&self) -> bool {
         self.signing_key.expose_secret() == INSECURE_DEFAULT_KEY
     }
 }
@@ -90,7 +91,7 @@ impl JwtManager {
 
     /// Issue a refresh token.
     #[instrument(skip(self), fields(kind = "refresh"))]
-    pub fn issue_refresh(&self, sub: &str, role: Role) -> Result<String> {
+    pub(crate) fn issue_refresh(&self, sub: &str, role: Role) -> Result<String> {
         self.issue(sub, role, None, TokenKind::Refresh, self.config.refresh_ttl)
     }
 
@@ -112,8 +113,15 @@ impl JwtManager {
     }
 
     /// Refresh a token pair: validate the refresh token, issue a new access + refresh pair.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "auth facade internals; only exercised by crate-level tests"
+        )
+    )]
     #[instrument(skip(self, refresh_token))]
-    pub fn refresh(&self, refresh_token: &str) -> Result<TokenPair> {
+    pub(crate) fn refresh(&self, refresh_token: &str) -> Result<TokenPair> {
         let claims = self.validate(refresh_token)?;
 
         if claims.kind != TokenKind::Refresh {

@@ -6,6 +6,13 @@
 //! - Enhanced scoring functions that augment epistemic tier, relationship proximity, and access frequency
 //! - Background recomputation of `PageRank` + `Louvain` stored in `graph_scores`
 //! - Cache invalidation via [`GraphDirtyFlag`](crate::graph_intelligence::GraphDirtyFlag)
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "module internals; only exercised by crate-level tests"
+    )
+)]
 
 use std::collections::{HashMap, HashSet};
 
