@@ -44,7 +44,7 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     figment.extract().context(FigmentSnafu)
 }
 
-/// Write configuration to the instance YAML file.
+/// Write configuration to the instance TOML file.
 ///
 /// Uses atomic write: writes to a `.tmp` file, then renames. This prevents
 /// corruption if the process is killed during write.

@@ -86,7 +86,7 @@ pub struct AgentsConfig {
 /// Per-factor scoring weights for the recall pipeline.
 ///
 /// Mirrors the weights in the nous recall stage but lives in taxis so operators
-/// can tune them per-agent via YAML without creating a taxis → nous dependency.
+/// can tune them per-agent via TOML without creating a taxis → nous dependency.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]

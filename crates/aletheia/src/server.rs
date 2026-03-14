@@ -63,7 +63,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     // Startup validation — fail fast before any actors or stores initialise
     oikos.validate().context("instance layout invalid")?;
 
-    // Config cascade: defaults → YAML → env
+    // Config cascade: defaults → TOML → env
     let config = load_config(&oikos).context("failed to load config")?;
     info!(
         port = config.gateway.port,

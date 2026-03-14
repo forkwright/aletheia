@@ -87,7 +87,7 @@ Crates are organized in layers. Lower layers know nothing about higher layers.
 - **agora**: channel system. The `ChannelProvider` trait, Signal client (semeion), message routing via bindings. Depends on koina + taxis.
 - **oikonomos** (daemon): background task runner. Cron scheduling, prosoche attention checks, trace rotation, drift detection, DB monitoring. Depends on koina.
 - **dianoia**: planning orchestrator. Multi-phase project state machine, workspace persistence. Depends on koina.
-- **thesauros**: domain pack loader. Reads `pack.yaml` manifests, registers pack tools and context overlays. Depends on koina + organon.
+- **thesauros**: domain pack loader. Reads `pack.toml` manifests, registers pack tools and context overlays. Depends on koina + organon.
 
 ### High (depends on multiple mid+low layers)
 

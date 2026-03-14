@@ -101,7 +101,7 @@ pub struct Theme {
 }
 
 /// The active theme. Detected from the terminal environment at first access.
-/// Future: configurable via `aletheia.yaml`.
+/// Future: configurable via `aletheia.toml`.
 pub static THEME: std::sync::LazyLock<Theme> = std::sync::LazyLock::new(Theme::default);
 
 impl Default for Theme {

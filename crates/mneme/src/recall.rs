@@ -205,7 +205,7 @@ impl RecallEngine {
 
     /// Compute the relationship proximity score from graph hops.
     ///
-    /// Direct neighbor = 1.0, 2-hop = 0.5, 3-hop = 0.25, etc.
+    /// Same entity (0 hops) or direct neighbor (1 hop) = 1.0, 2-hop = 0.5, 3-hop = 0.25, etc.
     /// No connection = 0.0.
     #[must_use]
     #[instrument(skip(self))]
@@ -221,7 +221,7 @@ impl RecallEngine {
 
     /// Compute the access frequency score.
     ///
-    /// Logarithmic scaling: `score = log(1 + count) / log(1 + max_count)`
+    /// Logarithmic scaling: `score = ln(1 + count) / ln(1 + max_count)`
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_access_frequency(&self, access_count: u64) -> f64 {
