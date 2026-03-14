@@ -764,14 +764,13 @@ async fn session_lifecycle_create_list_archive_unarchive_rename() {
     let resp = router.clone().oneshot(req).await.expect("archive");
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    // Verify archived
+    // Verify session is non-retrievable after DELETE (#1251): GET must return 404.
     let resp = router
         .clone()
         .oneshot(harness.authed_get(&format!("/api/v1/sessions/{id}")))
         .await
-        .expect("get archived");
-    let session_data = body_json(resp).await;
-    assert_eq!(session_data["status"], "archived");
+        .expect("get after delete");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
     // Unarchive
     let req = harness.authed_request("POST", &format!("/api/v1/sessions/{id}/unarchive"), None);
