@@ -379,7 +379,7 @@ fn batch_single_fact_produces_one_batch_of_one() {
     );
 }
 
-/// Requirement 31: batch of exactly batch_size produces single batch (boundary).
+/// Requirement 31: batch of exactly `batch_size` produces single batch (boundary).
 #[test]
 fn batch_exactly_batch_size_produces_single_batch() {
     let batch_size = 5;
@@ -438,7 +438,7 @@ mod proptests {
                 .collect();
 
             let batches = batch_facts(&facts, batch_size);
-            let total: usize = batches.iter().map(|b| b.len()).sum();
+            let total: usize = batches.iter().map(std::vec::Vec::len).sum();
             prop_assert_eq!(
                 total,
                 count,

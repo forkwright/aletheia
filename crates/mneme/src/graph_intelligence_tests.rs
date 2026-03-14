@@ -876,9 +876,9 @@ fn louvain_empty_graph_produces_empty_cluster_map() {
 // PageRank score distribution
 // ---------------------------------------------------------------------------
 
-/// Requirement: PageRank scores sum to approximately 1.0.
+/// Requirement: `PageRank` scores sum to approximately 1.0.
 ///
-/// In a standard PageRank distribution the scores are normalized so that
+/// In a standard `PageRank` distribution the scores are normalized so that
 /// they sum to 1.0 (within a small tolerance). This holds regardless of
 /// the graph topology.
 #[test]
@@ -897,9 +897,9 @@ fn pagerank_scores_sum_to_approximately_one() {
     );
 }
 
-/// Requirement: PageRank with single node returns score of 1.0.
+/// Requirement: `PageRank` with single node returns score of 1.0.
 ///
-/// A graph containing exactly one entity has a trivial PageRank: the
+/// A graph containing exactly one entity has a trivial `PageRank`: the
 /// single node absorbs all probability mass → importance = 1.0.
 #[test]
 fn pagerank_single_node_has_importance_one() {
@@ -913,9 +913,9 @@ fn pagerank_single_node_has_importance_one() {
     );
 }
 
-/// Requirement: PageRank with disconnected graph distributes scores per component.
+/// Requirement: `PageRank` with disconnected graph distributes scores per component.
 ///
-/// Both components receive non-zero PageRank scores even when there are no
+/// Both components receive non-zero `PageRank` scores even when there are no
 /// edges between them.
 #[test]
 fn pagerank_disconnected_graph_all_nodes_have_nonzero_scores() {
@@ -1041,7 +1041,7 @@ fn graph_dirty_flag_starts_clean_after_construction() {
     assert!(!flag.is_dirty(), "new flag must start in clean state");
 }
 
-/// Requirement: recomputation (take_dirty) clears the dirty flag.
+/// Requirement: recomputation (`take_dirty`) clears the dirty flag.
 #[test]
 fn graph_dirty_flag_take_clears_dirty_state() {
     let flag = GraphDirtyFlag::new();
