@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use super::*;
 
 // --- Pure scoring function tests (no engine needed) ---
@@ -226,12 +228,12 @@ fn graph_dirty_flag_multiple_marks() {
 // Each test defines a small graph, states the expected outcome from graph
 // theory, and asserts that the system matches.
 
-/// PageRank correctness: in a directed star graph where all leaves point to
-/// the hub, the hub receives all inlinks and must have the highest PageRank.
+/// `PageRank` correctness: in a directed star graph where all leaves point to
+/// the hub, the hub receives all inlinks and must have the highest `PageRank`.
 ///
 /// Topology: B→A, C→A, D→A
 /// Analytical result: A has 3 inlinks, B/C/D have 0 inlinks.
-/// Normalized PageRank: A ≈ 0.72 (hub), B/C/D ≈ 0.09 (leaves).
+/// Normalized `PageRank`: A ≈ 0.72 (hub), B/C/D ≈ 0.09 (leaves).
 #[test]
 fn pagerank_hub_with_most_inlinks_ranks_highest() {
     let mut ctx = GraphContext::default();
@@ -284,7 +286,7 @@ fn pagerank_hub_with_most_inlinks_ranks_highest() {
 ///
 /// Topology: cluster 1 = {a1, a2}, cluster 2 = {b1, b2}.
 /// Expected: a1/a2 share cluster 1, b1/b2 share cluster 2. Nodes from
-/// different clusters return false for same_cluster() relative to cluster 1.
+/// different clusters return false for `same_cluster()` relative to cluster 1.
 #[test]
 fn community_detection_two_clusters_correctly_separated() {
     let mut ctx = GraphContext::default();
@@ -364,7 +366,7 @@ fn shortest_path_linear_chain_distances_are_exact() {
 }
 
 /// Connected components correctness: nodes in disconnected graph components
-/// have no BFS path from the seed component and return None from hops().
+/// have no BFS path from the seed component and return None from `hops()`.
 ///
 /// Topology: component 1 = A→B, component 2 = C→D (no edges between).
 /// Seed: A. Expected: A=0, B=1, C=None, D=None (unreachable).
