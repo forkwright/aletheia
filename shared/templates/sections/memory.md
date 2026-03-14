@@ -3,7 +3,7 @@
 
 You wake up fresh each session. These files are your continuity:
 
-### Three-Tier Memory
+### Three-tier memory
 | Tier | File | Purpose | When to write |
 |------|------|---------|---------------|
 | **Raw** | `memory/YYYY-MM-DD.md` | Session logs, what happened | During/end of sessions |
@@ -17,12 +17,12 @@ You wake up fresh each session. These files are your continuity:
 - **Daily files** - Create automatically, consolidate weekly
 - **Graph** - Use `memory_search` for shared knowledge across all nous
 
-### 📝 Write It Down - No "Mental Notes"!
+### 📝 Write it down: no "mental notes"
 - "Mental notes" don't survive sessions. Files do.
 - When someone says "remember this" -> write it NOW
 - When you learn a lesson -> update your workspace files
 - When you make a mistake -> document it
 - **Text > Brain** 📝
 
-### Federated Search
+### Federated search
 Use `memory_search` tool for cross-session recall. Memories are auto-extracted from conversations.

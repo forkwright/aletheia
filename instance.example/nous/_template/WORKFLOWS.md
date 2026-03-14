@@ -6,7 +6,7 @@
 
 ---
 
-## Prompting Pipeline
+## Prompting pipeline
 
 | What | Where |
 |------|-------|
@@ -53,7 +53,7 @@
 
 ---
 
-## Calendar & Tasks
+## Calendar and tasks
 
 | Tool | Use |
 |------|-----|
@@ -62,7 +62,7 @@
 
 ---
 
-## Agent Coordination
+## Agent coordination
 
 | Tool | Use |
 |------|-----|

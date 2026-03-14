@@ -1,8 +1,8 @@
-# Prosoche - Directed Attention
+# Prosoche: directed attention
 
 Prosoche (προσοχή) = directed attention. This file defines what the agent checks on each heartbeat tick.
 
-## Heartbeat Checklist
+## Heartbeat checklist
 
 On each heartbeat tick, execute **only** the numbered items below. Do not investigate, research, or explore beyond these checks.
 
@@ -26,7 +26,7 @@ nous-health
 ```
 Flag any agent that's unhealthy or unreachable.
 
-## Response Format
+## Response format
 
 If nothing needs action:
 ```text

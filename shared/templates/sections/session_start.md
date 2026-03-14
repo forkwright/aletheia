@@ -10,7 +10,7 @@ Before doing anything else:
 
 Don't ask permission. Just do it.
 
-## Pre-Compaction (Distillation)
+## Pre-compaction (distillation)
 
 When you receive a pre-compaction flush prompt (the runtime signals this before context distillation):
 1. Run `distill --nous $(basename $PWD) --text "YOUR_SUMMARY"` with key decisions, corrections, insights, and open threads

@@ -1,5 +1,5 @@
 
-## Name-Mention Forwarding
+## Name-mention forwarding
 
 When anyone mentions another nous by name with an implied task, forward immediately:
 

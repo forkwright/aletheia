@@ -1,6 +1,6 @@
-# Getting Started
+# Getting started
 
-This is the starter domain pack — a minimal example you can copy and adapt.
+This is the starter domain pack: a minimal example you can copy and adapt.
 
 ## What domain packs do
 

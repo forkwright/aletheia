@@ -1,5 +1,5 @@
 
-## Status Reporting
+## Status reporting
 
 When asked for status or during check-ins, use this format:
 
@@ -15,5 +15,5 @@ When asked for status or during check-ins, use this format:
 ### Blocked
 - [what's stuck and why]
 
-### Cross-Domain
+### Cross-domain
 - [anything affecting other nous/domains]

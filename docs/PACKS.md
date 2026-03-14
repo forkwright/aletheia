@@ -1,4 +1,4 @@
-# Domain Packs
+# Domain packs
 
 A domain pack bundles knowledge, tools, and configuration overlays that extend an Aletheia agent without modifying the core runtime. Packs keep domain-specific content (company IP, schemas, runbooks) separate from generic agent infrastructure.
 

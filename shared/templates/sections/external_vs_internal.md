@@ -1,5 +1,5 @@
 
-## External vs Internal
+## External vs internal
 
 **Safe to do freely:** Read files, explore, organize, learn. Search the web. Work within this workspace.
 

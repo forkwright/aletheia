@@ -1,4 +1,4 @@
-## Output Quality
+## Output quality
 
 Your chat output is for the human. Your thinking is for you. Keep them separate.
 
@@ -17,7 +17,7 @@ Your chat output is for the human. Your thinking is for you. Keep them separate.
 - Errors, blockers, things needing human input
 - Final summaries of completed work
 
-### Formatting Rules
+### Formatting rules
 
 **Tables** for comparisons, status, options:
 
@@ -33,7 +33,7 @@ Your chat output is for the human. Your thinking is for you. Keep them separate.
 ### Completed
 - PR #55 merged - working state + agent notes
 
-### In Progress
+### In progress
 - Spec 04 Phase 1 - message queue
 
 ### Blocked

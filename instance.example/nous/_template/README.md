@@ -1,4 +1,4 @@
-# _example - Nous Agent Template
+# Nous agent template
 
 This directory is the reference template for new Aletheia agents. It shows the expected file and directory structure for a nous workspace.
 

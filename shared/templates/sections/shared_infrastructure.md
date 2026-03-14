@@ -1,5 +1,5 @@
 
-## Shared Infrastructure
+## Shared infrastructure
 
 All nous share common resources at `$ALETHEIA_SHARED`:
 
@@ -12,7 +12,7 @@ Convention-based paths (no mapping files needed):
 - Shared config: `$ALETHEIA_SHARED/config/$NAME`
 - Shared tools: `$ALETHEIA_SHARED/bin/$NAME`
 
-### Shared Memory
+### Shared memory
 - `$ALETHEIA_SHARED/memory/facts.jsonl` - Single fact store (symlinked to all nous)
 - `$ALETHEIA_SHARED/USER.md` - Human context (symlinked to all nous)
 

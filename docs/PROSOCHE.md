@@ -34,7 +34,7 @@ aletheia binary
 
 The daemon supports multiple schedule types:
 
-| Type | Example | Use Case |
+| Type | Example | Use case |
 |------|---------|----------|
 | `Cron` | `0 */45 8-23 * * *` | Every 45 min during waking hours |
 | `Interval` | `Duration::from_secs(3600)` | Fixed hourly interval |
