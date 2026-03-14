@@ -101,8 +101,6 @@ impl ToolExecutor for NoteExecutor {
     }
 }
 
-// --- Tool Definition ---
-
 fn note_def() -> ToolDef {
     ToolDef {
         name: ToolName::new("note").expect("valid tool name"),
@@ -156,8 +154,6 @@ fn note_def() -> ToolDef {
         auto_activate: true,
     }
 }
-
-// --- Registration ---
 
 pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(note_def(), Box::new(NoteExecutor))?;

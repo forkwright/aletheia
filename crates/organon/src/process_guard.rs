@@ -86,10 +86,6 @@ impl Drop for ProcessGuard {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
@@ -112,10 +108,8 @@ mod tests {
         let guard = ProcessGuard::new(child);
         drop(guard);
 
-        // Give the OS a moment to clean up.
         std::thread::sleep(Duration::from_millis(50));
 
-        // `kill -0 <pid>` succeeds only if the process exists.
         let alive = Command::new("kill")
             .args(["-0", &pid.to_string()])
             .output()

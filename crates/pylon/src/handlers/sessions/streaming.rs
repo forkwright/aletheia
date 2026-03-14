@@ -56,7 +56,6 @@ pub async fn send_message(
     axum::extract::Path(session_id): axum::extract::Path<String>,
     Json(body): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    // --- Idempotency key extraction ---
     let idempotency_key = extract_idempotency_key(&headers)?;
 
     if let Some(ref key) = idempotency_key {
@@ -110,7 +109,6 @@ pub async fn send_message(
         .build());
     }
 
-    // Resolve the nous actor
     let nous_id = &session.nous_id;
     let handle = state
         .nous_manager
@@ -123,7 +121,6 @@ pub async fn send_message(
         })?
         .clone();
 
-    // Pre-flight: verify provider exists for the model
     if let Some(config) = state.nous_manager.get_config(nous_id)
         && state
             .provider_registry

@@ -103,8 +103,6 @@ impl ToolExecutor for BlackboardExecutor {
     }
 }
 
-// --- Tool Definition ---
-
 fn blackboard_def() -> ToolDef {
     ToolDef {
         name: ToolName::new("blackboard").expect("valid tool name"),
@@ -155,8 +153,6 @@ fn blackboard_def() -> ToolDef {
         auto_activate: true,
     }
 }
-
-// --- Registration ---
 
 pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(blackboard_def(), Box::new(BlackboardExecutor))?;

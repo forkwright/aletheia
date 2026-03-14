@@ -53,7 +53,6 @@ fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
         let _ = pipe.read_to_string(&mut stderr);
     }
 
-    // Detach the guard (no kill needed) and reap the process.
     let status = guard.detach().wait()?;
     Ok(std::process::Output {
         status,
@@ -61,10 +60,6 @@ fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
         stderr: stderr.into_bytes(),
     })
 }
-
-// ---------------------------------------------------------------------------
-// Grep
-// ---------------------------------------------------------------------------
 
 struct GrepExecutor;
 
@@ -158,10 +153,6 @@ fn try_grep_fallback(
     cmd.arg(pattern).arg(path);
     run_command(&mut cmd)
 }
-
-// ---------------------------------------------------------------------------
-// Find
-// ---------------------------------------------------------------------------
 
 struct FindExecutor;
 
@@ -274,10 +265,6 @@ fn try_find_fallback(
     run_command(&mut cmd)
 }
 
-// ---------------------------------------------------------------------------
-// Ls
-// ---------------------------------------------------------------------------
-
 struct LsExecutor;
 
 impl ToolExecutor for LsExecutor {
@@ -356,7 +343,6 @@ fn format_system_time(time: &SystemTime) -> String {
             let hours = time_of_day / 3600;
             let minutes = (time_of_day % 3600) / 60;
 
-            // Days since epoch to Y-M-D (simplified)
             let (year, month, day) = days_to_ymd(days);
             format!("{year:04}-{month:02}-{day:02} {hours:02}:{minutes:02}")
         }
@@ -378,10 +364,6 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)
 }
-
-// ---------------------------------------------------------------------------
-// Tool definitions
-// ---------------------------------------------------------------------------
 
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(grep_def(), Box::new(GrepExecutor))?;
@@ -543,10 +525,6 @@ fn ls_def() -> ToolDef {
         auto_activate: true,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[path = "filesystem_tests.rs"]

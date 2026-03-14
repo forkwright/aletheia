@@ -36,6 +36,7 @@ pub struct AttentionItem {
 }
 
 /// Categories of attention items.
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AttentionCategory {
     /// Calendar event or deadline.
@@ -49,6 +50,7 @@ pub enum AttentionCategory {
 }
 
 /// Urgency level for attention items.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Urgency {
     /// Informational, no action needed soon.
@@ -106,15 +108,12 @@ impl ProsocheCheck {
     pub async fn run(&self) -> crate::error::Result<ProsocheResult> {
         let mut items = Vec::new();
 
-        // Disk space check.
         if let Some(ref data_dir) = self.data_dir {
             items.extend(check_disk_space(data_dir).await);
         }
 
-        // Database size check.
         items.extend(check_db_sizes(&self.db_paths));
 
-        // Memory check.
         items.extend(check_memory());
 
         tracing::info!(
@@ -190,9 +189,7 @@ async fn disk_usage_percent(path: &Path) -> std::io::Result<f64> {
 
 /// Parse the percentage from `df --output=pcent` output.
 fn parse_df_percent(output: &str) -> std::io::Result<f64> {
-    // Output format:
-    // Use%
-    //  42%
+    // NOTE: df --output=pcent output has a header line then lines like " 42%".
     for line in output.lines().skip(1) {
         let trimmed = line.trim().trim_end_matches('%');
         if let Ok(val) = trimmed.parse::<f64>() {
@@ -255,7 +252,6 @@ fn check_memory() -> Vec<AttentionItem> {
             let rss_mb = resident_kb / 1024;
             let mut items = Vec::new();
 
-            // Warn at 1 GB RSS, critical at 2 GB.
             if rss_mb >= 2048 {
                 items.push(AttentionItem {
                     category: AttentionCategory::SystemHealth,
@@ -310,7 +306,6 @@ mod tests {
     async fn prosoche_returns_items_for_default() {
         let check = ProsocheCheck::new("test-nous");
         let result = check.run().await.expect("should succeed");
-        // Without data_dir or db_paths, only memory check runs.
         assert!(!result.checked_at.is_empty());
     }
 

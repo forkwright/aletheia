@@ -1,6 +1,5 @@
 //! Prometheus metric definitions for the HTTP gateway.
 
-// Prometheus metric registration panics only on duplicate name (programmer error).
 #![expect(
     clippy::expect_used,
     reason = "metric registration is infallible at startup"
@@ -93,7 +92,7 @@ fn looks_like_id(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
-    // ULIDs (26 alphanumeric), UUIDs (36 with hyphens), or long hex strings
+    // NOTE: ULIDs are 26 alphanumeric chars; UUIDs are 36 chars with hyphens.
     let len = s.len();
     (len >= 20 && s.chars().all(|c| c.is_ascii_alphanumeric()))
         || (len == 36 && s.contains('-') && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-'))

@@ -304,7 +304,7 @@ mod tests {
                     other => panic!("expected Image block, got {other:?}"),
                 }
             }
-            other @ ToolResultContent::Text(_) => panic!("expected Blocks, got {other:?}"),
+            other => panic!("expected Blocks, got {other:?}"),
         }
     }
 

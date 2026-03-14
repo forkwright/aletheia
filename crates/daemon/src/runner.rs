@@ -331,10 +331,8 @@ impl TaskRunner {
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
 
-        // Restore persisted state before checking for missed windows.
         self.restore_state();
 
-        // Check for missed cron windows on startup.
         self.check_missed_cron_catchup();
 
         let mut interval = tokio::time::interval(Duration::from_secs(1));
@@ -385,7 +383,6 @@ impl TaskRunner {
 
             let elapsed = in_flight.started_at.elapsed();
 
-            // Check for 2x timeout — cancel the task.
             if elapsed > in_flight.timeout * 2 {
                 tracing::warn!(
                     task_id = %task_id,
@@ -400,7 +397,6 @@ impl TaskRunner {
                 continue;
             }
 
-            // Check for 1x timeout — warn.
             if elapsed > in_flight.timeout && !in_flight.warned {
                 tracing::warn!(
                     task_id = %task_id,
@@ -411,7 +407,6 @@ impl TaskRunner {
                 in_flight.warned = true;
             }
 
-            // Check if the task completed.
             if in_flight.handle.is_finished() {
                 let in_flight = self.in_flight.remove(&task_id).expect("just checked");
                 let duration = in_flight.started_at.elapsed();
@@ -485,7 +480,7 @@ impl TaskRunner {
         task.consecutive_failures += 1;
         task.last_run = Some(jiff::Timestamp::now());
 
-        // GraphHealthCheck failures don't count toward auto-disable.
+        // WHY: GraphHealthCheck is a diagnostic — failures don't count toward auto-disable.
         let exempt = matches!(
             task.def.action,
             TaskAction::Builtin(BuiltinTask::GraphHealthCheck)
@@ -501,11 +496,9 @@ impl TaskRunner {
                 "task auto-disabled after 3 consecutive failures"
             );
         } else {
-            // Apply exponential backoff.
             let delay = backoff_delay(task.consecutive_failures);
             task.backoff_until = Some(Instant::now() + delay);
 
-            // Next run is the later of the schedule's next_run and the backoff.
             let scheduled_next = task.def.schedule.next_run().unwrap_or(None);
             let backoff_ts = jiff::Timestamp::now()
                 .checked_add(jiff::SignedDuration::from_nanos(
@@ -610,7 +603,7 @@ impl TaskRunner {
                 continue;
             }
 
-            // Backpressure: skip if previous execution is still in progress.
+            // WHY: skip tasks still in-flight to prevent overlapping executions.
             if self.in_flight.contains_key(&self.tasks[i].def.id) {
                 tracing::debug!(
                     task_id = %self.tasks[i].def.id,
@@ -619,7 +612,6 @@ impl TaskRunner {
                 continue;
             }
 
-            // Check backoff.
             if let Some(backoff_until) = self.tasks[i].backoff_until
                 && now_instant < backoff_until
             {
@@ -636,7 +628,6 @@ impl TaskRunner {
             let task_id = self.tasks[i].def.id.clone();
             let timeout = self.tasks[i].def.timeout;
 
-            // Clone Arc handles for the spawned task.
             let bridge = self.bridge.clone();
             let maintenance = self.maintenance.clone();
             let retention_executor = self.retention_executor.clone();

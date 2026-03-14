@@ -743,7 +743,6 @@ data: {\"type\":\"message_stop\"}\n\
 
         let (events, response) = collect_events(sse);
 
-        // Verify block_type events emitted correctly
         let block_starts: Vec<&str> = events
             .iter()
             .filter_map(|e| match e {
@@ -756,7 +755,6 @@ data: {\"type\":\"message_stop\"}\n\
             vec!["server_tool_use", "web_search_tool_result", "text"]
         );
 
-        // Verify content blocks in response
         assert_eq!(response.content.len(), 3);
         match &response.content[0] {
             ContentBlock::ServerToolUse { id, name, input } => {

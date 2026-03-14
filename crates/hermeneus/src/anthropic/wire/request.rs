@@ -4,10 +4,6 @@ use crate::types::{CacheControl, CompletionRequest, Content, Role, ThinkingConfi
 
 use super::{compute_turn_cache_indices, content_with_cache_control};
 
-// ---------------------------------------------------------------------------
-// Request
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Serialize)]
 pub(crate) struct WireRequest<'a> {
     pub model: &'a str,
@@ -94,10 +90,6 @@ pub(crate) struct WireThinkingConfig {
     pub config_type: &'static str,
     pub budget_tokens: u32,
 }
-
-// ---------------------------------------------------------------------------
-// Conversions
-// ---------------------------------------------------------------------------
 
 impl<'a> WireRequest<'a> {
     #[expect(

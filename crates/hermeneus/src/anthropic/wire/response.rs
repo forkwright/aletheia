@@ -4,10 +4,6 @@ use crate::types::{CompletionResponse, ContentBlock, Usage};
 
 use super::parse_stop_reason;
 
-// ---------------------------------------------------------------------------
-// Response
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct WireResponse {
     pub id: String,
@@ -68,10 +64,6 @@ pub(crate) enum WireContentBlock {
     },
 }
 
-// ---------------------------------------------------------------------------
-// Error response
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct WireErrorResponse {
     pub error: WireErrorDetail,
@@ -83,10 +75,6 @@ pub(crate) struct WireErrorDetail {
     pub error_type: String,
     pub message: String,
 }
-
-// ---------------------------------------------------------------------------
-// Conversions
-// ---------------------------------------------------------------------------
 
 impl WireResponse {
     pub(crate) fn into_response(self) -> Result<CompletionResponse, String> {

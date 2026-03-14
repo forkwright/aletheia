@@ -198,26 +198,21 @@ pub async fn list_facts(
 ) -> Result<Json<FactsResponse>, ApiError> {
     use aletheia_mneme::knowledge::EpistemicTier;
 
-    // Enforce pagination bounds: cap limit at MAX_LIMIT.
     query.limit = query.limit.min(MAX_LIMIT);
 
-    // Build facts from the knowledge store if available.
     let mut facts = get_stored_facts(&state, &query);
 
-    // Apply text filter
     if let Some(ref filter) = query.filter {
         let filter_lower = filter.to_lowercase();
         facts.retain(|f| f.content.to_lowercase().contains(&filter_lower));
     }
 
-    // Apply fact_type filter
     if let Some(ref ft) = query.fact_type
         && ft != "all"
     {
         facts.retain(|f| f.fact_type == *ft);
     }
 
-    // Apply tier filter
     if let Some(ref tier) = query.tier {
         let tier_enum = match tier.as_str() {
             "verified" => Some(EpistemicTier::Verified),
@@ -230,17 +225,14 @@ pub async fn list_facts(
         }
     }
 
-    // Filter forgotten unless explicitly requested
     if !query.include_forgotten {
         facts.retain(|f| !f.is_forgotten);
     }
 
     let total = facts.len();
 
-    // Sort
     sort_facts(&mut facts, &query.sort, &query.order);
 
-    // Paginate
     let start = query.offset.min(facts.len());
     let end = (start + query.limit).min(facts.len());
     let facts = facts[start..end].to_vec();
@@ -273,7 +265,6 @@ pub async fn get_fact(
             location: snafu::Location::default(),
         })?;
 
-    // Get relationships involving entities mentioned in this fact
     let relationships = get_fact_relationships(&state, &fact);
     let similar = get_similar_facts(&state, &fact);
 
@@ -496,7 +487,6 @@ pub async fn search(
                 }
             }
             if score > 0.0 {
-                // Boost by confidence
                 score *= f.confidence;
                 Some(SearchResult {
                     id: f.id.to_string(),
@@ -546,7 +536,6 @@ pub async fn timeline(
         if fact.is_forgotten {
             continue;
         }
-        // Creation event
         events.push(TimelineEvent {
             timestamp: fact.recorded_at.to_string(),
             event_type: "created".to_string(),
@@ -555,7 +544,6 @@ pub async fn timeline(
             confidence: Some(fact.confidence),
         });
 
-        // Access events (summarized)
         if fact.access_count > 0 && fact.last_accessed_at.is_some() {
             events.push(TimelineEvent {
                 timestamp: fact
@@ -669,7 +657,7 @@ pub(crate) fn sort_facts(facts: &mut [aletheia_mneme::knowledge::Fact], sort: &s
                 .unwrap_or(std::cmp::Ordering::Equal);
             if desc { cmp.reverse() } else { cmp }
         }),
-        _ => {} // No sorting for unknown fields
+        _ => {}
     }
 }
 

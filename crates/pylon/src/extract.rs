@@ -31,8 +31,6 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        // When auth is disabled, inject a minimal read-only identity.
-        //
         // WHY: Granting Operator role bypasses all access controls and lets
         // any network caller manage agents, modify config, and access all
         // sessions. Auth-disabled deployments should receive the least

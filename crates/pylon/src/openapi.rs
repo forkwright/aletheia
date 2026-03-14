@@ -1,7 +1,5 @@
 //! `OpenAPI` specification generation.
 #![allow(clippy::needless_for_each)]
-// utoipa OpenApi derive macro
-// OpenAPI spec serialization to JSON is infallible for well-formed specs.
 #![expect(
     clippy::expect_used,
     reason = "OpenAPI JSON serialization is infallible"

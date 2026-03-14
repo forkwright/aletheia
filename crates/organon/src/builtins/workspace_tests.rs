@@ -25,8 +25,6 @@ fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
     }
 }
 
-// -- ReadExecutor -------------------------------------------------------
-
 #[tokio::test]
 async fn read_existing_file() {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -63,8 +61,6 @@ async fn read_missing_file() {
     assert!(result.is_error);
     assert!(result.content.text_summary().contains("file not found"));
 }
-
-// -- WriteExecutor ------------------------------------------------------
 
 #[tokio::test]
 async fn write_creates_file() {
@@ -110,8 +106,6 @@ async fn write_append_mode() {
     let on_disk = std::fs::read_to_string(dir.path().join("log.txt")).expect("read");
     assert_eq!(on_disk, "first\nsecond\n");
 }
-
-// -- EditExecutor -------------------------------------------------------
 
 #[tokio::test]
 async fn edit_single_match() {
@@ -172,8 +166,6 @@ async fn edit_multiple_matches() {
     assert!(result.content.text_summary().contains("2 times"));
 }
 
-// -- ExecExecutor -------------------------------------------------------
-
 #[tokio::test]
 async fn exec_simple_command() {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -208,8 +200,6 @@ async fn exec_timeout() {
     assert!(result.content.text_summary().contains("timed out"));
 }
 
-// -- Path traversal -----------------------------------------------------
-
 #[tokio::test]
 async fn path_traversal_blocked() {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -221,8 +211,6 @@ async fn path_traversal_blocked() {
         .expect_err("should reject traversal");
     assert!(err.to_string().contains("outside allowed roots"));
 }
-
-// -- Parameter validation -----------------------------------------------
 
 #[tokio::test]
 async fn test_read_when_path_argument_missing_returns_invalid_input_error() {
@@ -293,8 +281,6 @@ async fn test_exec_when_command_argument_missing_returns_error() {
     assert!(err.to_string().contains("missing or invalid field"));
 }
 
-// -- Extra / unknown params handled gracefully --------------------------
-
 #[tokio::test]
 async fn test_read_ignores_unknown_extra_fields() {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -308,8 +294,6 @@ async fn test_read_ignores_unknown_extra_fields() {
     assert!(!result.is_error);
     assert_eq!(result.content.text_summary(), "hello");
 }
-
-// -- Write result formatting --------------------------------------------
 
 #[tokio::test]
 async fn test_write_reports_byte_count_in_success_message() {
@@ -352,8 +336,6 @@ async fn test_write_append_creates_file_when_absent() {
     let on_disk = std::fs::read_to_string(dir.path().join("new.txt")).expect("read");
     assert_eq!(on_disk, "data");
 }
-
-// -- Edit result formatting ---------------------------------------------
 
 #[tokio::test]
 async fn test_edit_when_file_does_not_exist_returns_error_result() {
@@ -410,8 +392,6 @@ async fn test_edit_preserves_surrounding_content() {
     let on_disk = std::fs::read_to_string(dir.path().join("f.txt")).expect("read");
     assert_eq!(on_disk, "line1\nREPLACED\nline3\n");
 }
-
-// -- Exec result formatting ---------------------------------------------
 
 #[tokio::test]
 async fn test_exec_failed_command_reports_nonzero_exit_code() {
@@ -493,8 +473,6 @@ async fn test_exec_output_format_includes_exit_then_stdout_then_stderr() {
     let out_pos = text.find("out").expect("stdout");
     assert!(exit_pos < out_pos, "exit code should precede stdout");
 }
-
-// -- Helper functions ---------------------------------------------------
 
 #[test]
 fn test_validate_path_empty_string_returns_error() {
@@ -587,8 +565,6 @@ fn test_extract_opt_bool_returns_value_when_field_present() {
     assert_eq!(extract_opt_bool(&args, "append"), Some(true));
 }
 
-// -- Tool registration --------------------------------------------------
-
 #[tokio::test]
 async fn test_all_workspace_tools_registered() {
     let mut reg = crate::registry::ToolRegistry::new();
@@ -617,8 +593,6 @@ fn test_write_tool_def_has_path_and_content_as_required() {
     assert!(def.input_schema.required.contains(&"path".to_owned()));
     assert!(def.input_schema.required.contains(&"content".to_owned()));
 }
-
-// -- Sandbox fallback integration ---------------------------------------
 
 #[cfg(target_os = "linux")]
 #[tokio::test]
@@ -702,8 +676,6 @@ async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() 
     }
 }
 
-// -- parse_command_args -------------------------------------------------
-
 #[test]
 fn parse_command_args_splits_simple_command() {
     let (prog, args) = parse_command_args("echo hello world").expect("parse");
@@ -773,8 +745,6 @@ fn parse_command_args_program_only() {
     assert_eq!(prog, "ls");
     assert!(args.is_empty());
 }
-
-// -- Protected file enforcement -----------------------------------------
 
 #[tokio::test]
 async fn write_blocks_identity_md() {

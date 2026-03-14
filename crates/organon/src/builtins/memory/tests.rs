@@ -18,8 +18,6 @@ fn install_crypto_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-// --- In-memory mock stores ---
-
 struct MockNoteStore {
     notes: Mutex<Vec<NoteEntry>>,
     next_id: Mutex<i64>,
@@ -213,8 +211,6 @@ async fn memory_search_no_services_returns_error() {
     assert!(result.content.text_summary().contains("not configured"));
 }
 
-// --- Note tests ---
-
 #[tokio::test]
 async fn note_add_and_list() {
     let mut reg = ToolRegistry::new();
@@ -304,8 +300,6 @@ async fn note_rejects_over_500_chars() {
     assert!(result.is_error);
     assert!(result.content.text_summary().contains("500"));
 }
-
-// --- Blackboard tests ---
 
 #[tokio::test]
 async fn blackboard_write_and_read() {
@@ -413,8 +407,6 @@ async fn blackboard_delete_only_author() {
     let r2 = reg.execute(&del2, &ctx).await.expect("execute");
     assert!(r2.content.text_summary().contains("deleted"));
 }
-
-// --- Memory management tool tests ---
 
 #[tokio::test]
 async fn memory_correct_no_knowledge_returns_error() {
@@ -543,8 +535,6 @@ async fn memory_forget_not_auto_activated() {
     let def = reg.get_def(&name).expect("found");
     assert!(!def.auto_activate);
 }
-
-// --- Datalog query tool tests ---
 
 #[tokio::test]
 async fn datalog_query_rejects_mutation_keywords() {

@@ -77,7 +77,6 @@ impl DriftDetector {
             ..Default::default()
         };
 
-        // Walk example root and check each entry against instance.
         self.walk_example(&self.config.example_root, &mut report)?;
 
         Ok(report)
@@ -125,24 +124,19 @@ impl DriftDetector {
 
         for pattern in &self.config.ignore_patterns {
             if pattern.ends_with('/') {
-                // Directory prefix match.
                 let prefix = &pattern[..pattern.len() - 1];
                 if path_str.starts_with(prefix) || path_str == *prefix {
                     return true;
                 }
             } else if pattern.starts_with("*.") {
-                // Extension match.
-                let ext = &pattern[1..]; // e.g., ".db"
+                let ext = &pattern[1..];
                 if path_str.ends_with(ext) {
                     return true;
                 }
-            } else {
-                // Exact match on filename component.
-                if let Some(name) = relative.file_name().and_then(|n| n.to_str())
-                    && name == pattern
-                {
-                    return true;
-                }
+            } else if let Some(name) = relative.file_name().and_then(|n| n.to_str())
+                && name == pattern
+            {
+                return true;
             }
         }
 
@@ -176,11 +170,9 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
-        // Create example structure.
         fs::create_dir_all(config.example_root.join("config")).unwrap();
         fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
 
-        // Instance has the dir but not the file.
         fs::create_dir_all(config.instance_root.join("config")).unwrap();
 
         let detector = DriftDetector::new(config);
@@ -199,11 +191,9 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
-        // Example has a nous/ dir.
         fs::create_dir_all(config.example_root.join("nous")).unwrap();
         fs::write(config.example_root.join("nous/SOUL.md"), "").unwrap();
 
-        // Instance has nothing.
         fs::create_dir_all(&config.instance_root).unwrap();
 
         let detector = DriftDetector::new(config);
@@ -222,7 +212,6 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
-        // Example has data/ and signal/ dirs, plus a .db file.
         fs::create_dir_all(config.example_root.join("data")).unwrap();
         fs::write(config.example_root.join("data/sessions.db"), "").unwrap();
         fs::create_dir_all(config.example_root.join("signal")).unwrap();
@@ -230,13 +219,11 @@ mod tests {
         fs::create_dir_all(config.example_root.join("logs")).unwrap();
         fs::write(config.example_root.join("logs/.gitkeep"), "").unwrap();
 
-        // Instance has nothing.
         fs::create_dir_all(&config.instance_root).unwrap();
 
         let detector = DriftDetector::new(config);
         let report = detector.check().expect("check succeeds");
 
-        // None of the ignored items should appear.
         for path in &report.missing_files {
             let path_str = path.to_string_lossy();
             assert!(
@@ -277,7 +264,6 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
-        // Create identical structures.
         fs::create_dir_all(config.example_root.join("config")).unwrap();
         fs::write(config.example_root.join("config/aletheia.toml"), "").unwrap();
         fs::create_dir_all(config.instance_root.join("config")).unwrap();
@@ -310,7 +296,6 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
-        // Both directories exist but are empty.
         fs::create_dir_all(&config.example_root).unwrap();
         fs::create_dir_all(&config.instance_root).unwrap();
 
@@ -325,7 +310,6 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = make_config(tmp.path());
 
-        // Create a deeply nested structure in the example.
         fs::create_dir_all(config.example_root.join("level1/level2/level3")).unwrap();
         fs::write(
             config.example_root.join("level1/level2/level3/deep.yaml"),
@@ -333,7 +317,6 @@ mod tests {
         )
         .unwrap();
 
-        // Instance has nothing.
         fs::create_dir_all(&config.instance_root).unwrap();
 
         let detector = DriftDetector::new(config);

@@ -25,8 +25,6 @@ fn require_planning(
         .ok_or_else(|| ToolResult::error("planning service not configured"))
 }
 
-// --- Executors ---
-
 struct PlanCreateExecutor;
 
 impl ToolExecutor for PlanCreateExecutor {
@@ -361,8 +359,6 @@ impl ToolExecutor for PlanStepFailExecutor {
         })
     }
 }
-
-// --- Registration ---
 
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(plan_create_def(), Box::new(PlanCreateExecutor))?;
