@@ -38,6 +38,7 @@ pub struct EntityMergeCandidate {
 
 /// Decision based on the merge score thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MergeDecision {
     /// Score ≥ 0.90 — merge automatically.
     AutoMerge,
@@ -205,7 +206,6 @@ pub(crate) fn generate_candidates(
         for b in &entities[i + 1..] {
             let type_match = a.entity_type == b.entity_type;
 
-            // Only consider same-type pairs for candidate generation
             if !type_match {
                 continue;
             }
@@ -213,8 +213,6 @@ pub(crate) fn generate_candidates(
             let name_sim = jaro_winkler_ci(&a.name, &b.name);
             let alias_overlap = aliases_overlap(&a.aliases, &b.aliases)
                 || name_in_aliases(&a.name, &b.aliases, &b.name, &a.aliases);
-
-            // Must meet at least one candidate threshold
             let is_exact_match = a.name.to_lowercase() == b.name.to_lowercase();
             let is_jw_match = name_sim >= JW_THRESHOLD;
             let embed_sim = embed_similarities(&a.id, &b.id);
@@ -312,8 +310,6 @@ mod tests {
         0.0
     }
 
-    // --- MergeDecision ---
-
     #[test]
     fn decision_auto_merge_at_threshold() {
         assert_eq!(MergeDecision::from_score(0.90), MergeDecision::AutoMerge);
@@ -344,8 +340,6 @@ mod tests {
         assert_eq!(MergeDecision::from_score(0.0), MergeDecision::Skip);
     }
 
-    // --- Merge score formula ---
-
     #[test]
     fn merge_score_perfect() {
         let score = compute_merge_score(1.0, 1.0, true, true);
@@ -365,8 +359,6 @@ mod tests {
         assert!((score - 0.0).abs() < f64::EPSILON);
     }
 
-    // --- Jaro-Winkler ---
-
     #[test]
     fn jw_exact_case_insensitive() {
         let sim = jaro_winkler_ci("John Smith", "john smith");
@@ -384,8 +376,6 @@ mod tests {
         let sim = jaro_winkler_ci("John Smith", "Alice Johnson");
         assert!(sim < 0.85, "expected < 0.85, got {sim}");
     }
-
-    // --- Alias overlap ---
 
     #[test]
     fn alias_overlap_shared() {
@@ -416,8 +406,6 @@ mod tests {
         ));
     }
 
-    // --- Cosine similarity ---
-
     #[test]
     fn cosine_identical() {
         let v = vec![1.0_f32, 2.0, 3.0];
@@ -436,8 +424,6 @@ mod tests {
     fn cosine_empty() {
         assert!((cosine_similarity(&[], &[]) - 0.0).abs() < f64::EPSILON);
     }
-
-    // --- Candidate generation ---
 
     #[test]
     fn exact_name_match_case_insensitive() {
@@ -509,8 +495,6 @@ mod tests {
         assert!(candidates[0].embed_similarity >= 0.80);
     }
 
-    // --- Classification ---
-
     #[test]
     fn classify_auto_merge_and_review() {
         // e1 vs e2: exact name match (1.0) + same type (1.0) + alias overlap (1.0)
@@ -542,8 +526,6 @@ mod tests {
         assert!(total >= 1);
     }
 
-    // --- Canonical selection ---
-
     #[test]
     fn canonical_most_relationships() {
         let a = entity("e1", "John Smith", "person", vec![], 5, "2026-01-02");
@@ -565,8 +547,6 @@ mod tests {
         );
     }
 
-    // --- Idempotency ---
-
     #[test]
     fn idempotent_no_self_candidates() {
         let entities = vec![entity(
@@ -584,15 +564,11 @@ mod tests {
         );
     }
 
-    // --- Empty graph ---
-
     #[test]
     fn empty_graph_no_candidates() {
         let candidates = generate_candidates(&[], &no_embed);
         assert!(candidates.is_empty());
     }
-
-    // --- Score boundary tests ---
 
     #[test]
     fn score_boundary_exactly_070() {
@@ -613,8 +589,6 @@ mod tests {
     fn score_boundary_just_below_090() {
         assert_eq!(MergeDecision::from_score(0.8999), MergeDecision::Review);
     }
-
-    // --- Property-based tests ---
 
     mod proptests {
         use proptest::prelude::*;

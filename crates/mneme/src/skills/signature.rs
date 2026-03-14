@@ -60,11 +60,9 @@ pub fn sequence_signature(tool_calls: &[ToolCallRecord]) -> SequenceSignature {
     reason = "sequence lengths are small; precision loss is impossible in practice"
 )]
 pub fn signature_similarity(a: &SequenceSignature, b: &SequenceSignature) -> f64 {
-    // Fast path: identical hash → same sequence
     if a.hash == b.hash && a.normalized == b.normalized {
         return 1.0;
     }
-    // Fast path: one empty
     let max_len = a.len().max(b.len());
     if max_len == 0 {
         return 1.0;
@@ -72,10 +70,6 @@ pub fn signature_similarity(a: &SequenceSignature, b: &SequenceSignature) -> f64
     let lcs = lcs_length(&a.normalized, &b.normalized);
     lcs as f64 / max_len as f64
 }
-
-// ---------------------------------------------------------------------------
-// Internals
-// ---------------------------------------------------------------------------
 
 /// Collapse consecutive duplicate elements.
 fn collapse_consecutive(names: impl Iterator<Item = String>) -> Vec<String> {
@@ -99,7 +93,6 @@ fn hash_tool_names(names: &[String]) -> u64 {
 fn lcs_length(a: &[String], b: &[String]) -> usize {
     let m = a.len();
     let n = b.len();
-    // Allocate a flat (m+1)×(n+1) table
     let mut dp = vec![0usize; (m + 1) * (n + 1)];
     let idx = |i: usize, j: usize| i * (n + 1) + j;
     for i in 1..=m {
@@ -113,10 +106,6 @@ fn lcs_length(a: &[String], b: &[String]) -> usize {
     }
     dp[idx(m, n)]
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

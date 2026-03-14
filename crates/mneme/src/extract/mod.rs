@@ -8,10 +8,6 @@ use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use tracing::instrument;
 
-// ---------------------------------------------------------------------------
-// Error
-// ---------------------------------------------------------------------------
-
 /// Errors from the knowledge extraction pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -38,10 +34,6 @@ pub enum ExtractionError {
         location: snafu::Location,
     },
 }
-
-// ---------------------------------------------------------------------------
-// Extraction types
-// ---------------------------------------------------------------------------
 
 /// Extracted knowledge from a conversation segment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,10 +93,6 @@ pub struct ExtractedFact {
     pub fact_type: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
 /// Configuration for the knowledge extraction pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionConfig {
@@ -135,10 +123,6 @@ impl Default for ExtractionConfig {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Provider trait
-// ---------------------------------------------------------------------------
-
 /// Minimal LLM completion interface for extraction.
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
@@ -155,10 +139,6 @@ pub trait ExtractionProvider: Send + Sync {
     >;
 }
 
-// ---------------------------------------------------------------------------
-// Conversation message (local lightweight type)
-// ---------------------------------------------------------------------------
-
 /// A lightweight conversation message for the extraction pipeline.
 ///
 /// Decoupled from mneme's full [`crate::types::Message`] to keep
@@ -171,10 +151,6 @@ pub struct ConversationMessage {
     pub content: String,
 }
 
-// ---------------------------------------------------------------------------
-// Prompt output
-// ---------------------------------------------------------------------------
-
 /// The system prompt and user message for an extraction LLM call.
 #[derive(Debug, Clone)]
 pub struct ExtractionPrompt {
@@ -183,10 +159,6 @@ pub struct ExtractionPrompt {
     /// Concatenated conversation text for the user message.
     pub user_message: String,
 }
-
-// ---------------------------------------------------------------------------
-// Engine
-// ---------------------------------------------------------------------------
 
 /// Drives the extraction pipeline: prompt building, LLM calling, response parsing.
 pub struct ExtractionEngine {
@@ -331,7 +303,6 @@ Rules:
             });
         }
 
-        // Classify the turn from combined content
         let combined: String =
             messages
                 .iter()
@@ -344,18 +315,12 @@ Rules:
                     acc
                 });
         let turn_type = refinement::classify_turn(&combined);
-
-        // Build prompt with turn-type-specific instructions
         let prompt = self.build_prompt_with_turn_type(messages, Some(turn_type));
         let response = provider
             .complete(&prompt.system, &prompt.user_message)
             .await?;
         let mut extraction = self.parse_response(&response)?;
-
-        // Detect corrections in source content
         let correction = refinement::detect_correction(&combined);
-
-        // Post-process facts: classify type, boost confidence, apply quality filters
         let boost = turn_type.confidence_boost() + correction.confidence_boost;
         let mut filtered_count = 0;
 
@@ -363,20 +328,13 @@ Rules:
             .facts
             .into_iter()
             .filter_map(|mut fact| {
-                // Classify fact type
                 let fact_content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
                 let classified_type = refinement::classify_fact(&fact_content);
                 fact.fact_type = Some(classified_type.as_str().to_owned());
-
-                // Mark corrections
                 if correction.is_correction {
                     fact.is_correction = true;
                 }
-
-                // Apply confidence boost
                 fact.confidence = refinement::boosted_confidence(fact.confidence, boost);
-
-                // Quality filter
                 let filter = refinement::filter_fact(&fact_content, fact.confidence);
                 if filter.passed {
                     Some(fact)
@@ -425,7 +383,6 @@ Rules:
         let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
 
-        // Enforce per-turn extraction limits
         let entities = if extraction.entities.len() > self.config.max_entities {
             tracing::warn!(
                 count = extraction.entities.len(),
@@ -532,7 +489,6 @@ Rules:
                 || crate::knowledge::FactType::classify(&content),
                 crate::knowledge::FactType::from_str_lossy,
             );
-            // Apply correction detection and confidence boost
             let is_correction =
                 fact.is_correction || crate::conflict::is_correction_heuristic(&content);
             let confidence = if is_correction {
@@ -572,10 +528,6 @@ Rules:
     }
 }
 
-// ---------------------------------------------------------------------------
-// Refined extraction result
-// ---------------------------------------------------------------------------
-
 /// Result of extraction with context-dependent refinement applied.
 #[derive(Debug, Clone)]
 pub struct RefinedExtraction {
@@ -586,10 +538,6 @@ pub struct RefinedExtraction {
     /// Number of facts filtered out by quality checks.
     pub facts_filtered: usize,
 }
-
-// ---------------------------------------------------------------------------
-// Persist result
-// ---------------------------------------------------------------------------
 
 /// Counts of knowledge items persisted to the store.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -603,10 +551,6 @@ pub struct PersistResult {
     /// Number of facts written.
     pub facts_inserted: usize,
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 /// Strip markdown code fences from an LLM response.
 fn strip_code_fences(s: &str) -> &str {
@@ -644,10 +588,6 @@ fn slugify(s: &str) -> String {
             acc
         })
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]

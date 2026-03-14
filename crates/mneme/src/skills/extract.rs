@@ -15,10 +15,6 @@ use std::fmt::Write as _;
 use crate::skill::SkillContent;
 use crate::skills::{SkillCandidate, ToolCallRecord};
 
-// ---------------------------------------------------------------------------
-// Error
-// ---------------------------------------------------------------------------
-
 /// Errors from the skill extraction pipeline.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -39,10 +35,6 @@ pub enum SkillExtractionError {
     },
 }
 
-// ---------------------------------------------------------------------------
-// Provider trait
-// ---------------------------------------------------------------------------
-
 /// Minimal LLM completion interface for skill extraction.
 ///
 /// Keeps mneme independent of hermeneus. The nous layer bridges this trait
@@ -59,10 +51,6 @@ pub trait SkillExtractionProvider: Send + Sync {
         Box<dyn std::future::Future<Output = Result<String, SkillExtractionError>> + Send + 'a>,
     >;
 }
-
-// ---------------------------------------------------------------------------
-// Extracted skill (intermediate representation)
-// ---------------------------------------------------------------------------
 
 /// A skill definition extracted by the LLM, before human review.
 ///
@@ -105,10 +93,6 @@ impl ExtractedSkill {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Extractor
-// ---------------------------------------------------------------------------
-
 /// Extracts structured skill definitions from promoted candidates via LLM.
 pub struct SkillExtractor<P> {
     provider: P,
@@ -136,12 +120,9 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Deduplication
-// ---------------------------------------------------------------------------
-
 /// Result of a dedup check on a candidate skill.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DedupOutcome {
     /// No duplicate found — promote normally.
     Unique,
@@ -198,7 +179,7 @@ pub fn check_dedup(input: &DedupInput<'_>) -> DedupOutcome {
     {
         cosine_similarity(cand_emb, exist_emb) > 0.90
     } else {
-        // Fallback: tool overlap + name similarity
+        // WHY: Fallback to tool overlap when embeddings are unavailable.
         let tool_overlap = compute_tool_overlap(&candidate.tools_used, &existing.tools_used);
         let name_sim = compute_name_similarity(&candidate.name, &existing.name);
         tool_overlap > 0.85 || (tool_overlap > 0.6 && name_sim > 0.5)
@@ -208,7 +189,6 @@ pub fn check_dedup(input: &DedupInput<'_>) -> DedupOutcome {
         return DedupOutcome::Unique;
     }
 
-    // Existing wins if it has higher confidence + usage
     let existing_score = existing_confidence + f64::from(existing_usage) * 0.01;
     let candidate_score = candidate_confidence + f64::from(candidate_usage) * 0.01;
 
@@ -299,10 +279,6 @@ fn compute_name_similarity(a: &str, b: &str) -> f64 {
     lcs as f64 / a_chars.len().max(b_chars.len()) as f64
 }
 
-// ---------------------------------------------------------------------------
-// Prompt construction
-// ---------------------------------------------------------------------------
-
 const EXTRACTION_SYSTEM_PROMPT: &str = r#"You are a skill extraction engine for an AI agent system. Your job is to analyze tool call patterns and produce structured skill definitions.
 
 Given a recurring tool call pattern observed across multiple sessions, generate a reusable skill definition that captures the generalizable workflow.
@@ -332,7 +308,6 @@ fn build_extraction_prompt(
 ) -> String {
     let mut prompt = String::with_capacity(1024);
 
-    // Candidate metadata
     let _ = writeln!(prompt, "## Candidate Pattern");
     let _ = writeln!(prompt, "- Recurrence count: {}", candidate.recurrence_count);
     if let Some(ref pattern) = candidate.pattern_type {
@@ -355,7 +330,6 @@ fn build_extraction_prompt(
     );
     let _ = writeln!(prompt);
 
-    // Tool call sequences
     let _ = writeln!(prompt, "## Observed Tool Call Sequences");
     for (i, seq) in tool_call_sequences.iter().enumerate() {
         let _ = writeln!(prompt, "\n### Session {} ({} calls)", i + 1, seq.len());
@@ -375,10 +349,6 @@ fn build_extraction_prompt(
     prompt
 }
 
-// ---------------------------------------------------------------------------
-// Response parsing
-// ---------------------------------------------------------------------------
-
 /// Parse the LLM response into an [`ExtractedSkill`].
 ///
 /// Handles JSON embedded in markdown fences, bare JSON, and minor formatting
@@ -386,9 +356,7 @@ fn build_extraction_prompt(
 fn parse_skill_response(response: &str) -> Result<ExtractedSkill, SkillExtractionError> {
     let trimmed = response.trim();
 
-    // Strip markdown code fences if present
     let json_str = if trimmed.starts_with("```") {
-        // Find the opening fence end (after ```json or ```)
         let start = trimmed.find('\n').map_or(0, |i| i + 1);
         let end = trimmed
             .rfind("```")
@@ -399,7 +367,6 @@ fn parse_skill_response(response: &str) -> Result<ExtractedSkill, SkillExtractio
         trimmed
     };
 
-    // Try to find JSON object boundaries
     let json_str = json_str.trim();
     let json_str = if let Some(start) = json_str.find('{') {
         let end = json_str.rfind('}').unwrap_or(json_str.len());
@@ -418,10 +385,6 @@ fn parse_skill_response(response: &str) -> Result<ExtractedSkill, SkillExtractio
         .build()
     })
 }
-
-// ---------------------------------------------------------------------------
-// Pending skill wrapper
-// ---------------------------------------------------------------------------
 
 /// A skill awaiting human review before activation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -475,10 +438,6 @@ impl PendingSkill {
         self.status == "approved"
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[path = "extract_tests.rs"]

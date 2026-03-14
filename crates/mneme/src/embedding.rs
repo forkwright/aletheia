@@ -82,8 +82,6 @@ impl MockEmbeddingProvider {
 impl EmbeddingProvider for MockEmbeddingProvider {
     #[instrument(skip(self, text))]
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
-        // Deterministic pseudo-embedding from text content.
-        // Uses a simple multiplicative hash to spread bytes across dimensions.
         let mut vec = vec![0.0f32; self.dim];
         let bytes = text.as_bytes();
         let mut hash: u64 = 5381;
@@ -91,7 +89,6 @@ impl EmbeddingProvider for MockEmbeddingProvider {
             hash = hash.wrapping_mul(33).wrapping_add(u64::from(b));
         }
         for (i, v) in vec.iter_mut().enumerate() {
-            // Mix hash with position for per-dimension variation
             let h = hash
                 .wrapping_mul(i as u64 + 1)
                 .wrapping_add(i as u64 * 2_654_435_761);
@@ -100,7 +97,6 @@ impl EmbeddingProvider for MockEmbeddingProvider {
                 *v = ((h % 10000) as f32 / 5000.0) - 1.0;
             }
         }
-        // L2 normalize
         let norm: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
             for v in &mut vec {
@@ -120,10 +116,6 @@ impl EmbeddingProvider for MockEmbeddingProvider {
         "mock-embedding"
     }
 }
-
-// ---------------------------------------------------------------------------
-// Candle provider (pure Rust, no C++ dependencies)
-// ---------------------------------------------------------------------------
 
 #[cfg(feature = "embed-candle")]
 mod candle_provider {
@@ -173,7 +165,6 @@ mod candle_provider {
             let repo_id = model_repo.unwrap_or(Self::DEFAULT_REPO);
             let device = Device::Cpu;
 
-            // Download model files from HuggingFace Hub
             let api = hf_hub::api::sync::Api::new().map_err(|e| {
                 InitFailedSnafu {
                     message: format!("hf-hub API init failed: {e}"),
@@ -201,7 +192,6 @@ mod candle_provider {
                 .build()
             })?;
 
-            // Load config
             let config_str = std::fs::read_to_string(&config_path).map_err(|e| {
                 InitFailedSnafu {
                     message: format!("failed to read config.json: {e}"),
@@ -216,7 +206,6 @@ mod candle_provider {
             })?;
             let dimension = config.hidden_size;
 
-            // Load model weights (safe buffered read, no mmap)
             let weights_data = std::fs::read(&weights_path).map_err(|e| {
                 InitFailedSnafu {
                     message: format!("failed to read model weights: {e}"),
@@ -238,7 +227,6 @@ mod candle_provider {
                 .build()
             })?;
 
-            // Load tokenizer
             let mut tokenizer = Tokenizer::from_file(&tokenizer_path).map_err(|e| {
                 InitFailedSnafu {
                     message: format!("failed to load tokenizer: {e}"),
@@ -339,9 +327,7 @@ mod candle_provider {
                 .and_then(|t| t.sum_keepdim(1))
                 .and_then(|t| t.sqrt())
                 .map_err(Self::candle_err("norm computation"))?;
-            // Clamp norm to a small positive value to prevent NaN when the
-            // pooled vector has zero norm (e.g. all-zero input embeddings).
-            // A zero-norm input produces an all-zero output rather than NaN.
+            // WHY: Clamp norm to prevent NaN from zero-norm input after L2 normalization.
             let norm_safe = norm
                 .clamp(f32::EPSILON, f32::MAX)
                 .map_err(Self::candle_err("norm clamp"))?;
@@ -383,10 +369,8 @@ mod candle_provider {
         #[test]
         fn pool_and_normalize_zero_input_no_nan() {
             let device = Device::Cpu;
-            // shape: [batch=1, seq_len=2, hidden=4] — all zeros
             let embeddings =
                 Tensor::zeros(&[1usize, 2usize, 4usize], DType::F32, &device).expect("zero tensor");
-            // attention mask: all ones (both tokens valid)
             let attention_mask =
                 Tensor::ones(&[1usize, 2usize], DType::F32, &device).expect("ones mask");
             let result = CandelProvider::pool_and_normalize(&embeddings, &attention_mask, 1)
@@ -484,7 +468,6 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
                 .to_owned(),
         }
         .fail(),
-        // "voyage" => { ... }   // M1.3 Phase 3: Voyage AI API
         other => InitFailedSnafu {
             message: format!("unknown embedding provider: {other}"),
         }

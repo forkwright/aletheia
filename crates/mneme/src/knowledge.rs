@@ -107,6 +107,7 @@ pub struct EmbeddedChunk {
 /// Epistemic confidence tier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum EpistemicTier {
     /// Checked against ground truth.
     Verified,
@@ -146,6 +147,7 @@ impl std::fmt::Display for EpistemicTier {
 /// Reason for intentionally forgetting a fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ForgetReason {
     /// User explicitly requested removal.
     UserRequested,
@@ -203,6 +205,7 @@ impl std::str::FromStr for ForgetReason {
 /// research. Higher stability means slower decay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum FactType {
     /// "My name is X" — very stable (2 years).
     Identity,
@@ -293,7 +296,7 @@ impl FactType {
             "relationship" => Self::Relationship,
             "event" => Self::Event,
             "task" => Self::Task,
-            // "observation" and any unknown value both fall back to Observation
+            // WHY: Unknown values fall back to Observation to keep the type system open.
             _ => Self::Observation,
         }
     }
@@ -373,15 +376,13 @@ pub fn parse_timestamp(s: &str) -> Option<jiff::Timestamp> {
     if s.is_empty() {
         return None;
     }
-    // Legacy far-future sentinel — jiff can't represent 9999-12-31 but can do 9999-01-01
+    // WHY: jiff cannot represent 9999-12-31; 9999-01-01 is the far-future sentinel.
     if s.starts_with("9999-") {
         return Some(far_future());
     }
-    // Try full timestamp first
     if let Ok(ts) = s.parse::<jiff::Timestamp>() {
         return Some(ts);
     }
-    // Try date-only (assume UTC midnight)
     if let Ok(date) = s.parse::<jiff::civil::Date>() {
         return Some(
             date.to_zoned(jiff::tz::TimeZone::UTC)

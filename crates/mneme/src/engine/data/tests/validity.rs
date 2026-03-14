@@ -1,5 +1,5 @@
 //! Tests for temporal validity ranges.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use crate::engine::DbInstance;
 use crate::engine::data::value::DataValue;
 use serde_json::json;
@@ -14,7 +14,8 @@ fn test_validity() {
     println!("Using {} engine", db_kind);
     let db = DbInstance::default();
 
-    db.run_default(":create vld {a, v: Validity => d}").unwrap();
+    db.run_default(":create vld {a, v: Validity => d}")
+        .expect("test assertion");
 
     assert!(
         db.run_default(
@@ -42,7 +43,7 @@ fn test_validity() {
     :put vld {a, v => d}
     "#,
     )
-    .unwrap();
+    .expect("test assertion");
 
     let res = db
         .run_default(
@@ -50,7 +51,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d @ "NOW"}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 1);
 
@@ -60,7 +61,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 1);
 
@@ -70,7 +71,7 @@ fn test_validity() {
     :put vld {a, v => d}
     "#,
     )
-    .unwrap();
+    .expect("test assertion");
 
     let res = db
         .run_default(
@@ -78,7 +79,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d @ "NOW"}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 0);
 
@@ -88,7 +89,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 2);
 
@@ -98,7 +99,7 @@ fn test_validity() {
     :put vld {a, v => d}
     "#,
     )
-    .unwrap();
+    .expect("test assertion");
 
     let res = db
         .run_default(
@@ -106,10 +107,10 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d @ "NOW"}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 1);
-    assert_eq!(res[0][2].get_int().unwrap(), 2);
+    assert_eq!(res[0][2].get_int().expect("test assertion"), 2);
 
     let res = db
         .run_default(
@@ -117,7 +118,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 3);
 
@@ -127,7 +128,7 @@ fn test_validity() {
     :put vld {a, v => d}
     "#,
     )
-    .unwrap();
+    .expect("test assertion");
 
     let res = db
         .run_default(
@@ -135,7 +136,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d @ "NOW"}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 0);
 
@@ -145,7 +146,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 4);
     db.run_default(
@@ -154,7 +155,7 @@ fn test_validity() {
     :put vld {a, v => d}
     "#,
     )
-    .unwrap();
+    .expect("test assertion");
 
     let res = db
         .run_default(
@@ -162,7 +163,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d @ "NOW"}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 0);
 
@@ -172,7 +173,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d @ "END"}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 1);
     assert_eq!(res[0][2], DataValue::Null);
@@ -183,7 +184,7 @@ fn test_validity() {
         ?[a, v, d] := *vld{a, v, d}
     "#,
         )
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res.len(), 5);
 

@@ -1,4 +1,4 @@
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 
 // -- TurnType classification tests --
@@ -298,8 +298,9 @@ fn turn_type_serde_roundtrip() {
         TurnType::Correction,
         TurnType::Procedural,
     ] {
-        let json = serde_json::to_string(&tt).unwrap();
-        let back: TurnType = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&tt).expect("TurnType serialization must succeed");
+        let back: TurnType =
+            serde_json::from_str(&json).expect("TurnType deserialization must succeed");
         assert_eq!(tt, back);
     }
 }
@@ -326,8 +327,9 @@ fn fact_type_serde_roundtrip() {
         FactType::Task,
         FactType::Observation,
     ] {
-        let json = serde_json::to_string(&ft).unwrap();
-        let back: FactType = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&ft).expect("FactType serialization must succeed");
+        let back: FactType =
+            serde_json::from_str(&json).expect("TurnType deserialization must succeed");
         assert_eq!(ft, back);
     }
 }

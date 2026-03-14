@@ -3,6 +3,10 @@
     clippy::unwrap_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
+#![expect(
+    clippy::expect_used,
+    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
+)]
 use std::iter;
 use std::sync::atomic::Ordering;
 
@@ -51,7 +55,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::ListRelations => self.list_relations(tx),
             SysOp::ListFixedRules => {
-                let rules = self.fixed_rules.read().unwrap(); // INVARIANT: lock is not poisoned
+                let rules = self.fixed_rules.read().expect("lock poisoned");
                 Ok(NamedRows::new(
                     vec!["rule".to_string()],
                     rules
@@ -73,7 +77,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                 } else {
                     self.obtain_relation_locks(rel_name_strs)
                 };
-                let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
+                let _guards = locks
+                    .iter()
+                    .map(|l| l.read().expect("lock poisoned"))
+                    .collect_vec();
                 let mut bounds = vec![];
                 for rs in rel_names {
                     let bound = tx.destroy_relation(rs)?;
@@ -110,7 +117,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&rel_name.name))
                         .pop()
                         .unwrap();
-                    let _guard = lock.write().unwrap(); // INVARIANT: lock is not poisoned
+                    let _guard = lock.write().expect("lock poisoned");
                     tx.create_index(rel_name, idx_name, cols)?;
                 }
                 Ok(NamedRows::new(
@@ -132,7 +139,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
                         .unwrap();
-                    let _guard = lock.write().unwrap(); // INVARIANT: lock is not poisoned
+                    let _guard = lock.write().expect("lock poisoned");
                     tx.create_hnsw_index(config)?;
                 }
                 Ok(NamedRows::new(
@@ -154,7 +161,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
                         .unwrap();
-                    let _guard = lock.write().unwrap(); // INVARIANT: lock is not poisoned
+                    let _guard = lock.write().expect("lock poisoned");
                     tx.create_fts_index(config)?;
                 }
                 Ok(NamedRows::new(
@@ -176,7 +183,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
                         .unwrap();
-                    let _guard = lock.write().unwrap(); // INVARIANT: lock is not poisoned
+                    let _guard = lock.write().expect("lock poisoned");
                     tx.create_minhash_lsh_index(config)?;
                 }
 
@@ -199,7 +206,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         .obtain_relation_locks(iter::once(&rel_name.name))
                         .pop()
                         .unwrap();
-                    let _guard = lock.read().unwrap(); // INVARIANT: lock is not poisoned
+                    let _guard = lock.read().expect("lock poisoned");
                     tx.remove_index(rel_name, idx_name)?
                 };
 
@@ -226,7 +233,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                 } else {
                     self.obtain_relation_locks(rel_names)
                 };
-                let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
+                let _guards = locks
+                    .iter()
+                    .map(|l| l.read().expect("lock poisoned"))
+                    .collect_vec();
                 for (old, new) in rename_pairs {
                     tx.rename_relation(old, new)?;
                 }
@@ -237,7 +247,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             }
             SysOp::ListRunning => self.list_running(),
             SysOp::KillRunning(id) => {
-                let queries = self.running_queries.lock().unwrap(); // INVARIANT: lock is not poisoned
+                let queries = self.running_queries.lock().expect("lock poisoned");
                 Ok(match queries.get(id) {
                     None => NamedRows::new(
                         vec![STATUS_STR.to_string()],

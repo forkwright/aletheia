@@ -358,8 +358,8 @@ fn shortest_path_linear_chain_distances_are_exact() {
     assert_eq!(ctx.hops("z"), None, "completely absent node is unreachable");
 
     // Closer nodes have strictly fewer hops than farther nodes.
-    let close = ctx.hops("b").unwrap();
-    let far = ctx.hops("d").unwrap();
+    let close = ctx.hops("b").expect("entity b must be in the hop map");
+    let far = ctx.hops("d").expect("entity d must be in the hop map");
     assert!(
         close < far,
         "closer node ({close}) must have fewer hops than farther ({far})"
