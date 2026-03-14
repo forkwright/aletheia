@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use ratatui::Frame;
+use ratatui::buffer::Buffer;
 use tokio::sync::mpsc;
 
 use crate::api::client::ApiClient;
@@ -16,6 +17,7 @@ use crate::theme::{THEME, Theme};
 use crate::update::extract_text_content;
 use crate::view;
 
+use crate::state::ArcVec;
 use crate::state::SavedScrollState;
 use crate::state::TabBar;
 use crate::state::virtual_scroll::VirtualScroll;
@@ -45,7 +47,8 @@ pub struct App {
     // Dashboard state
     pub agents: Vec<AgentState>,
     pub focused_agent: Option<NousId>,
-    pub messages: Vec<ChatMessage>,
+    /// PERF: ArcVec clone is O(1) — tab switches share the Arc pointer, not the Vec.
+    pub messages: ArcVec<ChatMessage>,
     pub focused_session_id: Option<SessionId>,
     pub daily_cost_cents: u32,
 
@@ -131,6 +134,12 @@ pub struct App {
 
     // Memory inspector panel state
     pub memory: MemoryInspectorState,
+
+    // Dirty-flag rendering: true when state changed since last frame.
+    // Ticks only set this when animation is in progress (streaming or toasts).
+    pub(crate) dirty: bool,
+    // Cached buffer from the last full render, replayed on clean frames.
+    pub(crate) frame_cache: Option<Buffer>,
 }
 
 impl App {
@@ -149,7 +158,7 @@ impl App {
             should_quit: false,
             agents: Vec::new(),
             focused_agent: None,
-            messages: Vec::new(),
+            messages: ArcVec::default(),
             focused_session_id: None,
             daily_cost_cents: 0,
             input: InputState::default(),
@@ -189,6 +198,8 @@ impl App {
             tab_bar: TabBar::new(),
             pending_g: false,
             memory: MemoryInspectorState::new(),
+            dirty: true,
+            frame_cache: None,
         };
 
         app.connect().await?;
@@ -420,7 +431,22 @@ impl App {
 
     #[tracing::instrument(skip_all)]
     pub async fn update(&mut self, msg: Msg) {
+        let is_tick = matches!(msg, Msg::Tick);
+        if !is_tick {
+            self.dirty = true;
+            crate::update::update(self, msg).await;
+            return;
+        }
+        // WHY: Tick fires at 30 fps even when nothing changes. Only mark dirty when
+        // tick-driven animation is actually visible: streaming spinner or toast dismissal.
+        let had_animation = self.active_turn_id.is_some()
+            || self.error_toast.is_some()
+            || self.success_toast.is_some();
         crate::update::update(self, msg).await;
+        let has_animation = self.active_turn_id.is_some()
+            || self.error_toast.is_some()
+            || self.success_toast.is_some();
+        self.dirty = had_animation || has_animation;
     }
 
     /// Save current app state into the active tab.
@@ -504,8 +530,23 @@ impl App {
     }
 
     #[tracing::instrument(skip_all)]
-    pub fn view(&self, frame: &mut Frame) -> Vec<OscLink> {
-        view::render(self, frame)
+    pub fn view(&mut self, frame: &mut Frame) -> Vec<OscLink> {
+        if !self.dirty {
+            // PERF: No state changed since last frame — replay the cached buffer.
+            // ratatui diffs against the previous frame, so identical content produces
+            // zero terminal output. This skips all layout and widget computation.
+            if let Some(ref cached) = self.frame_cache
+                && cached.area == frame.area()
+            {
+                *frame.buffer_mut() = cached.clone();
+                return Vec::new();
+            }
+            // Cache miss (terminal resized or first frame) — fall through to full render.
+        }
+        let links = view::render(self, frame);
+        self.frame_cache = Some(frame.buffer_mut().clone());
+        self.dirty = false;
+        links
     }
 }
 
@@ -538,7 +579,7 @@ pub(crate) mod test_helpers {
             should_quit: false,
             agents: Vec::new(),
             focused_agent: None,
-            messages: Vec::new(),
+            messages: ArcVec::default(),
             focused_session_id: None,
             daily_cost_cents: 0,
             input: InputState::default(),
@@ -578,6 +619,8 @@ pub(crate) mod test_helpers {
             tab_bar: TabBar::new(),
             pending_g: false,
             memory: MemoryInspectorState::new(),
+            dirty: true,
+            frame_cache: None,
         }
     }
 
@@ -705,7 +748,8 @@ mod tests {
             model: None,
             is_streaming: false,
             tool_calls: Vec::new(),
-        }];
+        }]
+        .into();
         app.scroll_offset = 42;
         app.auto_scroll = false;
         app.input.text = "typing in tab0".to_string();
@@ -724,7 +768,8 @@ mod tests {
             model: None,
             is_streaming: false,
             tool_calls: Vec::new(),
-        }];
+        }]
+        .into();
         app.scroll_offset = 10;
         app.auto_scroll = true;
         app.input.text = "typing in tab1".to_string();
@@ -756,5 +801,49 @@ mod tests {
         assert_eq!(app.input.text, "typing in tab1");
         assert!(app.ops.thinking.text.is_empty());
         assert!(app.ops.tool_calls.is_empty());
+    }
+
+    #[test]
+    fn tab_switch_messages_copy_on_write_isolated() {
+        // After save_to_active_tab, the tab and the app share Arc storage.
+        // A push to app.messages triggers COW — the tab's snapshot is unaffected.
+        let mut app = test_app_with_messages(vec![("user", "hello"), ("assistant", "world")]);
+        let agent = test_agent("syn", "Syn");
+        let agent_id = agent.id.clone();
+        app.agents.push(agent);
+        app.focused_agent = Some(agent_id.clone());
+
+        let idx0 = app.tab_bar.create_tab(agent_id, "tab0");
+        app.tab_bar.active = idx0;
+        app.save_to_active_tab();
+
+        // Snapshot: 2 messages in both app and tab.
+        assert_eq!(app.messages.len(), 2);
+        assert_eq!(app.tab_bar.tabs[0].state.messages.len(), 2);
+
+        // Mutation diverges app from the saved snapshot.
+        app.messages.push(ChatMessage {
+            role: "user".to_string(),
+            text: "new".to_string(),
+            text_lower: "new".to_string(),
+            timestamp: None,
+            model: None,
+            is_streaming: false,
+            tool_calls: Vec::new(),
+        });
+
+        // App grew; tab snapshot is unchanged (COW semantics).
+        assert_eq!(app.messages.len(), 3);
+        assert_eq!(
+            app.tab_bar.tabs[0].state.messages.len(),
+            2,
+            "tab snapshot must not be affected by app mutation"
+        );
+    }
+
+    #[test]
+    fn dirty_starts_true_so_first_frame_renders() {
+        let app = test_app();
+        assert!(app.dirty, "new App must be dirty so first frame renders");
     }
 }

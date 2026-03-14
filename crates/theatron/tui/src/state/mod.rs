@@ -12,7 +12,7 @@ pub(crate) mod view_stack;
 pub(crate) mod virtual_scroll;
 
 pub use agent::{ActiveTool, AgentState, AgentStatus};
-pub(crate) use chat::SavedScrollState;
+pub(crate) use chat::{ArcVec, SavedScrollState};
 pub use chat::{ChatMessage, ToolCallInfo};
 pub use command::{CommandPaletteState, SelectionContext};
 pub use filter::{FilterScope, FilterState};

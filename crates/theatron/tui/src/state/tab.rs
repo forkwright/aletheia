@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use crate::id::{NousId, SessionId, ToolId, TurnId};
-use crate::state::chat::{ChatMessage, SavedScrollState, ToolCallInfo};
+use crate::state::chat::{ArcVec, ChatMessage, SavedScrollState, ToolCallInfo};
 use crate::state::filter::FilterState;
 use crate::state::input::InputState;
 use crate::state::ops::OpsState;
@@ -15,7 +15,8 @@ pub(crate) type TabId = u64;
 /// Per-tab snapshot of isolated session state.
 #[derive(Debug, Clone)]
 pub(crate) struct TabState {
-    pub(crate) messages: Vec<ChatMessage>,
+    /// PERF: ArcVec clone is O(1) — tab switch shares the Arc pointer, not the Vec content.
+    pub(crate) messages: ArcVec<ChatMessage>,
     pub(crate) focused_session_id: Option<SessionId>,
     pub(crate) input: InputState,
     pub(crate) scroll: SavedScrollState,
@@ -60,7 +61,7 @@ pub(crate) struct TabBar {
 impl TabState {
     pub(crate) fn new() -> Self {
         Self {
-            messages: Vec::new(),
+            messages: ArcVec::default(),
             focused_session_id: None,
             input: InputState::default(),
             scroll: SavedScrollState::default(),
