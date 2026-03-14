@@ -6166,6 +6166,7 @@ dependencies = [
 name = "theatron-core"
 version = "0.10.0"
 dependencies = [
+ "pulldown-cmark",
  "serde",
 ]
 
