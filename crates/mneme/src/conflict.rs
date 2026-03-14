@@ -48,6 +48,7 @@ pub enum ConflictError {
 
 /// How a new fact relates to an existing one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ConflictClassification {
     /// The new fact directly contradicts the existing fact.
     Contradicts,
@@ -106,6 +107,7 @@ pub struct ConflictResolution {
 
 /// Action to take after conflict resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ConflictAction {
     /// Insert the new fact (no conflict or supplements existing).
     Insert,

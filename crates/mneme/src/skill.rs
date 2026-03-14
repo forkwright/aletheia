@@ -43,14 +43,14 @@ pub fn skill_decay_score(days_since_last_use: f64, usage_count: u32, confidence:
         f64::from(decay::DEFAULT_STALE_DAYS)
     };
 
-    // Exponential decay: 2^(-days / half_life)
+    // NOTE: exponential decay formula: 2^(-days / half_life)
     let recency = 2_f64.powf(-days_since_last_use / half_life);
 
-    // Usage provides a floor boost: frequent use prevents total decay
+    // NOTE: usage provides a floor boost — frequent use prevents total decay
     let usage_floor = f64::from(usage_count.min(20)) / 100.0; // max 0.20
 
     let raw = recency + usage_floor;
-    // Confidence acts as a ceiling
+    // NOTE: confidence acts as a ceiling on the returned score
     (raw * confidence.clamp(0.0, 1.0)).clamp(0.0, 1.0)
 }
 
@@ -119,7 +119,6 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
 
     let (frontmatter, body) = split_frontmatter(source);
 
-    // Parse frontmatter if present
     let mut fm_tools: Vec<String> = Vec::new();
     let mut fm_domains: Vec<String> = Vec::new();
     if let Some(fm) = frontmatter {
@@ -133,10 +132,8 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
         }
     }
 
-    // Extract title from first `# ` heading
     let mut lines = body.lines().peekable();
 
-    // Skip blank lines before title
     while lines.peek().is_some_and(|l| l.trim().is_empty()) {
         lines.next();
     }
@@ -146,7 +143,7 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
         return Err(err("missing top-level heading (# Title)"));
     }
 
-    // Collect description: lines between title and first ## section
+    // NOTE: collect description from lines between the title and the first ## section
     let mut desc_lines = Vec::new();
     while let Some(&line) = lines.peek() {
         if line.starts_with("## ") {
@@ -160,7 +157,6 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
     }
     let mut description = desc_lines.join(" ");
 
-    // Parse sections
     let mut current_section = String::new();
     let mut sections: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
@@ -180,24 +176,23 @@ pub fn parse_skill_md(source: &str, slug: &str) -> Result<SkillContent, SkillPar
         }
     }
 
-    // Extract steps from "Steps" or "steps" section
     let steps = extract_steps(sections.get("steps").map_or(&[][..], |v| v.as_slice()));
 
-    // Extract tools from "Tools Used" section or frontmatter
+    // NOTE: prefer frontmatter tools list; fall back to parsing the "Tools Used" section
     let tools_used = if fm_tools.is_empty() {
         extract_tools(sections.get("tools used").map_or(&[][..], |v| v.as_slice()))
     } else {
         fm_tools
     };
 
-    // Domain tags from frontmatter, or derive from slug
+    // NOTE: prefer frontmatter domain tags; fall back to deriving from the slug
     let domain_tags = if fm_domains.is_empty() {
         derive_domain_tags(slug)
     } else {
         fm_domains
     };
 
-    // Use "When to Use" section as description if main description is empty
+    // NOTE: fall back to "When to Use" section when no description paragraph was found
     if description.is_empty()
         && let Some(when_lines) = sections.get("when to use")
     {
@@ -224,7 +219,6 @@ fn split_frontmatter(source: &str) -> (Option<&str>, &str) {
     if !trimmed.starts_with("---") {
         return (None, source);
     }
-    // Find closing ---
     let after_open = &trimmed[3..];
     if let Some(close_pos) = after_open.find("\n---") {
         let fm = &after_open[..close_pos];
@@ -251,7 +245,7 @@ fn extract_steps(lines: &[String]) -> Vec<String> {
     lines
         .iter()
         .filter_map(|line| {
-            // Strip ordered list prefix (e.g. "1. ", "2. ")
+            // NOTE: strip ordered list prefix (e.g., "1. ", "2. ") or bullet "- "
             let stripped = if let Some(pos) = line.find(". ") {
                 let prefix = &line[..pos];
                 if prefix.chars().all(|c| c.is_ascii_digit()) {
@@ -279,7 +273,6 @@ fn extract_tools(lines: &[String]) -> Vec<String> {
         .iter()
         .filter_map(|line| {
             let line = line.strip_prefix("- ").unwrap_or(line);
-            // Take everything before the colon as tool name
             let name = if let Some(colon_pos) = line.find(':') {
                 line[..colon_pos].trim()
             } else {
@@ -348,7 +341,7 @@ pub fn slugify(name: &str) -> String {
         })
         .collect();
 
-    // Collapse consecutive dashes and trim edges
+    // NOTE: collapse consecutive dashes and trim leading/trailing dashes
     let mut result = String::with_capacity(slug.len());
     let mut prev_dash = true; // suppress leading dashes
     for c in slug.chars() {
@@ -362,7 +355,6 @@ pub fn slugify(name: &str) -> String {
             prev_dash = false;
         }
     }
-    // Trim trailing dash
     if result.ends_with('-') {
         result.pop();
     }
@@ -392,10 +384,9 @@ pub fn format_skill_md(skill: &SkillContent) -> String {
     use std::fmt::Write as _;
     let mut md = String::with_capacity(512);
 
-    // YAML frontmatter
     md.push_str("---\n");
     let _ = writeln!(md, "name: {}", skill.name);
-    // Escape description for YAML (wrap in quotes if it contains colons or special chars)
+    // NOTE: wrap description in quotes when it contains YAML special characters (colon, hash, quote)
     let desc_needs_quoting = skill.description.contains(':')
         || skill.description.contains('#')
         || skill.description.contains('"');
@@ -406,8 +397,8 @@ pub fn format_skill_md(skill: &SkillContent) -> String {
         let _ = writeln!(md, "description: {}", skill.description);
     }
     if !skill.tools_used.is_empty() {
-        // Write both CC-native and aletheia-native keys for interop:
-        // `allowed-tools` is what CC reads; `tools` is what parse_skill_md reads.
+        // NOTE: write both keys for interop — `allowed-tools` is read by Claude Code;
+        // `tools` is what parse_skill_md reads back
         let _ = writeln!(md, "allowed-tools: {}", skill.tools_used.join(", "));
         let _ = writeln!(md, "tools: [{}]", skill.tools_used.join(", "));
     }
@@ -416,14 +407,12 @@ pub fn format_skill_md(skill: &SkillContent) -> String {
     }
     md.push_str("---\n\n");
 
-    // Title heading (required for parse_skill_md round-trip)
+    // NOTE: `# {name}` heading is required by parse_skill_md for round-trip compatibility
     let _ = writeln!(md, "# {}\n", skill.name);
 
-    // When to Use
     md.push_str("## When to Use\n");
     let _ = writeln!(md, "{}\n", skill.description);
 
-    // Steps
     if !skill.steps.is_empty() {
         md.push_str("## Steps\n");
         for (i, step) in skill.steps.iter().enumerate() {

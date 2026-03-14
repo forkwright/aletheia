@@ -235,6 +235,7 @@ impl Default for TieredSearchConfig {
 
 /// Which search tier produced the final results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SearchTier {
     /// Single-query hybrid search (BM25 + vector).
     Fast,

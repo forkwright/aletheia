@@ -117,7 +117,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
         let write_lock = self.obtain_relation_locks(write_lock_names.iter());
         let _write_lock_guards = if is_write {
-            Some(write_lock[0].read().unwrap()) // INVARIANT: lock is not poisoned
+            Some(write_lock[0].read().expect("lock is not poisoned"))
         } else {
             None
         };
@@ -448,7 +448,10 @@ impl<'s, S: Storage<'s>> Db<S> {
             started_at: since_the_epoch,
             poison: poison.clone(),
         };
-        self.running_queries.lock().unwrap().insert(id, handle); // INVARIANT: lock is not poisoned
+        self.running_queries
+            .lock()
+            .expect("lock is not poisoned")
+            .insert(id, handle);
 
         // RAII cleanups of running query handle
         let _guard = RunningQueryCleanup {

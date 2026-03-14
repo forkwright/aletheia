@@ -120,6 +120,7 @@ impl RelationHandle {
     Ord,
     PartialOrd,
 )]
+#[non_exhaustive]
 pub enum AccessLevel {
     Hidden,
     ReadOnly,
@@ -1451,8 +1452,16 @@ impl<'a> SessionTx<'a> {
         let is_lsh = rel.lsh_indices.contains_key(&idx_name.name);
         let is_fts = rel.fts_indices.contains_key(&idx_name.name);
         if is_lsh || is_fts {
-            self.tokenizers.named_cache.write().unwrap().clear(); // INVARIANT: lock is not poisoned
-            self.tokenizers.hashed_cache.write().unwrap().clear(); // INVARIANT: lock is not poisoned
+            self.tokenizers
+                .named_cache
+                .write()
+                .expect("lock is not poisoned")
+                .clear();
+            self.tokenizers
+                .hashed_cache
+                .write()
+                .expect("lock is not poisoned")
+                .clear();
         }
         if rel.indices.remove(&idx_name.name).is_none()
             && rel.hnsw_indices.remove(&idx_name.name).is_none()

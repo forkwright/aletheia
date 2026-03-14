@@ -247,17 +247,21 @@ impl<'s, S: Storage<'s>> Db<S> {
                     break;
                 }
                 TransactionPayload::Query((script, params)) => {
-                    let p = match parse_script(&script, &params, &self.fixed_rules.read().unwrap(), ts) // INVARIANT: lock is not poisoned
-                        {
-                            Ok(p) => p,
-                            Err(err) => {
-                                if results.send(Err(err)).is_err() {
-                                    break;
-                                } else {
-                                    continue;
-                                }
+                    let p = match parse_script(
+                        &script,
+                        &params,
+                        &self.fixed_rules.read().expect("lock is not poisoned"),
+                        ts,
+                    ) {
+                        Ok(p) => p,
+                        Err(err) => {
+                            if results.send(Err(err)).is_err() {
+                                break;
+                            } else {
+                                continue;
                             }
-                        };
+                        }
+                    };
 
                     let p = match p.get_single_program() {
                         Ok(p) => p,
@@ -358,7 +362,10 @@ impl<'s, S: Storage<'s>> Db<S> {
     pub fn import_relations(&'s self, data: BTreeMap<String, NamedRows>) -> Result<()> {
         let rel_names = data.keys().map(CompactString::from).collect_vec();
         let locks = self.obtain_relation_locks(rel_names.iter());
-        let _guards = locks.iter().map(|l| l.read().unwrap()).collect_vec(); // INVARIANT: lock is not poisoned
+        let _guards = locks
+            .iter()
+            .map(|l| l.read().expect("lock is not poisoned"))
+            .collect_vec();
 
         let cur_vld = current_validity();
 

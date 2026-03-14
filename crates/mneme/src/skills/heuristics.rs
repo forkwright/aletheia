@@ -26,6 +26,7 @@ pub struct HeuristicScore {
 
 /// High-level pattern category detected in a tool call sequence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum PatternType {
     /// Read → analyze → fix cycle (debugging → verification).
     Diagnostic,

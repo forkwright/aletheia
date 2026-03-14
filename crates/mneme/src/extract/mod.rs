@@ -331,7 +331,6 @@ Rules:
             });
         }
 
-        // Classify the turn from combined content
         let combined: String =
             messages
                 .iter()
@@ -345,17 +344,15 @@ Rules:
                 });
         let turn_type = refinement::classify_turn(&combined);
 
-        // Build prompt with turn-type-specific instructions
         let prompt = self.build_prompt_with_turn_type(messages, Some(turn_type));
         let response = provider
             .complete(&prompt.system, &prompt.user_message)
             .await?;
         let mut extraction = self.parse_response(&response)?;
 
-        // Detect corrections in source content
         let correction = refinement::detect_correction(&combined);
 
-        // Post-process facts: classify type, boost confidence, apply quality filters
+        // NOTE: post-process each fact: classify type, apply correction flag, boost confidence, quality-filter
         let boost = turn_type.confidence_boost() + correction.confidence_boost;
         let mut filtered_count = 0;
 
@@ -363,20 +360,13 @@ Rules:
             .facts
             .into_iter()
             .filter_map(|mut fact| {
-                // Classify fact type
                 let fact_content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
                 let classified_type = refinement::classify_fact(&fact_content);
                 fact.fact_type = Some(classified_type.as_str().to_owned());
-
-                // Mark corrections
                 if correction.is_correction {
                     fact.is_correction = true;
                 }
-
-                // Apply confidence boost
                 fact.confidence = refinement::boosted_confidence(fact.confidence, boost);
-
-                // Quality filter
                 let filter = refinement::filter_fact(&fact_content, fact.confidence);
                 if filter.passed {
                     Some(fact)
@@ -425,7 +415,7 @@ Rules:
         let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
 
-        // Enforce per-turn extraction limits
+        // NOTE: enforce per-turn extraction limits to bound memory and DB writes
         let entities = if extraction.entities.len() > self.config.max_entities {
             tracing::warn!(
                 count = extraction.entities.len(),
@@ -532,7 +522,6 @@ Rules:
                 || crate::knowledge::FactType::classify(&content),
                 crate::knowledge::FactType::from_str_lossy,
             );
-            // Apply correction detection and confidence boost
             let is_correction =
                 fact.is_correction || crate::conflict::is_correction_heuristic(&content);
             let confidence = if is_correction {
@@ -1630,9 +1619,8 @@ mod proptests {
         #[test]
         fn slugify_never_panics(input in "\\PC{0,200}") {
             let result = slugify(&input);
-            // BUG: slugify uses char::is_alphanumeric() which is Unicode-aware,
-            // so non-ASCII alphanumeric chars (Tamil, Cyrillic, etc.) pass through.
-            // Slugs should ideally be ASCII-only. Documented for fix in a separate PR.
+            // FIXME: slugify uses char::is_alphanumeric() which is Unicode-aware, so non-ASCII
+            // alphanumeric chars (Tamil, Cyrillic, etc.) pass through; slugs should be ASCII-only
             assert!(
                 result.chars().all(|c| c.is_alphanumeric() || c == '-'),
                 "slugify produced unexpected character in: {result:?}"

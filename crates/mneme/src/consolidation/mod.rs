@@ -102,6 +102,7 @@ pub enum ConsolidationError {
 
 /// Why a consolidation was triggered.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ConsolidationTrigger {
     /// An entity accumulated more than the threshold of active facts.
     EntityOverflow {

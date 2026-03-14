@@ -83,8 +83,6 @@ impl FtsCache {
 }
 
 struct PositionInfo {
-    // from: u32,
-    // to: u32,
     position: u32,
 }
 

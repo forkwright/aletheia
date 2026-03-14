@@ -38,6 +38,7 @@ pub struct EntityMergeCandidate {
 
 /// Decision based on the merge score thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MergeDecision {
     /// Score ≥ 0.90 — merge automatically.
     AutoMerge,

@@ -40,6 +40,7 @@ pub(crate) type Pairs<'a> = pest::iterators::Pairs<'a, Rule>;
 
 /// A parsed datalog script, as returned by `parse_script`.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum DatalogScript {
     Single(InputProgram),
     Imperative(ImperativeProgram),
@@ -59,6 +60,7 @@ pub struct ImperativeSysop {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ImperativeStmt {
     Break {
         target: Option<CompactString>,
@@ -93,7 +95,6 @@ pub enum ImperativeStmt {
     TempSwap {
         left: CompactString,
         right: CompactString,
-        // span: SourceSpan,
     },
     TempDebug {
         temp: CompactString,

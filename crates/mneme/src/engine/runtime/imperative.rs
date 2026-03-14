@@ -383,7 +383,10 @@ impl<'s, S: Storage<'s>> Db<S> {
                 started_at: since_the_epoch,
                 poison: poison.clone(),
             };
-            self.running_queries.lock().unwrap().insert(qid, q_handle);
+            self.running_queries
+                .lock()
+                .expect("lock is not poisoned")
+                .insert(qid, q_handle);
             let _guard = RunningQueryCleanup {
                 id: qid,
                 running_queries: self.running_queries.clone(),

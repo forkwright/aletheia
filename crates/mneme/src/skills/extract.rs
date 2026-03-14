@@ -142,6 +142,7 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
 
 /// Result of a dedup check on a candidate skill.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DedupOutcome {
     /// No duplicate found — promote normally.
     Unique,

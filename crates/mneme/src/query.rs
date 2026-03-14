@@ -11,6 +11,7 @@ pub trait Field: Copy {
 
 /// Knowledge graph relations stored in the `CozoDB` engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Relation {
     /// Temporal facts with validity windows and confidence scores.
     Facts,
@@ -36,6 +37,7 @@ impl Relation {
 
 /// Fields in the `facts` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FactsField {
     Id,
     ValidFrom,
@@ -82,6 +84,7 @@ impl Field for FactsField {
 
 /// Fields in the `entities` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EntitiesField {
     Id,
     Name,
@@ -106,6 +109,7 @@ impl Field for EntitiesField {
 
 /// Fields in the `relationships` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RelationshipsField {
     Src,
     Dst,
@@ -128,6 +132,7 @@ impl Field for RelationshipsField {
 
 /// Fields in the `embeddings` relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EmbeddingsField {
     Id,
     Content,

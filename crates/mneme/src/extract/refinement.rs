@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 /// Classifies a conversation turn for context-dependent extraction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum TurnType {
     /// General conversation — extract facts, entities, relationships.
     Discussion,
@@ -148,7 +149,6 @@ fn is_tool_heavy(content: &str) -> bool {
         .map(|line| line.len() + 1) // +1 for newline
         .sum();
 
-    // Also count content within code blocks
     let code_block_chars = count_code_block_chars(content);
 
     let tool_chars = marker_adjacent_chars.max(code_block_chars);
@@ -190,7 +190,7 @@ fn has_planning_patterns(lower: &str) -> bool {
         "option b",
         "pros and cons",
     ];
-    // Require at least 2 planning keywords for confidence
+    // NOTE: require at least 2 matches to reduce false positives on casual mentions
     let matches = PATTERNS.iter().filter(|p| lower.contains(**p)).count();
     matches >= 2
 }
@@ -211,7 +211,7 @@ fn has_debugging_patterns(lower: &str) -> bool {
         "investigating",
         "root cause",
     ];
-    // Require at least 2 debugging keywords
+    // NOTE: require at least 2 matches to reduce false positives on casual mentions
     let matches = PATTERNS.iter().filter(|p| lower.contains(**p)).count();
     matches >= 2
 }
@@ -245,6 +245,7 @@ fn has_procedural_patterns(lower: &str) -> bool {
 /// Classification of extracted facts for FSRS decay rate tuning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum FactType {
     /// Personal identity information (name, role, background).
     Identity,
@@ -363,7 +364,7 @@ fn has_task_patterns(lower: &str) -> bool {
         "todo", "need to", "should", "will", "plan to", "going to", "must", "have to", "deadline",
         "due date",
     ];
-    // Need at least one strong task indicator
+    // NOTE: require both a general pattern and at least one strong task indicator (todo/deadline)
     PATTERNS.iter().any(|p| lower.contains(p))
         && (lower.contains("todo")
             || lower.contains("need to")
@@ -438,6 +439,7 @@ pub fn detect_correction(content: &str) -> CorrectionSignal {
 
 /// Reasons a fact may be rejected by quality filters.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FilterReason {
     /// Confidence score below threshold.
     LowConfidence,
