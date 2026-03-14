@@ -5,7 +5,6 @@ use crate::msg::ErrorToast;
 use crate::state::{Overlay, SessionPickerOverlay};
 
 pub(crate) fn handle_tab_new(app: &mut App) {
-    // Open session picker to choose what to open in the new tab
     app.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
         cursor: 0,
         show_archived: false,
@@ -14,7 +13,6 @@ pub(crate) fn handle_tab_new(app: &mut App) {
 
 pub(crate) fn handle_tab_close(app: &mut App) {
     if app.tab_bar.len() <= 1 {
-        // Last tab — don't close, show hint
         app.error_toast = Some(ErrorToast::new("Cannot close last tab".into()));
         return;
     }

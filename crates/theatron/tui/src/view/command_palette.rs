@@ -19,7 +19,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let palette = &app.command_palette;
     let mut lines: Vec<Line> = Vec::new();
 
-    // Input line: `:` prompt + typed text
     lines.push(Line::from(vec![
         Span::styled(
             ":",
@@ -30,7 +29,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         Span::styled(&palette.input, theme.style_fg()),
     ]));
 
-    // Suggestion lines (max 8)
     for (i, suggestion) in palette.suggestions.iter().enumerate() {
         let selected = i == palette.selected;
         let marker = if selected { "▸" } else { " " };
@@ -95,8 +93,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 
-    // Position cursor in the input area
     let cursor_x = area.x + 1 + palette.cursor as u16;
-    let cursor_y = area.y + 1; // +1 for top border
+    let cursor_y = area.y + 1;
     frame.set_cursor_position((cursor_x, cursor_y));
 }

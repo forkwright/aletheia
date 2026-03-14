@@ -165,7 +165,7 @@ impl NousManager {
         if let Some(old) = self.actors.remove(&id) {
             warn!(nous_id = %id, "replacing existing actor");
             let _ = old.handle.shutdown().await;
-            // Take join handle before awaiting — must not hold MutexGuard across .await.
+            // WHY: take join handle before awaiting — must not hold MutexGuard across .await
             let join_opt = old.join.lock().expect("join mutex not poisoned").take();
             if let Some(join) = join_opt {
                 let _ = join.await;
@@ -183,7 +183,6 @@ impl NousManager {
     ) -> NousHandle {
         let id = config.id.clone();
 
-        // Filter and convert domain pack sections for this agent (by ID or domain tags)
         let extra_bootstrap = {
             let estimator = CharEstimator;
             let mut sections = Vec::new();
@@ -276,7 +275,6 @@ impl NousManager {
             // signal so busy actors are not incorrectly declared dead.
             let alive = ping_result.is_ok() || entry.active_turn.load(Ordering::Acquire);
 
-            // Try to get status for panic_count and uptime
             let (panic_count, uptime) = if let Ok(status) = entry.handle.status().await {
                 (status.panic_count, status.uptime)
             } else {
@@ -301,7 +299,6 @@ impl NousManager {
     pub async fn health_cycle(&mut self) {
         let health = self.check_health().await;
 
-        // Collect IDs that need restart to avoid borrow issues
         let mut to_restart: Vec<String> = Vec::new();
 
         for (id, actor_health) in &health {
@@ -356,22 +353,18 @@ impl NousManager {
         let pipeline_config = entry.pipeline_config.clone();
         let prev_restart_count = entry.restart_count;
 
-        // Remove old entry
         if let Some(old) = self.actors.remove(id) {
-            // Take join handle before any await
+            // WHY: take join handle before awaiting — must not hold MutexGuard across .await
             let join_opt = old.join.lock().expect("join mutex not poisoned").take();
             if let Some(join) = join_opt {
-                // Don't wait too long for a dead actor
                 let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
             }
         }
 
-        // Respawn
         let handle = self
             .spawn_inner(config.clone(), pipeline_config.clone())
             .await;
 
-        // Update restart tracking
         if let Some(entry) = self.actors.get_mut(id) {
             entry.restart_count = prev_restart_count + 1;
             entry.consecutive_misses = 0;
@@ -449,14 +442,13 @@ impl NousManager {
             }
         }
 
-        // Drain actors; collect handles and join handles for two-phase shutdown.
         let handles: Vec<(String, NousHandle)> = self
             .actors
             .iter()
             .map(|(id, e)| (id.clone(), e.handle.clone()))
             .collect();
 
-        // Take all join handles before any await — must not hold MutexGuard across .await.
+        // WHY: take all join handles before any await — must not hold MutexGuard across .await
         let joins: Vec<(String, Option<JoinHandle<()>>)> = self
             .actors
             .drain()
@@ -502,7 +494,6 @@ impl NousManager {
     pub async fn drain(&self, timeout: Duration) {
         info!(count = self.actors.len(), "draining all actors");
 
-        // Notify all actors simultaneously via the shared root token.
         self.cancel.cancel();
 
         if let Some(ref router) = self.router {
@@ -511,16 +502,14 @@ impl NousManager {
             }
         }
 
-        // Also send explicit Shutdown messages so actors waiting on inbox wake up.
+        // WHY: explicit Shutdown messages wake actors blocking on inbox recv
         for entry in self.actors.values() {
             if let Err(e) = entry.handle.shutdown().await {
                 warn!(nous_id = entry.handle.id(), error = %e, "failed to send shutdown");
             }
         }
 
-        // Await all join handles within the timeout, so callers can guarantee
-        // all Arc<KnowledgeStore> / fjall Database references are dropped.
-        // Take handles first to avoid holding MutexGuard across .await points.
+        // WHY: take handles before await — must not hold MutexGuard across .await
         let mut joins: Vec<(String, JoinHandle<()>)> = self
             .actors
             .iter()

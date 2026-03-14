@@ -28,9 +28,7 @@ pub fn render(
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
-    // Byte-based column counter for the current (unflushed) line.
-    // Byte length is used intentionally — this matches the scroll calculation in
-    // view/chat.rs which also uses `span.content.len()` for line-width estimation.
+    // WHY: byte length matches scroll calculation in view/chat.rs which uses span.content.len()
     let mut current_col: u16 = 0;
     let mut style_stack: Vec<Style> = vec![Style::default().fg(theme.text.fg)];
     let mut in_code_block = false;
@@ -38,28 +36,23 @@ pub fn render(
     let mut code_block_lang: Option<String> = None;
     let mut list_depth: usize = 0;
 
-    // Link state
     let mut link_url: Option<String> = None;
     let mut link_start_line: usize = 0;
     let mut link_start_col: u16 = 0;
     let mut link_text_buf: String = String::new();
 
-    // Image state
     let mut in_image = false;
     let mut image_alt = String::new();
 
-    // Table state
     let mut in_table = false;
     let mut table_rows: Vec<Vec<String>> = Vec::new();
     let mut current_row: Vec<String> = Vec::new();
     let mut current_cell = String::new();
     let mut is_table_head = false;
 
-    // Blockquote nesting depth — tracked so paragraph start can prepend the │ prefix
-    // on the correct line rather than flushing it alone (bug fix: see Tag::BlockQuote below).
+    // WHY: paragraph start prepends │ (not BlockQuote) so the border lands on the same line as content
     let mut blockquote_depth: usize = 0;
 
-    // Collected hyperlinks (returned alongside lines)
     let mut md_links: Vec<MdLink> = Vec::new();
 
     for event in parser {
@@ -120,10 +113,8 @@ pub fn render(
                 }
                 Tag::Paragraph => {
                     flush_line(&mut lines, &mut current_spans, &mut current_col);
-                    // Bug fix: blockquote border belongs on the same line as content.
-                    // Previously the border was pushed in Tag::BlockQuote, which caused
-                    // Tag::Paragraph to flush it alone before any text arrived.
-                    // Now we emit the │ prefix here, after the flush, so it leads the content.
+                    // WHY: emit │ prefix here after flush so it leads content — if pushed in
+                    // Tag::BlockQuote, Paragraph would flush it alone before any text arrived.
                     for _ in 0..blockquote_depth {
                         push_span(
                             &mut current_spans,
@@ -136,9 +127,7 @@ pub fn render(
                     }
                 }
                 Tag::BlockQuote(_) => {
-                    // Flush any pending content, then enter blockquote context.
-                    // Do NOT push │ to current_spans here — Tag::Paragraph does it so the
-                    // border lands on the same line as the paragraph content.
+                    // WHY: do not push │ here — Tag::Paragraph does it so the border lands on content line
                     flush_line(&mut lines, &mut current_spans, &mut current_col);
                     let style = theme.style_muted();
                     style_stack.push(style);
@@ -188,7 +177,6 @@ pub fn render(
                     let lang_str = code_block_lang.as_deref().unwrap_or("");
                     let full_code = code_block_lines.join("\n");
 
-                    // Language label header
                     if !lang_str.is_empty() {
                         lines.push(Line::from(vec![
                             Span::styled(
@@ -204,7 +192,7 @@ pub fn render(
                         )));
                     }
 
-                    // Syntax-highlighted code lines — URLs inside NOT linkified
+                    // NOTE: URLs inside code blocks are not linkified
                     let highlighted = highlighter.highlight(&full_code, lang_str);
                     for hl_line in highlighted {
                         let mut spans =
@@ -240,7 +228,6 @@ pub fn render(
                     style_stack.pop();
                     if let Some(url) = link_url.take() {
                         let display_text = std::mem::take(&mut link_text_buf);
-                        // Record the hyperlink for post-render OSC 8
                         if !url.is_empty() && !display_text.is_empty() {
                             md_links.push(MdLink {
                                 line_idx: link_start_line,
@@ -249,8 +236,7 @@ pub fn render(
                                 url: url.clone(),
                             });
                         }
-                        // In terminals without OSC 8 support, show the URL in parentheses
-                        // so readers know where the link goes.
+                        // NOTE: terminals without OSC 8 support show URL in parentheses as fallback
                         if !hyperlink::supports_hyperlinks() {
                             push_span(
                                 &mut current_spans,
@@ -302,7 +288,7 @@ pub fn render(
                 } else if in_table {
                     current_cell.push_str(&text);
                 } else if link_url.is_some() {
-                    // Inside a markdown link — accumulate display text, don't auto-detect URLs
+                    // NOTE: inside a markdown link — accumulate display text, URL detection skipped
                     link_text_buf.push_str(&text);
                     let style = current_style(&style_stack);
                     push_span(
@@ -311,7 +297,6 @@ pub fn render(
                         Span::styled(text.to_string(), style),
                     );
                 } else {
-                    // Plain paragraph text — detect and linkify embedded URLs
                     let urls = hyperlink::detect_urls(&text);
                     if urls.is_empty() {
                         let style = current_style(&style_stack);
@@ -338,7 +323,7 @@ pub fn render(
                 if in_table {
                     current_cell.push_str(&format!("`{code}`"));
                 } else {
-                    // Inline code: render with code style, do NOT linkify
+                    // NOTE: inline code — rendered with code style, URLs not linkified
                     let s = format!("`{code}`");
                     push_span(
                         &mut current_spans,
@@ -365,10 +350,9 @@ pub fn render(
         }
     }
 
-    // Flush remaining content
     flush_line(&mut lines, &mut current_spans, &mut current_col);
 
-    // Suppress is_table_head warning — kept for future header-specific styling
+    // WHY: suppress unused warning — kept for future header-specific styling
     let _ = is_table_head;
 
     (lines, md_links)
@@ -408,12 +392,10 @@ fn linkify_text(
 
     let mut last = 0usize;
     for &(start, end, url) in urls {
-        // Text before this URL (plain style)
         if start > last {
             let before = &text[last..start];
             push_span(spans, col, Span::styled(before.to_string(), base_style));
         }
-        // The URL itself (link style)
         let url_text = &text[start..end];
         let link_col = *col;
         push_span(spans, col, Span::styled(url_text.to_string(), link_style));
@@ -425,7 +407,6 @@ fn linkify_text(
         });
         last = end;
     }
-    // Remaining text after the last URL
     if last < text.len() {
         push_span(
             spans,
@@ -441,7 +422,6 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
         return;
     }
 
-    // Calculate column widths
     let num_cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
     let mut col_widths: Vec<usize> = vec![0; num_cols];
     for row in rows {
@@ -452,7 +432,7 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
         }
     }
 
-    // Cap column widths to prevent overflow
+    // NOTE: cap column widths to prevent overflow on pathologically wide tables
     for w in &mut col_widths {
         *w = (*w).min(40);
     }
@@ -461,7 +441,6 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
     let header_style = theme.style_accent_bold();
     let cell_style = Style::default().fg(theme.text.fg);
 
-    // Top border
     let top = format!(
         " ┌{}┐",
         col_widths
@@ -478,7 +457,6 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
     lines.push(Line::from(Span::styled(top, border_style)));
 
     for (row_idx, row) in rows.iter().enumerate() {
-        // Row content
         let mut row_spans = vec![Span::styled(" │", border_style)];
         for (i, width) in col_widths.iter().enumerate() {
             let cell = row.get(i).map(|s| s.as_str()).unwrap_or("");
@@ -493,7 +471,6 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
         }
         lines.push(Line::from(row_spans));
 
-        // Separator after header
         if row_idx == 0 {
             let sep = format!(
                 " ├{}┤",
@@ -512,7 +489,6 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
         }
     }
 
-    // Bottom border
     let bottom = format!(
         " └{}┘",
         col_widths
@@ -724,7 +700,7 @@ mod tests {
     // ── Text formatting ───────────────────────────────────────────────────
 
     #[test]
-    fn test_bold_text_modifier() {
+    fn bold_text_renders_with_bold_modifier() {
         let lines = test_render("**bold**");
         assert!(
             !lines.is_empty(),
@@ -737,7 +713,7 @@ mod tests {
     }
 
     #[test]
-    fn test_italic_text() {
+    fn italic_text_renders_with_italic_modifier() {
         let lines = test_render("*italic*");
         assert!(!lines.is_empty());
         let all = all_lines_text(&lines);
@@ -749,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn test_strikethrough_modifier() {
+    fn strikethrough_text_renders_with_strikethrough_modifier() {
         let lines = test_render("~~deleted~~");
         assert!(
             any_line_has_modifier(&lines, "deleted", Modifier::CROSSED_OUT),
@@ -758,7 +734,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bold_italic_combined() {
+    fn bold_italic_text_renders_with_both_modifiers() {
         // ***text*** is bold + italic in CommonMark
         let lines = test_render("***combo***");
         assert!(!lines.is_empty());
@@ -773,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inline_code() {
+    fn inline_code_renders_without_bold_modifier() {
         let (lines, theme) = test_render_with_theme("use `std::mem::take`");
         let all = all_lines_text(&lines);
         assert!(
@@ -788,7 +764,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_formatting() {
+    fn nested_formatting_applies_outer_and_inner_modifiers() {
         // Bold wrapping italic
         let lines = test_render("**bold _bold-italic_ bold**");
         let all = all_lines_text(&lines);
@@ -809,7 +785,7 @@ mod tests {
     // ── Headings ──────────────────────────────────────────────────────────
 
     #[test]
-    fn test_heading_h1() {
+    fn h1_heading_renders_with_bold_and_large_size() {
         let lines = test_render("# Heading One");
         assert!(!lines.is_empty());
         let text = line_text(&lines[0]);
@@ -821,7 +797,7 @@ mod tests {
     }
 
     #[test]
-    fn test_heading_h2() {
+    fn h2_heading_renders_with_bold() {
         let lines = test_render("## Heading Two");
         assert!(!lines.is_empty());
         let text = line_text(&lines[0]);
@@ -833,7 +809,7 @@ mod tests {
     }
 
     #[test]
-    fn test_heading_h3() {
+    fn h3_heading_renders_without_size_modifier() {
         let lines = test_render("### Heading Three");
         assert!(!lines.is_empty());
         let text = line_text(&lines[0]);
@@ -845,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn test_heading_h4() {
+    fn h4_heading_renders_without_size_modifier() {
         let lines = test_render("#### Heading Four");
         assert!(!lines.is_empty());
         let text = line_text(&lines[0]);
@@ -857,7 +833,7 @@ mod tests {
     }
 
     #[test]
-    fn test_heading_style() {
+    fn heading_applies_correct_fg_color() {
         // Headings use style_accent_bold: accent fg + BOLD modifier
         let (lines, theme) = test_render_with_theme("# Styled Heading");
         assert!(!lines.is_empty());
@@ -878,7 +854,7 @@ mod tests {
     // ── Code blocks ───────────────────────────────────────────────────────
 
     #[test]
-    fn test_fenced_code_rust() {
+    fn fenced_code_block_rust_renders_syntax_highlighted() {
         let lines = test_render("```rust\nfn main() {}\n```");
         let all = all_lines_text(&lines);
         assert!(all.contains("fn main()"), "Rust code content must appear");
@@ -887,7 +863,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fenced_code_python() {
+    fn fenced_code_block_python_renders_syntax_highlighted() {
         let lines = test_render("```python\ndef hello():\n    pass\n```");
         let all = all_lines_text(&lines);
         assert!(all.contains("def hello"), "Python code content must appear");
@@ -895,7 +871,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fenced_code_no_language() {
+    fn fenced_code_block_without_language_renders_plain() {
         let lines = test_render("```\nplain code\n```");
         let all = all_lines_text(&lines);
         assert!(all.contains("plain code"));
@@ -910,7 +886,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fenced_code_unknown_language() {
+    fn fenced_code_block_unknown_language_renders_plain() {
         // Falls back to plain text highlighting; must not panic
         let lines = test_render("```xyzzy_unknown\nsome code\n```");
         let all = all_lines_text(&lines);
@@ -921,7 +897,7 @@ mod tests {
     }
 
     #[test]
-    fn test_code_block_language_label() {
+    fn code_block_shows_language_in_header() {
         // The language name must appear in the header line
         let lines = test_render("```rust\nlet x = 1;\n```");
         let header_line = lines.iter().find(|l| line_text(l).contains("rust"));
@@ -932,7 +908,7 @@ mod tests {
     }
 
     #[test]
-    fn test_code_block_has_box_drawing() {
+    fn code_block_has_box_drawing_border() {
         let lines = test_render("```rust\nx\n```");
         let all = all_lines_text(&lines);
         // Top-left corner, vertical bar inside, bottom-left corner
@@ -942,7 +918,7 @@ mod tests {
     }
 
     #[test]
-    fn test_code_block_preserves_whitespace() {
+    fn code_block_preserves_internal_whitespace() {
         let lines = test_render("```\n    indented\n        double\n```");
         let all = all_lines_text(&lines);
         assert!(
@@ -956,7 +932,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_code_block() {
+    fn empty_code_block_renders_border_only() {
         // Must not panic; produces border lines even with no content
         let lines = test_render("```rust\n```");
         let all = all_lines_text(&lines);
@@ -973,7 +949,7 @@ mod tests {
     // ── Lists ─────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_unordered_list_bullet() {
+    fn unordered_list_item_renders_with_bullet() {
         let lines = test_render("- alpha\n- beta");
         let all = all_lines_text(&lines);
         assert!(
@@ -985,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_unordered_list() {
+    fn nested_unordered_list_indents_child_items() {
         let md = "- top\n  - nested\n    - deep";
         let lines = test_render(md);
         let all = all_lines_text(&lines);
@@ -1012,7 +988,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_with_formatting() {
+    fn list_item_with_bold_text_applies_bold_modifier() {
         let lines = test_render("- **bold item**\n- *italic item*");
         assert!(
             any_line_has_modifier(&lines, "bold item", Modifier::BOLD),
@@ -1027,7 +1003,7 @@ mod tests {
     // ── Blockquotes ───────────────────────────────────────────────────────
 
     #[test]
-    fn test_blockquote_simple() {
+    fn blockquote_renders_with_vertical_bar_prefix() {
         // Regression for blockquote border bug: │ and content must be on the SAME line.
         let lines = test_render("> hello");
         let all = all_lines_text(&lines);
@@ -1047,7 +1023,7 @@ mod tests {
     }
 
     #[test]
-    fn test_blockquote_border_fg() {
+    fn blockquote_border_uses_accent_foreground_color() {
         // The │ border span must use theme.borders.normal color.
         let (lines, theme) = test_render_with_theme("> check color");
         assert!(
@@ -1057,7 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn test_blockquote_with_formatting() {
+    fn blockquote_with_bold_content_applies_bold_modifier() {
         let lines = test_render("> **bold inside**");
         assert!(
             any_line_has_modifier(&lines, "bold inside", Modifier::BOLD),
@@ -1073,7 +1049,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_blockquote() {
+    fn nested_blockquote_indents_inner_content() {
         // Two levels of blockquote should produce two │ characters on the content line.
         let lines = test_render("> > deeply nested");
         let all = all_lines_text(&lines);
@@ -1097,7 +1073,7 @@ mod tests {
     // ── Links ─────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_link_underline_style() {
+    fn link_text_renders_with_underline_modifier() {
         let lines = test_render("[click here](https://example.com)");
         assert!(
             any_line_has_modifier(&lines, "click here", Modifier::UNDERLINED),
@@ -1106,7 +1082,7 @@ mod tests {
     }
 
     #[test]
-    fn test_link_url_appended() {
+    fn link_appends_url_after_display_text() {
         let lines = test_render("[text](https://example.com)");
         let all = all_lines_text(&lines);
         assert!(all.contains("text"), "link display text must appear");
@@ -1122,7 +1098,7 @@ mod tests {
     }
 
     #[test]
-    fn test_link_url_uses_dim_style() {
+    fn link_url_uses_dim_foreground_color() {
         let (lines, theme) = test_render_with_theme("[click](https://example.com)");
         assert!(
             any_line_has_fg(&lines, "https://example.com", theme.text.fg_dim),
@@ -1133,7 +1109,7 @@ mod tests {
     // ── Images ────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_image_alt_text() {
+    fn image_with_alt_text_renders_alt_as_display() {
         let lines = test_render("![alt description](image.png)");
         let all = all_lines_text(&lines);
         assert!(
@@ -1143,7 +1119,7 @@ mod tests {
     }
 
     #[test]
-    fn test_image_no_alt() {
+    fn image_without_alt_renders_image_label() {
         let lines = test_render("![](image.png)");
         let all = all_lines_text(&lines);
         assert!(
@@ -1155,7 +1131,7 @@ mod tests {
     // ── Tables ────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_table_simple() {
+    fn simple_table_renders_header_and_row() {
         let md = "| A | B |\n|---|---|\n| 1 | 2 |";
         let lines = test_render(md);
         let all = all_lines_text(&lines);
@@ -1175,7 +1151,7 @@ mod tests {
     }
 
     #[test]
-    fn test_table_header_style() {
+    fn table_header_cells_render_with_bold() {
         // The first row (header) uses style_accent_bold; data rows use fg.
         let (lines, theme) = test_render_with_theme("| Head |\n|-----|\n| data |");
         assert!(
@@ -1189,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn test_table_three_columns() {
+    fn table_with_three_columns_renders_all_cells() {
         let md = "| X | Y | Z |\n|---|---|---|\n| a | b | c |";
         let lines = test_render(md);
         let all = all_lines_text(&lines);
@@ -1214,7 +1190,7 @@ mod tests {
     // ── Structural ────────────────────────────────────────────────────────
 
     #[test]
-    fn test_horizontal_rule() {
+    fn horizontal_rule_spans_full_line() {
         let lines = test_render("---");
         let all = all_lines_text(&lines);
         assert!(
@@ -1233,7 +1209,7 @@ mod tests {
     }
 
     #[test]
-    fn test_horizontal_rule_style() {
+    fn horizontal_rule_uses_dim_foreground_color() {
         let (lines, theme) = test_render_with_theme("---");
         let rule_line = lines.iter().find(|l| line_text(l).contains('─'));
         assert!(rule_line.is_some());
@@ -1244,7 +1220,7 @@ mod tests {
     }
 
     #[test]
-    fn test_paragraph_spacing() {
+    fn consecutive_paragraphs_have_blank_line_separator() {
         // Two separate paragraphs must each appear in output
         let lines = test_render("first paragraph\n\nsecond paragraph");
         let all = all_lines_text(&lines);
@@ -1267,7 +1243,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hard_line_break() {
+    fn hard_line_break_creates_new_line() {
         // Backslash at end of line is a hard break in CommonMark
         let lines = test_render("line one\\\nline two");
         let all = all_lines_text(&lines);
@@ -1286,7 +1262,7 @@ mod tests {
     }
 
     #[test]
-    fn test_soft_break_is_space() {
+    fn soft_break_renders_as_space_between_words() {
         // Two lines in the same paragraph (no blank line) join with a soft break (space)
         let lines = test_render("line one\nline two");
         // In a tight paragraph pulldown-cmark emits Text, SoftBreak, Text → same line
@@ -1307,7 +1283,7 @@ mod tests {
     // ── Edge cases ────────────────────────────────────────────────────────
 
     #[test]
-    fn test_empty_input() {
+    fn empty_input_renders_no_lines() {
         let lines = test_render("");
         assert!(
             lines.is_empty(),
@@ -1316,7 +1292,7 @@ mod tests {
     }
 
     #[test]
-    fn test_whitespace_only() {
+    fn whitespace_only_input_renders_empty() {
         // Must not panic and should produce no meaningful content
         let lines = test_render("   \n\n   ");
         // No assertion on exact count — just that it doesn't crash
@@ -1324,7 +1300,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deeply_nested_lists() {
+    fn deeply_nested_list_indents_each_level() {
         // 5 levels of nesting — must not panic, indent grows correctly
         let md = "- l1\n  - l2\n    - l3\n      - l4\n        - l5";
         let lines = test_render(md);
@@ -1343,7 +1319,7 @@ mod tests {
     }
 
     #[test]
-    fn test_very_long_line() {
+    fn very_long_line_does_not_truncate_content() {
         // A single paragraph line >500 chars must render without panicking
         let long = "word ".repeat(120); // ~600 chars
         let lines = test_render(long.trim());
@@ -1354,7 +1330,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unicode_content() {
+    fn unicode_content_renders_correctly() {
         // Emoji, CJK, and combining characters must all pass through cleanly
         let md = "Hello 🎉 world 你好世界 café";
         let lines = test_render(md);
@@ -1365,7 +1341,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mixed_content() {
+    fn mixed_heading_and_paragraph_renders_both() {
         // Full document with multiple element types must render all parts
         let md = "# Title\n\nA paragraph.\n\n- item\n\n> quote\n\n```rust\ncode\n```\n\n| H |\n|---|\n| v |";
         let lines = test_render(md);
@@ -1380,14 +1356,14 @@ mod tests {
     }
 
     #[test]
-    fn test_unclosed_formatting() {
+    fn unclosed_bold_marker_renders_as_plain_text() {
         // pulldown-cmark treats unclosed ** as literal asterisks — must not panic
         let lines = test_render("**not closed");
         let _ = all_lines_text(&lines);
     }
 
     #[test]
-    fn test_ansi_passthrough() {
+    fn ansi_escape_sequences_pass_through_unchanged() {
         // The renderer itself does not strip ANSI — callers sanitize before passing.
         // Verify the renderer handles arbitrary bytes without panicking.
         let lines = test_render("plain text without escapes");
@@ -1396,7 +1372,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ordered_list_renders_with_bullets() {
+    fn ordered_list_renders_with_bullet_prefix() {
         // Ordered lists use the same bullet renderer (no numbering yet)
         let lines = test_render("1. first\n2. second\n3. third");
         let all = all_lines_text(&lines);
@@ -1407,7 +1383,7 @@ mod tests {
     }
 
     #[test]
-    fn test_code_block_lang_in_header_style() {
+    fn code_block_language_label_uses_accent_color() {
         // Language label must be styled with code_lang color
         let (lines, theme) = test_render_with_theme("```python\npass\n```");
         let header = lines.iter().find(|l| line_text(l).contains("python"));
@@ -1419,7 +1395,7 @@ mod tests {
     }
 
     #[test]
-    fn test_blockquote_muted_text_style() {
+    fn blockquote_text_uses_dim_foreground_color() {
         // Text inside blockquote must use the muted style
         let (lines, theme) = test_render_with_theme("> muted content");
         assert!(
@@ -1429,7 +1405,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inline_code_has_bg_color() {
+    fn inline_code_has_background_color() {
         // Inline code must have both fg (warning) and bg (code_bg)
         let (lines, theme) = test_render_with_theme("use `foo`");
         let code_span = lines
@@ -1451,7 +1427,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extremely_long_line_no_overflow() {
+    fn extremely_long_line_does_not_overflow() {
         // A single line >65 535 bytes must not panic from u16 overflow in push_span.
         let long = "x".repeat(70_000);
         let lines = test_render(&long);
@@ -1462,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deeply_nested_blockquotes() {
+    fn deeply_nested_blockquotes_indent_each_level() {
         // 50 levels of blockquote nesting must not stack overflow (iterative parser).
         let mut md: String = (0..50).map(|_| "> ").collect();
         md.push_str("deeply nested");

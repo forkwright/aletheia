@@ -24,9 +24,7 @@ use crate::session::SessionState;
 /// are a millisecond timestamp, so the result is monotonically increasing
 /// within each millisecond and practically unique across restarts.
 fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
-    // ULID is a 128-bit value. Shift right 65 bits to keep the upper 63
-    // bits (47-bit timestamp + 16-bit randomness prefix), then cast to i64.
-    // The mask guarantees the sign bit is zero, so the cast can never wrap.
+    // NOTE: ULID is 128-bit — shift right 65 bits to keep upper 63 bits (47-bit timestamp + 16-bit randomness prefix); mask ensures sign bit is zero so cast to i64 never wraps
     let raw = u128::from(*ulid);
     ((raw >> 65) & 0x7FFF_FFFF_FFFF_FFFF) as i64
 }
@@ -80,15 +78,9 @@ pub fn finalize(
     result: &TurnResult,
     config: &FinalizeConfig,
 ) -> error::Result<FinalizeResult> {
-    // Dedup guard: check if this turn was already finalized (usage record exists).
+    // INVARIANT: dedup guard — skip if this turn was already finalized (usage record exists)
     //
-    // WHY(#1036): Use turn_id (a fresh ULID from next_turn) as the unique key
-    // instead of the sequential turn counter. The sequential counter resets to 0
-    // after an actor restart with session adoption, causing false dedup hits that
-    // silently discard new turns. The ULID is globally unique per invocation.
-    //
-    // The turn_id's upper 63 bits are used as turn_seq. A ULID's upper bits carry
-    // the millisecond timestamp, making this value monotonically increasing.
+    // WHY: turn_id (fresh ULID) is the dedup key rather than session_id — see issue #1036
     let turn_seq = turn_seq_from_ulid(&session.turn_id);
     if store
         .usage_exists_for_turn(&session.id, turn_seq)
@@ -108,10 +100,7 @@ pub fn finalize(
     let mut messages_persisted = 0usize;
 
     if config.persist_messages {
-        // Ensure session record exists before inserting child messages.
-        // The nous actor creates sessions in memory; the SQLite store may
-        // not have a matching row yet, which would cause a FOREIGN KEY
-        // constraint failure on the messages table.
+        // WHY: ensure session row exists before child messages — FK constraint on messages table would otherwise fail
         store
             .find_or_create_session(
                 &session.id,
@@ -121,7 +110,6 @@ pub fn finalize(
                 None,
             )
             .context(error::StoreSnafu)?;
-        // User message
         #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
         let input_token_estimate = input_content.len() as i64 / 4;
         store
@@ -136,7 +124,6 @@ pub fn finalize(
             .context(error::StoreSnafu)?;
         messages_persisted += 1;
 
-        // Tool call/result pairs
         for tc in &result.tool_calls {
             let input_json = serde_json::to_string(&tc.input).unwrap_or_else(|e| {
                 warn!(error = %e, tool = %tc.name, "failed to serialize tool call input");
@@ -168,7 +155,6 @@ pub fn finalize(
             messages_persisted += 1;
         }
 
-        // Assistant response
         let output_tokens = i64::try_from(result.usage.output_tokens).unwrap_or(0);
         store
             .append_message(

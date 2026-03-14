@@ -6,6 +6,7 @@ use snafu::prelude::*;
 /// - `Http`: a transport or connection error from `reqwest`
 /// - `Server`: a non-2xx HTTP response with a human-readable message from the server body
 /// - `Auth`: a 401/403 from the gateway
+#[non_exhaustive]
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum ApiError {

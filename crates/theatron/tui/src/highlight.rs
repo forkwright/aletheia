@@ -25,7 +25,6 @@ impl Highlighter {
     pub fn highlight(&self, code: &str, lang: &str) -> Vec<Line<'static>> {
         let theme = &self.theme_set.themes["base16-ocean.dark"];
 
-        // Try to find syntax by language token
         let syntax = self
             .syntax_set
             .find_syntax_by_token(lang)
@@ -61,7 +60,6 @@ impl Highlighter {
                     lines.push(Line::from(spans));
                 }
                 Err(_) => {
-                    // Fallback: plain text
                     lines.push(Line::raw(line_str.trim_end_matches('\n').to_string()));
                 }
             }

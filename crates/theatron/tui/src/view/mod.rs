@@ -34,30 +34,28 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let palette_active = app.command_palette.active;
     let show_tabs = tab_bar::should_show(app);
 
-    // When palette is active, it replaces the status bar with a variable-height area
+    // NOTE: When palette is active it replaces the status bar, expanding to fit suggestions.
     let bottom_height = if palette_active {
         let suggestion_lines = app
             .command_palette
             .suggestions
             .len()
             .min(MAX_PALETTE_SUGGESTIONS) as u16;
-        (STATUS_BAR_HEIGHT + suggestion_lines).max(3) // input + border + suggestions, min 3
+        (STATUS_BAR_HEIGHT + suggestion_lines).max(3)
     } else {
         STATUS_BAR_HEIGHT
     };
 
     let tab_height: u16 = if show_tabs { 1 } else { 0 };
 
-    let mut constraints = vec![
-        Constraint::Length(1), // title bar
-    ];
+    let mut constraints = vec![Constraint::Length(1)];
     if show_tabs {
-        constraints.push(Constraint::Length(tab_height)); // tab bar
+        constraints.push(Constraint::Length(tab_height));
     }
-    constraints.push(Constraint::Min(5)); // body
-    constraints.push(Constraint::Length(bottom_height)); // status bar or command palette
+    constraints.push(Constraint::Min(5));
+    constraints.push(Constraint::Length(bottom_height));
     if has_toast {
-        constraints.push(Constraint::Length(1)); // error or success toast
+        constraints.push(Constraint::Length(1));
     }
 
     let vertical = Layout::default()
@@ -65,7 +63,6 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         .constraints(constraints)
         .split(area);
 
-    // Index tracking based on optional tab bar
     let title_idx = 0;
     let tab_idx = if show_tabs { 1 } else { 0 };
     let body_idx = if show_tabs { 2 } else { 1 };
@@ -78,14 +75,12 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         tab_bar::render(app, frame, vertical[tab_idx], theme);
     }
 
-    // Bottom area: command palette or status bar
     if palette_active {
         command_palette::render(app, frame, vertical[bottom_idx], theme);
     } else {
         status_bar::render(app, frame, vertical[bottom_idx], theme);
     }
 
-    // Toast at bottom (error or success)
     if has_toast {
         if let Some(ref toast) = app.error_toast {
             let toast_line = ratatui::text::Line::from(vec![
@@ -106,13 +101,9 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         }
     }
 
-    // Responsive: hide sidebar on narrow terminals
     let show_sidebar = app.sidebar_visible && area.width >= MIN_SIDEBAR_TERMINAL_WIDTH;
-
-    // Responsive: show ops pane when visible and terminal wide enough
     let show_ops = app.ops.visible && area.width >= MIN_OPS_TERMINAL_WIDTH;
 
-    // Body: sidebar | main content area (dispatched by current view, with optional ops pane)
     let osc_links = if show_sidebar {
         let sidebar_and_rest = Layout::default()
             .direction(Direction::Horizontal)
@@ -162,7 +153,6 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         }
     };
 
-    // Render overlay on top if present
     if app.overlay.is_some() {
         overlay::render(app, frame, area, theme);
     }
@@ -216,13 +206,12 @@ fn render_chat_area(
     area: Rect,
     theme: &crate::theme::Theme,
 ) -> Vec<OscLink> {
-    // Dynamically size input area based on word-wrapped line count.
     let prompt_len: usize = if app.active_turn_id.is_some() { 9 } else { 2 };
     let content_width = area.width.max(1) as usize;
     let first_line_avail = content_width.saturating_sub(prompt_len).max(1);
     let wrapped_lines =
         input::word_wrap_lines(&app.input.text, first_line_avail, content_width).len() as u16;
-    let input_height = (wrapped_lines + 1).clamp(3, 8); // +1 for border, min 3, max 8
+    let input_height = (wrapped_lines + 1).clamp(3, 8);
 
     let filter_height: u16 = if app.filter.editing { 1 } else { 0 };
 

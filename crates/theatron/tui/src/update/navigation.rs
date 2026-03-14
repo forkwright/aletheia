@@ -134,11 +134,8 @@ fn clamp_scroll_offset(app: &mut App) {
 pub(crate) fn handle_resize(app: &mut App, w: u16, h: u16) {
     app.terminal_width = w;
     app.terminal_height = h;
-    // Terminal width changed — recalculate message heights for wrapping.
     app.rebuild_virtual_scroll();
-    // After rebuild, heights may have changed due to reflow. Cap scroll_offset so
-    // the user cannot be stranded past the top of content. If already at the
-    // bottom, stay there. Auto-scroll mode is unaffected (it always pins to bottom).
+    // NOTE: cap scroll_offset after reflow so the user cannot scroll past the top of content; auto-scroll is unaffected
     if !app.auto_scroll {
         let total = app.virtual_scroll.total_height();
         let vh = chat_viewport_height(app) as u64;

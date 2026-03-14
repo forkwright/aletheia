@@ -18,8 +18,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let active = app.tab_bar.active;
     let width = area.width as usize;
 
-    // Calculate how much space we have for tab titles
-    // Each tab: " [title] |" or " [title] " for last
     let separator = " | ";
     let plus_label = " + ";
 
@@ -32,7 +30,6 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let plus_width = plus_label.len();
     let available = width.saturating_sub(separators_width + plus_width + 1); // +1 for leading space
 
-    // Calculate max title length per tab
     let max_per_tab = if total_tabs > 0 {
         (available / total_tabs).max(3)
     } else {
@@ -44,10 +41,8 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     for (idx, tab) in tabs.iter().enumerate() {
         let is_active = idx == active;
 
-        // Build title with truncation
         let title = truncate_title(&tab.title, max_per_tab);
 
-        // Unread indicator
         let prefix = if tab.unread && !is_active { "* " } else { " " };
 
         let style = if is_active {
@@ -77,13 +72,11 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
     }
 
-    // "+" button
     spans.push(Span::styled(
         plus_label,
         Style::default().fg(theme.text.fg_dim),
     ));
 
-    // Pad remaining width
     let rendered_width: usize = spans.iter().map(|s| s.width()).sum();
     if rendered_width < width {
         spans.push(Span::styled(
@@ -105,7 +98,7 @@ fn truncate_title(title: &str, max_width: usize) -> String {
     if max_width <= 3 {
         return title.chars().take(max_width).collect();
     }
-    let mut end = max_width - 1; // leave room for ellipsis char
+    let mut end = max_width - 1;
     while end > 0 && !title.is_char_boundary(end) {
         end -= 1;
     }

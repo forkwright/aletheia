@@ -1,6 +1,7 @@
 use snafu::prelude::*;
 
 /// Unified error type for the TUI crate.
+#[non_exhaustive]
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {

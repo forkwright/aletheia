@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Sort options for the fact browser.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FactSort {
     Confidence,
@@ -45,6 +46,7 @@ impl FactSort {
 }
 
 /// Which sub-view of the memory inspector is active.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryTab {
     Facts,
@@ -277,7 +279,6 @@ impl MemoryInspectorState {
         if iso.is_empty() {
             return "never".to_string();
         }
-        // Simple approach: just show date portion for now
         if let Some(date) = iso.split('T').next() {
             date.to_string()
         } else {

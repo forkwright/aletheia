@@ -39,12 +39,12 @@ pub fn should_trigger_distillation(
     context_window: u64,
     config: &DistillTriggerConfig,
 ) -> Option<String> {
-    // Never distill on the first turn
+    // WHY: never distill on the first turn — no history to summarize
     if session.message_count <= 0 {
         return None;
     }
 
-    // Prefer actual context from last input; fall back to estimate
+    // NOTE: prefer actual context from last input; fall back to estimate
     let actual_context = if session.last_input_tokens > 0 {
         session.last_input_tokens
     } else {
@@ -57,17 +57,14 @@ pub fn should_trigger_distillation(
     )]
     let actual_context_u64 = actual_context as u64;
 
-    // Signal 1: Absolute context threshold (120K+)
     if actual_context_u64 >= 120_000 {
         return Some(format!("context={actual_context} >= 120K"));
     }
 
-    // Signal 2: High message count (150+)
     if session.message_count >= 150 {
         return Some(format!("message_count={} >= 150", session.message_count));
     }
 
-    // Signal 3: Stale + messages (7 days since last distill + 20 msgs)
     if let Some(ref last) = session.last_distilled_at
         && let Ok(last_ts) = last.parse::<jiff::Timestamp>()
     {
@@ -78,12 +75,10 @@ pub fn should_trigger_distillation(
         }
     }
 
-    // Signal 4: Never distilled + enough messages (30+)
     if session.distillation_count == 0 && session.message_count >= 30 {
         return Some(format!("never distilled + {} msgs", session.message_count));
     }
 
-    // Signal 5: Legacy threshold (configurable ratio of context window)
     #[expect(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
@@ -123,8 +118,7 @@ pub async fn maybe_distill(
         return Ok(None);
     };
 
-    // Idempotency guard: skip if distillation was applied very recently (< 60s).
-    // Protects against concurrent background tasks running duplicate distillations.
+    // INVARIANT: idempotency guard — skip if distillation applied recently (< 60s) to protect against concurrent background tasks
     if let Some(ref last) = session.last_distilled_at
         && let Ok(last_ts) = last.parse::<jiff::Timestamp>()
     {
@@ -187,16 +181,13 @@ pub fn apply_distillation(
     result: &DistillResult,
     history: &[aletheia_mneme::types::Message],
 ) -> error::Result<()> {
-    // Collect seq numbers of messages that were distilled (all except verbatim tail)
     let distill_count = result.messages_distilled.min(history.len());
     let seqs: Vec<i64> = history[..distill_count].iter().map(|m| m.seq).collect();
 
-    // Mark messages as distilled first
     store
         .mark_messages_distilled(session_id, &seqs)
         .context(error::StoreSnafu)?;
 
-    // Insert summary and clean up distilled messages
     let summary_content = format!(
         "[Distillation #{}]\n\n{}",
         result.distillation_number, result.summary
@@ -205,7 +196,6 @@ pub fn apply_distillation(
         .insert_distillation_summary(session_id, &summary_content)
         .context(error::StoreSnafu)?;
 
-    // Record distillation metadata
     #[expect(clippy::cast_possible_wrap, reason = "token/message counts fit in i64")]
     store
         .record_distillation(

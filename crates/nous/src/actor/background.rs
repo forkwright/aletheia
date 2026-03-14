@@ -98,7 +98,6 @@ impl NousActor {
             return;
         }
 
-        // Convert pipeline ToolCalls to mneme ToolCallRecords
         let records: Vec<ToolCallRecord> = tool_calls
             .iter()
             .map(|tc| {
@@ -142,7 +141,7 @@ impl NousActor {
             return;
         };
 
-        // Use the extraction model (Haiku) for cost-effective skill extraction
+        // WHY: extraction model (Haiku) for cost-effectiveness
         let model = extraction_config.model.clone();
         let providers = Arc::clone(&self.providers);
         let nous_id = self.id.clone();
@@ -179,9 +178,8 @@ impl NousActor {
     pub(super) async fn maybe_spawn_distillation(&mut self, session_key: &str) {
         use std::sync::atomic::Ordering;
 
-        // WHY(#1035): Two turns finishing close together can both observe the
-        // distillation trigger condition before either task commits its result.
-        // The atomic flag ensures only one distillation task runs at a time.
+        // WHY: two turns finishing close together can both observe the distillation trigger before
+        // either task commits — the atomic flag ensures only one distillation task runs at a time (#1035)
         if self
             .distillation_in_progress
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -193,8 +191,7 @@ impl NousActor {
 
         let did_spawn = self.try_spawn_distillation(session_key).await;
 
-        // Clear the flag immediately if we did not actually spawn a task.
-        // If a task was spawned, the task itself clears the flag on completion.
+        // NOTE: clear immediately if no task was spawned; spawned task clears the flag itself on completion
         if !did_spawn {
             self.distillation_in_progress
                 .store(false, Ordering::Release);
@@ -213,7 +210,7 @@ impl NousActor {
         };
         let session_id = session_state.id.clone();
 
-        // Quick trigger check under the lock — guard is dropped before any spawn
+        // WHY: trigger check under lock, guard dropped before spawn to avoid holding lock across .await
         let should_distill = {
             let store = store_arc.lock().await;
             let Ok(Some(session)) = store.find_session_by_id(&session_id) else {
@@ -253,7 +250,6 @@ impl NousActor {
         self.background_tasks.spawn(
             async move {
                 run_background_distillation(store, providers, session_id, nous_id, config).await;
-                // Clear the in-progress flag so the next turn can trigger distillation.
                 flag.store(false, Ordering::Release);
             }
             .instrument(span),
@@ -261,10 +257,6 @@ impl NousActor {
         true
     }
 }
-
-// ---------------------------------------------------------------------------
-// Free async functions for background work
-// ---------------------------------------------------------------------------
 
 /// Run extraction as a background task. Logs results, never panics.
 async fn run_extraction(
@@ -343,19 +335,16 @@ async fn run_skill_extraction(
 ) {
     use aletheia_mneme::skills::SkillExtractor;
 
-    // Find the candidate in the tracker
     let candidates = tracker.candidates_for(nous_id);
     let Some(candidate) = candidates.iter().find(|c| c.id == candidate_id) else {
         warn!(candidate_id = %candidate_id, "candidate not found in tracker");
         return;
     };
 
-    // Build the extraction provider (uses Haiku for cost-effectiveness)
     let provider = crate::extraction::HermeneusSkillExtractionProvider::new(providers, model);
     let extractor = SkillExtractor::new(provider);
 
-    // The current turn's tool calls are the only sequence we have at this point.
-    // In a richer implementation, we'd collect sequences from all session_refs.
+    // NOTE: only current-turn tool calls available; historical sequences not yet collected
     let sequences = vec![tool_calls.to_vec()];
 
     match extractor.extract_skill(candidate, &sequences).await {
@@ -371,7 +360,6 @@ async fn run_skill_extraction(
 
             #[cfg(feature = "knowledge-store")]
             if let Some(store) = knowledge_store {
-                // Check for duplicates before storing
                 let skill_content = extracted.to_skill_content();
                 match store.find_duplicate_skill(nous_id, &skill_content) {
                     Ok(Some(existing_id)) => {
@@ -382,13 +370,12 @@ async fn run_skill_extraction(
                         );
                         return;
                     }
-                    Ok(None) => {} // No duplicate, proceed
+                    Ok(None) => {}
                     Err(e) => {
                         warn!(error = %e, "failed to check skill duplicates, proceeding with storage");
                     }
                 }
 
-                // Store as pending_review fact
                 let pending = aletheia_mneme::skills::PendingSkill::new(&extracted, candidate_id);
                 match pending.to_json() {
                     Ok(content) => {
@@ -436,7 +423,7 @@ async fn run_skill_extraction(
 
             #[cfg(not(feature = "knowledge-store"))]
             {
-                let _ = candidate_id; // suppress unused warning
+                let _ = candidate_id; // WHY: suppress unused-variable warning in non-knowledge-store builds
                 info!("skill extracted but knowledge-store feature disabled, not persisting");
             }
         }
@@ -463,8 +450,7 @@ async fn run_background_distillation(
         return;
     };
 
-    // Load history under the lock, then release before async work.
-    // Guard is scoped to the block and dropped before the .await below.
+    // WHY: load under lock, then release before async work to avoid holding lock across .await
     let (history, session) = {
         let s = store.lock().await;
         let Ok(Some(session)) = s.find_session_by_id(&session_id) else {
@@ -478,7 +464,7 @@ async fn run_background_distillation(
                 return;
             }
         }
-    }; // guard dropped here — lock released before await
+    };
 
     let messages = crate::distillation::convert_to_hermeneus_messages(&history);
     let engine =
@@ -505,7 +491,6 @@ async fn run_background_distillation(
         }
     };
 
-    // Apply results under the lock — guard is scoped to this block
     let s = store.lock().await;
     if let Err(e) = crate::distillation::apply_distillation(&s, &session_id, &result, &history) {
         warn!(error = %e, "failed to apply distillation");

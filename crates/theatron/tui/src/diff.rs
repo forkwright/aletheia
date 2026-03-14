@@ -123,7 +123,8 @@ pub(crate) fn compute_diff(path: &str, old: &str, new: &str) -> FileDiff {
         }
 
         hunks.push(DiffHunk {
-            old_start: old_start + 1, // 1-indexed
+            // NOTE: 1-indexed per unified diff spec
+            old_start: old_start + 1,
             new_start: new_start + 1,
             changes,
         });
@@ -147,7 +148,7 @@ pub(crate) fn collapse_to_replacements(hunks: &[DiffHunk]) -> Vec<DiffHunk> {
             while i < changes.len() {
                 match &changes[i] {
                     DiffChange::Delete(old_text) => {
-                        // Look ahead for adjacent Insert
+                        // WHY: look ahead for adjacent Insert to merge into a Replace
                         if i + 1 < changes.len()
                             && let DiffChange::Insert(new_text) = &changes[i + 1]
                         {
@@ -178,7 +179,6 @@ pub(crate) fn collapse_to_replacements(hunks: &[DiffHunk]) -> Vec<DiffHunk> {
 pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
-    // File header
     lines.push(Line::from(vec![Span::styled(
         format!("--- a/{}", file.path),
         theme.style_error().add_modifier(Modifier::BOLD),
@@ -197,7 +197,6 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static
         old_line = hunk.old_start;
         new_line = hunk.new_start;
 
-        // Count lines per side for hunk header
         let old_count = hunk
             .changes
             .iter()
@@ -209,7 +208,6 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static
             .filter(|c| matches!(c, DiffChange::Equal(_) | DiffChange::Insert(_)))
             .count();
 
-        // Hunk header
         lines.push(Line::from(vec![Span::styled(
             format!(
                 "@@ -{},{} +{},{} @@",
@@ -286,17 +284,16 @@ pub(crate) fn render_side_by_side(
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let half_width = (width as usize) / 2;
-    let gutter = 6; // "NNNN " line-number gutter
-    let content_width = half_width.saturating_sub(gutter + 2); // -2 for borders
+    // NOTE: 6-char line-number gutter "NNNN "
+    let gutter = 6;
+    let content_width = half_width.saturating_sub(gutter + 2);
 
-    // File header spanning full width
     let header = format!("  {} ", file.path);
     lines.push(Line::from(vec![Span::styled(
         header,
         theme.style_accent().add_modifier(Modifier::BOLD),
     )]));
 
-    // Column headers
     lines.push(Line::from(vec![
         Span::styled(format!("{:^half_width$}", "Old"), theme.style_dim()),
         Span::styled(format!("{:^half_width$}", "New"), theme.style_dim()),
@@ -315,7 +312,6 @@ pub(crate) fn render_side_by_side(
         old_line = hunk.old_start;
         new_line = hunk.new_start;
 
-        // Hunk separator
         lines.push(Line::from(vec![Span::styled(
             format!(
                 "@@ -{},{} +{},{} @@",
@@ -402,7 +398,6 @@ pub(crate) fn render_side_by_side(
 pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
-    // File header
     lines.push(Line::from(vec![Span::styled(
         format!("  {} ", file.path),
         theme.style_accent().add_modifier(Modifier::BOLD),
@@ -416,7 +411,6 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'stat
         old_line = hunk.old_start;
         new_line = hunk.new_start;
 
-        // Hunk header
         lines.push(Line::from(vec![Span::styled(
             format!("@@ -{} +{} @@", hunk.old_start, hunk.new_start),
             Style::default().fg(theme.status.info),
@@ -456,7 +450,6 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'stat
                     new_line += 1;
                 }
                 DiffChange::Replace { old, new } => {
-                    // Word-level diff within the line
                     let old_trimmed = old.trim_end_matches('\n');
                     let new_trimmed = new.trim_end_matches('\n');
                     let word_diff = TextDiff::from_words(old_trimmed, new_trimmed);
@@ -501,10 +494,6 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'stat
     lines
 }
 
-// ---------------------------------------------------------------------------
-// Full render dispatch
-// ---------------------------------------------------------------------------
-
 /// Render a complete diff view state into ratatui Lines (mutable — updates total_lines).
 #[cfg(test)]
 pub(crate) fn render_diff_view(
@@ -514,7 +503,6 @@ pub(crate) fn render_diff_view(
 ) -> Vec<Line<'static>> {
     let mut all_lines: Vec<Line<'static>> = Vec::new();
 
-    // Mode indicator header
     all_lines.push(Line::from(vec![
         Span::styled(
             " Diff Viewer ",
@@ -571,7 +559,6 @@ pub(crate) fn render_diff_view_immutable(
 ) -> Vec<Line<'static>> {
     let mut all_lines: Vec<Line<'static>> = Vec::new();
 
-    // Mode indicator header
     all_lines.push(Line::from(vec![
         Span::styled(
             " Diff Viewer ",
@@ -612,15 +599,11 @@ pub(crate) fn render_diff_view_immutable(
             DiffMode::WordDiff => render_word_diff(file, theme),
         };
         all_lines.extend(file_lines);
-        all_lines.push(Line::raw("")); // spacer between files
+        all_lines.push(Line::raw(""));
     }
 
     all_lines
 }
-
-// ---------------------------------------------------------------------------
-// Parse git-style unified diff output
-// ---------------------------------------------------------------------------
 
 /// Parse `git diff` output into a list of `FileDiff`.
 pub(crate) fn parse_git_diff(raw: &str) -> Vec<FileDiff> {
@@ -634,7 +617,6 @@ pub(crate) fn parse_git_diff(raw: &str) -> Vec<FileDiff> {
 
     for line in raw.lines() {
         if line.starts_with("diff --git") {
-            // Flush previous file
             if let Some(path) = current_path.take() {
                 if in_hunk {
                     current_hunks.push(DiffHunk {
@@ -649,12 +631,11 @@ pub(crate) fn parse_git_diff(raw: &str) -> Vec<FileDiff> {
                 });
             }
 
-            // Extract path from "diff --git a/path b/path"
+            // NOTE: extract path from "diff --git a/path b/path" by splitting on " b/"
             let path = line.split(" b/").nth(1).unwrap_or("unknown").to_string();
             current_path = Some(path);
             in_hunk = false;
         } else if line.starts_with("@@") {
-            // Flush previous hunk
             if in_hunk {
                 current_hunks.push(DiffHunk {
                     old_start,
@@ -663,7 +644,6 @@ pub(crate) fn parse_git_diff(raw: &str) -> Vec<FileDiff> {
                 });
             }
 
-            // Parse "@@ -old,count +new,count @@"
             let (os, ns) = parse_hunk_header(line);
             old_start = os;
             new_start = ns;
@@ -678,11 +658,10 @@ pub(crate) fn parse_git_diff(raw: &str) -> Vec<FileDiff> {
             } else if line.is_empty() {
                 current_changes.push(DiffChange::Equal("\n".to_string()));
             }
-            // Skip lines like "\ No newline at end of file"
+            // NOTE: skip git metadata lines such as "\ No newline at end of file"
         }
     }
 
-    // Flush final file
     if let Some(path) = current_path {
         if in_hunk {
             current_hunks.push(DiffHunk {
@@ -701,7 +680,7 @@ pub(crate) fn parse_git_diff(raw: &str) -> Vec<FileDiff> {
 }
 
 fn parse_hunk_header(line: &str) -> (usize, usize) {
-    // "@@ -1,3 +1,4 @@" or "@@ -1 +1 @@"
+    // NOTE: handles both "@@ -1,3 +1,4 @@" and "@@ -1 +1 @@" (count optional)
     let stripped = line
         .trim_start_matches("@@ ")
         .split(" @@")
@@ -730,10 +709,6 @@ fn parse_hunk_header(line: &str) -> (usize, usize) {
     (old_start, new_start)
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn truncate_str(s: &str, max_chars: usize) -> String {
     if s.len() <= max_chars {
         s.to_string()
@@ -758,10 +733,6 @@ fn pad_to(s: String, width: usize) -> String {
         format!("{s:<width$}")
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

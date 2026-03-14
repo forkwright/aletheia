@@ -69,7 +69,6 @@ impl KeyContext {
 
 pub fn all_keybindings() -> &'static [Keybinding] {
     &[
-        // --- Chat (empty-input triggers) ---
         Keybinding {
             keys: "?",
             description: "Help",
@@ -136,7 +135,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Chat],
             show_in_status_bar: true,
         },
-        // --- Selection ---
         Keybinding {
             keys: "j / \u{2193}",
             description: "Next message",
@@ -209,7 +207,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Selection],
             show_in_status_bar: true,
         },
-        // --- Filter ---
         Keybinding {
             keys: "Enter",
             description: "Lock filter",
@@ -228,7 +225,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Filter],
             show_in_status_bar: true,
         },
-        // --- Command Palette ---
         Keybinding {
             keys: "Enter",
             description: "Execute command",
@@ -247,7 +243,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::CommandPalette],
             show_in_status_bar: false,
         },
-        // --- Session List ---
         Keybinding {
             keys: "Enter",
             description: "Open session",
@@ -266,7 +261,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::SessionList],
             show_in_status_bar: true,
         },
-        // --- Input ---
         Keybinding {
             keys: "Enter",
             description: "Send message",
@@ -309,7 +303,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Input],
             show_in_status_bar: false,
         },
-        // --- Overlay (generic) ---
         Keybinding {
             keys: "Esc",
             description: "Close",
@@ -328,7 +321,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Overlay],
             show_in_status_bar: false,
         },
-        // --- Global ---
         Keybinding {
             keys: "F1",
             description: "Help",
@@ -413,7 +405,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Global],
             show_in_status_bar: false,
         },
-        // --- Operations pane ---
         Keybinding {
             keys: "j / \u{2193}",
             description: "Next item",
@@ -444,7 +435,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Operations],
             show_in_status_bar: true,
         },
-        // --- Tool Approval ---
         Keybinding {
             keys: "A",
             description: "Approve tool",
@@ -457,7 +447,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::ToolApproval],
             show_in_status_bar: true,
         },
-        // --- Plan Approval ---
         Keybinding {
             keys: "Space",
             description: "Toggle step",
@@ -476,7 +465,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::PlanApproval],
             show_in_status_bar: true,
         },
-        // --- Settings ---
         Keybinding {
             keys: "Enter",
             description: "Edit / toggle",
@@ -501,7 +489,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::Settings],
             show_in_status_bar: true,
         },
-        // --- Memory Inspector ---
         Keybinding {
             keys: "j / \u{2193}",
             description: "Next fact",
@@ -556,7 +543,6 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             contexts: &[KeyContext::MemoryInspector],
             show_in_status_bar: true,
         },
-        // --- Fact Detail ---
         Keybinding {
             keys: "e",
             description: "Edit confidence",
@@ -588,7 +574,7 @@ pub fn all_keybindings() -> &'static [Keybinding] {
 pub fn current_contexts(app: &App) -> Vec<KeyContext> {
     let mut contexts = vec![KeyContext::Global];
 
-    // Memory inspector views take priority
+    // WHY: Memory inspector views return early to suppress all other context bindings.
     if matches!(
         app.view_stack.current(),
         crate::state::view_stack::View::FactDetail { .. }

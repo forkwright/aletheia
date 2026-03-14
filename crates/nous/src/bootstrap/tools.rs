@@ -84,7 +84,6 @@ pub fn format_tool_summary_section(summaries: &[ToolSummary]) -> String {
 fn extract_one_liner(description: &str) -> String {
     let first_line = description.lines().next().unwrap_or(description);
 
-    // Find first sentence boundary
     let end = first_line.find(". ").map_or(first_line.len(), |i| i + 1);
 
     let sentence = &first_line[..end];

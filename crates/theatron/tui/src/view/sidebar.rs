@@ -11,7 +11,6 @@ use crate::theme::{self, Theme};
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
-    // Small top padding
     lines.push(Line::raw(""));
 
     if app.agents.is_empty() {
@@ -57,7 +56,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             format!("{} {}", emoji, agent.name)
         };
 
-        // Build the line: indicator + name + notification dot
         let mut spans = vec![
             Span::raw("  "),
             status_icon,
@@ -65,14 +63,13 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             Span::styled(name, name_style),
         ];
 
-        // Notification dot — shows when an unfocused agent completed a turn
+        // NOTE: shown only for unfocused agents — clears when the user switches focus
         if !is_focused && agent.has_notification {
             spans.push(Span::styled(" ●", Style::default().fg(theme.colors.accent)));
         }
 
         lines.push(Line::from(spans));
 
-        // Show active tool under working agents
         if let Some(ref tool) = agent.active_tool {
             let elapsed = tool.started_at.elapsed().as_secs_f32();
             let ch = theme::spinner_frame(app.tick_count);
@@ -85,7 +82,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             ]));
         }
 
-        // Show compaction stage
         if let Some(ref stage) = agent.compaction_stage {
             lines.push(Line::from(vec![
                 Span::raw("     "),

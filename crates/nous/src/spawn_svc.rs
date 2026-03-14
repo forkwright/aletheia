@@ -105,7 +105,6 @@ impl SpawnService for SpawnServiceImpl {
 
         Box::pin(
             async move {
-                // Create minimal workspace directory for the ephemeral agent
                 let nous_dir = oikos.nous_dir(&spawn_id);
                 if let Err(e) = tokio::fs::create_dir_all(&nous_dir).await {
                     return Err(format!("failed to create spawn workspace: {e}"));
@@ -120,8 +119,7 @@ impl SpawnService for SpawnServiceImpl {
                     return Err(format!("failed to write SOUL.md: {e}"));
                 }
 
-                // Ephemeral actors get their own token; they are
-                // short-lived and don't need a shared parent.
+                // WHY: ephemeral actors get their own cancellation token — short-lived, no shared parent
                 let ephemeral_cancel = CancellationToken::new();
                 let (handle, join_handle, _active_turn) = actor::spawn(
                     config,

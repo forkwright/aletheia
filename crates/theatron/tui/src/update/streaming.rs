@@ -20,7 +20,6 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Streaming;
     }
-    // Operations pane: clear previous turn data and auto-show
     app.ops.clear_turn();
     app.ops.auto_show_if_configured();
 }
@@ -59,7 +58,6 @@ pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
         duration_ms: None,
         is_error: false,
     });
-    // Operations pane: add tool call entry
     app.ops.push_tool_start(clean_name.clone(), None);
     if let Some(ref agent_id) = app.focused_agent
         && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
@@ -87,7 +85,6 @@ pub(crate) fn handle_stream_tool_result(
         tc.duration_ms = Some(duration_ms);
         tc.is_error = is_error;
     }
-    // Operations pane: complete tool call
     app.ops
         .complete_tool(&tool_name, is_error, duration_ms, None);
     if let Some(ref agent_id) = app.focused_agent
@@ -190,8 +187,8 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
             tool_calls,
         });
         app.virtual_scroll.push_item(h);
-        // Scroll lock: when the user has scrolled up, keep the viewport anchored by
-        // compensating for the new content added below their current position.
+        // WHY: Keep the viewport anchored when scrolled up by compensating the
+        // scroll offset for the new content added below the current position.
         if !app.auto_scroll {
             app.scroll_offset = app.scroll_offset.saturating_add(h as usize);
         }
@@ -209,7 +206,6 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
     }
-    // Operations pane: auto-hide when turn completes
     app.ops.auto_hide_if_configured();
     if let Ok(cents) = app.client.today_cost_cents().await {
         app.daily_cost_cents = cents;
@@ -224,7 +220,6 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     app.streaming_tool_calls.clear();
     app.active_turn_id = None;
     app.stream_rx = None;
-    // Reset agent status so sidebar shows idle, not stuck on "working"
     if let Some(ref agent_id) = app.focused_agent
         && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
     {
@@ -240,11 +235,9 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
     app.active_turn_id = None;
     app.stream_rx = None;
-    // Clear streaming_tool_calls so the UI doesn't show a stale running spinner
-    // for the last tool. streaming_text is intentionally preserved so the user
-    // can read any partial response received before the error.
+    // WHY: Clear tool calls to remove stale spinners; preserve streaming_text
+    // so the user can read any partial response received before the error.
     app.streaming_tool_calls.clear();
-    // Reset agent status so sidebar shows idle, not stuck on "working"
     if let Some(ref agent_id) = app.focused_agent
         && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
     {

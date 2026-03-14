@@ -93,7 +93,7 @@ pub(crate) fn handle_diff_from_tool_result(
 ) {
     let file_diff = diff::compute_diff(path, old_content, new_content);
     if file_diff.hunks.is_empty() {
-        return; // no actual changes
+        return;
     }
     app.overlay = Some(Overlay::DiffView(DiffViewState::new(vec![file_diff])));
 }

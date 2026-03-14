@@ -23,10 +23,8 @@ struct MessageCtx<'a> {
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<OscLink> {
     let inner_width = area.width.saturating_sub(2) as usize;
     let wrap_width = area.width.saturating_sub(2).max(1);
-    // With Borders::NONE the paragraph has the full area height available.
     let visible_height = area.height;
-    // Para-relative link data collected from all messages.
-    let mut para_links: Vec<(usize, u16, String, String)> = Vec::new(); // (line_idx, col, text, url)
+    let mut para_links: Vec<(usize, u16, String, String)> = Vec::new();
 
     let filter_active =
         app.filter.active && app.filter.scope == FilterScope::Chat && !app.filter.text.is_empty();
@@ -39,17 +37,16 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         .map(|a| a.name_lower.as_str())
         .unwrap_or("assistant");
 
-    // When filter is active, we fall back to iterating all messages (filter changes
-    // the visible set dynamically). For the non-filtered common path, we use the
-    // VirtualScroll prefix-sum index for O(log n) range lookup.
+    // NOTE: When filter is active, fall back to iterating all messages (filter changes
+    // the visible set dynamically). For the non-filtered path, use the VirtualScroll
+    // prefix-sum index for O(log n) range lookup.
 
     let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::raw("")); // top padding
+    lines.push(Line::raw(""));
 
     if filter_active {
-        // Filtered path: iterate all messages, skip non-matching.
-        // This is acceptable because filtering is interactive and users rarely
-        // have 15K messages with a filter active.
+        // NOTE: Filtered path iterates all messages; acceptable because filtering is
+        // interactive and users rarely have 15K messages with a filter active.
         render_filtered_messages(
             app,
             &mut lines,
@@ -61,7 +58,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
             &mut para_links,
         );
     } else {
-        // Virtual scroll path: only render viewport + buffer items.
         render_virtual_messages(
             app,
             &mut lines,
@@ -74,7 +70,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         );
     }
 
-    // Empty state: no messages and not streaming — show helpful placeholder.
     if app.messages.is_empty() && app.active_turn_id.is_none() && !filter_active {
         lines.push(Line::from(vec![
             Span::raw(" "),
@@ -96,7 +91,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         ]));
     }
 
-    // Streaming response (in progress)
     if !app.streaming_text.is_empty()
         || !app.streaming_thinking.is_empty()
         || app.active_turn_id.is_some()
@@ -104,9 +98,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         render_streaming(app, &mut lines, inner_width, theme, agent_name_lower);
     }
 
-    // Bottom alignment: when total content is shorter than the pane, push it to
-    // the bottom by prepending empty lines.  Only applies when not scrolled
-    // (content fits in the viewport).
+    // NOTE: Push short content to the bottom by prepending empty lines when
+    // total content fits in the viewport (not scrolled).
     {
         let w = wrap_width.max(1) as usize;
         let total_visual: usize = lines
@@ -121,22 +114,19 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
             let mut padded: Vec<Line<'static>> = vec![Line::raw(""); padding];
             padded.append(&mut lines);
             lines = padded;
-            // Shift all paragraph-relative link line indices by the padding.
             for (line_idx, _, _, _) in &mut para_links {
                 *line_idx += padding;
             }
         }
     }
 
-    // Pre-compute per-line widths — needed for resolve_osc_links and scroll calc.
     let line_widths: Vec<usize> = lines
         .iter()
         .map(|line| line.spans.iter().map(|s| s.content.len()).sum())
         .collect();
 
-    // Total visual rows of the final rendered lines vector (after padding + streaming).
-    // Used for auto-scroll so that streaming content appended after virtual render is
-    // always visible when the user is at the bottom.
+    // NOTE: Total visual rows after padding + streaming; used for auto-scroll so
+    // streaming content appended after virtual render is always visible at the bottom.
     let w = wrap_width.max(1) as usize;
     let total_visual: usize = line_widths
         .iter()
@@ -145,16 +135,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
     let vh = visible_height as usize;
 
     let scroll = if app.auto_scroll {
-        // Pin to the very bottom of whatever was rendered (committed + streaming).
         total_visual.saturating_sub(vh)
     } else if filter_active {
-        // Filtered path: all messages are in `lines`; use the pre-computed total.
         total_visual
             .saturating_sub(vh)
             .saturating_sub(app.scroll_offset)
     } else {
-        // Virtual scroll path with manual offset: line_offset already positions us
-        // correctly within the rendered (viewport-only) items.
         let slice =
             app.virtual_scroll
                 .visible_slice(app.scroll_offset, app.auto_scroll, visible_height);
@@ -169,7 +155,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
 
     frame.render_widget(paragraph, area);
 
-    // Resolve para-relative links to absolute screen coordinates.
     resolve_osc_links(
         &para_links,
         &line_widths,
@@ -196,14 +181,12 @@ fn resolve_osc_links(
         return Vec::new();
     }
 
-    // Extract accent RGB — fall back to a sensible default for non-Rgb variants.
     let accent = match theme.colors.accent {
         ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
         _ => (120, 180, 255),
     };
 
-    // Pre-compute the cumulative visual-row offset for each logical line.
-    // visual_row_start[i] = number of visual rows before logical line i.
+    // NOTE: visual_row_start[i] = cumulative visual rows before logical line i.
     let mut visual_row_start: Vec<u32> = Vec::with_capacity(line_widths.len());
     let mut cumulative: u32 = 0;
     for &w in line_widths {
@@ -219,7 +202,6 @@ fn resolve_osc_links(
         let Some(&vrow_start) = visual_row_start.get(*line_idx) else {
             continue;
         };
-        // Adjust for which visual row within the wrapped line this col sits on.
         let col_row = if wrap_width > 0 {
             (*col as usize) / wrap_width
         } else {
@@ -227,10 +209,9 @@ fn resolve_osc_links(
         };
         let vrow = vrow_start as i32 + col_row as i32;
 
-        // Apply scroll: positive scroll shifts content upward (scroll=0 means show from top).
         let screen_row = vrow - scroll as i32;
         if screen_row < 0 || screen_row >= visible_height {
-            continue; // link is outside the visible window
+            continue;
         }
 
         let screen_x = area.x + (*col as usize % wrap_width.max(1)) as u16;
@@ -263,15 +244,12 @@ fn render_virtual_messages(
     agent_name: &str,
     para_links: &mut Vec<(usize, u16, String, String)>,
 ) {
-    // Ensure the virtual scroll cache is populated and matches current width.
-    // This is a read-only check — cache rebuilds happen in the update layer.
-    // If the cache is stale (width changed or item count mismatch), fall back to
-    // full iteration for this single frame. The next update tick will rebuild.
+    // NOTE: If the virtual scroll cache is stale (width changed or item count mismatch),
+    // fall back to full iteration for this frame; the next update tick will rebuild.
     let needs_fallback = app.virtual_scroll.len() != app.messages.len()
         || (app.virtual_scroll.cached_width() != wrap_width && !app.messages.is_empty());
 
     if needs_fallback {
-        // Fallback: render all messages this frame. The cache will be rebuilt.
         for (idx, msg) in app.messages.iter().enumerate() {
             let ctx = MessageCtx {
                 inner_width,
@@ -352,7 +330,6 @@ fn render_message(
         _ => ("system", theme.style_muted()),
     };
 
-    // Selection indicator prefix
     let marker = if ctx.selected { "▸" } else { " " };
     let marker_style = if ctx.selected {
         Style::default().fg(theme.borders.selected)
@@ -360,7 +337,6 @@ fn render_message(
         Style::default()
     };
 
-    // Header: selection marker + role name + optional model (dim) + timestamp
     let mut header_spans = vec![
         Span::styled(marker, marker_style),
         Span::styled(format!(" {}", role_label), role_style),
@@ -385,12 +361,10 @@ fn render_message(
 
     lines.push(Line::from(header_spans));
 
-    // Inline tool call summary (compact, between header and content)
     if !msg.tool_calls.is_empty() {
         render_tool_summary(&msg.tool_calls, lines, theme);
     }
 
-    // Message content — markdown parsed with syntax highlighting
     let (md_lines, md_links) = markdown::render(
         &msg.text,
         ctx.inner_width.saturating_sub(2),
@@ -398,7 +372,7 @@ fn render_message(
         &app.highlighter,
     );
     let content_prefix = if ctx.selected { "│" } else { " " };
-    let prefix_width: u16 = content_prefix.len() as u16; // always 1 byte for these strings
+    let prefix_width: u16 = content_prefix.len() as u16;
     let prefix_style = if ctx.selected {
         Style::default().fg(theme.borders.selected)
     } else {
@@ -407,8 +381,8 @@ fn render_message(
 
     let highlight_bg = Style::default().bg(theme.colors.accent_dim);
 
-    // Offset: paragraph line index of the first markdown line for this message.
-    // +1 for the header line; +1 more if tool calls were rendered.
+    // NOTE: Paragraph line index of the first markdown line; needed to convert
+    // markdown-relative link positions to paragraph-relative positions below.
     let md_para_offset = lines.len();
 
     for line in md_lines {
@@ -425,14 +399,12 @@ fn render_message(
         lines.push(Line::from(padded_spans));
     }
 
-    // Convert markdown-relative MdLink positions to paragraph-relative para_links.
     for link in md_links {
         let abs_line = md_para_offset + link.line_idx;
         let abs_col = prefix_width + link.col;
         para_links.push((abs_line, abs_col, link.text, link.url));
     }
 
-    // Breathing room between messages
     lines.push(Line::raw(""));
 }
 
@@ -454,12 +426,10 @@ fn highlight_span(
     let mut last_char_idx = 0;
 
     for (byte_start, _) in content_lower.match_indices(&pattern_lower) {
-        // Convert byte offset in the original string to char index
         let char_start = content[..byte_start].chars().count();
         let pattern_chars = pattern.chars().count();
         let char_end = char_start + pattern_chars;
 
-        // Re-slice the original content by reconstructing from char indices
         if char_start > last_char_idx {
             let before: String = content
                 .chars()
@@ -531,7 +501,6 @@ fn render_streaming(
     theme: &Theme,
     name: &str,
 ) {
-    // Thinking block (if visible)
     if app.thinking_expanded && !app.streaming_thinking.is_empty() {
         lines.push(Line::from(vec![
             Span::raw(" "),
@@ -556,7 +525,6 @@ fn render_streaming(
         ]));
     }
 
-    // Active tool calls during streaming (show completed + current)
     if !app.streaming_tool_calls.is_empty() {
         let mut tool_spans: Vec<Span> =
             vec![Span::raw("  "), Span::styled("╰─ ", theme.style_dim())];
@@ -567,7 +535,6 @@ fn render_streaming(
             }
 
             if tc.duration_ms.is_some() {
-                // Completed tool
                 let color = if tc.is_error {
                     theme.status.error
                 } else {
@@ -590,7 +557,6 @@ fn render_streaming(
                 };
                 tool_spans.push(Span::styled(label, Style::default().fg(color)));
             } else {
-                // Currently running tool — animated
                 let ch = theme::spinner_frame(app.tick_count);
                 tool_spans.push(Span::styled(
                     format!("{} {}", ch, tc.name),
@@ -602,14 +568,14 @@ fn render_streaming(
         lines.push(Line::from(tool_spans));
     }
 
-    // Streaming text with cursor
     if !app.streaming_text.is_empty() {
         lines.push(Line::from(vec![Span::styled(
             format!(" {}", name),
             theme.style_assistant(),
         )]));
 
-        // Use cached markdown if available (streaming content — links not tracked for OSC 8)
+        // NOTE: Use cached markdown lines when available; streaming links are not
+        // tracked for OSC 8 (positions change too rapidly during streaming).
         let rendered = if app.cached_markdown_text == app.streaming_text {
             app.cached_markdown_lines.clone()
         } else {
@@ -628,7 +594,6 @@ fn render_streaming(
             lines.push(Line::from(padded_spans));
         }
 
-        // Braille cursor
         let ch = theme::spinner_frame(app.tick_count);
         lines.push(Line::from(vec![
             Span::raw(" "),
@@ -640,7 +605,6 @@ fn render_streaming(
             ),
         ]));
     } else if app.active_turn_id.is_some() {
-        // No text yet — show spinner with agent name
         let ch = theme::spinner_frame(app.tick_count);
 
         lines.push(Line::from(vec![

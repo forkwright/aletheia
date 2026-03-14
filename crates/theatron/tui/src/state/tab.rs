@@ -189,7 +189,6 @@ impl TabBar {
     pub(crate) fn find_by_title(&self, query: &str) -> Option<usize> {
         let query_lower = query.to_lowercase();
 
-        // Exact match first
         if let Some(idx) = self
             .tabs
             .iter()
@@ -198,7 +197,6 @@ impl TabBar {
             return Some(idx);
         }
 
-        // Prefix match
         if let Some(idx) = self
             .tabs
             .iter()
@@ -207,7 +205,6 @@ impl TabBar {
             return Some(idx);
         }
 
-        // Substring match
         self.tabs
             .iter()
             .position(|t| t.title.to_lowercase().contains(&query_lower))

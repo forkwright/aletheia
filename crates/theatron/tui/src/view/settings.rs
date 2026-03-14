@@ -73,7 +73,6 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
 
             let restart = if field.requires_restart { " *" } else { "" };
 
-            // Show inline edit buffer when editing this field
             if selected && let Some(ref edit) = overlay.editing {
                 lines.push(Line::from(vec![
                     Span::raw(format!("  {} ", marker)),
@@ -100,7 +99,6 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         }
     }
 
-    // Status line
     lines.push(Line::raw(""));
     match &overlay.save_status {
         SaveStatus::Saving => {
@@ -124,7 +122,6 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         SaveStatus::Idle => {}
     }
 
-    // Footer
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
@@ -165,7 +162,6 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
     let visible_height = inner.height as usize;
     let total_lines = lines.len();
 
-    // Auto-scroll to keep cursor visible
     let cursor_line = estimate_cursor_line(overlay);
     let scroll = if cursor_line >= overlay.scroll_offset + visible_height {
         cursor_line.saturating_sub(visible_height - 1)
@@ -181,7 +177,6 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, popup);
 
-    // Scrollbar
     if total_lines > visible_height {
         let mut scrollbar_state =
             ScrollbarState::new(total_lines.saturating_sub(visible_height)).position(scroll);

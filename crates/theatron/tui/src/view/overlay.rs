@@ -35,7 +35,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let popup_area = centered_rect(POPUP_WIDTH_PCT, POPUP_HEIGHT_PCT, area);
 
-    // Clear the area under the overlay
     frame.render_widget(Clear, popup_area);
 
     match overlay {
@@ -324,7 +323,6 @@ fn render_tool_approval(
         )),
     ];
 
-    // Truncated input display
     let input_str = serde_json::to_string_pretty(&approval.input).unwrap_or_default();
     for line in input_str.lines().take(TOOL_APPROVAL_INPUT_LINES) {
         lines.push(Line::from(Span::styled(
@@ -425,7 +423,6 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
         .fg(theme.text.fg)
         .add_modifier(Modifier::BOLD);
 
-    // Connection status
     lines.push(Line::from(Span::styled("  Connection", section_style)));
     lines.push(Line::raw(""));
     let sse_status = if app.sse_connected {
@@ -450,7 +447,6 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
     )));
     lines.push(Line::raw(""));
 
-    // Agents
     lines.push(Line::from(Span::styled("  Agents", section_style)));
     lines.push(Line::raw(""));
 
@@ -491,7 +487,6 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
 
     lines.push(Line::raw(""));
 
-    // Cost
     let cost = app.daily_cost_cents as f64 / 100.0;
     lines.push(Line::from(Span::styled("  Today", section_style)));
     lines.push(Line::raw(""));
@@ -575,7 +570,7 @@ fn render_diff_view(
     area: Rect,
     theme: &Theme,
 ) {
-    // Render diff lines (without mutation — we compute total_lines here for scroll clamping)
+    // NOTE: render immutably first to get total_lines for scroll clamping before display
     let inner_area = Rect::new(
         area.x + 1,
         area.y + 1,
@@ -587,7 +582,6 @@ fn render_diff_view(
     let total = all_lines.len();
     let visible_height = inner_area.height as usize;
 
-    // Clamp scroll
     let scroll = diff_state
         .scroll_offset
         .min(total.saturating_sub(visible_height));

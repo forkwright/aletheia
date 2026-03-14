@@ -21,6 +21,7 @@ use crate::error::{self, Result};
 ///
 /// Determines inclusion order and drop/truncation behavior under budget pressure.
 /// Derives `Ord` so sections sort Required-first.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SectionPriority {
     /// Must be included. Missing = error.
@@ -197,7 +198,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
         let mut sections = self.resolve_workspace_files(nous_id).await?;
         sections.extend(extra_sections);
 
-        // Stable sort preserves declaration order within same priority
+        // NOTE: stable sort preserves declaration order within same priority
         sections.sort_by_key(|s| s.priority);
 
         let mut included: Vec<BootstrapSection> = Vec::new();
@@ -335,7 +336,6 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             return self.truncate_by_lines(section, max_tokens);
         }
 
-        // Pre-format each part so token estimates are accurate.
         let formatted: Vec<String> = parts
             .iter()
             .enumerate()
@@ -348,7 +348,6 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             })
             .collect();
 
-        // Iterate from newest to oldest, collecting parts that fit.
         let mut tokens_used: u64 = 0;
         let mut kept: Vec<usize> = Vec::new();
 
@@ -362,14 +361,14 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
         }
 
         if kept.is_empty() {
-            // No single section fits within the budget — fall back to lines.
+            // NOTE: no single section fits in budget — fall back to line-by-line truncation
             return self.truncate_by_lines(section, max_tokens);
         }
 
-        // Restore chronological order (kept is currently newest-first).
+        // NOTE: reverse restores chronological order — kept is newest-first from the backwards iteration
         kept.reverse();
 
-        // Prepend truncation marker so the reader knows oldest content was dropped.
+        // WHY: prepend marker so callers can see that oldest sections were dropped
         let mut result = String::from("... [truncated for token budget] ...");
         for i in kept {
             result.push_str(&formatted[i]);
@@ -392,7 +391,6 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
     fn truncate_by_lines(&self, section: &BootstrapSection, max_tokens: u64) -> BootstrapSection {
         let lines: Vec<&str> = section.content.lines().collect();
 
-        // Iterate from newest to oldest, collecting lines that fit.
         let mut tokens_used: u64 = 0;
         let mut kept: Vec<&str> = Vec::new();
 
@@ -408,7 +406,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
         }
 
         if kept.is_empty() {
-            // Even one line exceeds the budget — return only the marker.
+            // NOTE: even one line exceeds budget — return only the truncation marker
             let content = "... [truncated for token budget] ...".to_owned();
             let final_tokens = self.estimator.estimate(&content);
             return BootstrapSection {
@@ -420,10 +418,10 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             };
         }
 
-        // Restore chronological order (kept is currently newest-first).
+        // NOTE: reverse restores chronological order — kept is newest-first from the backwards iteration
         kept.reverse();
 
-        // Prepend truncation marker so the reader knows oldest lines were dropped.
+        // WHY: prepend marker so callers can see that oldest lines were dropped
         let mut result = String::from("... [truncated for token budget] ...\n");
         for line in kept {
             result.push_str(line);

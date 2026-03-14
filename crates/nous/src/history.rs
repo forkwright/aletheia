@@ -80,15 +80,11 @@ pub fn load_history(
         ));
     }
 
-    // Single query: load all messages once, then filter and budget manually.
-    // This eliminates the redundant second query that the old approach used and
-    // ensures the `truncated` flag applies the same role filter as the loading
-    // loop (fix for #1102).
+    // WHY: single query to eliminate redundant second query; also ensures truncated flag uses same role filter as load loop (fix for #1102)
     let all_messages = store
         .get_history(session_id, None)
         .context(error::StoreSnafu)?;
 
-    // Count messages eligible under the same role filter as the loading loop.
     let total_eligible = all_messages
         .iter()
         .filter(|m| {
@@ -96,8 +92,6 @@ pub fn load_history(
         })
         .count();
 
-    // Iterate newest-first: collect the most recent messages that fit within
-    // the available budget and max_messages cap.
     let mut collected: Vec<PipelineMessage> = Vec::new();
     let mut tokens_consumed: i64 = 0;
     let mut loaded_count: usize = 0;
@@ -132,11 +126,10 @@ pub fn load_history(
         loaded_count += 1;
     }
 
-    // Restore chronological order (collected is currently newest-first).
+    // WHY: restore chronological order — collected newest-first
     collected.reverse();
 
-    // Truncated when eligible messages exceed what was loaded — covers both
-    // budget truncation and max_messages truncation.
+    // INVARIANT: truncated when eligible messages exceed what was loaded
     let truncated = total_eligible > loaded_count;
 
     collected.push(PipelineMessage {

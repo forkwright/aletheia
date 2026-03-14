@@ -39,7 +39,7 @@ pub fn handle_backspace(app: &mut App) {
         refresh_suggestions(app);
         app.command_palette.selected = 0;
     } else {
-        // Backspace on empty input closes palette (vim behavior)
+        // WHY: closes on empty backspace to match vim command-mode behavior
         app.command_palette.active = false;
     }
 }
@@ -90,7 +90,6 @@ pub fn handle_tab(app: &mut App) {
 
 #[tracing::instrument(skip_all)]
 pub async fn handle_select(app: &mut App) {
-    // Resolve to the selected suggestion before executing
     if let Some(suggestion) = app
         .command_palette
         .suggestions
@@ -107,7 +106,7 @@ pub async fn handle_select(app: &mut App) {
         if extra_args.is_empty() {
             app.command_palette.input = execute_as;
         } else {
-            // Preserve typed args (e.g., user typed "agent sy" but suggestion is "agent")
+            // NOTE: preserve typed args — user may have typed extra text beyond the suggestion base
             let suggestion_has_args = execute_as.contains(' ');
             if suggestion_has_args {
                 app.command_palette.input = execute_as;

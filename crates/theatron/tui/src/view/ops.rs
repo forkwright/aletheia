@@ -51,7 +51,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let inner_width = inner.width.saturating_sub(1) as usize;
     let mut item_idx: usize = 0;
 
-    // --- Thinking block ---
     if !ops.thinking.text.is_empty() {
         let is_selected = ops.selected_item == Some(item_idx);
         render_thinking_block(
@@ -65,7 +64,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         item_idx += 1;
     }
 
-    // --- Tool calls ---
     for tc in &ops.tool_calls {
         let is_selected = ops.selected_item == Some(item_idx);
         render_tool_call(
@@ -79,7 +77,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         item_idx += 1;
     }
 
-    // --- File diffs ---
     if !ops.diffs.is_empty() {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
@@ -91,7 +88,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
     }
 
-    // --- Empty state ---
     if lines.is_empty() {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
@@ -103,7 +99,6 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
     }
 
-    // Calculate scroll
     let visible_height = inner.height as usize;
     let total_lines = lines.len();
     let scroll = if total_lines > visible_height {
@@ -138,7 +133,6 @@ fn render_thinking_block(
 
     let collapse_icon = if thinking.collapsed { "▶" } else { "▼" };
 
-    // Header
     lines.push(Line::from(vec![
         Span::styled(marker, marker_style),
         Span::styled(
@@ -204,7 +198,6 @@ fn render_thinking_block(
             ]));
         }
 
-        // Show streaming indicator if thinking text is still growing
         let ch = theme::spinner_frame(tick_count);
         lines.push(Line::from(vec![
             Span::raw("   "),
@@ -235,7 +228,6 @@ fn render_tool_call(
         Style::default()
     };
 
-    // Status indicator
     let (status_icon, status_style) = match tc.status {
         OpsToolStatus::Running => {
             let ch = theme::spinner_frame(tick_count);
@@ -256,7 +248,6 @@ fn render_tool_call(
         ),
     };
 
-    // Duration
     let duration_str = tc.duration_ms.map(|ms| {
         if ms >= MS_PER_SECOND {
             format!(" ({:.1}s)", ms as f64 / MS_PER_SECOND as f64)
@@ -265,7 +256,6 @@ fn render_tool_call(
         }
     });
 
-    // Header: marker + status + tool name (bold) + duration
     let mut header = vec![
         Span::styled(marker, marker_style),
         Span::styled(format!(" {status_icon}"), status_style),
@@ -283,7 +273,6 @@ fn render_tool_call(
 
     lines.push(Line::from(header));
 
-    // Input parameters (collapsed by default, shown when expanded)
     if tc.expanded {
         if let Some(ref input) = tc.input_json {
             lines.push(Line::from(vec![
@@ -308,7 +297,6 @@ fn render_tool_call(
             }
         }
 
-        // Output (truncated)
         if let Some(ref output) = tc.output {
             lines.push(Line::from(vec![
                 Span::raw("   "),
@@ -355,7 +343,6 @@ fn render_diff(
     lines: &mut Vec<Line<'static>>,
     theme: &Theme,
 ) {
-    // File path header
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled(
@@ -364,7 +351,6 @@ fn render_diff(
         ),
     ]));
 
-    // Deletions (red)
     for del in &diff.deletions {
         lines.push(Line::from(vec![
             Span::raw("  "),
@@ -372,7 +358,6 @@ fn render_diff(
         ]));
     }
 
-    // Additions (green)
     for add in &diff.additions {
         lines.push(Line::from(vec![
             Span::raw("  "),
