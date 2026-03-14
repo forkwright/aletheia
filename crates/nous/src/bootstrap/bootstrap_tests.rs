@@ -308,7 +308,7 @@ fn pack_sections_to_bootstrap_converts_priorities() {
     ];
 
     let refs: Vec<&PackSection> = sections.iter().collect();
-    let result = pack_sections_to_bootstrap(&refs, &CharEstimator);
+    let result = pack_sections_to_bootstrap(&refs, &CharEstimator::default());
 
     assert_eq!(result.len(), 2);
     assert_eq!(result[0].name, "[test-pack] LOGIC.md");
@@ -324,7 +324,7 @@ fn pack_sections_to_bootstrap_converts_priorities() {
 
 #[test]
 fn pack_sections_to_bootstrap_empty_input() {
-    let result = pack_sections_to_bootstrap(&[], &CharEstimator);
+    let result = pack_sections_to_bootstrap(&[], &CharEstimator::default());
     assert!(result.is_empty());
 }
 

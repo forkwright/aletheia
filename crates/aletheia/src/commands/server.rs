@@ -295,6 +295,11 @@ pub async fn run(args: Args) -> Result<()> {
                 }
             }
 
+            let mut recall: aletheia_nous::recall::RecallConfig = resolved.recall.into();
+            // WHY: chars_per_token lives on AgentDefaults (LLM-level setting),
+            //      not on RecallSettings, so it must be forwarded explicitly.
+            recall.chars_per_token = u64::from(resolved.chars_per_token);
+
             let nous_config = NousConfig {
                 id: resolved.id,
                 name: resolved.name,
@@ -310,12 +315,14 @@ pub async fn run(args: Args) -> Result<()> {
                 server_tools: Vec::new(),
                 cache_enabled: resolved.cache_enabled,
                 session_token_cap: 500_000,
-                recall: resolved.recall.into(),
+                recall,
+                chars_per_token: resolved.chars_per_token,
             };
             nous_manager
                 .spawn(
                     nous_config,
                     PipelineConfig {
+                        history_budget_ratio: resolved.history_budget_ratio,
                         extraction: Some(aletheia_mneme::extract::ExtractionConfig::default()),
                         ..PipelineConfig::default()
                     },

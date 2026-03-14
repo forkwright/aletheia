@@ -149,7 +149,19 @@ impl<'a> BootstrapAssembler<'a, CharEstimator> {
     pub fn new(oikos: &'a Oikos) -> Self {
         Self {
             oikos,
-            estimator: CharEstimator,
+            estimator: CharEstimator::default(),
+        }
+    }
+
+    /// Create an assembler with a configurable characters-per-token divisor.
+    ///
+    /// Wires the operator-configured `chars_per_token` value from
+    /// `agents.defaults.chars_per_token` into the bootstrap estimator.
+    #[must_use]
+    pub fn new_with_chars_per_token(oikos: &'a Oikos, chars_per_token: u64) -> Self {
+        Self {
+            oikos,
+            estimator: CharEstimator::new(chars_per_token),
         }
     }
 }

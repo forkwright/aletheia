@@ -234,11 +234,25 @@ fn recall_respects_token_budget() {
 
 #[test]
 fn estimate_tokens_heuristic() {
-    assert_eq!(estimate_tokens(""), 0);
-    assert_eq!(estimate_tokens("abcd"), 1);
-    assert_eq!(estimate_tokens("abcde"), 2);
+    assert_eq!(estimate_tokens("", 4), 0);
+    assert_eq!(estimate_tokens("abcd", 4), 1);
+    assert_eq!(estimate_tokens("abcde", 4), 2);
     let text = "x".repeat(400);
-    assert_eq!(estimate_tokens(&text), 100);
+    assert_eq!(estimate_tokens(&text, 4), 100);
+}
+
+#[test]
+fn estimate_tokens_custom_divisor() {
+    // 8 chars / 2 = 4 tokens
+    assert_eq!(estimate_tokens("abcdefgh", 2), 4);
+    // 5 chars / 3 = ceil(5/3) = 2 tokens
+    assert_eq!(estimate_tokens("hello", 3), 2);
+}
+
+#[test]
+fn estimate_tokens_divisor_clamp() {
+    // divisor 0 should be treated as 1 (no division by zero)
+    assert_eq!(estimate_tokens("a", 0), 1);
 }
 
 #[test]

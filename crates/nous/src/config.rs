@@ -50,6 +50,13 @@ pub struct NousConfig {
     /// Wired from the taxis per-agent config block at startup.
     #[serde(default)]
     pub recall: RecallConfig,
+    /// Characters per token for conservative token-budget estimation.
+    ///
+    /// Used by `CharEstimator` when sizing bootstrap sections and recall
+    /// output.  The default of 4 follows the common "1 token ≈ 4 chars"
+    /// heuristic. Wired from `agents.defaults.chars_per_token` at startup.
+    #[serde(default = "default_chars_per_token")]
+    pub chars_per_token: u32,
 }
 
 fn default_cache_enabled() -> bool {
@@ -58,6 +65,13 @@ fn default_cache_enabled() -> bool {
 
 fn default_session_token_cap() -> u64 {
     500_000
+}
+
+fn default_chars_per_token() -> u32 {
+    // WHY: must match AgentDefaults::chars_per_token default in taxis so that
+    //      the serde default (used when deserialising NousConfig directly)
+    //      is identical to the value wired at startup via ResolvedNousConfig.
+    4
 }
 
 impl Default for NousConfig {
@@ -78,6 +92,7 @@ impl Default for NousConfig {
             cache_enabled: true,
             session_token_cap: default_session_token_cap(),
             recall: RecallConfig::default(),
+            chars_per_token: default_chars_per_token(),
         }
     }
 }
@@ -208,6 +223,7 @@ mod tests {
             cache_enabled: false,
             session_token_cap: 250_000,
             recall: RecallConfig::default(),
+            chars_per_token: 4,
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.thinking_enabled);
