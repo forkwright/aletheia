@@ -47,7 +47,7 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         check_positive_u32(defaults, "timeoutSeconds", errors);
         check_positive_u32(defaults, "thinkingBudget", errors);
 
-        // Cap token budgets at a sane maximum to prevent misconfiguration.
+        // WHY: Cap token budgets at a sane maximum to prevent misconfiguration.
         for field in &[
             "contextTokens",
             "maxOutputTokens",
@@ -61,7 +61,6 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
             }
         }
 
-        // Model IDs must not be empty strings.
         if let Some(model) = defaults.get("model") {
             if let Some(primary) = model.get("primary").and_then(Value::as_str)
                 && primary.is_empty()
@@ -94,7 +93,7 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
             errors.push("toolTimeouts.defaultMs must be positive".to_owned());
         }
 
-        // Bootstrap budget must fit within the context window.
+        // INVARIANT: Bootstrap budget must fit within the context window.
         let context = defaults.get("contextTokens").and_then(Value::as_u64);
         let bootstrap = defaults.get("bootstrapMaxTokens").and_then(Value::as_u64);
         if let (Some(ctx), Some(boot)) = (context, bootstrap)

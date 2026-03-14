@@ -47,8 +47,6 @@ impl AuthService {
         &self.store
     }
 
-    // --- User management ---
-
     /// Register a new user with a hashed password.
     #[instrument(skip(self, password))]
     pub fn register_user(
@@ -61,8 +59,6 @@ impl AuthService {
         let id = ulid::Ulid::new().to_string();
         self.store.create_user(&id, username, &hash, role)
     }
-
-    // --- Authentication ---
 
     /// Authenticate via username + password. Returns a JWT pair.
     #[instrument(skip(self, password))]
@@ -142,8 +138,6 @@ impl AuthService {
         self.store.revoke_token(&claims.jti, &expires_at)
     }
 
-    // --- API key management ---
-
     /// Generate a new API key.
     pub fn generate_api_key(
         &self,
@@ -164,8 +158,6 @@ impl AuthService {
     pub fn list_api_keys(&self) -> Result<Vec<ApiKeyRecord>> {
         api_key::list(&self.store)
     }
-
-    // --- Authorization ---
 
     /// Check if claims authorize the given action. Returns `Ok(())` if allowed.
     pub fn authorize(&self, claims: &Claims, action: &Action) -> Result<()> {
@@ -246,8 +238,6 @@ mod tests {
         SecretString::from(s.to_owned())
     }
 
-    // --- format_unix_iso ---
-
     #[test]
     fn format_unix_iso_positive_timestamp() {
         let result = format_unix_iso(1_700_000_000);
@@ -265,8 +255,6 @@ mod tests {
         let result = format_unix_iso(0);
         assert_eq!(result, "1970-01-01T00:00:00.000Z");
     }
-
-    // --- Login flow ---
 
     #[test]
     fn register_and_login() {
@@ -297,8 +285,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // --- Token lifecycle ---
-
     #[test]
     fn validate_then_logout_then_reject() {
         let svc = test_service();
@@ -306,13 +292,10 @@ mod tests {
             .unwrap();
         let pair = svc.login("alice", &secret("pw")).unwrap();
 
-        // Token is valid
         assert!(svc.validate_token(&pair.access_token).is_ok());
 
-        // Logout (revoke)
         svc.logout(&pair.access_token).unwrap();
 
-        // Token is now rejected
         let result = svc.validate_token(&pair.access_token);
         assert!(result.is_err());
     }
@@ -340,8 +323,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // --- API key flow ---
-
     #[test]
     fn api_key_generate_authenticate_revoke() {
         let svc = test_service();
@@ -355,8 +336,6 @@ mod tests {
         svc.revoke_api_key(&record.id).unwrap();
         assert!(svc.authenticate_api_key(&key).is_err());
     }
-
-    // --- RBAC ---
 
     #[test]
     fn operator_can_do_everything() {
@@ -406,7 +385,6 @@ mod tests {
 
         let svc = test_service();
 
-        // Can access own sessions
         svc.authorize(
             &claims,
             &Action::ReadSession {
@@ -422,7 +400,6 @@ mod tests {
         )
         .unwrap();
 
-        // Cannot access other agent's sessions
         assert!(
             svc.authorize(
                 &claims,
@@ -442,11 +419,9 @@ mod tests {
             .is_err()
         );
 
-        // Cannot manage
         assert!(svc.authorize(&claims, &Action::ManageAgents).is_err());
         assert!(svc.authorize(&claims, &Action::ManageUsers).is_err());
 
-        // Can read dashboard
         svc.authorize(&claims, &Action::ReadDashboard).unwrap();
     }
 
@@ -514,17 +489,12 @@ mod tests {
         );
     }
 
-    // --- SQL injection safety ---
-
     #[test]
     fn sql_injection_in_username_parameterized() {
         let svc = test_service();
-        // This should not cause SQL injection — parameterized queries handle it
         let result = svc.login("'; DROP TABLE users; --", &secret("pw"));
-        assert!(result.is_err()); // Just a "not found" error, no SQL injection
+        assert!(result.is_err());
     }
-
-    // --- Duplicate registration ---
 
     #[test]
     fn duplicate_user_registration_rejected() {

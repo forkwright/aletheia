@@ -54,7 +54,6 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         for mut fact in facts {
             items_processed += 1;
 
-            // Compute age in hours from last access (or recorded_at if never accessed).
             let reference_time = fact.last_accessed_at.unwrap_or(fact.recorded_at);
             let age_secs = now.duration_since(reference_time).as_secs();
             #[expect(
@@ -67,7 +66,6 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             let decay_score =
                 engine.score_decay(age_hours, fact_type, fact.tier, fact.access_count);
 
-            // Only update if decay score is meaningfully lower than current confidence.
             let new_confidence = (fact.confidence * decay_score).clamp(0.0, 1.0);
             if (fact.confidence - new_confidence).abs() > 0.01 {
                 fact.confidence = new_confidence;

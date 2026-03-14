@@ -190,8 +190,6 @@ impl From<ToolName> for String {
     }
 }
 
-// --- Validation ---
-
 fn validate_id(id: &str, kind: &'static str) -> Result<(), IdError> {
     if id.is_empty() {
         return Err(IdError::Empty { kind });
@@ -215,8 +213,6 @@ fn validate_id(id: &str, kind: &'static str) -> Result<(), IdError> {
     }
     Ok(())
 }
-
-// --- Errors ---
 
 /// Errors from identifier construction.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -348,8 +344,6 @@ mod tests {
         let back: ToolName = serde_json::from_str(&json).unwrap();
         assert_eq!(name, back);
     }
-
-    // --- Boundary values ---
 
     #[test]
     fn nous_id_max_length_accepted() {

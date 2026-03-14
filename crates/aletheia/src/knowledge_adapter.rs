@@ -49,7 +49,6 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .await
                 .map_err(|e| format!("hybrid search failed: {e}"))?;
 
-            // Resolve fact content from IDs via a point-in-time query
             let now = jiff::Zoned::now()
                 .strftime("%Y-%m-%dT%H:%M:%SZ")
                 .to_string();
@@ -96,7 +95,6 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .to_string();
             let new_id = format!("fact-{}", ulid::Ulid::new());
 
-            // Mark old fact as superseded
             let retract_script = r"
                 ?[id, valid_from, content, nous_id, confidence, tier, valid_to, superseded_by, source_session_id, recorded_at,
                   access_count, last_accessed_at, stability_hours, fact_type,
@@ -127,7 +125,6 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .run_mut_query(retract_script, params)
                 .map_err(|e| format!("failed to supersede old fact: {e}"))?;
 
-            // Insert corrected fact
             let ts_now = jiff::Timestamp::now();
             let new_fact = Fact {
                 id: aletheia_mneme::id::FactId::from(new_id.as_str()),
@@ -278,7 +275,6 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let row_limit = row_limit.unwrap_or(100);
         let timeout = timeout_secs.map(std::time::Duration::from_secs_f64);
         Box::pin(async move {
-            // Convert JSON params to BTreeMap<String, DataValue>
             let mut cozo_params = std::collections::BTreeMap::new();
             if let Some(serde_json::Value::Object(map)) = params {
                 for (k, v) in map {

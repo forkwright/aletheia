@@ -28,12 +28,11 @@ pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
 
     for line in text.lines() {
         if line.starts_with(':') {
-            // Comment / keepalive — skip
             continue;
         }
 
         if line.is_empty() {
-            // Empty line = event boundary
+            // NOTE: empty line signals SSE event boundary per the spec
             if !current_event_type.is_empty() && !current_data.is_empty() {
                 match serde_json::from_str::<serde_json::Value>(&current_data) {
                     Ok(data) => {
@@ -74,7 +73,7 @@ pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
         }
     }
 
-    // Handle trailing event without final blank line
+    // NOTE: handle trailing event without final blank line
     if !current_event_type.is_empty() && !current_data.is_empty() {
         match serde_json::from_str::<serde_json::Value>(&current_data) {
             Ok(data) => {
@@ -227,9 +226,7 @@ mod tests {
         let events = parse_sse_text(input).expect("parse");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "text_delta");
-        // Two data lines should be joined with newline
-        let raw = format!("{}", events[0].data);
-        assert!(raw.contains("hello"));
+        assert!(format!("{}", events[0].data).contains("hello"));
     }
 
     #[test]
@@ -317,7 +314,7 @@ data: {\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":100,\"output_tok
     fn malformed_json_event_skipped_parsing_continues() {
         let input = "event: foo\ndata: not-json\n\nevent: text_delta\ndata: {\"text\":\"ok\"}\n\n";
         let events = parse_sse_text(input).expect("parse should succeed");
-        // Malformed event is skipped; valid subsequent event is preserved
+        // NOTE: malformed event is skipped; valid subsequent event is preserved
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "text_delta");
     }
@@ -331,9 +328,7 @@ data: {\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":100,\"output_tok
 
     #[test]
     fn whitespace_only_between_events() {
-        // Lines with only whitespace are not "empty" per str::lines, so they don't trigger
-        // event boundaries the same way. This tests that events separated by truly empty
-        // lines still parse correctly even if there's whitespace around them.
+        // NOTE: lines with only whitespace don't trigger event boundaries the same way as truly empty lines
         let input = "event: text_delta\ndata: {\"text\":\"a\"}\n\nevent: text_delta\ndata: {\"text\":\"b\"}\n\n";
         let events = parse_sse_text(input).expect("parse");
         assert_eq!(events.len(), 2);

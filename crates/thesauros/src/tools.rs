@@ -43,8 +43,7 @@ impl ToolExecutor for ShellToolExecutor {
             });
             let timeout = Duration::from_millis(self.timeout_ms);
 
-            // Retry on ETXTBSY (errno 26) — a benign race between writing/chmod
-            // on a script and exec'ing it. Common in CI and on busy systems.
+            // WHY: retry on ETXTBSY (errno 26) — benign race between writing/chmod and exec
             let mut child = {
                 let mut last_err = None;
                 let mut spawned = None;
@@ -61,7 +60,7 @@ impl ToolExecutor for ShellToolExecutor {
                             break;
                         }
                         Err(e) if e.raw_os_error() == Some(26) && attempt < 3 => {
-                            // ETXTBSY — brief backoff (1ms, 5ms, 25ms)
+                            // WHY: brief exponential backoff on ETXTBSY before each retry
                             tokio::time::sleep(Duration::from_millis(1 << (2 * attempt))).await;
                             last_err = Some(e);
                         }
@@ -90,8 +89,8 @@ impl ToolExecutor for ShellToolExecutor {
                 }
             }
 
-            // Wait in a background thread to avoid blocking the async runtime,
-            // then enforce timeout from this async side via oneshot + tokio timeout.
+            // WHY: wait in a background thread to avoid blocking the async runtime;
+            // enforce timeout from the async side via oneshot + tokio timeout
             let (tx, rx) = tokio::sync::oneshot::channel();
             std::thread::spawn(move || {
                 let result = child.wait_with_output();
@@ -127,9 +126,8 @@ impl ToolExecutor for ShellToolExecutor {
             };
 
             if output.len() > MAX_OUTPUT_BYTES {
-                // WHY: truncate() panics when the byte index falls inside a
-                // multi-byte character. floor_char_boundary() rounds down to
-                // the nearest valid char boundary, guaranteeing safety.
+                // WHY: floor_char_boundary() rounds down to the nearest valid char boundary,
+                // guaranteeing the truncated slice is valid UTF-8
                 let boundary = output.floor_char_boundary(MAX_OUTPUT_BYTES);
                 output.truncate(boundary);
                 output.push_str("\n[output truncated]");
@@ -152,8 +150,8 @@ pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) ->
     let mut errors = Vec::new();
 
     for pack in packs {
-        // Track the error count before processing this pack so we can
-        // compute per-pack failures without affecting counts from prior packs.
+        // WHY: snapshot error count before this pack to compute per-pack failures
+        // without contaminating counts from prior packs
         let errors_before = errors.len();
 
         for tool_def in &pack.manifest.tools {
@@ -241,7 +239,6 @@ fn prepare_tool(
 fn validate_command_path(pack_root: &Path, command: &str) -> Result<PathBuf, error::Error> {
     let resolved = pack_root.join(command);
 
-    // Canonicalize to resolve symlinks and ../ components
     let canonical =
         resolved
             .canonicalize()
@@ -327,7 +324,7 @@ mod tests {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).unwrap();
             }
-            // Use explicit File to ensure fd is closed before any chmod/exec
+            // WHY: explicit File ensures fd is closed before chmod/exec — avoids ETXTBSY
             let file = std::fs::File::create(&path).unwrap();
             std::io::Write::write_all(&mut &file, content.as_bytes()).unwrap();
             file.sync_all().unwrap();
@@ -379,7 +376,7 @@ mod tests {
     fn validate_command_path_escape_rejected() {
         let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
         let result = validate_command_path(dir.path(), "../../../etc/passwd");
-        // Either ToolCommandNotFound (can't canonicalize) or ToolCommandEscape
+        // NOTE: returns ToolCommandNotFound (can't canonicalize) or ToolCommandEscape
         let err = result.unwrap_err();
         assert!(
             matches!(err, error::Error::ToolCommandNotFound { .. })
@@ -609,7 +606,6 @@ mod tests {
 
     #[test]
     fn error_count_per_pack_not_cumulative() {
-        // Pack A: one invalid tool (missing command)
         let dir_a = setup_pack_dir(&[]);
         let pack_a = minimal_loaded_pack(
             &dir_a,
@@ -622,7 +618,6 @@ mod tests {
             }],
         );
 
-        // Pack B: one valid tool — must register successfully despite pack A's error.
         let dir_b = setup_pack_dir(&[("tools/ok.sh", "#!/bin/sh\necho ok")]);
         make_executable(&dir_b, "tools/ok.sh");
         let pack_b = minimal_loaded_pack(
@@ -639,7 +634,6 @@ mod tests {
         let mut registry = ToolRegistry::new();
         let errors = register_pack_tools(&[pack_a, pack_b], &mut registry);
 
-        // Exactly one error from pack A; pack B's tool registers successfully.
         assert_eq!(
             errors.len(),
             1,
@@ -655,19 +649,13 @@ mod tests {
 
     #[tokio::test]
     async fn shell_executor_truncates_at_char_boundary() {
-        // Build output that contains a 3-byte UTF-8 sequence (U+2026 HORIZONTAL ELLIPSIS: 0xE2 0x80 0xA6)
-        // placed so it straddles the MAX_OUTPUT_BYTES boundary.
-        //
-        // We use a script that writes a known multi-byte sequence beyond the limit.
-        let ellipsis = "\u{2026}"; // 3 bytes: 0xE2 0x80 0xA6
-        // Fill output to MAX_OUTPUT_BYTES - 1 with ASCII 'a', then append the
-        // ellipsis so bytes [MAX_OUTPUT_BYTES-1 .. MAX_OUTPUT_BYTES+2) are the
-        // three bytes of U+2026. The old truncate() call would panic here.
+        // NOTE: U+2026 (3 bytes: 0xE2 0x80 0xA6) is placed straddling MAX_OUTPUT_BYTES
+        // so that naive truncate() would panic on the invalid byte boundary
+        let ellipsis = "\u{2026}"; // NOTE: 3 bytes: 0xE2 0x80 0xA6
         let fill_len = MAX_OUTPUT_BYTES - 1;
         let fill: String = "a".repeat(fill_len);
         let full_output = format!("{fill}{ellipsis}extra");
 
-        // Write a script that prints the prepared string.
         let script_content = format!("#!/bin/sh\nprintf '%s' '{full_output}'");
         let dir = setup_pack_dir(&[("tools/multibyte.sh", &script_content)]);
         make_executable(&dir, "tools/multibyte.sh");
@@ -698,7 +686,6 @@ mod tests {
             )),
         };
 
-        // Must not panic, and result must be valid UTF-8 ending with the truncation marker.
         let result = executor.execute(&input, &ctx).await.unwrap();
         let text = result.content.text_summary();
         assert!(text.is_char_boundary(0), "result must be valid UTF-8");

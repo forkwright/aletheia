@@ -163,7 +163,7 @@ fn should_distill_below_threshold_returns_false() {
 #[test]
 fn should_distill_at_threshold_returns_true() {
     let engine = default_engine();
-    // 10 >= min_messages(6) + verbatim_tail(3) = 9, tokens at threshold
+    // NOTE: 10 >= min_messages(6) + verbatim_tail(3) = 9, tokens at threshold
     assert!(engine.should_distill(10, 160_000, 200_000, 0.8));
 }
 
@@ -176,7 +176,7 @@ fn should_distill_above_threshold_returns_true() {
 #[test]
 fn should_distill_too_few_messages_returns_false() {
     let engine = default_engine();
-    // 5 < min_messages(6) + verbatim_tail(3) = 9
+    // NOTE: 5 < min_messages(6) + verbatim_tail(3) = 9
     assert!(!engine.should_distill(5, 190_000, 200_000, 0.8));
 }
 
@@ -189,14 +189,14 @@ fn should_distill_zero_context_window_returns_false() {
 #[test]
 fn should_distill_exact_min_plus_tail() {
     let engine = default_engine();
-    // Exactly min_messages(6) + verbatim_tail(3) = 9
+    // NOTE: exactly min_messages(6) + verbatim_tail(3) = 9
     assert!(engine.should_distill(9, 180_000, 200_000, 0.8));
 }
 
 #[test]
 fn should_distill_below_min_plus_tail_returns_false() {
     let engine = default_engine();
-    // 8 < min_messages(6) + verbatim_tail(3) = 9
+    // NOTE: 8 < min_messages(6) + verbatim_tail(3) = 9
     assert!(!engine.should_distill(8, 190_000, 200_000, 0.8));
 }
 
@@ -274,7 +274,7 @@ async fn distill_success_returns_result() {
 
     let result = result.unwrap();
     assert!(result.summary.contains("Fixed login bug"));
-    // 6 messages - 3 verbatim_tail = 3 distilled
+    // NOTE: 6 messages - 3 verbatim_tail = 3 distilled
     assert_eq!(result.messages_distilled, 3);
     assert_eq!(result.verbatim_messages.len(), 3);
     assert_eq!(result.distillation_number, 1);
@@ -319,7 +319,7 @@ async fn distill_timestamp_is_valid() {
         .await
         .unwrap();
 
-    // jiff::Timestamp::to_string() produces RFC 3339 / ISO 8601
+    // NOTE: jiff::Timestamp::to_string() produces RFC 3339 / ISO 8601
     assert!(
         result.timestamp.contains('T'),
         "timestamp should be ISO 8601: {}",
@@ -555,8 +555,6 @@ fn distill_section_equality() {
     );
 }
 
-// ─── Retry backoff (#1096) ────────────────────────────────────────────────────
-
 #[test]
 fn tick_turn_returns_false_when_no_failures() {
     let engine = default_engine();
@@ -572,10 +570,8 @@ fn in_backoff_is_false_on_fresh_engine() {
 #[test]
 fn backoff_activates_after_failure_and_expires_after_one_turn() {
     let engine = default_engine();
-    // Simulate one failure: turns_to_skip becomes 1.
     engine.retry_state.lock().unwrap().record_failure();
     assert!(engine.in_backoff());
-    // After one tick the backoff expires.
     assert!(engine.tick_turn()); // still in backoff, counter decrements to 0
     assert!(!engine.in_backoff());
     assert!(!engine.tick_turn()); // no longer in backoff
@@ -597,7 +593,7 @@ fn backoff_resets_on_success() {
 
 #[test]
 fn backoff_schedule_is_exponential() {
-    // After N failures, turns_to_skip = min(2^(N-1), 8).
+    // NOTE: after N failures, turns_to_skip = min(2^(N-1), 8)
     let cases: &[(u32, u32)] = &[(1, 1), (2, 2), (3, 4), (4, 8), (5, 8), (10, 8)];
     for &(failures, expected_skip) in cases {
         let engine = default_engine();
@@ -632,7 +628,6 @@ async fn distill_records_failure_on_llm_error() {
 #[tokio::test]
 async fn distill_records_success_and_clears_backoff() {
     let engine = default_engine();
-    // Prime with a failure first.
     engine.retry_state.lock().unwrap().record_failure();
     assert!(engine.in_backoff());
 
@@ -649,8 +644,6 @@ async fn distill_records_success_and_clears_backoff() {
     );
 }
 
-// ─── Context overflow hard stop (#1097) ──────────────────────────────────────
-
 #[test]
 fn enforce_context_limit_returns_zero_when_within_window() {
     let mut messages = sample_conversation();
@@ -662,12 +655,10 @@ fn enforce_context_limit_returns_zero_when_within_window() {
 
 #[test]
 fn enforce_context_limit_drops_oldest_messages_when_over() {
-    // Build messages where each has ~100 chars → ~25 tokens each.
     let mut messages: Vec<Message> = (0..10)
         .map(|i| text_msg(Role::User, &"x".repeat(100 + i)))
         .collect();
     let initial_count = messages.len();
-    // Set window so tight that we must drop some.
     let dropped = enforce_context_limit(&mut messages, 4);
     assert!(dropped > 0, "should have dropped some messages");
     assert_eq!(messages.len(), initial_count - dropped);
@@ -676,7 +667,7 @@ fn enforce_context_limit_drops_oldest_messages_when_over() {
 #[test]
 fn enforce_context_limit_keeps_at_least_one_message() {
     let mut messages = vec![text_msg(Role::User, "x".repeat(1000).as_str())];
-    // Window of 1 token — impossible to satisfy but we must keep the last message.
+    // NOTE: window of 1 token — impossible to satisfy, but we must keep the last message
     let dropped = enforce_context_limit(&mut messages, 1);
     assert_eq!(dropped, 0, "single message must not be dropped");
     assert_eq!(messages.len(), 1);
@@ -689,14 +680,11 @@ fn enforce_context_limit_drops_from_front() {
         text_msg(Role::User, &"b".repeat(400)),
         text_msg(Role::User, &"c".repeat(4)), // newest — should be kept
     ];
-    // Tokens: 100 + 100 + 1 = 201 total. Window of 2 keeps last ~8 chars = 2 tokens.
+    // NOTE: 201 total tokens, window of 2 keeps last ~8 chars = 2 tokens
     let dropped = enforce_context_limit(&mut messages, 2);
     assert!(dropped > 0);
-    // The surviving message must be the newest one.
     assert!(messages.last().unwrap().content.text().starts_with('c'));
 }
-
-// ─── nous_id sanitization (#1098) ────────────────────────────────────────────
 
 #[test]
 fn sanitize_nous_id_clean_string_unchanged() {
@@ -740,7 +728,7 @@ fn build_prompt_sanitizes_newline_in_nous_id() {
     let engine = default_engine();
     let request = engine.build_prompt(&sample_conversation(), "id\ninjection");
     let user_text = request.messages[0].content.text();
-    // Newline must be stripped from inside the nous_id quoted span.
+    // NOTE: newline must be stripped from inside the nous_id quoted span
     assert!(
         !user_text.contains("\"id\ninjection\""),
         "raw newline must not appear inside the quoted nous_id"
@@ -750,8 +738,6 @@ fn build_prompt_sanitizes_newline_in_nous_id() {
         "sanitized nous_id should appear without the embedded newline"
     );
 }
-
-// ─── Token estimation completeness (#1099) ───────────────────────────────────
 
 #[test]
 fn estimate_tokens_includes_tool_use_input() {
@@ -810,8 +796,6 @@ fn estimate_tokens_includes_tool_result_content() {
     );
 }
 
-// ─── MemoryFlush wiring (#1100) ───────────────────────────────────────────────
-
 #[tokio::test]
 async fn distill_result_contains_memory_flush_field() {
     let engine = default_engine();
@@ -822,7 +806,7 @@ async fn distill_result_contains_memory_flush_field() {
         .distill(&messages, "test", &provider, 1)
         .await
         .unwrap();
-    // The field exists — we don't assert content since mock summary has no decisions.
+    // NOTE: assert the field exists — mock summary has no decisions to assert content on
     let _ = &result.memory_flush;
 }
 
@@ -901,6 +885,5 @@ fn parse_summary_flush_source_is_extracted() {
     let summary = "## Key Decisions\n- Decision: Use snafu. Reason: Standard.\n";
     let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
     assert_eq!(flush.decisions.len(), 1);
-    // FlushSource is accessible from parent module's use statement.
     assert!(matches!(flush.decisions[0].source, FlushSource::Extracted));
 }

@@ -13,10 +13,6 @@ use aletheia_hermeneus::types::{
 use crate::distill::{DistillConfig, DistillEngine, DistillSection};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 
-// ═══════════════════════════════════════════════════════════════════════
-// Mock provider
-// ═══════════════════════════════════════════════════════════════════════
-
 struct MockProvider {
     response: Mutex<Option<aletheia_hermeneus::error::Result<CompletionResponse>>>,
 }
@@ -72,10 +68,6 @@ impl LlmProvider for MockProvider {
         "mock-roundtrip"
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════════
 
 fn text_msg(role: Role, text: &str) -> Message {
     Message {
@@ -135,10 +127,6 @@ Bug is fixed, migration applied, all tests passing.
 
 ## Corrections
 - CORRECTION: Initially looked at wrong file (session.rs), actually the bug was in login.rs";
-
-// ═══════════════════════════════════════════════════════════════════════
-// Serde roundtrip tests
-// ═══════════════════════════════════════════════════════════════════════
 
 #[test]
 fn test_distill_section_summary_roundtrip() {
@@ -333,10 +321,6 @@ fn test_all_standard_sections_roundtrip() {
     assert_eq!(sections, back);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Section splitting logic
-// ═══════════════════════════════════════════════════════════════════════
-
 #[tokio::test]
 async fn test_split_when_verbatim_tail_zero_summarizes_all() {
     let config = DistillConfig {
@@ -424,21 +408,17 @@ async fn test_split_preserves_exact_tail_content() {
     assert_eq!(result.verbatim_messages[1].content.text(), "Fourth");
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Token budget calculation
-// ═══════════════════════════════════════════════════════════════════════
-
 #[test]
 fn test_should_distill_when_exactly_at_threshold_returns_true() {
     let engine = default_engine();
-    // ratio = 80000/100000 = 0.8, threshold = 0.8 → true
+    // NOTE: ratio = 80000/100000 = 0.8, threshold = 0.8 → true
     assert!(engine.should_distill(10, 80_000, 100_000, 0.8));
 }
 
 #[test]
 fn test_should_distill_when_just_below_threshold_returns_false() {
     let engine = default_engine();
-    // ratio = 79999/100000 = 0.79999, threshold = 0.8 → false
+    // NOTE: ratio = 79999/100000 = 0.79999, threshold = 0.8 → false
     assert!(!engine.should_distill(10, 79_999, 100_000, 0.8));
 }
 
@@ -469,7 +449,7 @@ fn test_should_distill_with_custom_min_messages() {
         ..DistillConfig::default()
     };
     let engine = DistillEngine::new(config);
-    // Need at least 25 messages (20 + 5)
+    // NOTE: need at least min_messages(20) + verbatim_tail(5) = 25 messages
     assert!(!engine.should_distill(24, 180_000, 200_000, 0.8));
     assert!(engine.should_distill(25, 180_000, 200_000, 0.8));
 }
@@ -482,14 +462,10 @@ fn test_should_distill_with_zero_verbatim_tail() {
         ..DistillConfig::default()
     };
     let engine = DistillEngine::new(config);
-    // Need only 6 messages (6 + 0)
+    // NOTE: need only min_messages(6) + verbatim_tail(0) = 6 messages
     assert!(!engine.should_distill(5, 180_000, 200_000, 0.8));
     assert!(engine.should_distill(6, 180_000, 200_000, 0.8));
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// Verbatim tail preservation
-// ═══════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 async fn test_verbatim_tail_preserves_roles() {
@@ -585,10 +561,6 @@ async fn test_verbatim_tail_preserves_block_content() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Model downshift selection
-// ═══════════════════════════════════════════════════════════════════════
-
 #[test]
 fn test_build_prompt_when_distillation_model_set_uses_it() {
     let config = DistillConfig {
@@ -648,10 +620,6 @@ fn test_build_prompt_downshift_opus_to_sonnet() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(request.model, "claude-sonnet-4-20250514");
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// Integration: full distillation pipeline
-// ═══════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 async fn test_full_pipeline_preserves_tool_results() {
@@ -815,10 +783,6 @@ async fn test_full_pipeline_verbatim_tail_integrity() {
     assert_eq!(result.verbatim_messages[2].role, Role::User);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Edge cases
-// ═══════════════════════════════════════════════════════════════════════
-
 #[tokio::test]
 async fn test_distill_when_empty_messages_returns_error() {
     let provider = MockProvider::with_summary(FULL_SUMMARY);
@@ -953,10 +917,6 @@ async fn test_distill_when_two_messages_with_tail_three() {
     assert_eq!(result.messages_distilled, 0);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// DistillSection heading/description coverage
-// ═══════════════════════════════════════════════════════════════════════
-
 #[test]
 fn test_section_heading_for_each_standard_variant() {
     let expected = [
@@ -1006,10 +966,6 @@ fn test_all_standard_returns_seven_sections() {
     assert_eq!(DistillSection::all_standard().len(), 7);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Prompt formatting
-// ═══════════════════════════════════════════════════════════════════════
-
 #[test]
 fn test_build_prompt_includes_message_count() {
     let engine = default_engine();
@@ -1041,10 +997,6 @@ fn test_build_prompt_with_system_message() {
     let text = request.messages[0].content.text();
     assert!(text.contains("[SYSTEM]"));
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// MemoryFlush additional tests
-// ═══════════════════════════════════════════════════════════════════════
 
 #[test]
 fn test_memory_flush_is_empty_when_only_empty_vecs() {
@@ -1110,10 +1062,6 @@ fn test_flush_source_labels_via_markdown() {
     assert!(md.contains("(source: agent_note)"));
     assert!(md.contains("(source: tool_pattern)"));
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// Config accessor
-// ═══════════════════════════════════════════════════════════════════════
 
 #[test]
 fn test_engine_config_returns_reference() {

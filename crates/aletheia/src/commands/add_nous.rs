@@ -180,7 +180,6 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         .parse()
         .with_context(|| format!("failed to parse {}", config_path.display()))?;
 
-    // Check for duplicate before modifying
     let already_listed = doc
         .get("agents")
         .and_then(|a| a.as_table())
@@ -199,7 +198,6 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         );
     }
 
-    // Build the new agent table entry.
     // WHY: workspace is relative to ALETHEIA_ROOT so the config stays portable.
     let workspace = format!("nous/{}", args.name);
     let mut entry = toml_edit::Table::new();
@@ -216,7 +214,6 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     );
     entry.insert("model", toml_edit::Item::Table(model_table));
 
-    // Ensure [agents] table exists
     if doc.get("agents").and_then(|i| i.as_table()).is_none() {
         doc.insert("agents", toml_edit::Item::Table(toml_edit::Table::new()));
     }
@@ -225,7 +222,6 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
         .as_table_mut()
         .ok_or_else(|| anyhow::anyhow!("[agents] in config is not a table"))?;
 
-    // Ensure [[agents.list]] array of tables exists
     if agents
         .get("list")
         .and_then(|i| i.as_array_of_tables())
@@ -243,7 +239,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
     list.push(entry);
 
-    // Atomic write: write to .tmp then rename to preserve comments
+    // WHY: atomic write — write to .tmp then rename, preserving existing comments in the file
     std::fs::create_dir_all(&config_dir)
         .with_context(|| format!("failed to create {}", config_dir.display()))?;
     let tmp = config_dir.join("aletheia.toml.tmp");
@@ -394,7 +390,6 @@ mod tests {
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
 
-        // Write a config that has comments and custom formatting
         let original = "# My custom config\n\
             # This comment must survive\n\
             [gateway]\n\
@@ -447,7 +442,6 @@ mod tests {
             result.contains(r#"workspace = "nous/bob""#),
             "workspace path must be relative, got:\n{result}"
         );
-        // Must not contain an absolute path
         assert!(
             !result.contains("/nous/bob"),
             "workspace must not be absolute"
@@ -484,7 +478,7 @@ mod tests {
             model: "claude-sonnet-4-20250514".to_owned(),
         };
 
-        // Use a blocking executor for this test since run() is now async
+        // NOTE: use a blocking executor since run() is async
         let rt = tokio::runtime::Runtime::new().unwrap();
         let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
         assert!(result.is_err());

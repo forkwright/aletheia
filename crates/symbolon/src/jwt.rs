@@ -147,7 +147,7 @@ impl JwtManager {
             nous_id: nous_id.map(str::to_owned),
             iss: self.config.issuer.clone(),
             iat: now,
-            // Saturate to i64::MAX: a TTL exceeding ~292 billion years is effectively infinite
+            // WHY: saturate to i64::MAX — a TTL exceeding ~292 billion years is effectively infinite
             exp: now + i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX),
             jti: ulid::Ulid::new().to_string(),
             kind,
@@ -170,7 +170,7 @@ fn now_unix() -> i64 {
             })
             .as_secs(),
     )
-    // Saturate: u64 seconds exceeding i64::MAX (~year 292B) clamps to max
+    // WHY: saturate u64 seconds to i64::MAX (~year 292B) to prevent overflow
     .unwrap_or(i64::MAX)
 }
 
@@ -235,7 +235,7 @@ mod tests {
     fn expired_token_rejected() {
         let mgr = test_manager();
 
-        // Manually encode a token with exp far in the past (beyond the 60s leeway)
+        // NOTE: manually encode a token with exp far in the past, beyond the 60s leeway
         let claims = Claims {
             sub: "user-1".to_owned(),
             role: Role::Operator,

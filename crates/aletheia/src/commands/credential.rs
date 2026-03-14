@@ -66,7 +66,7 @@ pub async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> 
                 );
             }
 
-            // Always check provider env vars, regardless of credential file presence.
+            // WHY: always check provider env vars, regardless of credential file presence
             let env_vars: &[(&str, &str)] = &[
                 ("ANTHROPIC_AUTH_TOKEN", "OAuth token"),
                 ("ANTHROPIC_API_KEY", "static API key"),

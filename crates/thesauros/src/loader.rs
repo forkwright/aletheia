@@ -291,11 +291,9 @@ domains = ["healthcare", "sql"]
 
         let pack = load_single_pack(dir.path()).unwrap();
 
-        // chiron sees LOGIC.md (agent-specific) and GLOSSARY.md (no filter)
         let chiron_sections = pack.sections_for_agent("chiron");
         assert_eq!(chiron_sections.len(), 2);
 
-        // hermes sees only GLOSSARY.md (no agent filter)
         let hermes_sections = pack.sections_for_agent("hermes");
         assert_eq!(hermes_sections.len(), 1);
         assert_eq!(hermes_sections[0].name, "GLOSSARY.md");
@@ -311,7 +309,6 @@ domains = ["healthcare", "sql"]
 
         let pack = load_single_pack(dir.path()).unwrap();
 
-        // chiron matches by agent ID, sees both sections
         let sections = pack.sections_for_agent_or_domains("chiron", &[]);
         assert_eq!(sections.len(), 2);
     }
@@ -342,9 +339,8 @@ agents = ["sql"]
 
         let pack = load_single_pack(dir.path()).unwrap();
 
-        // hermes has no agent match but has healthcare domain
         let sections = pack.sections_for_agent_or_domains("hermes", &["healthcare".to_owned()]);
-        assert_eq!(sections.len(), 2); // general + healthcare
+        assert_eq!(sections.len(), 2);
         let names: Vec<&str> = sections.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"general.md"));
         assert!(names.contains(&"healthcare.md"));
@@ -371,7 +367,6 @@ agents = ["chiron"]
 
         let pack = load_single_pack(dir.path()).unwrap();
 
-        // unknown agent, no matching domains: only general (no filter) section
         let sections = pack.sections_for_agent_or_domains("unknown", &["analytics".to_owned()]);
         assert_eq!(sections.len(), 1);
         assert_eq!(sections[0].name, "general.md");

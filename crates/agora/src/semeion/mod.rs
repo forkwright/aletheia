@@ -30,6 +30,7 @@ const DEFAULT_BUFFER_CAPACITY: usize = 100;
 
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SignalTarget {
     /// Direct message to a phone number (e.g., `"+1234567890"`).
     Phone(String),
@@ -237,7 +238,7 @@ impl ChannelProvider for SignalProvider {
                 };
             };
 
-            // Buffer immediately when the connection is known to be unavailable.
+            // WHY: buffer immediately when the connection is known to be unavailable.
             // For Connected state: attempt the send directly — no separate check-then-act,
             // so there is no TOCTOU window. If the connection dropped since we last polled,
             // the HTTP error handler below buffers the message.
@@ -258,8 +259,8 @@ impl ChannelProvider for SignalProvider {
                     error: None,
                 },
                 Err(e) => {
-                    // Buffer on transport failure (covers the case where the
-                    // connection dropped between the state check and this send).
+                    // WHY: buffer on transport failure — handles the case where the connection
+                    // dropped between the state check and this send (no TOCTOU window).
                     if matches!(e, error::Error::Http { .. }) {
                         let mut s = state_mutex.lock().await;
                         s.enqueue(send_params);
@@ -345,7 +346,6 @@ async fn poll_loop(
     loop {
         match signal_client.receive(None).await {
             Ok(envelopes) => {
-                // Restore connection if we were reconnecting.
                 {
                     let mut s = state.lock().await;
                     if s.state != ConnectionState::Connected {

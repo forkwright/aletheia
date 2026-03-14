@@ -749,7 +749,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     let domains = agent.map(|a| a.domains.clone()).unwrap_or_default();
     let name = agent.and_then(|a| a.name.clone());
 
-    // Agent-level recall overrides; falls back to shared defaults.
+    // NOTE: Agent-level recall overrides; falls back to shared defaults.
     let recall = agent
         .and_then(|a| a.recall.clone())
         .unwrap_or_else(|| defaults.recall.clone());

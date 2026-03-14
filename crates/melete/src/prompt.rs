@@ -136,7 +136,6 @@ fn truncate_tool_result(content: &str) -> &str {
     if content.len() <= MAX_TOOL_RESULT_LEN {
         content
     } else {
-        // Find a safe UTF-8 boundary near the limit
         let mut end = MAX_TOOL_RESULT_LEN;
         while end > 0 && !content.is_char_boundary(end) {
             end -= 1;

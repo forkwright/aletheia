@@ -17,6 +17,7 @@ use crate::oikos::Oikos;
 
 /// Which tier a resolved file came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Tier {
     /// Agent-specific (most specific).
     Nous,
@@ -80,7 +81,6 @@ pub fn discover(
         for entry in entries.flatten() {
             let path = entry.path();
 
-            // Skip directories and hidden files
             if !path.is_file() {
                 continue;
             }
@@ -89,7 +89,6 @@ pub fn discover(
                 _ => continue,
             };
 
-            // Extension filter
             if let Some(required_ext) = ext {
                 match path.extension().and_then(OsStr::to_str) {
                     Some(e) if e == required_ext => {}
@@ -97,7 +96,7 @@ pub fn discover(
                 }
             }
 
-            // Most specific wins — only insert if not already seen
+            // WHY: most specific wins — only insert if not already seen
             seen.entry(name.clone()).or_insert_with(|| CascadeEntry {
                 path,
                 tier: *tier,

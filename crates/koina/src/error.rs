@@ -83,7 +83,7 @@ mod tests {
             path: PathBuf::from("/nonexistent/path"),
         });
         let err = err.unwrap_err();
-        // snafu chains preserve the source
+        // NOTE: snafu chains preserve the source error
         assert!(std::error::Error::source(&err).is_some());
     }
 

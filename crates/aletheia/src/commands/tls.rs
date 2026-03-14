@@ -62,7 +62,6 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
         .push(rcgen::DnType::CommonName, "Aletheia Dev");
     params.not_after = rcgen::date_time_ymd(2030, 1, 1);
 
-    // Override validity if days is reasonable
     if days < 3650 {
         let now = time::OffsetDateTime::now_utc();
         let end = now + time::Duration::days(i64::from(days));
@@ -79,7 +78,7 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
     std::fs::write(&key_path, key_pair.serialize_pem())
         .with_context(|| format!("failed to write {}", key_path.display()))?;
 
-    // Restrict private key to owner-read-only (0600) — readable only by the process owner.
+    // WHY: restrict private key to owner-read-only (0600) — security requirement
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

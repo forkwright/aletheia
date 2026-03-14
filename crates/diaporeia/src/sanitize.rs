@@ -22,7 +22,7 @@ pub(crate) fn strip_paths(message: &str) -> String {
             break;
         };
 
-        // The byte immediately before this '/': either within `remaining`, or
+        // NOTE: the byte immediately before this '/': either within `remaining`, or
         // the last byte emitted by a previous iteration.
         let prev_byte = if slash_pos > 0 {
             remaining.as_bytes().get(slash_pos - 1).copied()
@@ -30,7 +30,7 @@ pub(crate) fn strip_paths(message: &str) -> String {
             last_pushed_byte
         };
 
-        // Skip `/` that follows another `/` or `:` — those are URI separators.
+        // WHY: skip '/' that follows '/' or ':' — those are URI separators, not paths
         let is_word_boundary = !matches!(prev_byte, Some(b'/' | b':'));
 
         let after_slash = &remaining[slash_pos + 1..];
@@ -40,12 +40,10 @@ pub(crate) fn strip_paths(message: &str) -> String {
             .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'));
 
         if is_word_boundary && next_is_path_char {
-            // Emit everything before the slash, then the replacement.
             result.push_str(&remaining[..slash_pos]);
             result.push_str("[server path]");
             last_pushed_byte = Some(b']');
 
-            // Advance past the entire path token (including any embedded slashes).
             let path_len = after_slash
                 .find(|c: char| !c.is_alphanumeric() && !matches!(c, '/' | '_' | '-' | '.'))
                 .unwrap_or(after_slash.len());
@@ -82,7 +80,7 @@ mod tests {
 
     #[test]
     fn preserves_uri_scheme_double_slash() {
-        // `://` must not be treated as a path boundary — the ':' preceding '/'
+        // NOTE: `://` must not be treated as a path boundary — the ':' preceding '/'
         // means no boundary, and last_pushed_byte carries that across iterations.
         let msg = "unknown resource URI: aletheia://nous/agent1/soul";
         let sanitized = strip_paths(msg);
@@ -94,7 +92,7 @@ mod tests {
 
     #[test]
     fn double_slash_prefix_is_not_a_path() {
-        // A string starting with `//` is not a Unix absolute path.
+        // NOTE: a string starting with `//` is not a Unix absolute path.
         let sanitized = strip_paths("//see-the-docs");
         assert!(
             !sanitized.contains("[server path]"),
@@ -128,7 +126,7 @@ mod tests {
 
     #[test]
     fn handles_bare_slash_at_end() {
-        // A lone trailing '/' with nothing after it should not be treated as a path.
+        // NOTE: a lone trailing '/' with nothing after it should not be treated as a path.
         let msg = "root is /";
         let sanitized = strip_paths(msg);
         assert_eq!(

@@ -87,8 +87,6 @@ impl AuthStore {
         &self.conn
     }
 
-    // --- Users ---
-
     /// Create a new user.
     #[instrument(skip(self, password_hash))]
     pub fn create_user(
@@ -168,8 +166,6 @@ impl AuthStore {
             .context(error::DatabaseSnafu)?;
         Ok(rows > 0)
     }
-
-    // --- API Keys ---
 
     /// Store an API key record.
     pub fn store_api_key(&self, record: &ApiKeyRecord) -> Result<()> {
@@ -257,8 +253,6 @@ impl AuthStore {
         Ok(keys)
     }
 
-    // --- Token Revocation ---
-
     /// Revoke a JWT by its `jti`.
     pub fn revoke_token(&self, jti: &str, expires_at: &str) -> Result<()> {
         self.conn
@@ -298,8 +292,6 @@ impl AuthStore {
     }
 }
 
-// --- Schema initialization ---
-
 fn initialize(conn: &Connection) -> Result<()> {
     let version = get_schema_version(conn)?;
 
@@ -313,10 +305,8 @@ fn initialize(conn: &Connection) -> Result<()> {
         .context(error::DatabaseSnafu)?;
     }
 
-    // Remove revoked tokens whose expiry has already passed.
-    // WHY: Prevents unbounded growth of the revoked_tokens table; entries are
-    // only needed until the token's natural expiry, so cleaning up on startup
-    // is sufficient for production workloads.
+    // WHY: revoked tokens only need to be tracked until their natural expiry;
+    // startup cleanup is sufficient for production workloads.
     let cleaned = conn
         .execute(
             "DELETE FROM revoked_tokens WHERE expires_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
@@ -334,7 +324,7 @@ fn initialize(conn: &Connection) -> Result<()> {
 }
 
 fn get_schema_version(conn: &Connection) -> Result<u32> {
-    // If the schema_version table does not yet exist this is a fresh database;
+    // NOTE: if the schema_version table does not yet exist, this is a fresh database;
     // return 0 to signal that all DDL should be applied.
     let table_exists: bool = conn
         .query_row(
@@ -348,7 +338,7 @@ fn get_schema_version(conn: &Connection) -> Result<u32> {
         return Ok(0);
     }
 
-    // The table exists — any failure to read the version signals corruption.
+    // NOTE: the table exists — any failure to read the version signals corruption.
     conn.query_row(
         "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
         [],
@@ -356,8 +346,6 @@ fn get_schema_version(conn: &Connection) -> Result<u32> {
     )
     .context(error::SchemaCorruptedSnafu)
 }
-
-// --- Row mappers ---
 
 fn map_user(row: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
     let role_str: String = row.get("role")?;
@@ -437,14 +425,11 @@ mod tests {
     #[test]
     fn schema_corruption_returns_error() {
         let store = test_store();
-        // Drop the schema_version table to simulate corruption: the table
-        // exists but has been emptied/corrupted. We simulate by dropping and
-        // re-creating it empty, then verifying an error is returned.
+        // NOTE: simulate corruption: drop and recreate schema_version empty to verify error path
         store
             .conn()
             .execute_batch("DELETE FROM schema_version;")
             .unwrap();
-        // Table exists but has no rows — SchemaCorrupted should be returned.
         let result = get_schema_version(store.conn());
         assert!(
             matches!(result, Err(error::Error::SchemaCorrupted { .. })),
@@ -521,11 +506,9 @@ mod tests {
     #[test]
     fn expired_revocation_cleanup() {
         let store = test_store();
-        // Insert an already-expired revocation
         store
             .revoke_token("old-jti", "2000-01-01T00:00:00.000Z")
             .unwrap();
-        // Insert a future revocation
         store
             .revoke_token("future-jti", "2099-01-01T00:00:00.000Z")
             .unwrap();

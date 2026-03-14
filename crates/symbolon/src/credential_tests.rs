@@ -1,8 +1,6 @@
 #![expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 use super::*;
 
-// --- CredentialFile ---
-
 #[test]
 fn credential_file_roundtrip() {
     let dir = tempfile::tempdir().unwrap();
@@ -60,10 +58,7 @@ fn has_refresh_token() {
     assert!(!empty.has_refresh_token());
 }
 
-// --- EnvCredentialProvider ---
-
-// EnvCredentialProvider tests use ANTHROPIC_API_KEY which is typically
-// set in CI/dev. We test the missing case with a guaranteed-absent var.
+// NOTE: env tests use a guaranteed-absent var name to avoid depending on CI/dev env vars
 
 #[test]
 fn env_provider_missing_returns_none() {
@@ -113,8 +108,6 @@ fn env_provider_with_source_forces_oauth() {
     unsafe { std::env::remove_var(var) };
 }
 
-// --- FileCredentialProvider ---
-
 #[test]
 fn file_provider_reads_token() {
     let dir = tempfile::tempdir().unwrap();
@@ -158,14 +151,12 @@ fn file_provider_detects_file_change() {
     let r1 = provider.get_credential().unwrap();
     assert_eq!(r1.secret, "token-v1");
 
-    // Invalidate cache timestamp to force mtime check
     if let Ok(mut guard) = provider.cached.write()
         && let Some(ref mut c) = *guard
     {
         c.checked_at = Instant::now()
             .checked_sub(Duration::from_secs(60))
             .unwrap_or(Instant::now());
-        // Also change mtime to force reload
         c.mtime = SystemTime::UNIX_EPOCH;
     }
 
@@ -178,8 +169,6 @@ fn file_provider_detects_file_change() {
     let r2 = provider.get_credential().unwrap();
     assert_eq!(r2.secret, "token-v2");
 }
-
-// --- CredentialChain ---
 
 struct StaticProvider {
     token: Option<String>,
@@ -251,17 +240,13 @@ fn chain_empty_providers_returns_none() {
     assert!(chain.get_credential().is_none());
 }
 
-// --- claude_code_default_path ---
-
 #[test]
 fn claude_code_default_path_uses_home() {
-    // This test depends on $HOME being set, which is typical in CI and dev.
+    // NOTE: depends on $HOME being set — typical in CI and dev
     if let Some(path) = claude_code_default_path() {
         assert!(path.ends_with(".claude/.credentials.json"));
     }
 }
-
-// --- claude_code_provider ---
 
 #[test]
 fn claude_code_provider_missing_file_returns_none() {
@@ -292,7 +277,6 @@ fn claude_code_provider_static_token() {
 async fn claude_code_provider_with_access_token_alias() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
-    // Write raw JSON using "accessToken" (Claude Code native format)
     std::fs::write(
         &path,
         r#"{"accessToken": "sk-ant-oat-cc-token", "refreshToken": "rt-cc"}"#,
@@ -302,7 +286,6 @@ async fn claude_code_provider_with_access_token_alias() {
     let provider = claude_code_provider(&path).expect("should return provider");
     let resolved = provider.get_credential().unwrap();
     assert_eq!(resolved.secret, "sk-ant-oat-cc-token");
-    // Has refresh token → OAuth source via RefreshingCredentialProvider
     assert_eq!(resolved.source, CredentialSource::OAuth);
 }
 
@@ -314,8 +297,6 @@ fn claude_code_provider_malformed_returns_none() {
     assert!(claude_code_provider(&path).is_none());
 }
 
-// --- unix_epoch_ms ---
-
 #[test]
 fn unix_epoch_ms_returns_nonzero() {
     let ms = unix_epoch_ms();
@@ -324,8 +305,6 @@ fn unix_epoch_ms_returns_nonzero() {
         "expected modern timestamp in ms, got {ms}"
     );
 }
-
-// --- seconds_remaining ---
 
 #[test]
 fn seconds_remaining_none_when_no_expiry() {

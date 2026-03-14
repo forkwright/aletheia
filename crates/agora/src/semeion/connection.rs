@@ -7,6 +7,7 @@ use super::client;
 
 /// Connection states for a Signal account.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ConnectionState {
     /// Signal-cli daemon is reachable.
     Connected,

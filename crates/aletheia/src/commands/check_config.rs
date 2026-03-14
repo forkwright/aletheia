@@ -21,7 +21,6 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
 
     let mut all_ok = true;
 
-    // Instance layout check
     match oikos.validate() {
         Ok(()) => println!("  [pass] instance layout"),
         Err(e) => {
@@ -30,7 +29,6 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         }
     }
 
-    // Config load
     let config = match load_config(&oikos) {
         Ok(c) => {
             println!("  [pass] config loaded");
@@ -38,12 +36,10 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         }
         Err(e) => {
             println!("  [FAIL] config load: {e}");
-            // Can't continue without config
             anyhow::bail!("config validation aborted: could not load config");
         }
     };
 
-    // Serialize config for section-by-section validation
     let config_value = match serde_json::to_value(&config) {
         Ok(v) => v,
         Err(e) => {
@@ -52,7 +48,6 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         }
     };
 
-    // Validate each section
     for section in &[
         "agents",
         "gateway",
@@ -75,7 +70,6 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         }
     }
 
-    // Agent workspace paths
     for agent in &config.agents.list {
         match oikos.validate_workspace_path(&agent.workspace) {
             Ok(()) => println!("  [pass] agent '{}' workspace", agent.id),
@@ -86,7 +80,6 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         }
     }
 
-    // JWT key check
     let jwt_key = config
         .gateway
         .auth

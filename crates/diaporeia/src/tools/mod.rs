@@ -19,8 +19,6 @@ use crate::server::DiaporeiaServer;
 /// used by the `#[tool_handler]` on the `ServerHandler` impl.
 #[tool_router(vis = "pub(crate)")]
 impl DiaporeiaServer {
-    // -- Session tools --
-
     /// Create a new session for a nous agent. Returns session metadata as JSON.
     #[tool(description = "Create a new session for a nous agent")]
     async fn session_create(
@@ -152,8 +150,6 @@ impl DiaporeiaServer {
         )]))
     }
 
-    // -- Nous tools --
-
     /// List all registered nous agents with their current status.
     #[tool(description = "List all registered nous agents with their current status")]
     async fn nous_list(&self) -> Result<CallToolResult, rmcp::ErrorData> {
@@ -260,8 +256,6 @@ impl DiaporeiaServer {
         )]))
     }
 
-    // -- Knowledge tools --
-
     /// Semantic search across the knowledge graph.
     #[tool(description = "Semantic search across the knowledge graph")]
     async fn knowledge_search(
@@ -276,8 +270,6 @@ impl DiaporeiaServer {
                 .to_string(),
         )]))
     }
-
-    // -- Config tools --
 
     /// Get the runtime configuration with sensitive fields redacted.
     #[tool(description = "Get the runtime configuration with sensitive fields redacted")]
@@ -311,8 +303,6 @@ impl DiaporeiaServer {
             json,
         )]))
     }
-
-    // -- System tools --
 
     /// System health check with uptime, actor health, and version info.
     #[tool(description = "System health check with uptime, actor health, and version info")]

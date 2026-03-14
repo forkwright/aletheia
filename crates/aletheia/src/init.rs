@@ -112,7 +112,7 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
     let is_non_interactive = non_interactive || yes;
 
     let answers = if non_interactive {
-        // Strict non-interactive: --instance-path is required; everything else has defaults.
+        // NOTE: strict non-interactive: --instance-path is required; everything else has defaults
         let root = root.ok_or_else(|| {
             NonInteractiveMissingFlagSnafu {
                 missing: "--instance-path (or env ALETHEIA_INSTANCE_PATH)".to_owned(),
@@ -134,7 +134,7 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
             ..Answers::default()
         }
     } else if yes {
-        // Lenient non-interactive: skip prompts, apply defaults for missing values.
+        // NOTE: lenient non-interactive: skip prompts, apply defaults for missing values
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
 
         if api_key.is_none() {
@@ -151,7 +151,6 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
             ..Answers::default()
         }
     } else {
-        // Interactive mode.
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
         collect_interactive(Answers {
             root,
@@ -160,7 +159,6 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
         })?
     };
 
-    // Pre-check: existing instance
     let config_path = answers.root.join("config/aletheia.toml");
     if config_path.exists() {
         if is_non_interactive {
@@ -302,7 +300,6 @@ fn collect_credential() -> Result<Option<String>, InitError> {
 fn scaffold(answers: &Answers) -> Result<(), InitError> {
     let root = &answers.root;
 
-    // Create directories
     let dirs = [
         root.join("config/credentials"),
         root.join(format!("nous/{}", answers.agent_id)),
@@ -314,14 +311,12 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
         std::fs::create_dir_all(dir).context(CreateDirSnafu { path: dir.clone() })?;
     }
 
-    // Write config
     let config_toml = render_config(answers);
     let config_path = root.join("config/aletheia.toml");
     std::fs::write(&config_path, config_toml).context(WriteFileSnafu {
         path: config_path.clone(),
     })?;
 
-    // Write credential
     if let Some(ref key) = answers.api_key {
         let cred_path = root.join(format!("config/credentials/{}.json", answers.api_provider));
         let cred_json = serde_json::json!({ "token": key });
@@ -332,7 +327,6 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
         set_permissions(&cred_path, 0o600)?;
     }
 
-    // Write SOUL.md
     let soul = format!(
         "# {name}\n\n\
          You are {name}, an Aletheia cognitive agent.\n\n\
@@ -484,7 +478,6 @@ mod tests {
     fn default_answers_produce_valid_config() {
         let answers = Answers::default();
         let toml_str = render_config(&answers);
-        // Should be valid TOML that can be parsed
         let value: toml::Value =
             toml::from_str(&toml_str).expect("rendered config should be valid TOML");
         let gateway = value.get("gateway").expect("has gateway");
@@ -549,14 +542,12 @@ mod tests {
         assert!(dir.path().join("logs/traces").is_dir());
         assert!(dir.path().join("shared/coordination").is_dir());
 
-        // Credential should contain the key
         let cred: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(dir.path().join("config/credentials/anthropic.json")).unwrap(),
         )
         .unwrap();
         assert_eq!(cred["token"].as_str(), Some("sk-ant-test-key"));
 
-        // SOUL.md should contain agent name
         let soul = std::fs::read_to_string(dir.path().join("nous/main/SOUL.md")).unwrap();
         assert!(soul.contains("Main"));
     }
@@ -603,8 +594,6 @@ mod tests {
         let mode = std::fs::metadata(&cred_path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "credential file should be 0600");
     }
-
-    // --- Non-interactive integration tests ---
 
     #[test]
     fn non_interactive_creates_valid_instance() {
@@ -703,8 +692,7 @@ mod tests {
     #[test]
     fn yes_flag_uses_default_instance_path() {
         let dir = tempfile::tempdir().unwrap();
-        // -y without explicit path: creates ./instance inside tmp — we provide a path
-        // here to avoid writing to the real cwd.
+        // NOTE: provide explicit path to avoid writing to real cwd
         let result = run(RunArgs {
             root: Some(dir.path().to_path_buf()),
             yes: true,

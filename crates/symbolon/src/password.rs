@@ -92,7 +92,6 @@ mod tests {
         let h1 = hash_password(&pw).unwrap();
         let h2 = hash_password(&pw).unwrap();
         assert_ne!(h1, h2);
-        // But both verify correctly
         assert!(verify_password(&pw, &h1).unwrap());
         assert!(verify_password(&pw, &h2).unwrap());
     }

@@ -82,7 +82,7 @@ pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
 mod tests {
     use super::*;
 
-    // All loader tests run inside figment::Jail to isolate env vars.
+    // NOTE: All loader tests run inside figment::Jail to isolate env vars.
 
     #[test]
     fn load_with_no_yaml_uses_defaults() {
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn write_then_load_roundtrip() {
         figment::Jail::expect_with(|jail| {
-            // figment::Jail doesn't auto-create the config dir, so create it first.
+            // NOTE: figment::Jail doesn't auto-create the config dir, so create it first.
             std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
 
             let oikos = Oikos::from_root(jail.directory());

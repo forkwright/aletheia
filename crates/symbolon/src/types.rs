@@ -48,6 +48,7 @@ impl std::str::FromStr for Role {
 /// Distinguishes access tokens from refresh tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum TokenKind {
     /// Short-lived token for API access.
     Access,

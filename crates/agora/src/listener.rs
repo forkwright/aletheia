@@ -82,7 +82,7 @@ impl ChannelListener {
             }
         }
 
-        // Wait for all in-flight handler tasks to complete.
+        // WHY: wait for all in-flight handler tasks to complete before shutdown
         while let Some(result) = set.join_next().await {
             if let Err(e) = result {
                 tracing::warn!(error = %e, "handler task panicked");
@@ -106,7 +106,7 @@ impl ChannelListener {
             .rx
             .take()
             .expect("into_receiver called on consumed listener");
-        // Take the handles out before Drop can abort them.
+        // WHY: take handles out before Drop to prevent abort of tasks we're joining
         let handles = std::mem::take(&mut self.handles);
         (rx, handles)
     }
@@ -217,14 +217,11 @@ mod tests {
         let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
 
         let handle = tokio::spawn(async {
-            // Simulate a long-running task
             tokio::time::sleep(std::time::Duration::from_secs(300)).await;
         });
 
         let listener = ChannelListener::from_parts(rx, vec![handle]);
         listener.stop();
-
-        // If we get here, the tasks were aborted successfully
     }
 
     #[tokio::test]
@@ -241,10 +238,8 @@ mod tests {
 
         {
             let _listener = ChannelListener::from_parts(rx, vec![handle]);
-            // listener drops here
         }
 
-        // Give the runtime a moment to process the abort
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         assert!(
@@ -264,7 +259,6 @@ mod tests {
         let listener = ChannelListener::from_parts(rx, vec![handle]);
         let (_rx, handles) = listener.into_receiver();
 
-        // Handles are returned — caller can abort them for graceful shutdown.
         assert_eq!(handles.len(), 1);
         for h in &handles {
             h.abort();

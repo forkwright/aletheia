@@ -198,9 +198,8 @@ pub fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<Pa
         error::ContextFileNotFoundSnafu { path: &resolved }
     );
 
-    // WHY: `pack_root.join(path)` does not prevent `../` sequences from
-    // escaping the pack directory. Canonicalize resolves all symlinks and
-    // parent-dir components, then verify the result is still under the root.
+    // WHY: canonicalize resolves all symlinks and parent-dir components, then
+    // verify the result is still under the pack root to prevent path traversal
     let canonical = resolved
         .canonicalize()
         .context(error::ReadFileSnafu { path: resolved })?;
@@ -345,14 +344,11 @@ domains = ["healthcare", "analytics", "sql"]
 
     #[test]
     fn resolve_context_path_blocks_parent_dir_traversal() {
-        // Create the "outer" file that the traversal path would target.
         let outer = TempDir::new().unwrap();
         fs::write(outer.path().join("secret.md"), "secret content").unwrap();
 
-        // Create the pack directory; it has no legitimate files.
         let pack = TempDir::new().unwrap();
 
-        // Build a relative path that tries to escape via `../`.
         let traversal = format!(
             "../{}/secret.md",
             outer.path().file_name().unwrap().to_string_lossy()
@@ -449,7 +445,6 @@ description = "Table name"
         assert_eq!(schema.required, vec!["sql"]);
         assert_eq!(schema.properties["sql"].property_type, "string");
 
-        // Second tool uses default timeout
         assert_eq!(manifest.tools[1].timeout, 30_000);
     }
 

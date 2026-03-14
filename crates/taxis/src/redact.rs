@@ -74,7 +74,7 @@ mod tests {
 
         let redacted = redact(&config);
         assert_eq!(redacted["gateway"]["auth"]["signingKey"], REDACTED);
-        // Raw secret must not appear anywhere in the output
+        // INVARIANT: raw secret must not appear anywhere in the output
         assert!(
             !redacted
                 .to_string()

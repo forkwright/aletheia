@@ -60,7 +60,6 @@ pub fn generate(
 
     store.store_api_key(&record)?;
 
-    // Re-read from DB to get populated timestamps
     let stored = store
         .find_api_key_by_hash(&record.key_hash)?
         .unwrap_or_else(|| {
@@ -83,12 +82,10 @@ pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
         .find_api_key_by_hash(&key_hash)?
         .ok_or_else(|| error::InvalidCredentialsSnafu.build())?;
 
-    // Check revocation
     if record.revoked_at.is_some() {
         return Err(error::InvalidCredentialsSnafu.build());
     }
 
-    // Check expiry
     if let Some(ref expires_at) = record.expires_at {
         let now = now_iso();
         if *expires_at < now {
@@ -96,7 +93,6 @@ pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
         }
     }
 
-    // Update last_used_at
     store.touch_api_key(&record.id)?;
 
     Ok(Claims {
@@ -145,14 +141,13 @@ fn now_iso() -> String {
 }
 
 fn time_from_unix(secs: u64) -> String {
-    // Simple ISO 8601 formatting without external dependency
+    // WHY: simple ISO 8601 formatting avoids adding an external date dependency
     let days = secs / 86400;
     let time_secs = secs % 86400;
     let hours = time_secs / 3600;
     let minutes = (time_secs % 3600) / 60;
     let seconds = time_secs % 60;
 
-    // Convert days since epoch to Y-M-D (simplified)
     let (year, month, day) = days_to_date(days);
     format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}.000Z")
 }
@@ -172,7 +167,6 @@ fn days_to_date(days_since_epoch: u64) -> (u64, u64, u64) {
     (y, m, d)
 }
 
-// We need hex encoding for the secret bytes
 mod hex {
     const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 

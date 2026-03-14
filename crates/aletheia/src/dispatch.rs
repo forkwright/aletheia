@@ -24,7 +24,6 @@ pub fn spawn_dispatcher(
     let span = tracing::info_span!("message_dispatcher");
     tokio::spawn(
         async move {
-            // Wait for ready signal before processing messages
             while !*ready_rx.borrow_and_update() {
                 if ready_rx.changed().await.is_err() {
                     warn!("ready channel dropped before ready signal");

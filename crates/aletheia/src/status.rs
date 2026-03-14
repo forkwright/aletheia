@@ -41,7 +41,6 @@ pub async fn run(url: &str, instance_root: Option<&std::path::PathBuf>) -> Resul
     println!("{}", "═".repeat(30));
     println!();
 
-    // Try to connect to pylon
     let health = fetch_health(url).await;
     let nous_list = fetch_nous(url).await;
 
@@ -59,7 +58,6 @@ pub async fn run(url: &str, instance_root: Option<&std::path::PathBuf>) -> Resul
         print_nous(&list, use_color);
     }
 
-    // Disk stats
     let oikos = match instance_root {
         Some(root) => aletheia_taxis::oikos::Oikos::from_root(root),
         None => aletheia_taxis::oikos::Oikos::discover(),

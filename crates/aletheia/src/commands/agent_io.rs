@@ -5,8 +5,6 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Args;
 
-// ── Args structs for Command enum ──────────────────────────────────────────
-
 #[derive(Debug, Clone, Args)]
 pub struct ExportArgs {
     /// Agent (nous) ID to export
@@ -333,7 +331,6 @@ pub fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 
     println!("Found {} skill(s) in {}", entries.len(), dir.display());
 
-    // Parse all skills first
     let mut parsed: Vec<(String, SkillContent)> = Vec::new();
     let mut parse_errors = 0u32;
     for (slug, content) in &entries {
@@ -365,7 +362,6 @@ pub fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
         return Ok(());
     }
 
-    // Open knowledge store (in-memory for seeding — caller must configure persistent path)
     #[cfg(feature = "recall")]
     {
         use aletheia_mneme::knowledge::{EpistemicTier, Fact, default_stability_hours};
@@ -380,14 +376,12 @@ pub fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
         let mut overwritten = 0u32;
 
         for (slug, skill) in &parsed {
-            // Check for duplicates
             let existing = store
                 .find_skill_by_name(nous_id, &skill.name)
                 .map_err(|e| anyhow::anyhow!("failed to query existing skills: {e}"))?;
 
             if let Some(existing_id) = existing {
                 if args.force {
-                    // Supersede the old fact
                     if let Err(e) = store.forget_fact(
                         &aletheia_mneme::id::FactId::from(existing_id),
                         aletheia_mneme::knowledge::ForgetReason::Outdated,
@@ -430,7 +424,6 @@ pub fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
                 .insert_fact(&fact)
                 .map_err(|e| anyhow::anyhow!("failed to insert skill {slug}: {e}"))?;
 
-            // Generate embedding for semantic search
             let embedding_text = format!("{}: {}", skill.name, skill.description);
             let emb_id = ulid::Ulid::new().to_string();
             let chunk = aletheia_mneme::knowledge::EmbeddedChunk {
@@ -501,7 +494,6 @@ pub fn export_skills(instance_root: Option<&PathBuf>, args: &ExportSkillsArgs) -
             return Ok(());
         }
 
-        // Parse facts into SkillContent
         let mut skills: Vec<SkillContent> = Vec::new();
         let mut parse_errors = 0u32;
         for fact in &facts {
@@ -514,7 +506,6 @@ pub fn export_skills(instance_root: Option<&PathBuf>, args: &ExportSkillsArgs) -
             }
         }
 
-        // Apply domain filter
         let domain_tags: Vec<&str> = args
             .domain
             .as_deref()
@@ -695,24 +686,21 @@ fn generate_simple_embedding(text: &str) -> Vec<f32> {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());
 
-    // Generate enough hash bytes to fill the embedding
     let mut seed = hasher.finalize().to_vec();
     while embedding.len() < dim {
         for byte in &seed {
             if embedding.len() >= dim {
                 break;
             }
-            // Map byte to [-1.0, 1.0] — value is in [-1.0, 1.0] so truncation is harmless
+            // WHY: map byte to [-1.0, 1.0] — value fits without overflow, truncation is harmless
             #[expect(clippy::cast_possible_truncation, reason = "result fits in f32 range")]
             embedding.push((f64::from(*byte) / 127.5 - 1.0) as f32);
         }
-        // Re-hash for more bytes
         let mut h = Sha256::new();
         h.update(&seed);
         seed = h.finalize().to_vec();
     }
 
-    // L2-normalize
     let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
     if norm > 0.0 {
         for v in &mut embedding {

@@ -57,7 +57,7 @@ pub(crate) fn read_resource(
 ) -> Result<Vec<ResourceContents>, rmcp::ErrorData> {
     let uri = params.uri.as_str();
 
-    // Parse: aletheia://nous/{nous_id}/{file}
+    // NOTE: parse URI format: aletheia://nous/{nous_id}/{file}
     let path = uri
         .strip_prefix("aletheia://nous/")
         .ok_or_else(|| rmcp::ErrorData::invalid_params("invalid nous resource URI", None))?;
