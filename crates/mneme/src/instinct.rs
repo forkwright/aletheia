@@ -57,6 +57,7 @@ pub struct ToolObservation {
 
 /// Outcome of a tool execution.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ToolOutcome {
     /// Tool completed successfully.
     Success,
@@ -157,6 +158,7 @@ impl BehavioralPattern {
 /// Context categories for tool usage classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ContextCategory {
     /// File operations, grep, code-related queries.
     Code,

@@ -34,10 +34,6 @@ pub const PROMOTION_THRESHOLD: u32 = 3;
 /// Similarity threshold for merging two sequences into the same candidate.
 pub const SIMILARITY_THRESHOLD: f64 = 0.8;
 
-// ---------------------------------------------------------------------------
-// SkillCandidate
-// ---------------------------------------------------------------------------
-
 /// A tracked pattern that has been seen at least once and may be promoted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillCandidate {
@@ -81,10 +77,6 @@ impl SkillCandidate {
     }
 }
 
-// ---------------------------------------------------------------------------
-// TrackResult
-// ---------------------------------------------------------------------------
-
 /// Outcome from [`CandidateTracker::track_sequence`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrackResult {
@@ -98,10 +90,6 @@ pub enum TrackResult {
     /// Contains the candidate ID.
     Promoted(String),
 }
-
-// ---------------------------------------------------------------------------
-// CandidateTracker
-// ---------------------------------------------------------------------------
 
 /// In-memory store for skill candidates with Rule-of-Three promotion.
 ///
@@ -156,7 +144,6 @@ impl CandidateTracker {
 
         let mut candidates = self.candidates.lock().expect("lock not poisoned");
 
-        // Find an existing candidate with a similar signature for the same nous
         if let Some(existing) = candidates.iter_mut().find(|c| {
             c.nous_id == nous_id && signature_similarity(&c.signature, &sig) >= SIMILARITY_THRESHOLD
         }) {
@@ -175,7 +162,6 @@ impl CandidateTracker {
             return TrackResult::Tracked(new_count);
         }
 
-        // New candidate
         let id = ulid::Ulid::new().to_string();
         candidates.push(SkillCandidate {
             id: id.clone(),
@@ -222,10 +208,6 @@ impl CandidateTracker {
         self.len() == 0
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]

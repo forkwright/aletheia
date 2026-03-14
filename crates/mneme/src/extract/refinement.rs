@@ -6,13 +6,10 @@
 
 use serde::{Deserialize, Serialize};
 
-// ---------------------------------------------------------------------------
-// Turn type classification
-// ---------------------------------------------------------------------------
-
 /// Classifies a conversation turn for context-dependent extraction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum TurnType {
     /// General conversation — extract facts, entities, relationships.
     Discussion,
@@ -148,9 +145,8 @@ fn is_tool_heavy(content: &str) -> bool {
         .map(|line| line.len() + 1) // +1 for newline
         .sum();
 
-    // Also count content within code blocks
     let code_block_chars = count_code_block_chars(content);
-
+    // WHY: Take the max rather than sum; both metrics identify the same code-heavy content.
     let tool_chars = marker_adjacent_chars.max(code_block_chars);
     tool_chars * 100 / total_len > 60
 }
@@ -238,13 +234,10 @@ fn has_procedural_patterns(lower: &str) -> bool {
     matches >= 2
 }
 
-// ---------------------------------------------------------------------------
-// Fact type classification
-// ---------------------------------------------------------------------------
-
 /// Classification of extracted facts for FSRS decay rate tuning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum FactType {
     /// Personal identity information (name, role, background).
     Identity,
@@ -408,10 +401,6 @@ fn has_relationship_patterns(lower: &str) -> bool {
     PATTERNS.iter().any(|p| lower.contains(p))
 }
 
-// ---------------------------------------------------------------------------
-// Correction detection
-// ---------------------------------------------------------------------------
-
 /// Result of scanning content for correction signals.
 #[derive(Debug, Clone)]
 pub struct CorrectionSignal {
@@ -432,12 +421,9 @@ pub fn detect_correction(content: &str) -> CorrectionSignal {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Quality filters
-// ---------------------------------------------------------------------------
-
 /// Reasons a fact may be rejected by quality filters.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FilterReason {
     /// Confidence score below threshold.
     LowConfidence,
@@ -598,10 +584,6 @@ pub fn boosted_confidence(base: f64, boost: f64) -> f64 {
     (base + boost).min(1.0)
 }
 
-// ---------------------------------------------------------------------------
-// Per-type prompt appendices
-// ---------------------------------------------------------------------------
-
 const DISCUSSION_APPENDIX: &str = "\
 Extract all facts, entities, and relationships from the conversation. \
 Focus on personal information, preferences, knowledge claims, and entity relationships.";
@@ -635,10 +617,6 @@ This turn contains step-by-step instructions or procedures. \
 Extract: ordered steps, dependencies, prerequisites. \
 Skip: verbose explanations between steps. \
 Focus on actionable instructions and their ordering.";
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 #[path = "refinement_tests.rs"]

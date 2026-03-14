@@ -22,7 +22,7 @@ impl KnowledgeStore {
             !chunk.embedding.is_empty(),
             crate::error::EmptyEmbeddingSnafu
         );
-        // Validate dimension before storing — a mismatch corrupts the HNSW index.
+        // WHY: Validate dimension before storing; a mismatch corrupts the HNSW index.
         ensure!(
             chunk.embedding.len() == self.dim,
             crate::error::EmbeddingDimensionMismatchSnafu {
@@ -56,7 +56,7 @@ impl KnowledgeStore {
         let rows = self.run_read(queries::SEMANTIC_SEARCH, params)?;
         let mut results = rows_to_recall_results(rows)?;
 
-        // Filter out forgotten facts — the HNSW index does not carry is_forgotten.
+        // WHY: Filter out forgotten facts; the HNSW index does not carry is_forgotten.
         let forgotten_ids = {
             let ids: Vec<&str> = results
                 .iter()
@@ -136,7 +136,7 @@ impl KnowledgeStore {
             "query_vec".to_owned(),
             DataValue::Vec(Vector::F32(Array1::from(q.embedding.clone()))),
         );
-        // usize -> i64: limit/ef are user-controlled small values; truncate at i64::MAX for safety
+        // NOTE: usize -> i64 cast; limit/ef are user-controlled small values, truncated at i64::MAX.
         let limit_i64 = i64::try_from(q.limit).unwrap_or(i64::MAX);
         let ef_i64 = i64::try_from(q.ef).unwrap_or(i64::MAX);
         params.insert("k".to_owned(), DataValue::from(limit_i64));
@@ -147,7 +147,7 @@ impl KnowledgeStore {
         let rows = self.run_read(&script, params)?;
         let results = rows_to_hybrid_results(rows)?;
 
-        // Filter out forgotten facts — search indices don't carry is_forgotten.
+        // WHY: Filter out forgotten facts; search indices do not carry is_forgotten.
         let results = self.filter_forgotten_results(results)?;
 
         let fact_ids: Vec<crate::id::FactId> = results.iter().map(|r| r.id.clone()).collect();
@@ -220,7 +220,6 @@ impl KnowledgeStore {
     ) -> crate::error::Result<crate::query_rewrite::TieredSearchResult<HybridResult>> {
         let start = std::time::Instant::now();
 
-        // Tier 1: Fast path — single-query hybrid search
         let fast_results = self.search_hybrid(base_query)?;
         let sufficient = fast_results.len() >= config.fast_path_min_results
             && fast_results
@@ -236,7 +235,6 @@ impl KnowledgeStore {
             });
         }
 
-        // Tier 2: Enhanced — LLM query rewrite + multi-query
         let rewrite_result = rewriter.rewrite(&base_query.text, context, provider);
         let enhanced_results = self.search_enhanced(base_query, &rewrite_result.variants)?;
         let sufficient = enhanced_results.len() >= config.enhanced_min_results
@@ -253,12 +251,10 @@ impl KnowledgeStore {
             });
         }
 
-        // Tier 3: Graph-enhanced — expand via entity relationships
         let graph_results = self.expand_via_graph(&enhanced_results, config);
         let final_results = if graph_results.is_empty() {
             enhanced_results
         } else {
-            // Merge enhanced + graph results
             use crate::query_rewrite::rrf_merge;
             rrf_merge(&[enhanced_results, graph_results], 60.0)
         };
@@ -288,7 +284,6 @@ impl KnowledgeStore {
         existing: &[HybridResult],
         config: &crate::query_rewrite::TieredSearchConfig,
     ) -> Vec<HybridResult> {
-        // Collect unique fact IDs from existing results
         let fact_ids: Vec<&str> = existing
             .iter()
             .take(config.graph_expansion_limit)
@@ -299,14 +294,12 @@ impl KnowledgeStore {
             return vec![];
         }
 
-        // For each fact ID, look up which entities it references, then get their neighborhoods
         let mut expanded_ids = std::collections::HashSet::new();
         let existing_ids: std::collections::HashSet<&str> =
             existing.iter().map(|r| r.id.as_str()).collect();
 
         for fact_id in &fact_ids {
-            // Look up which entities this fact references via the fact_entities relation.
-            // FactId and EntityId are distinct types — never cast one to the other.
+            // WHY: Query fact_entities by fact_id; FactId and EntityId are distinct types.
             let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
             let mut fparams = std::collections::BTreeMap::new();
             fparams.insert(
@@ -333,7 +326,6 @@ impl KnowledgeStore {
             }
         }
 
-        // Create synthetic results for expanded facts with lower base scores
         let mut graph_results = Vec::new();
         for (rank, id) in expanded_ids.iter().enumerate() {
             graph_results.push(HybridResult {
@@ -413,7 +405,6 @@ impl KnowledgeStore {
             return Ok(std::collections::HashSet::new());
         }
 
-        // Build an inline id list for Datalog's `in` operator.
         let id_list: Vec<String> = ids
             .iter()
             .map(|id| format!("'{}'", id.replace('\'', "''")))

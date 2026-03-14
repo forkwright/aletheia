@@ -1,5 +1,5 @@
 //! Tests for built-in functions.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use regex::Regex;
 use serde_json::json;
 use std::f64::consts::{E, PI};
@@ -9,19 +9,22 @@ use crate::engine::data::functions::*;
 use crate::engine::data::value::{DataValue, RegexWrapper};
 
 #[test]
-fn test_add() {
-    assert_eq!(op_add(&[]).unwrap(), DataValue::from(0));
-    assert_eq!(op_add(&[DataValue::from(1)]).unwrap(), DataValue::from(1));
+fn op_add_sums_integers_and_floats() {
+    assert_eq!(op_add(&[]).expect("test assertion"), DataValue::from(0));
     assert_eq!(
-        op_add(&[DataValue::from(1), DataValue::from(2)]).unwrap(),
+        op_add(&[DataValue::from(1)]).expect("test assertion"),
+        DataValue::from(1)
+    );
+    assert_eq!(
+        op_add(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
         DataValue::from(3)
     );
     assert_eq!(
-        op_add(&[DataValue::from(1), DataValue::from(2.5)]).unwrap(),
+        op_add(&[DataValue::from(1), DataValue::from(2.5)]).expect("test assertion"),
         DataValue::from(3.5)
     );
     assert_eq!(
-        op_add(&[DataValue::from(1.5), DataValue::from(2.5)]).unwrap(),
+        op_add(&[DataValue::from(1.5), DataValue::from(2.5)]).expect("test assertion"),
         DataValue::from(4.0)
     );
 }
@@ -29,32 +32,32 @@ fn test_add() {
 #[test]
 fn test_sub() {
     assert_eq!(
-        op_sub(&[DataValue::from(1), DataValue::from(2)]).unwrap(),
+        op_sub(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
         DataValue::from(-1)
     );
     assert_eq!(
-        op_sub(&[DataValue::from(1), DataValue::from(2.5)]).unwrap(),
+        op_sub(&[DataValue::from(1), DataValue::from(2.5)]).expect("test assertion"),
         DataValue::from(-1.5)
     );
     assert_eq!(
-        op_sub(&[DataValue::from(1.5), DataValue::from(2.5)]).unwrap(),
+        op_sub(&[DataValue::from(1.5), DataValue::from(2.5)]).expect("test assertion"),
         DataValue::from(-1.0)
     );
 }
 
 #[test]
 fn test_mul() {
-    assert_eq!(op_mul(&[]).unwrap(), DataValue::from(1));
+    assert_eq!(op_mul(&[]).expect("test assertion"), DataValue::from(1));
     assert_eq!(
-        op_mul(&[DataValue::from(2), DataValue::from(3)]).unwrap(),
+        op_mul(&[DataValue::from(2), DataValue::from(3)]).expect("test assertion"),
         DataValue::from(6)
     );
     assert_eq!(
-        op_mul(&[DataValue::from(0.5), DataValue::from(0.25)]).unwrap(),
+        op_mul(&[DataValue::from(0.5), DataValue::from(0.25)]).expect("test assertion"),
         DataValue::from(0.125)
     );
     assert_eq!(
-        op_mul(&[DataValue::from(0.5), DataValue::from(3)]).unwrap(),
+        op_mul(&[DataValue::from(0.5), DataValue::from(3)]).expect("test assertion"),
         DataValue::from(1.5)
     );
 }
@@ -62,15 +65,15 @@ fn test_mul() {
 #[test]
 fn test_div() {
     assert_eq!(
-        op_div(&[DataValue::from(1), DataValue::from(1)]).unwrap(),
+        op_div(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(1.0)
     );
     assert_eq!(
-        op_div(&[DataValue::from(1), DataValue::from(2)]).unwrap(),
+        op_div(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
         DataValue::from(0.5)
     );
     assert_eq!(
-        op_div(&[DataValue::from(7.0), DataValue::from(0.5)]).unwrap(),
+        op_div(&[DataValue::from(7.0), DataValue::from(0.5)]).expect("test assertion"),
         DataValue::from(14.0)
     );
     assert!(op_div(&[DataValue::from(1), DataValue::from(0)]).is_ok());
@@ -79,36 +82,39 @@ fn test_div() {
 #[test]
 fn test_eq_neq() {
     assert_eq!(
-        op_eq(&[DataValue::from(1), DataValue::from(1.0)]).unwrap(),
+        op_eq(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_eq(&[DataValue::from(123), DataValue::from(123)]).unwrap(),
+        op_eq(&[DataValue::from(123), DataValue::from(123)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_neq(&[DataValue::from(1), DataValue::from(1.0)]).unwrap(),
+        op_neq(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_neq(&[DataValue::from(123), DataValue::from(123.0)]).unwrap(),
+        op_neq(&[DataValue::from(123), DataValue::from(123.0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_eq(&[DataValue::from(123), DataValue::from(123.1)]).unwrap(),
+        op_eq(&[DataValue::from(123), DataValue::from(123.1)]).expect("test assertion"),
         DataValue::from(false)
     );
 }
 
 #[test]
 fn test_list() {
-    assert_eq!(op_list(&[]).unwrap(), DataValue::List(vec![]));
     assert_eq!(
-        op_list(&[DataValue::from(1)]).unwrap(),
+        op_list(&[]).expect("test assertion"),
+        DataValue::List(vec![])
+    );
+    assert_eq!(
+        op_list(&[DataValue::from(1)]).expect("test assertion"),
         DataValue::List(vec![DataValue::from(1)])
     );
     assert_eq!(
-        op_list(&[DataValue::from(1), DataValue::List(vec![])]).unwrap(),
+        op_list(&[DataValue::from(1), DataValue::List(vec![])]).expect("test assertion"),
         DataValue::List(vec![DataValue::from(1), DataValue::List(vec![])])
     );
 }
@@ -120,7 +126,7 @@ fn test_is_in() {
             DataValue::from(1),
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)])
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
@@ -128,11 +134,11 @@ fn test_is_in() {
             DataValue::from(3),
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)])
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_in(&[DataValue::from(3), DataValue::List(vec![])]).unwrap(),
+        op_is_in(&[DataValue::from(3), DataValue::List(vec![])]).expect("test assertion"),
         DataValue::from(false)
     );
 }
@@ -140,103 +146,103 @@ fn test_is_in() {
 #[test]
 fn test_comparators() {
     assert_eq!(
-        op_ge(&[DataValue::from(2), DataValue::from(1)]).unwrap(),
+        op_ge(&[DataValue::from(2), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_ge(&[DataValue::from(2.), DataValue::from(1)]).unwrap(),
+        op_ge(&[DataValue::from(2.), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_ge(&[DataValue::from(2), DataValue::from(1.)]).unwrap(),
+        op_ge(&[DataValue::from(2), DataValue::from(1.)]).expect("test assertion"),
         DataValue::from(true)
     );
 
     assert_eq!(
-        op_ge(&[DataValue::from(1), DataValue::from(1)]).unwrap(),
+        op_ge(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_ge(&[DataValue::from(1), DataValue::from(1.0)]).unwrap(),
+        op_ge(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_ge(&[DataValue::from(1), DataValue::from(2)]).unwrap(),
+        op_ge(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert!(op_ge(&[DataValue::Null, DataValue::from(true)]).is_err());
     assert_eq!(
-        op_gt(&[DataValue::from(2), DataValue::from(1)]).unwrap(),
+        op_gt(&[DataValue::from(2), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_gt(&[DataValue::from(2.), DataValue::from(1)]).unwrap(),
+        op_gt(&[DataValue::from(2.), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_gt(&[DataValue::from(2), DataValue::from(1.)]).unwrap(),
+        op_gt(&[DataValue::from(2), DataValue::from(1.)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_gt(&[DataValue::from(1), DataValue::from(1)]).unwrap(),
+        op_gt(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_gt(&[DataValue::from(1), DataValue::from(1.0)]).unwrap(),
+        op_gt(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_gt(&[DataValue::from(1), DataValue::from(2)]).unwrap(),
+        op_gt(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert!(op_gt(&[DataValue::Null, DataValue::from(true)]).is_err());
     assert_eq!(
-        op_le(&[DataValue::from(2), DataValue::from(1)]).unwrap(),
+        op_le(&[DataValue::from(2), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_le(&[DataValue::from(2.), DataValue::from(1)]).unwrap(),
+        op_le(&[DataValue::from(2.), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_le(&[DataValue::from(2), DataValue::from(1.)]).unwrap(),
+        op_le(&[DataValue::from(2), DataValue::from(1.)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_le(&[DataValue::from(1), DataValue::from(1)]).unwrap(),
+        op_le(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_le(&[DataValue::from(1), DataValue::from(1.0)]).unwrap(),
+        op_le(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_le(&[DataValue::from(1), DataValue::from(2)]).unwrap(),
+        op_le(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert!(op_le(&[DataValue::Null, DataValue::from(true)]).is_err());
     assert_eq!(
-        op_lt(&[DataValue::from(2), DataValue::from(1)]).unwrap(),
+        op_lt(&[DataValue::from(2), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_lt(&[DataValue::from(2.), DataValue::from(1)]).unwrap(),
+        op_lt(&[DataValue::from(2.), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_lt(&[DataValue::from(2), DataValue::from(1.)]).unwrap(),
+        op_lt(&[DataValue::from(2), DataValue::from(1.)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_lt(&[DataValue::from(1), DataValue::from(1)]).unwrap(),
+        op_lt(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_lt(&[DataValue::from(1), DataValue::from(1.0)]).unwrap(),
+        op_lt(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_lt(&[DataValue::from(1), DataValue::from(2)]).unwrap(),
+        op_lt(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert!(op_lt(&[DataValue::Null, DataValue::from(true)]).is_err());
@@ -244,7 +250,10 @@ fn test_comparators() {
 
 #[test]
 fn test_max_min() {
-    assert_eq!(op_max(&[DataValue::from(1),]).unwrap(), DataValue::from(1));
+    assert_eq!(
+        op_max(&[DataValue::from(1),]).expect("test assertion"),
+        DataValue::from(1)
+    );
     assert_eq!(
         op_max(&[
             DataValue::from(1),
@@ -252,7 +261,7 @@ fn test_max_min() {
             DataValue::from(3),
             DataValue::from(4)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(4)
     );
     assert_eq!(
@@ -262,7 +271,7 @@ fn test_max_min() {
             DataValue::from(3),
             DataValue::from(4)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(4)
     );
     assert_eq!(
@@ -272,12 +281,15 @@ fn test_max_min() {
             DataValue::from(3),
             DataValue::from(4.0)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(4.0)
     );
     assert!(op_max(&[DataValue::from(true)]).is_err());
 
-    assert_eq!(op_min(&[DataValue::from(1),]).unwrap(), DataValue::from(1));
+    assert_eq!(
+        op_min(&[DataValue::from(1),]).expect("test assertion"),
+        DataValue::from(1)
+    );
     assert_eq!(
         op_min(&[
             DataValue::from(1),
@@ -285,7 +297,7 @@ fn test_max_min() {
             DataValue::from(3),
             DataValue::from(4)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(1)
     );
     assert_eq!(
@@ -295,7 +307,7 @@ fn test_max_min() {
             DataValue::from(3),
             DataValue::from(4)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(1.0)
     );
     assert_eq!(
@@ -305,7 +317,7 @@ fn test_max_min() {
             DataValue::from(3),
             DataValue::from(4.0)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(1)
     );
     assert!(op_max(&[DataValue::from(true)]).is_err());
@@ -314,29 +326,35 @@ fn test_max_min() {
 #[test]
 fn test_minus() {
     assert_eq!(
-        op_minus(&[DataValue::from(-1)]).unwrap(),
+        op_minus(&[DataValue::from(-1)]).expect("test assertion"),
         DataValue::from(1)
     );
     assert_eq!(
-        op_minus(&[DataValue::from(1)]).unwrap(),
+        op_minus(&[DataValue::from(1)]).expect("test assertion"),
         DataValue::from(-1)
     );
     assert_eq!(
-        op_minus(&[DataValue::from(f64::INFINITY)]).unwrap(),
+        op_minus(&[DataValue::from(f64::INFINITY)]).expect("test assertion"),
         DataValue::from(f64::NEG_INFINITY)
     );
     assert_eq!(
-        op_minus(&[DataValue::from(f64::NEG_INFINITY)]).unwrap(),
+        op_minus(&[DataValue::from(f64::NEG_INFINITY)]).expect("test assertion"),
         DataValue::from(f64::INFINITY)
     );
 }
 
 #[test]
 fn test_abs() {
-    assert_eq!(op_abs(&[DataValue::from(-1)]).unwrap(), DataValue::from(1));
-    assert_eq!(op_abs(&[DataValue::from(1)]).unwrap(), DataValue::from(1));
     assert_eq!(
-        op_abs(&[DataValue::from(-1.5)]).unwrap(),
+        op_abs(&[DataValue::from(-1)]).expect("test assertion"),
+        DataValue::from(1)
+    );
+    assert_eq!(
+        op_abs(&[DataValue::from(1)]).expect("test assertion"),
+        DataValue::from(1)
+    );
+    assert_eq!(
+        op_abs(&[DataValue::from(-1.5)]).expect("test assertion"),
         DataValue::from(1.5)
     );
 }
@@ -344,34 +362,34 @@ fn test_abs() {
 #[test]
 fn test_signum() {
     assert_eq!(
-        op_signum(&[DataValue::from(0.1)]).unwrap(),
+        op_signum(&[DataValue::from(0.1)]).expect("test assertion"),
         DataValue::from(1)
     );
     assert_eq!(
-        op_signum(&[DataValue::from(-0.1)]).unwrap(),
+        op_signum(&[DataValue::from(-0.1)]).expect("test assertion"),
         DataValue::from(-1)
     );
     assert_eq!(
-        op_signum(&[DataValue::from(0.0)]).unwrap(),
+        op_signum(&[DataValue::from(0.0)]).expect("test assertion"),
         DataValue::from(0)
     );
     assert_eq!(
-        op_signum(&[DataValue::from(-0.0)]).unwrap(),
+        op_signum(&[DataValue::from(-0.0)]).expect("test assertion"),
         DataValue::from(-1)
     );
     assert_eq!(
-        op_signum(&[DataValue::from(-3)]).unwrap(),
+        op_signum(&[DataValue::from(-3)]).expect("test assertion"),
         DataValue::from(-1)
     );
     assert_eq!(
-        op_signum(&[DataValue::from(f64::NEG_INFINITY)]).unwrap(),
+        op_signum(&[DataValue::from(f64::NEG_INFINITY)]).expect("test assertion"),
         DataValue::from(-1)
     );
     assert!(
         op_signum(&[DataValue::from(f64::NAN)])
-            .unwrap()
+            .expect("test assertion")
             .get_float()
-            .unwrap()
+            .expect("test assertion")
             .is_nan()
     );
 }
@@ -379,27 +397,27 @@ fn test_signum() {
 #[test]
 fn test_floor_ceil() {
     assert_eq!(
-        op_floor(&[DataValue::from(-1)]).unwrap(),
+        op_floor(&[DataValue::from(-1)]).expect("test assertion"),
         DataValue::from(-1)
     );
     assert_eq!(
-        op_floor(&[DataValue::from(-1.5)]).unwrap(),
+        op_floor(&[DataValue::from(-1.5)]).expect("test assertion"),
         DataValue::from(-2.0)
     );
     assert_eq!(
-        op_floor(&[DataValue::from(1.5)]).unwrap(),
+        op_floor(&[DataValue::from(1.5)]).expect("test assertion"),
         DataValue::from(1.0)
     );
     assert_eq!(
-        op_ceil(&[DataValue::from(-1)]).unwrap(),
+        op_ceil(&[DataValue::from(-1)]).expect("test assertion"),
         DataValue::from(-1)
     );
     assert_eq!(
-        op_ceil(&[DataValue::from(-1.5)]).unwrap(),
+        op_ceil(&[DataValue::from(-1.5)]).expect("test assertion"),
         DataValue::from(-1.0)
     );
     assert_eq!(
-        op_ceil(&[DataValue::from(1.5)]).unwrap(),
+        op_ceil(&[DataValue::from(1.5)]).expect("test assertion"),
         DataValue::from(2.0)
     );
 }
@@ -407,61 +425,67 @@ fn test_floor_ceil() {
 #[test]
 fn test_round() {
     assert_eq!(
-        op_round(&[DataValue::from(0.6)]).unwrap(),
+        op_round(&[DataValue::from(0.6)]).expect("test assertion"),
         DataValue::from(1.0)
     );
     assert_eq!(
-        op_round(&[DataValue::from(0.5)]).unwrap(),
+        op_round(&[DataValue::from(0.5)]).expect("test assertion"),
         DataValue::from(1.0)
     );
     assert_eq!(
-        op_round(&[DataValue::from(1.5)]).unwrap(),
+        op_round(&[DataValue::from(1.5)]).expect("test assertion"),
         DataValue::from(2.0)
     );
     assert_eq!(
-        op_round(&[DataValue::from(-0.6)]).unwrap(),
+        op_round(&[DataValue::from(-0.6)]).expect("test assertion"),
         DataValue::from(-1.0)
     );
     assert_eq!(
-        op_round(&[DataValue::from(-0.5)]).unwrap(),
+        op_round(&[DataValue::from(-0.5)]).expect("test assertion"),
         DataValue::from(-1.0)
     );
     assert_eq!(
-        op_round(&[DataValue::from(-1.5)]).unwrap(),
+        op_round(&[DataValue::from(-1.5)]).expect("test assertion"),
         DataValue::from(-2.0)
     );
 }
 
 #[test]
 fn test_exp() {
-    let n = op_exp(&[DataValue::from(1)]).unwrap().get_float().unwrap();
+    let n = op_exp(&[DataValue::from(1)])
+        .expect("test assertion")
+        .get_float()
+        .expect("test assertion");
     assert!(((n) - (E)).abs() < 1E-5);
 
     let n = op_exp(&[DataValue::from(50.1)])
-        .unwrap()
+        .expect("test assertion")
         .get_float()
-        .unwrap();
+        .expect("test assertion");
     assert!(((n) - (50.1_f64.exp())).abs() < 1E-5);
 }
 
 #[test]
 fn test_exp2() {
     let n = op_exp2(&[DataValue::from(10.)])
-        .unwrap()
+        .expect("test assertion")
         .get_float()
-        .unwrap();
+        .expect("test assertion");
     assert_eq!(n, 1024.);
 }
 
 #[test]
 fn test_ln() {
-    assert_eq!(op_ln(&[DataValue::from(E)]).unwrap(), DataValue::from(1.0));
+    assert_eq!(
+        op_ln(&[DataValue::from(E)]).expect("test assertion"),
+        DataValue::from(1.0)
+    );
 }
 
 #[test]
 fn test_log2() {
     assert_eq!(
-        op_log2(&[DataValue::from(1024)]).unwrap(),
+        op_log2(&[DataValue::from(1024)]).expect("test assertion"),
         DataValue::from(10.)
     );
 }
@@ -469,7 +493,7 @@ fn test_log2() {
 #[test]
 fn test_log10() {
     assert_eq!(
-        op_log10(&[DataValue::from(1000)]).unwrap(),
+        op_log10(&[DataValue::from(1000)]).expect("test assertion"),
         DataValue::from(3.0)
     );
 }
@@ -477,44 +501,50 @@ fn test_log10() {
 #[test]
 fn test_trig() {
     let v = op_sin(&[DataValue::from(PI / 2.)])
-        .unwrap()
+        .expect("test assertion")
         .get_float()
-        .unwrap();
+        .expect("test assertion");
     assert!((v - 1.0).abs() < 1e-5);
     let v = op_cos(&[DataValue::from(PI / 2.)])
-        .unwrap()
+        .expect("test assertion")
         .get_float()
-        .unwrap();
+        .expect("test assertion");
     assert!((v - 0.0).abs() < 1e-5);
     let v = op_tan(&[DataValue::from(PI / 4.)])
-        .unwrap()
+        .expect("test assertion")
         .get_float()
-        .unwrap();
+        .expect("test assertion");
     assert!((v - 1.0).abs() < 1e-5);
 }
 
 #[test]
 fn test_inv_trig() {
     let v = op_asin(&[DataValue::from(1.0)])
-        .unwrap()
+        .expect("test assertion")
         .get_float()
-        .unwrap();
+        .expect("test assertion");
     assert!((v - PI / 2.).abs() < 1e-5);
-    let v = op_acos(&[DataValue::from(0)]).unwrap().get_float().unwrap();
+    let v = op_acos(&[DataValue::from(0)])
+        .expect("test assertion")
+        .get_float()
+        .expect("test assertion");
     assert!((v - PI / 2.).abs() < 1e-5);
-    let v = op_atan(&[DataValue::from(1)]).unwrap().get_float().unwrap();
+    let v = op_atan(&[DataValue::from(1)])
+        .expect("test assertion")
+        .get_float()
+        .expect("test assertion");
     assert!((v - PI / 4.).abs() < 1e-5);
     let v = op_atan2(&[DataValue::from(-1), DataValue::from(-1)])
-        .unwrap()
+        .expect("test assertion")
         .get_float()
-        .unwrap();
+        .expect("test assertion");
     assert!((v - (-3. * PI / 4.)).abs() < 1e-5);
 }
 
 #[test]
 fn test_pow() {
     assert_eq!(
-        op_pow(&[DataValue::from(2), DataValue::from(10)]).unwrap(),
+        op_pow(&[DataValue::from(2), DataValue::from(10)]).expect("test assertion"),
         DataValue::from(1024.0)
     );
 }
@@ -522,7 +552,7 @@ fn test_pow() {
 #[test]
 fn test_mod() {
     assert_eq!(
-        op_mod(&[DataValue::from(-10), DataValue::from(7)]).unwrap(),
+        op_mod(&[DataValue::from(-10), DataValue::from(7)]).expect("test assertion"),
         DataValue::from(-3)
     );
     assert!(op_mod(&[DataValue::from(5), DataValue::from(0.)]).is_ok());
@@ -533,18 +563,18 @@ fn test_mod() {
 
 #[test]
 fn test_boolean() {
-    assert_eq!(op_and(&[]).unwrap(), DataValue::from(true));
+    assert_eq!(op_and(&[]).expect("test assertion"), DataValue::from(true));
     assert_eq!(
-        op_and(&[DataValue::from(true), DataValue::from(false)]).unwrap(),
+        op_and(&[DataValue::from(true), DataValue::from(false)]).expect("test assertion"),
         DataValue::from(false)
     );
-    assert_eq!(op_or(&[]).unwrap(), DataValue::from(false));
+    assert_eq!(op_or(&[]).expect("test assertion"), DataValue::from(false));
     assert_eq!(
-        op_or(&[DataValue::from(true), DataValue::from(false)]).unwrap(),
+        op_or(&[DataValue::from(true), DataValue::from(false)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_negate(&[DataValue::from(false)]).unwrap(),
+        op_negate(&[DataValue::from(false)]).expect("test assertion"),
         DataValue::from(true)
     );
 }
@@ -556,7 +586,7 @@ fn test_bits() {
             DataValue::Bytes([0b111000].into()),
             DataValue::Bytes([0b010101].into())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::Bytes([0b010000].into())
     );
     assert_eq!(
@@ -564,11 +594,11 @@ fn test_bits() {
             DataValue::Bytes([0b111000].into()),
             DataValue::Bytes([0b010101].into())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::Bytes([0b111101].into())
     );
     assert_eq!(
-        op_bit_not(&[DataValue::Bytes([0b00111000].into())]).unwrap(),
+        op_bit_not(&[DataValue::Bytes([0b00111000].into())]).expect("test assertion"),
         DataValue::Bytes([0b11000111].into())
     );
     assert_eq!(
@@ -576,7 +606,7 @@ fn test_bits() {
             DataValue::Bytes([0b111000].into()),
             DataValue::Bytes([0b010101].into())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::Bytes([0b101101].into())
     );
 }
@@ -584,7 +614,7 @@ fn test_bits() {
 #[test]
 fn test_pack_bits() {
     assert_eq!(
-        op_pack_bits(&[DataValue::List(vec![DataValue::from(true)])]).unwrap(),
+        op_pack_bits(&[DataValue::List(vec![DataValue::from(true)])]).expect("test assertion"),
         DataValue::Bytes([0b10000000].into())
     )
 }
@@ -592,7 +622,7 @@ fn test_pack_bits() {
 #[test]
 fn test_unpack_bits() {
     assert_eq!(
-        op_unpack_bits(&[DataValue::Bytes([0b10101010].into())]).unwrap(),
+        op_unpack_bits(&[DataValue::Bytes([0b10101010].into())]).expect("test assertion"),
         DataValue::List(
             [true, false, true, false, true, false, true, false]
                 .into_iter()
@@ -605,7 +635,8 @@ fn test_unpack_bits() {
 #[test]
 fn test_concat() {
     assert_eq!(
-        op_concat(&[DataValue::Str("abc".into()), DataValue::Str("def".into())]).unwrap(),
+        op_concat(&[DataValue::Str("abc".into()), DataValue::Str("def".into())])
+            .expect("test assertion"),
         DataValue::Str("abcdef".into())
     );
 
@@ -614,7 +645,7 @@ fn test_concat() {
             DataValue::List(vec![DataValue::from(true), DataValue::from(false)]),
             DataValue::List(vec![DataValue::from(true)])
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::from(true),
             DataValue::from(false),
@@ -630,11 +661,12 @@ fn test_str_includes() {
             DataValue::Str("abcdef".into()),
             DataValue::Str("bcd".into())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_str_includes(&[DataValue::Str("abcdef".into()), DataValue::Str("bd".into())]).unwrap(),
+        op_str_includes(&[DataValue::Str("abcdef".into()), DataValue::Str("bd".into())])
+            .expect("test assertion"),
         DataValue::from(false)
     );
 }
@@ -642,11 +674,11 @@ fn test_str_includes() {
 #[test]
 fn test_casings() {
     assert_eq!(
-        op_lowercase(&[DataValue::Str("NAÏVE".into())]).unwrap(),
+        op_lowercase(&[DataValue::Str("NAÏVE".into())]).expect("test assertion"),
         DataValue::Str("naïve".into())
     );
     assert_eq!(
-        op_uppercase(&[DataValue::Str("naïve".into())]).unwrap(),
+        op_uppercase(&[DataValue::Str("naïve".into())]).expect("test assertion"),
         DataValue::Str("NAÏVE".into())
     );
 }
@@ -654,15 +686,15 @@ fn test_casings() {
 #[test]
 fn test_trim() {
     assert_eq!(
-        op_trim(&[DataValue::Str(" a ".into())]).unwrap(),
+        op_trim(&[DataValue::Str(" a ".into())]).expect("test assertion"),
         DataValue::Str("a".into())
     );
     assert_eq!(
-        op_trim_start(&[DataValue::Str(" a ".into())]).unwrap(),
+        op_trim_start(&[DataValue::Str(" a ".into())]).expect("test assertion"),
         DataValue::Str("a ".into())
     );
     assert_eq!(
-        op_trim_end(&[DataValue::Str(" a ".into())]).unwrap(),
+        op_trim_end(&[DataValue::Str(" a ".into())]).expect("test assertion"),
         DataValue::Str(" a".into())
     );
 }
@@ -674,11 +706,12 @@ fn test_starts_ends_with() {
             DataValue::Str("abcdef".into()),
             DataValue::Str("abc".into())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_starts_with(&[DataValue::Str("abcdef".into()), DataValue::Str("bc".into())]).unwrap(),
+        op_starts_with(&[DataValue::Str("abcdef".into()), DataValue::Str("bc".into())])
+            .expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
@@ -686,11 +719,12 @@ fn test_starts_ends_with() {
             DataValue::Str("abcdef".into()),
             DataValue::Str("def".into())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_ends_with(&[DataValue::Str("abcdef".into()), DataValue::Str("bc".into())]).unwrap(),
+        op_ends_with(&[DataValue::Str("abcdef".into()), DataValue::Str("bc".into())])
+            .expect("test assertion"),
         DataValue::from(false)
     );
 }
@@ -700,55 +734,57 @@ fn test_regex() {
     assert_eq!(
         op_regex_matches(&[
             DataValue::Str("abcdef".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("c.e").unwrap()))
+            DataValue::Regex(RegexWrapper(Regex::new("c.e").expect("test assertion")))
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(true)
     );
 
     assert_eq!(
         op_regex_matches(&[
             DataValue::Str("abcdef".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("c.ef$").unwrap()))
+            DataValue::Regex(RegexWrapper(Regex::new("c.ef$").expect("test assertion")))
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(true)
     );
 
     assert_eq!(
         op_regex_matches(&[
             DataValue::Str("abcdef".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("c.e$").unwrap()))
+            DataValue::Regex(RegexWrapper(Regex::new("c.e$").expect("test assertion")))
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(false)
     );
 
     assert_eq!(
         op_regex_replace(&[
             DataValue::Str("abcdef".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("[be]").unwrap())),
+            DataValue::Regex(RegexWrapper(Regex::new("[be]").expect("test assertion"))),
             DataValue::Str("x".into())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::Str("axcdef".into())
     );
 
     assert_eq!(
         op_regex_replace_all(&[
             DataValue::Str("abcdef".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("[be]").unwrap())),
+            DataValue::Regex(RegexWrapper(Regex::new("[be]").expect("test assertion"))),
             DataValue::Str("x".into())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::Str("axcdxf".into())
     );
     assert_eq!(
         op_regex_extract(&[
             DataValue::Str("abCDefGH".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("[xayef]|(GH)").unwrap()))
+            DataValue::Regex(RegexWrapper(
+                Regex::new("[xayef]|(GH)").expect("test assertion")
+            ))
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::Str("a".into()),
             DataValue::Str("e".into()),
@@ -759,26 +795,28 @@ fn test_regex() {
     assert_eq!(
         op_regex_extract_first(&[
             DataValue::Str("abCDefGH".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("[xayef]|(GH)").unwrap()))
+            DataValue::Regex(RegexWrapper(
+                Regex::new("[xayef]|(GH)").expect("test assertion")
+            ))
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::Str("a".into()),
     );
     assert_eq!(
         op_regex_extract(&[
             DataValue::Str("abCDefGH".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("xyz").unwrap()))
+            DataValue::Regex(RegexWrapper(Regex::new("xyz").expect("test assertion")))
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![])
     );
 
     assert_eq!(
         op_regex_extract_first(&[
             DataValue::Str("abCDefGH".into()),
-            DataValue::Regex(RegexWrapper(Regex::new("xyz").unwrap()))
+            DataValue::Regex(RegexWrapper(Regex::new("xyz").expect("test assertion")))
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::Null
     );
 }
@@ -786,107 +824,107 @@ fn test_regex() {
 #[test]
 fn test_predicates() {
     assert_eq!(
-        op_is_null(&[DataValue::Null]).unwrap(),
+        op_is_null(&[DataValue::Null]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_null(&[DataValue::Bot]).unwrap(),
+        op_is_null(&[DataValue::Bot]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_int(&[DataValue::from(1)]).unwrap(),
+        op_is_int(&[DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_int(&[DataValue::from(1.0)]).unwrap(),
+        op_is_int(&[DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_float(&[DataValue::from(1)]).unwrap(),
+        op_is_float(&[DataValue::from(1)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_float(&[DataValue::from(1.0)]).unwrap(),
+        op_is_float(&[DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_num(&[DataValue::from(1)]).unwrap(),
+        op_is_num(&[DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_num(&[DataValue::from(1.0)]).unwrap(),
+        op_is_num(&[DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_num(&[DataValue::Null]).unwrap(),
+        op_is_num(&[DataValue::Null]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_bytes(&[DataValue::Bytes([0b1].into())]).unwrap(),
+        op_is_bytes(&[DataValue::Bytes([0b1].into())]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_bytes(&[DataValue::Null]).unwrap(),
+        op_is_bytes(&[DataValue::Null]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_list(&[DataValue::List(vec![])]).unwrap(),
+        op_is_list(&[DataValue::List(vec![])]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_list(&[DataValue::Null]).unwrap(),
+        op_is_list(&[DataValue::Null]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_string(&[DataValue::Str("".into())]).unwrap(),
+        op_is_string(&[DataValue::Str("".into())]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_string(&[DataValue::Null]).unwrap(),
+        op_is_string(&[DataValue::Null]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_finite(&[DataValue::from(1.0)]).unwrap(),
+        op_is_finite(&[DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_finite(&[DataValue::from(f64::INFINITY)]).unwrap(),
+        op_is_finite(&[DataValue::from(f64::INFINITY)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_finite(&[DataValue::from(f64::NAN)]).unwrap(),
+        op_is_finite(&[DataValue::from(f64::NAN)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_infinite(&[DataValue::from(1.0)]).unwrap(),
+        op_is_infinite(&[DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_infinite(&[DataValue::from(f64::INFINITY)]).unwrap(),
+        op_is_infinite(&[DataValue::from(f64::INFINITY)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_infinite(&[DataValue::from(f64::NEG_INFINITY)]).unwrap(),
+        op_is_infinite(&[DataValue::from(f64::NEG_INFINITY)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_is_infinite(&[DataValue::from(f64::NAN)]).unwrap(),
+        op_is_infinite(&[DataValue::from(f64::NAN)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_nan(&[DataValue::from(1.0)]).unwrap(),
+        op_is_nan(&[DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_nan(&[DataValue::from(f64::INFINITY)]).unwrap(),
+        op_is_nan(&[DataValue::from(f64::INFINITY)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_nan(&[DataValue::from(f64::NEG_INFINITY)]).unwrap(),
+        op_is_nan(&[DataValue::from(f64::NEG_INFINITY)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_is_nan(&[DataValue::from(f64::NAN)]).unwrap(),
+        op_is_nan(&[DataValue::from(f64::NAN)]).expect("test assertion"),
         DataValue::from(true)
     );
 }
@@ -898,7 +936,7 @@ fn test_prepend_append() {
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)]),
             DataValue::Null,
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::Null,
             DataValue::from(1),
@@ -910,7 +948,7 @@ fn test_prepend_append() {
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)]),
             DataValue::Null,
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::from(1),
             DataValue::from(2),
@@ -922,15 +960,15 @@ fn test_prepend_append() {
 #[test]
 fn test_length() {
     assert_eq!(
-        op_length(&[DataValue::Str("abc".into())]).unwrap(),
+        op_length(&[DataValue::Str("abc".into())]).expect("test assertion"),
         DataValue::from(3)
     );
     assert_eq!(
-        op_length(&[DataValue::List(vec![])]).unwrap(),
+        op_length(&[DataValue::List(vec![])]).expect("test assertion"),
         DataValue::from(0)
     );
     assert_eq!(
-        op_length(&[DataValue::Bytes([].into())]).unwrap(),
+        op_length(&[DataValue::Bytes([].into())]).expect("test assertion"),
         DataValue::from(0)
     );
 }
@@ -939,7 +977,7 @@ fn test_length() {
 fn test_unicode_normalize() {
     assert_eq!(
         op_unicode_normalize(&[DataValue::Str("abc".into()), DataValue::Str("nfc".into())])
-            .unwrap(),
+            .expect("test assertion"),
         DataValue::Str("abc".into())
     )
 }
@@ -953,7 +991,7 @@ fn test_sort_reverse() {
             DataValue::from(2),
             DataValue::Null,
         ])])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::Null,
             DataValue::from(1),
@@ -968,7 +1006,7 @@ fn test_sort_reverse() {
             DataValue::from(2),
             DataValue::Null,
         ])])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::Null,
             DataValue::from(2),
@@ -986,9 +1024,9 @@ fn test_haversine() {
         DataValue::from(0),
         DataValue::from(180),
     ])
-    .unwrap()
+    .expect("test assertion")
     .get_float()
-    .unwrap();
+    .expect("test assertion");
     assert!(((d) - (PI)).abs() < 1e-5);
 
     let d = op_haversine_deg_input(&[
@@ -997,9 +1035,9 @@ fn test_haversine() {
         DataValue::from(0),
         DataValue::from(123),
     ])
-    .unwrap()
+    .expect("test assertion")
     .get_float()
-    .unwrap();
+    .expect("test assertion");
     assert!(((d) - (PI / 2.)).abs() < 1e-5);
 
     let d = op_haversine(&[
@@ -1008,20 +1046,20 @@ fn test_haversine() {
         DataValue::from(0),
         DataValue::from(PI),
     ])
-    .unwrap()
+    .expect("test assertion")
     .get_float()
-    .unwrap();
+    .expect("test assertion");
     assert!(((d) - (PI)).abs() < 1e-5);
 }
 
 #[test]
 fn test_deg_rad() {
     assert_eq!(
-        op_deg_to_rad(&[DataValue::from(180)]).unwrap(),
+        op_deg_to_rad(&[DataValue::from(180)]).expect("test assertion"),
         DataValue::from(PI)
     );
     assert_eq!(
-        op_rad_to_deg(&[DataValue::from(PI)]).unwrap(),
+        op_rad_to_deg(&[DataValue::from(PI)]).expect("test assertion"),
         DataValue::from(180.0)
     );
 }
@@ -1029,11 +1067,11 @@ fn test_deg_rad() {
 #[test]
 fn test_first_last() {
     assert_eq!(
-        op_first(&[DataValue::List(vec![])]).unwrap(),
+        op_first(&[DataValue::List(vec![])]).expect("test assertion"),
         DataValue::Null,
     );
     assert_eq!(
-        op_last(&[DataValue::List(vec![])]).unwrap(),
+        op_last(&[DataValue::List(vec![])]).expect("test assertion"),
         DataValue::Null,
     );
     assert_eq!(
@@ -1041,7 +1079,7 @@ fn test_first_last() {
             DataValue::from(1),
             DataValue::from(2),
         ])])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(1),
     );
     assert_eq!(
@@ -1049,7 +1087,7 @@ fn test_first_last() {
             DataValue::from(1),
             DataValue::from(2),
         ])])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(2),
     );
 }
@@ -1067,7 +1105,7 @@ fn test_chunks() {
             ]),
             DataValue::from(2),
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)]),
             DataValue::List(vec![DataValue::from(3), DataValue::from(4)]),
@@ -1085,7 +1123,7 @@ fn test_chunks() {
             ]),
             DataValue::from(2),
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)]),
             DataValue::List(vec![DataValue::from(3), DataValue::from(4)]),
@@ -1102,7 +1140,7 @@ fn test_chunks() {
             ]),
             DataValue::from(3),
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![
             DataValue::List(vec![
                 DataValue::from(1),
@@ -1135,11 +1173,11 @@ fn test_get() {
             ]),
             DataValue::from(1)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(2)
     );
     assert_eq!(
-        op_maybe_get(&[DataValue::List(vec![]), DataValue::from(0)]).unwrap(),
+        op_maybe_get(&[DataValue::List(vec![]), DataValue::from(0)]).expect("test assertion"),
         DataValue::Null
     );
     assert_eq!(
@@ -1151,7 +1189,7 @@ fn test_get() {
             ]),
             DataValue::from(1)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::from(2)
     );
 }
@@ -1194,7 +1232,7 @@ fn test_slice() {
             DataValue::from(1),
             DataValue::from(-1)
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List(vec![DataValue::from(2)])
     );
 }
@@ -1202,7 +1240,8 @@ fn test_slice() {
 #[test]
 fn test_chars() {
     assert_eq!(
-        op_from_substrings(&[op_chars(&[DataValue::Str("abc".into())]).unwrap()]).unwrap(),
+        op_from_substrings(&[op_chars(&[DataValue::Str("abc".into())]).expect("test assertion")])
+            .expect("test assertion"),
         DataValue::Str("abc".into())
     )
 }
@@ -1210,8 +1249,10 @@ fn test_chars() {
 #[test]
 fn test_encode_decode() {
     assert_eq!(
-        op_decode_base64(&[op_encode_base64(&[DataValue::Bytes([1, 2, 3].into())]).unwrap()])
-            .unwrap(),
+        op_decode_base64(&[
+            op_encode_base64(&[DataValue::Bytes([1, 2, 3].into())]).expect("test assertion")
+        ])
+        .expect("test assertion"),
         DataValue::Bytes([1, 2, 3].into())
     )
 }
@@ -1219,48 +1260,51 @@ fn test_encode_decode() {
 #[test]
 fn test_to_string() {
     assert_eq!(
-        op_to_string(&[DataValue::from(false)]).unwrap(),
+        op_to_string(&[DataValue::from(false)]).expect("test assertion"),
         DataValue::Str("false".into())
     );
 }
 
 #[test]
 fn test_to_unity() {
-    assert_eq!(op_to_unity(&[DataValue::Null]).unwrap(), DataValue::from(0));
     assert_eq!(
-        op_to_unity(&[DataValue::from(false)]).unwrap(),
+        op_to_unity(&[DataValue::Null]).expect("test assertion"),
         DataValue::from(0)
     );
     assert_eq!(
-        op_to_unity(&[DataValue::from(true)]).unwrap(),
-        DataValue::from(1)
-    );
-    assert_eq!(
-        op_to_unity(&[DataValue::from(10)]).unwrap(),
-        DataValue::from(1)
-    );
-    assert_eq!(
-        op_to_unity(&[DataValue::from(1.0)]).unwrap(),
-        DataValue::from(1)
-    );
-    assert_eq!(
-        op_to_unity(&[DataValue::from(f64::NAN)]).unwrap(),
-        DataValue::from(1)
-    );
-    assert_eq!(
-        op_to_unity(&[DataValue::Str("0".into())]).unwrap(),
-        DataValue::from(1)
-    );
-    assert_eq!(
-        op_to_unity(&[DataValue::Str("".into())]).unwrap(),
+        op_to_unity(&[DataValue::from(false)]).expect("test assertion"),
         DataValue::from(0)
     );
     assert_eq!(
-        op_to_unity(&[DataValue::List(vec![])]).unwrap(),
+        op_to_unity(&[DataValue::from(true)]).expect("test assertion"),
+        DataValue::from(1)
+    );
+    assert_eq!(
+        op_to_unity(&[DataValue::from(10)]).expect("test assertion"),
+        DataValue::from(1)
+    );
+    assert_eq!(
+        op_to_unity(&[DataValue::from(1.0)]).expect("test assertion"),
+        DataValue::from(1)
+    );
+    assert_eq!(
+        op_to_unity(&[DataValue::from(f64::NAN)]).expect("test assertion"),
+        DataValue::from(1)
+    );
+    assert_eq!(
+        op_to_unity(&[DataValue::Str("0".into())]).expect("test assertion"),
+        DataValue::from(1)
+    );
+    assert_eq!(
+        op_to_unity(&[DataValue::Str("".into())]).expect("test assertion"),
         DataValue::from(0)
     );
     assert_eq!(
-        op_to_unity(&[DataValue::List(vec![DataValue::Null])]).unwrap(),
+        op_to_unity(&[DataValue::List(vec![])]).expect("test assertion"),
+        DataValue::from(0)
+    );
+    assert_eq!(
+        op_to_unity(&[DataValue::List(vec![DataValue::Null])]).expect("test assertion"),
         DataValue::from(1)
     );
 }
@@ -1268,81 +1312,84 @@ fn test_to_unity() {
 #[test]
 fn test_to_float() {
     assert_eq!(
-        op_to_float(&[DataValue::Null]).unwrap(),
+        op_to_float(&[DataValue::Null]).expect("test assertion"),
         DataValue::from(0.0)
     );
     assert_eq!(
-        op_to_float(&[DataValue::from(false)]).unwrap(),
+        op_to_float(&[DataValue::from(false)]).expect("test assertion"),
         DataValue::from(0.0)
     );
     assert_eq!(
-        op_to_float(&[DataValue::from(true)]).unwrap(),
+        op_to_float(&[DataValue::from(true)]).expect("test assertion"),
         DataValue::from(1.0)
     );
     assert_eq!(
-        op_to_float(&[DataValue::from(1)]).unwrap(),
+        op_to_float(&[DataValue::from(1)]).expect("test assertion"),
         DataValue::from(1.0)
     );
     assert_eq!(
-        op_to_float(&[DataValue::from(1.0)]).unwrap(),
+        op_to_float(&[DataValue::from(1.0)]).expect("test assertion"),
         DataValue::from(1.0)
     );
     assert!(
         op_to_float(&[DataValue::Str("NAN".into())])
-            .unwrap()
+            .expect("test assertion")
             .get_float()
-            .unwrap()
+            .expect("test assertion")
             .is_nan()
     );
     assert!(
         op_to_float(&[DataValue::Str("INF".into())])
-            .unwrap()
+            .expect("test assertion")
             .get_float()
-            .unwrap()
+            .expect("test assertion")
             .is_infinite()
     );
     assert!(
         op_to_float(&[DataValue::Str("NEG_INF".into())])
-            .unwrap()
+            .expect("test assertion")
             .get_float()
-            .unwrap()
+            .expect("test assertion")
             .is_infinite()
     );
     assert_eq!(
         op_to_float(&[DataValue::Str("3".into())])
-            .unwrap()
+            .expect("test assertion")
             .get_float()
-            .unwrap(),
+            .expect("test assertion"),
         3.
     );
 }
 
 #[test]
 fn test_rand() {
-    let n = op_rand_float(&[]).unwrap().get_float().unwrap();
+    let n = op_rand_float(&[])
+        .expect("test assertion")
+        .get_float()
+        .expect("test assertion");
     assert!(n >= 0.);
     assert!(n <= 1.);
     assert_eq!(
-        op_rand_bernoulli(&[DataValue::from(0)]).unwrap(),
+        op_rand_bernoulli(&[DataValue::from(0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_rand_bernoulli(&[DataValue::from(1)]).unwrap(),
+        op_rand_bernoulli(&[DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert!(op_rand_bernoulli(&[DataValue::from(2)]).is_err());
     let n = op_rand_int(&[DataValue::from(100), DataValue::from(200)])
-        .unwrap()
+        .expect("test assertion")
         .get_int()
-        .unwrap();
+        .expect("test assertion");
     assert!(n >= 100);
     assert!(n <= 200);
     assert_eq!(
-        op_rand_choose(&[DataValue::List(vec![])]).unwrap(),
+        op_rand_choose(&[DataValue::List(vec![])]).expect("test assertion"),
         DataValue::Null
     );
     assert_eq!(
-        op_rand_choose(&[DataValue::List(vec![DataValue::from(123)])]).unwrap(),
+        op_rand_choose(&[DataValue::List(vec![DataValue::from(123)])]).expect("test assertion"),
         DataValue::from(123)
     );
 }
@@ -1355,7 +1402,7 @@ fn test_set_ops() {
             DataValue::List([2, 3, 4].into_iter().map(DataValue::from).collect()),
             DataValue::List([3, 4, 5].into_iter().map(DataValue::from).collect())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List([1, 2, 3, 4, 5].into_iter().map(DataValue::from).collect())
     );
     assert_eq!(
@@ -1369,7 +1416,7 @@ fn test_set_ops() {
             DataValue::List([2, 3, 4].into_iter().map(DataValue::from).collect()),
             DataValue::List([3, 4, 5].into_iter().map(DataValue::from).collect())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List([3, 4].into_iter().map(DataValue::from).collect())
     );
     assert_eq!(
@@ -1383,69 +1430,79 @@ fn test_set_ops() {
             DataValue::List([2, 3, 4].into_iter().map(DataValue::from).collect()),
             DataValue::List([3, 4, 5].into_iter().map(DataValue::from).collect())
         ])
-        .unwrap(),
+        .expect("test assertion"),
         DataValue::List([1, 6].into_iter().map(DataValue::from).collect())
     );
 }
 
 #[test]
 fn test_uuid() {
-    let v1 = op_rand_uuid_v1(&[]).unwrap();
-    let v4 = op_rand_uuid_v4(&[]).unwrap();
-    assert!(op_is_uuid(&[v4]).unwrap().get_bool().unwrap());
-    assert!(op_uuid_timestamp(&[v1]).unwrap().get_float().is_some());
+    let v1 = op_rand_uuid_v1(&[]).expect("test assertion");
+    let v4 = op_rand_uuid_v4(&[]).expect("test assertion");
+    assert!(
+        op_is_uuid(&[v4])
+            .expect("test assertion")
+            .get_bool()
+            .expect("test assertion")
+    );
+    assert!(
+        op_uuid_timestamp(&[v1])
+            .expect("test assertion")
+            .get_float()
+            .is_some()
+    );
     assert!(op_to_uuid(&[DataValue::from("")]).is_err());
     assert!(op_to_uuid(&[DataValue::from("f3b4958c-52a1-11e7-802a-010203040506")]).is_ok());
 }
 
 #[test]
 fn test_now() {
-    let now = op_now(&[]).unwrap();
+    let now = op_now(&[]).expect("test assertion");
     assert!(matches!(now, DataValue::Num(_)));
-    let s = op_format_timestamp(&[now]).unwrap();
-    let _dt = op_parse_timestamp(&[s]).unwrap();
+    let s = op_format_timestamp(&[now]).expect("test assertion");
+    let _dt = op_parse_timestamp(&[s]).expect("test assertion");
 }
 
 #[test]
 fn test_to_bool() {
     assert_eq!(
-        op_to_bool(&[DataValue::Null]).unwrap(),
+        op_to_bool(&[DataValue::Null]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::from(true)]).unwrap(),
+        op_to_bool(&[DataValue::from(true)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::from(false)]).unwrap(),
+        op_to_bool(&[DataValue::from(false)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::from(0)]).unwrap(),
+        op_to_bool(&[DataValue::from(0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::from(0.0)]).unwrap(),
+        op_to_bool(&[DataValue::from(0.0)]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::from(1)]).unwrap(),
+        op_to_bool(&[DataValue::from(1)]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::from("")]).unwrap(),
+        op_to_bool(&[DataValue::from("")]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::from("a")]).unwrap(),
+        op_to_bool(&[DataValue::from("a")]).expect("test assertion"),
         DataValue::from(true)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::List(vec![])]).unwrap(),
+        op_to_bool(&[DataValue::List(vec![])]).expect("test assertion"),
         DataValue::from(false)
     );
     assert_eq!(
-        op_to_bool(&[DataValue::List(vec![DataValue::from(0)])]).unwrap(),
+        op_to_bool(&[DataValue::List(vec![DataValue::from(0)])]).expect("test assertion"),
         DataValue::from(true)
     );
 }
@@ -1453,14 +1510,20 @@ fn test_to_bool() {
 #[test]
 fn test_coalesce() {
     let db = DbInstance::default();
-    let res = db.run_default("?[a] := a = null ~ 1 ~ 2").unwrap().rows;
+    let res = db
+        .run_default("?[a] := a = null ~ 1 ~ 2")
+        .expect("test assertion")
+        .rows;
     assert_eq!(res[0][0], DataValue::from(1));
     let res = db
         .run_default("?[a] := a = null ~ null ~ null")
-        .unwrap()
+        .expect("test assertion")
         .rows;
     assert_eq!(res[0][0], DataValue::Null);
-    let res = db.run_default("?[a] := a = 2 ~ null ~ 1").unwrap().rows;
+    let res = db
+        .run_default("?[a] := a = 2 ~ null ~ 1")
+        .expect("test assertion")
+        .rows;
     assert_eq!(res[0][0], DataValue::from(2));
 }
 
@@ -1469,17 +1532,17 @@ fn test_range() {
     let db = DbInstance::default();
     let res = db
         .run_default("?[a] := a = int_range(1, 5)")
-        .unwrap()
+        .expect("test assertion")
         .into_json();
     assert_eq!(res["rows"][0][0], json!([1, 2, 3, 4]));
     let res = db
         .run_default("?[a] := a = int_range(5)")
-        .unwrap()
+        .expect("test assertion")
         .into_json();
     assert_eq!(res["rows"][0][0], json!([0, 1, 2, 3, 4]));
     let res = db
         .run_default("?[a] := a = int_range(15, 3, -2)")
-        .unwrap()
+        .expect("test assertion")
         .into_json();
     assert_eq!(res["rows"][0][0], json!([15, 13, 11, 9, 7, 5]));
 }

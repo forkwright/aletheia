@@ -221,8 +221,6 @@ active[fid, stab] :=
 mod tests {
     use super::*;
 
-    // --- Pure function tests ---
-
     #[test]
     fn volatility_zero_facts_returns_zero() {
         assert!((compute_volatility(0, 0, 0.0)).abs() < f64::EPSILON);
@@ -368,8 +366,6 @@ mod tests {
         assert_eq!(profile.nous_id, back.nous_id);
         assert_eq!(profile.top_entities.len(), back.top_entities.len());
     }
-
-    // --- Engine-dependent tests ---
 
     #[cfg(feature = "mneme-engine")]
     mod engine_tests {

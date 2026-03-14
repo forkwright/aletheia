@@ -39,11 +39,8 @@
 //! }
 //! ```
 
-// This module contains the `CozoDB` store implementation as documentation and
-// reference code. It will be activated when the cozo feature flag is enabled
-// in the production binary.
-//
-// The Datalog queries are validated by the mneme-bench crate.
+// WHY: This module is activated only with the mneme-engine feature; Datalog queries
+// are validated by the mneme-bench crate.
 
 #[cfg(feature = "mneme-engine")]
 mod entity;
@@ -339,7 +336,6 @@ impl KnowledgeStore {
         use crate::engine::ScriptMutability;
         use std::collections::BTreeMap;
 
-        // Check if the database is already initialized (persistent reopen)
         let already_initialized = self
             .db
             .run(
@@ -407,7 +403,6 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        // Graph scores relation (PageRank + Louvain cache)
         self.db
             .run(
                 crate::graph_intelligence::GRAPH_SCORES_DDL,
@@ -421,7 +416,6 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        // Consolidation audit relation
         self.db
             .run(
                 crate::consolidation::CONSOLIDATION_AUDIT_DDL,
@@ -435,7 +429,6 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        // Schema version tracking relation
         self.db
             .run(
                 r":create schema_version { key: String => version: Int }",
@@ -473,8 +466,6 @@ impl KnowledgeStore {
 
         Ok(())
     }
-
-    // --- Schema & query infrastructure ---
 
     pub fn schema_version(&self) -> crate::error::Result<i64> {
         use crate::engine::DataValue;
@@ -571,8 +562,6 @@ impl KnowledgeStore {
             })
     }
 
-    // --- Backup & restore ---
-
     /// Create a backup of the knowledge database.
     ///
     /// Delegates to the inner engine's `backup_db`. Currently returns an error
@@ -635,8 +624,6 @@ impl KnowledgeStore {
         self.run_read(script, params).map(QueryResult::from)
     }
 
-    // --- Internal helpers ---
-
     /// Read a single fact by its ID (all temporal records matching).
     /// Returns all fields; does not apply time/validity filters.
     pub(super) fn read_facts_by_id(
@@ -662,8 +649,6 @@ impl KnowledgeStore {
         let rows = self.run_read(script, params)?;
         marshal::rows_to_raw_facts(rows)
     }
-
-    // --- Low-level engine wrappers ---
 
     pub(super) fn run_mut(
         &self,

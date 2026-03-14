@@ -1,5 +1,5 @@
 //! Tests for expression evaluation.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 use crate::engine::{DataValue, DbInstance};
 
 #[test]
@@ -12,7 +12,7 @@ fn expression_eval() {
     ?[a] := a = if(2 + 3 > 1 * 99999, 190291021 + 14341234212 / 2121)
     "#,
         )
-        .unwrap();
+        .expect("test assertion");
     assert_eq!(res.rows[0][0], DataValue::Null);
 
     let res = db
@@ -21,6 +21,6 @@ fn expression_eval() {
     ?[a] := a = if(2 + 3 > 1, true, false)
     "#,
         )
-        .unwrap();
-    assert!(res.rows[0][0].get_bool().unwrap());
+        .expect("test assertion");
+    assert!(res.rows[0][0].get_bool().expect("test assertion"));
 }

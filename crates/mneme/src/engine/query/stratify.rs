@@ -295,7 +295,6 @@ impl NormalFormProgram {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use crate::engine::DbInstance;
 
@@ -316,7 +315,7 @@ mod tests {
         ?[a] := w[a]
         "#,
             )
-            .unwrap()
+            .expect("stratification query must succeed in test")
             .rows;
         // dbg!(res);
     }

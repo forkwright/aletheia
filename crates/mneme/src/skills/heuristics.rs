@@ -26,6 +26,7 @@ pub struct HeuristicScore {
 
 /// High-level pattern category detected in a tool call sequence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum PatternType {
     /// Read → analyze → fix cycle (debugging → verification).
     Diagnostic,
@@ -38,10 +39,6 @@ pub enum PatternType {
     /// Read → analyze → report (assessment without transformation).
     Review,
 }
-
-// ---------------------------------------------------------------------------
-// Tool category classification
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ToolCategory {
@@ -64,10 +61,6 @@ fn tool_category(name: &str) -> ToolCategory {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Public entry point
-// ---------------------------------------------------------------------------
-
 /// Score a tool call sequence for skill potential.
 ///
 /// Returns a [`HeuristicScore`] with `passed_gates = false` if any must-pass
@@ -75,7 +68,6 @@ fn tool_category(name: &str) -> ToolCategory {
 pub fn score_sequence(tool_calls: &[ToolCallRecord]) -> HeuristicScore {
     let mut score = HeuristicScore::default();
 
-    // --- Must-pass gates ---
     if tool_calls.len() < 5 {
         score.details.push(format!(
             "REJECT: sequence too short ({} < 5)",
@@ -92,7 +84,6 @@ pub fn score_sequence(tool_calls: &[ToolCallRecord]) -> HeuristicScore {
         return score;
     }
 
-    // Anti-pattern checks
     if is_debugging_spiral(tool_calls) {
         score
             .details
@@ -114,7 +105,6 @@ pub fn score_sequence(tool_calls: &[ToolCallRecord]) -> HeuristicScore {
 
     score.passed_gates = true;
 
-    // --- Positive signals ---
     let coherence = coherence_score(tool_calls);
     score.total += coherence;
     score.details.push(format!("coherence: {coherence:.2}"));
@@ -127,10 +117,8 @@ pub fn score_sequence(tool_calls: &[ToolCallRecord]) -> HeuristicScore {
     score.total += completion;
     score.details.push(format!("completion: {completion:.2}"));
 
-    // Cap at 1.0
     score.total = score.total.min(1.0);
 
-    // --- Pattern detection ---
     score.pattern_type = detect_pattern(tool_calls);
     if let Some(ref p) = score.pattern_type {
         score.details.push(format!("pattern: {p:?}"));
@@ -138,10 +126,6 @@ pub fn score_sequence(tool_calls: &[ToolCallRecord]) -> HeuristicScore {
 
     score
 }
-
-// ---------------------------------------------------------------------------
-// Gate helpers
-// ---------------------------------------------------------------------------
 
 fn count_distinct_tools(tool_calls: &[ToolCallRecord]) -> usize {
     let mut seen = std::collections::HashSet::new();
@@ -169,7 +153,6 @@ fn is_debugging_spiral(tool_calls: &[ToolCallRecord]) -> bool {
     let bash_ratio = bash_count as f64 / total as f64;
     let error_ratio = error_count as f64 / total as f64;
 
-    // High Bash ratio with significant errors = flailing
     bash_ratio > 0.50 && error_ratio > 0.20
 }
 
@@ -196,7 +179,6 @@ fn is_single_file_edit(tool_calls: &[ToolCallRecord]) -> bool {
         .filter(|c| **c == ToolCategory::Read)
         .count();
 
-    // Exactly 1 write, no search, has reads — looks like a targeted fix
     write_count == 1 && search_count == 0 && read_count >= 1
 }
 
@@ -226,16 +208,11 @@ fn is_config_specific(tool_calls: &[ToolCallRecord]) -> bool {
         .filter(|c| **c == ToolCategory::Execute)
         .count();
 
-    // Only reads and executions, no writes, no search
     write_count == 0
         && search_count == 0
         && read_count >= 2
         && (read_count + exec_count) == tool_calls.len()
 }
-
-// ---------------------------------------------------------------------------
-// Scoring functions
-// ---------------------------------------------------------------------------
 
 /// Coherence score (0.0–0.30): rewards tool sequences that follow logical order.
 ///
@@ -282,7 +259,6 @@ fn diversity_score(tool_calls: &[ToolCallRecord]) -> f64 {
     let mut categories = std::collections::HashSet::new();
     for tc in tool_calls {
         let cat = tool_category(&tc.tool_name);
-        // Only count the "meaningful" categories
         if matches!(
             cat,
             ToolCategory::Read | ToolCategory::Search | ToolCategory::Write | ToolCategory::Execute
@@ -291,12 +267,10 @@ fn diversity_score(tool_calls: &[ToolCallRecord]) -> f64 {
         }
     }
 
-    // Use distinct meaningful tool categories, not individual tools
     let mut distinct_cats = std::collections::HashSet::new();
     for tc in tool_calls {
         distinct_cats.insert(tool_category(&tc.tool_name));
     }
-    // Remove non-meaningful categories
     distinct_cats.remove(&ToolCategory::Orchestrate);
     distinct_cats.remove(&ToolCategory::Other);
 
@@ -316,12 +290,10 @@ fn completion_score(tool_calls: &[ToolCallRecord]) -> f64 {
             return 0.30;
         }
     }
-    // Has Bash anywhere (weaker signal)
     let has_bash = tool_calls.iter().any(|tc| tc.tool_name == "Bash");
     if has_bash {
         return 0.15;
     }
-    // Ends with Write/Edit (synthesis)
     if let Some(last) = tool_calls.last()
         && matches!(tool_category(&last.tool_name), ToolCategory::Write)
     {
@@ -329,10 +301,6 @@ fn completion_score(tool_calls: &[ToolCallRecord]) -> f64 {
     }
     0.0
 }
-
-// ---------------------------------------------------------------------------
-// Pattern detection
-// ---------------------------------------------------------------------------
 
 #[expect(
     clippy::cast_precision_loss,
@@ -362,46 +330,33 @@ fn detect_pattern(tool_calls: &[ToolCallRecord]) -> Option<PatternType> {
         .filter(|c| **c == ToolCategory::Execute)
         .count();
 
-    // Build: write+execute cycles (constructive iteration)
     if write_count >= 2 && exec_count >= 2 && has_write_exec_cycle(&categories) {
         return Some(PatternType::Build);
     }
-
-    // Research: heavy search+read, minimal write
     let explore_ratio = (search_count + read_count) as f64 / total;
     if explore_ratio > 0.60 && write_count == 0 {
         return Some(PatternType::Research);
     }
-
-    // Diagnostic: read/search → write (fix) → execute (verify), with fix cycle
     if exec_count > 0
         && write_count >= 1
         && search_count + read_count > write_count
         && ends_with_execute(&categories)
+        && (search_count > 0 || read_count >= 2)
     {
-        // Prefer Diagnostic when there's a fix pattern
-        if search_count > 0 || read_count >= 2 {
-            return Some(PatternType::Diagnostic);
-        }
+        return Some(PatternType::Diagnostic);
     }
-
-    // Refactor: balanced read+write, ends with execute
     if read_count >= 2 && write_count >= 2 && exec_count > 0 && ends_with_execute(&categories) {
         return Some(PatternType::Refactor);
     }
-
-    // Review: heavy read, light/no write
     let read_heavy = (read_count + search_count) as f64 / total > 0.50;
     let write_light = (write_count as f64 / total) < 0.20;
     if read_heavy && write_light {
         return Some(PatternType::Review);
     }
-
     None
 }
 
 fn has_write_exec_cycle(categories: &[ToolCategory]) -> bool {
-    // Look for at least one Write→Execute transition
     categories
         .windows(2)
         .any(|w| w[0] == ToolCategory::Write && w[1] == ToolCategory::Execute)
@@ -414,10 +369,6 @@ fn ends_with_execute(categories: &[ToolCategory]) -> bool {
         .take(3)
         .any(|c| *c == ToolCategory::Execute)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
