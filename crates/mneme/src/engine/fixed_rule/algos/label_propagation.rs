@@ -1,8 +1,4 @@
 //! Label propagation community detection.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::BTreeMap;
 
 use crate::engine::error::InternalResult as Result;
@@ -50,6 +46,10 @@ impl FixedRule for LabelPropagation {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "candidate_labels guaranteed non-empty by take_while on non-empty source"
+)]
 fn label_propagation(
     graph: &DirectedCsrGraph<f32>,
     max_iter: usize,
@@ -79,7 +79,9 @@ fn label_propagation(
                 .take_while(|(_, score)| *score == max_score)
                 .map(|(l, _)| l)
                 .collect_vec();
-            let new_label = *candidate_labels.choose(&mut rng).unwrap();
+            let new_label = *candidate_labels
+                .choose(&mut rng)
+                .expect("candidate_labels is non-empty");
             if new_label != labels[*node as usize] {
                 changed = true;
                 labels[*node as usize] = new_label;

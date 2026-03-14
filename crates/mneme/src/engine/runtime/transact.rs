@@ -1,9 +1,5 @@
 //! Schema and relation transact operations.
 #![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
-#![expect(
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
@@ -283,7 +279,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                                 let lock = self
                                     .obtain_relation_locks(iter::once(e.key()))
                                     .pop()
-                                    .unwrap();
+                                    .expect("obtain_relation_locks returns one lock per input");
                                 e.insert(lock);
                             }
                             Entry::Occupied(_) => {}

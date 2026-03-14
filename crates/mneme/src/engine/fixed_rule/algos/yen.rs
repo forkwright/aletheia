@@ -1,8 +1,4 @@
 //! Yen's k-shortest paths.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::InternalResult as Result;
@@ -120,6 +116,10 @@ impl FixedRule for KShortestPathYen {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "k_shortest/candidates checked non-empty before access"
+)]
 fn k_shortest_path_yen(
     k: usize,
     edges: &DirectedCsrGraph<f32>,
@@ -139,7 +139,9 @@ fn k_shortest_path_yen(
     }
 
     for _ in 1..k {
-        let (_, prev_path) = k_shortest.last().unwrap();
+        let (_, prev_path) = k_shortest
+            .last()
+            .expect("k_shortest is non-empty after initial push");
         for i in 0..prev_path.len() - 1 {
             let spur_node = match prev_path.get(i) {
                 None => return Ok(vec![]),
@@ -196,7 +198,9 @@ fn k_shortest_path_yen(
             break;
         }
         candidates.sort_by(|(a_cost, _), (b_cost, _)| b_cost.total_cmp(a_cost));
-        let shortest = candidates.pop().unwrap();
+        let shortest = candidates
+            .pop()
+            .expect("candidates checked non-empty above");
         let shortest_dist = shortest.0;
         if shortest_dist.is_finite() {
             k_shortest.push(shortest);

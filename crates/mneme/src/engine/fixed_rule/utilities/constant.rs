@@ -1,8 +1,4 @@
 //! Constant-value fixed rule.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::BTreeMap;
 
 use crate::engine::error::InternalResult as Result;
@@ -21,21 +17,38 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct Constant;
 
 impl FixedRule for Constant {
+    #[expect(
+        clippy::expect_used,
+        reason = "data shape validated by init_options before run"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
         out: &mut RegularTempStore,
         _poison: Poison,
     ) -> Result<()> {
-        let data = payload.expr_option("data", None).unwrap();
-        let data = data.get_const().unwrap().get_slice().unwrap();
+        let data = payload
+            .expr_option("data", None)
+            .expect("data option validated in init_options");
+        let data = data
+            .get_const()
+            .expect("data is a constant, validated in init_options")
+            .get_slice()
+            .expect("data is a list, validated in init_options");
         for row in data {
-            let tuple = row.get_slice().unwrap().into();
+            let tuple = row
+                .get_slice()
+                .expect("row is a list, validated in init_options")
+                .into();
             out.put(tuple)
         }
         Ok(())
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "data shape validated by init_options before arity"
+    )]
     fn arity(
         &self,
         options: &BTreeMap<CompactString, Expr>,
@@ -44,11 +57,11 @@ impl FixedRule for Constant {
     ) -> Result<usize> {
         let data = options
             .get("data")
-            .unwrap()
+            .expect("data option must exist")
             .get_const()
-            .unwrap()
+            .expect("data must be a constant")
             .get_slice()
-            .unwrap();
+            .expect("data must be a list");
         Ok(if data.is_empty() {
             match rule_head.len() {
                 0 => {
@@ -62,7 +75,11 @@ impl FixedRule for Constant {
                 i => i,
             }
         } else {
-            data.first().unwrap().get_slice().unwrap().len()
+            data.first()
+                .expect("data is non-empty")
+                .get_slice()
+                .expect("first row must be a list")
+                .len()
         })
     }
 

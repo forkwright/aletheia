@@ -1,9 +1,5 @@
 //! Tarjan's strongly connected components.
 #![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
-#![expect(
     unused_imports,
     reason = "algorithm may use additional imports depending on feature flags"
 )]
@@ -40,6 +36,10 @@ impl StronglyConnectedComponent {
 
 #[cfg(feature = "graph-algo")]
 impl FixedRule for StronglyConnectedComponent {
+    #[expect(
+        clippy::expect_used,
+        reason = "indices bounded by graph size; tuples guaranteed non-empty"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -53,7 +53,9 @@ impl FixedRule for StronglyConnectedComponent {
         let tarjan = TarjanSccG::new(graph).run(poison)?;
         for (grp_id, cc) in tarjan.iter().enumerate() {
             for idx in cc {
-                let val = indices.get(*idx as usize).unwrap();
+                let val = indices
+                    .get(*idx as usize)
+                    .expect("idx within graph index bounds");
                 let tuple = vec![val.clone(), DataValue::from(grp_id as i64)];
                 out.put(tuple);
             }
@@ -64,7 +66,7 @@ impl FixedRule for StronglyConnectedComponent {
         if let Ok(nodes) = payload.get_input(1) {
             for tuple in nodes.iter()? {
                 let tuple = tuple?;
-                let node = tuple.into_iter().next().unwrap();
+                let node = tuple.into_iter().next().expect("tuple is non-empty");
                 if !inv_indices.contains_key(&node) {
                     inv_indices.insert(node.clone(), u32::MAX);
                     let tuple = vec![node, DataValue::from(counter)];
@@ -123,6 +125,10 @@ impl TarjanSccG {
 
         Ok(low_map.into_values().collect_vec())
     }
+    #[expect(
+        clippy::expect_used,
+        reason = "ids[at] set on entry before recursive use"
+    )]
     fn dfs(&mut self, at: u32) {
         self.stack.push(at);
         self.on_stack[at as usize] = true;
@@ -137,10 +143,11 @@ impl TarjanSccG {
                 self.low[at as usize] = min(self.low[at as usize], self.low[to as usize]);
             }
         }
-        if self.ids[at as usize].unwrap() == self.low[at as usize] {
+        if self.ids[at as usize].expect("id set during dfs traversal") == self.low[at as usize] {
             while let Some(node) = self.stack.pop() {
                 self.on_stack[node as usize] = false;
-                self.low[node as usize] = self.ids[at as usize].unwrap();
+                self.low[node as usize] =
+                    self.ids[at as usize].expect("id set during dfs traversal");
                 if node == at {
                     break;
                 }

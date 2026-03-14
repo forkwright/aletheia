@@ -1,8 +1,4 @@
 //! Unweighted shortest path via BFS.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::engine::error::InternalResult as Result;
@@ -12,6 +8,7 @@ use itertools::Itertools;
 use crate::engine::data::expr::Expr;
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::fixed_rule::error::GraphAlgorithmSnafu;
 use crate::engine::fixed_rule::{FixedRule, FixedRulePayload};
 use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;
@@ -20,6 +17,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct ShortestPathBFS;
 
 impl FixedRule for ShortestPathBFS {
+    #[expect(
+        clippy::expect_used,
+        reason = "ensure_min_len(1) guarantees tuples are non-empty"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -31,13 +32,13 @@ impl FixedRule for ShortestPathBFS {
             .get_input(1)?
             .ensure_min_len(1)?
             .iter()?
-            .map_ok(|n| n.into_iter().next().unwrap())
+            .map_ok(|n| n.into_iter().next().expect("tuple is non-empty"))
             .try_collect()?;
         let ending_nodes: BTreeSet<_> = payload
             .get_input(2)?
             .ensure_min_len(1)?
             .iter()?
-            .map_ok(|n| n.into_iter().next().unwrap())
+            .map_ok(|n| n.into_iter().next().expect("tuple is non-empty"))
             .try_collect()?;
 
         for starting_node in starting_nodes.iter() {
@@ -77,7 +78,16 @@ impl FixedRule for ShortestPathBFS {
                     let mut current = ending_node.clone();
                     while current != *starting_node {
                         route.push(current.clone());
-                        current = backtrace.get(&current).unwrap().clone();
+                        current = backtrace
+                            .get(&current)
+                            .ok_or_else(|| {
+                                GraphAlgorithmSnafu {
+                                    algorithm: "shortest_path_bfs",
+                                    message: "backtrace missing entry during path reconstruction",
+                                }
+                                .build()
+                            })?
+                            .clone();
                     }
                     route.push(starting_node.clone());
                     route.reverse();
