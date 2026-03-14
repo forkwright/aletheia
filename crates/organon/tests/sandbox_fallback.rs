@@ -29,8 +29,9 @@ mod linux {
     /// Landlock is available on the running kernel. This covers the graceful
     /// degradation path for kernels that lack Landlock support (#943).
     #[test]
-    fn permissive_fallback_succeeds_regardless_of_landlock_availability() {
-        let dir = tempfile::tempdir().unwrap();
+    fn permissive_fallback_succeeds_regardless_of_landlock_availability(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
         let config = SandboxConfig {
             enabled: true,
             enforcement: SandboxEnforcement::Permissive,
@@ -47,7 +48,7 @@ mod linux {
             "permissive mode must not error regardless of Landlock availability: {result:?}"
         );
 
-        let output = cmd.output().unwrap();
+        let output = cmd.output()?;
         assert!(
             output.status.success(),
             "tool must execute in permissive mode"
@@ -56,14 +57,16 @@ mod linux {
             String::from_utf8_lossy(&output.stdout).contains("permissive-fallback-ok"),
             "tool output must be captured"
         );
+        Ok(())
     }
 
     /// Strict enforcement must return a clear, named error when Landlock is
     /// unavailable — never an opaque "Permission denied (os error 13)".
     /// When Landlock IS available the command executes normally.
     #[test]
-    fn strict_enforcement_returns_clear_error_when_landlock_unavailable() {
-        let dir = tempfile::tempdir().unwrap();
+    fn strict_enforcement_returns_clear_error_when_landlock_unavailable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
         let config = SandboxConfig {
             enabled: true,
             enforcement: SandboxEnforcement::Enforcing,
@@ -75,8 +78,9 @@ mod linux {
         cmd.arg("unreachable");
 
         if probe_landlock_abi().is_none() {
-            // Landlock unavailable: must get a clear error, not an opaque OS error.
-            let err = apply_sandbox(&mut cmd, policy).unwrap_err();
+            let err = apply_sandbox(&mut cmd, policy)
+                .err()
+                .ok_or("enforcing mode must fail when Landlock is unavailable")?;
             let msg = err.to_string();
             assert!(
                 msg.contains("Landlock") || msg.contains("ABI"),
@@ -87,12 +91,12 @@ mod linux {
                 "opaque 'Permission denied' must not appear; error was: {msg}"
             );
         } else {
-            // Landlock available: enforcing mode proceeds without error.
             let result = apply_sandbox(&mut cmd, policy);
             assert!(
                 result.is_ok(),
                 "enforcing mode must succeed when Landlock is available: {result:?}"
             );
         }
+        Ok(())
     }
 }
