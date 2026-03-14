@@ -342,6 +342,12 @@ pub fn all_keybindings() -> &'static [Keybinding] {
             show_in_status_bar: false,
         },
         Keybinding {
+            keys: "Tab / Shift+Tab",
+            description: "Next / prev agent",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
             keys: "Ctrl+F",
             description: "Toggle sidebar",
             contexts: &[KeyContext::Global],

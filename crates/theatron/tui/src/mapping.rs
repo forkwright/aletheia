@@ -155,9 +155,10 @@ impl App {
                 } else if self.ops.visible {
                     Some(Msg::OpsFocusSwitch)
                 } else {
-                    None
+                    Some(Msg::NextAgent)
                 }
             }
+            (_, KeyCode::BackTab) => Some(Msg::PrevAgent),
 
             (_, KeyCode::PageUp) => Some(Msg::ScrollPageUp),
             (_, KeyCode::PageDown) => Some(Msg::ScrollPageDown),
@@ -170,6 +171,7 @@ impl App {
             (_, KeyCode::Left) => Some(Msg::CursorLeft),
             (_, KeyCode::Right) => Some(Msg::CursorRight),
             (_, KeyCode::Home) => Some(Msg::CursorHome),
+            (_, KeyCode::End) if self.input.text.is_empty() => Some(Msg::ScrollToBottom),
             (_, KeyCode::End) => Some(Msg::CursorEnd),
 
             // Up/Down with empty input enters selection mode; otherwise history nav
@@ -1145,5 +1147,61 @@ mod tests {
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::ViewPopBack)));
+    }
+
+    // --- ScrollToBottom keybinding tests ---
+
+    #[test]
+    fn end_key_on_empty_input_scrolls_to_bottom() {
+        let app = test_app();
+        let event = Event::Terminal(key(KeyCode::End));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::ScrollToBottom)));
+    }
+
+    #[test]
+    fn end_key_with_text_moves_cursor_to_end() {
+        let mut app = test_app();
+        app.input.text = "hello".to_string();
+        app.input.cursor = 0;
+        let event = Event::Terminal(key(KeyCode::End));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::CursorEnd)));
+    }
+
+    // --- NextAgent/PrevAgent keybinding tests ---
+
+    #[test]
+    fn tab_on_empty_input_with_no_ops_cycles_next_agent() {
+        let app = test_app();
+        let event = Event::Terminal(key(KeyCode::Tab));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::NextAgent)));
+    }
+
+    #[test]
+    fn tab_with_at_mention_does_completion_not_agent_cycle() {
+        let mut app = test_app();
+        app.input.text = "@al".to_string();
+        app.input.cursor = 3;
+        let event = Event::Terminal(key(KeyCode::Tab));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::CharInput('\t'))));
+    }
+
+    #[test]
+    fn shift_tab_cycles_prev_agent() {
+        let app = test_app();
+        let event = Event::Terminal(key(KeyCode::BackTab));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::PrevAgent)));
+    }
+
+    #[test]
+    fn ctrl_backtab_switches_tab_prev_not_agent() {
+        let app = test_app();
+        let event = Event::Terminal(key_mod(KeyCode::BackTab, KeyModifiers::CONTROL));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::TabPrev)));
     }
 }
