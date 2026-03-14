@@ -1,4 +1,4 @@
-//! Task action execution: commands, builtins, prompts, and knowledge maintenance.
+//! Task action execution: commands and builtins.
 
 use std::sync::Arc;
 
@@ -25,31 +25,6 @@ pub(crate) async fn execute_action(
 ) -> Result<ExecutionResult> {
     match action {
         TaskAction::Command(cmd) => execute_command(cmd).await,
-        TaskAction::Tool { name, .. } => {
-            tracing::info!(
-                nous_id = %nous_id,
-                tool = %name,
-                "tool execution not yet wired — requires organon integration"
-            );
-            Ok(ExecutionResult {
-                success: true,
-                output: None,
-            })
-        }
-        TaskAction::Prompt(prompt) => {
-            if let Some(bridge) = bridge {
-                bridge.send_prompt(nous_id, "daemon:prompt", prompt).await
-            } else {
-                tracing::warn!(
-                    nous_id = %nous_id,
-                    "prompt action skipped — no daemon bridge configured"
-                );
-                Ok(ExecutionResult {
-                    success: false,
-                    output: Some("no bridge configured".to_owned()),
-                })
-            }
-        }
         TaskAction::Builtin(builtin) => {
             execute_builtin(
                 builtin,
@@ -276,37 +251,6 @@ pub(crate) async fn execute_builtin(
                 messages = summary.messages_cleaned,
                 bytes_freed = summary.bytes_freed,
                 "maintenance: retention complete"
-            );
-            Ok(ExecutionResult {
-                success: true,
-                output: Some(format!(
-                    "{} sessions, {} messages cleaned, {} bytes freed",
-                    summary.sessions_cleaned, summary.messages_cleaned, summary.bytes_freed
-                )),
-            })
-        }
-        BuiltinTask::SessionRetention => {
-            let Some(executor) = retention_executor else {
-                tracing::warn!(
-                    nous_id = %nous_id,
-                    "session retention NOT_IMPLEMENTED: no retention executor configured"
-                );
-                return Ok(ExecutionResult {
-                    success: false,
-                    output: Some("NOT_IMPLEMENTED: no retention executor configured".to_owned()),
-                });
-            };
-            let summary = tokio::task::spawn_blocking(move || executor.execute_retention())
-                .await
-                .context(error::BlockingJoinSnafu {
-                    context: "session retention",
-                })??;
-            tracing::info!(
-                nous_id = %nous_id,
-                sessions = summary.sessions_cleaned,
-                messages = summary.messages_cleaned,
-                bytes_freed = summary.bytes_freed,
-                "maintenance: session retention complete"
             );
             Ok(ExecutionResult {
                 success: true,

@@ -75,7 +75,8 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         _params: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
-        // Static resources (no dynamic listing in Phase 1).
+        // TODO(#1136): Enumerate nous and config resources dynamically when the
+        // v1.5 resource registry is implemented. Static resources use read_resource.
         Ok(ListResourcesResult {
             resources: vec![],
             next_cursor: None,

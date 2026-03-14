@@ -230,10 +230,6 @@ mod tests {
         fn name(&self) -> &str {
             "mock"
         }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
     }
 
     fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
@@ -368,10 +364,6 @@ mod tests {
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
         fn name(&self) -> &str {
             "slow"
-        }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
         }
     }
 
