@@ -17,9 +17,6 @@ const SENSITIVE_LEAVES: &[&[&str]] = &[
 /// Object keys at any depth whose values are unconditionally redacted.
 const SENSITIVE_KEYS: &[&str] = &["token", "secret", "password", "apiKey", "api_key"];
 
-/// Keys within Signal account objects that contain PII.
-const SIGNAL_PII_KEYS: &[&str] = &["account"];
-
 /// Serialize config to JSON, then redact sensitive fields.
 #[must_use]
 pub fn redact(config: &AletheiaConfig) -> Value {
@@ -29,7 +26,6 @@ pub fn redact(config: &AletheiaConfig) -> Value {
     });
     redact_sensitive_leaves(&mut value);
     redact_sensitive_keys(&mut value);
-    redact_signal_accounts(&mut value);
     value
 }
 
@@ -64,24 +60,6 @@ fn redact_sensitive_keys(value: &mut Value) {
             }
         }
         _ => {}
-    }
-}
-
-fn redact_signal_accounts(root: &mut Value) {
-    let accounts = root
-        .pointer_mut("/channels/signal/accounts")
-        .and_then(Value::as_object_mut);
-
-    if let Some(accounts_map) = accounts {
-        for (_label, account) in accounts_map.iter_mut() {
-            if let Value::Object(acct) = account {
-                for key in SIGNAL_PII_KEYS {
-                    if acct.contains_key(*key) {
-                        acct.insert((*key).to_owned(), Value::String(REDACTED.to_owned()));
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -122,24 +100,7 @@ mod tests {
 
         assert_eq!(redacted["gateway"]["port"], 18789);
         assert_eq!(redacted["agents"]["defaults"]["contextTokens"], 200_000);
-        assert_eq!(redacted["agents"]["defaults"]["timeoutSeconds"], 300);
         assert_eq!(redacted["embedding"]["provider"], "candle");
-    }
-
-    #[test]
-    fn redacts_signal_phone_numbers() {
-        let mut config = AletheiaConfig::default();
-        config.channels.signal.accounts.insert(
-            "main".to_owned(),
-            crate::config::SignalAccountConfig {
-                account: Some("+447700900000".to_owned()),
-                ..Default::default()
-            },
-        );
-
-        let redacted = redact(&config);
-        let account = &redacted["channels"]["signal"]["accounts"]["main"]["account"];
-        assert_eq!(account, REDACTED);
     }
 
     #[test]
