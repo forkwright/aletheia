@@ -339,8 +339,8 @@ impl RelationHandle {
     pub(crate) fn decode(data: &[u8]) -> Result<Self> {
         rmp_serde::from_slice(data).map_err(|e| {
             error!(
-                "Cannot deserialize relation metadata from bytes: {:x?}, {:?}",
-                data, e
+                error = %e,
+                "cannot deserialize relation metadata"
             );
             crate::engine::error::InternalError::Runtime {
                 source: InvalidOperationSnafu {
