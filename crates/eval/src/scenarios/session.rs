@@ -64,7 +64,8 @@ impl Scenario for SessionCloseArchives {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "session-close-archives",
-            description: "Closing a session sets status to archived",
+            // WHY: DELETE archives the session; GET must return 404 afterwards (#1251).
+            description: "Closing a session makes it non-retrievable via GET (404)",
             category: "session",
             requires_auth: true,
             requires_nous: true,
@@ -83,12 +84,17 @@ impl Scenario for SessionCloseArchives {
                 let key = super::unique_key("session", "close");
                 let session = client.create_session(nous_id, &key).await?;
                 client.close_session(&session.id).await?;
-                let fetched = client.get_session(&session.id).await?;
-                assert_eq_eval(
-                    &fetched.status,
-                    &SessionStatus::Archived,
-                    "closed session should be archived",
-                )
+                // WHY: after DELETE the session is archived; GET must return 404 (#1251).
+                match client.get_session(&session.id).await {
+                    Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
+                        assert_eq_eval(&status, &404, "closed session must return 404")
+                    }
+                    Err(e) => Err(e),
+                    Ok(_) => crate::error::AssertionSnafu {
+                        message: "expected 404 for closed session but got success",
+                    }
+                    .fail(),
+                }
             }
             .instrument(tracing::info_span!(
                 "scenario",

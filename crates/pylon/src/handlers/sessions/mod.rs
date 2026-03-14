@@ -18,7 +18,8 @@ use tracing::{info, instrument};
 use aletheia_mneme::types::SessionStatus;
 
 use crate::error::{
-    ApiError, BadRequestSnafu, ErrorResponse, NousNotFoundSnafu, SessionNotFoundSnafu,
+    ApiError, BadRequestSnafu, ConflictSnafu, ErrorResponse, NousNotFoundSnafu,
+    SessionNotFoundSnafu,
 };
 use crate::extract::Claims;
 use crate::state::AppState;
@@ -75,20 +76,17 @@ pub async fn create(
 
     let session = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
-        match store.find_or_create_session(&id_clone, &nid, &skey, Some(&model), None) {
+        // WHY: use create_session (not find_or_create) so that any existing session
+        // with this (nous_id, session_key) pair — active or archived — produces a
+        // 409 Conflict rather than silently returning the existing session (#1249).
+        // The UNIQUE(nous_id, session_key) schema constraint enforces this even under
+        // concurrent requests.
+        match store.create_session(&id_clone, &nid, &skey, None, Some(&model)) {
             Ok(session) => Ok(session),
-            Err(e) if is_unique_constraint_violation(&e) => {
-                // WHY: Two concurrent POST requests both passed the "find existing" check
-                // and raced to INSERT. The schema's UNIQUE(nous_id, session_key) constraint
-                // caught the duplicate. Return whichever session won the race.
-                store
-                    .find_session(&nid, &skey)
-                    .map_err(ApiError::from)?
-                    .ok_or_else(|| ApiError::Internal {
-                        message: "session missing after constraint violation".to_owned(),
-                        location: snafu::Location::default(),
-                    })
+            Err(e) if is_unique_constraint_violation(&e) => Err(ConflictSnafu {
+                message: format!("a session with key '{skey}' already exists for agent '{nid}'"),
             }
+            .build()),
             Err(e) => Err(ApiError::from(e)),
         }
     })
@@ -106,7 +104,10 @@ pub async fn create(
 #[utoipa::path(
     get,
     path = "/api/v1/sessions",
-    params(("nous_id" = Option<String>, Query, description = "Filter sessions by agent ID")),
+    params(
+        ("nous_id" = Option<String>, Query, description = "Filter sessions by agent ID"),
+        ("limit" = Option<u32>, Query, description = "Maximum number of sessions to return"),
+    ),
     responses(
         (status = 200, description = "Session list", body = ListSessionsResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
@@ -120,6 +121,7 @@ pub async fn list_sessions(
     Query(params): Query<ListSessionsParams>,
 ) -> Result<Json<ListSessionsResponse>, ApiError> {
     let nous_id = params.nous_id;
+    let limit = params.limit;
 
     let state_clone = Arc::clone(&state);
     let sessions = tokio::task::spawn_blocking(move || {
@@ -129,6 +131,13 @@ pub async fn list_sessions(
             .map_err(ApiError::from)
     })
     .await??;
+
+    // WHY: the store does not accept a LIMIT parameter; apply the cap in-process
+    // after retrieval. Datasets are small enough that this is not a bottleneck (#1254).
+    let mut sessions = sessions;
+    if let Some(n) = limit {
+        sessions.truncate(usize::try_from(n).unwrap_or(usize::MAX));
+    }
 
     let items = sessions
         .into_iter()
@@ -154,7 +163,7 @@ pub async fn list_sessions(
     responses(
         (status = 200, description = "Session details", body = SessionResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
-        (status = 404, description = "Session not found", body = ErrorResponse),
+        (status = 404, description = "Session not found or deleted", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -165,6 +174,11 @@ pub async fn get_session(
     Path(id): Path<String>,
 ) -> Result<Json<SessionResponse>, ApiError> {
     let session = find_session(&state, &id).await?;
+    // WHY: DELETE archives the session. Archived sessions are non-retrievable via GET
+    // so that DELETE has the expected "resource gone" semantics (#1251).
+    if session.status != SessionStatus::Active {
+        return Err(SessionNotFoundSnafu { id }.build());
+    }
     Ok(Json(SessionResponse::from_mneme(&session)))
 }
 

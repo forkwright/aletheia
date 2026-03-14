@@ -489,16 +489,18 @@ async fn close_session_returns_204() {
 }
 
 #[tokio::test]
-async fn get_closed_session_shows_archived() {
+async fn get_deleted_session_returns_404() {
+    // DELETE archives the session; subsequent GET must return 404 (#1251).
     let (router, _dir) = app().await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
-    router
+    let del = router
         .clone()
         .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
+    assert_eq!(del.status(), StatusCode::NO_CONTENT);
 
     let resp = router
         .clone()
@@ -506,9 +508,9 @@ async fn get_closed_session_shows_archived() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let body = body_json(resp).await;
-    assert_eq!(body["status"], "archived");
+    assert_eq!(body["error"]["code"], "session_not_found");
 }
 
 #[tokio::test]
@@ -941,15 +943,13 @@ async fn double_close_session_is_idempotent() {
         .expect("second close");
     assert_eq!(second.status(), StatusCode::NO_CONTENT);
 
-    // Session should still be accessible as archived after both closes
+    // After both closes the session is gone from GET (#1251).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .expect("get after double close");
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_json(resp).await;
-    assert_eq!(body["status"], "archived");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -1505,13 +1505,13 @@ async fn archive_via_post_returns_204() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
+    // Archived sessions are non-retrievable via GET — same semantics as DELETE (#1251).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
         .unwrap();
-    let body = body_json(resp).await;
-    assert_eq!(body["status"], "archived");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -1661,30 +1661,33 @@ async fn stream_turn_unknown_agent_returns_404() {
 }
 
 #[tokio::test]
-async fn events_endpoint_returns_sse() {
-    // WHY: /api/v1/events is removed (stub replaced with 404) until a real
-    // server-side broadcast channel is wired into AppState (#1026).
+async fn events_endpoint_returns_200_sse() {
+    // /api/v1/events must return 200 with SSE content-type (#1248).
     let (app, _dir) = app().await;
     let resp = app.oneshot(authed_get("/api/v1/events")).await.unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "not_implemented");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(
+        ct.contains("text/event-stream"),
+        "expected text/event-stream content-type, got: {ct}"
+    );
 }
 
 #[tokio::test]
-async fn events_stream_contains_init_event() {
-    // WHY: /api/v1/events returns 404 until a broadcast channel is wired in
-    // (#1026). This test verifies the error response is well-formed JSON.
+async fn events_endpoint_requires_auth() {
     let (app, _dir) = app().await;
-    let resp = app.oneshot(authed_get("/api/v1/events")).await.unwrap();
+    let resp = app
+        .oneshot(Request::get("/api/v1/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    let body = body_json(resp).await;
-    assert_eq!(
-        body["error"]["code"], "not_implemented",
-        "events endpoint should return not_implemented code"
-    );
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -2905,4 +2908,98 @@ async fn sse_dropping_response_body_does_not_panic() {
     // Brief yield to let the background task observe channel closure.
     tokio::time::sleep(Duration::from_millis(50)).await;
     // If we reach here without panic, the connection-drop cleanup is correct.
+}
+
+// ── Regression tests for issues #1248 – #1254 ──────────────────────────────
+
+#[tokio::test]
+async fn list_sessions_limit_param_returns_n_sessions() {
+    // GET /api/v1/sessions?limit=N must return exactly N sessions (#1254).
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    // Create 5 sessions with distinct keys.
+    for i in 0..5_u32 {
+        let req = authed_request(
+            "POST",
+            "/api/v1/sessions",
+            Some(serde_json::json!({
+                "nous_id": "syn",
+                "session_key": format!("limit-test-{i}")
+            })),
+        );
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    let resp = router
+        .oneshot(authed_get("/api/v1/sessions?limit=3"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(
+        body["sessions"].as_array().unwrap().len(),
+        3,
+        "limit=3 must return exactly 3 sessions"
+    );
+}
+
+#[tokio::test]
+async fn create_duplicate_session_key_returns_409() {
+    // POST /api/v1/sessions with an existing session_key must return 409 (#1249).
+    let (router, _dir) = app().await;
+
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "duplicate-key"
+        })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Second request with same key must conflict.
+    let req2 = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "duplicate-key"
+        })),
+    );
+    let resp2 = router.clone().oneshot(req2).await.unwrap();
+    assert_eq!(resp2.status(), StatusCode::CONFLICT);
+    let body = body_json(resp2).await;
+    assert_eq!(body["error"]["code"], "conflict");
+}
+
+#[tokio::test]
+async fn send_message_to_archived_session_returns_409() {
+    // POST /api/v1/sessions/{id}/messages on an archived session must return 409 (#1250).
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    // Archive the session first.
+    let del = router
+        .clone()
+        .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(del.status(), StatusCode::NO_CONTENT);
+
+    // Sending a message to the archived session must be rejected.
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "hello" })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "conflict");
 }
