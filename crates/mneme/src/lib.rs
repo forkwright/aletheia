@@ -75,6 +75,9 @@ pub mod types;
 /// Controlled relationship type vocabulary for knowledge graph validation.
 pub mod vocab;
 
+#[cfg(test)]
+mod succession_tests;
+
 #[cfg(all(test, feature = "sqlite"))]
 mod assertions {
     use super::store::SessionStore;
