@@ -30,7 +30,7 @@ mod linux {
     /// degradation path for kernels that lack Landlock support (#943).
     #[test]
     fn permissive_fallback_succeeds_regardless_of_landlock_availability() {
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = tempfile::tempdir().unwrap();
         let config = SandboxConfig {
             enabled: true,
             enforcement: SandboxEnforcement::Permissive,
@@ -47,7 +47,7 @@ mod linux {
             "permissive mode must not error regardless of Landlock availability: {result:?}"
         );
 
-        let output = cmd.output().expect("spawn echo");
+        let output = cmd.output().unwrap();
         assert!(
             output.status.success(),
             "tool must execute in permissive mode"
@@ -63,7 +63,7 @@ mod linux {
     /// When Landlock IS available the command executes normally.
     #[test]
     fn strict_enforcement_returns_clear_error_when_landlock_unavailable() {
-        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir = tempfile::tempdir().unwrap();
         let config = SandboxConfig {
             enabled: true,
             enforcement: SandboxEnforcement::Enforcing,
@@ -77,7 +77,7 @@ mod linux {
         if probe_landlock_abi().is_none() {
             // Landlock unavailable: must get a clear error, not an opaque OS error.
             let err = apply_sandbox(&mut cmd, policy)
-                .expect_err("enforcing mode must fail when Landlock is unavailable");
+                .unwrap_err();
             let msg = err.to_string();
             assert!(
                 msg.contains("Landlock") || msg.contains("ABI"),
