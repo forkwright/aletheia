@@ -29,8 +29,8 @@ mod linux {
     /// Landlock is available on the running kernel. This covers the graceful
     /// degradation path for kernels that lack Landlock support (#943).
     #[test]
-    fn permissive_fallback_succeeds_regardless_of_landlock_availability(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn permissive_fallback_succeeds_regardless_of_landlock_availability()
+    -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let config = SandboxConfig {
             enabled: true,
@@ -64,8 +64,8 @@ mod linux {
     /// unavailable — never an opaque "Permission denied (os error 13)".
     /// When Landlock IS available the command executes normally.
     #[test]
-    fn strict_enforcement_returns_clear_error_when_landlock_unavailable(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn strict_enforcement_returns_clear_error_when_landlock_unavailable()
+    -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let config = SandboxConfig {
             enabled: true,
