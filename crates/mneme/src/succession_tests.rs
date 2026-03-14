@@ -6,7 +6,6 @@
 //! The actual implementation uses `1.5 - volatility`, which ranges [0.5, 1.5].
 //! Tests reflect the actual implementation. The discrepancy is noted in the PR body.
 
-
 use crate::graph_intelligence::{GraphContext, score_access_with_evolution};
 use crate::knowledge::{EpistemicTier, FactType};
 use crate::recall::compute_effective_stability;
