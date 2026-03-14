@@ -373,7 +373,7 @@ pricing:
 
 ## packs
 
-Array of filesystem paths to external domain packs. Each path should be a directory containing `pack.yaml`. See [PACKS.md](PACKS.md).
+Array of filesystem paths to external domain packs. Each path should be a directory containing `pack.toml`. See [PACKS.md](PACKS.md).
 
 ```yaml
 packs:

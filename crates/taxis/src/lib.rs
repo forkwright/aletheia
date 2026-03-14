@@ -11,7 +11,7 @@ pub mod cascade;
 pub mod config;
 /// Taxis-specific error types for configuration loading and path resolution.
 pub mod error;
-/// Figment-based configuration loader with YAML file and environment variable cascade.
+/// Figment-based configuration loader with TOML file and environment variable cascade.
 pub mod loader;
 /// Instance directory structure and path resolution for all Aletheia subsystems.
 pub mod oikos;

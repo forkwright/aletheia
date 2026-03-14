@@ -105,12 +105,14 @@ impl VectorSearch for KnowledgeVectorSearch {
     }
 }
 
-/// Per-factor scoring weights for the recall pipeline.
+/// Per-factor base scores for the recall pipeline.
 ///
-/// Each weight is applied to the corresponding [`aletheia_mneme::recall::FactorScores`]
-/// field before the engine aggregates them into a final score. All weights default to
-/// the values that were previously hardcoded, preserving existing behaviour unless an
-/// operator overrides them in taxis config.
+/// These values are placed directly into the non-vector
+/// [`aletheia_mneme::recall::FactorScores`] fields. Only vector similarity is computed
+/// from the actual embedding distance; decay, relevance, tier, proximity, and frequency
+/// use these configured values as their scores. All values default to the previously
+/// hardcoded constants, preserving existing behaviour unless an operator overrides them
+/// in taxis config.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallWeights {
     /// Temporal decay weight (0.0–1.0).
