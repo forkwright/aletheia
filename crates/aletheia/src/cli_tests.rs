@@ -5,8 +5,9 @@
 use std::path::PathBuf;
 
 use super::{
-    Cli, Command, commands::agent_io::InitArgs, commands::maintenance,
-    commands::session_export::ExportFormat,
+    Cli, Command, commands::add_nous::AddNousArgs, commands::agent_io::InitArgs,
+    commands::backup::BackupArgs, commands::credential, commands::maintenance,
+    commands::session_export::ExportFormat, commands::tls,
 };
 use clap::Parser;
 
@@ -280,5 +281,262 @@ fn init_instance_root_alias_accepted() {
             assert_eq!(instance_root.unwrap(), PathBuf::from("/custom/path"));
         }
         _ => panic!("expected Init command"),
+    }
+}
+
+// ── backup subcommand ────────────────────────────────────────────────────────
+
+#[test]
+fn backup_default_parses() {
+    let cli = Cli::parse_from(["aletheia", "backup"]);
+    match cli.command {
+        Some(Command::Backup(BackupArgs {
+            list,
+            prune,
+            export_json,
+            ..
+        })) => {
+            assert!(!list);
+            assert!(!prune);
+            assert!(!export_json);
+        }
+        _ => panic!("expected Backup command"),
+    }
+}
+
+#[test]
+fn backup_list_flag_parses() {
+    let cli = Cli::parse_from(["aletheia", "backup", "--list"]);
+    match cli.command {
+        Some(Command::Backup(args)) => assert!(args.list),
+        _ => panic!("expected Backup command"),
+    }
+}
+
+#[test]
+fn backup_list_with_json_flag_parses() {
+    let cli = Cli::parse_from(["aletheia", "backup", "--list", "--json"]);
+    match cli.command {
+        Some(Command::Backup(args)) => {
+            assert!(args.list);
+            assert!(args.json);
+        }
+        _ => panic!("expected Backup command"),
+    }
+}
+
+#[test]
+fn backup_prune_with_keep_parses() {
+    let cli = Cli::parse_from(["aletheia", "backup", "--prune", "--keep", "3", "--yes"]);
+    match cli.command {
+        Some(Command::Backup(args)) => {
+            assert!(args.prune);
+            assert_eq!(args.keep, 3);
+            assert!(args.yes);
+        }
+        _ => panic!("expected Backup command"),
+    }
+}
+
+#[test]
+fn backup_export_json_flag_parses() {
+    let cli = Cli::parse_from(["aletheia", "backup", "--export-json"]);
+    match cli.command {
+        Some(Command::Backup(args)) => assert!(args.export_json),
+        _ => panic!("expected Backup command"),
+    }
+}
+
+// ── credential subcommand ────────────────────────────────────────────────────
+
+#[test]
+fn credential_status_parses() {
+    let cli = Cli::parse_from(["aletheia", "credential", "status"]);
+    assert!(matches!(
+        cli.command,
+        Some(Command::Credential {
+            action: credential::Action::Status
+        })
+    ));
+}
+
+#[test]
+fn credential_refresh_parses() {
+    let cli = Cli::parse_from(["aletheia", "credential", "refresh"]);
+    assert!(matches!(
+        cli.command,
+        Some(Command::Credential {
+            action: credential::Action::Refresh
+        })
+    ));
+}
+
+// ── tls subcommand ───────────────────────────────────────────────────────────
+
+#[test]
+fn tls_generate_defaults_parses() {
+    let cli = Cli::parse_from(["aletheia", "tls", "generate"]);
+    match cli.command {
+        Some(Command::Tls {
+            action:
+                tls::Action::Generate {
+                    output_dir,
+                    days,
+                    force,
+                    ..
+                },
+        }) => {
+            assert_eq!(output_dir, PathBuf::from("instance/config/tls"));
+            assert_eq!(days, 365);
+            assert!(!force);
+        }
+        _ => panic!("expected Tls Generate command"),
+    }
+}
+
+#[test]
+fn tls_generate_custom_options_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "tls",
+        "generate",
+        "--output-dir",
+        "/tmp/certs",
+        "--days",
+        "90",
+        "--san",
+        "example.com",
+        "--force",
+    ]);
+    match cli.command {
+        Some(Command::Tls {
+            action:
+                tls::Action::Generate {
+                    output_dir,
+                    days,
+                    san,
+                    force,
+                },
+        }) => {
+            assert_eq!(output_dir, PathBuf::from("/tmp/certs"));
+            assert_eq!(days, 90);
+            assert!(san.contains(&"example.com".to_owned()));
+            assert!(force);
+        }
+        _ => panic!("expected Tls Generate command"),
+    }
+}
+
+// ── import subcommand ────────────────────────────────────────────────────────
+
+#[test]
+fn import_minimal_parses() {
+    let cli = Cli::parse_from(["aletheia", "import", "/tmp/agent.agent.json"]);
+    match cli.command {
+        Some(Command::Import(args)) => {
+            assert_eq!(args.file, PathBuf::from("/tmp/agent.agent.json"));
+            assert!(args.target_id.is_none());
+            assert!(!args.skip_sessions);
+            assert!(!args.skip_workspace);
+            assert!(!args.force);
+            assert!(!args.dry_run);
+        }
+        _ => panic!("expected Import command"),
+    }
+}
+
+#[test]
+fn import_with_all_flags_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "import",
+        "/tmp/agent.agent.json",
+        "--target-id",
+        "new-agent",
+        "--skip-sessions",
+        "--skip-workspace",
+        "--force",
+        "--dry-run",
+    ]);
+    match cli.command {
+        Some(Command::Import(args)) => {
+            assert_eq!(args.target_id.as_deref(), Some("new-agent"));
+            assert!(args.skip_sessions);
+            assert!(args.skip_workspace);
+            assert!(args.force);
+            assert!(args.dry_run);
+        }
+        _ => panic!("expected Import command"),
+    }
+}
+
+// ── completions subcommand ───────────────────────────────────────────────────
+
+#[test]
+fn completions_bash_parses() {
+    let cli = Cli::parse_from(["aletheia", "completions", "bash"]);
+    assert!(matches!(
+        cli.command,
+        Some(Command::Completions {
+            shell: clap_complete::Shell::Bash
+        })
+    ));
+}
+
+#[test]
+fn completions_zsh_parses() {
+    let cli = Cli::parse_from(["aletheia", "completions", "zsh"]);
+    assert!(matches!(
+        cli.command,
+        Some(Command::Completions {
+            shell: clap_complete::Shell::Zsh
+        })
+    ));
+}
+
+// ── check-config subcommand ──────────────────────────────────────────────────
+
+#[test]
+fn check_config_parses() {
+    let cli = Cli::parse_from(["aletheia", "check-config"]);
+    assert!(matches!(cli.command, Some(Command::CheckConfig)));
+}
+
+// ── add-nous subcommand ──────────────────────────────────────────────────────
+
+#[test]
+fn add_nous_defaults_parses() {
+    let cli = Cli::parse_from(["aletheia", "add-nous", "alice"]);
+    match cli.command {
+        Some(Command::AddNous(AddNousArgs {
+            name,
+            provider,
+            model,
+        })) => {
+            assert_eq!(name, "alice");
+            assert_eq!(provider, "anthropic");
+            assert!(!model.is_empty());
+        }
+        _ => panic!("expected AddNous command"),
+    }
+}
+
+#[test]
+fn add_nous_with_custom_model_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "add-nous",
+        "bob",
+        "--provider",
+        "anthropic",
+        "--model",
+        "claude-opus-4-20250514",
+    ]);
+    match cli.command {
+        Some(Command::AddNous(AddNousArgs { name, model, .. })) => {
+            assert_eq!(name, "bob");
+            assert_eq!(model, "claude-opus-4-20250514");
+        }
+        _ => panic!("expected AddNous command"),
     }
 }

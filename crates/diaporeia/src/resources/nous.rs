@@ -87,3 +87,69 @@ pub(crate) fn read_resource(
 
     Ok(vec![ResourceContents::text(content, uri)])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resource_templates_returns_five_entries() {
+        let templates = resource_templates();
+        assert_eq!(
+            templates.len(),
+            5,
+            "expected one template per workspace file"
+        );
+    }
+
+    #[test]
+    fn resource_templates_uris_use_aletheia_nous_scheme() {
+        let templates = resource_templates();
+        for t in &templates {
+            let uri = t.raw.uri_template.as_str();
+            assert!(
+                uri.starts_with("aletheia://nous/"),
+                "URI must use aletheia://nous/ scheme: {uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn resource_templates_include_nous_id_placeholder() {
+        let templates = resource_templates();
+        for t in &templates {
+            let uri = t.raw.uri_template.as_str();
+            assert!(
+                uri.contains("{nous_id}"),
+                "URI template must include {{nous_id}}: {uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn resource_templates_mime_type_is_markdown() {
+        let templates = resource_templates();
+        for t in &templates {
+            assert_eq!(
+                t.raw.mime_type.as_deref(),
+                Some("text/markdown"),
+                "workspace files must be served as markdown"
+            );
+        }
+    }
+
+    #[test]
+    fn resource_templates_cover_core_workspace_files() {
+        let templates = resource_templates();
+        let uris: Vec<&str> = templates
+            .iter()
+            .map(|t| t.raw.uri_template.as_str())
+            .collect();
+        for slug in &["soul", "identity", "memory", "goals", "tools"] {
+            assert!(
+                uris.iter().any(|u| u.ends_with(slug)),
+                "expected template for '{slug}' workspace file"
+            );
+        }
+    }
+}

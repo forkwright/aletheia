@@ -90,7 +90,10 @@ impl From<Error> for rmcp::ErrorData {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
+    use snafu::IntoError as _;
+
     use super::*;
 
     #[test]
@@ -136,5 +139,60 @@ mod tests {
             "server path must not reach the client"
         );
         assert!(mcp.message.contains("[server path]"));
+    }
+
+    #[test]
+    fn serialization_error_maps_to_internal_error() {
+        let raw_err = serde_json::from_str::<serde_json::Value>("{invalid").unwrap_err();
+        let err = SerializationSnafu {}.into_error(raw_err);
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(mcp.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+    }
+
+    #[test]
+    fn transport_error_maps_to_internal_error() {
+        let err = TransportSnafu {
+            message: "connection reset by peer".to_string(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(mcp.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+        assert!(mcp.message.contains("connection reset"));
+    }
+
+    #[test]
+    fn workspace_file_error_maps_to_internal_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let err = WorkspaceFileSnafu {}.into_error(io_err);
+        let mcp: rmcp::ErrorData = err.into();
+        assert_eq!(mcp.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+    }
+
+    #[test]
+    fn workspace_file_error_strips_server_path_from_message() {
+        let io_err = std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No such file: /srv/aletheia/nous/syn/SOUL.md",
+        );
+        let err = WorkspaceFileSnafu {}.into_error(io_err);
+        let mcp: rmcp::ErrorData = err.into();
+        assert!(
+            !mcp.message.contains("/srv/aletheia"),
+            "internal path must not reach client: {}",
+            mcp.message
+        );
+    }
+
+    #[test]
+    fn nous_not_found_message_contains_agent_id() {
+        let err = NousNotFoundSnafu {
+            id: "syn".to_string(),
+        }
+        .build();
+        let mcp: rmcp::ErrorData = err.into();
+        assert!(
+            mcp.message.contains("syn"),
+            "message must identify the missing agent"
+        );
     }
 }

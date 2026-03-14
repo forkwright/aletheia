@@ -773,3 +773,60 @@ fn parse_command_args_program_only() {
     assert_eq!(prog, "ls");
     assert!(args.is_empty());
 }
+
+// -- Protected file enforcement -----------------------------------------
+
+#[tokio::test]
+async fn write_blocks_identity_md() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input(
+        "write",
+        serde_json::json!({ "path": "IDENTITY.md", "content": "tampered" }),
+    );
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
+    assert!(result.is_error);
+    assert!(
+        result.content.text_summary().contains("protected"),
+        "must mention protected: {}",
+        result.content.text_summary()
+    );
+}
+
+#[tokio::test]
+async fn write_blocks_soul_md() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input(
+        "write",
+        serde_json::json!({ "path": "SOUL.md", "content": "overwritten" }),
+    );
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
+    assert!(result.is_error);
+    assert!(result.content.text_summary().contains("protected"));
+}
+
+#[tokio::test]
+async fn write_blocks_goals_md() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input(
+        "write",
+        serde_json::json!({ "path": "GOALS.md", "content": "replaced" }),
+    );
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
+    assert!(result.is_error);
+    assert!(result.content.text_summary().contains("protected"));
+}
+
+#[tokio::test]
+async fn write_allows_non_protected_file() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let ctx = test_ctx(dir.path());
+    let input = tool_input(
+        "write",
+        serde_json::json!({ "path": "notes.txt", "content": "safe" }),
+    );
+    let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
+    assert!(!result.is_error, "non-protected file must be writable");
+}
