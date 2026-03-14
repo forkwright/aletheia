@@ -17,7 +17,7 @@ pub enum Role {
 
 impl Role {
     /// String representation for storage.
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Operator => "operator",
             Self::Agent => "agent",
@@ -79,14 +79,22 @@ pub struct Claims {
 }
 
 /// An access + refresh token pair returned from login or refresh.
-pub struct TokenPair {
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "auth facade internal; exercised by crate tests")
+)]
+pub(crate) struct TokenPair {
     pub access_token: String,
     pub refresh_token: String,
 }
 
 /// Actions that can be authorized via RBAC.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "auth facade internal; exercised by crate tests")
+)]
 #[non_exhaustive]
-pub enum Action {
+pub(crate) enum Action {
     /// Read a session belonging to a specific nous.
     ReadSession { nous_id: String },
     /// Write to a session belonging to a specific nous.
@@ -113,7 +121,11 @@ impl std::fmt::Display for Action {
 
 /// Stored user record.
 #[derive(Debug, Clone)]
-pub struct User {
+#[expect(
+    dead_code,
+    reason = "auth facade internal; some fields unused even in crate tests"
+)]
+pub(crate) struct User {
     pub id: String,
     pub username: String,
     pub password_hash: String,
@@ -124,7 +136,11 @@ pub struct User {
 
 /// Stored API key metadata (never includes the secret).
 #[derive(Debug, Clone)]
-pub struct ApiKeyRecord {
+#[expect(
+    dead_code,
+    reason = "auth facade internal; some fields unused even in crate tests"
+)]
+pub(crate) struct ApiKeyRecord {
     pub id: String,
     pub prefix: String,
     pub key_hash: String,

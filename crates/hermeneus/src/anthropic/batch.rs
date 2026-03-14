@@ -1,4 +1,8 @@
 //! Batch API types for the Anthropic Messages Batches endpoint.
+#![expect(
+    dead_code,
+    reason = "batch API types reserved for future Anthropic batch support"
+)]
 
 use serde::{Deserialize, Serialize};
 

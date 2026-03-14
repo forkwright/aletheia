@@ -16,7 +16,7 @@ pub mod conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
 pub mod consolidation;
 /// Entity deduplication pipeline for merging semantically identical entities.
-pub mod dedup;
+pub(crate) mod dedup;
 /// Embedding provider trait and implementations (candle, mock).
 pub mod embedding;
 /// Mneme-specific error types and result alias.
@@ -27,7 +27,7 @@ pub mod export;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
 pub mod extract;
 /// Graph-enhanced recall scoring: PageRank boost, community proximity, supersession chains.
-pub mod graph_intelligence;
+pub(crate) mod graph_intelligence;
 /// In-memory HNSW vector index backed by `hnsw_rs`.
 #[cfg(feature = "hnsw_rs")]
 pub mod hnsw_index;
@@ -52,7 +52,7 @@ pub mod portability;
 #[cfg(feature = "mneme-engine")]
 pub mod query;
 /// LLM-powered query rewriting for recall pipeline enhancement.
-pub mod query_rewrite;
+pub(crate) mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
 /// Session retention policies and automated cleanup of old data.
@@ -69,7 +69,7 @@ pub mod skills;
 #[cfg(feature = "sqlite")]
 pub mod store;
 /// Ecological succession — domain volatility tracking and adaptive decay rates.
-pub mod succession;
+pub(crate) mod succession;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types;
 /// Controlled relationship type vocabulary for knowledge graph validation.
