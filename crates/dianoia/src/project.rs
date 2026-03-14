@@ -119,7 +119,7 @@ mod tests {
             "syn".into(),
         );
         let before = project.updated_at;
-        // Small sleep to ensure timestamp differs
+        // WHY: small sleep to ensure timestamp differs between state transitions
         std::thread::sleep(std::time::Duration::from_millis(2));
         project.advance(Transition::StartQuestioning).unwrap();
         assert_eq!(project.state, ProjectState::Questioning);
@@ -237,7 +237,6 @@ mod tests {
             ProjectMode::Full,
             "syn".into(),
         );
-        // Created -> StartExecution is invalid
         let result = project.advance(Transition::StartExecution);
         assert!(result.is_err());
         assert_eq!(project.state, ProjectState::Created);

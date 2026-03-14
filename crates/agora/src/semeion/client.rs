@@ -91,7 +91,7 @@ impl SignalClient {
             .await
             .context(error::HttpSnafu)?;
 
-        // 201 = accepted, no body (signal-cli convention for fire-and-forget)
+        // NOTE: 201 = accepted, no body (signal-cli convention for fire-and-forget)
         if response.status().as_u16() == 201 {
             return Ok(None);
         }
@@ -279,7 +279,7 @@ impl SendParams {
             );
         }
         if let Some(ref r) = self.recipient {
-            // signal-cli expects recipient as an array
+            // NOTE: signal-cli expects recipient as an array
             map.insert(
                 String::from("recipient"),
                 serde_json::Value::Array(vec![serde_json::Value::String(r.clone())]),
@@ -356,7 +356,6 @@ mod tests {
 
         let value = params.to_rpc_value();
         assert_eq!(value["message"], "hello");
-        // recipient is wrapped in an array
         assert_eq!(value["recipient"], serde_json::json!(["+1234567890"]));
         assert_eq!(value["account"], "+0987654321");
         assert!(value.get("groupId").is_none());
@@ -376,7 +375,6 @@ mod tests {
         let value = params.to_rpc_value();
         assert_eq!(value["message"], "group msg");
         assert!(value.get("recipient").is_none());
-        // group_id mapped to camelCase groupId
         assert_eq!(value["groupId"], "YWJjMTIz");
         assert_eq!(value["attachments"], serde_json::json!(["/tmp/photo.jpg"]));
     }

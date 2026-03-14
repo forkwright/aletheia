@@ -15,7 +15,6 @@ fn defaults_are_sensible() {
     assert_eq!(config.gateway.port, 18789);
     assert_eq!(config.gateway.bind, "localhost");
     assert_eq!(config.gateway.auth.mode, "token");
-    // Security config defaults
     assert!(!config.gateway.tls.enabled);
     assert!(config.gateway.tls.cert_path.is_none());
     assert!(config.gateway.cors.allowed_origins.is_empty());
@@ -32,7 +31,6 @@ fn defaults_are_sensible() {
     assert_eq!(config.embedding.provider, "candle");
     assert!(config.embedding.model.is_none());
     assert_eq!(config.embedding.dimension, 384);
-    // Maintenance defaults
     assert!(config.maintenance.trace_rotation.enabled);
     assert_eq!(config.maintenance.trace_rotation.max_age_days, 14);
     assert!(config.maintenance.drift_detection.enabled);

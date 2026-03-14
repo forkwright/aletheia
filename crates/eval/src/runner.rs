@@ -60,11 +60,9 @@ impl ScenarioRunner {
             None => all_scenarios,
         };
 
-        // Pre-flight: check connectivity
         let health = self.client.health().await.ok();
         let has_token = self.client.has_token();
 
-        // Check if any nous agents are configured
         let has_nous = if has_token {
             self.client
                 .list_nous()
@@ -93,7 +91,6 @@ impl ScenarioRunner {
         for (i, scenario) in scenarios.iter().enumerate() {
             let meta = scenario.meta();
 
-            // Pre-check: skip if prerequisites aren't met
             if health.is_none() {
                 results.push(ScenarioResult {
                     meta: meta.clone(),
@@ -169,8 +166,7 @@ impl ScenarioRunner {
             }
         }
 
-        // When fail_fast triggered, include remaining scenarios as skipped so that
-        // passed + failed + skipped == total. Omitting them makes counts inconsistent.
+        // WHY: when fail_fast triggers, mark remaining as skipped so passed + failed + skipped == total
         if let Some(remaining_start) = fail_fast_idx {
             for scenario in &scenarios[remaining_start..] {
                 results.push(ScenarioResult {

@@ -39,10 +39,6 @@ const REFRESH_CHECK_INTERVAL_SECS: u64 = 60;
 /// How often to check file mtime for external changes.
 const FILE_MTIME_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
-// ---------------------------------------------------------------------------
-// Credential file format (matches TS/Python)
-// ---------------------------------------------------------------------------
-
 /// On-disk credential file format.
 ///
 /// Accepts both `"token"` (native format) and `"accessToken"` (Claude Code OAuth
@@ -85,7 +81,6 @@ impl CredentialFile {
         file.sync_all()?;
         std::fs::rename(&tmp, path)?;
 
-        // Set restrictive permissions on Unix.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -123,10 +118,6 @@ impl CredentialFile {
     }
 }
 
-// ---------------------------------------------------------------------------
-// OAuth response
-// ---------------------------------------------------------------------------
-
 #[derive(Deserialize)]
 struct OAuthResponse {
     access_token: String,
@@ -150,10 +141,6 @@ impl std::fmt::Debug for OAuthResponse {
 fn default_expires_in() -> u64 {
     28800 // 8 hours
 }
-
-// ---------------------------------------------------------------------------
-// EnvCredentialProvider
-// ---------------------------------------------------------------------------
 
 /// OAuth token prefix used by Claude Code for OAuth access tokens.
 const OAUTH_TOKEN_PREFIX: &str = "sk-ant-oat";
@@ -210,10 +197,6 @@ impl CredentialProvider for EnvCredentialProvider {
     }
 }
 
-// ---------------------------------------------------------------------------
-// FileCredentialProvider
-// ---------------------------------------------------------------------------
-
 struct CachedFile {
     token: String,
     mtime: SystemTime,
@@ -266,7 +249,6 @@ impl FileCredentialProvider {
 
 impl CredentialProvider for FileCredentialProvider {
     fn get_credential(&self) -> Option<Credential> {
-        // Check cache validity
         if let Ok(guard) = self.cached.read()
             && let Some(cached) = guard.as_ref()
         {
@@ -276,11 +258,9 @@ impl CredentialProvider for FileCredentialProvider {
                     source: CredentialSource::File,
                 });
             }
-            // Check if file changed
             if let Some(mtime) = self.current_mtime()
                 && mtime == cached.mtime
             {
-                // File unchanged — update check timestamp and return cached
                 drop(guard);
                 if let Ok(mut w) = self.cached.write()
                     && let Some(ref mut c) = *w
@@ -298,7 +278,6 @@ impl CredentialProvider for FileCredentialProvider {
             }
         }
 
-        // Cache miss or stale — reload
         self.reload().map(|token| Credential {
             secret: token,
             source: CredentialSource::File,
@@ -313,10 +292,6 @@ impl CredentialProvider for FileCredentialProvider {
         "file"
     }
 }
-
-// ---------------------------------------------------------------------------
-// RefreshingCredentialProvider
-// ---------------------------------------------------------------------------
 
 struct RefreshState {
     current_token: String,
@@ -381,7 +356,6 @@ impl RefreshingCredentialProvider {
 
 impl CredentialProvider for RefreshingCredentialProvider {
     fn get_credential(&self) -> Option<Credential> {
-        // Try in-memory refreshed token first
         if let Ok(guard) = self.state.read()
             && let Some(ref s) = *guard
             && !s.current_token.is_empty()
@@ -391,7 +365,6 @@ impl CredentialProvider for RefreshingCredentialProvider {
                 source: CredentialSource::OAuth,
             });
         }
-        // Fall back to file read
         self.file_provider.get_credential()
     }
 
@@ -432,7 +405,6 @@ async fn refresh_loop(
             break;
         }
 
-        // Check if refresh is needed
         let (refresh_token, needs_refresh) = {
             let Ok(guard) = state.read() else {
                 continue;
@@ -459,7 +431,6 @@ async fn refresh_loop(
                 let now_ms = unix_epoch_ms();
                 let expires_at_ms = now_ms + resp.expires_in * 1000;
 
-                // Update in-memory state
                 if let Ok(mut guard) = state.write() {
                     *guard = Some(RefreshState {
                         current_token: resp.access_token.clone(),
@@ -468,7 +439,6 @@ async fn refresh_loop(
                     });
                 }
 
-                // Update file
                 let scopes = resp
                     .scope
                     .map(|s| s.split_whitespace().map(String::from).collect());
@@ -566,10 +536,6 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
     Ok(updated)
 }
 
-// ---------------------------------------------------------------------------
-// Claude Code credential detection
-// ---------------------------------------------------------------------------
-
 /// Default path to the Claude Code credentials file.
 ///
 /// Returns `~/.claude/.credentials.json`, resolving `~` via `$HOME`.
@@ -610,10 +576,6 @@ pub fn claude_code_provider(path: &Path) -> Option<Box<dyn CredentialProvider>> 
     );
     Some(Box::new(FileCredentialProvider::new(path.to_path_buf())))
 }
-
-// ---------------------------------------------------------------------------
-// CredentialChain
-// ---------------------------------------------------------------------------
 
 /// Ordered list of credential providers. First to return `Some` wins.
 pub struct CredentialChain {

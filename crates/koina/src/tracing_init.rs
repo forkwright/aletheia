@@ -40,14 +40,12 @@ pub fn init_json() {
 
 #[cfg(test)]
 mod tests {
-    // Tracing init is global state — can only test it doesn't panic.
-    // Integration tests exercise actual output.
+    // NOTE: tracing init is global state — can only test it doesn't panic; integration tests exercise actual output
 
     #[test]
     fn env_filter_parses_default() {
         use tracing_subscriber::EnvFilter;
         let filter = EnvFilter::new("aletheia=info,warn");
-        // Just verifying it doesn't panic
         drop(filter);
     }
 }

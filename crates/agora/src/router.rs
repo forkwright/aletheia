@@ -22,6 +22,7 @@ pub struct RouteDecision<'a> {
 
 /// How the routing decision was made.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MatchReason {
     /// Matched by exact group ID binding on a specific channel.
     GroupBinding,
@@ -65,7 +66,7 @@ impl MessageRouter {
     }
 
     fn match_route(&self, msg: &InboundMessage) -> Option<RouteDecision<'_>> {
-        // Priority 1: exact group match (channel + group_id)
+        // NOTE: Priority 1: exact group match (channel + group_id)
         if let Some(group_id) = &msg.group_id {
             for b in &self.bindings {
                 if b.channel == msg.channel && b.source == *group_id {
@@ -78,7 +79,7 @@ impl MessageRouter {
             }
         }
 
-        // Priority 2: exact source match (channel + sender)
+        // NOTE: Priority 2: exact source match (channel + sender)
         for b in &self.bindings {
             if b.channel == msg.channel && b.source == msg.sender {
                 return Some(RouteDecision {
@@ -89,7 +90,7 @@ impl MessageRouter {
             }
         }
 
-        // Priority 3: channel default (source = "*")
+        // NOTE: Priority 3: channel default (source = "*")
         for b in &self.bindings {
             if b.channel == msg.channel && b.source == "*" {
                 return Some(RouteDecision {
@@ -100,7 +101,7 @@ impl MessageRouter {
             }
         }
 
-        // Priority 4: global default
+        // NOTE: Priority 4: global default
         self.default_nous.as_deref().map(|id| RouteDecision {
             nous_id: id,
             session_key: expand_session_key("{source}", msg),

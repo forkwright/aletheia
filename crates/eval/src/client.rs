@@ -34,8 +34,6 @@ impl EvalClient {
         &self.base_url
     }
 
-    // --- Health (no auth) ---
-
     /// Check instance health.
     #[instrument(skip(self))]
     pub async fn health(&self) -> Result<HealthResponse> {
@@ -43,8 +41,6 @@ impl EvalClient {
         let resp = self.http.get(&url).send().await.context(error::HttpSnafu)?;
         self.expect_ok(&url, resp).await
     }
-
-    // --- Nous ---
 
     /// List all configured nous agents.
     #[instrument(skip(self))]
@@ -62,8 +58,6 @@ impl EvalClient {
         let resp = self.authed_get(&url).await?;
         self.expect_ok(&url, resp).await
     }
-
-    // --- Sessions ---
 
     /// Create a new session bound to a nous agent.
     #[instrument(skip(self))]
@@ -110,8 +104,6 @@ impl EvalClient {
         Ok(())
     }
 
-    // --- Messages ---
-
     /// Send a message and collect the full SSE response.
     #[instrument(skip(self, content))]
     pub async fn send_message(
@@ -145,8 +137,6 @@ impl EvalClient {
         let resp = self.authed_get(&url).await?;
         self.expect_ok(&url, resp).await
     }
-
-    // --- Raw requests (for auth-testing scenarios) ---
 
     /// Send a GET request without any auth header.
     #[instrument(skip(self))]
@@ -184,8 +174,6 @@ impl EvalClient {
             .await
             .context(error::HttpSnafu)
     }
-
-    // --- Internal helpers ---
 
     async fn authed_get(&self, url: &str) -> Result<reqwest::Response> {
         let mut req = self.http.get(url);
@@ -246,8 +234,6 @@ impl EvalClient {
     }
 }
 
-// --- Typed domain enums ---
-
 /// Status reported by the `/api/health` endpoint.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -284,8 +270,6 @@ pub enum MessageRole {
     #[serde(untagged)]
     Unknown(String),
 }
-
-// --- Response types (local mirrors, no pylon dependency) ---
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct HealthResponse {

@@ -35,7 +35,7 @@ impl DiaporeiaServer {
     }
 }
 
-// Type alias used by `get_info` — rmcp uses this name for the return.
+// NOTE: type alias required by rmcp — get_info must return this exact name
 type ServerInfo = InitializeResult;
 
 #[tool_handler]
@@ -75,8 +75,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         _params: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
-        // TODO(#1136): Enumerate nous and config resources dynamically when the
-        // v1.5 resource registry is implemented. Static resources use read_resource.
+        // NOTE: static resources only — dynamic listing deferred
         Ok(ListResourcesResult {
             resources: vec![],
             next_cursor: None,

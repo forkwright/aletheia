@@ -145,11 +145,9 @@ mod tests {
         let mut dependent = Plan::new("dependent".into(), "wave 2".into(), 2);
         dependent.depends_on = vec![first.id, second.id];
 
-        // Wave 1 plans have no deps — always ready
         assert!(first.is_ready(&[]));
         assert!(second.is_ready(&[]));
 
-        // Wave 2 not ready until wave 1 complete
         assert!(!dependent.is_ready(&[]));
         assert!(!dependent.is_ready(&[first.id]));
         assert!(dependent.is_ready(&[first.id, second.id]));

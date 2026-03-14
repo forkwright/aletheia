@@ -15,7 +15,6 @@ pub mod redact;
 /// Tracing subscriber initialization for human-readable and JSON log output.
 pub mod tracing_init;
 
-// --- Static assertions: key types are Send + Sync ---
 #[cfg(test)]
 mod assertions {
     use super::id::*;

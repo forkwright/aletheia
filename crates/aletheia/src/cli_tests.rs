@@ -284,8 +284,6 @@ fn init_instance_root_alias_accepted() {
     }
 }
 
-// ── backup subcommand ────────────────────────────────────────────────────────
-
 #[test]
 fn backup_default_parses() {
     let cli = Cli::parse_from(["aletheia", "backup"]);
@@ -347,8 +345,6 @@ fn backup_export_json_flag_parses() {
     }
 }
 
-// ── credential subcommand ────────────────────────────────────────────────────
-
 #[test]
 fn credential_status_parses() {
     let cli = Cli::parse_from(["aletheia", "credential", "status"]);
@@ -370,8 +366,6 @@ fn credential_refresh_parses() {
         })
     ));
 }
-
-// ── tls subcommand ───────────────────────────────────────────────────────────
 
 #[test]
 fn tls_generate_defaults_parses() {
@@ -427,8 +421,6 @@ fn tls_generate_custom_options_parses() {
     }
 }
 
-// ── import subcommand ────────────────────────────────────────────────────────
-
 #[test]
 fn import_minimal_parses() {
     let cli = Cli::parse_from(["aletheia", "import", "/tmp/agent.agent.json"]);
@@ -470,8 +462,6 @@ fn import_with_all_flags_parses() {
     }
 }
 
-// ── completions subcommand ───────────────────────────────────────────────────
-
 #[test]
 fn completions_bash_parses() {
     let cli = Cli::parse_from(["aletheia", "completions", "bash"]);
@@ -494,15 +484,11 @@ fn completions_zsh_parses() {
     ));
 }
 
-// ── check-config subcommand ──────────────────────────────────────────────────
-
 #[test]
 fn check_config_parses() {
     let cli = Cli::parse_from(["aletheia", "check-config"]);
     assert!(matches!(cli.command, Some(Command::CheckConfig)));
 }
-
-// ── add-nous subcommand ──────────────────────────────────────────────────────
 
 #[test]
 fn add_nous_defaults_parses() {

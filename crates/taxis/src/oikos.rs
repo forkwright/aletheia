@@ -35,23 +35,17 @@ impl Oikos {
         Self { root }
     }
 
-    // --- Root ---
-
     /// The instance root directory.
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
-    // --- Tier 0: Theke (human + nous collaborative) ---
-
     /// The theke directory (human + nous collaborative space).
     #[must_use]
     pub fn theke(&self) -> PathBuf {
         self.root.join("theke")
     }
-
-    // --- Tier 1: Shared (nous-only) ---
 
     /// The shared directory (nous-only shared resources).
     #[must_use]
@@ -83,8 +77,6 @@ impl Oikos {
         self.root.join("shared").join("coordination")
     }
 
-    // --- Tier 2: Nous (per-agent) ---
-
     /// The nous directory containing all agent workspaces.
     #[must_use]
     pub fn nous_root(&self) -> PathBuf {
@@ -102,8 +94,6 @@ impl Oikos {
     pub fn nous_file(&self, id: &str, filename: &str) -> PathBuf {
         self.nous_dir(id).join(filename)
     }
-
-    // --- Config ---
 
     /// The config directory.
     #[must_use]
@@ -132,8 +122,6 @@ impl Oikos {
     pub fn session_key(&self) -> PathBuf {
         self.root.join("config").join("session.key")
     }
-
-    // --- Data ---
 
     /// The data directory (runtime state).
     #[must_use]
@@ -171,8 +159,6 @@ impl Oikos {
         self.root.join("data").join("archive")
     }
 
-    // --- Logs ---
-
     /// The logs directory.
     #[must_use]
     pub fn logs(&self) -> PathBuf {
@@ -191,15 +177,11 @@ impl Oikos {
         self.root.join("logs").join("traces").join("archive")
     }
 
-    // --- Signal ---
-
     /// The Signal data directory.
     #[must_use]
     pub fn signal(&self) -> PathBuf {
         self.root.join("signal")
     }
-
-    // --- Startup validation ---
 
     /// Validate the instance layout at startup.
     ///
@@ -326,7 +308,6 @@ mod tests {
 
     #[test]
     fn oikos_env_override() {
-        // Test that from_root works regardless of env
         let oikos = Oikos::from_root("/custom/path");
         assert_eq!(oikos.root(), Path::new("/custom/path"));
     }
@@ -406,8 +387,6 @@ mod tests {
         assert!(cf.to_string_lossy().ends_with("aletheia.toml"));
     }
 
-    // --- validate() tests ---
-
     fn make_valid_instance() -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("create temp dir");
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
@@ -441,7 +420,6 @@ mod tests {
     #[test]
     fn validate_fails_when_config_dir_missing() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        // only data/, no config/
         std::fs::create_dir_all(dir.path().join("data")).unwrap();
         let oikos = Oikos::from_root(dir.path());
         let err = oikos.validate().unwrap_err();
@@ -463,7 +441,6 @@ mod tests {
     #[test]
     fn validate_fails_when_data_dir_missing() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        // only config/, no data/
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
         let oikos = Oikos::from_root(dir.path());
         let err = oikos.validate().unwrap_err();
@@ -481,11 +458,10 @@ mod tests {
     #[test]
     fn validate_warns_but_passes_without_nous_dir() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        // config/ and data/ present, no nous/
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
         std::fs::create_dir_all(dir.path().join("data")).unwrap();
         let oikos = Oikos::from_root(dir.path());
-        // Should succeed — missing nous/ is a warning, not an error
+        // NOTE: missing nous/ is a warning, not an error — the test verifies this
         assert!(oikos.validate().is_ok());
     }
 
@@ -499,10 +475,9 @@ mod tests {
         let data = dir.path().join("data");
         std::fs::create_dir_all(&data).unwrap();
 
-        // Remove write permission from data/
         std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o555)).unwrap();
 
-        // Skip if we can still write (running as root)
+        // NOTE: skip if running as root — root bypasses file permission checks
         let probe = data.join(".root-probe");
         let is_root = std::fs::write(&probe, b"x").is_ok();
         let _ = std::fs::remove_file(&probe);
@@ -514,7 +489,7 @@ mod tests {
         let oikos = Oikos::from_root(dir.path());
         let result = oikos.validate();
 
-        // Restore permissions so tempdir cleanup works
+        // WHY: restore permissions so tempdir cleanup works
         std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let err = result.unwrap_err();
@@ -532,7 +507,7 @@ mod tests {
     #[test]
     fn validate_workspace_path_accepts_existing_relative() {
         let dir = make_valid_instance();
-        // nous/ already created by make_valid_instance
+        // NOTE: nous/ already created by make_valid_instance
         let oikos = Oikos::from_root(dir.path());
         assert!(oikos.validate_workspace_path("nous").is_ok());
     }
@@ -565,7 +540,6 @@ mod tests {
 
     #[test]
     fn init_layout_passes_validation() {
-        // Simulate what `aletheia init` should create
         let dir = tempfile::tempdir().expect("create temp dir");
         for sub in &["config", "data", "nous", "logs", "shared"] {
             std::fs::create_dir_all(dir.path().join(sub)).unwrap();

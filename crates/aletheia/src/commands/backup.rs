@@ -128,7 +128,6 @@ pub fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
         return Ok(());
     }
 
-    // Default: create a backup
     let result = manager.create_backup().context("failed to create backup")?;
     println!(
         "Backup created: {} ({} bytes, {} sessions, {} messages)",

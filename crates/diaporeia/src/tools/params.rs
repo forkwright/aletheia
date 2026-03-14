@@ -5,8 +5,6 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-// -- Session params --
-
 /// Parameters for creating a session.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct SessionCreateParams {
@@ -43,16 +41,12 @@ pub(crate) struct SessionHistoryParams {
     pub limit: Option<i64>,
 }
 
-// -- Nous params --
-
 /// Parameters for querying a specific nous agent.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct NousIdParam {
     /// The nous agent ID.
     pub nous_id: String,
 }
-
-// -- Knowledge params --
 
 /// Parameters for knowledge search.
 #[derive(Debug, Deserialize, JsonSchema)]

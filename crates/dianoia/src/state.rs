@@ -70,7 +70,6 @@ impl ProjectState {
     /// if the transition is invalid from the current state.
     pub fn transition(self, t: Transition) -> Result<Self> {
         match (&self, &t) {
-            // Unique forward transitions
             (Self::Created, Transition::StartQuestioning) => Ok(Self::Questioning),
             (Self::Questioning, Transition::StartResearch) => Ok(Self::Researching),
             (Self::Scoping, Transition::StartPlanning) => Ok(Self::Planning),
@@ -78,15 +77,12 @@ impl ProjectState {
             (Self::Executing, Transition::StartVerification) => Ok(Self::Verifying),
             (Self::Verifying, Transition::Complete) => Ok(Self::Complete),
 
-            // Multiple paths to Scoping
             (Self::Created, Transition::SkipToResearch)
             | (Self::Questioning, Transition::SkipResearch)
             | (Self::Researching, Transition::StartScoping) => Ok(Self::Scoping),
 
-            // Multiple paths to Executing
             (Self::Planning | Self::Discussing, Transition::StartExecution) => Ok(Self::Executing),
 
-            // Revert from verification to an earlier phase
             (
                 Self::Verifying,
                 Transition::Revert {
@@ -94,7 +90,6 @@ impl ProjectState {
                 },
             ) => Ok(to.clone()),
 
-            // Pause from any pausable state
             (
                 Self::Researching
                 | Self::Scoping
@@ -106,10 +101,8 @@ impl ProjectState {
                 previous: Box::new(self),
             }),
 
-            // Resume returns to the state before pause
             (Self::Paused { previous }, Transition::Resume) => Ok(*previous.clone()),
 
-            // Abandon from any non-terminal state
             (
                 Self::Created
                 | Self::Questioning
@@ -123,7 +116,6 @@ impl ProjectState {
                 Transition::Abandon,
             ) => Ok(Self::Abandoned),
 
-            // Terminal states and all invalid transitions
             _ => {
                 ensure!(
                     false,

@@ -27,7 +27,7 @@ struct RetryState {
 impl RetryState {
     fn record_failure(&mut self) {
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
-        // Exponential backoff: 1, 2, 4, 8 turns; capped at MAX_BACKOFF_TURNS.
+        // NOTE: exponential backoff — 1, 2, 4, 8 turns; capped at MAX_BACKOFF_TURNS
         let shift = self.consecutive_failures.saturating_sub(1).min(3);
         self.turns_to_skip = (1u32 << shift).min(MAX_BACKOFF_TURNS);
     }
@@ -235,7 +235,7 @@ impl DistillEngine {
         context_window: u64,
         threshold: f64,
     ) -> bool {
-        // Need enough messages to summarize beyond the verbatim tail.
+        // NOTE: need enough messages to exceed the verbatim tail to trigger summarization
         let required = self.config.min_messages + self.config.verbatim_tail;
         if message_count < required {
             return false;
