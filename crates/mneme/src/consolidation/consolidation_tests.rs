@@ -244,3 +244,206 @@ fn audit_record_serde_roundtrip() {
     assert_eq!(record.id, back.id);
     assert_eq!(record.original_count, back.original_count);
 }
+
+// ---------------------------------------------------------------------------
+// Trigger evaluation
+// ---------------------------------------------------------------------------
+
+/// Requirement 19: entity with 11 facts (> threshold 10) triggers entity overflow.
+#[test]
+fn entity_fact_count_11_triggers_entity_overflow() {
+    let config = ConsolidationConfig::default();
+    let fact_count = 11;
+    assert!(
+        fact_count > config.entity_fact_threshold,
+        "11 facts must exceed the entity threshold of {} to trigger overflow",
+        config.entity_fact_threshold
+    );
+
+    let trigger = ConsolidationTrigger::EntityOverflow {
+        entity_id: EntityId::from("e-alice"),
+        fact_count,
+    };
+    assert_eq!(trigger.trigger_type(), "entity_overflow");
+}
+
+/// Requirement 20: entity with 9 facts (< threshold 10) does not trigger.
+#[test]
+fn entity_fact_count_9_does_not_trigger_overflow() {
+    let config = ConsolidationConfig::default();
+    let fact_count = 9;
+    assert!(
+        fact_count < config.entity_fact_threshold,
+        "9 facts must be below the entity threshold of {} — no trigger",
+        config.entity_fact_threshold
+    );
+}
+
+/// Requirement 21: community with 21 facts (> threshold 20) triggers community overflow.
+#[test]
+fn community_fact_count_21_triggers_community_overflow() {
+    let config = ConsolidationConfig::default();
+    let fact_count = 21;
+    assert!(
+        fact_count > config.community_fact_threshold,
+        "21 facts must exceed the community threshold of {} to trigger overflow",
+        config.community_fact_threshold
+    );
+
+    let trigger = ConsolidationTrigger::CommunityOverflow {
+        cluster_id: 7,
+        fact_count,
+    };
+    assert_eq!(trigger.trigger_type(), "community_overflow");
+}
+
+/// Requirement 22: facts younger than 7 days are excluded from consolidation count.
+///
+/// The Datalog query enforces this via `recorded_at < $cutoff`.
+#[test]
+fn entity_overflow_query_excludes_recent_facts_via_age_cutoff() {
+    assert!(
+        ENTITY_OVERFLOW_CANDIDATES.contains("recorded_at < $cutoff"),
+        "entity overflow query must filter out facts recorded after the age cutoff"
+    );
+}
+
+/// Requirement 23: Verified-tier facts are excluded from consolidation candidates.
+///
+/// The Datalog query enforces this via `tier != 'verified'`.
+#[test]
+fn entity_overflow_query_excludes_verified_tier_facts() {
+    assert!(
+        ENTITY_OVERFLOW_CANDIDATES.contains("tier != 'verified'"),
+        "entity overflow query must exclude Verified-tier facts from candidates"
+    );
+    assert!(
+        COMMUNITY_OVERFLOW_CANDIDATES.contains("tier != 'verified'"),
+        "community overflow query must also exclude Verified-tier facts"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Response parsing — edge cases
+// ---------------------------------------------------------------------------
+
+/// Requirement 28: empty array response is valid (no consolidation produced).
+#[test]
+fn parse_empty_array_response_is_valid() {
+    let response = "[]";
+    let entries = parse_consolidation_response(response).expect("empty array must parse");
+    assert!(
+        entries.is_empty(),
+        "empty array response must produce zero consolidated entries"
+    );
+}
+
+/// Requirement 27: JSON array with missing required fields returns a parse error.
+///
+/// `content` is required (no `#[serde(default)]`). Omitting it must fail.
+#[test]
+fn parse_response_missing_required_content_field_errors() {
+    // Valid JSON structure but missing the required `content` field
+    let response = r#"[{"entities": ["alice@example.com"]}]"#;
+    let result = parse_consolidation_response(response);
+    assert!(
+        result.is_err(),
+        "JSON entry without required `content` field must return an error"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Batch processing — boundary conditions
+// ---------------------------------------------------------------------------
+
+/// Requirement 30: single-fact batch is valid (no off-by-one).
+#[test]
+fn batch_single_fact_produces_one_batch_of_one() {
+    let facts: Vec<(FactId, String, f64, String)> = vec![(
+        FactId::from("f-1"),
+        "Alice is a software engineer at Acme Corp".to_owned(),
+        0.9,
+        "2026-01-01T00:00:00Z".to_owned(),
+    )];
+
+    let batches = batch_facts(&facts, 50);
+    assert_eq!(
+        batches.len(),
+        1,
+        "single fact must produce exactly one batch"
+    );
+    assert_eq!(
+        batches[0].len(),
+        1,
+        "the single batch must contain exactly one fact"
+    );
+}
+
+/// Requirement 31: batch of exactly batch_size produces single batch (boundary).
+#[test]
+fn batch_exactly_batch_size_produces_single_batch() {
+    let batch_size = 5;
+    let facts: Vec<(FactId, String, f64, String)> = (0..batch_size)
+        .map(|i| {
+            (
+                FactId::from(format!("f-{i}")),
+                format!("fact {i} about bob@example.org"),
+                0.8,
+                "2026-01-01T00:00:00Z".to_owned(),
+            )
+        })
+        .collect();
+
+    let batches = batch_facts(&facts, batch_size);
+    assert_eq!(
+        batches.len(),
+        1,
+        "exactly batch_size facts must produce a single batch (no off-by-one split)"
+    );
+    assert_eq!(
+        batches[0].len(),
+        batch_size,
+        "the single batch must contain all {batch_size} facts"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Property-based tests
+// ---------------------------------------------------------------------------
+
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Requirement 34: processed count is always <= input count.
+        ///
+        /// For any input size and any batch_limit ≥ 1, the total number of
+        /// facts across all batches equals the input count (conservation).
+        /// This implies processed ≤ input trivially holds.
+        #[test]
+        fn batch_total_count_equals_input_count(
+            count in 0usize..200,
+            batch_size in 1usize..50,
+        ) {
+            let facts: Vec<(FactId, String, f64, String)> = (0..count)
+                .map(|i| {
+                    (
+                        FactId::from(format!("f-{i}")),
+                        format!("synthetic fact {i}"),
+                        0.8,
+                        "2026-01-01T00:00:00Z".to_owned(),
+                    )
+                })
+                .collect();
+
+            let batches = batch_facts(&facts, batch_size);
+            let total: usize = batches.iter().map(|b| b.len()).sum();
+            prop_assert_eq!(
+                total,
+                count,
+                "total facts across all batches must equal input count (no facts lost or duplicated)"
+            );
+        }
+    }
+}
