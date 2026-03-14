@@ -24,7 +24,7 @@ use crate::engine::query::compile::{
     AggrKind, CompiledProgram, CompiledRule, CompiledRuleSet, ContainedRuleMultiplicity,
 };
 use crate::engine::runtime::db::Poison;
-use crate::engine::runtime::temp_store::{EpochStore, MeetAggrStore, RegularTempStore};
+use crate::engine::runtime::temp_store::{EpochStore, MeetAggrStore, RegularTempStore, TempStore};
 use crate::engine::runtime::transact::SessionTx;
 
 pub(crate) struct QueryLimiter {
@@ -105,6 +105,216 @@ impl<'a> SessionTx<'a> {
         let ret_area = stores.remove(&entry_symbol).ok_or(NoEntryError)?;
         Ok((ret_area, early_return))
     }
+
+    #[expect(
+        clippy::needless_borrow,
+        reason = "closure borrows &ruleset from pattern match binding"
+    )]
+    fn eval_compiled_ruleset_epoch_zero<'b>(
+        &self,
+        k: &'b MagicSymbol,
+        compiled_ruleset: &CompiledRuleSet,
+        stores: &BTreeMap<MagicSymbol, EpochStore>,
+        limiter: &QueryLimiter,
+        used_limiter: &AtomicBool,
+        poison: Poison,
+    ) -> Result<(&'b MagicSymbol, TempStore)> {
+        let new_store = match compiled_ruleset {
+            CompiledRuleSet::Rules(ruleset) => match compiled_ruleset.aggr_kind() {
+                AggrKind::None => {
+                    let res = self.initial_rule_non_aggr_eval(
+                        k,
+                        &ruleset,
+                        stores,
+                        limiter,
+                        poison.clone(),
+                    )?;
+                    used_limiter.fetch_or(res.0, Ordering::Relaxed);
+                    res.1.wrap()
+                }
+                AggrKind::Normal => {
+                    let res =
+                        self.initial_rule_aggr_eval(k, &ruleset, stores, limiter, poison.clone())?;
+                    used_limiter.fetch_or(res.0, Ordering::Relaxed);
+                    res.1.wrap()
+                }
+                AggrKind::Meet => {
+                    let new = self.initial_rule_meet_eval(k, &ruleset, stores, poison.clone())?;
+                    new.wrap()
+                }
+            },
+            CompiledRuleSet::Fixed(fixed) => {
+                let fixed_impl = fixed.fixed_impl.as_ref();
+                let mut out = RegularTempStore::default();
+                let payload = FixedRulePayload {
+                    manifest: &fixed,
+                    stores,
+                    tx: self,
+                };
+                fixed_impl.run(payload, &mut out, poison.clone())?;
+                out.wrap()
+            }
+        };
+        Ok((k, new_store))
+    }
+
+    fn run_epoch_zero_rules<'b>(
+        &self,
+        prog: &'b CompiledProgram,
+        stores: &BTreeMap<MagicSymbol, EpochStore>,
+        limiter: &QueryLimiter,
+        used_limiter: &AtomicBool,
+        poison: Poison,
+    ) -> Result<BTreeMap<&'b MagicSymbol, TempStore>> {
+        let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| {
+            self.eval_compiled_ruleset_epoch_zero(
+                k,
+                compiled_ruleset,
+                stores,
+                limiter,
+                used_limiter,
+                poison.clone(),
+            )
+        };
+
+        let mut to_merge = BTreeMap::new();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let limiter_enabled = limiter.total.is_some();
+            for res in prog
+                .iter()
+                .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
+                .map(execution)
+            {
+                let (k, new_store) = res?;
+                to_merge.insert(k, new_store);
+                if limiter.is_stopped() {
+                    break;
+                }
+            }
+            let execs = prog
+                .par_iter()
+                .filter(|(symb, _)| !(limiter_enabled && symb.is_prog_entry()))
+                .map(execution);
+            for res in execs.collect::<Vec<_>>() {
+                let (k, new_store) = res?;
+                to_merge.insert(k, new_store);
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            for res in prog.iter().map(execution) {
+                let (k, new_store) = res?;
+                to_merge.insert(k, new_store);
+            }
+        }
+        Ok(to_merge)
+    }
+
+    #[expect(
+        clippy::needless_borrow,
+        reason = "closure borrows &ruleset from pattern match binding"
+    )]
+    fn eval_compiled_ruleset_subsequent_epoch<'b>(
+        &self,
+        k: &'b MagicSymbol,
+        compiled_ruleset: &CompiledRuleSet,
+        epoch: u32,
+        stores: &BTreeMap<MagicSymbol, EpochStore>,
+        limiter: &QueryLimiter,
+        used_limiter: &AtomicBool,
+        poison: Poison,
+    ) -> Result<(&'b MagicSymbol, TempStore)> {
+        let new_store = match compiled_ruleset {
+            CompiledRuleSet::Rules(ruleset) => {
+                match compiled_ruleset.aggr_kind() {
+                    AggrKind::None => {
+                        let res = self.incremental_rule_non_aggr_eval(
+                            k,
+                            &ruleset,
+                            epoch,
+                            stores,
+                            limiter,
+                            poison.clone(),
+                        )?;
+                        used_limiter.fetch_or(res.0, Ordering::Relaxed);
+                        res.1.wrap()
+                    }
+                    AggrKind::Meet => {
+                        let new =
+                            self.incremental_rule_meet_eval(k, &ruleset, stores, poison.clone())?;
+                        new.wrap()
+                    }
+                    AggrKind::Normal => {
+                        // not doing anything
+                        RegularTempStore::default().wrap()
+                    }
+                }
+            }
+            CompiledRuleSet::Fixed(_) => {
+                // no need to do anything, algos are only calculated once
+                RegularTempStore::default().wrap()
+            }
+        };
+        Ok((k, new_store))
+    }
+
+    fn run_subsequent_epoch_rules<'b>(
+        &self,
+        prog: &'b CompiledProgram,
+        stores: &BTreeMap<MagicSymbol, EpochStore>,
+        epoch: u32,
+        limiter: &QueryLimiter,
+        used_limiter: &AtomicBool,
+        poison: Poison,
+    ) -> Result<BTreeMap<&'b MagicSymbol, TempStore>> {
+        let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| {
+            self.eval_compiled_ruleset_subsequent_epoch(
+                k,
+                compiled_ruleset,
+                epoch,
+                stores,
+                limiter,
+                used_limiter,
+                poison.clone(),
+            )
+        };
+
+        let mut to_merge = BTreeMap::new();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let limiter_enabled = limiter.total.is_some();
+            // entry rules with limiter must execute sequentially in order to get deterministic ordering
+            for res in prog
+                .iter()
+                .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
+                .map(execution)
+            {
+                let (k, new_store) = res?;
+                to_merge.insert(k, new_store);
+                if limiter.is_stopped() {
+                    break;
+                }
+            }
+            let execs = prog
+                .par_iter()
+                .filter(|(symb, _)| !(limiter_enabled && symb.is_prog_entry()))
+                .map(execution);
+            for res in execs.collect::<Vec<_>>() {
+                let (k, new_store) = res?;
+                to_merge.insert(k, new_store);
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            for res in prog.iter().map(execution) {
+                let (k, new_store) = res?;
+                to_merge.insert(k, new_store);
+            }
+        }
+        Ok(to_merge)
+    }
+
     /// returns true if early return is activated
     fn semi_naive_magic_evaluate(
         &self,
@@ -119,177 +329,30 @@ impl<'a> SessionTx<'a> {
             skip: num_to_skip,
             counter: 0.into(),
         };
-
         let used_limiter: AtomicBool = false.into();
 
         for epoch in 0u32.. {
             debug!("epoch {}", epoch);
-            let mut to_merge = BTreeMap::new();
             let borrowed_stores = stores as &BTreeMap<_, _>;
-            if epoch == 0 {
-                #[expect(
-                    clippy::needless_borrow,
-                    reason = "closure borrows &ruleset from pattern match binding"
-                )]
-                let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| -> Result<_> {
-                    let new_store = match compiled_ruleset {
-                        CompiledRuleSet::Rules(ruleset) => match compiled_ruleset.aggr_kind() {
-                            AggrKind::None => {
-                                let res = self.initial_rule_non_aggr_eval(
-                                    k,
-                                    &ruleset,
-                                    borrowed_stores,
-                                    &limiter,
-                                    poison.clone(),
-                                )?;
-                                used_limiter.fetch_or(res.0, Ordering::Relaxed);
-                                res.1.wrap()
-                            }
-                            AggrKind::Normal => {
-                                let res = self.initial_rule_aggr_eval(
-                                    k,
-                                    &ruleset,
-                                    borrowed_stores,
-                                    &limiter,
-                                    poison.clone(),
-                                )?;
-                                used_limiter.fetch_or(res.0, Ordering::Relaxed);
-                                res.1.wrap()
-                            }
-                            AggrKind::Meet => {
-                                let new = self.initial_rule_meet_eval(
-                                    k,
-                                    &ruleset,
-                                    borrowed_stores,
-                                    poison.clone(),
-                                )?;
-                                new.wrap()
-                            }
-                        },
-                        CompiledRuleSet::Fixed(fixed) => {
-                            let fixed_impl = fixed.fixed_impl.as_ref();
-                            let mut out = RegularTempStore::default();
-                            let payload = FixedRulePayload {
-                                manifest: &fixed,
-                                stores: borrowed_stores,
-                                tx: self,
-                            };
-                            fixed_impl.run(payload, &mut out, poison.clone())?;
-                            out.wrap()
-                        }
-                    };
-                    Ok((k, new_store))
-                };
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let limiter_enabled = limiter.total.is_some();
-                    for res in prog
-                        .iter()
-                        .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
-                        .map(execution)
-                    {
-                        let (k, new_store) = res?;
-                        to_merge.insert(k, new_store);
-                        if limiter.is_stopped() {
-                            break;
-                        }
-                    }
-
-                    let execs = prog
-                        .par_iter()
-                        .filter(|(symb, _)| !(limiter_enabled && symb.is_prog_entry()))
-                        .map(execution);
-
-                    for res in execs.collect::<Vec<_>>() {
-                        let (k, new_store) = res?;
-                        to_merge.insert(k, new_store);
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    for res in prog.iter().map(execution) {
-                        let (k, new_store) = res?;
-                        to_merge.insert(k, new_store);
-                    }
-                }
+            let to_merge = if epoch == 0 {
+                self.run_epoch_zero_rules(
+                    prog,
+                    borrowed_stores,
+                    &limiter,
+                    &used_limiter,
+                    poison.clone(),
+                )?
             } else {
-                // Follow up epoch > 0
-                #[expect(
-                    clippy::needless_borrow,
-                    reason = "closure borrows &ruleset from pattern match binding"
-                )]
-                let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| -> Result<_> {
-                    let new_store = match compiled_ruleset {
-                        CompiledRuleSet::Rules(ruleset) => {
-                            match compiled_ruleset.aggr_kind() {
-                                AggrKind::None => {
-                                    let res = self.incremental_rule_non_aggr_eval(
-                                        k,
-                                        &ruleset,
-                                        epoch,
-                                        borrowed_stores,
-                                        &limiter,
-                                        poison.clone(),
-                                    )?;
-                                    used_limiter.fetch_or(res.0, Ordering::Relaxed);
-                                    res.1.wrap()
-                                }
-                                AggrKind::Meet => {
-                                    let new = self.incremental_rule_meet_eval(
-                                        k,
-                                        &ruleset,
-                                        borrowed_stores,
-                                        poison.clone(),
-                                    )?;
-                                    new.wrap()
-                                }
-                                AggrKind::Normal => {
-                                    // not doing anything
-                                    RegularTempStore::default().wrap()
-                                }
-                            }
-                        }
+                self.run_subsequent_epoch_rules(
+                    prog,
+                    borrowed_stores,
+                    epoch,
+                    &limiter,
+                    &used_limiter,
+                    poison.clone(),
+                )?
+            };
 
-                        CompiledRuleSet::Fixed(_) => {
-                            // no need to do anything, algos are only calculated once
-                            RegularTempStore::default().wrap()
-                        }
-                    };
-                    Ok((k, new_store))
-                };
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let limiter_enabled = limiter.total.is_some();
-                    // entry rules with limiter must execute sequentially in order to get deterministic ordering
-                    for res in prog
-                        .iter()
-                        .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
-                        .map(execution)
-                    {
-                        let (k, new_store) = res?;
-                        to_merge.insert(k, new_store);
-                        if limiter.is_stopped() {
-                            break;
-                        }
-                    }
-
-                    let execs = prog
-                        .par_iter()
-                        .filter(|(symb, _)| !(limiter_enabled && symb.is_prog_entry()))
-                        .map(execution);
-                    for res in execs.collect::<Vec<_>>() {
-                        let (k, new_store) = res?;
-                        to_merge.insert(k, new_store);
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                {
-                    for res in prog.iter().map(execution) {
-                        let (k, new_store) = res?;
-                        to_merge.insert(k, new_store);
-                    }
-                }
-            }
             let mut changed = false;
             for (k, new_store) in to_merge {
                 let old_store = stores

@@ -15,7 +15,9 @@ use itertools::Itertools;
 use crate::engine::data::program::RelationOp;
 use crate::engine::data::relation::{ColType, ColumnDef, NullableColType, StoredRelationMetadata};
 use crate::engine::data::symb::Symbol;
-use crate::engine::parse::{ImperativeCondition, ImperativeProgram, ImperativeStmt, SourceSpan};
+use crate::engine::parse::{
+    ImperativeCondition, ImperativeProgram, ImperativeStmt, ImperativeStmtClause, SourceSpan,
+};
 use crate::engine::runtime::callback::CallbackCollector;
 use crate::engine::runtime::db::{
     RunningQueryCleanup, RunningQueryHandle, seconds_since_the_epoch,
@@ -28,6 +30,55 @@ enum ControlCode {
     Termination(NamedRows),
     Break(Option<CompactString>, SourceSpan),
     Continue(Option<CompactString>, SourceSpan),
+}
+
+struct ImperativeCallbackCtx<'ctx> {
+    cleanups: &'ctx mut Vec<(Vec<u8>, Vec<u8>)>,
+    callback_targets: &'ctx BTreeSet<CompactString>,
+    callback_collector: &'ctx mut CallbackCollector,
+    poison: &'ctx Poison,
+    readonly: bool,
+}
+
+fn execute_temp_swap_stmt(
+    tx: &mut SessionTx<'_>,
+    left: &CompactString,
+    right: &CompactString,
+) -> Result<()> {
+    tx.rename_temp_relation(
+        Symbol::new(left.clone(), Default::default()),
+        Symbol::new(CompactString::from("_*temp*"), Default::default()),
+    )?;
+    tx.rename_temp_relation(
+        Symbol::new(right.clone(), Default::default()),
+        Symbol::new(left.clone(), Default::default()),
+    )?;
+    tx.rename_temp_relation(
+        Symbol::new(CompactString::from("_*temp*"), Default::default()),
+        Symbol::new(right.clone(), Default::default()),
+    )?;
+    Ok(())
+}
+
+fn execute_program_stmt<'s, S: Storage<'s>>(
+    db: &'s Db<S>,
+    prog: &ImperativeStmtClause,
+    tx: &mut SessionTx<'_>,
+    cur_vld: ValidityTs,
+    ctx: &mut ImperativeCallbackCtx<'_>,
+) -> Result<NamedRows> {
+    let ret = db.execute_single_program(
+        prog.prog.clone(),
+        tx,
+        ctx.cleanups,
+        cur_vld,
+        ctx.callback_targets,
+        ctx.callback_collector,
+    )?;
+    if let Some(store_as) = &prog.store_as {
+        tx.script_store_as_relation(db, store_as, &ret, cur_vld)?;
+    }
+    Ok(ret)
 }
 
 impl<'s, S: Storage<'s>> Db<S> {
@@ -62,20 +113,158 @@ impl<'s, S: Storage<'s>> Db<S> {
         Ok(!res.rows.is_empty())
     }
 
+    fn collect_return_rows(
+        &'s self,
+        returns: &[Either<ImperativeStmtClause, CompactString>],
+        tx: &mut SessionTx<'_>,
+        cur_vld: ValidityTs,
+        ctx: &mut ImperativeCallbackCtx<'_>,
+    ) -> Result<ControlCode> {
+        if returns.is_empty() {
+            return Ok(ControlCode::Termination(NamedRows::default()));
+        }
+        let mut current = None;
+        for nxt in returns.iter().rev() {
+            let mut nr = match nxt {
+                Left(prog) => self.execute_single_program(
+                    prog.prog.clone(),
+                    tx,
+                    ctx.cleanups,
+                    cur_vld,
+                    ctx.callback_targets,
+                    ctx.callback_collector,
+                )?,
+                Right(rel) => {
+                    let relation = tx.get_relation(rel, false)?;
+                    relation.as_named_rows(tx)?
+                }
+            };
+            if let Left(pg) = nxt
+                && let Some(store_as) = &pg.store_as
+            {
+                tx.script_store_as_relation(self, store_as, &nr, cur_vld)?;
+            }
+            nr.next = current;
+            current = Some(Box::new(nr))
+        }
+        #[expect(
+            clippy::expect_used,
+            reason = "returns is non-empty (checked above), so loop runs at least once"
+        )]
+        Ok(ControlCode::Termination(
+            *current.expect("returns is non-empty"),
+        ))
+    }
+
+    fn execute_ignore_error_program(
+        &'s self,
+        prog: &ImperativeStmtClause,
+        tx: &mut SessionTx<'_>,
+        cur_vld: ValidityTs,
+        ctx: &mut ImperativeCallbackCtx<'_>,
+    ) -> Result<NamedRows> {
+        match self.execute_single_program(
+            prog.prog.clone(),
+            tx,
+            ctx.cleanups,
+            cur_vld,
+            ctx.callback_targets,
+            ctx.callback_collector,
+        ) {
+            Ok(res) => {
+                if let Some(store_as) = &prog.store_as {
+                    tx.script_store_as_relation(self, store_as, &res, cur_vld)?;
+                }
+                Ok(res)
+            }
+            Err(_) => Ok(NamedRows::new(
+                vec!["status".to_string()],
+                vec![vec![DataValue::from("FAILED")]],
+            )),
+        }
+    }
+
+    fn execute_if_stmt(
+        &'s self,
+        condition: &ImperativeCondition,
+        then_branch: &ImperativeProgram,
+        else_branch: &ImperativeProgram,
+        negated: bool,
+        ret: &mut NamedRows,
+        tx: &mut SessionTx<'_>,
+        cur_vld: ValidityTs,
+        ctx: &mut ImperativeCallbackCtx<'_>,
+    ) -> Result<Option<ControlCode>> {
+        let cond_val = self.execute_imperative_condition(
+            condition,
+            tx,
+            ctx.cleanups,
+            cur_vld,
+            ctx.callback_targets,
+            ctx.callback_collector,
+        )?;
+        let to_execute = if cond_val ^ negated {
+            then_branch
+        } else {
+            else_branch
+        };
+        match self.execute_imperative_stmts(to_execute, tx, cur_vld, ctx)? {
+            Left(rows) => {
+                *ret = rows;
+                Ok(None)
+            }
+            Right(ctrl) => Ok(Some(ctrl)),
+        }
+    }
+
+    fn execute_loop_stmt(
+        &'s self,
+        label: &Option<CompactString>,
+        body: &ImperativeProgram,
+        ret: &mut NamedRows,
+        tx: &mut SessionTx<'_>,
+        cur_vld: ValidityTs,
+        ctx: &mut ImperativeCallbackCtx<'_>,
+    ) -> Result<Option<ControlCode>> {
+        *ret = NamedRows::default();
+        loop {
+            ctx.poison.check()?;
+            match self.execute_imperative_stmts(body, tx, cur_vld, ctx)? {
+                Left(_) => {}
+                Right(ctrl) => match ctrl {
+                    ControlCode::Termination(ret_val) => {
+                        return Ok(Some(ControlCode::Termination(ret_val)));
+                    }
+                    ControlCode::Break(break_label, span) => {
+                        if break_label.is_none() || break_label == *label {
+                            break;
+                        } else {
+                            return Ok(Some(ControlCode::Break(break_label, span)));
+                        }
+                    }
+                    ControlCode::Continue(cont_label, span) => {
+                        if cont_label.is_none() || cont_label == *label {
+                            continue;
+                        } else {
+                            return Ok(Some(ControlCode::Continue(cont_label, span)));
+                        }
+                    }
+                },
+            }
+        }
+        Ok(None)
+    }
+
     fn execute_imperative_stmts(
         &'s self,
         ps: &ImperativeProgram,
         tx: &mut SessionTx<'_>,
-        cleanups: &mut Vec<(Vec<u8>, Vec<u8>)>,
         cur_vld: ValidityTs,
-        callback_targets: &BTreeSet<CompactString>,
-        callback_collector: &mut CallbackCollector,
-        poison: &Poison,
-        readonly: bool,
+        ctx: &mut ImperativeCallbackCtx<'_>,
     ) -> Result<Either<NamedRows, ControlCode>> {
         let mut ret = NamedRows::default();
         for p in ps {
-            poison.check()?;
+            ctx.poison.check()?;
             match p {
                 ImperativeStmt::Break { target, span, .. } => {
                     return Ok(Right(ControlCode::Break(target.clone(), *span)));
@@ -84,40 +273,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     return Ok(Right(ControlCode::Continue(target.clone(), *span)));
                 }
                 ImperativeStmt::Return { returns } => {
-                    if returns.is_empty() {
-                        return Ok(Right(ControlCode::Termination(NamedRows::default())));
-                    }
-                    let mut current = None;
-                    for nxt in returns.iter().rev() {
-                        let mut nr = match nxt {
-                            Left(prog) => self.execute_single_program(
-                                prog.prog.clone(),
-                                tx,
-                                cleanups,
-                                cur_vld,
-                                callback_targets,
-                                callback_collector,
-                            )?,
-                            Right(rel) => {
-                                let relation = tx.get_relation(rel, false)?;
-                                relation.as_named_rows(tx)?
-                            }
-                        };
-                        if let Left(pg) = nxt
-                            && let Some(store_as) = &pg.store_as
-                        {
-                            tx.script_store_as_relation(self, store_as, &nr, cur_vld)?;
-                        }
-                        nr.next = current;
-                        current = Some(Box::new(nr))
-                    }
-                    #[expect(
-                        clippy::expect_used,
-                        reason = "returns is non-empty (checked above), so loop runs at least once"
-                    )]
-                    return Ok(Right(ControlCode::Termination(
-                        *current.expect("returns is non-empty"),
-                    )));
+                    return Ok(Right(self.collect_return_rows(returns, tx, cur_vld, ctx)?));
                 }
                 ImperativeStmt::TempDebug { temp, .. } => {
                     let relation = tx.get_relation(temp, false)?;
@@ -125,46 +281,16 @@ impl<'s, S: Storage<'s>> Db<S> {
                     ret = NamedRows::default();
                 }
                 ImperativeStmt::SysOp { sysop, .. } => {
-                    ret = self.run_sys_op_with_tx(tx, &sysop.sysop, readonly, true)?;
+                    ret = self.run_sys_op_with_tx(tx, &sysop.sysop, ctx.readonly, true)?;
                     if let Some(store_as) = &sysop.store_as {
                         tx.script_store_as_relation(self, store_as, &ret, cur_vld)?;
                     }
                 }
                 ImperativeStmt::Program { prog, .. } => {
-                    ret = self.execute_single_program(
-                        prog.prog.clone(),
-                        tx,
-                        cleanups,
-                        cur_vld,
-                        callback_targets,
-                        callback_collector,
-                    )?;
-                    if let Some(store_as) = &prog.store_as {
-                        tx.script_store_as_relation(self, store_as, &ret, cur_vld)?;
-                    }
+                    ret = execute_program_stmt(self, prog, tx, cur_vld, ctx)?;
                 }
                 ImperativeStmt::IgnoreErrorProgram { prog, .. } => {
-                    match self.execute_single_program(
-                        prog.prog.clone(),
-                        tx,
-                        cleanups,
-                        cur_vld,
-                        callback_targets,
-                        callback_collector,
-                    ) {
-                        Ok(res) => {
-                            if let Some(store_as) = &prog.store_as {
-                                tx.script_store_as_relation(self, store_as, &res, cur_vld)?;
-                            }
-                            ret = res
-                        }
-                        Err(_) => {
-                            ret = NamedRows::new(
-                                vec!["status".to_string()],
-                                vec![vec![DataValue::from("FAILED")]],
-                            )
-                        }
-                    }
+                    ret = self.execute_ignore_error_program(prog, tx, cur_vld, ctx)?;
                 }
                 ImperativeStmt::If {
                     condition,
@@ -173,83 +299,28 @@ impl<'s, S: Storage<'s>> Db<S> {
                     negated,
                     ..
                 } => {
-                    let cond_val = self.execute_imperative_condition(
+                    if let Some(ctrl) = self.execute_if_stmt(
                         condition,
+                        then_branch,
+                        else_branch,
+                        *negated,
+                        &mut ret,
                         tx,
-                        cleanups,
                         cur_vld,
-                        callback_targets,
-                        callback_collector,
-                    )?;
-                    let cond_val = if *negated { !cond_val } else { cond_val };
-                    let to_execute = if cond_val { then_branch } else { else_branch };
-                    match self.execute_imperative_stmts(
-                        to_execute,
-                        tx,
-                        cleanups,
-                        cur_vld,
-                        callback_targets,
-                        callback_collector,
-                        poison,
-                        readonly,
+                        ctx,
                     )? {
-                        Left(rows) => {
-                            ret = rows;
-                        }
-                        Right(ctrl) => return Ok(Right(ctrl)),
+                        return Ok(Right(ctrl));
                     }
                 }
                 ImperativeStmt::Loop { label, body, .. } => {
-                    ret = Default::default();
-                    loop {
-                        poison.check()?;
-
-                        match self.execute_imperative_stmts(
-                            body,
-                            tx,
-                            cleanups,
-                            cur_vld,
-                            callback_targets,
-                            callback_collector,
-                            poison,
-                            readonly,
-                        )? {
-                            Left(_) => {}
-                            Right(ctrl) => match ctrl {
-                                ControlCode::Termination(ret) => {
-                                    return Ok(Right(ControlCode::Termination(ret)));
-                                }
-                                ControlCode::Break(break_label, span) => {
-                                    if break_label.is_none() || break_label == *label {
-                                        break;
-                                    } else {
-                                        return Ok(Right(ControlCode::Break(break_label, span)));
-                                    }
-                                }
-                                ControlCode::Continue(cont_label, span) => {
-                                    if cont_label.is_none() || cont_label == *label {
-                                        continue;
-                                    } else {
-                                        return Ok(Right(ControlCode::Continue(cont_label, span)));
-                                    }
-                                }
-                            },
-                        }
+                    if let Some(ctrl) =
+                        self.execute_loop_stmt(label, body, &mut ret, tx, cur_vld, ctx)?
+                    {
+                        return Ok(Right(ctrl));
                     }
                 }
                 ImperativeStmt::TempSwap { left, right, .. } => {
-                    tx.rename_temp_relation(
-                        Symbol::new(left.clone(), Default::default()),
-                        Symbol::new(CompactString::from("_*temp*"), Default::default()),
-                    )?;
-                    tx.rename_temp_relation(
-                        Symbol::new(right.clone(), Default::default()),
-                        Symbol::new(left.clone(), Default::default()),
-                    )?;
-                    tx.rename_temp_relation(
-                        Symbol::new(CompactString::from("_*temp*"), Default::default()),
-                        Symbol::new(right.clone(), Default::default()),
-                    )?;
+                    execute_temp_swap_stmt(tx, left, right)?;
                     ret = NamedRows::default();
                     break;
                 }
@@ -318,16 +389,14 @@ impl<'s, S: Storage<'s>> Db<S> {
                 running_queries: self.running_queries.clone(),
             };
 
-            match self.execute_imperative_stmts(
-                ps,
-                &mut tx,
-                &mut cleanups,
-                cur_vld,
-                &callback_targets,
-                &mut callback_collector,
-                &poison,
+            let mut ctx = ImperativeCallbackCtx {
+                cleanups: &mut cleanups,
+                callback_targets: &callback_targets,
+                callback_collector: &mut callback_collector,
+                poison: &poison,
                 readonly,
-            )? {
+            };
+            match self.execute_imperative_stmts(ps, &mut tx, cur_vld, &mut ctx)? {
                 Left(res) => ret = res,
                 Right(ctrl) => match ctrl {
                     ControlCode::Termination(res) => {
