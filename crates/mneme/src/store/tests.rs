@@ -753,6 +753,94 @@ fn insert_distillation_summary_and_cleanup() {
     assert_eq!(session.message_count, 2);
 }
 
+/// Regression test for Bug #1245: the former implementation shifted undistilled
+/// seq values up by 1 before inserting the summary at seq 0. When consecutive
+/// undistilled messages exist (e.g. [3,4,5]), shifting 3→4 conflicted with the
+/// existing seq 4 and raised a `UNIQUE(session_id, seq)` violation.
+#[test]
+fn insert_distillation_summary_consecutive_undistilled_no_conflict() {
+    let store = test_store();
+    store
+        .create_session("ses-cd", "syn", "main", None, None)
+        .expect("create session");
+
+    // Five messages: first two will be distilled, last three are consecutive undistilled.
+    for i in 1..=5_u8 {
+        store
+            .append_message("ses-cd", Role::User, &format!("msg{i}"), None, None, 10)
+            .expect("append message");
+    }
+
+    // Mark the first two messages as distilled.
+    store
+        .mark_messages_distilled("ses-cd", &[1, 2])
+        .expect("mark messages distilled");
+
+    // This must not fail with a UNIQUE constraint violation for seqs [3,4,5].
+    store
+        .insert_distillation_summary("ses-cd", "Summary #1")
+        .expect("first distillation summary must not conflict on consecutive undistilled seqs");
+
+    let history = store.get_history("ses-cd", None).expect("get history");
+    // Summary at seq 0 plus three undistilled messages.
+    assert_eq!(history.len(), 4);
+    assert_eq!(history[0].role, Role::System);
+    assert!(history[0].content.contains("Summary #1"));
+    // Remaining messages preserve their original seq ordering.
+    assert_eq!(history[1].content, "msg3");
+    assert_eq!(history[2].content, "msg4");
+    assert_eq!(history[3].content, "msg5");
+}
+
+/// Regression test for Bug #1245 (second distillation path): inserting a second
+/// summary must not conflict with the previous summary still sitting at seq 0.
+#[test]
+fn insert_distillation_summary_twice_succeeds() {
+    let store = test_store();
+    store
+        .create_session("ses-2d", "syn", "main", None, None)
+        .expect("create session");
+
+    for i in 1..=4_u8 {
+        store
+            .append_message("ses-2d", Role::User, &format!("msg{i}"), None, None, 10)
+            .expect("append message");
+    }
+
+    // First distillation: condense messages 1 and 2.
+    store
+        .mark_messages_distilled("ses-2d", &[1, 2])
+        .expect("mark messages distilled");
+    store
+        .insert_distillation_summary("ses-2d", "Summary #1")
+        .expect("first distillation must succeed");
+
+    // Verify state: summary at seq 0, msg3 and msg4 still undistilled.
+    let history = store.get_history("ses-2d", None).expect("get history");
+    assert_eq!(history.len(), 3);
+    let summary_seq = history[0].seq;
+    let msg3_seq = history[1].seq;
+    assert_eq!(history[0].role, Role::System);
+    assert_eq!(history[1].content, "msg3");
+    assert_eq!(history[2].content, "msg4");
+
+    // Second distillation: condense the previous summary and msg3.
+    store
+        .mark_messages_distilled("ses-2d", &[summary_seq, msg3_seq])
+        .expect("mark messages distilled");
+
+    // This must not conflict with the old summary that is still at seq 0 in the DB.
+    store
+        .insert_distillation_summary("ses-2d", "Summary #2")
+        .expect("second distillation must not conflict with old seq-0 summary");
+
+    let history = store.get_history("ses-2d", None).expect("get history");
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].role, Role::System);
+    assert!(history[0].content.contains("Summary #2"));
+    assert_eq!(history[1].content, "msg4");
+}
+
 #[test]
 fn update_usage_creates_record() {
     let store = test_store();

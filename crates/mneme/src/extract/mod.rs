@@ -452,7 +452,7 @@ Rules:
                     continue;
                 }
                 crate::vocab::RelationType::Unknown(normalized) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         relation = %normalized,
                         source = %rel.source,
                         target = %rel.target,
