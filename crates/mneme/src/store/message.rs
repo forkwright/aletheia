@@ -259,12 +259,19 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Insert a distillation summary as a system message, then remove distilled messages.
+    /// Insert a distillation summary as a system message and remove distilled messages.
     ///
     /// In a single transaction:
-    /// 1. Shift seq numbers of undistilled messages up by 1
-    /// 2. Insert summary at seq 0
-    /// 3. Delete all messages marked `is_distilled = 1`
+    /// 1. Delete any existing summary at seq 0 (previous distillation result, distilled or not)
+    /// 2. Delete all messages marked `is_distilled = 1`
+    /// 3. Insert summary at seq 0 — safe because remaining undistilled messages have seq ≥ 1
+    /// 4. Recalculate session token and message counts
+    ///
+    /// WHY: The former approach shifted undistilled seq values up by 1 before inserting at seq 0.
+    /// That caused a `UNIQUE(session_id, seq)` violation whenever consecutive undistilled messages
+    /// existed (e.g. seq [3,4,5]: shifting 3→4 conflicts with existing 4). The shift is also
+    /// unnecessary because the UNIQUE constraint is only violated if seq 0 already exists —
+    /// deleting the old summary first makes seq 0 available without any renumbering.
     #[instrument(skip(self, content))]
     pub fn insert_distillation_summary(&self, session_id: &str, content: &str) -> Result<()> {
         let tx = self
@@ -272,27 +279,31 @@ impl SessionStore {
             .unchecked_transaction()
             .context(error::DatabaseSnafu)?;
 
-        // Shift existing undistilled messages up by 1
+        // Delete any previous distillation summary sitting at seq 0.
+        // This covers two cases: (a) the old summary was never marked distilled because
+        // the distillation pipeline only marks conversation messages, not its own summary,
+        // and (b) the old summary was explicitly marked distilled before this call.
         tx.execute(
-            "UPDATE messages SET seq = seq + 1 WHERE session_id = ?1 AND is_distilled = 0",
+            "DELETE FROM messages WHERE session_id = ?1 AND seq = 0",
             [session_id],
         )
         .context(error::DatabaseSnafu)?;
 
-        // Insert summary at seq 0
+        // Delete all messages that have been marked for distillation.
+        tx.execute(
+            "DELETE FROM messages WHERE session_id = ?1 AND is_distilled = 1",
+            [session_id],
+        )
+        .context(error::DatabaseSnafu)?;
+
+        // Insert summary at seq 0. Remaining undistilled messages always have seq ≥ 1,
+        // so no UNIQUE(session_id, seq) conflict is possible here.
         #[expect(clippy::cast_possible_wrap, reason = "summary length fits in i64")]
         let token_estimate = content.len() as i64 / 4;
         tx.execute(
             "INSERT INTO messages (session_id, seq, role, content, is_distilled, token_estimate, created_at)
              VALUES (?1, 0, 'system', ?2, 0, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
             rusqlite::params![session_id, content, token_estimate],
-        )
-        .context(error::DatabaseSnafu)?;
-
-        // Delete distilled messages
-        tx.execute(
-            "DELETE FROM messages WHERE session_id = ?1 AND is_distilled = 1",
-            [session_id],
         )
         .context(error::DatabaseSnafu)?;
 

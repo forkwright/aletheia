@@ -626,10 +626,7 @@ impl KnowledgeStore {
 
     /// Read a single fact by its ID (all temporal records matching).
     /// Returns all fields; does not apply time/validity filters.
-    pub(super) fn read_facts_by_id(
-        &self,
-        id: &str,
-    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+    pub fn read_facts_by_id(&self, id: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
 

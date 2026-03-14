@@ -305,6 +305,7 @@ async fn run_extraction(
                             nous_id = %nous_id,
                             entities_persisted = result.entities_inserted,
                             relationships_persisted = result.relationships_inserted,
+                            relationships_skipped = result.relationships_skipped,
                             facts_persisted = result.facts_inserted,
                             "extraction persisted to knowledge store"
                         );
