@@ -30,12 +30,14 @@ pub enum StreamEvent {
     ToolStart {
         tool_name: String,
         tool_id: ToolId,
+        input: Option<serde_json::Value>,
     },
     ToolResult {
         tool_name: String,
         tool_id: ToolId,
         is_error: bool,
         duration_ms: u64,
+        result: Option<String>,
     },
     ToolApprovalRequired {
         turn_id: TurnId,
@@ -136,6 +138,7 @@ mod tests {
             tool_id: "t1".into(),
             is_error: true,
             duration_ms: 150,
+            result: None,
         };
         if let StreamEvent::ToolResult {
             tool_name,

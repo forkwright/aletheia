@@ -51,14 +51,19 @@ pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
 
 #[tracing::instrument(skip_all, fields(%tool_name))]
 // SAFETY: sanitized at ingestion — tool names from stream API.
-pub(crate) fn handle_stream_tool_start(app: &mut App, tool_name: String) {
+pub(crate) fn handle_stream_tool_start(
+    app: &mut App,
+    tool_name: String,
+    input: Option<serde_json::Value>,
+) {
     let clean_name = sanitize_for_display(&tool_name).into_owned();
     app.streaming_tool_calls.push(ToolCallInfo {
         name: clean_name.clone(),
         duration_ms: None,
         is_error: false,
     });
-    app.ops.push_tool_start(clean_name.clone(), None);
+    let input_json = input.map(|v| v.to_string());
+    app.ops.push_tool_start(clean_name.clone(), input_json);
     if let Some(ref agent_id) = app.focused_agent
         && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
     {
@@ -75,6 +80,7 @@ pub(crate) fn handle_stream_tool_result(
     tool_name: String,
     is_error: bool,
     duration_ms: u64,
+    result: Option<String>,
 ) {
     if let Some(tc) = app
         .streaming_tool_calls
@@ -86,7 +92,7 @@ pub(crate) fn handle_stream_tool_result(
         tc.is_error = is_error;
     }
     app.ops
-        .complete_tool(&tool_name, is_error, duration_ms, None);
+        .complete_tool(&tool_name, is_error, duration_ms, result);
     if let Some(ref agent_id) = app.focused_agent
         && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
     {
@@ -290,7 +296,7 @@ mod tests {
         app.agents.push(test_agent("syn", "Syn"));
         app.focused_agent = Some("syn".into());
 
-        handle_stream_tool_start(&mut app, "read_file".to_string());
+        handle_stream_tool_start(&mut app, "read_file".to_string(), None);
 
         assert_eq!(app.streaming_tool_calls.len(), 1);
         assert_eq!(app.streaming_tool_calls[0].name, "read_file");
@@ -307,8 +313,8 @@ mod tests {
         app.agents.push(test_agent("syn", "Syn"));
         app.focused_agent = Some("syn".into());
 
-        handle_stream_tool_start(&mut app, "read_file".to_string());
-        handle_stream_tool_result(&mut app, "read_file".to_string(), false, 150);
+        handle_stream_tool_start(&mut app, "read_file".to_string(), None);
+        handle_stream_tool_result(&mut app, "read_file".to_string(), false, 150, None);
 
         assert_eq!(app.streaming_tool_calls[0].duration_ms, Some(150));
         assert!(!app.streaming_tool_calls[0].is_error);
@@ -321,8 +327,8 @@ mod tests {
         app.agents.push(test_agent("syn", "Syn"));
         app.focused_agent = Some("syn".into());
 
-        handle_stream_tool_start(&mut app, "write_file".to_string());
-        handle_stream_tool_result(&mut app, "write_file".to_string(), true, 50);
+        handle_stream_tool_start(&mut app, "write_file".to_string(), None);
+        handle_stream_tool_result(&mut app, "write_file".to_string(), true, 50, None);
 
         assert!(app.streaming_tool_calls[0].is_error);
     }
