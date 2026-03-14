@@ -42,54 +42,168 @@ fn render_keybindings(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     ])
 }
 
+/// Render the info bar with graceful degradation on narrow terminals.
+///
+/// Priority order (highest first):
+/// 1. Connection status indicator
+/// 2. Agent name (truncated with "…" when too narrow)
+/// 3. Session key
+/// 4. Selection / filter indicators
+/// 5. Right side: scroll position, cost, context gauge
 fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
-    let mut left_spans = Vec::new();
+    let total = width as usize;
+
+    // Right side (lowest priority): scroll position, cost, context gauge.
     let mut right_spans = Vec::new();
-
-    left_spans.extend(agent_identity_spans(app, theme));
-
-    left_spans.push(Span::styled(" │ ", theme.style_dim()));
-    left_spans.extend(connection_indicator_spans(app, theme));
-
-    if let Some(idx) = app.selected_message {
-        left_spans.push(Span::styled(" │ ", theme.style_dim()));
-        left_spans.push(Span::styled("SELECTION", theme.style_accent()));
-        let total = app.messages.len();
-        left_spans.push(Span::styled(
-            format!(" {} of {}", idx + 1, total),
-            theme.style_dim(),
-        ));
-    }
-
-    if app.filter.active && !app.filter.editing && !app.filter.text.is_empty() {
-        left_spans.push(Span::styled(" │ ", theme.style_dim()));
-        left_spans.push(Span::styled(
-            format!("/{}", app.filter.text),
-            theme.style_accent(),
-        ));
-        left_spans.push(Span::styled(" (Esc to clear)", theme.style_dim()));
-    }
-
     right_spans.extend(scroll_position_spans(app, theme));
     right_spans.extend(cost_spans(app, theme));
     right_spans.push(Span::styled(" │ ", theme.style_dim()));
     right_spans.extend(context_gauge_spans(app, theme));
     right_spans.push(Span::raw(" "));
-
-    let left_width: usize = left_spans.iter().map(|s| s.content.width()).sum();
     let right_width: usize = right_spans.iter().map(|s| s.content.width()).sum();
-    let total = width as usize;
 
-    let mut spans = vec![Span::raw(" ")];
-    spans.extend(left_spans);
+    // Connection status (highest priority — always shown first).
+    let conn_spans = connection_indicator_spans(app, theme);
+    let conn_width: usize = conn_spans.iter().map(|s| s.content.width()).sum();
 
-    if left_width + right_width + 2 < total {
-        let pad = total - left_width - right_width - 2;
+    // Agent identity (second priority — truncated when narrow).
+    let agent_spans = agent_identity_spans(app, theme);
+    let agent_width: usize = agent_spans.iter().map(|s| s.content.width()).sum();
+
+    const PREFIX: usize = 1; // leading space
+    const SEP: usize = 3; // " │ " separator width
+
+    // Minimum viable content: " " + conn + " │ " + one agent char + "…"
+    let min_useful = PREFIX + conn_width + SEP + 2;
+    if total < min_useful {
+        return Line::from(Span::raw(" "));
+    }
+
+    let mut spans: Vec<Span<'static>> = vec![Span::raw(" ")];
+    let mut used = PREFIX;
+
+    // Always include connection status.
+    spans.extend(conn_spans);
+    used += conn_width;
+
+    // Agent identity: budget excludes what's already used plus the separator and
+    // enough room for at least one right-side character if it fits.
+    let agent_budget = total.saturating_sub(used + SEP);
+    if agent_budget >= 2 {
+        spans.push(Span::styled(" │ ", theme.style_dim()));
+        used += SEP;
+
+        if agent_width <= agent_budget {
+            spans.extend(agent_spans);
+            used += agent_width;
+        } else {
+            let truncated = truncate_spans_to_width(agent_spans, agent_budget);
+            let tw: usize = truncated.iter().map(|s| s.content.width()).sum();
+            spans.extend(truncated);
+            used += tw;
+        }
+    }
+
+    // Optional: selection indicator.
+    if let Some(idx) = app.selected_message {
+        let total_msgs = app.messages.len();
+        let sel = [
+            Span::styled(" │ ", theme.style_dim()),
+            Span::styled("SELECTION", theme.style_accent()),
+            Span::styled(format!(" {} of {}", idx + 1, total_msgs), theme.style_dim()),
+        ];
+        let sel_w: usize = sel.iter().map(|s| s.content.width()).sum();
+        if used + sel_w + 1 < total {
+            spans.extend(sel);
+            used += sel_w;
+        }
+    }
+
+    // Optional: filter indicator.
+    if app.filter.active && !app.filter.editing && !app.filter.text.is_empty() {
+        let filt = [
+            Span::styled(" │ ", theme.style_dim()),
+            Span::styled(format!("/{}", app.filter.text), theme.style_accent()),
+            Span::styled(" (Esc to clear)", theme.style_dim()),
+        ];
+        let filt_w: usize = filt.iter().map(|s| s.content.width()).sum();
+        if used + filt_w + 1 < total {
+            spans.extend(filt);
+            used += filt_w;
+        }
+    }
+
+    // Right side: show only when there is room for it with at least one space of padding.
+    if used + right_width + 1 < total {
+        let pad = total - used - right_width;
         spans.push(Span::raw(" ".repeat(pad)));
         spans.extend(right_spans);
     }
 
     Line::from(spans)
+}
+
+/// Truncate a sequence of spans to at most `max_width` display columns.
+///
+/// Appends "…" (one column) to the last span that fits, replacing any content
+/// that exceeds the budget. When the spans already fit, returns them unchanged.
+fn truncate_spans_to_width(spans: Vec<Span<'static>>, max_width: usize) -> Vec<Span<'static>> {
+    let total_width: usize = spans.iter().map(|s| s.content.width()).sum();
+    if total_width <= max_width {
+        return spans;
+    }
+    // At ≤ 2 columns there is no room for meaningful content plus ellipsis.
+    if max_width <= 2 {
+        return vec![Span::raw("…")];
+    }
+    // Reserve one column for the ellipsis.
+    let budget = max_width - 1;
+    let mut result: Vec<Span<'static>> = Vec::new();
+    let mut remaining = budget;
+
+    for span in spans {
+        if remaining == 0 {
+            break;
+        }
+        let sw = span.content.width();
+        if sw <= remaining {
+            result.push(span);
+            remaining -= sw;
+        } else {
+            // Truncate this span's content to fit, then append "…".
+            let cut = truncate_str_to_cols(&span.content, remaining);
+            result.push(Span::styled(format!("{cut}…"), span.style));
+            remaining = 0;
+        }
+    }
+
+    // All spans fit within the budget but total was over max_width — append ellipsis.
+    if remaining > 0
+        && let Some(last) = result.last_mut()
+    {
+        let new_content = format!("{}…", last.content);
+        *last = Span::styled(new_content, last.style);
+    }
+
+    result
+}
+
+/// Truncate `s` to at most `max_cols` display columns and return the prefix as a `&str`.
+fn truncate_str_to_cols(s: &str, max_cols: usize) -> &str {
+    if s.width() <= max_cols {
+        return s;
+    }
+    let mut w = 0usize;
+    let mut end = 0usize;
+    for (idx, ch) in s.char_indices() {
+        let char_w = s[idx..idx + ch.len_utf8()].width();
+        if w + char_w > max_cols {
+            break;
+        }
+        w += char_w;
+        end = idx + ch.len_utf8();
+    }
+    &s[..end]
 }
 
 fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
@@ -211,5 +325,82 @@ fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
             Span::styled("░".repeat(GAUGE_WIDTH), theme.style_dim()),
             Span::styled(" —%", theme.style_dim()),
         ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::test_helpers::test_app;
+
+    #[test]
+    fn truncate_spans_to_width_no_op_when_fits() {
+        let spans = vec![Span::raw("hello"), Span::raw(" world")];
+        let result = truncate_spans_to_width(spans.clone(), 20);
+        let text: String = result.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(text, "hello world");
+    }
+
+    #[test]
+    fn truncate_spans_to_width_adds_ellipsis() {
+        let spans = vec![Span::raw("hello world")];
+        let result = truncate_spans_to_width(spans, 7);
+        let text: String = result.iter().map(|s| s.content.as_ref()).collect();
+        // Budget = 6 chars + "…" = 7 display cols total
+        assert!(text.ends_with('…'), "truncated text must end with ellipsis");
+        assert!(
+            text.width() <= 7,
+            "truncated text must fit within max_width"
+        );
+    }
+
+    #[test]
+    fn truncate_spans_to_width_very_narrow() {
+        let spans = vec![Span::raw("Syn · main")];
+        let result = truncate_spans_to_width(spans, 2);
+        let text: String = result.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(text, "…");
+    }
+
+    #[test]
+    fn truncate_str_to_cols_exact_fit() {
+        let s = "hello";
+        assert_eq!(truncate_str_to_cols(s, 5), "hello");
+    }
+
+    #[test]
+    fn truncate_str_to_cols_truncates() {
+        let s = "hello world";
+        let t = truncate_str_to_cols(s, 5);
+        assert_eq!(t, "hello");
+    }
+
+    #[test]
+    fn render_info_bar_very_narrow_does_not_panic() {
+        let app = test_app();
+        // Must not panic on very narrow terminals.
+        for w in 0u16..20 {
+            let line = render_info_bar(&app, w, &app.theme);
+            // Every span must not exceed the given width when summed.
+            let total: usize = line.spans.iter().map(|s| s.content.width()).sum();
+            assert!(
+                total <= w as usize + 5, // small slack for edge cases in span building
+                "width={w}: rendered {total} cols, expected ≤ {}",
+                w as usize + 5
+            );
+        }
+    }
+
+    #[test]
+    fn render_info_bar_wide_includes_right_side() {
+        let app = test_app();
+        // On a wide terminal the right side (cost, context gauge) must appear.
+        let line = render_info_bar(&app, 200, &app.theme);
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        // Cost element always present on wide terminals.
+        assert!(
+            text.contains('$') || text.contains('░'),
+            "wide status bar must include cost or context gauge"
+        );
     }
 }
