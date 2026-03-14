@@ -1,9 +1,5 @@
 //! Core database instance and session management.
 #![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
-#![expect(
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
@@ -400,9 +396,18 @@ impl<'s, S: Storage<'s>> Db<S> {
         let mut guard = self.event_callbacks.write().expect("lock poisoned");
         let ret = guard.0.remove(&id);
         if let Some(cb) = &ret {
-            guard.1.get_mut(&cb.dependent).unwrap().remove(&id);
+            guard
+                .1
+                .get_mut(&cb.dependent)
+                .expect("callback dependency entry exists")
+                .remove(&id);
 
-            if guard.1.get(&cb.dependent).unwrap().is_empty() {
+            if guard
+                .1
+                .get(&cb.dependent)
+                .expect("callback dependency entry exists")
+                .is_empty()
+            {
                 guard.1.remove(&cb.dependent);
             }
         }

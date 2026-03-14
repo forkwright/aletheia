@@ -1,12 +1,4 @@
 //! Stored relation management.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
-#![expect(
-    clippy::expect_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::atomic::Ordering;
@@ -14,7 +6,7 @@ use std::sync::atomic::Ordering;
 use crate::engine::error::InternalResult as Result;
 use crate::engine::runtime::error::{
     IndexAlreadyExistsSnafu, IndexNotFoundSnafu, InsufficientAccessSnafu, InvalidOperationSnafu,
-    RelationAlreadyExistsSnafu,
+    RelationAlreadyExistsSnafu, SerializationSnafu,
 };
 use compact_str::CompactString;
 use itertools::Itertools;
@@ -198,7 +190,7 @@ impl RelationHandle {
         if self.indices.is_empty() {
             return None;
         }
-        if *arg_uses.first().unwrap() == IndexPositionUse::Join {
+        if *arg_uses.first().expect("arg_uses is non-empty") == IndexPositionUse::Join {
             return None;
         }
         let mut max_prefix_len = 0;
@@ -215,7 +207,9 @@ impl RelationHandle {
             .collect_vec();
         let mut chosen = None;
         for (manifest, mapper) in self.indices.values() {
-            if validity_query && *mapper.last().unwrap() != self.metadata.keys.len() - 1 {
+            if validity_query
+                && *mapper.last().expect("mapper is non-empty") != self.metadata.keys.len() - 1
+            {
                 continue;
             }
 
@@ -279,7 +273,12 @@ impl RelationHandle {
         let mut ret = self.encode_key_prefix(len);
         tuple[start..]
             .serialize(&mut Serializer::new(&mut ret))
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         Ok(ret)
     }
     pub(crate) fn encode_val_only_for_store(
@@ -288,7 +287,14 @@ impl RelationHandle {
         _span: SourceSpan,
     ) -> Result<Vec<u8>> {
         let mut ret = self.encode_key_prefix(tuple.len());
-        tuple.serialize(&mut Serializer::new(&mut ret)).unwrap();
+        tuple
+            .serialize(&mut Serializer::new(&mut ret))
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         Ok(ret)
     }
     pub(crate) fn ensure_compatible(
@@ -603,7 +609,12 @@ impl<'a> SessionTx<'a> {
         let mut meta_val = vec![];
         original
             .serialize(&mut Serializer::new(&mut meta_val).with_struct_map())
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.store_tx.put(&name_key, &meta_val)?;
 
         Ok(())
@@ -656,7 +667,12 @@ impl<'a> SessionTx<'a> {
         let name_key = vec![DataValue::Str(meta.name.clone())].encode_as_key(RelationId::SYSTEM);
         let mut meta_val = vec![];
         meta.serialize(&mut Serializer::new(&mut meta_val).with_struct_map())
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         let tuple = vec![DataValue::Null];
         let t_encoded = tuple.encode_as_key(RelationId::SYSTEM);
 
@@ -707,7 +723,12 @@ impl<'a> SessionTx<'a> {
         let name_key = vec![DataValue::Str(meta.name.clone())].encode_as_key(RelationId::SYSTEM);
         let mut meta_val = vec![];
         meta.serialize(&mut Serializer::new(&mut meta_val).with_struct_map())
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         if meta.is_temp {
             self.temp_store_tx.put(&name_key, &meta_val)?;
         } else {
@@ -760,7 +781,12 @@ impl<'a> SessionTx<'a> {
 
         let mut meta_val = vec![];
         meta.serialize(&mut Serializer::new(&mut meta_val).with_struct_map())
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.store_tx.put(&name_key, &meta_val)?;
 
         Ok(())
@@ -858,7 +884,7 @@ impl<'a> SessionTx<'a> {
                 .build(),
             })?
             .next()
-            .unwrap();
+            .expect("pest parse succeeded but produced no pairs");
         let mut code_expr = build_expr(parsed, &Default::default())?;
         let binding_map = rel_handle.raw_binding_map();
         code_expr.fill_binding_indices(&binding_map)?;
@@ -897,7 +923,12 @@ impl<'a> SessionTx<'a> {
         let mut meta_val = vec![];
         rel_handle
             .serialize(&mut Serializer::new(&mut meta_val))
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.store_tx.put(&new_encoded, &meta_val)?;
 
         Ok(())
@@ -1001,7 +1032,7 @@ impl<'a> SessionTx<'a> {
                 .build(),
             })?
             .next()
-            .unwrap();
+            .expect("pest parse succeeded but produced no pairs");
         let mut code_expr = build_expr(parsed, &Default::default())?;
         let binding_map = rel_handle.raw_binding_map();
         code_expr.fill_binding_indices(&binding_map)?;
@@ -1045,7 +1076,12 @@ impl<'a> SessionTx<'a> {
         let mut meta_val = vec![];
         rel_handle
             .serialize(&mut Serializer::new(&mut meta_val))
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.store_tx.put(&new_encoded, &meta_val)?;
 
         Ok(())
@@ -1236,7 +1272,7 @@ impl<'a> SessionTx<'a> {
                     .build(),
                 })?
                 .next()
-                .unwrap();
+                .expect("pest parse succeeded but produced no pairs");
             let mut code_expr = build_expr(parsed, &Default::default())?;
             let binding_map = rel_handle.raw_binding_map();
             code_expr.fill_binding_indices(&binding_map)?;
@@ -1271,7 +1307,12 @@ impl<'a> SessionTx<'a> {
         let mut meta_val = vec![];
         rel_handle
             .serialize(&mut Serializer::new(&mut meta_val))
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.store_tx.put(&new_encoded, &meta_val)?;
 
         Ok(())
@@ -1437,7 +1478,12 @@ impl<'a> SessionTx<'a> {
         let mut meta_val = vec![];
         rel_handle
             .serialize(&mut Serializer::new(&mut meta_val))
-            .unwrap();
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.store_tx.put(&new_encoded, &meta_val)?;
 
         Ok(())
@@ -1485,7 +1531,13 @@ impl<'a> SessionTx<'a> {
         let new_encoded =
             vec![DataValue::from(&rel_name.name as &str)].encode_as_key(RelationId::SYSTEM);
         let mut meta_val = vec![];
-        rel.serialize(&mut Serializer::new(&mut meta_val)).unwrap();
+        rel.serialize(&mut Serializer::new(&mut meta_val))
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.store_tx.put(&new_encoded, &meta_val)?;
 
         Ok(to_clean)
@@ -1522,7 +1574,13 @@ impl<'a> SessionTx<'a> {
         rel.name = new.name.clone();
 
         let mut meta_val = vec![];
-        rel.serialize(&mut Serializer::new(&mut meta_val)).unwrap();
+        rel.serialize(&mut Serializer::new(&mut meta_val))
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.store_tx.del(&old_encoded)?;
         self.store_tx.put(&new_encoded, &meta_val)?;
 
@@ -1546,7 +1604,13 @@ impl<'a> SessionTx<'a> {
         rel.name = new.name;
 
         let mut meta_val = vec![];
-        rel.serialize(&mut Serializer::new(&mut meta_val)).unwrap();
+        rel.serialize(&mut Serializer::new(&mut meta_val))
+            .map_err(|e| {
+                SerializationSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
         self.temp_store_tx.del(&old_encoded)?;
         self.temp_store_tx.put(&new_encoded, &meta_val)?;
 

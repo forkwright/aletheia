@@ -1,8 +1,4 @@
 //! A* shortest path search.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
@@ -15,6 +11,7 @@ use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::tuple::Tuple;
 use crate::engine::data::value::DataValue;
+use crate::engine::fixed_rule::error::GraphAlgorithmSnafu;
 use crate::engine::fixed_rule::{
     BadExprValueError, FixedRule, FixedRuleInputRelation, FixedRulePayload, NodeNotFoundError,
 };
@@ -108,7 +105,16 @@ fn astar(
             let mut current = node;
             let mut ret = vec![];
             while current != *start_node {
-                let prev = back_trace.get(&current).unwrap().clone();
+                let prev = back_trace
+                    .get(&current)
+                    .ok_or_else(|| {
+                        GraphAlgorithmSnafu {
+                            algorithm: "astar",
+                            message: "back_trace missing entry during path reconstruction",
+                        }
+                        .build()
+                    })?
+                    .clone();
                 ret.push(current);
                 current = prev;
             }
