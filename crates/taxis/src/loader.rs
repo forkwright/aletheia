@@ -152,13 +152,11 @@ mod tests {
             let oikos = Oikos::from_root(jail.directory());
             let mut config = AletheiaConfig::default();
             config.gateway.port = 9876;
-            config.agents.defaults.timeout_seconds = 600;
 
             write_config(&oikos, &config).map_err(|e| e.to_string())?;
             let loaded = load_config(&oikos).map_err(|e| e.to_string())?;
 
             assert_eq!(loaded.gateway.port, 9876);
-            assert_eq!(loaded.agents.defaults.timeout_seconds, 600);
             assert_eq!(loaded.agents.defaults.context_tokens, 200_000);
             Ok(())
         });

@@ -86,10 +86,6 @@ impl SpawnService for SpawnServiceImpl {
         };
 
         let pipeline_config = PipelineConfig {
-            distillation_threshold: 1.0,
-            include_notes: false,
-            include_working_state: false,
-            max_notes: 0,
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),

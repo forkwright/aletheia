@@ -85,14 +85,6 @@ impl Default for NousConfig {
 /// Pipeline configuration — controls stage behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineConfig {
-    /// Percentage of context window that triggers distillation.
-    pub distillation_threshold: f64,
-    /// Whether to include agent notes in context.
-    pub include_notes: bool,
-    /// Whether to include working state in context.
-    pub include_working_state: bool,
-    /// Maximum number of notes to inject.
-    pub max_notes: usize,
     /// Token budget for history (remaining after bootstrap).
     pub history_budget_ratio: f64,
     /// Knowledge extraction configuration (None = disabled).
@@ -106,10 +98,6 @@ pub struct PipelineConfig {
 impl Default for PipelineConfig {
     fn default() -> Self {
         Self {
-            distillation_threshold: 0.9,
-            include_notes: true,
-            include_working_state: true,
-            max_notes: 50,
             history_budget_ratio: 0.6,
             extraction: None,
             stage_budget: StageBudget::default(),
@@ -171,8 +159,8 @@ mod tests {
     #[test]
     fn pipeline_config_defaults() {
         let config = PipelineConfig::default();
-        assert!((config.distillation_threshold - 0.9).abs() < f64::EPSILON);
-        assert!(config.include_notes);
+        assert!((config.history_budget_ratio - 0.6).abs() < f64::EPSILON);
+        assert!(config.extraction.is_none());
     }
 
     #[test]
@@ -189,8 +177,8 @@ mod tests {
         let config = PipelineConfig::default();
         let json = serde_json::to_string(&config).unwrap();
         let back: PipelineConfig = serde_json::from_str(&json).unwrap();
-        assert!((back.distillation_threshold - 0.9).abs() < f64::EPSILON);
-        assert_eq!(back.max_notes, 50);
+        assert!((back.history_budget_ratio - 0.6).abs() < f64::EPSILON);
+        assert!(back.extraction.is_none());
     }
 
     #[test]
@@ -225,11 +213,5 @@ mod tests {
         assert!(config.thinking_enabled);
         assert_eq!(config.domains.len(), 1);
         assert!(!config.cache_enabled);
-    }
-
-    #[test]
-    fn pipeline_config_extraction_default_is_none() {
-        let config = PipelineConfig::default();
-        assert!(config.extraction.is_none());
     }
 }

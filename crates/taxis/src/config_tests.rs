@@ -9,12 +9,9 @@ fn defaults_are_sensible() {
     assert_eq!(config.agents.defaults.max_output_tokens, 16_384);
     assert_eq!(config.agents.defaults.bootstrap_max_tokens, 40_000);
     assert_eq!(config.agents.defaults.model.primary, "claude-sonnet-4-6");
-    assert_eq!(config.agents.defaults.user_timezone, "UTC");
-    assert_eq!(config.agents.defaults.timeout_seconds, 300);
     assert!(!config.agents.defaults.thinking_enabled);
     assert_eq!(config.agents.defaults.thinking_budget, 10_000);
     assert_eq!(config.agents.defaults.max_tool_iterations, 50);
-    assert_eq!(config.agents.defaults.tool_timeouts.default_ms, 120_000);
     assert_eq!(config.gateway.port, 18789);
     assert_eq!(config.gateway.bind, "localhost");
     assert_eq!(config.gateway.auth.mode, "token");
@@ -73,11 +70,7 @@ fn camel_case_compat() {
             "defaults": {
                 "contextTokens": 100000,
                 "maxOutputTokens": 8192,
-                "bootstrapMaxTokens": 20000,
-                "userTimezone": "America/New_York",
-                "toolTimeouts": {
-                    "defaultMs": 60000
-                }
+                "bootstrapMaxTokens": 20000
             },
             "list": []
         }
@@ -86,8 +79,6 @@ fn camel_case_compat() {
     assert_eq!(config.agents.defaults.context_tokens, 100_000);
     assert_eq!(config.agents.defaults.max_output_tokens, 8192);
     assert_eq!(config.agents.defaults.bootstrap_max_tokens, 20_000);
-    assert_eq!(config.agents.defaults.user_timezone, "America/New_York");
-    assert_eq!(config.agents.defaults.tool_timeouts.default_ms, 60_000);
 }
 
 #[test]
@@ -174,12 +165,6 @@ fn signal_account_defaults() {
     assert!(account.enabled);
     assert_eq!(account.http_host, "localhost");
     assert_eq!(account.http_port, 8080);
-    assert!(account.auto_start);
-    assert_eq!(account.dm_policy, "contacts");
-    assert_eq!(account.group_policy, "allowlist");
-    assert!(account.require_mention);
-    assert!(account.send_read_receipts);
-    assert_eq!(account.text_chunk_limit, 2000);
 }
 
 #[test]

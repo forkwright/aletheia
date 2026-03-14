@@ -166,10 +166,6 @@ pub struct AgentDefaults {
     pub max_output_tokens: u32,
     /// Token budget for bootstrap (system prompt + persona) content.
     pub bootstrap_max_tokens: u32,
-    /// IANA timezone for date/time formatting in prompts.
-    pub user_timezone: String,
-    /// Per-turn timeout in seconds before the request is cancelled.
-    pub timeout_seconds: u32,
     /// Whether extended thinking is enabled by default.
     pub thinking_enabled: bool,
     /// Maximum tokens allocated to extended thinking when enabled.
@@ -178,8 +174,6 @@ pub struct AgentDefaults {
     pub max_tool_iterations: u32,
     /// Filesystem paths the agent is permitted to access.
     pub allowed_roots: Vec<String>,
-    /// Per-tool execution timeout overrides.
-    pub tool_timeouts: ToolTimeouts,
     /// Prompt caching configuration.
     pub caching: CachingConfig,
     /// Recall pipeline settings applied to all agents unless overridden.
@@ -193,13 +187,10 @@ impl Default for AgentDefaults {
             context_tokens: 200_000,
             max_output_tokens: 16_384,
             bootstrap_max_tokens: 40_000,
-            user_timezone: "UTC".to_owned(),
-            timeout_seconds: 300,
             thinking_enabled: false,
             thinking_budget: 10_000,
             max_tool_iterations: 50,
             allowed_roots: Vec::new(),
-            tool_timeouts: ToolTimeouts::default(),
             caching: CachingConfig::default(),
             recall: RecallSettings::default(),
         }
@@ -222,26 +213,6 @@ impl Default for ModelSpec {
         Self {
             primary: "claude-sonnet-4-6".to_owned(),
             fallbacks: Vec::new(),
-        }
-    }
-}
-
-/// Tool execution timeout settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct ToolTimeouts {
-    /// Default timeout for all tools in milliseconds.
-    pub default_ms: u64,
-    /// Per-tool timeout overrides keyed by tool name.
-    pub overrides: HashMap<String, u64>,
-}
-
-impl Default for ToolTimeouts {
-    fn default() -> Self {
-        Self {
-            default_ms: 120_000,
-            overrides: HashMap::new(),
         }
     }
 }
@@ -502,55 +473,24 @@ impl Default for SignalConfig {
 }
 
 /// Configuration for a single Signal account.
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "mirrors TS config schema 1:1"
-)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct SignalAccountConfig {
-    /// Human-readable label for this account.
-    pub name: Option<String>,
     /// Whether this account is active.
     pub enabled: bool,
-    /// Phone number or account identifier registered with Signal.
-    pub account: Option<String>,
     /// Hostname for the signal-cli JSON-RPC HTTP interface.
     pub http_host: String,
     /// Port for the signal-cli JSON-RPC HTTP interface.
     pub http_port: u16,
-    /// Filesystem path to the signal-cli binary (auto-detected if `None`).
-    pub cli_path: Option<String>,
-    /// Whether to auto-start signal-cli when the daemon starts.
-    pub auto_start: bool,
-    /// Direct message policy: `"contacts"` (known contacts only), `"open"` (anyone), `"allowlist"` restricts.
-    pub dm_policy: String,
-    /// Group message policy: `"open"` or `"allowlist"`.
-    pub group_policy: String,
-    /// Whether the bot must be @mentioned to respond in groups.
-    pub require_mention: bool,
-    /// Whether to send read receipts for processed messages.
-    pub send_read_receipts: bool,
-    /// Maximum characters per outbound text chunk before splitting.
-    pub text_chunk_limit: u32,
 }
 
 impl Default for SignalAccountConfig {
     fn default() -> Self {
         Self {
-            name: None,
             enabled: true,
-            account: None,
             http_host: "localhost".to_owned(),
             http_port: 8080,
-            cli_path: None,
-            auto_start: true,
-            dm_policy: "contacts".to_owned(),
-            group_policy: "allowlist".to_owned(),
-            require_mention: true,
-            send_read_receipts: true,
-            text_chunk_limit: 2000,
         }
     }
 }
@@ -565,30 +505,13 @@ pub struct DataConfig {
 }
 
 /// Session retention policy configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Retention execution is not yet implemented; this struct is a placeholder.
+// TODO(#1129): Wire retention policy fields when the executor is implemented.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct RetentionConfig {
-    /// Max age for closed sessions (days).
-    pub session_max_age_days: u32,
-    /// Max age for orphaned messages (days).
-    pub orphan_message_max_age_days: u32,
-    /// Max sessions to retain per nous (0 = unlimited).
-    pub max_sessions_per_nous: u32,
-    /// Archive sessions to JSON before deletion.
-    pub archive_before_delete: bool,
-}
-
-impl Default for RetentionConfig {
-    fn default() -> Self {
-        Self {
-            session_max_age_days: 90,
-            orphan_message_max_age_days: 30,
-            max_sessions_per_nous: 0,
-            archive_before_delete: true,
-        }
-    }
-}
+pub struct RetentionConfig {}
 /// Instance maintenance settings.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -782,10 +705,6 @@ pub struct ResolvedNousConfig {
     pub allowed_roots: Vec<String>,
     /// Knowledge domains this agent covers.
     pub domains: Vec<String>,
-    /// IANA timezone for prompt formatting.
-    pub user_timezone: String,
-    /// Per-turn timeout in seconds.
-    pub timeout_seconds: u32,
     /// Whether prompt caching is enabled.
     pub cache_enabled: bool,
     /// Resolved recall pipeline settings.
@@ -849,8 +768,6 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         workspace,
         allowed_roots,
         domains,
-        user_timezone: defaults.user_timezone.clone(),
-        timeout_seconds: defaults.timeout_seconds,
         cache_enabled: defaults.caching.enabled && defaults.caching.strategy != "disabled",
         recall,
     }
