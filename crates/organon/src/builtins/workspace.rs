@@ -25,6 +25,20 @@ use crate::types::{
 
 const MAX_OUTPUT_BYTES: usize = 50 * 1024;
 
+/// Expand a leading `~` in a path string to the HOME environment variable.
+///
+/// If `HOME` is not set, returns the input unchanged so the subsequent
+/// path-validation step surfaces a clear "outside allowed roots" error rather
+/// than a confusing "no such file" error.
+fn expand_tilde_str(raw: &str) -> std::borrow::Cow<'_, str> {
+    if let Some(rest) = raw.strip_prefix('~')
+        && let Ok(home) = std::env::var("HOME")
+    {
+        return std::borrow::Cow::Owned(format!("{home}{rest}"));
+    }
+    std::borrow::Cow::Borrowed(raw)
+}
+
 pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) -> Result<PathBuf> {
     if raw.is_empty() {
         return Err(error::InvalidInputSnafu {
@@ -34,10 +48,17 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
         .build());
     }
 
-    let resolved = if Path::new(raw).is_absolute() {
-        PathBuf::from(raw)
+    // WHY: LLMs commonly emit `~/file` or `~` to refer to HOME. Without
+    // expansion the path resolves relative to workspace, producing a confusing
+    // "outside allowed roots" error. Expand before any other resolution so the
+    // absolute path check below works correctly — closes #1244.
+    let expanded = expand_tilde_str(raw);
+    let raw_expanded = expanded.as_ref();
+
+    let resolved = if Path::new(raw_expanded).is_absolute() {
+        PathBuf::from(raw_expanded)
     } else {
-        ctx.workspace.join(raw)
+        ctx.workspace.join(raw_expanded)
     };
 
     let normalized = normalize(&resolved);
