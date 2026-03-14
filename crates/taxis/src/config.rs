@@ -32,6 +32,8 @@ pub struct AletheiaConfig {
     pub sandbox: SandboxSettings,
     /// Credential resolution configuration.
     pub credential: CredentialConfig,
+    /// Structured file logging configuration.
+    pub logging: LoggingSettings,
 }
 
 /// Sandbox enforcement level for tool execution.
@@ -737,6 +739,46 @@ impl Default for CredentialConfig {
         Self {
             source: "auto".to_owned(),
             claude_code_credentials: None,
+        }
+    }
+}
+
+/// Structured file logging configuration.
+///
+/// Controls where server logs are written, how long they are retained, and
+/// which minimum severity level is written to the log files.
+///
+/// Log files are written in JSON format with daily rotation using
+/// `tracing_appender`. Old files are pruned after [`retention_days`] days by
+/// the log retention background task.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct LoggingSettings {
+    /// Directory where daily log files are written.
+    ///
+    /// Relative paths are resolved from the instance root. `None` (the
+    /// default) resolves to `{instance}/logs/`.
+    pub log_dir: Option<String>,
+    /// Number of days to retain log files before they are deleted.
+    ///
+    /// Cleanup is performed once daily at server startup and every 24 hours
+    /// thereafter. Default: 14 days.
+    pub retention_days: u32,
+    /// Minimum log level written to log files.
+    ///
+    /// Accepts any `tracing` filter directive (e.g. `"warn"`, `"error"`,
+    /// `"aletheia=debug,warn"`). Default: `"warn"`, which captures WARN and
+    /// ERROR events from all crates regardless of the console log level.
+    pub level: String,
+}
+
+impl Default for LoggingSettings {
+    fn default() -> Self {
+        Self {
+            log_dir: None,
+            retention_days: 14,
+            level: "warn".to_owned(),
         }
     }
 }
