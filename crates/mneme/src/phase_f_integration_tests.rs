@@ -5,6 +5,8 @@
 //! graph intelligence (F.4), and succession chains.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
+#![allow(clippy::float_cmp, reason = "test assertions compare exact float constants")]
+#![allow(clippy::items_after_statements, reason = "scoped use imports in test functions")]
 
 use crate::knowledge::{EpistemicTier, FactType};
 
