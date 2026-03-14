@@ -385,12 +385,6 @@ pub enum Citation {
     },
 }
 
-/// Token count result from the `count_tokens` endpoint.
-#[derive(Debug, Clone)]
-pub struct TokenCount {
-    pub input_tokens: u64,
-}
-
 /// Request to the LLM provider.
 #[derive(Debug, Clone)]
 pub struct CompletionRequest {

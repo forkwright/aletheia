@@ -79,10 +79,6 @@ impl LlmProvider for CapturingMockProvider {
     fn name(&self) -> &str {
         "mock-capturing"
     }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 fn setup_oikos(dir: &Path, agent_id: &str) -> Arc<Oikos> {

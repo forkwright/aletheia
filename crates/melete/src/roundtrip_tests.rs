@@ -71,10 +71,6 @@ impl LlmProvider for MockProvider {
     fn name(&self) -> &str {
         "mock-roundtrip"
     }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
