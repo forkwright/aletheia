@@ -1,6 +1,6 @@
 # C#
 
-> Additive to STANDARDS.md. Read that first. Everything here is C#/.NET-specific.
+> Additive to README.md. Read that first. Everything here is C#/.NET-specific.
 >
 > Target: .NET 10 LTS, C# 14. Mouseion media management backend.
 >
@@ -35,7 +35,7 @@
 | Constants | `PascalCase` | `DefaultCacheTtl`, `MaxRetries` |
 | Async methods | suffix `Async` | `FetchMetadataAsync`, `LoadAlbumAsync` |
 
-Constants use `PascalCase` per C# convention, overriding the `UPPER_SNAKE_CASE` default in STANDARDS.md.
+Constants use `PascalCase` per C# convention, overriding the `UPPER_SNAKE_CASE` default in NAMING.md.
 
 ---
 

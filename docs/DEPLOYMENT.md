@@ -1,5 +1,10 @@
 # Deployment
 
+> This file covers the full production deployment reference. For focused sub-topics see:
+> - [QUICKSTART.md](QUICKSTART.md) — minimal first-time setup
+> - [CONFIGURATION.md](CONFIGURATION.md) — full configuration reference
+> - [troubleshooting.md](troubleshooting.md) — common issues and solutions
+
 Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For configuration details, see [CONFIGURATION.md](CONFIGURATION.md). For upgrading an existing installation, see [UPGRADING.md](UPGRADING.md).
 
 ---
@@ -550,15 +555,7 @@ aletheia maintenance run all                    # run everything
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| `ANTHROPIC_API_KEY not set` | Export the env var or add to systemd `Environment=` |
-| Port already in use | `fuser -k 18789/tcp` then restart, or change `gateway.port` in config |
-| Config parse error | Check YAML syntax, verify field names match [CONFIGURATION.md](CONFIGURATION.md) |
-| Health returns `degraded` | No LLM provider registered; check API key |
-| Health returns `unhealthy` | Session store failed to open; check `instance/data/` permissions |
-| Signal not receiving | Verify signal-cli daemon is running on configured host:port |
-| Bind address error | Check `--bind` flag or `gateway.bind` config; `lan` resolves to LAN interface |
+See [troubleshooting.md](troubleshooting.md) for common issues and fixes.
 
 ---
 

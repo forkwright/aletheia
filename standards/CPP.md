@@ -1,6 +1,6 @@
 # C++
 
-> Additive to STANDARDS.md. Read that first. Everything here is C++-specific.
+> Additive to README.md. Read that first. Everything here is C++-specific.
 >
 > Target: C++23 (minimum C++20). Use cases: audio processing, Rust FFI boundaries, performance-critical paths.
 >
@@ -222,7 +222,7 @@ std::expected<Config, std::string> load_config(std::string_view path) noexcept {
 
 ### SAFETY Comments
 
-Same structured comment tags as STANDARDS.md. `// SAFETY:` before any:
+Same structured comment tags as DOCUMENTATION.md. `// SAFETY:` before any:
 - Raw pointer dereference
 - `reinterpret_cast`
 - Inline assembly
