@@ -6176,6 +6176,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "clap",
+ "compact_str",
  "crossterm",
  "dirs",
  "futures-util",
