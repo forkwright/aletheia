@@ -669,6 +669,7 @@ fn build_tool_registry(
         },
         extra_read_paths: sandbox_settings.extra_read_paths.clone(),
         extra_write_paths: sandbox_settings.extra_write_paths.clone(),
+        extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
     };
     builtins::register_all_with_sandbox(&mut registry, sandbox)
         .context("failed to register builtin tools")?;

@@ -484,6 +484,55 @@ fn test_validate_path_empty_string_returns_error() {
 }
 
 #[test]
+fn test_expand_tilde_str_expands_home() {
+    if let Ok(home) = std::env::var("HOME") {
+        let expanded = expand_tilde_str("~/notes.txt");
+        assert_eq!(expanded, format!("{home}/notes.txt"));
+
+        let expanded_bare = expand_tilde_str("~");
+        assert_eq!(expanded_bare, home);
+    }
+}
+
+#[test]
+fn test_expand_tilde_str_leaves_non_tilde_unchanged() {
+    let result = expand_tilde_str("/absolute/path");
+    assert_eq!(result, "/absolute/path");
+
+    let result2 = expand_tilde_str("relative/path");
+    assert_eq!(result2, "relative/path");
+}
+
+#[test]
+fn test_validate_path_tilde_expands_to_home_before_resolution() {
+    // Build a ctx whose workspace is the HOME directory so the tilde-expanded
+    // path is inside allowed_roots.
+    if let Ok(home) = std::env::var("HOME") {
+        let home_path = std::path::PathBuf::from(&home);
+        // workspace = HOME, allowed_roots = [HOME]
+        let ctx = ToolContext {
+            nous_id: aletheia_koina::id::NousId::new("test-agent").expect("valid"),
+            session_id: aletheia_koina::id::SessionId::new(),
+            workspace: home_path.clone(),
+            allowed_roots: vec![home_path.clone()],
+            services: None,
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+        };
+        let name = aletheia_koina::id::ToolName::new("read").expect("valid");
+
+        // "~/file.txt" must resolve to HOME/file.txt, which is inside HOME.
+        let resolved = validate_path("~/file.txt", &ctx, &name).expect("tilde path should resolve");
+        assert!(
+            resolved.starts_with(&home_path),
+            "resolved path should be under HOME: {}",
+            resolved.display()
+        );
+    }
+}
+
+#[test]
 fn test_validate_path_relative_resolves_inside_workspace() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let name = aletheia_koina::id::ToolName::new("read").expect("valid");

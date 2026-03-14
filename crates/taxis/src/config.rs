@@ -633,6 +633,11 @@ pub struct SandboxSettings {
     pub extra_read_paths: Vec<PathBuf>,
     /// Additional filesystem paths granted read+write access.
     pub extra_write_paths: Vec<PathBuf>,
+    /// Additional filesystem paths granted execute access.
+    ///
+    /// Values may begin with `~` which is expanded to the HOME environment
+    /// variable at policy-build time.
+    pub extra_exec_paths: Vec<PathBuf>,
 }
 
 impl Default for SandboxSettings {
@@ -642,6 +647,7 @@ impl Default for SandboxSettings {
             enforcement: SandboxEnforcementMode::Enforcing,
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
+            extra_exec_paths: Vec::new(),
         }
     }
 }

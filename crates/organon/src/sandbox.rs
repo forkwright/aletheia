@@ -17,6 +17,22 @@ pub enum SandboxEnforcement {
     Permissive,
 }
 
+/// Expand a leading `~` to the HOME environment variable.
+///
+/// If the path does not start with `~`, or if `HOME` is not set, returns the
+/// path unchanged. This allows config files to use `~` as a portable reference
+/// to the operator's home directory.
+fn expand_tilde(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if s.starts_with('~')
+        && let Ok(home) = std::env::var("HOME")
+    {
+        let without_tilde = s.strip_prefix('~').unwrap_or(&s);
+        return PathBuf::from(format!("{home}{without_tilde}"));
+    }
+    path.to_path_buf()
+}
+
 /// Configuration for the execution sandbox.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +42,11 @@ pub struct SandboxConfig {
     pub enforcement: SandboxEnforcement,
     pub extra_read_paths: Vec<PathBuf>,
     pub extra_write_paths: Vec<PathBuf>,
+    /// Additional filesystem paths granted execute access.
+    ///
+    /// Values may begin with `~` which is expanded to the HOME environment
+    /// variable at policy-build time.
+    pub extra_exec_paths: Vec<PathBuf>,
 }
 
 impl Default for SandboxConfig {
@@ -35,6 +56,7 @@ impl Default for SandboxConfig {
             enforcement: SandboxEnforcement::Enforcing,
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
+            extra_exec_paths: Vec::new(),
         }
     }
 }
@@ -71,7 +93,10 @@ impl SandboxConfig {
 
         let mut write_paths = vec![PathBuf::from("/tmp")];
 
-        let exec_paths = vec![
+        // WHY: System binary dirs are always executable. workspace and
+        // allowed_roots are also added so agents can execute scripts they own
+        // or that live in shared data directories — closes #1246.
+        let mut exec_paths = vec![
             PathBuf::from("/usr/bin"),
             PathBuf::from("/usr/local/bin"),
             PathBuf::from("/bin"),
@@ -80,17 +105,31 @@ impl SandboxConfig {
 
         write_paths.push(workspace.to_path_buf());
 
+        // WHY: workspace must be executable so agents can run scripts they
+        // create inside their own working directory.
+        if !exec_paths.contains(&workspace.to_path_buf()) {
+            exec_paths.push(workspace.to_path_buf());
+        }
+
         // WHY: allowed_roots grant read-only access to shared data that agents
         // may inspect but must not modify. Write access is limited to the
         // workspace and extra_write_paths, which are operator-controlled.
+        // Exec access is also granted so agents can run scripts in shared dirs.
         for root in allowed_roots {
             if !read_paths.contains(root) {
                 read_paths.push(root.clone());
+            }
+            if !exec_paths.contains(root) {
+                exec_paths.push(root.clone());
             }
         }
 
         read_paths.extend(self.extra_read_paths.iter().cloned());
         write_paths.extend(self.extra_write_paths.iter().cloned());
+
+        // WHY: extra_exec_paths support `~` prefix so operators can grant home
+        // directory exec access in the config without hard-coding the path.
+        exec_paths.extend(self.extra_exec_paths.iter().map(|p| expand_tilde(p)));
 
         for wp in &write_paths {
             if !read_paths.contains(wp) {
@@ -439,6 +478,7 @@ mod tests {
         assert_eq!(config.enforcement, SandboxEnforcement::Enforcing);
         assert!(config.extra_read_paths.is_empty());
         assert!(config.extra_write_paths.is_empty());
+        assert!(config.extra_exec_paths.is_empty());
     }
 
     #[test]
@@ -476,6 +516,7 @@ mod tests {
             enforcement: SandboxEnforcement::Permissive,
             extra_read_paths: vec![PathBuf::from("/opt/data")],
             extra_write_paths: vec![PathBuf::from("/var/cache")],
+            extra_exec_paths: vec![PathBuf::from("/opt/scripts")],
         };
         let json = serde_json::to_string(&config).expect("serialize");
         let back: SandboxConfig = serde_json::from_str(&json).expect("deserialize");
@@ -483,6 +524,7 @@ mod tests {
         assert_eq!(back.enforcement, SandboxEnforcement::Permissive);
         assert_eq!(back.extra_read_paths, vec![PathBuf::from("/opt/data")]);
         assert_eq!(back.extra_write_paths, vec![PathBuf::from("/var/cache")]);
+        assert_eq!(back.extra_exec_paths, vec![PathBuf::from("/opt/scripts")]);
     }
 
     #[test]
@@ -539,6 +581,75 @@ mod tests {
         assert!(policy.exec_paths.contains(&PathBuf::from("/usr/bin")));
         assert!(policy.exec_paths.contains(&PathBuf::from("/bin")));
         assert!(policy.write_paths.contains(&PathBuf::from("/tmp")));
+    }
+
+    #[test]
+    fn policy_includes_workspace_in_exec_paths() {
+        let config = SandboxConfig::default();
+        let workspace = PathBuf::from("/home/agent/workspace");
+        let policy = config.build_policy(&workspace, &[]);
+        assert!(
+            policy.exec_paths.contains(&workspace),
+            "workspace must be in exec_paths so agents can run scripts in their workspace"
+        );
+    }
+
+    #[test]
+    fn policy_includes_allowed_roots_in_exec_paths() {
+        let config = SandboxConfig::default();
+        let workspace = PathBuf::from("/home/agent/workspace");
+        let shared = PathBuf::from("/shared/scripts");
+        let policy = config.build_policy(&workspace, std::slice::from_ref(&shared));
+        assert!(
+            policy.exec_paths.contains(&shared),
+            "allowed_roots must be in exec_paths so agents can run scripts in shared dirs"
+        );
+    }
+
+    #[test]
+    fn policy_includes_extra_exec_paths() {
+        let config = SandboxConfig {
+            extra_exec_paths: vec![PathBuf::from("/opt/scripts")],
+            ..SandboxConfig::default()
+        };
+        let policy = config.build_policy(Path::new("/tmp/ws"), &[]);
+        assert!(
+            policy.exec_paths.contains(&PathBuf::from("/opt/scripts")),
+            "extra_exec_paths must appear in exec_paths"
+        );
+    }
+
+    #[test]
+    fn expand_tilde_replaces_home() {
+        // Only meaningful when HOME is set — guard with an env check.
+        if let Ok(home) = std::env::var("HOME") {
+            let p = expand_tilde(Path::new("~/scripts"));
+            assert_eq!(p, PathBuf::from(format!("{home}/scripts")));
+
+            let p2 = expand_tilde(Path::new("~"));
+            assert_eq!(p2, PathBuf::from(&home));
+        }
+    }
+
+    #[test]
+    fn expand_tilde_leaves_absolute_path_unchanged() {
+        let p = expand_tilde(Path::new("/usr/local/bin"));
+        assert_eq!(p, PathBuf::from("/usr/local/bin"));
+    }
+
+    #[test]
+    fn policy_expands_tilde_in_extra_exec_paths() {
+        if let Ok(home) = std::env::var("HOME") {
+            let config = SandboxConfig {
+                extra_exec_paths: vec![PathBuf::from("~")],
+                ..SandboxConfig::default()
+            };
+            let policy = config.build_policy(Path::new("/tmp/ws"), &[]);
+            assert!(
+                policy.exec_paths.contains(&PathBuf::from(&home)),
+                "~ in extra_exec_paths must be expanded to HOME"
+            );
+        }
     }
 
     #[test]

@@ -351,7 +351,7 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
 
 fn render_config(a: &Answers) -> String {
     let workspace = format!("{}/nous/{}", a.root.display(), a.agent_id);
-    format!(
+    let mut config = format!(
         r#"# Aletheia Instance Configuration
 # Config cascade: compiled defaults -> this file -> ALETHEIA_* env vars
 # Full reference: docs/CONFIGURATION.md
@@ -438,8 +438,29 @@ outputCostPerMtok = 15.0
         agent_id = a.agent_id,
         agent_name = a.agent_name,
         workspace = workspace,
-    )
+    );
+    // WHY: single-agent init always produces a single-agent config.
+    // Append permissive sandbox defaults so the agent is functional on kernels
+    // without Landlock and can execute scripts from HOME — closes #1247.
+    config.push_str(SINGLE_AGENT_SANDBOX_TOML);
+    config
 }
+
+/// Sandbox section appended to single-agent init configs.
+///
+/// WHY: Single-agent local deployments need to run scripts from the operator's
+/// home directory and should not be blocked by strict Landlock enforcement
+/// when kernels do not support it. `enforcement=permissive` keeps the agent
+/// functional on older kernels; `extraExecPaths = ["~"]` grants exec access
+/// to HOME so scripts installed there are reachable — closes #1247.
+const SINGLE_AGENT_SANDBOX_TOML: &str = r#"
+# --- Sandbox ---
+# Single-agent permissive defaults: enforcement falls back gracefully on
+# kernels without Landlock and HOME is added to exec paths for local scripts.
+[sandbox]
+enforcement = "permissive"
+extraExecPaths = ["~"]
+"#;
 
 fn detect_timezone() -> String {
     jiff::tz::TimeZone::system()
@@ -697,6 +718,31 @@ mod tests {
         assert!(
             msg.contains("--instance-path") || msg.contains("ALETHEIA_INSTANCE_PATH"),
             "error should name the missing flag: {msg}"
+        );
+    }
+
+    #[test]
+    fn render_config_includes_permissive_sandbox_defaults() {
+        let answers = Answers::default();
+        let toml_str = render_config(&answers);
+        let value: toml::Value =
+            toml::from_str(&toml_str).expect("rendered config should be valid TOML");
+
+        let sandbox = value
+            .get("sandbox")
+            .expect("sandbox section must be present");
+        assert_eq!(
+            sandbox.get("enforcement").and_then(toml::Value::as_str),
+            Some("permissive"),
+            "single-agent init must use permissive enforcement"
+        );
+        let exec_paths = sandbox
+            .get("extraExecPaths")
+            .and_then(toml::Value::as_array)
+            .expect("extraExecPaths must be an array");
+        assert!(
+            exec_paths.iter().any(|v| v.as_str() == Some("~")),
+            "extraExecPaths must include ~ for home directory exec access"
         );
     }
 
