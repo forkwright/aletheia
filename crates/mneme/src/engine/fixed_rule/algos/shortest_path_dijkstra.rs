@@ -1,8 +1,4 @@
 //! Weighted shortest path (Dijkstra).
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use crate::engine::error::InternalResult as Result;
 use crate::engine::fixed_rule::csr::DirectedCsrGraph;
 use std::cmp::Reverse;
@@ -27,6 +23,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct ShortestPathDijkstra;
 
 impl FixedRule for ShortestPathDijkstra {
+    #[expect(
+        clippy::expect_used,
+        reason = "termination set checked len() == 1 before .next()"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -68,7 +68,7 @@ impl FixedRule for ShortestPathDijkstra {
             for start in starting_nodes {
                 let res = if let Some(tn) = &termination_nodes {
                     if tn.len() == 1 {
-                        let single = Some(*tn.iter().next().unwrap());
+                        let single = Some(*tn.iter().next().expect("termination set is non-empty"));
                         if keep_ties {
                             dijkstra_keep_ties(&graph, start, &single, &(), &(), poison.clone())?
                         } else {
@@ -105,7 +105,8 @@ impl FixedRule for ShortestPathDijkstra {
                         start,
                         if let Some(tn) = &termination_nodes {
                             if tn.len() == 1 {
-                                let single = Some(*tn.iter().next().unwrap());
+                                let single =
+                                    Some(*tn.iter().next().expect("termination set is non-empty"));
                                 if keep_ties {
                                     dijkstra_keep_ties(
                                         &graph,
@@ -371,6 +372,10 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                 }
 
                 impl CollectPath {
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "chain initialized with [target] and only extended, never empty"
+                    )]
                     fn collect(
                         &mut self,
                         chain: &[u32],
@@ -379,7 +384,7 @@ pub(crate) fn dijkstra_keep_ties<FE: ForbiddenEdge, FN: ForbiddenNode, G: Goal +
                         cost: f32,
                         back_pointers: &[SmallVec<[u32; 1]>],
                     ) {
-                        let last = chain.last().unwrap();
+                        let last = chain.last().expect("chain is non-empty");
                         let prevs = &back_pointers[*last as usize];
                         for nxt in prevs {
                             let mut ret = chain.to_vec();

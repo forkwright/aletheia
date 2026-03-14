@@ -97,4 +97,12 @@ pub(crate) enum RuntimeError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Serialization of internal data failed (msgpack/cbor).
+    #[snafu(display("serialization failed: {message}"))]
+    Serialization {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }

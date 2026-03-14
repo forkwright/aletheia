@@ -1,8 +1,4 @@
 //! Louvain community detection.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::InternalResult as Result;
@@ -64,6 +60,10 @@ impl FixedRule for CommunityDetectionLouvain {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "collected guaranteed non-empty immediately after push"
+)]
 fn louvain(
     graph: &DirectedCsrGraph<f32>,
     delta: f32,
@@ -83,7 +83,10 @@ fn louvain(
             break;
         }
         collected.push((node2comm, new_graph));
-        current = &collected.last().unwrap().1;
+        current = &collected
+            .last()
+            .expect("collected is non-empty after push")
+            .1;
     }
     Ok(collected.into_iter().map(|(a, _)| a).collect_vec())
 }

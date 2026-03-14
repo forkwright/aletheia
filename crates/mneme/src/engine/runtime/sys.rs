@@ -1,9 +1,5 @@
 //! System operation and metadata query methods for the Db engine.
 #![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
-#![expect(
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
@@ -116,7 +112,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&rel_name.name))
                         .pop()
-                        .unwrap();
+                        .expect("obtain_relation_locks returns one lock per input");
                     let _guard = lock.write().expect("lock poisoned");
                     tx.create_index(rel_name, idx_name, cols)?;
                 }
@@ -138,7 +134,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
-                        .unwrap();
+                        .expect("obtain_relation_locks returns one lock per input");
                     let _guard = lock.write().expect("lock poisoned");
                     tx.create_hnsw_index(config)?;
                 }
@@ -160,7 +156,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
-                        .unwrap();
+                        .expect("obtain_relation_locks returns one lock per input");
                     let _guard = lock.write().expect("lock poisoned");
                     tx.create_fts_index(config)?;
                 }
@@ -182,7 +178,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&config.base_relation))
                         .pop()
-                        .unwrap();
+                        .expect("obtain_relation_locks returns one lock per input");
                     let _guard = lock.write().expect("lock poisoned");
                     tx.create_minhash_lsh_index(config)?;
                 }
@@ -205,7 +201,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let lock = self
                         .obtain_relation_locks(iter::once(&rel_name.name))
                         .pop()
-                        .unwrap();
+                        .expect("obtain_relation_locks returns one lock per input");
                     let _guard = lock.read().expect("lock poisoned");
                     tx.remove_index(rel_name, idx_name)?
                 };
@@ -329,7 +325,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         let rows = self
             .running_queries
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .iter()
             .map(|(k, v)| {
                 vec![

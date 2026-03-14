@@ -1,8 +1,4 @@
 //! Random walk over graphs.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::BTreeMap;
 
 use crate::engine::error::InternalResult as Result;
@@ -14,6 +10,7 @@ use rand::prelude::*;
 use crate::engine::data::expr::{Expr, eval_bytecode};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::fixed_rule::error::GraphAlgorithmSnafu;
 use crate::engine::fixed_rule::{
     BadExprValueError, FixedRule, FixedRulePayload, NodeNotFoundError,
 };
@@ -24,6 +21,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct RandomWalk;
 
 impl FixedRule for RandomWalk {
+    #[expect(
+        clippy::expect_used,
+        reason = "candidate_steps checked non-empty before choose"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -103,10 +104,18 @@ impl FixedRule for RandomWalk {
                                 })
                             })
                             .try_collect()?;
-                        let dist = WeightedIndex::new(&weights).unwrap();
+                        let dist = WeightedIndex::new(&weights).map_err(|e| {
+                            GraphAlgorithmSnafu {
+                                algorithm: "random_walk",
+                                message: format!("invalid edge weights: {e}"),
+                            }
+                            .build()
+                        })?;
                         &candidate_steps[dist.sample(&mut rng)]
                     } else {
-                        candidate_steps.choose(&mut rng).unwrap()
+                        candidate_steps
+                            .choose(&mut rng)
+                            .expect("candidate_steps checked non-empty above")
                     };
                     let next_node = &next_step[1];
                     path.push(next_node.clone());

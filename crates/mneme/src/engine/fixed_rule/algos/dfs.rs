@@ -1,8 +1,4 @@
 //! Depth-first search traversal.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::error::InternalResult as Result;
@@ -11,6 +7,7 @@ use compact_str::CompactString;
 use crate::engine::data::expr::{Expr, eval_bytecode_pred};
 use crate::engine::data::symb::Symbol;
 use crate::engine::data::value::DataValue;
+use crate::engine::fixed_rule::error::GraphAlgorithmSnafu;
 use crate::engine::fixed_rule::{FixedRule, FixedRulePayload, NodeNotFoundError};
 use crate::engine::parse::SourceSpan;
 use crate::engine::runtime::db::Poison;
@@ -99,7 +96,16 @@ impl FixedRule for Dfs {
             let mut current = ending.clone();
             while current != starting {
                 route.push(current.clone());
-                current = backtrace.get(&current).unwrap().clone();
+                current = backtrace
+                    .get(&current)
+                    .ok_or_else(|| {
+                        GraphAlgorithmSnafu {
+                            algorithm: "dfs",
+                            message: "backtrace missing entry during path reconstruction",
+                        }
+                        .build()
+                    })?
+                    .clone();
             }
             route.push(starting.clone());
             route.reverse();

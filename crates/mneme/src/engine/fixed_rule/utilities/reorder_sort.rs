@@ -1,8 +1,4 @@
 //! Reorder and sort fixed rule.
-#![expect(
-    clippy::unwrap_used,
-    reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
-)]
 use std::collections::BTreeMap;
 
 use crate::engine::error::InternalResult as Result;
@@ -23,6 +19,10 @@ use crate::engine::runtime::temp_store::RegularTempStore;
 pub(crate) struct ReorderSort;
 
 impl FixedRule for ReorderSort {
+    #[expect(
+        clippy::expect_used,
+        reason = "sort buffer entries always have a trailing sorter element"
+    )]
     fn run(
         &self,
         payload: FixedRulePayload<'_, '_>,
@@ -98,7 +98,7 @@ impl FixedRule for ReorderSort {
         let mut last = &DataValue::Bot;
         let take_plus_skip = take.saturating_add(skip);
         for val in &buffer {
-            let sorter = val.last().unwrap();
+            let sorter = val.last().expect("sort buffer entries must be non-empty");
 
             if sorter == last {
                 count += 1;
