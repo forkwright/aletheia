@@ -332,11 +332,17 @@ Rules:
         }
 
         // Classify the turn from combined content
-        let combined: String = messages
-            .iter()
-            .map(|m| m.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let combined: String =
+            messages
+                .iter()
+                .map(|m| m.content.as_str())
+                .fold(String::new(), |mut acc, s| {
+                    if !acc.is_empty() {
+                        acc.push('\n');
+                    }
+                    acc.push_str(s);
+                    acc
+                });
         let turn_type = refinement::classify_turn(&combined);
 
         // Build prompt with turn-type-specific instructions
@@ -630,8 +636,13 @@ fn slugify(s: &str) -> String {
         .collect::<String>()
         .split('-')
         .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
+        .fold(String::new(), |mut acc, part| {
+            if !acc.is_empty() {
+                acc.push('-');
+            }
+            acc.push_str(part);
+            acc
+        })
 }
 
 // ---------------------------------------------------------------------------

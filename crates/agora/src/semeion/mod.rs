@@ -293,16 +293,16 @@ impl ChannelProvider for SignalProvider {
                     any_ok = true;
                 }
                 let mut detail = serde_json::Map::new();
-                detail.insert("reachable".to_owned(), serde_json::Value::Bool(ok));
+                detail.insert(String::from("reachable"), serde_json::Value::Bool(ok));
 
                 if let Some(state_mutex) = self.account_states.get(account_id) {
                     let s = state_mutex.lock().await;
                     detail.insert(
-                        "connection_state".to_owned(),
+                        String::from("connection_state"),
                         serde_json::Value::String(format!("{:?}", s.state)),
                     );
                     detail.insert(
-                        "buffered_messages".to_owned(),
+                        String::from("buffered_messages"),
                         serde_json::Value::Number(s.buffered_count().into()),
                     );
                 }

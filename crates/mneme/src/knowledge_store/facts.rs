@@ -46,48 +46,48 @@ impl KnowledgeStore {
         let mut params = BTreeMap::new();
         // Old fact params
         params.insert(
-            "old_id".to_owned(),
+            String::from("old_id"),
             DataValue::Str(old_fact.id.as_str().into()),
         );
         params.insert(
-            "old_valid_from".to_owned(),
+            String::from("old_valid_from"),
             DataValue::Str(format_timestamp(&old_fact.valid_from).into()),
         );
         params.insert(
-            "old_content".to_owned(),
+            String::from("old_content"),
             DataValue::Str(old_fact.content.as_str().into()),
         );
         params.insert(
-            "nous_id".to_owned(),
+            String::from("nous_id"),
             DataValue::Str(old_fact.nous_id.as_str().into()),
         );
         params.insert(
-            "old_confidence".to_owned(),
+            String::from("old_confidence"),
             DataValue::from(old_fact.confidence),
         );
         params.insert(
-            "old_tier".to_owned(),
+            String::from("old_tier"),
             DataValue::Str(old_fact.tier.as_str().into()),
         );
-        params.insert("now".to_owned(), DataValue::Str(now_str.as_str().into()));
+        params.insert(String::from("now"), DataValue::Str(now_str.as_str().into()));
         params.insert(
-            "new_id".to_owned(),
+            String::from("new_id"),
             DataValue::Str(new_fact.id.as_str().into()),
         );
         params.insert(
-            "old_source".to_owned(),
+            String::from("old_source"),
             DataValue::Str(old_fact.source_session_id.as_deref().unwrap_or("").into()),
         );
         params.insert(
-            "old_recorded".to_owned(),
+            String::from("old_recorded"),
             DataValue::Str(format_timestamp(&old_fact.recorded_at).into()),
         );
         params.insert(
-            "old_access_count".to_owned(),
+            String::from("old_access_count"),
             DataValue::from(i64::from(old_fact.access_count)),
         );
         params.insert(
-            "old_last_accessed_at".to_owned(),
+            String::from("old_last_accessed_at"),
             DataValue::Str(
                 old_fact
                     .last_accessed_at
@@ -98,43 +98,43 @@ impl KnowledgeStore {
             ),
         );
         params.insert(
-            "old_stability_hours".to_owned(),
+            String::from("old_stability_hours"),
             DataValue::from(old_fact.stability_hours),
         );
         params.insert(
-            "old_fact_type".to_owned(),
+            String::from("old_fact_type"),
             DataValue::Str(old_fact.fact_type.as_str().into()),
         );
         params.insert(
-            "old_is_forgotten".to_owned(),
+            String::from("old_is_forgotten"),
             DataValue::Bool(old_fact.is_forgotten),
         );
-        params.insert("old_forgotten_at".to_owned(), DataValue::Null);
-        params.insert("old_forget_reason".to_owned(), DataValue::Null);
+        params.insert(String::from("old_forgotten_at"), DataValue::Null);
+        params.insert(String::from("old_forget_reason"), DataValue::Null);
 
         // New fact params
         params.insert(
-            "new_content".to_owned(),
+            String::from("new_content"),
             DataValue::Str(new_fact.content.as_str().into()),
         );
         params.insert(
-            "new_confidence".to_owned(),
+            String::from("new_confidence"),
             DataValue::from(new_fact.confidence),
         );
         params.insert(
-            "new_tier".to_owned(),
+            String::from("new_tier"),
             DataValue::Str(new_fact.tier.as_str().into()),
         );
         params.insert(
-            "source_session_id".to_owned(),
+            String::from("source_session_id"),
             DataValue::Str(new_fact.source_session_id.as_deref().unwrap_or("").into()),
         );
         params.insert(
-            "stability_hours".to_owned(),
+            String::from("stability_hours"),
             DataValue::from(new_fact.stability_hours),
         );
         params.insert(
-            "fact_type".to_owned(),
+            String::from("fact_type"),
             DataValue::Str(new_fact.fact_type.as_str().into()),
         );
 
@@ -153,9 +153,9 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
-        params.insert("now".to_owned(), DataValue::Str(now.into()));
-        params.insert("limit".to_owned(), DataValue::from(limit));
+        params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
+        params.insert(String::from("now"), DataValue::Str(now.into()));
+        params.insert(String::from("limit"), DataValue::from(limit));
 
         let rows = self.run_read(&queries::full_current_facts(), params)?;
         rows_to_facts(rows, nous_id)
@@ -168,7 +168,7 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("time".to_owned(), DataValue::Str(time.into()));
+        params.insert(String::from("time"), DataValue::Str(time.into()));
 
         let rows = self.run_read(&queries::facts_at_time(), params)?;
         super::marshal::rows_to_facts_partial(rows)
@@ -254,12 +254,15 @@ impl KnowledgeStore {
         ";
         let mut params = std::collections::BTreeMap::new();
         params.insert(
-            "id".to_owned(),
+            String::from("id"),
             crate::engine::DataValue::Str(fact_id.as_str().into()),
         );
-        params.insert("now".to_owned(), crate::engine::DataValue::Str(now.into()));
         params.insert(
-            "reason".to_owned(),
+            String::from("now"),
+            crate::engine::DataValue::Str(now.into()),
+        );
+        params.insert(
+            String::from("reason"),
             crate::engine::DataValue::Str(reason.as_str().into()),
         );
         self.run_mut(script, params)?;
@@ -309,7 +312,7 @@ impl KnowledgeStore {
         ";
         let mut params = std::collections::BTreeMap::new();
         params.insert(
-            "id".to_owned(),
+            String::from("id"),
             crate::engine::DataValue::Str(fact_id.as_str().into()),
         );
         self.run_mut(script, params)?;
@@ -336,8 +339,8 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
-        params.insert("limit".to_owned(), DataValue::from(limit));
+        params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
+        params.insert(String::from("limit"), DataValue::from(limit));
         let rows = self.run_read(&queries::forgotten_facts(), params)?;
         rows_to_facts(rows, nous_id)
     }
@@ -433,12 +436,12 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
-        params.insert("at_time".to_owned(), DataValue::Str(at_time.into()));
+        params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
+        params.insert(String::from("at_time"), DataValue::Str(at_time.into()));
 
         let rows = match filter {
             Some(f) if !f.is_empty() => {
-                params.insert("filter".to_owned(), DataValue::Str(f.into()));
+                params.insert(String::from("filter"), DataValue::Str(f.into()));
                 self.run_read(queries::TEMPORAL_FACTS_FILTERED, params)?
             }
             _ => self.run_read(&queries::temporal_facts(), params)?,
@@ -459,9 +462,9 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
-        params.insert("from_time".to_owned(), DataValue::Str(from_time.into()));
-        params.insert("to_time".to_owned(), DataValue::Str(to_time.into()));
+        params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
+        params.insert(String::from("from_time"), DataValue::Str(from_time.into()));
+        params.insert(String::from("to_time"), DataValue::Str(to_time.into()));
 
         let added_rows = self.run_read(queries::TEMPORAL_DIFF_ADDED, params.clone())?;
         let added = rows_to_facts(added_rows, nous_id)?;
@@ -543,8 +546,8 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         let mut params = BTreeMap::new();
-        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
-        params.insert("limit".to_owned(), DataValue::from(limit));
+        params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
+        params.insert(String::from("limit"), DataValue::from(limit));
 
         let rows = self.run_read(&queries::audit_all_facts(), params)?;
         rows_to_facts(rows, nous_id)

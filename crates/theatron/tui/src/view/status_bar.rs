@@ -22,8 +22,13 @@ fn render_keybindings(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     let hint_str: String = hints
         .iter()
         .map(|(key, desc)| format!("{key} {desc}"))
-        .collect::<Vec<_>>()
-        .join(" \u{2502} ");
+        .fold(String::new(), |mut acc, s| {
+            if !acc.is_empty() {
+                acc.push_str(" \u{2502} ");
+            }
+            acc.push_str(&s);
+            acc
+        });
 
     let hints_width = hint_str.width();
     let pad = (width as usize).saturating_sub(hints_width + 1);

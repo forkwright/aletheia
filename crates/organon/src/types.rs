@@ -52,17 +52,17 @@ impl InputSchema {
         for (name, def) in &self.properties {
             let mut prop = serde_json::Map::new();
             prop.insert(
-                "type".to_owned(),
+                String::from("type"),
                 serde_json::to_value(def.property_type)
                     .unwrap_or(serde_json::Value::String("string".to_owned())),
             );
             prop.insert(
-                "description".to_owned(),
+                String::from("description"),
                 serde_json::Value::String(def.description.clone()),
             );
             if let Some(ref enum_vals) = def.enum_values {
                 prop.insert(
-                    "enum".to_owned(),
+                    String::from("enum"),
                     serde_json::Value::Array(
                         enum_vals
                             .iter()
@@ -72,7 +72,7 @@ impl InputSchema {
                 );
             }
             if let Some(ref default) = def.default {
-                prop.insert("default".to_owned(), default.clone());
+                prop.insert(String::from("default"), default.clone());
             }
             props.insert(name.clone(), serde_json::Value::Object(prop));
         }

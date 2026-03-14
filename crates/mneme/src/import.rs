@@ -157,7 +157,7 @@ fn restore_workspace(
         ensure!(
             validate_relative_path(rel_path),
             error::UnsafePathSnafu {
-                path: rel_path.clone(),
+                path: std::path::PathBuf::from(rel_path),
             }
         );
 
@@ -170,12 +170,12 @@ fn restore_workspace(
 
         if let Some(parent) = full_path.parent() {
             std::fs::create_dir_all(parent).context(error::IoSnafu {
-                path: parent.display().to_string(),
+                path: parent.to_path_buf(),
             })?;
         }
 
         std::fs::write(&full_path, content).context(error::IoSnafu {
-            path: full_path.display().to_string(),
+            path: full_path.clone(),
         })?;
 
         count += 1;
