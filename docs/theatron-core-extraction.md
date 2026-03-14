@@ -462,3 +462,7 @@ required by the prompt but left unaddressed.
 | Idea | `mapping.rs` | The file is 53 KB and handles all keymap translation. Splitting into sub-modules by domain (terminal, sse, stream, keybindings) would improve navigability. |
 | Missing test | `api/client.rs` | `check_status()` has no unit tests for the JSON body extraction path. It is the sole place that parses server error messages; a test with a mock response body would prevent silent regressions. |
 | Missing test | `api/client.rs` | `build_http_client()` has no test that verifies required headers (`x-requested-with`, `Content-Type`) are present on the built client. |
+| Bug | `api/types.rs:20-22` | `Agent::display_name()` returns empty string when `name = Some("")`. Inconsistent with `Session::label()` at line 46 which filters empty strings via `.filter(\|s\| !s.is_empty())`. |
+| Debt | `api/client.rs:487` | `knowledge_facts` query params built via string interpolation, not `.query()`. Injection-safe only because params are controlled, but inconsistent with `recall()` at line 427 which uses `.query()`. |
+| Missing test | `api/streaming.rs:165-222` | `tool_approval_required`, `tool_approval_resolved`, and all `plan_*` stream event parsing have no test coverage. |
+| Debt | `api/mod.rs:7-21` | Three `#[expect(unused_imports)]` on re-exports — barrel-file pattern fighting the linter. Will be resolved when `api/` module moves to core. |
