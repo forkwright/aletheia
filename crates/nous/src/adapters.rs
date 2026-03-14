@@ -1,7 +1,33 @@
 //! Trait adapters bridging organon tool traits to mneme SessionStore.
+//!
+//! # Locking strategy
+//!
+//! The `NoteStore` and `BlackboardStore` traits have synchronous method
+//! signatures, but the shared `SessionStore` is protected by a
+//! `tokio::sync::Mutex` to support the async callers elsewhere in the server
+//! (pylon routes, diaporeia tools, etc.).
+//!
+//! `with_store` bridges that gap:
+//!
+//! 1. `block_in_place` removes the current thread from Tokio's async worker
+//!    pool, allowing other tasks (including any task that holds the mutex) to
+//!    be scheduled on the remaining worker threads.
+//! 2. `Handle::block_on` then drives `store.lock().await` — proper async lock
+//!    acquisition — to completion on this now-blocking thread.
+//!
+//! Together this eliminates the `blocking_lock` shortcut (which internally
+//! used Tokio's bare `block_on`) in favour of the documented
+//! `block_in_place` + `Handle::block_on` pattern, where the lock is
+//! acquired through the runtime's async scheduler rather than a side-channel.
+//!
+//! # Runtime requirement
+//!
+//! `block_in_place` requires the **multi-thread** Tokio runtime; the
+//! current-thread runtime has only one worker thread and will panic.
 
 use std::sync::Arc;
 
+use tokio::runtime::Handle;
 use tokio::sync::Mutex;
 
 use aletheia_mneme::store::SessionStore;
@@ -10,17 +36,21 @@ use aletheia_organon::types::{BlackboardEntry, BlackboardStore, NoteEntry, NoteS
 
 /// Acquire the store lock from a synchronous trait method inside an async context.
 ///
-/// Uses `block_in_place` so the Tokio runtime can continue driving other tasks
-/// while the calling thread blocks waiting for the lock. Callers must be running
-/// on the **multi-thread** Tokio runtime; single-thread runtimes will panic.
-///
-/// The guard is held only for the duration of `f` and dropped before returning.
+/// See the module-level doc for the full rationale.  The guard is held only
+/// for the duration of `f` and dropped before returning.
 fn with_store<F, T>(store: &Arc<Mutex<SessionStore>>, f: F) -> T
 where
     F: FnOnce(&SessionStore) -> T,
 {
+    // WHY: block_in_place moves this thread out of Tokio's worker pool so that
+    // Handle::block_on can be called without nesting two async executors on the
+    // same thread.  Any task currently holding the mutex can be scheduled on
+    // the remaining worker threads, preventing the lock-holder-starvation
+    // deadlock that arises when blocking_lock() is called directly from an
+    // async worker.  Tokio's documentation explicitly states that
+    // Handle::block_on is safe to call from inside block_in_place.
     tokio::task::block_in_place(|| {
-        let guard = tokio::runtime::Handle::current().block_on(store.lock());
+        let guard = Handle::current().block_on(store.lock());
         f(&guard)
     })
 }
@@ -143,8 +173,9 @@ mod tests {
     /// Verify that `SessionNoteAdapter` can be locked and used from an async
     /// context running on a multi-thread Tokio runtime.
     ///
-    /// The adapter uses `block_in_place` internally, which requires the
-    /// multi-thread runtime — this test confirms that path works end-to-end.
+    /// The adapter uses `block_in_place` + `Handle::block_on(store.lock().await)`
+    /// internally, which requires the multi-thread runtime — this test confirms
+    /// that path works end-to-end without deadlocking.
     #[tokio::test(flavor = "multi_thread")]
     async fn note_adapter_lock_works_in_async_context() {
         let store = test_store();
@@ -158,7 +189,7 @@ mod tests {
 
         let adapter = SessionNoteAdapter(Arc::clone(&store));
 
-        // add_note calls block_in_place internally
+        // add_note uses block_in_place + Handle::block_on(store.lock().await)
         let id = adapter
             .add_note("sess-1", "alice", "task", "buy oat milk")
             .expect("add_note");
