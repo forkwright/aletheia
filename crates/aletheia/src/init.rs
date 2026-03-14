@@ -18,16 +18,16 @@ pub(crate) enum InitError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-    #[snafu(display("failed to create directory {path}"))]
+    #[snafu(display("failed to create directory {}", path.display()))]
     CreateDir {
-        path: String,
+        path: std::path::PathBuf,
         source: std::io::Error,
         #[snafu(implicit)]
         location: snafu::Location,
     },
-    #[snafu(display("failed to write {path}"))]
+    #[snafu(display("failed to write {}", path.display()))]
     WriteFile {
-        path: String,
+        path: std::path::PathBuf,
         source: std::io::Error,
         #[snafu(implicit)]
         location: snafu::Location,
@@ -38,9 +38,9 @@ pub(crate) enum InitError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-    #[snafu(display("failed to set permissions on {path}"))]
+    #[snafu(display("failed to set permissions on {}", path.display()))]
     SetPermissions {
-        path: String,
+        path: std::path::PathBuf,
         source: std::io::Error,
         #[snafu(implicit)]
         location: snafu::Location,
@@ -205,7 +205,7 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
     cliclack::intro("Aletheia Instance Setup").context(PromptSnafu)?;
 
     let root: String = cliclack::input("Instance root")
-        .default_input(&answers.root.display().to_string())
+        .default_input(&answers.root.to_string_lossy())
         .interact()
         .context(PromptSnafu)?;
     answers.root = PathBuf::from(root);
@@ -311,16 +311,14 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
         root.join("shared/coordination"),
     ];
     for dir in &dirs {
-        std::fs::create_dir_all(dir).context(CreateDirSnafu {
-            path: dir.display().to_string(),
-        })?;
+        std::fs::create_dir_all(dir).context(CreateDirSnafu { path: dir.clone() })?;
     }
 
     // Write config
     let config_toml = render_config(answers);
     let config_path = root.join("config/aletheia.toml");
     std::fs::write(&config_path, config_toml).context(WriteFileSnafu {
-        path: config_path.display().to_string(),
+        path: config_path.clone(),
     })?;
 
     // Write credential
@@ -329,7 +327,7 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
         let cred_json = serde_json::json!({ "token": key });
         let json_str = serde_json::to_string_pretty(&cred_json).context(SerializeJsonSnafu)?;
         std::fs::write(&cred_path, json_str).context(WriteFileSnafu {
-            path: cred_path.display().to_string(),
+            path: cred_path.clone(),
         })?;
         set_permissions(&cred_path, 0o600)?;
     }
@@ -345,7 +343,7 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
     );
     let soul_path = root.join(format!("nous/{}/SOUL.md", answers.agent_id));
     std::fs::write(&soul_path, soul).context(WriteFileSnafu {
-        path: soul_path.display().to_string(),
+        path: soul_path.clone(),
     })?;
 
     Ok(())
@@ -466,7 +464,7 @@ fn set_permissions(path: &Path, mode: u32) -> Result<(), InitError> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).context(
         SetPermissionsSnafu {
-            path: path.display().to_string(),
+            path: path.to_path_buf(),
         },
     )
 }

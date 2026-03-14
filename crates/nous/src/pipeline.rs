@@ -179,8 +179,13 @@ impl LoopDetector {
                     .iter()
                     .skip(pattern_start)
                     .map(String::as_str)
-                    .collect::<Vec<_>>()
-                    .join(",");
+                    .fold(String::new(), |mut acc, s| {
+                        if !acc.is_empty() {
+                            acc.push(',');
+                        }
+                        acc.push_str(s);
+                        acc
+                    });
                 return Some(pattern);
             }
         }

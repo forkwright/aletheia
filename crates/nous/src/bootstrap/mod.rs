@@ -233,8 +233,13 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
         let system_prompt = included
             .iter()
             .map(|s| format!("## {}\n\n{}", s.name, s.content))
-            .collect::<Vec<_>>()
-            .join("\n\n---\n\n");
+            .fold(String::new(), |mut acc, s| {
+                if !acc.is_empty() {
+                    acc.push_str("\n\n---\n\n");
+                }
+                acc.push_str(&s);
+                acc
+            });
 
         let section_names: Vec<String> = included.iter().map(|s| s.name.clone()).collect();
         let total_tokens = budget.consumed();

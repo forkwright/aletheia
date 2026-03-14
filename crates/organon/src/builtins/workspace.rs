@@ -221,7 +221,16 @@ impl ToolExecutor for ReadExecutor {
             let output = match max_lines {
                 Some(n) => {
                     let n = usize::try_from(n).unwrap_or(usize::MAX);
-                    content.lines().take(n).collect::<Vec<_>>().join("\n")
+                    content
+                        .lines()
+                        .take(n)
+                        .fold(String::new(), |mut acc, line| {
+                            if !acc.is_empty() {
+                                acc.push('\n');
+                            }
+                            acc.push_str(line);
+                            acc
+                        })
                 }
                 None => content,
             };

@@ -59,8 +59,13 @@ fn format_results(results: &[crate::types::MemoryResult]) -> String {
     results
         .iter()
         .map(|r| format!("- {} (score: {:.2})", r.content, r.score))
-        .collect::<Vec<_>>()
-        .join("\n")
+        .fold(String::new(), |mut acc, s| {
+            if !acc.is_empty() {
+                acc.push('\n');
+            }
+            acc.push_str(&s);
+            acc
+        })
 }
 
 // --- Memory Correct ---

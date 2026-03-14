@@ -66,12 +66,16 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
 
         if !suggestion.aliases.is_empty() {
-            let alias_str = suggestion
-                .aliases
-                .iter()
-                .map(|a| format!(":{a}"))
-                .collect::<Vec<_>>()
-                .join(" ");
+            let alias_str = suggestion.aliases.iter().map(|a| format!(":{a}")).fold(
+                String::new(),
+                |mut acc, s| {
+                    if !acc.is_empty() {
+                        acc.push(' ');
+                    }
+                    acc.push_str(&s);
+                    acc
+                },
+            );
             spans.push(Span::styled(format!("  {alias_str}"), theme.style_dim()));
         }
 

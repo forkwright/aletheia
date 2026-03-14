@@ -167,7 +167,7 @@ impl SignalClient {
         let mut params = serde_json::Map::new();
         if let Some(acct) = account {
             params.insert(
-                "account".to_owned(),
+                String::from("account"),
                 serde_json::Value::String(acct.to_owned()),
             );
         }
@@ -273,24 +273,33 @@ impl SendParams {
         let mut map = serde_json::Map::new();
 
         if let Some(ref msg) = self.message {
-            map.insert("message".to_owned(), serde_json::Value::String(msg.clone()));
+            map.insert(
+                String::from("message"),
+                serde_json::Value::String(msg.clone()),
+            );
         }
         if let Some(ref r) = self.recipient {
             // signal-cli expects recipient as an array
             map.insert(
-                "recipient".to_owned(),
+                String::from("recipient"),
                 serde_json::Value::Array(vec![serde_json::Value::String(r.clone())]),
             );
         }
         if let Some(ref g) = self.group_id {
-            map.insert("groupId".to_owned(), serde_json::Value::String(g.clone()));
+            map.insert(
+                String::from("groupId"),
+                serde_json::Value::String(g.clone()),
+            );
         }
         if let Some(ref a) = self.account {
-            map.insert("account".to_owned(), serde_json::Value::String(a.clone()));
+            map.insert(
+                String::from("account"),
+                serde_json::Value::String(a.clone()),
+            );
         }
         if let Some(ref att) = self.attachments {
             map.insert(
-                "attachments".to_owned(),
+                String::from("attachments"),
                 serde_json::Value::Array(
                     att.iter()
                         .map(|a| serde_json::Value::String(a.clone()))

@@ -56,9 +56,9 @@ fn correct_fact(
                     is_forgotten, forgotten_at, forget_reason}
     ";
     let mut params = BTreeMap::new();
-    params.insert("old_id".to_owned(), DataValue::Str(old_id.into()));
-    params.insert("now".to_owned(), DataValue::Str(correction_time.into()));
-    params.insert("new_id".to_owned(), DataValue::Str(new_id.into()));
+    params.insert(String::from("old_id"), DataValue::Str(old_id.into()));
+    params.insert(String::from("now"), DataValue::Str(correction_time.into()));
+    params.insert(String::from("new_id"), DataValue::Str(new_id.into()));
     store
         .run_mut_query(script, params)
         .expect("correct: supersede old fact");
@@ -104,8 +104,8 @@ fn retract_fact(store: &Arc<KnowledgeStore>, fact_id: &str, retraction_time: &st
                     is_forgotten, forgotten_at, forget_reason}
     ";
     let mut params = BTreeMap::new();
-    params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));
-    params.insert("now".to_owned(), DataValue::Str(retraction_time.into()));
+    params.insert(String::from("fact_id"), DataValue::Str(fact_id.into()));
+    params.insert(String::from("now"), DataValue::Str(retraction_time.into()));
     store.run_mut_query(script, params).expect("retract fact");
 }
 
@@ -121,7 +121,7 @@ fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> 
         :order recorded_at
     ";
     let mut params = BTreeMap::new();
-    params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+    params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
     let rows = store.run_query(script, params).expect("audit query");
 
     rows.rows

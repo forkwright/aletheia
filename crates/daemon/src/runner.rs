@@ -634,7 +634,6 @@ impl TaskRunner {
             let action = self.tasks[i].def.action.clone();
             let nous_id = self.tasks[i].def.nous_id.clone();
             let task_id = self.tasks[i].def.id.clone();
-            let task_name = self.tasks[i].def.name.clone();
             let timeout = self.tasks[i].def.timeout;
 
             // Clone Arc handles for the spawned task.
@@ -646,7 +645,7 @@ impl TaskRunner {
             let span = tracing::info_span!(
                 "task_execute",
                 task_id = %task_id,
-                task_name = %task_name,
+                task_name = %self.tasks[i].def.name,
                 nous_id = %nous_id,
             );
 

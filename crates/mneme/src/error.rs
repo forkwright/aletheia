@@ -54,9 +54,9 @@ pub enum Error {
 
     /// Filesystem I/O error (archive, backup).
     #[cfg(feature = "sqlite")]
-    #[snafu(display("I/O error at {path}: {source}"))]
+    #[snafu(display("I/O error at {}: {source}", path.display()))]
     Io {
-        path: String,
+        path: std::path::PathBuf,
         source: std::io::Error,
         #[snafu(implicit)]
         location: snafu::Location,
@@ -73,18 +73,18 @@ pub enum Error {
 
     /// Workspace file path contains unsafe traversal.
     #[cfg(feature = "sqlite")]
-    #[snafu(display("unsafe path in agent file: {path}"))]
+    #[snafu(display("unsafe path in agent file: {}", path.display()))]
     UnsafePath {
-        path: String,
+        path: std::path::PathBuf,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
     /// Backup path contains characters unsafe for SQL interpolation.
     #[cfg(feature = "sqlite")]
-    #[snafu(display("invalid backup path: {path}"))]
+    #[snafu(display("invalid backup path: {}", path.display()))]
     InvalidBackupPath {
-        path: String,
+        path: std::path::PathBuf,
         #[snafu(implicit)]
         location: snafu::Location,
     },

@@ -451,8 +451,13 @@ fn extract_summary_text(content: &[aletheia_hermeneus::types::ContentBlock]) -> 
             aletheia_hermeneus::types::ContentBlock::Text { text, .. } => Some(text.as_str()),
             _ => None,
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .fold(String::new(), |mut acc, s| {
+            if !acc.is_empty() {
+                acc.push('\n');
+            }
+            acc.push_str(s);
+            acc
+        })
         .trim()
         .to_owned()
 }

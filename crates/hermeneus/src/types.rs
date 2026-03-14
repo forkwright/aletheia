@@ -67,8 +67,13 @@ impl Content {
                     ContentBlock::Thinking { thinking, .. } => Some(thinking.as_str()),
                     _ => None,
                 })
-                .collect::<Vec<_>>()
-                .join("\n"),
+                .fold(String::new(), |mut acc, s| {
+                    if !acc.is_empty() {
+                        acc.push('\n');
+                    }
+                    acc.push_str(s);
+                    acc
+                }),
         }
     }
 }
@@ -184,8 +189,13 @@ impl ToolResultContent {
                     ToolResultBlock::Image { .. } => "[image]",
                     ToolResultBlock::Document { .. } => "[document]",
                 })
-                .collect::<Vec<_>>()
-                .join("\n"),
+                .fold(String::new(), |mut acc, s| {
+                    if !acc.is_empty() {
+                        acc.push('\n');
+                    }
+                    acc.push_str(s);
+                    acc
+                }),
         }
     }
 }

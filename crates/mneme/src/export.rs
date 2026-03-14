@@ -276,12 +276,12 @@ fn walk_directory(
 
     for entry in entries {
         let entry = entry.context(error::IoSnafu {
-            path: current.display().to_string(),
+            path: current.to_path_buf(),
         })?;
         let path = entry.path();
-        let file_type = entry.file_type().context(error::IoSnafu {
-            path: path.display().to_string(),
-        })?;
+        let file_type = entry
+            .file_type()
+            .context(error::IoSnafu { path: path.clone() })?;
 
         if file_type.is_dir() {
             let dir_name = entry.file_name();
