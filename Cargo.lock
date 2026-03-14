@@ -6170,6 +6170,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "theatron-desktop"
+version = "0.10.0"
+dependencies = [
+ "compact_str",
+ "serde",
+ "theatron-core",
+]
+
+[[package]]
 name = "theatron-tui"
 version = "0.10.0"
 dependencies = [
