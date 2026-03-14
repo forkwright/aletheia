@@ -75,7 +75,7 @@ impl RetentionPolicy {
                 i64::from(self.session_max_age_days) * 24,
             ))
             .expect("retention cutoff overflow");
-        let cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%S").to_string();
+        let cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
 
         let expired_sessions = find_expired_sessions(conn, &cutoff_str)?;
         if !expired_sessions.is_empty() {
@@ -104,7 +104,7 @@ impl RetentionPolicy {
                 i64::from(self.orphan_message_max_age_days) * 24,
             ))
             .expect("orphan cutoff overflow");
-        let orphan_cutoff_str = orphan_cutoff.strftime("%Y-%m-%dT%H:%M:%S").to_string();
+        let orphan_cutoff_str = orphan_cutoff.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
         result.messages_deleted = delete_orphan_messages(conn, &orphan_cutoff_str)?;
 
         // Estimate freed bytes

@@ -61,7 +61,7 @@ pub fn load_history(
     config: &HistoryConfig,
     current_message: &str,
 ) -> error::Result<(Vec<PipelineMessage>, HistoryResult)> {
-    let current_tokens = current_message.len() as i64 / 4;
+    let current_tokens = (current_message.len() as i64 + 3) / 4;
     let available = budget - config.reserve_for_current - current_tokens;
 
     if available <= 0 {

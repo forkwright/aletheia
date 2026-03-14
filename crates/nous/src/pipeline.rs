@@ -535,7 +535,7 @@ pub async fn run_pipeline(
             ctx.history_result = Some(hist_result);
         } else {
             #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
-            let token_estimate = input.content.len() as i64 / 4;
+            let token_estimate = (input.content.len() as i64 + 3) / 4;
             ctx.messages.push(PipelineMessage {
                 role: "user".to_owned(),
                 content: input.content.clone(),
