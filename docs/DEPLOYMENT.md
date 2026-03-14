@@ -8,14 +8,14 @@ Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For 
 
 Five steps from a fresh clone to a running instance:
 
-**Step 1 — Install the binary**
+**Step 1: Install the binary**
 
 ```bash
 cargo build --release
 cp target/release/aletheia ~/.local/bin/
 ```
 
-**Step 2 — Copy the instance scaffold**
+**Step 2: Copy the instance scaffold**
 
 ```bash
 cp -r instance.example instance
@@ -23,9 +23,9 @@ cp -r instance.example instance
 
 This creates the directory tree (`config/`, `data/`, `nous/`, etc.) with template files ready to edit.
 
-**Step 3 — Configure credentials**
+**Step 3: Configure credentials**
 
-Set your Anthropic API key as an environment variable (or use the init wizard — see [Instance setup](#instance-setup)):
+Set your Anthropic API key as an environment variable (or use the init wizard, see [Instance setup](#instance-setup)):
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -33,7 +33,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 Then edit `instance/config/aletheia.toml` (copy from `instance/config/aletheia.toml.example` if it does not exist) and set the bind address, port, and auth mode.
 
-**Step 4 — Set up your first agent**
+**Step 4: Set up your first agent**
 
 ```bash
 cp -r instance/nous/_template instance/nous/main
@@ -48,7 +48,7 @@ id = "main"
 default = true
 ```
 
-**Step 5 — Start and verify**
+**Step 5: Start and verify**
 
 ```bash
 aletheia --instance-root ./instance
@@ -281,7 +281,7 @@ curl -X POST \
   http://127.0.0.1:18789/api/v1/sessions
 ```
 
-Missing the CSRF header returns `403 Forbidden`. No config change is needed to enable this — it is on by default.
+Missing the CSRF header returns `403 Forbidden`. No config change is needed to enable this; it is on by default.
 
 #### Disable CSRF for development
 
@@ -343,7 +343,7 @@ gateway:
 
 ### Recommended: use the init wizard
 
-The `aletheia init` wizard covers agent setup as part of instance initialization. It prompts for agent name and creates the workspace and config entry automatically. If you used `aletheia init`, your first agent is already configured — skip to [First run](#first-run).
+The `aletheia init` wizard covers agent setup as part of instance initialization. It prompts for agent name and creates the workspace and config entry automatically. If you used `aletheia init`, your first agent is already configured. Skip to [First run](#first-run).
 
 ### Manual: add an additional agent
 

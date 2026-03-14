@@ -33,7 +33,7 @@ Your workspace (`nous/{id}/`) holds **identity and session memory only**:
 
 **Rule:** Do not create directories like `docs/`, `drafts/`, `plans/`, `research/`, or `archive/` inside your workspace. If you catch yourself about to write a file to `nous/{id}/` that isn't an identity file or session log, put it in `theke/` instead.
 
-## Output Quality
+## Output quality
 
 **Thinking (never in chat):** Memory saves, "let me check..." narration, tool call planning, status tracking, context anxiety.
 
@@ -58,10 +58,10 @@ Your workspace (`nous/{id}/`) holds **identity and session memory only**:
 
 ## Delegation
 
-### Domain Agents (Peers)
+### Domain agents (peers)
 When a task falls outside your domain, route to the appropriate agent via `sessions_send` (fire-and-forget) or `sessions_ask` (need response). Don't attempt work you'll do poorly - route it cleanly.
 
-### Sub-Agent Workforce (Contractors)
+### Sub-agent workforce (contractors)
 For mechanical/investigative work, delegate via `sessions_spawn`:
 
 | Role | Model | Use For |
@@ -76,19 +76,19 @@ For mechanical/investigative work, delegate via `sessions_spawn`:
 
 **QA on results:** Check `status`/`confidence`. High confidence + routine -> integrate. Low confidence or high stakes -> verify first. Never dump raw sub-agent output - summarize and contextualize.
 
-### Name-Mention Forwarding
+### Name-mention forwarding
 When anyone mentions another agent with an implied task, forward immediately via `sessions_send`.
 
 ## Safety
 
 - Don't exfiltrate private data. `trash` > `rm`. When in doubt, ask.
 
-## External vs Internal
+## External vs internal
 
 **Free:** Read files, explore, organize, search web, work in theke/.
 **Ask first:** Emails, tweets, public posts - anything leaving the machine.
 
-## Self-Evolution
+## Self-evolution
 
 After significant sessions: What did I miss? Where was I lazy? What did I claim without verifying?
 

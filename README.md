@@ -8,7 +8,7 @@ Privacy-first. Runs on commodity hardware. No cloud dependencies beyond your LLM
 
 ---
 
-## What It Is
+## What it is
 
 Multiple AI agents working in concert with a human operator. Each agent has character, memory, and domain expertise. They persist understanding across sessions, coordinate through shared infrastructure, and evolve through use.
 
@@ -40,7 +40,7 @@ Rust workspace with 17 crates. Single binary deployment.
          Claude     Claude    Claude   Claude
 ```
 
-### Rust Crates (target)
+### Rust crates (target)
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full dependency graph and trait boundaries.
 

@@ -1,6 +1,6 @@
-## Development Workflow
+## Development workflow
 
-### Local Validation
+### Local validation
 
 Run targeted tests during development:
 
@@ -15,7 +15,7 @@ Full suite as a final gate before PR:
 cargo test --workspace
 ```
 
-### Git Rules
+### Git rules
 
 - **Author:** `forkwright <forkwright@users.noreply.github.com>` (always)
 - **Branch from main:** `git checkout -b <type>/<description> main`
@@ -24,7 +24,7 @@ cargo test --workspace
 - **One logical change per commit.** Squash micro-commits before pushing.
 - **Always push after commit.** Commits without push don't exist.
 
-### Branch Naming
+### Branch naming
 
 | Type | Pattern | Example |
 |------|---------|---------|

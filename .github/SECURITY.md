@@ -15,7 +15,7 @@ Do not open a public issue for security vulnerabilities.
 ## Scanning
 
 This repository uses:
-- **Dependabot** — automated dependency updates (Cargo, GitHub Actions)
-- **CodeQL** — static analysis for GitHub Actions workflows
-- **TruffleHog + Gitleaks** — secret detection in git history
-- **cargo audit + cargo deny** — Rust dependency vulnerability and license scanning
+- **Dependabot**: automated dependency updates (Cargo, GitHub Actions)
+- **CodeQL**: static analysis for GitHub Actions workflows
+- **TruffleHog + Gitleaks**: secret detection in git history
+- **cargo audit + cargo deny**: Rust dependency vulnerability and license scanning

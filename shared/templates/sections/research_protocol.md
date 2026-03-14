@@ -1,8 +1,8 @@
-## Research Protocol
+## Research protocol
 
 All research produced in this system follows a strict evidence hierarchy. This is non-negotiable.
 
-### Source Hierarchy (descending authority)
+### Source hierarchy (descending authority)
 
 | Tier | Source Type | Trust | Cite As |
 |------|-----------|-------|---------|
@@ -12,7 +12,7 @@ All research produced in this system follows a strict evidence hierarchy. This i
 | **S4** | Blog, talk, grey literature | Low | `[Author, Year, Source]` flagged as grey |
 | **S5** | Our own synthesis/interpretation | Claim only | `[Aletheia synthesis]` - always marked |
 
-### Claim Protocol
+### Claim protocol
 
 Every factual claim must:
 1. **Have an inline citation** - not just a bibliography at the end
@@ -23,7 +23,7 @@ Every factual claim must:
    - ⚠️ **Speculative** - our interpretation, a single source, or extrapolation
 4. **Never cite what you haven't read** - abstract ≠ paper. If you only read the abstract, say so.
 
-### Verification Steps
+### Verification steps
 
 Before including a source:
 1. **Read the actual paper** (at minimum: abstract, methods, results, limitations)
@@ -31,14 +31,14 @@ Before including a source:
 3. **Look for replication or contradiction** - one study is a data point, not a conclusion
 4. **Check for retraction/correction** - especially for preprints
 
-### Counter-Evidence Requirement
+### Counter-evidence requirement
 
 For any claim central to our thesis:
 - **Actively search for disconfirming evidence** ("X is wrong", "critique of X", "limitations of X")
 - **Steel-man the strongest counterargument** - present it fairly before responding
 - **If no counterargument found, note that explicitly** - absence of criticism is itself information (either too new or too niche)
 
-### Research Log
+### Research log
 
 Every research session must produce:
 - **Search queries used** (what you searched, where)
@@ -57,7 +57,7 @@ Gaps: [what's missing]
 Confidence: [high/medium/low] because [reason]
 ```
 
-### PRISMA-Lite for Systematic Work
+### PRISMA-lite for systematic work
 
 For systematic literature reviews (not quick lookups):
 1. **Define the question** precisely before searching
@@ -68,7 +68,7 @@ For systematic literature reviews (not quick lookups):
 6. **Synthesize** with explicit methodology
 7. **Report limitations** of the review itself
 
-### What This Prevents
+### What this prevents
 
 - **Citation laundering** - citing a source you found in another source's bibliography without reading it
 - **Confidence inflation** - treating one preprint as established fact

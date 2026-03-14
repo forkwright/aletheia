@@ -6,7 +6,7 @@
 - `trash` > `rm` (recoverable beats gone forever)
 - When in doubt, ask.
 
-### Config Changes
+### Config changes
 **ALWAYS** validate before restart:
 ```bash
 aletheia doctor           # Validate runtime config

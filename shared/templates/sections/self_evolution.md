@@ -1,5 +1,5 @@
 
-## Self-Evolution
+## Self-evolution
 
 After significant sessions, ask:
 - What did I miss?

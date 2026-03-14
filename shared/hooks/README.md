@@ -2,11 +2,11 @@
 
 Declarative shell hooks that fire at runtime lifecycle events.
 
-## How It Works
+## How it works
 
 Drop a `.yaml` file in this directory. Each file defines a hook that runs a shell command when an event fires on the internal event bus. No TypeScript required.
 
-## Hook Definition Format
+## Hook definition format
 
 ```yaml
 name: my-hook              # unique identifier
@@ -28,7 +28,7 @@ handler:
 nousFilter: [agent-a, agent-b]
 ```
 
-## Supported Events
+## Supported events
 
 | Event | Payload Fields | When |
 |-------|---------------|------|
@@ -45,7 +45,7 @@ nousFilter: [agent-a, agent-b]
 | `boot:ready` | port, tools, plugins | Runtime ready |
 | `config:reloaded` | added, removed | Config hot-reloaded |
 
-## Handler Protocol
+## Handler protocol
 
 Shell handlers receive the full event payload as JSON on **stdin**. This means your script can read structured data:
 
@@ -67,7 +67,7 @@ echo "Processing session: $SESSION_ID"
 - `1` -warning (logged if failAction is not "silent")
 - `2+` -error (always logged unless "silent")
 
-## Template Variables
+## Template variables
 
 Args and the command itself support `{{variable}}` substitution from the event payload:
 
@@ -79,7 +79,7 @@ Args and the command itself support `{{variable}}` substitution from the event p
 
 Missing variables resolve to empty string.
 
-## Per-Agent Hooks
+## Per-agent hooks
 
 Hooks in `shared/hooks/` apply globally. For agent-specific hooks, create a `hooks/` directory in the agent's workspace:
 
@@ -90,14 +90,14 @@ nous/<agent-b>/hooks/maintenance-log.yaml
 
 Or use `nousFilter` in a global hook to restrict which agents trigger it.
 
-## Allowed Script Extensions
+## Allowed script extensions
 
 For security, only these file extensions are allowed as hook commands:
 `.sh`, `.rb`, `.pl`
 
 Commands without extensions (e.g., `/usr/bin/curl`) are also allowed.
 
-## Fail Actions
+## Fail actions
 
 - **warn** (default) -log a warning on non-zero exit, don't affect the event
 - **silent** -swallow all errors silently
