@@ -13,13 +13,12 @@ name = "aletheia"
 path = "src/main.rs"
 
 [features]
-default = ["tui", "recall", "storage-fjall"]
+default = ["tui", "recall", "storage-fjall", "embed-candle"]
 # Recall pipeline: enables KnowledgeStore for vector search + extraction persistence.
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall", "aletheia-pylon/knowledge-store"]
 # fjall storage backend for mneme (LSM-tree, pure Rust, LZ4 compression).
 storage-fjall = ["aletheia-mneme/storage-fjall"]
-# Local ML embeddings via candle. Opt-in: not included in default builds.
-# Use: cargo build --features embed-candle
+# Local ML embeddings via candle. Required by the knowledge store (included in default builds).
 embed-candle = ["aletheia-mneme/embed-candle"]
 migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall"]
 tls = ["aletheia-pylon/tls"]
