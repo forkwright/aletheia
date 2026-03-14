@@ -24,6 +24,9 @@ data/
 # === Cargo build output ===
 /target/
 tui/target/
+fuzz/target/
+fuzz/artifacts/
+fuzz/Cargo.lock
 .cargo/
 
 # === Model caches ===

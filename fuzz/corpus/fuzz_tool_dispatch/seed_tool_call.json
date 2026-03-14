@@ -1,0 +1,1 @@
+{"id":"call_01","name":"execute_command","input":{"command":"ls"},"result":"output","is_error":false,"duration_ms":42}
