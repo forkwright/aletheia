@@ -1,6 +1,6 @@
 # Kotlin
 
-> Additive to STANDARDS.md. Read that first. Everything here is Kotlin-specific.
+> Additive to README.md. Read that first. Everything here is Kotlin-specific.
 >
 > Target: Kotlin 2.x (K2 compiler), Android (Jetpack Compose, Hilt, Room). Akroasis media player.
 >

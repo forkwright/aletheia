@@ -1,6 +1,6 @@
 # Shell
 
-> Additive to STANDARDS.md. Read that first. Everything here is shell-specific.
+> Additive to README.md. Read that first. Everything here is shell-specific.
 >
 > Target: Bash 5.x. For scripts, CI pipelines, and automation. Use `just` for task running.
 >

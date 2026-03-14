@@ -1,6 +1,6 @@
 # Rust
 
-> Additive to STANDARDS.md. Read that first. Everything here is Rust-specific.
+> Additive to README.md. Read that first. Everything here is Rust-specific.
 >
 > **Key decisions:** 2024 edition, snafu errors, tokio async, tracing logging, jiff time, cancel-safe select, pub(crate) default, cargo-deny.
 

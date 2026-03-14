@@ -4,7 +4,7 @@ Project conventions for AI coding agents working on this codebase.
 
 ## Standards
 
-Universal: [standards/STANDARDS.md](standards/STANDARDS.md)
+Universal: [standards/README.md](standards/README.md)
 Rust: [standards/RUST.md](standards/RUST.md)
 Writing: [standards/WRITING.md](standards/WRITING.md)
 Shell: [standards/SHELL.md](standards/SHELL.md)

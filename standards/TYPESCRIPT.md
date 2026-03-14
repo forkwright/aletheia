@@ -1,6 +1,6 @@
 # TypeScript
 
-> Additive to STANDARDS.md. Read that first. Everything here is TypeScript-specific.
+> Additive to README.md. Read that first. Everything here is TypeScript-specific.
 >
 > Target: TypeScript 5.x strict mode. React 19, Redux Toolkit, Vitest. Tauri 2 desktop app + web UI.
 >
