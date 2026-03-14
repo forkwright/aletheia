@@ -251,6 +251,22 @@ fn target_arch() -> seccompiler::TargetArch {
     }
 }
 
+/// Cached Landlock ABI version, initialized on first sandbox use.
+///
+/// Calling `probe_landlock_abi` on every tool execution is unnecessary; the
+/// kernel ABI is stable for the lifetime of the process. This static caches
+/// the result and emits the availability log exactly once.
+#[cfg(target_os = "linux")]
+static LANDLOCK_ABI: std::sync::LazyLock<Option<i32>> = std::sync::LazyLock::new(|| {
+    let abi = probe_landlock_abi();
+    if let Some(v) = abi {
+        tracing::info!(landlock_abi = v, "Landlock ABI v{v} available");
+    } else {
+        tracing::info!("Landlock not available on this kernel");
+    }
+    abi
+});
+
 /// Probe the kernel for the highest Landlock ABI version it supports.
 ///
 /// Returns the ABI version integer (1 through N) if Landlock is available,
@@ -314,7 +330,9 @@ pub fn apply_sandbox(
 ) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
 
-    let kernel_abi = probe_landlock_abi();
+    // WHY: LANDLOCK_ABI initializes on first access, logging the result once.
+    // Re-probing on every call is unnecessary; the kernel ABI is stable.
+    let kernel_abi = *LANDLOCK_ABI;
 
     match (kernel_abi, policy.enforcement) {
         (None, SandboxEnforcement::Permissive) => {
@@ -334,9 +352,7 @@ pub fn apply_sandbox(
                  Set enforcement=permissive to run without sandboxing.",
             ));
         }
-        (Some(abi), _) => {
-            tracing::info!(landlock_abi = abi, "Landlock ABI detected");
-        }
+        (Some(_), _) => {}
     }
 
     // SAFETY: Landlock and seccomp operations use direct kernel syscalls
