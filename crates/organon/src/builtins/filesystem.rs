@@ -102,7 +102,13 @@ impl ToolExecutor for GrepExecutor {
                     // Enforce the line limit in case the backend (grep fallback) doesn't
                     // natively support --max-count.
                     let n = usize::try_from(max_results).unwrap_or(usize::MAX);
-                    let text = text.lines().take(n).collect::<Vec<_>>().join("\n");
+                    let text = text.lines().take(n).fold(String::new(), |mut acc, line| {
+                        if !acc.is_empty() {
+                            acc.push('\n');
+                        }
+                        acc.push_str(line);
+                        acc
+                    });
                     Ok(ToolResult::text(text))
                 }
                 Err(e) => Ok(ToolResult::error(format!("grep failed: {e}"))),
@@ -189,7 +195,13 @@ impl ToolExecutor for FindExecutor {
                     // Enforce the result limit in case the backend (find fallback) doesn't
                     // natively support --max-results.
                     let n = usize::try_from(max_results).unwrap_or(usize::MAX);
-                    let text = text.lines().take(n).collect::<Vec<_>>().join("\n");
+                    let text = text.lines().take(n).fold(String::new(), |mut acc, line| {
+                        if !acc.is_empty() {
+                            acc.push('\n');
+                        }
+                        acc.push_str(line);
+                        acc
+                    });
                     Ok(ToolResult::text(text))
                 }
                 Err(e) => Ok(ToolResult::error(format!("find failed: {e}"))),

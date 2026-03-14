@@ -109,7 +109,7 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
     };
 
     if let Some(error) = json.get_mut("error").and_then(|e| e.as_object_mut()) {
-        error.insert("request_id".to_owned(), serde_json::Value::String(rid));
+        error.insert(String::from("request_id"), serde_json::Value::String(rid));
         let new_bytes = serde_json::to_vec(&json).unwrap_or_else(|e| {
             warn!(error = %e, "failed to re-serialize error response body");
             Vec::new()

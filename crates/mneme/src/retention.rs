@@ -177,7 +177,7 @@ fn find_excess_sessions_per_nous(conn: &Connection, keep: u32) -> Result<Vec<Str
 
 fn archive_sessions(conn: &Connection, session_ids: &[String], archive_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(archive_dir).context(error::IoSnafu {
-        path: archive_dir.display().to_string(),
+        path: archive_dir.to_path_buf(),
     })?;
 
     for session_id in session_ids {
@@ -185,7 +185,7 @@ fn archive_sessions(conn: &Connection, session_ids: &[String], archive_dir: &Pat
         let path = archive_dir.join(format!("{session_id}.json"));
         let json = serde_json::to_string_pretty(&archive).context(error::StoredJsonSnafu)?;
         std::fs::write(&path, json).context(error::IoSnafu {
-            path: path.display().to_string(),
+            path: path.clone(),
         })?;
         debug!(session_id, path = %path.display(), "archived session");
     }

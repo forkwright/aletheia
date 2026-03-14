@@ -467,8 +467,13 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
         col_widths
             .iter()
             .map(|w| "─".repeat(w + 2))
-            .collect::<Vec<_>>()
-            .join("┬")
+            .fold(String::new(), |mut acc, s| {
+                if !acc.is_empty() {
+                    acc.push('┬');
+                }
+                acc.push_str(&s);
+                acc
+            })
     );
     lines.push(Line::from(Span::styled(top, border_style)));
 
@@ -495,8 +500,13 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
                 col_widths
                     .iter()
                     .map(|w| "─".repeat(w + 2))
-                    .collect::<Vec<_>>()
-                    .join("┼")
+                    .fold(String::new(), |mut acc, s| {
+                        if !acc.is_empty() {
+                            acc.push('┼');
+                        }
+                        acc.push_str(&s);
+                        acc
+                    })
             );
             lines.push(Line::from(Span::styled(sep, border_style)));
         }
@@ -508,8 +518,13 @@ fn render_table(rows: &[Vec<String>], lines: &mut Vec<Line<'static>>, theme: &Th
         col_widths
             .iter()
             .map(|w| "─".repeat(w + 2))
-            .collect::<Vec<_>>()
-            .join("┴")
+            .fold(String::new(), |mut acc, s| {
+                if !acc.is_empty() {
+                    acc.push('┴');
+                }
+                acc.push_str(&s);
+                acc
+            })
     );
     lines.push(Line::from(Span::styled(bottom, border_style)));
 }

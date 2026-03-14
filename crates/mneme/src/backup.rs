@@ -15,7 +15,7 @@ use crate::error::{self, Result};
 fn validate_backup_path(path: &Path) -> Result<()> {
     let path_str = path.to_str().ok_or_else(|| {
         error::InvalidBackupPathSnafu {
-            path: path.to_string_lossy().into_owned(),
+            path: path.to_path_buf(),
         }
         .build()
     })?;
@@ -29,7 +29,7 @@ fn validate_backup_path(path: &Path) -> Result<()> {
     snafu::ensure!(
         has_safe_chars && !has_sql_comment,
         error::InvalidBackupPathSnafu {
-            path: path_str.to_owned(),
+            path: path.to_path_buf(),
         }
     );
 
@@ -91,7 +91,7 @@ impl<'a> BackupManager<'a> {
     #[instrument(skip(self))]
     pub fn create_backup(&self) -> Result<BackupResult> {
         std::fs::create_dir_all(&self.backup_dir).context(error::IoSnafu {
-            path: self.backup_dir.display().to_string(),
+            path: self.backup_dir.clone(),
         })?;
 
         let timestamp = jiff::Timestamp::now().strftime("%Y%m%dT%H%M%S").to_string();
@@ -104,7 +104,7 @@ impl<'a> BackupManager<'a> {
             .context(error::DatabaseSnafu)?;
 
         let metadata = std::fs::metadata(&backup_path).context(error::IoSnafu {
-            path: backup_path.display().to_string(),
+            path: backup_path.clone(),
         })?;
 
         let sessions_count: u32 = self
@@ -137,7 +137,7 @@ impl<'a> BackupManager<'a> {
     #[instrument(skip(self))]
     pub fn export_sessions_json(&self, output_dir: &Path) -> Result<ExportResult> {
         std::fs::create_dir_all(output_dir).context(error::IoSnafu {
-            path: output_dir.display().to_string(),
+            path: output_dir.to_path_buf(),
         })?;
 
         let mut stmt = self
@@ -156,7 +156,7 @@ impl<'a> BackupManager<'a> {
             let json = build_session_json(self.conn, session_id)?;
             let path = output_dir.join(format!("{session_id}.json"));
             std::fs::write(&path, json).context(error::IoSnafu {
-                path: path.display().to_string(),
+                path: path.clone(),
             })?;
             files_written += 1;
         }
@@ -180,12 +180,12 @@ impl<'a> BackupManager<'a> {
 
         let mut backups = Vec::new();
         let entries = std::fs::read_dir(&self.backup_dir).context(error::IoSnafu {
-            path: self.backup_dir.display().to_string(),
+            path: self.backup_dir.clone(),
         })?;
 
         for entry in entries {
             let entry = entry.context(error::IoSnafu {
-                path: self.backup_dir.display().to_string(),
+                path: self.backup_dir.clone(),
             })?;
             let filename = entry.file_name().to_string_lossy().into_owned();
             if filename.starts_with("sessions_")
@@ -193,9 +193,9 @@ impl<'a> BackupManager<'a> {
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("db"))
             {
-                let metadata = entry.metadata().context(error::IoSnafu {
-                    path: entry.path().display().to_string(),
-                })?;
+                let metadata = entry
+                    .metadata()
+                    .context(error::IoSnafu { path: entry.path() })?;
                 backups.push(BackupInfo {
                     path: entry.path(),
                     size_bytes: metadata.len(),
@@ -216,7 +216,7 @@ impl<'a> BackupManager<'a> {
 
         for backup in backups.iter().skip(keep) {
             std::fs::remove_file(&backup.path).context(error::IoSnafu {
-                path: backup.path.display().to_string(),
+                path: backup.path.clone(),
             })?;
             removed += 1;
         }
