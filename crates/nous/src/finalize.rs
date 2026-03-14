@@ -111,7 +111,7 @@ pub fn finalize(
             )
             .context(error::StoreSnafu)?;
         #[expect(clippy::cast_possible_wrap, reason = "message length fits in i64")]
-        let input_token_estimate = input_content.len() as i64 / 4;
+        let input_token_estimate = (input_content.len() as i64 + 3) / 4;
         store
             .append_message(
                 &session.id,
