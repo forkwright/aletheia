@@ -19,6 +19,8 @@ pub mod password;
 pub mod store;
 /// Shared auth types: claims, roles, actions, token kinds.
 pub mod types;
+/// Internal utilities shared across modules.
+pub(crate) mod util;
 
 #[cfg(test)]
 mod assertions {
