@@ -21,6 +21,10 @@ members = [
     "crates/theatron/core",
     "crates/theatron/desktop",
     "crates/theatron/tui",
+]
+exclude = [
+    # Standalone research crate with heavy GPU deps (wgpu, vello, stylo).
+    # Built separately: cargo build --manifest-path crates/theatron/desktop/Cargo.toml
     "crates/theatron/desktop",
 ]
 
