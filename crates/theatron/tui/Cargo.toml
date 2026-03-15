@@ -62,6 +62,9 @@ regex = { workspace = true }
 # Fuzzy matching for command palette
 fuzzy-matcher = "0.3"
 
+# Time — used for export timestamps
+jiff = { workspace = true }
+
 # Text diffing (patience, LCS, Myers algorithms)
 similar = "2"
 

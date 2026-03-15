@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{self, App};
 use crate::command::build_suggestions;
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
@@ -20,6 +20,7 @@ pub fn handle_close(app: &mut App) {
 }
 
 pub fn handle_input(app: &mut App, c: char) {
+    app.command_history_index = None;
     app.command_palette
         .input
         .insert(app.command_palette.cursor, c);
@@ -61,12 +62,49 @@ pub fn handle_delete_word(app: &mut App) {
 }
 
 pub fn handle_up(app: &mut App) {
-    app.command_palette.selected = app.command_palette.selected.saturating_sub(1);
+    // WHY: When palette input is empty, up navigates command history (like shell).
+    // When there's input, up navigates the suggestion list.
+    if app.command_palette.input.is_empty() || app.command_history_index.is_some() {
+        if !app.command_history.is_empty() {
+            let idx = match app.command_history_index {
+                Some(i) if i + 1 < app.command_history.len() => i + 1,
+                None => 0,
+                Some(i) => i,
+            };
+            app.command_history_index = Some(idx);
+            let entry = app.command_history[app.command_history.len() - 1 - idx].clone();
+            app.command_palette.input = entry;
+            app.command_palette.cursor = app.command_palette.input.len();
+            refresh_suggestions(app);
+        }
+    } else {
+        app.command_palette.selected = app.command_palette.selected.saturating_sub(1);
+    }
 }
 
 pub fn handle_down(app: &mut App) {
-    let max = app.command_palette.suggestions.len().saturating_sub(1);
-    app.command_palette.selected = (app.command_palette.selected + 1).min(max);
+    if app.command_history_index.is_some() {
+        match app.command_history_index {
+            Some(0) => {
+                app.command_history_index = None;
+                app.command_palette.input.clear();
+                app.command_palette.cursor = 0;
+                refresh_suggestions(app);
+            }
+            Some(i) => {
+                let idx = i - 1;
+                app.command_history_index = Some(idx);
+                let entry = app.command_history[app.command_history.len() - 1 - idx].clone();
+                app.command_palette.input = entry;
+                app.command_palette.cursor = app.command_palette.input.len();
+                refresh_suggestions(app);
+            }
+            None => {}
+        }
+    } else {
+        let max = app.command_palette.suggestions.len().saturating_sub(1);
+        app.command_palette.selected = (app.command_palette.selected + 1).min(max);
+    }
 }
 
 pub fn handle_tab(app: &mut App) {
@@ -126,9 +164,20 @@ async fn execute_command(app: &mut App) {
     let input = app.command_palette.input.trim().to_string();
     app.command_palette.active = false;
     app.command_palette.input.clear();
+    app.command_history_index = None;
 
     if input.is_empty() {
         return;
+    }
+
+    // Persist command to history (deduplicate consecutive duplicates)
+    if app.command_history.last().map(|s| s.as_str()) != Some(&input) {
+        app.command_history.push(input.clone());
+        if app.command_history.len() > app::MAX_COMMAND_HISTORY {
+            app.command_history
+                .drain(..app.command_history.len() - app::MAX_COMMAND_HISTORY);
+        }
+        app::save_command_history(&app.config, &app.command_history);
     }
 
     let (cmd_name, args) = match input.split_once(' ') {
@@ -228,6 +277,9 @@ async fn execute_command(app: &mut App) {
         }
         "tab" => {
             super::tabs::handle_tab_command(app, args);
+        }
+        "export" => {
+            execute_export(app);
         }
         _ => {
             app.error_toast = Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
@@ -394,6 +446,79 @@ fn safe_truncate(s: &str, max_bytes: usize) -> &str {
         end -= 1;
     }
     &s[..end]
+}
+
+pub(crate) fn execute_export_from_msg(app: &mut App) {
+    execute_export(app);
+}
+
+fn execute_export(app: &mut App) {
+    if app.messages.is_empty() {
+        app.error_toast = Some(ErrorToast::new("No messages to export".into()));
+        return;
+    }
+
+    let exports_dir = app::exports_dir(&app.config);
+    if let Err(e) = std::fs::create_dir_all(&exports_dir) {
+        app.error_toast = Some(ErrorToast::new(format!(
+            "Failed to create exports dir: {e}"
+        )));
+        return;
+    }
+
+    let now = jiff::Zoned::now();
+    let filename = format!("conversation-{}.md", now.strftime("%Y%m%d-%H%M%S"));
+    let path = exports_dir.join(&filename);
+
+    let agent_name = app
+        .focused_agent
+        .as_ref()
+        .and_then(|id| app.agents.iter().find(|a| &a.id == id))
+        .map(|a| a.name.as_str())
+        .unwrap_or("unknown");
+
+    let session_label = app
+        .focused_session_id
+        .as_ref()
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "none".to_string());
+
+    let mut md = format!(
+        "# Conversation Export\n\n- **Agent:** {agent_name}\n- **Session:** {session_label}\n- **Exported:** {now}\n\n---\n\n"
+    );
+
+    for msg in app.messages.iter() {
+        let role_label = match msg.role.as_str() {
+            "user" => "User",
+            "assistant" => "Assistant",
+            other => other,
+        };
+        if let Some(ref ts) = msg.timestamp {
+            md.push_str(&format!("### {role_label} — {ts}\n\n"));
+        } else {
+            md.push_str(&format!("### {role_label}\n\n"));
+        }
+        md.push_str(&msg.text);
+        md.push_str("\n\n");
+
+        for tc in &msg.tool_calls {
+            let status = if tc.is_error { "error" } else { "ok" };
+            let duration = tc
+                .duration_ms
+                .map(|d| format!(" ({d}ms)"))
+                .unwrap_or_default();
+            md.push_str(&format!("> Tool: `{}`{} — {status}\n\n", tc.name, duration));
+        }
+    }
+
+    match std::fs::write(&path, &md) {
+        Ok(()) => {
+            app.success_toast = Some(ErrorToast::new(format!("Exported to {}", path.display())));
+        }
+        Err(e) => {
+            app.error_toast = Some(ErrorToast::new(format!("Export failed: {e}")));
+        }
+    }
 }
 
 #[cfg(test)]

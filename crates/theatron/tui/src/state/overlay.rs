@@ -1,4 +1,4 @@
-use crate::id::{PlanId, ToolId, TurnId};
+use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 use crate::msg::MessageActionKind;
 
 use super::settings::SettingsOverlay;
@@ -21,6 +21,43 @@ pub enum Overlay {
     )]
     ContextActions(ContextActionsOverlay),
     DiffView(crate::diff::DiffViewState),
+    SessionSearch(SessionSearchOverlay),
+}
+
+#[derive(Debug)]
+pub struct SessionSearchOverlay {
+    pub query: String,
+    pub cursor: usize,
+    pub results: Vec<SearchResult>,
+    pub selected: usize,
+}
+
+impl SessionSearchOverlay {
+    pub fn new() -> Self {
+        Self {
+            query: String::new(),
+            cursor: 0,
+            results: Vec::new(),
+            selected: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchResult {
+    pub agent_id: NousId,
+    pub agent_name: String,
+    pub session_id: SessionId,
+    pub session_label: String,
+    pub snippet: String,
+    pub kind: SearchResultKind,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub enum SearchResultKind {
+    SessionName,
+    MessageContent { role: String },
 }
 
 #[derive(Debug)]

@@ -173,10 +173,17 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Navigation,
         shortcut: None,
     },
+    Command {
+        name: "export",
+        aliases: &[],
+        description: "Export conversation to markdown",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;
-const MAX_SUGGESTIONS_INITIAL: usize = 20;
+const MAX_SUGGESTIONS_INITIAL: usize = 25;
 
 /// Build suggestions from static commands + dynamic agent entries.
 pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> {
