@@ -6167,12 +6167,13 @@ dependencies = [
 name = "theatron-core"
 version = "0.11.0"
 dependencies = [
+ "pulldown-cmark",
  "serde",
 ]
 
 [[package]]
 name = "theatron-desktop"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "compact_str",
  "futures-util",
@@ -6200,6 +6201,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "fuzzy-matcher",
+ "jiff",
  "open",
  "pulldown-cmark",
  "ratatui",

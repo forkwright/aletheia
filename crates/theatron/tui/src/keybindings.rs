@@ -83,7 +83,7 @@ pub fn all_keybindings() -> &'static [Keybinding] {
         },
         Keybinding {
             keys: "/",
-            description: "Filter",
+            description: "Search sessions",
             contexts: &[KeyContext::Chat],
             show_in_status_bar: true,
         },
@@ -652,6 +652,7 @@ pub fn context_label(app: &App) -> &'static str {
         Some(Overlay::Settings(_)) => "Settings",
         Some(Overlay::ContextActions(_)) => "Context Actions",
         Some(Overlay::DiffView(_)) => "Diff Viewer",
+        Some(Overlay::SessionSearch(_)) => "Session Search",
     }
 }
 

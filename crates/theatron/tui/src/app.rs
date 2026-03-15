@@ -135,6 +135,10 @@ pub struct App {
     // Memory inspector panel state
     pub memory: MemoryInspectorState,
 
+    // Persistent command history (`:` commands)
+    pub command_history: Vec<String>,
+    pub command_history_index: Option<usize>,
+
     // Dirty-flag rendering: true when state changed since last frame.
     // Ticks only set this when animation is in progress (streaming or toasts).
     pub(crate) dirty: bool,
@@ -149,6 +153,8 @@ impl App {
 
         let theme = THEME.clone();
         tracing::info!("detected color depth: {:?}", theme.depth);
+
+        let command_history = load_command_history(&config);
 
         let mut app = Self {
             config,
@@ -197,6 +203,8 @@ impl App {
             tab_bar: TabBar::new(),
             pending_g: false,
             memory: MemoryInspectorState::new(),
+            command_history,
+            command_history_index: None,
             dirty: true,
             frame_cache: None,
         };
@@ -546,6 +554,51 @@ impl App {
     }
 }
 
+pub(crate) const MAX_COMMAND_HISTORY: usize = 1000;
+
+fn history_file_path(config: &Config) -> Option<std::path::PathBuf> {
+    config
+        .workspace_root
+        .as_ref()
+        .map(|root| root.join("state").join("tui_history"))
+}
+
+fn load_command_history(config: &Config) -> Vec<String> {
+    let path = match history_file_path(config) {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => contents
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+pub(crate) fn save_command_history(config: &Config, history: &[String]) {
+    let path = match history_file_path(config) {
+        Some(p) => p,
+        None => return,
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let content: String = history.iter().map(|s| format!("{s}\n")).collect();
+    let _ = std::fs::write(&path, content);
+}
+
+/// Resolve the root directory for export files.
+pub(crate) fn exports_dir(config: &Config) -> std::path::PathBuf {
+    config
+        .workspace_root
+        .as_ref()
+        .map(|root| root.join("exports"))
+        .unwrap_or_else(|| std::path::PathBuf::from("exports"))
+}
+
 #[cfg(test)]
 #[expect(
     clippy::unwrap_used,
@@ -614,6 +667,8 @@ pub(crate) mod test_helpers {
             tab_bar: TabBar::new(),
             pending_g: false,
             memory: MemoryInspectorState::new(),
+            command_history: Vec::new(),
+            command_history_index: None,
             dirty: true,
             frame_cache: None,
         }

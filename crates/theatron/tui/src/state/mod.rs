@@ -21,7 +21,8 @@ pub use memory::MemoryInspectorState;
 pub use ops::{FocusedPane, OpsState};
 pub use overlay::{
     ContextAction, ContextActionsOverlay, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    SessionPickerOverlay, ToolApprovalOverlay,
+    SearchResult, SearchResultKind, SessionPickerOverlay, SessionSearchOverlay,
+    ToolApprovalOverlay,
 };
 pub(crate) use tab::TabBar;
 pub use view_stack::{View, ViewStack};

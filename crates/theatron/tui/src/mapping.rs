@@ -196,7 +196,7 @@ impl App {
             }
 
             (KeyModifiers::NONE, KeyCode::Char('/')) if self.input.text.is_empty() => {
-                Some(Msg::FilterOpen)
+                Some(Msg::SessionSearchOpen)
             }
 
             (KeyModifiers::NONE, KeyCode::Char('v'))
@@ -465,6 +465,10 @@ impl App {
             return self.map_settings_overlay_key(key);
         }
 
+        if matches!(&self.overlay, Some(Overlay::SessionSearch(_))) {
+            return self.map_session_search_key(key);
+        }
+
         if self.is_diff_view_overlay() {
             return match (key.modifiers, key.code) {
                 (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
@@ -478,6 +482,16 @@ impl App {
                 (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
                 _ => None,
             };
+        }
+
+        // WHY: `?` toggles help overlay — pressing it again closes it.
+        if matches!(&self.overlay, Some(Overlay::Help))
+            && matches!(
+                (key.modifiers, key.code),
+                (KeyModifiers::NONE, KeyCode::Char('?'))
+            )
+        {
+            return Some(Msg::CloseOverlay);
         }
 
         match (key.modifiers, key.code) {
@@ -521,6 +535,26 @@ impl App {
 
     fn is_plan_approval_overlay(&self) -> bool {
         matches!(&self.overlay, Some(Overlay::PlanApproval(_)))
+    }
+
+    #[expect(
+        clippy::unused_self,
+        reason = "consistent method signature; self needed for future key binding personalisation"
+    )]
+    fn map_session_search_key(&self, key: KeyEvent) -> Option<Msg> {
+        match (key.modifiers, key.code) {
+            (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                Some(Msg::SessionSearchClose)
+            }
+            (_, KeyCode::Enter) => Some(Msg::SessionSearchSelect),
+            (_, KeyCode::Up) => Some(Msg::SessionSearchUp),
+            (_, KeyCode::Down) => Some(Msg::SessionSearchDown),
+            (_, KeyCode::Backspace) => Some(Msg::SessionSearchBackspace),
+            (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(c)) => {
+                Some(Msg::SessionSearchInput(c))
+            }
+            _ => None,
+        }
     }
 
     fn map_settings_overlay_key(&self, key: KeyEvent) -> Option<Msg> {
@@ -779,11 +813,11 @@ mod tests {
     }
 
     #[test]
-    fn slash_on_empty_input_opens_filter() {
+    fn slash_on_empty_input_opens_session_search() {
         let app = test_app();
         let event = Event::Terminal(key(KeyCode::Char('/')));
         let msg = app.map_event(event);
-        assert!(matches!(msg, Some(Msg::FilterOpen)));
+        assert!(matches!(msg, Some(Msg::SessionSearchOpen)));
     }
 
     #[test]
