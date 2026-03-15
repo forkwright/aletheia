@@ -1,0 +1,83 @@
+/*
+ * Design tokens for the Aletheia desktop UI.
+ *
+ * Organized by category: colors, dye palette, typography, spacing,
+ * transitions, radii, shadows. Theme-specific values live in themes.css;
+ * this file defines the token names and non-theme-dependent values.
+ */
+
+:root {
+  /* ------------------------------------------------------------------ */
+  /* Typography — font families                                         */
+  /* ------------------------------------------------------------------ */
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", "Fira Code",
+    "JetBrains Mono", monospace;
+  --font-display: "Cormorant Garamond", "Garamond", "Georgia", serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", "Helvetica Neue",
+    "Noto Sans", sans-serif;
+
+  /* ------------------------------------------------------------------ */
+  /* Typography — type scale (1.2 minor third, 14px base)               */
+  /* ------------------------------------------------------------------ */
+  --text-xs: 0.694rem;    /* ~11.1px  (14 / 1.2^2) */
+  --text-sm: 0.833rem;    /* ~13.3px  (14 / 1.2)   */
+  --text-base: 0.875rem;  /* 14px                   */
+  --text-md: 1.05rem;     /* ~16.8px  (14 × 1.2)   */
+  --text-lg: 1.26rem;     /* ~20.2px  (14 × 1.2^2) */
+  --text-xl: 1.512rem;    /* ~24.2px  (14 × 1.2^3) */
+  --text-2xl: 1.814rem;   /* ~29.0px  (14 × 1.2^4) */
+  --text-3xl: 2.177rem;   /* ~34.8px  (14 × 1.2^5) */
+
+  /* Line heights */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+
+  /* Font weights */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ------------------------------------------------------------------ */
+  /* Spacing — 4px base unit, 8 sizes                                   */
+  /* ------------------------------------------------------------------ */
+  --space-1: 0.25rem;   /* 4px  */
+  --space-2: 0.5rem;    /* 8px  */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+
+  /* ------------------------------------------------------------------ */
+  /* Transitions                                                        */
+  /* ------------------------------------------------------------------ */
+  --transition-quick: 0.15s ease;
+  --transition-measured: 0.3s ease;
+
+  /* ------------------------------------------------------------------ */
+  /* Border radii                                                       */
+  /* ------------------------------------------------------------------ */
+  --radius-sm: 0.125rem;  /* 2px  */
+  --radius-md: 0.25rem;   /* 4px  */
+  --radius-lg: 0.5rem;    /* 8px  */
+  --radius-xl: 0.75rem;   /* 12px */
+  --radius-full: 9999px;
+
+  /* ------------------------------------------------------------------ */
+  /* Shadows                                                            */
+  /* ------------------------------------------------------------------ */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.08);
+  --shadow-md: 0 2px 8px rgb(0 0 0 / 0.12);
+  --shadow-lg: 0 4px 16px rgb(0 0 0 / 0.16);
+  --shadow-inset: inset 0 1px 2px rgb(0 0 0 / 0.1);
+
+  /* ------------------------------------------------------------------ */
+  /* Accent — constant across themes                                    */
+  /* ------------------------------------------------------------------ */
+  --accent: #9A7B4F;
+  --accent-hover: #B08E5C;
+  --accent-dim: #7A6340;
+}
