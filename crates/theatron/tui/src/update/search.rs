@@ -78,7 +78,7 @@ pub(crate) async fn handle_select(app: &mut App) {
     if app.focused_agent.as_ref() != Some(&agent_id) {
         app.save_scroll_state();
         if let Some(a) = app.agents.iter_mut().find(|a| a.id == agent_id) {
-            a.has_notification = false;
+            a.unread_count = 0;
         }
         app.focused_agent = Some(agent_id.clone());
 

@@ -50,7 +50,7 @@ pub(crate) fn handle_scroll_to_bottom(app: &mut App) {
 pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
     app.save_scroll_state();
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == id) {
-        agent.has_notification = false;
+        agent.unread_count = 0;
     }
     app.focused_agent = Some(id);
     app.load_focused_session().await;

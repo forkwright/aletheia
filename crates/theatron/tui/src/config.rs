@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
-use std::path::{Path, PathBuf};
 
 use crate::error::{ConfigDirSnafu, IoSnafu, Result, TomlSnafu};
 
@@ -13,6 +15,10 @@ pub struct ConfigFile {
     pub default_agent: Option<String>,
     pub default_session: Option<String>,
     pub workspace_root: Option<String>,
+    /// Enable terminal bell (`\x07`) for new messages on inactive agents.
+    pub bell: Option<bool>,
+    /// Keybinding overrides: action name → key string (e.g. `toggle_sidebar = "Ctrl+G"`).
+    pub keybindings: Option<HashMap<String, String>>,
 }
 
 impl std::fmt::Debug for ConfigFile {
@@ -34,6 +40,10 @@ pub struct Config {
     pub default_session: Option<String>,
     /// Workspace root for agent operations. Resolved from `ALETHEIA_ROOT` env var, then config file.
     pub workspace_root: Option<std::path::PathBuf>,
+    /// Terminal bell for new messages on inactive agents (default: false).
+    pub bell: bool,
+    /// Keybinding overrides from TOML config.
+    pub keybindings: HashMap<String, String>,
 }
 
 impl std::fmt::Debug for Config {
@@ -76,6 +86,8 @@ impl Config {
             default_agent: cli_agent.or(file_config.default_agent),
             default_session: cli_session.or(file_config.default_session),
             workspace_root,
+            bell: file_config.bell.unwrap_or(false),
+            keybindings: file_config.keybindings.unwrap_or_default(),
         })
     }
 
@@ -172,12 +184,16 @@ mod tests {
 
     #[test]
     fn toml_roundtrip() {
+        let mut keybindings = HashMap::new();
+        keybindings.insert("toggle_sidebar".to_string(), "Ctrl+G".to_string());
         let file = ConfigFile {
             url: Some("http://host:1234".into()),
             token: Some("secret".into()),
             default_agent: Some("syn".into()),
             default_session: None,
             workspace_root: Some("/workspace".into()),
+            bell: Some(true),
+            keybindings: Some(keybindings),
         };
         let toml_str = toml::to_string(&file).unwrap();
         let back: ConfigFile = toml::from_str(&toml_str).unwrap();
@@ -186,6 +202,14 @@ mod tests {
         assert_eq!(file.default_agent, back.default_agent);
         assert_eq!(file.default_session, back.default_session);
         assert_eq!(file.workspace_root, back.workspace_root);
+        assert_eq!(back.bell, Some(true));
+        assert_eq!(
+            back.keybindings
+                .as_ref()
+                .and_then(|k| k.get("toggle_sidebar"))
+                .map(String::as_str),
+            Some("Ctrl+G")
+        );
     }
 
     #[test]

@@ -1,4 +1,8 @@
 /// Context-aware keybinding registry — single source of truth for help overlay and status bar hints.
+use std::collections::HashMap;
+
+use crossterm::event::{KeyCode, KeyModifiers};
+
 use crate::app::{App, Overlay, SelectionContext};
 
 pub struct Keybinding {
@@ -570,6 +574,288 @@ pub fn all_keybindings() -> &'static [Keybinding] {
     ]
 }
 
+/// Bindable action for configurable keybindings.
+///
+/// Covers global shortcuts (Ctrl+key combos) that have the same meaning regardless of
+/// context. Mode-specific bindings (overlays, filter, selection) stay hardcoded.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Action {
+    Quit,
+    ToggleSidebar,
+    ToggleThinking,
+    ToggleOpsPane,
+    TabNew,
+    OpenHelp,
+    OpenAgentPicker,
+    OpenSystemStatus,
+    MemoryOpen,
+    NewSession,
+    OpenSessionPicker,
+    CopyLastResponse,
+    ComposeInEditor,
+    ClearLine,
+    DeleteToEnd,
+    ScrollPageUp,
+    ScrollPageDown,
+    ScrollUp,
+    ScrollDown,
+}
+
+impl Action {
+    pub(crate) fn to_msg(self) -> crate::msg::Msg {
+        use crate::msg::{Msg, OverlayKind};
+        match self {
+            Self::Quit => Msg::Quit,
+            Self::ToggleSidebar => Msg::ToggleSidebar,
+            Self::ToggleThinking => Msg::ToggleThinking,
+            Self::ToggleOpsPane => Msg::ToggleOpsPane,
+            Self::TabNew => Msg::TabNew,
+            Self::OpenHelp => Msg::OpenOverlay(OverlayKind::Help),
+            Self::OpenAgentPicker => Msg::OpenOverlay(OverlayKind::AgentPicker),
+            Self::OpenSystemStatus => Msg::OpenOverlay(OverlayKind::SystemStatus),
+            Self::MemoryOpen => Msg::MemoryOpen,
+            Self::NewSession => Msg::NewSession,
+            Self::OpenSessionPicker => Msg::OpenOverlay(OverlayKind::SessionPicker),
+            Self::CopyLastResponse => Msg::CopyLastResponse,
+            Self::ComposeInEditor => Msg::ComposeInEditor,
+            Self::ClearLine => Msg::ClearLine,
+            Self::DeleteToEnd => Msg::DeleteToEnd,
+            Self::ScrollPageUp => Msg::ScrollPageUp,
+            Self::ScrollPageDown => Msg::ScrollPageDown,
+            Self::ScrollUp => Msg::ScrollUp,
+            Self::ScrollDown => Msg::ScrollDown,
+        }
+    }
+
+    fn config_key(self) -> &'static str {
+        match self {
+            Self::Quit => "quit",
+            Self::ToggleSidebar => "toggle_sidebar",
+            Self::ToggleThinking => "toggle_thinking",
+            Self::ToggleOpsPane => "toggle_ops_pane",
+            Self::TabNew => "tab_new",
+            Self::OpenHelp => "open_help",
+            Self::OpenAgentPicker => "open_agent_picker",
+            Self::OpenSystemStatus => "open_system_status",
+            Self::MemoryOpen => "memory_open",
+            Self::NewSession => "new_session",
+            Self::OpenSessionPicker => "open_session_picker",
+            Self::CopyLastResponse => "copy_last_response",
+            Self::ComposeInEditor => "compose_in_editor",
+            Self::ClearLine => "clear_line",
+            Self::DeleteToEnd => "delete_to_end",
+            Self::ScrollPageUp => "scroll_page_up",
+            Self::ScrollPageDown => "scroll_page_down",
+            Self::ScrollUp => "scroll_up",
+            Self::ScrollDown => "scroll_down",
+        }
+    }
+
+    fn all() -> &'static [Action] {
+        &[
+            Self::Quit,
+            Self::ToggleSidebar,
+            Self::ToggleThinking,
+            Self::ToggleOpsPane,
+            Self::TabNew,
+            Self::OpenHelp,
+            Self::OpenAgentPicker,
+            Self::OpenSystemStatus,
+            Self::MemoryOpen,
+            Self::NewSession,
+            Self::OpenSessionPicker,
+            Self::CopyLastResponse,
+            Self::ComposeInEditor,
+            Self::ClearLine,
+            Self::DeleteToEnd,
+            Self::ScrollPageUp,
+            Self::ScrollPageDown,
+            Self::ScrollUp,
+            Self::ScrollDown,
+        ]
+    }
+}
+
+/// Configurable keymap built from defaults + TOML overrides.
+///
+/// Uses `(KeyModifiers, KeyCode)` as the dispatch key to avoid matching on
+/// crossterm's `KeyEventKind`/`KeyEventState` fields.
+pub(crate) struct KeyMap {
+    dispatch: HashMap<(KeyModifiers, KeyCode), Action>,
+}
+
+impl KeyMap {
+    /// Build a keymap from TOML overrides merged with defaults.
+    pub(crate) fn build(overrides: &HashMap<String, String>) -> Self {
+        let mut action_to_keys: HashMap<Action, Vec<(KeyModifiers, KeyCode)>> = HashMap::new();
+
+        // Populate defaults.
+        for &(action, ref keys) in &Self::defaults() {
+            action_to_keys.entry(action).or_default().extend(keys);
+        }
+
+        // Apply overrides — replaces all default keys for the given action.
+        for action in Action::all() {
+            if let Some(key_str) = overrides.get(action.config_key()) {
+                if let Some(parsed) = parse_key_combo(key_str) {
+                    action_to_keys.insert(*action, vec![parsed]);
+                } else {
+                    tracing::warn!(
+                        key = key_str,
+                        action = action.config_key(),
+                        "ignoring unrecognised keybinding"
+                    );
+                }
+            }
+        }
+
+        // Build reverse lookup.
+        let mut dispatch = HashMap::new();
+        for (action, keys) in &action_to_keys {
+            for key in keys {
+                dispatch.insert(*key, *action);
+            }
+        }
+
+        Self { dispatch }
+    }
+
+    /// Look up the action bound to a `(modifiers, code)` pair.
+    pub(crate) fn lookup(&self, modifiers: KeyModifiers, code: KeyCode) -> Option<Action> {
+        self.dispatch.get(&(modifiers, code)).copied()
+    }
+
+    fn defaults() -> Vec<(Action, Vec<(KeyModifiers, KeyCode)>)> {
+        vec![
+            (
+                Action::Quit,
+                vec![
+                    (KeyModifiers::CONTROL, KeyCode::Char('c')),
+                    (KeyModifiers::CONTROL, KeyCode::Char('q')),
+                ],
+            ),
+            (
+                Action::ToggleSidebar,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('f'))],
+            ),
+            (
+                Action::ToggleThinking,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('b'))],
+            ),
+            (
+                Action::ToggleOpsPane,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('o'))],
+            ),
+            (
+                Action::TabNew,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('t'))],
+            ),
+            (Action::OpenHelp, vec![(KeyModifiers::NONE, KeyCode::F(1))]),
+            (
+                Action::OpenAgentPicker,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('a'))],
+            ),
+            (
+                Action::OpenSystemStatus,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('i'))],
+            ),
+            (
+                Action::MemoryOpen,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('m'))],
+            ),
+            (
+                Action::NewSession,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('n'))],
+            ),
+            (
+                Action::OpenSessionPicker,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('s'))],
+            ),
+            (
+                Action::CopyLastResponse,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('y'))],
+            ),
+            (
+                Action::ComposeInEditor,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('e'))],
+            ),
+            (
+                Action::ClearLine,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('u'))],
+            ),
+            (
+                Action::DeleteToEnd,
+                vec![(KeyModifiers::CONTROL, KeyCode::Char('k'))],
+            ),
+            (
+                Action::ScrollPageUp,
+                vec![(KeyModifiers::NONE, KeyCode::PageUp)],
+            ),
+            (
+                Action::ScrollPageDown,
+                vec![(KeyModifiers::NONE, KeyCode::PageDown)],
+            ),
+            (Action::ScrollUp, vec![(KeyModifiers::SHIFT, KeyCode::Up)]),
+            (
+                Action::ScrollDown,
+                vec![(KeyModifiers::SHIFT, KeyCode::Down)],
+            ),
+        ]
+    }
+}
+
+/// Parse a human-readable key combo string (e.g. `"Ctrl+F"`, `"Shift+Up"`, `"F1"`)
+/// into a `(KeyModifiers, KeyCode)` pair.
+pub(crate) fn parse_key_combo(s: &str) -> Option<(KeyModifiers, KeyCode)> {
+    let parts: Vec<&str> = s.split('+').collect();
+    let mut modifiers = KeyModifiers::NONE;
+    let mut code_part = "";
+
+    for part in &parts {
+        let p = part.trim();
+        match p.to_lowercase().as_str() {
+            "ctrl" | "control" => modifiers |= KeyModifiers::CONTROL,
+            "shift" => modifiers |= KeyModifiers::SHIFT,
+            "alt" => modifiers |= KeyModifiers::ALT,
+            _ => code_part = p,
+        }
+    }
+
+    let code = match code_part.to_lowercase().as_str() {
+        "enter" | "return" => KeyCode::Enter,
+        "esc" | "escape" => KeyCode::Esc,
+        "backspace" => KeyCode::Backspace,
+        "delete" | "del" => KeyCode::Delete,
+        "tab" => KeyCode::Tab,
+        "backtab" => KeyCode::BackTab,
+        "up" => KeyCode::Up,
+        "down" => KeyCode::Down,
+        "left" => KeyCode::Left,
+        "right" => KeyCode::Right,
+        "home" => KeyCode::Home,
+        "end" => KeyCode::End,
+        "pageup" => KeyCode::PageUp,
+        "pagedown" => KeyCode::PageDown,
+        "f1" => KeyCode::F(1),
+        "f2" => KeyCode::F(2),
+        "f3" => KeyCode::F(3),
+        "f4" => KeyCode::F(4),
+        "f5" => KeyCode::F(5),
+        "f6" => KeyCode::F(6),
+        "f7" => KeyCode::F(7),
+        "f8" => KeyCode::F(8),
+        "f9" => KeyCode::F(9),
+        "f10" => KeyCode::F(10),
+        "f11" => KeyCode::F(11),
+        "f12" => KeyCode::F(12),
+        s if s.len() == 1 => KeyCode::Char(s.chars().next()?),
+        _ => return None,
+    };
+
+    Some((modifiers, code))
+}
+
 /// Determine active contexts. Help overlay is transparent — it shows the underlying context.
 pub fn current_contexts(app: &App) -> Vec<KeyContext> {
     let mut contexts = vec![KeyContext::Global];
@@ -719,6 +1005,7 @@ pub fn status_bar_hints(app: &App) -> Vec<(&'static str, &'static str)> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
     use crate::app::test_helpers::*;
@@ -903,5 +1190,123 @@ mod tests {
         let keys: Vec<&str> = hints.iter().map(|(k, _)| *k).collect();
         assert!(keys.contains(&"?"), "should include ? for help");
         assert!(keys.contains(&":"), "should include : for command palette");
+    }
+
+    // --- KeyMap and parse_key_combo tests ---
+
+    #[test]
+    fn parse_key_combo_ctrl_letter() {
+        let (mods, code) = parse_key_combo("Ctrl+F").expect("should parse");
+        assert_eq!(mods, KeyModifiers::CONTROL);
+        assert_eq!(code, KeyCode::Char('f'));
+    }
+
+    #[test]
+    fn parse_key_combo_shift_arrow() {
+        let (mods, code) = parse_key_combo("Shift+Up").expect("should parse");
+        assert_eq!(mods, KeyModifiers::SHIFT);
+        assert_eq!(code, KeyCode::Up);
+    }
+
+    #[test]
+    fn parse_key_combo_function_key() {
+        let (mods, code) = parse_key_combo("F1").expect("should parse");
+        assert_eq!(mods, KeyModifiers::NONE);
+        assert_eq!(code, KeyCode::F(1));
+    }
+
+    #[test]
+    fn parse_key_combo_pageup() {
+        let (mods, code) = parse_key_combo("PageUp").expect("should parse");
+        assert_eq!(mods, KeyModifiers::NONE);
+        assert_eq!(code, KeyCode::PageUp);
+    }
+
+    #[test]
+    fn parse_key_combo_invalid_returns_none() {
+        assert!(parse_key_combo("InvalidKey").is_none());
+    }
+
+    #[test]
+    fn parse_key_combo_ctrl_alt_combo() {
+        let (mods, code) = parse_key_combo("Ctrl+Alt+X").expect("should parse");
+        assert!(mods.contains(KeyModifiers::CONTROL));
+        assert!(mods.contains(KeyModifiers::ALT));
+        assert_eq!(code, KeyCode::Char('x'));
+    }
+
+    #[test]
+    fn keymap_defaults_include_quit() {
+        let keymap = KeyMap::build(&HashMap::new());
+        let action = keymap.lookup(KeyModifiers::CONTROL, KeyCode::Char('c'));
+        assert_eq!(action, Some(Action::Quit));
+    }
+
+    #[test]
+    fn keymap_defaults_include_toggle_sidebar() {
+        let keymap = KeyMap::build(&HashMap::new());
+        let action = keymap.lookup(KeyModifiers::CONTROL, KeyCode::Char('f'));
+        assert_eq!(action, Some(Action::ToggleSidebar));
+    }
+
+    #[test]
+    fn keymap_override_replaces_default() {
+        let mut overrides = HashMap::new();
+        overrides.insert("toggle_sidebar".to_string(), "Ctrl+G".to_string());
+        let keymap = KeyMap::build(&overrides);
+        // Old binding should be gone
+        assert!(
+            keymap
+                .lookup(KeyModifiers::CONTROL, KeyCode::Char('f'))
+                .is_none()
+        );
+        // New binding should work
+        assert_eq!(
+            keymap.lookup(KeyModifiers::CONTROL, KeyCode::Char('g')),
+            Some(Action::ToggleSidebar)
+        );
+    }
+
+    #[test]
+    fn keymap_invalid_override_ignored() {
+        let mut overrides = HashMap::new();
+        overrides.insert("quit".to_string(), "InvalidKey".to_string());
+        let keymap = KeyMap::build(&overrides);
+        // Default Ctrl+C should still work since the override was invalid
+        assert_eq!(
+            keymap.lookup(KeyModifiers::CONTROL, KeyCode::Char('c')),
+            Some(Action::Quit)
+        );
+    }
+
+    #[test]
+    fn keymap_lookup_unbound_returns_none() {
+        let keymap = KeyMap::build(&HashMap::new());
+        assert!(
+            keymap
+                .lookup(KeyModifiers::CONTROL, KeyCode::Char('z'))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn action_to_msg_round_trips() {
+        // Verify every action produces a Msg without panicking.
+        for action in Action::all() {
+            let _msg = action.to_msg();
+        }
+    }
+
+    #[test]
+    fn action_config_key_unique() {
+        let keys: Vec<&str> = Action::all().iter().map(|a| a.config_key()).collect();
+        let mut deduped = keys.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(
+            keys.len(),
+            deduped.len(),
+            "config_key values must be unique"
+        );
     }
 }

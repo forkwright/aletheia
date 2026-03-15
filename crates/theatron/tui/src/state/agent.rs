@@ -29,7 +29,7 @@ pub struct AgentState {
     pub sessions: Vec<Session>,
     pub model: Option<String>,
     pub compaction_stage: Option<String>,
-    /// Indicates this agent completed a turn while not focused.
+    /// Number of unread messages since the user last focused this agent.
     /// Cleared when the user switches to this agent.
-    pub has_notification: bool,
+    pub unread_count: u32,
 }
