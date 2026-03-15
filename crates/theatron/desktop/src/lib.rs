@@ -1,9 +1,12 @@
 //! Dioxus desktop UI for the Aletheia distributed cognition system.
+//!
+//! Connects to a running `aletheia serve` (pylon) instance, authenticates,
+//! and provides a native desktop interface for interacting with agents.
 
 pub mod api;
 pub mod app;
 pub mod components;
-pub mod layout;
+pub mod services;
 pub mod state;
 pub mod views;
 
@@ -15,6 +18,7 @@ use tracing_subscriber::EnvFilter;
 /// Sets up structured logging to `~/.local/share/aletheia/desktop.log`,
 /// configures the Blitz native window, and starts the event loop.
 pub fn run() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let _guard = init_tracing();
     tracing::info!("starting aletheia-desktop");
 
