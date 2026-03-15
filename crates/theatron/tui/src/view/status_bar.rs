@@ -104,6 +104,14 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         }
     }
 
+    // Optional: tool indicator.
+    let tool_spans = tool_indicator_spans(app, theme);
+    let tool_w: usize = tool_spans.iter().map(|s| s.content.width()).sum();
+    if tool_w > 0 && used + tool_w + 1 < total {
+        spans.extend(tool_spans);
+        used += tool_w;
+    }
+
     // Optional: selection indicator.
     if let Some(idx) = app.selected_message {
         let total_msgs = app.messages.len();
@@ -309,6 +317,36 @@ fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     }
 }
 
+fn tool_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
+    let agent = app
+        .focused_agent
+        .as_ref()
+        .and_then(|id| app.agents.iter().find(|a| a.id == *id));
+
+    let Some(agent) = agent else {
+        return Vec::new();
+    };
+
+    if agent.tools.is_empty() {
+        return Vec::new();
+    }
+
+    let enabled = agent.tools.iter().filter(|t| t.enabled).count();
+    let total = agent.tools.len();
+
+    vec![
+        Span::styled(" \u{2502} ", theme.style_dim()),
+        Span::styled(
+            format!("\u{2699} {enabled}/{total}"),
+            if enabled == total {
+                theme.style_muted()
+            } else {
+                theme.style_warning()
+            },
+        ),
+    ]
+}
+
 fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     const GAUGE_WIDTH: usize = 6;
     const CONTEXT_WARN_THRESHOLD: u8 = 60;
@@ -343,7 +381,7 @@ fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::test_helpers::test_app;
+    use crate::app::test_helpers::{test_agent, test_app};
 
     #[test]
     fn truncate_spans_to_width_no_op_when_fits() {
@@ -413,6 +451,45 @@ mod tests {
         assert!(
             text.contains('$') || text.contains('░'),
             "wide status bar must include cost or context gauge"
+        );
+    }
+
+    #[test]
+    fn tool_indicator_hidden_when_no_tools() {
+        let app = test_app();
+        let spans = tool_indicator_spans(&app, &app.theme);
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn tool_indicator_shows_counts() {
+        use crate::state::ToolSummary;
+
+        let mut app = test_app();
+        let mut agent = test_agent("syn", "Syn");
+        agent.tools = vec![
+            ToolSummary {
+                name: "read_file".to_string(),
+                enabled: true,
+            },
+            ToolSummary {
+                name: "bash".to_string(),
+                enabled: false,
+            },
+            ToolSummary {
+                name: "write_file".to_string(),
+                enabled: true,
+            },
+        ];
+        let agent_id = agent.id.clone();
+        app.agents.push(agent);
+        app.focused_agent = Some(agent_id);
+
+        let spans = tool_indicator_spans(&app, &app.theme);
+        let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(
+            text.contains("2/3"),
+            "tool indicator should show 2/3, got: {text}"
         );
     }
 }

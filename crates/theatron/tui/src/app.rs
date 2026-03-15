@@ -14,7 +14,9 @@ use crate::id::{NousId, SessionId, TurnId};
 use crate::keybindings::KeyMap;
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
-use crate::theme::{THEME, Theme};
+#[cfg(test)]
+use crate::theme::THEME;
+use crate::theme::Theme;
 use crate::update::extract_text_content;
 use crate::view;
 
@@ -31,7 +33,7 @@ pub use crate::state::{
     ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
     ContextActionsOverlay, FilterState, FocusedPane, InputState, MemoryInspectorState, OpsState,
     Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext, SessionPickerOverlay,
-    TabCompletion, ToolApprovalOverlay, ToolCallInfo, View, ViewStack,
+    TabCompletion, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
 };
 
 /// Default terminal width used before the first resize event arrives.
@@ -162,8 +164,8 @@ impl App {
     pub async fn init(config: Config) -> Result<Self> {
         let client = ApiClient::new(&config.url, config.token.clone())?;
 
-        let theme = THEME.clone();
-        tracing::info!("detected color depth: {:?}", theme.depth);
+        let theme = Theme::for_mode(config.theme);
+        tracing::info!(depth = ?theme.depth, mode = ?theme.mode, "theme initialized");
 
         let command_history = load_command_history(&config);
         let keymap = KeyMap::build(&config.keybindings);
@@ -172,8 +174,8 @@ impl App {
         let mut app = Self {
             config,
             client,
-            theme,
-            highlighter: crate::highlight::Highlighter::new(),
+            theme: theme.clone(),
+            highlighter: crate::highlight::Highlighter::new(theme.mode),
             should_quit: false,
             agents: Vec::new(),
             focused_agent: None,
@@ -295,6 +297,7 @@ impl App {
                     model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                     compaction_stage: None,
                     unread_count: 0,
+                    tools: Vec::new(),
                 }
             })
             .collect();
@@ -313,6 +316,18 @@ impl App {
                 agent.sessions = sessions;
             }
             self.load_focused_session().await;
+
+            if let Ok(tools) = self.client.tools(&agent_id).await
+                && let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id)
+            {
+                agent.tools = tools
+                    .into_iter()
+                    .map(|t| ToolSummary {
+                        name: sanitize_for_display(&t.name).into_owned(),
+                        enabled: t.enabled,
+                    })
+                    .collect();
+            }
 
             // Create initial tab for the default agent/session
             let agent_name = self
@@ -635,6 +650,7 @@ pub(crate) mod test_helpers {
             workspace_root: None,
             bell: false,
             keybindings: HashMap::new(),
+            theme: None,
         };
         let client = ApiClient::new(&config.url, config.token.clone()).unwrap();
         let theme = THEME.clone();
@@ -642,8 +658,8 @@ pub(crate) mod test_helpers {
         App {
             config,
             client,
-            theme,
-            highlighter: crate::highlight::Highlighter::new(),
+            theme: theme.clone(),
+            highlighter: crate::highlight::Highlighter::new(theme.mode),
             should_quit: false,
             agents: Vec::new(),
             focused_agent: None,
@@ -729,6 +745,7 @@ pub(crate) mod test_helpers {
             model: Some("test-model".to_string()),
             compaction_stage: None,
             unread_count: 0,
+            tools: Vec::new(),
         }
     }
 }
