@@ -102,6 +102,10 @@ shared/prosoche/activity_model.json
 # === Deploy backups ===
 .deploy-backup/
 
+# === Nix ===
+/result
+.direnv/
+
 # === Build artifacts / virtual environments ===
 .venv/
 node_modules/
