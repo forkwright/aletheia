@@ -21,7 +21,7 @@ const KEY_PREFIX: &str = "ale";
 ///
 /// The full key string is shown to the user exactly once. Only the hash is stored.
 #[instrument(skip(store))]
-pub fn generate(
+pub(crate) fn generate(
     store: &AuthStore,
     prefix: &str,
     role: Role,
@@ -76,7 +76,7 @@ pub fn generate(
 ///
 /// Parses the key format, hashes with blake3, looks up in the store,
 /// checks revocation and expiry, and updates `last_used_at`.
-pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
+pub(crate) fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
     let _parts = parse_key(raw_key)?;
     let key_hash = blake3::hash(raw_key.as_bytes()).to_hex().to_string();
 
@@ -113,12 +113,12 @@ pub fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
 }
 
 /// Revoke an API key by its ID, preventing further use.
-pub fn revoke(store: &AuthStore, key_id: &str) -> Result<()> {
+pub(crate) fn revoke(store: &AuthStore, key_id: &str) -> Result<()> {
     store.revoke_api_key(key_id)
 }
 
 /// List all API key records (metadata only, never the secret).
-pub fn list(store: &AuthStore) -> Result<Vec<ApiKeyRecord>> {
+pub(crate) fn list(store: &AuthStore) -> Result<Vec<ApiKeyRecord>> {
     store.list_api_keys()
 }
 
