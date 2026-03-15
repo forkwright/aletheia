@@ -117,15 +117,14 @@ impl ApiClient {
 
     #[tracing::instrument(skip(self))]
     pub async fn health(&self) -> Result<bool> {
+        // WHY: check reachability, not health status. A 503 (unhealthy)
+        // means the server IS running but has degraded checks — still usable.
         let resp = self
             .client
             .get(self.url("/api/health"))
             .send()
-            .await
-            .context(HttpSnafu {
-                operation: "health check",
-            })?;
-        Ok(resp.status().is_success())
+            .await;
+        Ok(resp.is_ok())
     }
 
     #[tracing::instrument(skip(self))]
