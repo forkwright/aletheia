@@ -10,6 +10,9 @@ publish = false
 [dependencies]
 theatron-core = { path = "../core" }
 
+# UI framework
+dioxus = { version = "0.7", features = ["desktop"] }
+
 # Async runtime
 tokio = { workspace = true }
 
