@@ -19,7 +19,6 @@ members = [
     "crates/taxis",
     "crates/thesauros",
     "crates/theatron/core",
-    "crates/theatron/desktop",
     "crates/theatron/tui",
 ]
 exclude = [
