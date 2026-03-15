@@ -1,66 +1,43 @@
+# Standalone research crate — NOT in workspace members.
+#
+# Build:
+#   cargo build --manifest-path crates/theatron/desktop/Cargo.toml
+#   cargo build --manifest-path crates/theatron/desktop/Cargo.toml --features webview --no-default-features
+#
+# This crate validates Dioxus 0.7 for Aletheia's desktop surface.
+# Excluded from the workspace to avoid pulling heavy GPU dependencies
+# (wgpu, vello, stylo) into CI until the renderer is production-ready.
+
 [package]
 name = "theatron-desktop"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
-description = "Dioxus desktop UI for the Aletheia distributed cognition system"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
 publish = false
+rust-version = "1.85"
+
+[[bin]]
+name = "aletheia-desktop"
+path = "src/main.rs"
+
+[features]
+default = ["native"]
+# Blitz WGPU renderer (pre-alpha). Research/validation only.
+native = ["dioxus/native"]
+# Wry webview fallback — production-ready, system tray + global hotkey.
+webview = ["dioxus/desktop"]
 
 [dependencies]
-theatron-core = { path = "../core" }
+dioxus = "0.7"
 
-# Async runtime
-tokio = { workspace = true }
-
-# HTTP + SSE
-reqwest = { workspace = true, features = ["stream", "cookies"] }
-reqwest-eventsource = { git = "https://github.com/romnn/reqwest-eventsource", branch = "feat/reqwest-0.13" }
-rustls = { workspace = true }
-
-# Serialization
-serde = { workspace = true }
-serde_json = { workspace = true }
-
-# Text utilities
-compact_str = { workspace = true }
-
-# Logging
-tracing = { workspace = true }
-
-# Error handling
-snafu = { workspace = true }
-
-# Futures
-futures-util = "0.3"
-
-# Cancel-safe shutdown
-tokio-util = { workspace = true }
-
-# theatron-desktop uses inline lints for the same reason as theatron-tui:
-# Cargo does not allow combining workspace lint inheritance with
-# package-level overrides.
 [lints.rust]
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
 unsafe_code = "deny"
 
 [lints.clippy]
-# Deny-level — must stay in sync with [workspace.lints.clippy]
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 exit = "deny"
 await_holding_lock = "deny"
-# Warn-level extras from workspace
-explicit_into_iter_loop = "warn"
-fallible_impl_from = "warn"
-fn_params_excessive_bools = "warn"
-implicit_clone = "warn"
-map_err_ignore = "warn"
-match_wildcard_for_single_variants = "warn"
-needless_for_each = "warn"
-rc_mutex = "warn"
-string_add = "warn"
-trait_duplication_in_bounds = "warn"
-unused_self = "warn"
