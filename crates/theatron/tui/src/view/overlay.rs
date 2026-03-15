@@ -8,6 +8,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use crate::app::{AgentStatus, App, ContextActionsOverlay, Overlay};
 use crate::diff;
 use crate::keybindings;
+use crate::state::{SearchResultKind, SessionSearchOverlay};
 use crate::theme::Theme;
 
 /// Width percentage for the default (help/agent/session) popup.
@@ -55,6 +56,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         }
         Overlay::SystemStatus => render_system_status(app, frame, popup_area, theme),
         Overlay::Settings(settings) => super::settings::render(settings, frame, area, theme),
+        Overlay::SessionSearch(search) => render_session_search(frame, popup_area, search, theme),
         Overlay::DiffView(diff_state) => {
             let diff_area = centered_rect(DIFF_POPUP_WIDTH_PCT, DIFF_POPUP_HEIGHT_PCT, area);
             frame.render_widget(Clear, diff_area);
@@ -590,6 +592,100 @@ fn render_diff_view(
     let paragraph = Paragraph::new(all_lines)
         .block(block)
         .scroll((scroll as u16, 0));
+    frame.render_widget(paragraph, area);
+}
+
+fn render_session_search(
+    frame: &mut Frame,
+    area: Rect,
+    search: &SessionSearchOverlay,
+    theme: &Theme,
+) {
+    let key_style = Style::default()
+        .fg(theme.colors.accent)
+        .add_modifier(Modifier::BOLD);
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::styled("  / ", key_style),
+        Span::raw(&search.query),
+        Span::styled("_", theme.style_dim()),
+    ]));
+    lines.push(Line::raw(""));
+
+    if search.results.is_empty() && !search.query.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No results",
+            theme.style_muted(),
+        )));
+    }
+
+    let visible_height = area.height.saturating_sub(6) as usize;
+    let start = if search.selected >= visible_height {
+        search.selected - visible_height + 1
+    } else {
+        0
+    };
+
+    for (i, result) in search
+        .results
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(visible_height)
+    {
+        let selected = i == search.selected;
+        let marker = if selected { "▸" } else { " " };
+
+        let style = if selected {
+            Style::default()
+                .fg(theme.colors.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            theme.style_fg()
+        };
+
+        let kind_tag = match &result.kind {
+            SearchResultKind::SessionName => Span::styled(" [session]", theme.style_dim()),
+            SearchResultKind::MessageContent { role } => {
+                Span::styled(format!(" [{role}]"), theme.style_dim())
+            }
+        };
+
+        lines.push(Line::from(vec![
+            Span::raw(format!("  {} ", marker)),
+            Span::styled(&result.session_label, style),
+            kind_tag,
+            Span::styled(format!("  {}", result.agent_name), theme.style_muted()),
+        ]));
+
+        if !result.snippet.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("      {}", result.snippet),
+                theme.style_dim(),
+            )));
+        }
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("Enter", key_style),
+        Span::styled(" switch  ", theme.style_muted()),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(theme.text.fg_dim)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" cancel", theme.style_muted()),
+    ]));
+
+    let block = overlay_block("Search Sessions", theme);
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);
 }
 

@@ -261,6 +261,17 @@ pub enum Msg {
     ShowSuccess(String),
     DismissError,
 
+    ExportConversation,
+
+    SessionSearchOpen,
+    SessionSearchClose,
+    SessionSearchInput(char),
+    SessionSearchBackspace,
+    SessionSearchSubmit,
+    SessionSearchUp,
+    SessionSearchDown,
+    SessionSearchSelect,
+
     DiffOpen,
     DiffClose,
     DiffCycleMode,

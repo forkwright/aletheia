@@ -6,6 +6,7 @@ mod input;
 pub(crate) mod memory;
 mod navigation;
 mod overlay;
+mod search;
 pub(crate) mod selection;
 pub(crate) mod settings;
 mod sse;
@@ -245,6 +246,17 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         | Msg::MemoryTimelineLoaded(_) => {}
         Msg::MemorySearchResults(_) => {}
         Msg::MemoryActionResult(msg) => memory::handle_action_result(app, msg),
+
+        Msg::ExportConversation => command::execute_export_from_msg(app),
+
+        Msg::SessionSearchOpen => search::handle_open(app),
+        Msg::SessionSearchClose => search::handle_close(app),
+        Msg::SessionSearchInput(c) => search::handle_input(app, c),
+        Msg::SessionSearchBackspace => search::handle_backspace(app),
+        Msg::SessionSearchSubmit => {}
+        Msg::SessionSearchUp => search::handle_up(app),
+        Msg::SessionSearchDown => search::handle_down(app),
+        Msg::SessionSearchSelect => search::handle_select(app).await,
 
         Msg::ShowError(msg) => api::handle_show_error(app, msg),
         Msg::ShowSuccess(msg) => api::handle_show_success(app, msg),
