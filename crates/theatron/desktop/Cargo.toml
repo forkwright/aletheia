@@ -7,8 +7,16 @@ rust-version.workspace = true
 description = "Dioxus desktop UI for the Aletheia distributed cognition system"
 publish = false
 
+[[bin]]
+name = "aletheia-desktop"
+path = "src/main.rs"
+
 [dependencies]
 theatron-core = { path = "../core" }
+
+# Dioxus desktop framework with Blitz native renderer
+dioxus = { version = "0.7", features = ["native", "router", "html", "signals", "hooks"] }
+dioxus-native = "0.7"
 
 # Async runtime
 tokio = { workspace = true }
@@ -25,8 +33,10 @@ serde_json = { workspace = true }
 # Text utilities
 compact_str = { workspace = true }
 
-# Logging
+# Logging (file-based, not stdout)
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 
 # Error handling
 snafu = { workspace = true }
@@ -36,6 +46,9 @@ futures-util = "0.3"
 
 # Cancel-safe shutdown
 tokio-util = { workspace = true }
+
+# Config directories
+dirs = "6"
 
 # theatron-desktop uses inline lints for the same reason as theatron-tui:
 # Cargo does not allow combining workspace lint inheritance with
