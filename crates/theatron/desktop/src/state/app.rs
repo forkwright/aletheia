@@ -4,8 +4,9 @@
 //! app root. Child components project into individual fields. This replaces
 //! the monolithic `App` struct from the ratatui TUI.
 
-use super::agent::{AgentEntry, ConnectionStatus};
+use super::agent::AgentEntry;
 use super::chat::NousId;
+use super::connection::{ConnectionConfig, ConnectionState};
 
 /// Root state provided to the entire component tree.
 ///
@@ -22,8 +23,10 @@ pub struct AppState {
     pub focused_agent: Option<NousId>,
     /// Tab bar managing multiple open conversations.
     pub tabs: TabBar,
-    /// SSE connection health.
-    pub connection: ConnectionStatus,
+    /// Server connection lifecycle state.
+    pub connection: ConnectionState,
+    /// User-configured connection parameters.
+    pub connection_config: ConnectionConfig,
     /// Modal overlay (help, pickers, approvals). `None` when no overlay.
     pub overlay: Option<Overlay>,
     /// Sidebar visibility toggle.
@@ -36,7 +39,8 @@ impl Default for AppState {
             agents: Vec::new(),
             focused_agent: None,
             tabs: TabBar::new(),
-            connection: ConnectionStatus::default(),
+            connection: ConnectionState::default(),
+            connection_config: ConnectionConfig::default(),
             overlay: None,
             sidebar_visible: true,
         }
@@ -167,7 +171,7 @@ mod tests {
         assert!(state.agents.is_empty());
         assert!(state.focused_agent.is_none());
         assert!(state.tabs.is_empty());
-        assert!(state.connection.is_connected());
+        assert!(state.connection.is_disconnected());
         assert!(state.overlay.is_none());
         assert!(state.sidebar_visible);
     }
