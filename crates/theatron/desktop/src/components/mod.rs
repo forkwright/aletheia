@@ -6,4 +6,4 @@
 //! define the state machines and update logic that components will use.
 
 pub mod chat;
-pub mod theme_toggle;
+pub mod connection_indicator;

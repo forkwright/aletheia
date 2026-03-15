@@ -1,8 +1,6 @@
-//! Background services for the desktop application.
+//! Background services that bridge async I/O to reactive state.
 //!
-//! Services run as async tasks (spawned or coroutines) and communicate
-//! with the UI layer via Dioxus signals. Each service owns its lifecycle
-//! and respects `CancellationToken` for clean shutdown.
+//! Each service runs as a background task (Dioxus coroutine or tokio task)
+//! and writes into signal-backed state as events arrive.
 
-pub mod config;
-pub mod connection;
+pub mod sse;
