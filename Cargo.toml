@@ -21,7 +21,6 @@ members = [
     "crates/theatron/core",
     "crates/theatron/desktop",
     "crates/theatron/tui",
-    "crates/theatron/desktop",
 ]
 
 [workspace.package]
