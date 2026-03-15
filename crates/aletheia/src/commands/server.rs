@@ -352,6 +352,7 @@ pub async fn run(args: Args) -> Result<()> {
                 cache_enabled: resolved.cache_enabled,
                 session_token_cap: 500_000,
                 recall: resolved.recall.into(),
+                chars_per_token: resolved.chars_per_token,
             };
             nous_manager
                 .spawn(
@@ -709,6 +710,7 @@ fn build_tool_registry(
         },
         extra_read_paths: sandbox_settings.extra_read_paths.clone(),
         extra_write_paths: sandbox_settings.extra_write_paths.clone(),
+        extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
     };
     builtins::register_all_with_sandbox(&mut registry, sandbox)
         .context("failed to register builtin tools")?;
