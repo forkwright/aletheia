@@ -28,7 +28,8 @@ fn unix_epoch_ms() -> u64 {
 const OAUTH_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 
 /// OAuth token refresh endpoint.
-const OAUTH_TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
+// WHY: must match console.anthropic.com, not platform.claude.com
+const OAUTH_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
 
 /// Refresh when token has less than this many seconds remaining.
 const REFRESH_THRESHOLD_SECS: u64 = 3600;
@@ -577,15 +578,15 @@ async fn refresh_loop(
 }
 
 async fn do_refresh(client: &reqwest::Client, refresh_token: &str) -> Option<OAuthResponse> {
-    let payload = serde_json::json!({
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "client_id": OAUTH_CLIENT_ID,
-    });
+    // WHY: Anthropic OAuth endpoint expects form-urlencoded, not JSON
+    let body = format!(
+        "grant_type=refresh_token&refresh_token={refresh_token}&client_id={OAUTH_CLIENT_ID}",
+    );
 
     let resp = client
         .post(OAUTH_TOKEN_URL)
-        .json(&payload)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(body)
         .timeout(Duration::from_secs(30))
         .send()
         .await
