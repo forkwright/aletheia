@@ -46,6 +46,7 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                         model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                         compaction_stage: None,
                         unread_count: count,
+                        tools: Vec::new(),
                     }
                 })
                 .collect();

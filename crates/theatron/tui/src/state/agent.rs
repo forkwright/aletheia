@@ -17,6 +17,17 @@ pub struct ActiveTool {
     pub started_at: std::time::Instant,
 }
 
+/// An available tool and its current enablement state.
+#[derive(Debug, Clone)]
+#[expect(
+    dead_code,
+    reason = "name is stored for future tool-detail display; only enabled is read by the status bar indicator"
+)]
+pub struct ToolSummary {
+    pub name: String,
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct AgentState {
     pub id: NousId,
@@ -32,4 +43,6 @@ pub struct AgentState {
     /// Number of unread messages since the user last focused this agent.
     /// Cleared when the user switches to this agent.
     pub unread_count: u32,
+    /// Available tools and their enablement state, fetched from the API.
+    pub tools: Vec<ToolSummary>,
 }

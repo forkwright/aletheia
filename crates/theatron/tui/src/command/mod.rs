@@ -352,6 +352,7 @@ mod tests {
             model: Some("claude-opus-4-6".into()),
             compaction_stage: None,
             unread_count: 0,
+            tools: Vec::new(),
         }];
         let results = build_suggestions("syn", &agents);
         assert!(results.iter().any(|r| r.execute_as == "agent syn"));

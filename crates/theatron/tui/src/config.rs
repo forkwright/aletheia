@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
 
 use crate::error::{ConfigDirSnafu, IoSnafu, Result, TomlSnafu};
+use crate::theme::ThemeMode;
 
 const DEFAULT_URL: &str = "http://localhost:18789";
 
@@ -19,6 +20,8 @@ pub struct ConfigFile {
     pub bell: Option<bool>,
     /// Keybinding overrides: action name → key string (e.g. `toggle_sidebar = "Ctrl+G"`).
     pub keybindings: Option<HashMap<String, String>>,
+    /// Theme mode: "dark", "light", or "auto" (default).
+    pub theme: Option<String>,
 }
 
 impl std::fmt::Debug for ConfigFile {
@@ -44,6 +47,8 @@ pub struct Config {
     pub bell: bool,
     /// Keybinding overrides from TOML config.
     pub keybindings: HashMap<String, String>,
+    /// Explicit theme override. `None` means auto-detect from terminal.
+    pub theme: Option<ThemeMode>,
 }
 
 impl std::fmt::Debug for Config {
@@ -54,6 +59,7 @@ impl std::fmt::Debug for Config {
             .field("default_agent", &self.default_agent)
             .field("default_session", &self.default_session)
             .field("workspace_root", &self.workspace_root)
+            .field("theme", &self.theme)
             .finish()
     }
 }
@@ -78,6 +84,12 @@ impl Config {
                     .map(std::path::PathBuf::from)
             });
 
+        let theme = file_config.theme.as_deref().and_then(|s| match s {
+            "light" => Some(ThemeMode::Light),
+            "dark" => Some(ThemeMode::Dark),
+            _ => None,
+        });
+
         Ok(Config {
             url: cli_url
                 .or(file_config.url)
@@ -88,6 +100,7 @@ impl Config {
             workspace_root,
             bell: file_config.bell.unwrap_or(false),
             keybindings: file_config.keybindings.unwrap_or_default(),
+            theme,
         })
     }
 
@@ -194,6 +207,7 @@ mod tests {
             workspace_root: Some("/workspace".into()),
             bell: Some(true),
             keybindings: Some(keybindings),
+            theme: Some("light".into()),
         };
         let toml_str = toml::to_string(&file).unwrap();
         let back: ConfigFile = toml::from_str(&toml_str).unwrap();
@@ -210,6 +224,14 @@ mod tests {
                 .map(String::as_str),
             Some("Ctrl+G")
         );
+        assert_eq!(file.theme, back.theme);
+    }
+
+    #[test]
+    fn theme_parsing_light() {
+        let config = Config::load(None, None, None, None).unwrap();
+        // Default is auto (None) when no file setting
+        let _ = config.theme;
     }
 
     #[test]

@@ -12,6 +12,14 @@ pub enum ColorDepth {
     Basic,
 }
 
+/// Background brightness — drives palette selection.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeMode {
+    Dark,
+    Light,
+}
+
 /// Background and accent colors.
 #[derive(Debug, Clone)]
 #[expect(
@@ -98,10 +106,13 @@ pub struct Theme {
     pub thinking: ThinkingColors,
     /// Color depth (for conditional rendering).
     pub depth: ColorDepth,
+    /// Light or dark background.
+    pub mode: ThemeMode,
 }
 
-/// The active theme. Detected from the terminal environment at first access.
-/// Future: configurable via `aletheia.toml`.
+/// Auto-detected theme from the terminal environment.
+/// Used as the default when no config override is set.
+#[cfg(test)]
 pub static THEME: std::sync::LazyLock<Theme> = std::sync::LazyLock::new(Theme::default);
 
 impl Default for Theme {
@@ -111,13 +122,22 @@ impl Default for Theme {
 }
 
 impl Theme {
-    /// Create theme based on detected terminal capability.
+    /// Create theme based on detected terminal capability and background.
     pub fn detect() -> Self {
+        Self::for_mode(None)
+    }
+
+    /// Create theme for a specific mode. `None` means auto-detect from the terminal.
+    pub fn for_mode(mode: Option<ThemeMode>) -> Self {
+        let resolved = mode.unwrap_or_else(detect_background);
         let depth = detect_color_depth();
-        match depth {
-            ColorDepth::TrueColor => Self::truecolor(),
-            ColorDepth::Color256 => Self::color256(),
-            ColorDepth::Basic => Self::basic(),
+        match (resolved, depth) {
+            (ThemeMode::Light, ColorDepth::TrueColor) => Self::truecolor_light(),
+            (ThemeMode::Light, ColorDepth::Color256) => Self::color256_light(),
+            (ThemeMode::Light, ColorDepth::Basic) => Self::basic_light(),
+            (ThemeMode::Dark, ColorDepth::TrueColor) => Self::truecolor(),
+            (ThemeMode::Dark, ColorDepth::Color256) => Self::color256(),
+            (ThemeMode::Dark, ColorDepth::Basic) => Self::basic(),
         }
     }
 
@@ -166,6 +186,56 @@ impl Theme {
                 border: Color::Rgb(60, 60, 75),
             },
             depth: ColorDepth::TrueColor,
+            mode: ThemeMode::Dark,
+        }
+    }
+
+    /// 24-bit RGB light palette — readable on white/light terminal backgrounds.
+    pub(crate) fn truecolor_light() -> Self {
+        Self {
+            colors: Colors {
+                bg: Color::Reset,
+                surface: Color::Rgb(245, 245, 248),
+                surface_bright: Color::Rgb(255, 255, 255),
+                surface_dim: Color::Rgb(230, 230, 236),
+                accent: Color::Rgb(30, 100, 210),
+                accent_dim: Color::Rgb(100, 140, 200),
+            },
+            text: TextColors {
+                fg: Color::Rgb(30, 30, 40),
+                fg_muted: Color::Rgb(100, 100, 120),
+                fg_dim: Color::Rgb(150, 150, 165),
+                user: Color::Rgb(30, 100, 210),
+                assistant: Color::Rgb(20, 140, 60),
+                system: Color::Rgb(100, 100, 120),
+            },
+            borders: Borders {
+                normal: Color::Rgb(200, 200, 212),
+                focused: Color::Rgb(30, 100, 210),
+                separator: Color::Rgb(215, 215, 225),
+                selected: Color::Rgb(30, 100, 210),
+            },
+            status: StatusColors {
+                success: Color::Rgb(20, 140, 60),
+                warning: Color::Rgb(180, 130, 0),
+                error: Color::Rgb(200, 50, 50),
+                info: Color::Rgb(30, 100, 210),
+                spinner: Color::Rgb(180, 130, 0),
+                idle: Color::Rgb(150, 150, 165),
+                streaming: Color::Rgb(20, 140, 60),
+                compacting: Color::Rgb(130, 60, 200),
+            },
+            code: CodeColors {
+                fg: Color::Rgb(40, 40, 50),
+                bg: Color::Rgb(235, 235, 240),
+                lang: Color::Rgb(130, 130, 145),
+            },
+            thinking: ThinkingColors {
+                fg: Color::Rgb(130, 130, 145),
+                border: Color::Rgb(200, 200, 212),
+            },
+            depth: ColorDepth::TrueColor,
+            mode: ThemeMode::Light,
         }
     }
 
@@ -214,6 +284,56 @@ impl Theme {
                 border: Color::Indexed(238),
             },
             depth: ColorDepth::Color256,
+            mode: ThemeMode::Dark,
+        }
+    }
+
+    /// 256-color light palette.
+    pub(crate) fn color256_light() -> Self {
+        Self {
+            colors: Colors {
+                bg: Color::Reset,
+                surface: Color::Indexed(255),
+                surface_bright: Color::Indexed(231),
+                surface_dim: Color::Indexed(254),
+                accent: Color::Indexed(25),
+                accent_dim: Color::Indexed(67),
+            },
+            text: TextColors {
+                fg: Color::Indexed(234),
+                fg_muted: Color::Indexed(243),
+                fg_dim: Color::Indexed(249),
+                user: Color::Indexed(25),
+                assistant: Color::Indexed(28),
+                system: Color::Indexed(243),
+            },
+            borders: Borders {
+                normal: Color::Indexed(252),
+                focused: Color::Indexed(25),
+                separator: Color::Indexed(254),
+                selected: Color::Indexed(25),
+            },
+            status: StatusColors {
+                success: Color::Indexed(28),
+                warning: Color::Indexed(136),
+                error: Color::Indexed(160),
+                info: Color::Indexed(25),
+                spinner: Color::Indexed(136),
+                idle: Color::Indexed(249),
+                streaming: Color::Indexed(28),
+                compacting: Color::Indexed(128),
+            },
+            code: CodeColors {
+                fg: Color::Indexed(234),
+                bg: Color::Indexed(254),
+                lang: Color::Indexed(246),
+            },
+            thinking: ThinkingColors {
+                fg: Color::Indexed(246),
+                border: Color::Indexed(252),
+            },
+            depth: ColorDepth::Color256,
+            mode: ThemeMode::Light,
         }
     }
 
@@ -262,6 +382,56 @@ impl Theme {
                 border: Color::DarkGray,
             },
             depth: ColorDepth::Basic,
+            mode: ThemeMode::Dark,
+        }
+    }
+
+    /// Basic 16-color light palette.
+    pub(crate) fn basic_light() -> Self {
+        Self {
+            colors: Colors {
+                bg: Color::Reset,
+                surface: Color::Reset,
+                surface_bright: Color::White,
+                surface_dim: Color::Reset,
+                accent: Color::Blue,
+                accent_dim: Color::DarkGray,
+            },
+            text: TextColors {
+                fg: Color::Black,
+                fg_muted: Color::DarkGray,
+                fg_dim: Color::Gray,
+                user: Color::Blue,
+                assistant: Color::Green,
+                system: Color::DarkGray,
+            },
+            borders: Borders {
+                normal: Color::Gray,
+                focused: Color::Blue,
+                separator: Color::Gray,
+                selected: Color::Blue,
+            },
+            status: StatusColors {
+                success: Color::Green,
+                warning: Color::Yellow,
+                error: Color::Red,
+                info: Color::Blue,
+                spinner: Color::Yellow,
+                idle: Color::Gray,
+                streaming: Color::Green,
+                compacting: Color::Magenta,
+            },
+            code: CodeColors {
+                fg: Color::Black,
+                bg: Color::White,
+                lang: Color::DarkGray,
+            },
+            thinking: ThinkingColors {
+                fg: Color::DarkGray,
+                border: Color::Gray,
+            },
+            depth: ColorDepth::Basic,
+            mode: ThemeMode::Light,
         }
     }
 
@@ -346,6 +516,27 @@ impl Theme {
     }
 }
 
+/// Detect terminal background brightness from `$COLORFGBG`.
+///
+/// Format: `fg;bg` or `fg;X;bg` where values are ANSI color indices.
+/// Indices 0-6 are dark colors, 7+ are light. Defaults to dark when unset.
+fn detect_background() -> ThemeMode {
+    if let Ok(val) = std::env::var("COLORFGBG") {
+        // WHY: Some terminals emit three values (e.g., "15;0;0"). The background
+        // is always the last component.
+        if let Some(bg_str) = val.rsplit(';').next()
+            && let Ok(bg) = bg_str.parse::<u8>()
+        {
+            return if bg >= 8 {
+                ThemeMode::Light
+            } else {
+                ThemeMode::Dark
+            };
+        }
+    }
+    ThemeMode::Dark
+}
+
 /// Detect terminal color capability from environment variables.
 fn detect_color_depth() -> ColorDepth {
     // WHY: COLORTERM is the most reliable indicator — check it before TERM.
@@ -397,18 +588,54 @@ mod tests {
     fn truecolor_palette_has_correct_depth() {
         let theme = Theme::truecolor();
         assert_eq!(theme.depth, ColorDepth::TrueColor);
+        assert_eq!(theme.mode, ThemeMode::Dark);
     }
 
     #[test]
     fn color256_palette_has_correct_depth() {
         let theme = Theme::color256();
         assert_eq!(theme.depth, ColorDepth::Color256);
+        assert_eq!(theme.mode, ThemeMode::Dark);
     }
 
     #[test]
     fn basic_palette_has_correct_depth() {
         let theme = Theme::basic();
         assert_eq!(theme.depth, ColorDepth::Basic);
+        assert_eq!(theme.mode, ThemeMode::Dark);
+    }
+
+    #[test]
+    fn truecolor_light_palette_has_correct_mode() {
+        let theme = Theme::truecolor_light();
+        assert_eq!(theme.depth, ColorDepth::TrueColor);
+        assert_eq!(theme.mode, ThemeMode::Light);
+    }
+
+    #[test]
+    fn color256_light_palette_has_correct_mode() {
+        let theme = Theme::color256_light();
+        assert_eq!(theme.depth, ColorDepth::Color256);
+        assert_eq!(theme.mode, ThemeMode::Light);
+    }
+
+    #[test]
+    fn basic_light_palette_has_correct_mode() {
+        let theme = Theme::basic_light();
+        assert_eq!(theme.depth, ColorDepth::Basic);
+        assert_eq!(theme.mode, ThemeMode::Light);
+    }
+
+    #[test]
+    fn for_mode_dark_returns_dark() {
+        let theme = Theme::for_mode(Some(ThemeMode::Dark));
+        assert_eq!(theme.mode, ThemeMode::Dark);
+    }
+
+    #[test]
+    fn for_mode_light_returns_light() {
+        let theme = Theme::for_mode(Some(ThemeMode::Light));
+        assert_eq!(theme.mode, ThemeMode::Light);
     }
 
     #[test]
@@ -479,14 +706,32 @@ mod tests {
     #[test]
     fn detect_returns_valid_depth() {
         let theme = Theme::detect();
-        // Just check it doesn't panic and returns a valid depth
         let _ = theme.depth;
     }
 
     #[test]
     fn all_palettes_have_reset_bg() {
-        for theme in [Theme::truecolor(), Theme::color256(), Theme::basic()] {
+        for theme in [
+            Theme::truecolor(),
+            Theme::color256(),
+            Theme::basic(),
+            Theme::truecolor_light(),
+            Theme::color256_light(),
+            Theme::basic_light(),
+        ] {
             assert_eq!(theme.colors.bg, Color::Reset);
+        }
+    }
+
+    #[test]
+    fn light_palettes_have_dark_text() {
+        let theme = Theme::truecolor_light();
+        // Text on a light background must be dark
+        if let Color::Rgb(r, g, b) = theme.text.fg {
+            assert!(
+                r < 100 && g < 100 && b < 100,
+                "light theme fg should be dark: ({r}, {g}, {b})"
+            );
         }
     }
 
@@ -498,7 +743,6 @@ mod tests {
     #[test]
     fn struct_of_structs_groups_are_populated() {
         let theme = Theme::truecolor();
-        // Verify each group is reachable
         let _ = theme.colors.accent;
         let _ = theme.text.fg;
         let _ = theme.borders.normal;

@@ -252,6 +252,23 @@ pub struct SessionsResponse {
     pub sessions: Vec<Session>,
 }
 
+/// A tool available to an agent, with its enablement state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NousTool {
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NousToolsResponse {
+    pub tools: Vec<NousTool>,
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
@@ -515,5 +532,29 @@ mod tests {
         let session: Session = serde_json::from_str(json).unwrap();
         assert_eq!(session.display_name.as_deref(), Some("My Chat"));
         assert_eq!(session.label(), "My Chat");
+    }
+
+    #[test]
+    fn nous_tool_deserialization() {
+        let json = r#"{"name": "read_file", "enabled": true}"#;
+        let tool: NousTool = serde_json::from_str(json).unwrap();
+        assert_eq!(tool.name, "read_file");
+        assert!(tool.enabled);
+    }
+
+    #[test]
+    fn nous_tool_enabled_defaults_to_true() {
+        let json = r#"{"name": "bash"}"#;
+        let tool: NousTool = serde_json::from_str(json).unwrap();
+        assert!(tool.enabled);
+    }
+
+    #[test]
+    fn nous_tools_response_deserialization() {
+        let json = r#"{"tools": [{"name": "read_file", "enabled": true}, {"name": "bash", "enabled": false}]}"#;
+        let resp: NousToolsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.tools.len(), 2);
+        assert!(resp.tools[0].enabled);
+        assert!(!resp.tools[1].enabled);
     }
 }
