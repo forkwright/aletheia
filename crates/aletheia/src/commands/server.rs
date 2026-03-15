@@ -391,8 +391,6 @@ pub async fn run(args: Args) -> Result<()> {
     );
     info!("daemon started");
 
-<<<<<<< HEAD
-=======
     // Log retention — runs immediately at startup then every 24 h.
     // Reuses TraceRotator (from aletheia-oikonomos) to prune daily log files
     // older than logging.retention_days rather than duplicating the cleanup
@@ -404,7 +402,6 @@ pub async fn run(args: Args) -> Result<()> {
         shutdown_token.child_token(),
     );
 
->>>>>>> 8c9cd8be (feat(aletheia,taxis): add structured JSON file logging with daily rotation)
     // Wrap in Arc — shared between dispatcher and AppState
     let nous_manager = Arc::new(nous_manager);
 
@@ -801,7 +798,7 @@ fn build_signal_provider(
 /// Spawn a background task that prunes log files older than `retention_days`.
 ///
 /// Runs immediately at startup (to clean up leftovers from previous server
-/// runs) and then every 24 hours. Uses [`TraceRotator`] from
+/// runs) and then every 24 hours. Uses `TraceRotator` from
 /// `aletheia-oikonomos` to avoid duplicating the age-based file cleanup logic.
 ///
 /// Files are moved to `log_dir/archive/` and then pruned immediately

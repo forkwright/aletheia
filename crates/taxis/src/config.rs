@@ -749,7 +749,7 @@ impl Default for CredentialConfig {
 /// which minimum severity level is written to the log files.
 ///
 /// Log files are written in JSON format with daily rotation using
-/// `tracing_appender`. Old files are pruned after [`retention_days`] days by
+/// `tracing_appender`. Old files are pruned after `retention_days` days by
 /// the log retention background task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
