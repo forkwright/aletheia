@@ -15,20 +15,24 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
     let was_disconnected = !app.sse_connected;
     app.sse_connected = true;
     app.sse_disconnected_at = None;
+    app.sse_last_event_at = Some(std::time::Instant::now());
+    if was_disconnected {
+        app.sse_reconnect_count += 1;
+    }
 
     if was_disconnected {
         tracing::info!("SSE reconnected — reloading agent state");
         if let Ok(agents) = app.client.agents().await {
-            let notifications: HashMap<NousId, bool> = app
+            let unread: HashMap<NousId, u32> = app
                 .agents
                 .iter()
-                .map(|a| (a.id.clone(), a.has_notification))
+                .map(|a| (a.id.clone(), a.unread_count))
                 .collect();
 
             app.agents = agents
                 .into_iter()
                 .map(|a| {
-                    let notif = notifications.get(&a.id).copied().unwrap_or(false);
+                    let count = unread.get(&a.id).copied().unwrap_or(0);
                     let name = sanitize_for_display(a.display_name()).into_owned();
                     let name_lower = name.to_lowercase();
                     AgentState {
@@ -41,7 +45,7 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                         sessions: Vec::new(),
                         model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                         compaction_stage: None,
-                        has_notification: notif,
+                        unread_count: count,
                     }
                 })
                 .collect();
@@ -79,6 +83,7 @@ pub(crate) fn check_sse_reconnect_timeout(app: &mut App) {
 
 #[tracing::instrument(skip_all, fields(turn_count = active_turns.len()))]
 pub(crate) fn handle_sse_init(app: &mut App, active_turns: Vec<ActiveTurn>) {
+    app.sse_last_event_at = Some(std::time::Instant::now());
     for turn in active_turns {
         if let Some(agent) = app.agents.iter_mut().find(|a| a.id == turn.nous_id) {
             agent.status = AgentStatus::Working;
@@ -96,12 +101,17 @@ pub(crate) fn handle_sse_turn_before(app: &mut App, nous_id: NousId) {
 
 #[tracing::instrument(skip_all, fields(%nous_id, %session_id))]
 pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, session_id: SessionId) {
+    app.sse_last_event_at = Some(std::time::Instant::now());
     let is_focused = app.focused_agent.as_ref() == Some(&nous_id);
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
         if !is_focused {
-            agent.has_notification = true;
+            agent.unread_count += 1;
+            // Ring terminal bell for new messages on inactive agents.
+            if app.bell_enabled {
+                let _ = std::io::Write::write_all(&mut std::io::stderr(), b"\x07");
+            }
         }
     }
     if is_focused

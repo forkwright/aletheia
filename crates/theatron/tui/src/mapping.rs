@@ -105,31 +105,17 @@ impl App {
             return self.map_ops_pane_key(key);
         }
 
+        // Configurable keymap — covers global Ctrl+key shortcuts.
+        if let Some(action) = self.keymap.lookup(key.modifiers, key.code) {
+            return Some(action.to_msg());
+        }
+
         match (key.modifiers, key.code) {
-            (KeyModifiers::CONTROL, KeyCode::Char('c'))
-            | (KeyModifiers::CONTROL, KeyCode::Char('q')) => Some(Msg::Quit),
-
-            (KeyModifiers::CONTROL, KeyCode::Char('f')) => Some(Msg::ToggleSidebar),
-            (KeyModifiers::CONTROL, KeyCode::Char('b')) => Some(Msg::ToggleThinking),
-            (KeyModifiers::CONTROL, KeyCode::Char('o')) => Some(Msg::ToggleOpsPane),
-
-            (KeyModifiers::CONTROL, KeyCode::Char('t')) => Some(Msg::TabNew),
+            // Context-dependent Ctrl+W: TabClose when input is empty, DeleteWord otherwise.
             (KeyModifiers::CONTROL, KeyCode::Char('w')) if self.input.text.is_empty() => {
                 Some(Msg::TabClose)
             }
-
-            (_, KeyCode::F(1)) => Some(Msg::OpenOverlay(OverlayKind::Help)),
-            (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
-                Some(Msg::OpenOverlay(OverlayKind::AgentPicker))
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('i')) => {
-                Some(Msg::OpenOverlay(OverlayKind::SystemStatus))
-            }
-            (KeyModifiers::CONTROL, KeyCode::Char('m')) => Some(Msg::MemoryOpen),
-            (KeyModifiers::CONTROL, KeyCode::Char('n')) => Some(Msg::NewSession),
-            (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
-                Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
-            }
+            (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::DeleteWord),
 
             (_, KeyCode::Tab) if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Some(Msg::TabNext)
@@ -154,11 +140,6 @@ impl App {
             }
             (_, KeyCode::BackTab) => Some(Msg::PrevAgent),
 
-            (_, KeyCode::PageUp) => Some(Msg::ScrollPageUp),
-            (_, KeyCode::PageDown) => Some(Msg::ScrollPageDown),
-            (KeyModifiers::SHIFT, KeyCode::Up) => Some(Msg::ScrollUp),
-            (KeyModifiers::SHIFT, KeyCode::Down) => Some(Msg::ScrollDown),
-
             (_, KeyCode::Enter) => Some(Msg::Submit),
             (_, KeyCode::Backspace) => Some(Msg::Backspace),
             (_, KeyCode::Delete) => Some(Msg::Delete),
@@ -178,12 +159,6 @@ impl App {
             }
             (_, KeyCode::Up) => Some(Msg::HistoryUp),
             (_, KeyCode::Down) => Some(Msg::HistoryDown),
-
-            (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::DeleteWord),
-            (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::ClearLine),
-            (KeyModifiers::CONTROL, KeyCode::Char('k')) => Some(Msg::DeleteToEnd),
-            (KeyModifiers::CONTROL, KeyCode::Char('y')) => Some(Msg::CopyLastResponse),
-            (KeyModifiers::CONTROL, KeyCode::Char('e')) => Some(Msg::ComposeInEditor),
 
             (KeyModifiers::NONE, KeyCode::Char('?')) if self.input.text.is_empty() => {
                 Some(Msg::OpenOverlay(OverlayKind::Help))
@@ -219,7 +194,7 @@ impl App {
 
     #[expect(
         clippy::unused_self,
-        reason = "consistent method signature; self needed for future key binding personalisation"
+        reason = "method on App for consistency with other map_ methods"
     )]
     fn map_ops_pane_key(&self, key: KeyEvent) -> Option<Msg> {
         match (key.modifiers, key.code) {

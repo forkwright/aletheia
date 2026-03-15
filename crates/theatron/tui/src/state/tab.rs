@@ -43,7 +43,7 @@ pub(crate) struct Tab {
     pub(crate) agent_id: NousId,
     pub(crate) session_id: Option<SessionId>,
     pub(crate) title: String,
-    pub(crate) unread: bool,
+    pub(crate) unread_count: u32,
     #[expect(dead_code, reason = "reserved for unsaved-state indicator in tab bar")]
     pub(crate) modified: bool,
     pub(crate) state: TabState,
@@ -85,7 +85,7 @@ impl Tab {
             agent_id,
             session_id: None,
             title: title.into(),
-            unread: false,
+            unread_count: 0,
             modified: false,
             state: TabState::new(),
         }
@@ -215,7 +215,7 @@ impl TabBar {
                 && tab.agent_id == *agent_id
                 && tab.session_id.as_ref() == Some(session_id)
             {
-                tab.unread = true;
+                tab.unread_count += 1;
             }
         }
     }
@@ -223,7 +223,7 @@ impl TabBar {
     /// Clear unread on the active tab.
     pub(crate) fn clear_active_unread(&mut self) {
         if let Some(tab) = self.tabs.get_mut(self.active) {
-            tab.unread = false;
+            tab.unread_count = 0;
         }
     }
 }
@@ -411,8 +411,8 @@ mod tests {
         bar.tabs[1].session_id = Some(SessionId::from("sess2"));
         bar.active = 0;
         bar.mark_unread(&test_agent_id(), &SessionId::from("sess2"));
-        assert!(!bar.tabs[0].unread);
-        assert!(bar.tabs[1].unread);
+        assert_eq!(bar.tabs[0].unread_count, 0);
+        assert_eq!(bar.tabs[1].unread_count, 1);
     }
 
     #[test]
@@ -422,16 +422,16 @@ mod tests {
         bar.tabs[0].session_id = Some(SessionId::from("sess1"));
         bar.active = 0;
         bar.mark_unread(&test_agent_id(), &SessionId::from("sess1"));
-        assert!(!bar.tabs[0].unread);
+        assert_eq!(bar.tabs[0].unread_count, 0);
     }
 
     #[test]
     fn clear_active_unread() {
         let mut bar = TabBar::new();
         bar.create_tab(test_agent_id(), "main");
-        bar.tabs[0].unread = true;
+        bar.tabs[0].unread_count = 3;
         bar.clear_active_unread();
-        assert!(!bar.tabs[0].unread);
+        assert_eq!(bar.tabs[0].unread_count, 0);
     }
 
     #[test]

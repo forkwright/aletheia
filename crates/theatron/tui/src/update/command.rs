@@ -214,7 +214,7 @@ async fn execute_command(app: &mut App) {
                     let id = agent.id.clone();
                     app.save_scroll_state();
                     if let Some(a) = app.agents.iter_mut().find(|a| a.id == id) {
-                        a.has_notification = false;
+                        a.unread_count = 0;
                     }
                     app.focused_agent = Some(id);
                     app.load_focused_session().await;

@@ -121,7 +121,7 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
     match &app.overlay {
         Some(Overlay::AgentPicker { cursor }) => {
             if let Some(agent) = app.agents.get_mut(*cursor) {
-                agent.has_notification = false;
+                agent.unread_count = 0;
                 let id = agent.id.clone();
                 app.focused_agent = Some(id);
                 app.overlay = None;
