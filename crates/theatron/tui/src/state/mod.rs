@@ -11,7 +11,7 @@ pub(crate) mod tab;
 pub(crate) mod view_stack;
 pub(crate) mod virtual_scroll;
 
-pub use agent::{ActiveTool, AgentState, AgentStatus};
+pub use agent::{ActiveTool, AgentState, AgentStatus, ToolSummary};
 pub(crate) use chat::{ArcVec, MarkdownCache, SavedScrollState};
 pub use chat::{ChatMessage, ToolCallInfo};
 pub use command::{CommandPaletteState, SelectionContext};

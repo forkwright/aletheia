@@ -529,14 +529,14 @@ mod tests {
 
     fn test_render(md: &str) -> Vec<Line<'static>> {
         let theme = Theme::detect();
-        let hl = Highlighter::new();
+        let hl = Highlighter::new(theme.mode);
         let (lines, _) = render(md, 80, &theme, &hl);
         lines
     }
 
     fn mk_render(md: &str) -> (Vec<Line<'static>>, Vec<MdLink>) {
         let theme = Theme::detect();
-        let hl = Highlighter::new();
+        let hl = Highlighter::new(theme.mode);
         render(md, 80, &theme, &hl)
     }
 
@@ -544,7 +544,7 @@ mod tests {
     /// against theme-derived colors rather than hardcoding Rgb values.
     fn test_render_with_theme(md: &str) -> (Vec<Line<'static>>, Theme) {
         let theme = Theme::detect();
-        let hl = Highlighter::new();
+        let hl = Highlighter::new(theme.mode);
         let (lines, _) = render(md, 80, &theme, &hl);
         (lines, theme)
     }

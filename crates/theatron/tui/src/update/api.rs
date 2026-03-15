@@ -24,6 +24,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
                 model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                 compaction_stage: None,
                 unread_count: 0,
+                tools: Vec::new(),
             }
         })
         .collect();

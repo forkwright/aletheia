@@ -417,6 +417,27 @@ impl ApiClient {
     }
 
     #[tracing::instrument(skip(self))]
+    pub async fn tools(&self, nous_id: &str) -> Result<Vec<NousTool>> {
+        let encoded = encode_path(nous_id);
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/nous/{encoded}/tools"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load tools",
+            })?;
+        Self::check_auth(&resp)?;
+        let resp = Self::check_status(resp, "tools request").await?;
+        let wrapper: NousToolsResponse = resp.json().await.context(HttpSnafu {
+            operation: "tools response",
+        })?;
+        Ok(wrapper.tools)
+    }
+
+    #[tracing::instrument(skip(self))]
     pub async fn recall(&self, nous_id: &str, query: &str) -> Result<String> {
         let encoded = encode_path(nous_id);
         let resp = self
