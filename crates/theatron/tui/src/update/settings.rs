@@ -4,6 +4,7 @@ use crate::sanitize::sanitize_for_display;
 use crate::state::Overlay;
 use crate::state::settings::{EditState, FieldType, SaveStatus, SettingsOverlay};
 
+// SAFETY: sanitized at ingestion — config from API is sanitized via sanitize_config_json.
 pub async fn handle_open(app: &mut App) {
     match app.client.config().await {
         Ok(config) => {
@@ -18,6 +19,8 @@ pub async fn handle_open(app: &mut App) {
     }
 }
 
+// SAFETY: sanitized at ingestion — config values from API are sanitized in SettingsOverlay.
+// Config values are mostly numbers/bools; string values are sanitized by sanitize_config_json.
 pub fn handle_loaded(app: &mut App, config: serde_json::Value) {
     let clean_config = sanitize_config_json(config);
     app.overlay = Some(Overlay::Settings(SettingsOverlay::from_config(
@@ -164,13 +167,14 @@ pub async fn handle_save(app: &mut App) {
 pub fn handle_saved(app: &mut App) {
     app.error_toast = Some(ErrorToast::new("Config saved and reloaded".to_owned()));
     app.overlay = None;
-    // WHY: Config changes can affect display (e.g. syntax highlighting theme), so
-    // invalidate the markdown cache and rebuild virtual scroll heights for the next render.
-    app.cached_markdown_text.clear();
-    app.cached_markdown_lines.clear();
+    // Config changes can affect display (e.g. syntax highlighting theme). Invalidate
+    // the cached markdown lines and rebuild virtual scroll heights so the next render
+    // picks up fresh layout.
+    app.markdown_cache.clear();
     app.rebuild_virtual_scroll();
 }
 
+// SAFETY: sanitized at ingestion — error messages may contain external data.
 pub fn handle_save_error(app: &mut App, msg: String) {
     if let Some(Overlay::Settings(s)) = &mut app.overlay {
         s.save_status = SaveStatus::Error(sanitize_for_display(&msg).into_owned());

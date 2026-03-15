@@ -18,6 +18,7 @@ use crate::update::extract_text_content;
 use crate::view;
 
 use crate::state::ArcVec;
+use crate::state::MarkdownCache;
 use crate::state::SavedScrollState;
 use crate::state::TabBar;
 use crate::state::virtual_scroll::VirtualScroll;
@@ -44,6 +45,7 @@ pub struct App {
     pub highlighter: crate::highlight::Highlighter,
     pub should_quit: bool,
 
+    // Dashboard state
     pub agents: Vec<AgentState>,
     pub focused_agent: Option<NousId>,
     /// PERF: ArcVec clone is O(1) — tab switches share the Arc pointer, not the Vec.
@@ -51,64 +53,86 @@ pub struct App {
     pub focused_session_id: Option<SessionId>,
     pub daily_cost_cents: u32,
 
+    // Input
     pub input: InputState,
 
+    // Layout
     pub sidebar_visible: bool,
     pub thinking_expanded: bool,
 
+    // Overlay
     pub overlay: Option<Overlay>,
 
+    // Streaming state
     pub active_turn_id: Option<TurnId>,
     pub streaming_text: String,
     pub streaming_thinking: String,
     pub streaming_tool_calls: Vec<ToolCallInfo>,
     pub(crate) stream_rx: Option<mpsc::Receiver<StreamEvent>>,
 
+    // SSE
     sse: Option<SseConnection>,
     pub sse_connected: bool,
     /// When the SSE stream last disconnected. Cleared on successful reconnect.
     pub sse_disconnected_at: Option<std::time::Instant>,
 
+    // Scroll
     pub scroll_offset: usize,
     pub auto_scroll: bool,
     pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
 
+    // Virtual scroll — O(viewport) rendering for large message lists
     pub(crate) virtual_scroll: VirtualScroll,
 
-    pub cached_markdown_text: String,
-    pub cached_markdown_lines: Vec<ratatui::text::Line<'static>>,
+    // Markdown cache — avoid re-parsing on every frame
+    pub markdown_cache: MarkdownCache,
 
+    // Tick counter for spinner animation
     pub tick_count: u64,
 
+    // Error toast (auto-dismiss after 5s)
     pub error_toast: Option<ErrorToast>,
+    // Success toast (auto-dismiss after 5s)
     pub success_toast: Option<ErrorToast>,
 
+    // @mention tab completion state
     pub tab_completion: Option<TabCompletion>,
 
+    // Terminal size for responsive layout
     pub terminal_width: u16,
     pub terminal_height: u16,
 
+    // Command palette (`:` mode)
     pub command_palette: CommandPaletteState,
 
+    // Status bar enhanced fields
     pub session_cost_cents: u32,
     pub context_usage_pct: Option<u8>,
     pub selection: SelectionContext,
 
+    // Message selection (None = auto-scroll mode, Some(index) = message selected)
     pub selected_message: Option<usize>,
     pub tool_expanded: HashSet<crate::id::ToolId>,
 
+    // Live filter (`/` mode)
     pub filter: FilterState,
 
+    // Stack-based navigation (Enter drills in, Esc pops out)
     pub view_stack: ViewStack,
 
+    // Per-view scroll state preservation
     pub(crate) view_scroll_states: HashMap<usize, SavedScrollState>,
 
+    // Operations pane (right-side panel)
     pub ops: OpsState,
 
+    // Multi-session tab bar
     pub(crate) tab_bar: TabBar,
 
+    // Vim `g` prefix pending (for gt/gT two-key sequences)
     pub(crate) pending_g: bool,
 
+    // Memory inspector panel state
     pub memory: MemoryInspectorState,
 
     // Dirty-flag rendering: true when state changed since last frame.
@@ -153,8 +177,7 @@ impl App {
             auto_scroll: true,
             scroll_states: HashMap::new(),
             virtual_scroll: VirtualScroll::new(),
-            cached_markdown_text: String::new(),
-            cached_markdown_lines: Vec::new(),
+            markdown_cache: MarkdownCache::default(),
             tick_count: 0,
             error_toast: None,
             success_toast: None,
@@ -219,7 +242,8 @@ impl App {
             }
         }
 
-        // NOTE: Best-effort agent fetch — on failure, start with empty list and show toast.
+        // SAFETY: sanitized at ingestion — all agent fields from API are sanitized here.
+        // Best-effort: if agent fetch fails, start with empty list and show error toast.
         let agents = match self.client.agents().await {
             Ok(a) => a,
             Err(e) => {
@@ -265,6 +289,7 @@ impl App {
             }
             self.load_focused_session().await;
 
+            // Create initial tab for the default agent/session
             let agent_name = self
                 .agents
                 .iter()
@@ -346,6 +371,7 @@ impl App {
 
             match self.client.history(&session_id).await {
                 Ok(history) => {
+                    // SAFETY: sanitized at ingestion — all message fields from API.
                     self.messages = history
                         .into_iter()
                         .filter_map(|m| {
@@ -368,10 +394,9 @@ impl App {
                             })
                         })
                         .collect();
-                    // WHY: Clear stale streaming markdown so it doesn't bleed through
-                    // when the user switches agents mid-stream.
-                    self.cached_markdown_text.clear();
-                    self.cached_markdown_lines.clear();
+                    // Stale streaming markdown from the previous session must not
+                    // bleed through when the user switches agents.
+                    self.markdown_cache.clear();
                     self.rebuild_virtual_scroll();
                     self.scroll_to_bottom();
                 }
@@ -441,8 +466,7 @@ impl App {
             tab.state.streaming_thinking = self.streaming_thinking.clone();
             tab.state.streaming_tool_calls = self.streaming_tool_calls.clone();
             tab.state.active_turn_id = self.active_turn_id.clone();
-            tab.state.cached_markdown_text = self.cached_markdown_text.clone();
-            tab.state.cached_markdown_lines = self.cached_markdown_lines.clone();
+            tab.state.markdown_cache = self.markdown_cache.clone();
             tab.state.ops = self.ops.clone();
         }
     }
@@ -464,8 +488,7 @@ impl App {
             self.streaming_thinking = tab.state.streaming_thinking.clone();
             self.streaming_tool_calls = tab.state.streaming_tool_calls.clone();
             self.active_turn_id = tab.state.active_turn_id.clone();
-            self.cached_markdown_text = tab.state.cached_markdown_text.clone();
-            self.cached_markdown_lines = tab.state.cached_markdown_lines.clone();
+            self.markdown_cache = tab.state.markdown_cache.clone();
             self.ops = tab.state.ops.clone();
         }
     }
@@ -571,8 +594,7 @@ pub(crate) mod test_helpers {
             auto_scroll: true,
             scroll_states: HashMap::new(),
             virtual_scroll: VirtualScroll::new(),
-            cached_markdown_text: String::new(),
-            cached_markdown_lines: Vec::new(),
+            markdown_cache: MarkdownCache::default(),
             tick_count: 0,
             error_toast: None,
             success_toast: None,
@@ -640,7 +662,7 @@ mod tests {
     use crate::state::{ChatMessage, OpsState};
 
     #[test]
-    fn app_constructs_with_default_state() {
+    fn test_app_constructs_with_defaults() {
         let app = test_app();
         assert!(!app.should_quit);
         assert!(app.auto_scroll);
@@ -657,7 +679,7 @@ mod tests {
     }
 
     #[test]
-    fn app_populates_state_from_message_list() {
+    fn test_app_with_messages_populates() {
         let app = test_app_with_messages(vec![("user", "hello"), ("assistant", "hi there")]);
         assert_eq!(app.messages.len(), 2);
         assert_eq!(app.messages[0].role, "user");
@@ -669,19 +691,18 @@ mod tests {
         // Verifies that the fields cleared on session switch are present and
         // behave as expected when the caller clears them.
         let mut app = test_app();
-        app.cached_markdown_text = "stale content from previous session".to_string();
-        app.cached_markdown_lines = vec![ratatui::text::Line::raw("stale line")];
+        app.markdown_cache.text = "stale content from previous session".to_string();
+        app.markdown_cache.lines = vec![ratatui::text::Line::raw("stale line")];
 
         // Simulate the clearing that load_focused_session performs on history load.
-        app.cached_markdown_text.clear();
-        app.cached_markdown_lines.clear();
+        app.markdown_cache.clear();
 
         assert!(
-            app.cached_markdown_text.is_empty(),
+            app.markdown_cache.text.is_empty(),
             "markdown text cache must be cleared on session switch"
         );
         assert!(
-            app.cached_markdown_lines.is_empty(),
+            app.markdown_cache.lines.is_empty(),
             "markdown line cache must be cleared on session switch"
         );
     }

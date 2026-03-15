@@ -16,6 +16,7 @@ use crate::jwt::{JwtConfig, JwtManager};
 use crate::password;
 use crate::store::AuthStore;
 use crate::types::{Action, ApiKeyRecord, Claims, Role, TokenKind, TokenPair};
+use crate::util::days_to_date;
 
 /// Configuration for the auth service.
 #[derive(Default)]
@@ -208,21 +209,6 @@ fn format_unix_iso(unix_secs: i64) -> String {
     let seconds = time_secs % 60;
     let (year, month, day) = days_to_date(days);
     format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}.000Z")
-}
-
-fn days_to_date(days_since_epoch: u64) -> (u64, u64, u64) {
-    let z = days_since_epoch + 719_468;
-    let era = z / 146_097;
-    let day_of_era = z - era * 146_097;
-    let year_of_era =
-        (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146_096) / 365;
-    let y = year_of_era + era * 400;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let mp = (5 * day_of_year + 2) / 153;
-    let d = day_of_year - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
 }
 
 #[cfg(test)]

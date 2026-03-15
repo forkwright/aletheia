@@ -76,6 +76,24 @@ pub struct ChatMessage {
     pub tool_calls: Vec<ToolCallInfo>,
 }
 
+/// Paired streaming-markdown text and its pre-rendered line cache.
+///
+/// Invariant: `lines` always corresponds to the rendering of `text`.
+/// Both fields are cleared or updated together via [`MarkdownCache::clear`].
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MarkdownCache {
+    pub(crate) text: String,
+    pub(crate) lines: Vec<ratatui::text::Line<'static>>,
+}
+
+impl MarkdownCache {
+    /// Clear both the cached text and rendered lines atomically.
+    pub(crate) fn clear(&mut self) {
+        self.text.clear();
+        self.lines.clear();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
