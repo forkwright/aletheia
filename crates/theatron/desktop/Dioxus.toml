@@ -1,0 +1,6 @@
+[application]
+name = "Aletheia"
+asset_dir = "assets"
+
+[bundle]
+identifier = "com.forkwright.aletheia"
