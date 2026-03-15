@@ -70,6 +70,14 @@ workspace = "nous/main"
 # [maintenance.dbMonitoring]
 # warnThresholdMb = 100
 
+# --- Structured file logging ---
+# JSON log files are written to instance/logs/ with daily rotation.
+# WARN+ is captured even when stdout shows only INFO.
+# [logging]
+# logDir = "logs"            # relative to instance root, or absolute path
+# retentionDays = 14         # delete log files older than N days
+# level = "warn"             # tracing filter: warn | error | info | debug
+
 # --- Cost tracking ---
 # [pricing."claude-sonnet-4-6"]
 # inputCostPerMtok = 3.0

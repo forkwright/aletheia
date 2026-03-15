@@ -193,11 +193,7 @@ impl Oikos {
 
     /// The logs directory.
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn logs(&self) -> PathBuf {
+    pub fn logs(&self) -> PathBuf {
         self.root.join("logs")
     }
 
