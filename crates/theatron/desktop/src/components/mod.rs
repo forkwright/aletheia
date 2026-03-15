@@ -6,3 +6,4 @@
 //! define the state machines and update logic that components will use.
 
 pub mod chat;
+pub mod connection_indicator;
