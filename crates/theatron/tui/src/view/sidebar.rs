@@ -64,8 +64,16 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         ];
 
         // NOTE: shown only for unfocused agents — clears when the user switches focus
-        if !is_focused && agent.has_notification {
-            spans.push(Span::styled(" ●", Style::default().fg(theme.colors.accent)));
+        if !is_focused && agent.unread_count > 0 {
+            let badge = if agent.unread_count > 9 {
+                " 9+".to_string()
+            } else {
+                format!(" {}", agent.unread_count)
+            };
+            spans.push(Span::styled(
+                badge,
+                Style::default().fg(theme.colors.accent),
+            ));
         }
 
         lines.push(Line::from(spans));

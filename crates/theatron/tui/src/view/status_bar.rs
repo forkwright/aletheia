@@ -239,7 +239,19 @@ fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 
 fn connection_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     if app.sse_connected {
-        vec![Span::styled("●", theme.style_success())]
+        // Healthy when last event was within 5 seconds, otherwise degraded.
+        let stale = app
+            .sse_last_event_at
+            .map(|t| t.elapsed().as_secs() > 5)
+            .unwrap_or(false);
+        if stale {
+            vec![
+                Span::styled("●", theme.style_warning()),
+                Span::styled(" Stale", theme.style_dim()),
+            ]
+        } else {
+            vec![Span::styled("●", theme.style_success())]
+        }
     } else if app.sse_disconnected_at.is_some() {
         vec![
             Span::styled("○", theme.style_error()),

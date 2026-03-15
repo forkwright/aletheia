@@ -43,14 +43,22 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
         let title = truncate_title(&tab.title, max_per_tab);
 
-        let prefix = if tab.unread && !is_active { "* " } else { " " };
+        let prefix = if tab.unread_count > 0 && !is_active {
+            if tab.unread_count > 9 {
+                "9+ ".to_string()
+            } else {
+                format!("{} ", tab.unread_count)
+            }
+        } else {
+            " ".to_string()
+        };
 
         let style = if is_active {
             Style::default()
                 .fg(theme.text.fg)
                 .bg(theme.colors.surface)
                 .add_modifier(Modifier::BOLD)
-        } else if tab.unread {
+        } else if tab.unread_count > 0 {
             Style::default()
                 .fg(theme.borders.selected)
                 .bg(theme.colors.surface_dim)

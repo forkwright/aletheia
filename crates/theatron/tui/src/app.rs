@@ -11,6 +11,7 @@ use crate::error::{GatewayUnreachableSnafu, Result, TokenRequiredSnafu};
 use crate::events::StreamEvent;
 use crate::hyperlink::OscLink;
 use crate::id::{NousId, SessionId, TurnId};
+use crate::keybindings::KeyMap;
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
 use crate::theme::{THEME, Theme};
@@ -70,11 +71,15 @@ pub struct App {
     pub streaming_tool_calls: Vec<ToolCallInfo>,
     pub(crate) stream_rx: Option<mpsc::Receiver<StreamEvent>>,
 
-    // SSE
+    // SSE connection tracking
     sse: Option<SseConnection>,
     pub sse_connected: bool,
     /// When the SSE stream last disconnected. Cleared on successful reconnect.
     pub sse_disconnected_at: Option<std::time::Instant>,
+    /// Timestamp of the most recent SSE event, for connection quality indicator.
+    pub sse_last_event_at: Option<std::time::Instant>,
+    /// Number of SSE reconnections since startup.
+    pub sse_reconnect_count: u32,
 
     // Scroll
     pub scroll_offset: usize,
@@ -139,6 +144,12 @@ pub struct App {
     pub command_history: Vec<String>,
     pub command_history_index: Option<usize>,
 
+    // Configurable keymap (built at init from defaults + TOML overrides).
+    pub(crate) keymap: KeyMap,
+
+    // Terminal bell for new messages on inactive agents.
+    pub(crate) bell_enabled: bool,
+
     // Dirty-flag rendering: true when state changed since last frame.
     // Ticks only set this when animation is in progress (streaming or toasts).
     pub(crate) dirty: bool,
@@ -155,6 +166,8 @@ impl App {
         tracing::info!("detected color depth: {:?}", theme.depth);
 
         let command_history = load_command_history(&config);
+        let keymap = KeyMap::build(&config.keybindings);
+        let bell_enabled = config.bell;
 
         let mut app = Self {
             config,
@@ -179,6 +192,8 @@ impl App {
             sse: None,
             sse_connected: false,
             sse_disconnected_at: None,
+            sse_last_event_at: None,
+            sse_reconnect_count: 0,
             scroll_offset: 0,
             auto_scroll: true,
             scroll_states: HashMap::new(),
@@ -205,6 +220,8 @@ impl App {
             memory: MemoryInspectorState::new(),
             command_history,
             command_history_index: None,
+            keymap,
+            bell_enabled,
             dirty: true,
             frame_cache: None,
         };
@@ -277,7 +294,7 @@ impl App {
                     sessions: Vec::new(),
                     model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                     compaction_stage: None,
-                    has_notification: false,
+                    unread_count: 0,
                 }
             })
             .collect();
@@ -616,6 +633,8 @@ pub(crate) mod test_helpers {
             default_agent: None,
             default_session: None,
             workspace_root: None,
+            bell: false,
+            keybindings: HashMap::new(),
         };
         let client = ApiClient::new(&config.url, config.token.clone()).unwrap();
         let theme = THEME.clone();
@@ -643,6 +662,8 @@ pub(crate) mod test_helpers {
             sse: None,
             sse_connected: false,
             sse_disconnected_at: None,
+            sse_last_event_at: None,
+            sse_reconnect_count: 0,
             scroll_offset: 0,
             auto_scroll: true,
             scroll_states: HashMap::new(),
@@ -669,6 +690,8 @@ pub(crate) mod test_helpers {
             memory: MemoryInspectorState::new(),
             command_history: Vec::new(),
             command_history_index: None,
+            keymap: KeyMap::build(&HashMap::new()),
+            bell_enabled: false,
             dirty: true,
             frame_cache: None,
         }
@@ -705,7 +728,7 @@ pub(crate) mod test_helpers {
             sessions: Vec::new(),
             model: Some("test-model".to_string()),
             compaction_stage: None,
-            has_notification: false,
+            unread_count: 0,
         }
     }
 }

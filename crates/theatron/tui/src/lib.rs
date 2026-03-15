@@ -91,7 +91,13 @@ async fn run_tui_inner(
     let mut app = App::init(config).await?;
 
     let terminal = ratatui::init();
+    crossterm::execute!(std::io::stderr(), crossterm::event::EnableMouseCapture).context(
+        IoSnafu {
+            context: "enable mouse capture",
+        },
+    )?;
     let result = run_loop(terminal, &mut app).await;
+    let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableMouseCapture);
     ratatui::restore();
 
     if let Err(ref e) = result {

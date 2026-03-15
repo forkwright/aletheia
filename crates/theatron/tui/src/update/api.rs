@@ -23,7 +23,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
                 sessions: sanitize_sessions(Vec::new()),
                 model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
                 compaction_stage: None,
-                has_notification: false,
+                unread_count: 0,
             }
         })
         .collect();
