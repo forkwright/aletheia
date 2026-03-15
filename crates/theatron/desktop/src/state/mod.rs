@@ -8,3 +8,4 @@ pub mod agent;
 pub mod app;
 pub mod chat;
 pub mod collections;
+pub mod events;
