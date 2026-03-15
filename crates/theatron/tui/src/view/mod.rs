@@ -1,6 +1,7 @@
 mod chat;
 mod command_palette;
 mod filter_bar;
+pub(crate) mod image;
 mod input;
 mod memory;
 pub(crate) mod ops;

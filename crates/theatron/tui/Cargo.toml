@@ -71,6 +71,9 @@ similar = "2"
 # Cross-platform URL/file opening
 open = "5"
 
+# Image loading and processing — used for inline image preview in tool results
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+
 # theatron-tui uses inline lints rather than lints.workspace = true because Cargo
 # does not allow combining workspace lint inheritance with package-level overrides,
 # and the TUI codebase is not pedantic-clean. Deny-level rules are kept in sync

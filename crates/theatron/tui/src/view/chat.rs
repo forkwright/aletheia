@@ -9,6 +9,7 @@ use crate::hyperlink::{self, OscLink};
 use crate::markdown;
 use crate::state::FilterScope;
 use crate::theme::{self, Theme};
+use crate::view::image;
 
 const MS_PER_SECOND: u64 = 1000;
 
@@ -430,6 +431,19 @@ fn render_message(
         let abs_line = md_para_offset + link.line_idx;
         let abs_col = prefix_width + link.col;
         para_links.push((abs_line, abs_col, link.text, link.url));
+    }
+
+    // Inline image preview: detect image file paths in the message text and
+    // render half-block previews (true-color terminals) or filename+size fallback.
+    let image_paths = image::detect_image_paths(&msg.text);
+    for path in &image_paths {
+        let preview_width = ctx.inner_width.saturating_sub(2);
+        let preview_lines = image::render_preview_lines(path, preview_width);
+        for line in preview_lines {
+            let mut padded = vec![Span::styled(content_prefix, prefix_style)];
+            padded.extend(line.spans);
+            lines.push(Line::from(padded));
+        }
     }
 
     // Breathing room between messages
