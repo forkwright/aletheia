@@ -101,7 +101,7 @@ tracing-appender = "0.2"
 prometheus = { version = "0.14", features = ["process"] }
 
 # Config
-figment = { version = "0.10", features = ["toml", "env"] }
+figment = { version = "0.10", features = ["toml", "yaml", "env"] }
 
 # IDs
 uuid = { version = "1", features = ["v4"] }

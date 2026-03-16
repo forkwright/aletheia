@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
+use aletheia_taxis::config::AletheiaConfig;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
 use aletheia_taxis::validate::validate_section;
@@ -48,6 +49,22 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         }
     };
 
+    all_ok &= check_sections(&config_value);
+    all_ok &= check_embedding_backend(&config);
+    all_ok &= check_workspaces(&oikos, &config);
+    all_ok &= check_jwt(&config);
+
+    println!();
+    if all_ok {
+        println!("Configuration OK");
+        Ok(())
+    } else {
+        anyhow::bail!("Configuration has errors — see above");
+    }
+}
+
+fn check_sections(config_value: &serde_json::Value) -> bool {
+    let mut ok = true;
     for section in &[
         "agents",
         "gateway",
@@ -62,24 +79,50 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
                 Ok(()) => println!("  [pass] {section}"),
                 Err(e) => {
                     println!("  [FAIL] {section}: {e}");
-                    all_ok = false;
+                    ok = false;
                 }
             }
         } else {
             println!("  [pass] {section} (using defaults)");
         }
     }
+    ok
+}
 
+/// Check that the configured embedding provider is available at compile time.
+fn check_embedding_backend(config: &AletheiaConfig) -> bool {
+    if config.embedding.provider != "candle" {
+        return true;
+    }
+
+    if cfg!(feature = "embed-candle") {
+        println!("  [pass] embedding backend (embed-candle compiled)");
+        true
+    } else {
+        println!(
+            "  [FAIL] embedding backend: embed-candle feature not compiled\n         \
+             Rebuild with: cargo build --features embed-candle\n         \
+             Or set embedding.provider to \"mock\" in config."
+        );
+        false
+    }
+}
+
+fn check_workspaces(oikos: &Oikos, config: &AletheiaConfig) -> bool {
+    let mut ok = true;
     for agent in &config.agents.list {
         match oikos.validate_workspace_path(&agent.workspace) {
             Ok(()) => println!("  [pass] agent '{}' workspace", agent.id),
             Err(e) => {
                 println!("  [FAIL] agent '{}' workspace: {e}", agent.id);
-                all_ok = false;
+                ok = false;
             }
         }
     }
+    ok
+}
 
+fn check_jwt(config: &AletheiaConfig) -> bool {
     let jwt_key = config
         .gateway
         .auth
@@ -88,28 +131,25 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         .map(str::to_owned)
         .or_else(|| std::env::var("ALETHEIA_JWT_SECRET").ok());
     let auth_mode = config.gateway.auth.mode.as_str();
-    let jwt_check_label = "gateway.auth JWT key";
-    if matches!(auth_mode, "token" | "jwt") {
-        match jwt_key.as_deref() {
-            Some("CHANGE-ME-IN-PRODUCTION") | None => {
-                println!(
-                    "  [FAIL] {jwt_check_label}: key is still the default placeholder\n         \
-                     Set gateway.auth.signingKey in aletheia.toml or ALETHEIA_JWT_SECRET env var.\n         \
-                     Generate one with: openssl rand -hex 32"
-                );
-                all_ok = false;
-            }
-            Some(_) => println!("  [pass] {jwt_check_label}"),
-        }
-    } else {
-        println!("  [pass] {jwt_check_label} (auth mode '{auth_mode}' — JWT not required)");
+    let label = "gateway.auth JWT key";
+
+    if !matches!(auth_mode, "token" | "jwt") {
+        println!("  [pass] {label} (auth mode '{auth_mode}' — JWT not required)");
+        return true;
     }
 
-    println!();
-    if all_ok {
-        println!("Configuration OK");
-        Ok(())
-    } else {
-        anyhow::bail!("Configuration has errors — see above");
+    match jwt_key.as_deref() {
+        Some("CHANGE-ME-IN-PRODUCTION") | None => {
+            println!(
+                "  [FAIL] {label}: key is still the default placeholder\n         \
+                 Set gateway.auth.signingKey in aletheia.toml or ALETHEIA_JWT_SECRET env var.\n         \
+                 Generate one with: openssl rand -hex 32"
+            );
+            false
+        }
+        Some(_) => {
+            println!("  [pass] {label}");
+            true
+        }
     }
 }
