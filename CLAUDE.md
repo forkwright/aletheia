@@ -86,6 +86,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | `credential status` | Show credential source, expiry, and token prefix |
 | `credential refresh` | Force-refresh OAuth token |
 | `eval [--url URL] [--token TOKEN] [--scenario ID] [--json] [--timeout N]` | Run behavioral evaluation scenarios |
+| `session-export <session-id> [--format md\|json] [--output PATH] [--url URL] [--token TOKEN]` | Export a session as Markdown or JSON |
 | `export <nous-id> [--output PATH] [--archived] [--max-messages N] [--compact]` | Export agent to `.agent.json` |
 | `import <file> [--target-id ID] [--skip-sessions] [--skip-workspace] [--force] [--dry-run]` | Import agent from `.agent.json` |
 | `tui [--url URL] [--token TOKEN] [--agent ID] [--session ID] [--logout]` | Launch terminal dashboard (requires `tui` feature) |
@@ -93,6 +94,7 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | `export-skills --nous-id ID [--output PATH] [--domain TAGS]` | Export skills to Claude Code `.claude/skills/` format |
 | `review-skills --nous-id ID [--action list\|approve\|reject] [--fact-id ID]` | Review pending auto-extracted skills |
 | `migrate-memory [--qdrant-url URL] [--collection NAME] [--knowledge-path PATH] [--review-file PATH] [--dry-run]` | Migrate memories from Qdrant into embedded knowledge store |
+| `add-nous <name> [--provider PROVIDER] [--model MODEL]` | Scaffold a new nous agent directory |
 | `init [--instance-root\|--instance-path PATH] [-y] [--non-interactive] [--auth-mode MODE] [--api-provider PROVIDER] [--model MODEL] [--api-key KEY]` | Initialize a new instance |
 | `check-config` | Validate configuration without starting services |
 | `completions <bash\|zsh\|fish>` | Generate shell completions |

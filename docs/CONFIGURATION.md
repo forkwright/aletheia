@@ -19,8 +19,10 @@ Later layers override earlier ones. All field names use `snake_case` in YAML; `c
 - [channels](#channels)
 - [bindings](#bindings)
 - [embedding](#embedding)
+- [credential](#credential)
 - [data](#data)
 - [maintenance](#maintenance)
+- [logging](#logging)
 - [pricing](#pricing)
 - [packs](#packs)
 - [sandbox](#sandbox)
@@ -271,6 +273,23 @@ The `mock` provider returns zero vectors, useful for development without loading
 
 ---
 
+## credential
+
+Controls how the server discovers LLM API credentials. The `source` field selects the resolution strategy.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `source` | string | `"auto"` | Credential strategy: `"auto"` (instance file, then env vars, then Claude Code credentials), `"api-key"` (instance file and env vars only), `"claude-code"` (prefer Claude Code credentials) |
+| `claude_code_credentials` | string | `null` | Override path to the Claude Code credentials file. Resolves to `~/.claude/.credentials.json` when unset. |
+
+```yaml
+credential:
+  source: auto
+  claude_code_credentials: ~/.claude/.credentials.json
+```
+
+---
+
 ## data
 
 ### data.retention
@@ -350,6 +369,25 @@ maintenance:
 
 ---
 
+## logging
+
+File-based log output. Console logging is controlled separately via the `RUST_LOG` environment variable.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `log_dir` | string | `null` | Directory for daily log files. Relative paths resolve from the instance root. Defaults to `{instance}/logs/` when unset. |
+| `retention_days` | u32 | `14` | Days to retain log files before deletion. Cleanup runs at startup and every 24 hours. |
+| `level` | string | `"warn"` | Minimum level written to log files. Accepts any `tracing` filter directive (e.g. `"warn"`, `"error"`, `"aletheia=debug,warn"`). |
+
+```yaml
+logging:
+  log_dir: /var/log/aletheia
+  retention_days: 30
+  level: "aletheia=debug,warn"
+```
+
+---
+
 ## pricing
 
 Per-model pricing for cost estimation in Prometheus metrics. Keyed by model name.
@@ -389,10 +427,11 @@ Filesystem sandbox applied to tool execution. When enabled, tools are restricted
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Whether sandbox restrictions are applied |
+| `enabled` | bool | `true` | Whether sandbox restrictions are applied |
 | `enforcement` | string | `"enforcing"` | `"enforcing"` blocks violations; `"permissive"` logs them without blocking |
 | `extra_read_paths` | string[] | `[]` | Additional filesystem paths granted read access to all tools |
 | `extra_write_paths` | string[] | `[]` | Additional filesystem paths granted read+write access to all tools |
+| `extra_exec_paths` | string[] | `[]` | Additional filesystem paths granted execute access. Values may begin with `~`, which expands to `$HOME` at policy-build time. |
 
 ```yaml
 sandbox:
@@ -401,6 +440,8 @@ sandbox:
   extra_read_paths:
     - /usr/share/doc
   extra_write_paths: []
+  extra_exec_paths:
+    - ~/.cargo/bin
 ```
 
 ---
