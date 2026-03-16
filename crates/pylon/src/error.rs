@@ -127,7 +127,9 @@ impl IntoResponse for ApiError {
             Self::Internal { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", None),
             Self::Unauthorized { .. } => (StatusCode::UNAUTHORIZED, "unauthorized", None),
             Self::NotFound { .. } => (StatusCode::NOT_FOUND, "not_found", None),
-            Self::RateLimited { retry_after_secs, .. } => (
+            Self::RateLimited {
+                retry_after_secs, ..
+            } => (
                 StatusCode::TOO_MANY_REQUESTS,
                 "rate_limited",
                 Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
@@ -146,7 +148,10 @@ impl IntoResponse for ApiError {
         };
 
         // WHY: retry_after_secs must be extracted before self is moved into client_message construction below.
-        let retry_after_secs = if let Self::RateLimited { retry_after_secs, .. } = &self {
+        let retry_after_secs = if let Self::RateLimited {
+            retry_after_secs, ..
+        } = &self
+        {
             Some(*retry_after_secs)
         } else {
             None
