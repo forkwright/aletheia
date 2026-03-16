@@ -48,7 +48,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries, [PROJECT.md](PROJE
 
 ## Dependency policy
 
-~55 direct crates across the workspace. Each crate uses 5-15. Lean for the scope.
+Lean dependency count. See `Cargo.toml` workspace members and `[workspace.dependencies]` for the current inventory.
 
 ### Pinning rules
 

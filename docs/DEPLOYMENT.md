@@ -432,7 +432,7 @@ Healthy response:
 ```json
 {
   "status": "healthy",
-  "version": "0.10.0",
+  "version": "...",
   "uptime_seconds": 42,
   "checks": [
     { "name": "session_store", "status": "pass" },

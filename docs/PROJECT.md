@@ -1,10 +1,8 @@
-# Aletheia - project plan
+# Aletheia
 
-Roadmap and design intent for Aletheia's evolution.
+*ἀλήθεια: un-concealment. Truth as revealing, not correspondence.*
 
-## Vision
-
-Aletheia is a distributed cognition system: a team of AI agents (nous) that operate as cognitive extensions of their human operator. Always-on, Signal-native, self-improving.
+Distributed cognition system. Multiple AI agents working in concert with a human operator to hold complexity, surface patterns, and persist understanding across sessions. Not an assistant. An architecture for thinking together.
 
 Five design pressures shape every decision:
 
@@ -15,6 +13,8 @@ Five design pressures shape every decision:
 5. **Correct primitives.** No event loop blocking, no GC pauses, no per-request DB connections.
 
 The always-on ambient model shapes every design decision: Signal-native, independent routines, household access, autonomous background cycles.
+
+Naming: Greek terminology carries more signal than English equivalents. See [gnomon.md](gnomon.md) for the naming philosophy and [lexicon.md](lexicon.md) for the crate registry.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ See [TECHNOLOGY.md](TECHNOLOGY.md) for technology decisions, dependency policy, 
 | M2 | Agent core: tool registry, nous pipeline, bootstrap assembly, execute stage | Done |
 | M3 | Gateway + auth + channels: pylon HTTP, symbolon JWT, agora Signal, end-to-end wiring | Done |
 | M4 | Multi-nous + background: NousActor, daemon, dianoia planning, cross-nous sessions | Done |
-| M5 | Plugins + portability: WASM plugins, agent export/import (autarkeia #507, skills #676-#696) | In progress |
+| M5 | Plugins + portability: WASM plugins, agent export/import, skills pipeline | In progress |
 | M6 | Platform extensions: composable ops, A2A interop, eBPF sensing, NixOS module | Backlog |
 
 See `Cargo.toml` workspace members for current crate inventory.
@@ -44,7 +44,7 @@ See `Cargo.toml` workspace members for current crate inventory.
 | TUI | Active | Terminal dashboard, rich markdown, session management |
 | Signal | Active | 15 `!` commands, always-on ambient messaging |
 | HTTP API | Active | REST on port 18789, SSE streaming |
-| Desktop app | Planned | Design knowledge captured in planning docs |
+| Desktop app | Planned | Dioxus 0.7 + Blitz native renderer |
 
 ## Related documents
 
