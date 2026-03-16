@@ -41,7 +41,10 @@ impl DaemonBridge for NousDaemonBridge {
                 });
             };
 
-            match handle.send_turn_with_model(&session_key, &prompt, model_override.as_deref()).await {
+            match handle
+                .send_turn_with_model(&session_key, &prompt, model_override.as_deref())
+                .await
+            {
                 Ok(result) => {
                     tracing::debug!(
                         nous_id = %nous_id,

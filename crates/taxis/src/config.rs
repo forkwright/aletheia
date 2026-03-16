@@ -897,10 +897,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
 
     let daemon_model = agent
         .and_then(|a| a.daemon.as_ref())
-        .map_or_else(
-            || defaults.daemon.model.clone(),
-            |d| d.model.clone(),
-        );
+        .map_or_else(|| defaults.daemon.model.clone(), |d| d.model.clone());
 
     ResolvedNousConfig {
         id: nous_id.to_owned(),

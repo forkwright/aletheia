@@ -91,7 +91,10 @@ pub(crate) async fn execute_builtin(
         BuiltinTask::Prosoche => {
             if let Some(bridge) = bridge {
                 let prompt = "Run your prosoche heartbeat check per PROSOCHE.md.";
-                match bridge.send_prompt(nous_id, "daemon:prosoche", prompt, model_override).await {
+                match bridge
+                    .send_prompt(nous_id, "daemon:prosoche", prompt, model_override)
+                    .await
+                {
                     Ok(result) => {
                         tracing::debug!(
                             nous_id = %nous_id,
