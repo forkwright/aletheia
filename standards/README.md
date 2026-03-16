@@ -146,6 +146,47 @@ Process:
 4. Check topology against existing names in the ecosystem
 5. If no Greek word fits naturally, the essential nature isn't clear yet: wait
 
+### Vertical Structure
+
+Code reads top-to-bottom. Spatial grouping communicates logical relationships.
+
+**Blank lines separate logical units:**
+- One blank line between functions/methods
+- One blank line between logical sections within a function (setup, action, cleanup)
+- Two blank lines between major sections in a file (imports, constants, types, impl blocks, tests)
+- No blank lines inside a single logical step (declaration + immediate use)
+
+**Group related code together:**
+- Imports: stdlib first, then external crates, then internal crates, then local modules. One blank line between each group.
+- Struct fields: group by purpose (identity fields, config fields, state fields), not alphabetically. A blank line between groups if the struct is large.
+- Impl blocks: constructors first, then public methods, then private methods. One blank line between each method.
+- Match arms: no blank lines between arms unless arms are multi-line.
+
+**Function internal structure:**
+```
+// 1. Validate/extract inputs (guard clauses, early returns)
+// 2. Set up resources
+//
+// 3. Perform the operation
+//
+// 4. Transform/format results
+// 5. Return
+```
+
+Blank line between "set up" and "act" and between "act" and "return." No blank line within a single step. If a function has no natural sections, no internal blank lines needed.
+
+**No trailing blank lines** at end of file. No multiple consecutive blank lines anywhere.
+
+**File ordering:**
+1. Module-level doc comment
+2. Imports
+3. Constants
+4. Type definitions (structs, enums)
+5. Trait definitions
+6. Impl blocks (in order: core type, then trait impls)
+7. Free functions
+8. Tests (`#[cfg(test)] mod tests`)
+
 ### File & Directory Organization
 
 | Context | Convention | Example |

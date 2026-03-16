@@ -52,6 +52,68 @@ Track binary size per release. A 10%+ increase without a feature justification i
 
 ---
 
+## File Structure
+
+Rust files follow a consistent vertical layout. `cargo fmt` handles horizontal formatting. Vertical structure is manual.
+
+### Import Ordering
+
+```rust
+// 1. std
+use std::collections::HashMap;
+use std::sync::Arc;
+
+// 2. External crates
+use serde::{Deserialize, Serialize};
+use snafu::ResultExt;
+use tokio::sync::RwLock;
+
+// 3. Workspace crates
+use aletheia_koina::id::NousId;
+use aletheia_taxis::config::AppConfig;
+
+// 4. Local modules
+use crate::error::{Error, Result};
+use crate::pipeline::PipelineMessage;
+```
+
+One blank line between each group. Alphabetical within groups. `cargo fmt` handles the rest.
+
+### File Section Order
+
+1. Module doc comment (`//!`)
+2. Imports (`use`)
+3. Constants (`const`, `static`)
+4. Type definitions (`struct`, `enum`, `type`)
+5. Trait definitions (`trait`)
+6. Impl blocks: inherent first, then trait impls
+7. Free functions
+8. `#[cfg(test)] mod tests`
+
+Two blank lines between sections. One blank line between items within a section.
+
+### Impl Block Order
+
+```rust
+impl SessionStore {
+    // Constructors
+    pub fn new(...) -> Self { ... }
+    pub fn open(...) -> Result<Self> { ... }
+
+    // Public methods (in order of typical call flow)
+    pub fn create_session(...) -> Result<Session> { ... }
+    pub fn get_session(...) -> Result<Option<Session>> { ... }
+    pub fn list_sessions(...) -> Result<Vec<Session>> { ... }
+
+    // Private helpers
+    fn validate_key(&self, key: &str) -> Result<()> { ... }
+}
+```
+
+Constructors, then public API in call-flow order, then private helpers. One blank line between each method.
+
+---
+
 ## Naming
 
 | Element | Convention | Example |
