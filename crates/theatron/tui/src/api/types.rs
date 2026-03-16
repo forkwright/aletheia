@@ -57,6 +57,7 @@ impl Session {
         !self.is_archived()
             && self.session_type.as_deref() != Some("background")
             && !self.key.starts_with("cron:")
+            && !self.key.starts_with("daemon:")
             && !self.key.starts_with("prosoche")
             && !self.key.starts_with("agent:")
     }
@@ -518,6 +519,12 @@ mod tests {
     #[test]
     fn session_is_not_interactive_agent_prefix() {
         let s = make_session("agent:sub-task");
+        assert!(!s.is_interactive());
+    }
+
+    #[test]
+    fn session_is_not_interactive_daemon_prefix() {
+        let s = make_session("daemon:prosoche");
         assert!(!s.is_interactive());
     }
 

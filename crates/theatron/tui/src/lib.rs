@@ -160,6 +160,13 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
         app.restore_sse(sse_rx);
         app.restore_stream(stream_rx);
 
+        // WHY: Every SSE event (including pings) proves the connection is alive.
+        // Without this, only a few handlers update the timestamp, causing the
+        // status bar to show "Stale" even when pings arrive regularly.
+        if matches!(&event, Event::Sse(_)) {
+            app.sse_last_event_at = Some(std::time::Instant::now());
+        }
+
         if let Some(msg) = app.map_event(event) {
             app.update(msg).await;
         }

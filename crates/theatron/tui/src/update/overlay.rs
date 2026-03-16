@@ -467,11 +467,12 @@ mod tests {
         agent.sessions.push(test_session("s3", "prosoche-wake"));
         agent.sessions.push(test_session("s4", "agent:sub"));
         agent.sessions.push(test_session("s5", "debug"));
+        agent.sessions.push(test_session("s6", "daemon:prosoche"));
         app.agents.push(agent);
         app.focused_agent = Some("syn".into());
 
         assert_eq!(visible_session_count(&app, false), 2);
-        assert_eq!(visible_session_count(&app, true), 5);
+        assert_eq!(visible_session_count(&app, true), 6);
     }
 
     #[test]

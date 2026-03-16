@@ -393,6 +393,7 @@ impl App {
                         && s.status.as_deref() != Some("archived")
                         && !s.key.contains(":archived:")
                         && !s.key.starts_with("cron:")
+                        && !s.key.starts_with("daemon:")
                         && !s.key.starts_with("prosoche")
                         && !s.key.starts_with("agent:")
                 })

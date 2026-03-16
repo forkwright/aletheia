@@ -247,10 +247,12 @@ fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 
 fn connection_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     if app.sse_connected {
-        // Healthy when last event was within 5 seconds, otherwise degraded.
+        // WHY: The SSE layer triggers a reconnect after 30s of silence (READ_TIMEOUT).
+        // Matching that threshold here means "Stale" only appears when the connection
+        // is genuinely stuck, not during normal ping intervals (every 15-30s).
         let stale = app
             .sse_last_event_at
-            .map(|t| t.elapsed().as_secs() > 5)
+            .map(|t| t.elapsed().as_secs() > 30)
             .unwrap_or(false);
         if stale {
             vec![
