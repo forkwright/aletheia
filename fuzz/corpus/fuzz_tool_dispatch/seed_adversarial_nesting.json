@@ -1,0 +1,1 @@
+{"type":"tool_use","id":"toolu_01","name":"execute","input":{"command":{"nested":{"again":{"and":{"again":{"and":{"again":{"and":{"again":{"and":{"again":{"value":"deep"}}}}}}}}}}}}}

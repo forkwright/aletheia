@@ -1,0 +1,7 @@
+[gateway]
+port =
+bind =
+[agents.defaults]
+contextTokens =
+maxOutputTokens =
+[maintenance]
