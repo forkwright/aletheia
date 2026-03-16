@@ -45,6 +45,22 @@ pub enum SandboxEnforcementMode {
     Permissive,
 }
 
+/// Agent autonomy level controlling default tool iteration limits and
+/// execution permissions.
+///
+/// - `Unrestricted`: no practical limits on tool iterations (10 000 cap)
+/// - `Standard`: balanced defaults (the current default after configuration)
+/// - `Restricted`: conservative limits matching pre-expansion behavior
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum AgencyLevel {
+    Unrestricted,
+    #[default]
+    Standard,
+    Restricted,
+}
+
 /// Per-model pricing rates for cost estimation in metrics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -217,6 +233,9 @@ pub struct AgentDefaults {
     pub thinking_enabled: bool,
     /// Maximum tokens allocated to extended thinking when enabled.
     pub thinking_budget: u32,
+    /// Agent autonomy level. Controls effective tool iteration limits when
+    /// `max_tool_iterations` is not explicitly overridden per-agent.
+    pub agency: AgencyLevel,
     /// Safety limit on consecutive tool use iterations per turn.
     pub max_tool_iterations: u32,
     /// Filesystem paths the agent is permitted to access.
@@ -250,7 +269,8 @@ impl Default for AgentDefaults {
             bootstrap_max_tokens: 40_000,
             thinking_enabled: false,
             thinking_budget: 10_000,
-            max_tool_iterations: 50,
+            agency: AgencyLevel::Standard,
+            max_tool_iterations: 200,
             allowed_roots: Vec::new(),
             caching: CachingConfig::default(),
             recall: RecallSettings::default(),
@@ -317,6 +337,9 @@ pub struct NousDefinition {
     /// Thinking override; when `None`, inherits from [`AgentDefaults::thinking_enabled`].
     #[serde(default)]
     pub thinking_enabled: Option<bool>,
+    /// Agency level override; when `None`, inherits from [`AgentDefaults::agency`].
+    #[serde(default)]
+    pub agency: Option<AgencyLevel>,
     /// Additional filesystem roots this agent may access (merged with defaults).
     #[serde(default)]
     pub allowed_roots: Vec<String>,
@@ -707,7 +730,7 @@ impl Default for SandboxSettings {
     fn default() -> Self {
         Self {
             enabled: true,
-            enforcement: SandboxEnforcementMode::Enforcing,
+            enforcement: SandboxEnforcementMode::Permissive,
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
             extra_exec_paths: Vec::new(),
@@ -806,6 +829,8 @@ pub struct ResolvedNousConfig {
     pub thinking_enabled: bool,
     /// Token budget for extended thinking.
     pub thinking_budget: u32,
+    /// Effective agency level for this agent.
+    pub agency: AgencyLevel,
     /// Maximum consecutive tool use iterations per turn.
     pub max_tool_iterations: u32,
     /// Resolved workspace directory path.
@@ -841,9 +866,17 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         ),
     };
 
+    let agency = agent.and_then(|a| a.agency).unwrap_or(defaults.agency);
+
     let thinking_enabled = agent
         .and_then(|a| a.thinking_enabled)
         .unwrap_or(defaults.thinking_enabled);
+
+    let max_tool_iterations = match agency {
+        AgencyLevel::Unrestricted => 10_000,
+        AgencyLevel::Standard => defaults.max_tool_iterations,
+        AgencyLevel::Restricted => 50,
+    };
 
     let workspace = agent.map_or_else(
         || format!("instance/nous/{nous_id}"),
@@ -877,7 +910,8 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         bootstrap_max_tokens: defaults.bootstrap_max_tokens,
         thinking_enabled,
         thinking_budget: defaults.thinking_budget,
-        max_tool_iterations: defaults.max_tool_iterations,
+        agency,
+        max_tool_iterations,
         workspace,
         allowed_roots,
         domains,

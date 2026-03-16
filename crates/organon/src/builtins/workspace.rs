@@ -428,7 +428,7 @@ impl ToolExecutor for ExecExecutor {
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             let command = extract_str(&input.arguments, "command", &input.name)?;
-            let timeout_ms = extract_opt_u64(&input.arguments, "timeout").unwrap_or(30_000);
+            let timeout_ms = extract_opt_u64(&input.arguments, "timeout").unwrap_or(120_000);
 
             if command.len() > MAX_COMMAND_LENGTH {
                 return Ok(err_result(format!(

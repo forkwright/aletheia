@@ -53,7 +53,7 @@ impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            enforcement: SandboxEnforcement::Enforcing,
+            enforcement: SandboxEnforcement::Permissive,
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
             extra_exec_paths: Vec::new(),
@@ -475,7 +475,7 @@ mod tests {
     fn default_config_is_enabled() {
         let config = SandboxConfig::default();
         assert!(config.enabled);
-        assert_eq!(config.enforcement, SandboxEnforcement::Enforcing);
+        assert_eq!(config.enforcement, SandboxEnforcement::Permissive);
         assert!(config.extra_read_paths.is_empty());
         assert!(config.extra_write_paths.is_empty());
         assert!(config.extra_exec_paths.is_empty());
@@ -543,7 +543,7 @@ mod tests {
         let json = "{}";
         let config: SandboxConfig = serde_json::from_str(json).expect("parse");
         assert!(config.enabled);
-        assert_eq!(config.enforcement, SandboxEnforcement::Enforcing);
+        assert_eq!(config.enforcement, SandboxEnforcement::Permissive);
     }
 
     #[test]

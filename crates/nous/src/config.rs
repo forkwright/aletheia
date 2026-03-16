@@ -85,7 +85,7 @@ impl Default for NousConfig {
             bootstrap_max_tokens: 40_000,
             thinking_enabled: false,
             thinking_budget: 10_000,
-            max_tool_iterations: 50,
+            max_tool_iterations: 200,
             loop_detection_threshold: 3,
             domains: Vec::new(),
             server_tools: Vec::new(),
@@ -167,7 +167,7 @@ mod tests {
     fn nous_config_defaults() {
         let config = NousConfig::default();
         assert_eq!(config.context_window, 200_000);
-        assert_eq!(config.max_tool_iterations, 50);
+        assert_eq!(config.max_tool_iterations, 200);
         assert!(!config.thinking_enabled);
     }
 

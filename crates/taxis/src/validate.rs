@@ -81,9 +81,17 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         }
 
         if let Some(val) = defaults.get("maxToolIterations").and_then(Value::as_u64)
-            && (val == 0 || val > 200)
+            && (val == 0 || val > 10_000)
         {
-            errors.push("maxToolIterations must be between 1 and 200".to_owned());
+            errors.push("maxToolIterations must be between 1 and 10000".to_owned());
+        }
+
+        if let Some(agency) = defaults.get("agency").and_then(Value::as_str)
+            && !matches!(agency, "unrestricted" | "standard" | "restricted")
+        {
+            errors.push(format!(
+                "agency must be \"unrestricted\", \"standard\", or \"restricted\", got \"{agency}\""
+            ));
         }
 
         if let Some(timeouts) = defaults.get("toolTimeouts")
@@ -254,9 +262,15 @@ mod tests {
 
     #[test]
     fn rejects_excessive_tool_iterations() {
-        let section = json!({ "defaults": { "maxToolIterations": 300 } });
+        let section = json!({ "defaults": { "maxToolIterations": 10_001 } });
         let result = validate_section("agents", &section);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn accepts_tool_iterations_within_unrestricted_range() {
+        let section = json!({ "defaults": { "maxToolIterations": 10_000 } });
+        assert!(validate_section("agents", &section).is_ok());
     }
 
     #[test]
@@ -285,7 +299,7 @@ mod tests {
             "defaults": {
                 "contextTokens": 200_000,
                 "timeoutSeconds": 300,
-                "maxToolIterations": 50,
+                "maxToolIterations": 200,
                 "thinkingBudget": 10_000
             }
         });
@@ -427,6 +441,26 @@ mod tests {
             assert!(
                 validate_section("credential", &section).is_ok(),
                 "source '{source}' should be valid"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_agency_level() {
+        let section = json!({ "defaults": { "agency": "yolo" } });
+        let result = validate_section("agents", &section);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.errors[0].contains("agency"));
+    }
+
+    #[test]
+    fn accepts_valid_agency_levels() {
+        for level in &["unrestricted", "standard", "restricted"] {
+            let section = json!({ "defaults": { "agency": level } });
+            assert!(
+                validate_section("agents", &section).is_ok(),
+                "agency level '{level}' should be valid"
             );
         }
     }

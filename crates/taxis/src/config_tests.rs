@@ -11,7 +11,7 @@ fn defaults_are_sensible() {
     assert_eq!(config.agents.defaults.model.primary, "claude-sonnet-4-6");
     assert!(!config.agents.defaults.thinking_enabled);
     assert_eq!(config.agents.defaults.thinking_budget, 10_000);
-    assert_eq!(config.agents.defaults.max_tool_iterations, 50);
+    assert_eq!(config.agents.defaults.max_tool_iterations, 200);
     assert_eq!(config.gateway.port, 18789);
     assert_eq!(config.gateway.bind, "localhost");
     assert_eq!(config.gateway.auth.mode, "token");
@@ -103,6 +103,7 @@ fn resolve_merges_agent_overrides() {
         }),
         workspace: "/home/user/nous/syn".to_owned(),
         thinking_enabled: None,
+        agency: None,
         allowed_roots: Vec::new(),
         domains: vec!["code".to_owned()],
         default: false,
@@ -116,6 +117,7 @@ fn resolve_merges_agent_overrides() {
     assert_eq!(resolved.workspace, "/home/user/nous/syn");
     assert_eq!(resolved.domains, vec!["code"]);
     assert!(!resolved.thinking_enabled);
+    assert_eq!(resolved.agency, AgencyLevel::Standard);
 }
 
 #[test]
@@ -128,6 +130,7 @@ fn resolve_merges_allowed_roots() {
         model: None,
         workspace: "/home/user/nous/syn".to_owned(),
         thinking_enabled: None,
+        agency: None,
         allowed_roots: vec!["/extra".to_owned(), "/shared".to_owned()],
         domains: Vec::new(),
         default: false,
@@ -147,6 +150,7 @@ fn resolve_thinking_override() {
         model: None,
         workspace: "/home/user/nous/thinker".to_owned(),
         thinking_enabled: Some(true),
+        agency: None,
         allowed_roots: Vec::new(),
         domains: Vec::new(),
         default: false,
@@ -231,6 +235,119 @@ fn pricing_from_json() {
     let sonnet = &config.pricing["claude-sonnet-4-6"];
     assert!((sonnet.input_cost_per_mtok - 3.0).abs() < f64::EPSILON);
     assert!((sonnet.output_cost_per_mtok - 15.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn agency_default_is_standard() {
+    let config = AletheiaConfig::default();
+    assert_eq!(config.agents.defaults.agency, AgencyLevel::Standard);
+}
+
+#[test]
+fn agency_serde_roundtrip() {
+    let json = serde_json::to_string(&AgencyLevel::Unrestricted).expect("serialize");
+    assert_eq!(json, "\"unrestricted\"");
+    let back: AgencyLevel = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back, AgencyLevel::Unrestricted);
+
+    let json = serde_json::to_string(&AgencyLevel::Restricted).expect("serialize");
+    assert_eq!(json, "\"restricted\"");
+}
+
+#[test]
+fn resolve_agency_inherits_global_default() {
+    let config = AletheiaConfig::default();
+    let resolved = resolve_nous(&config, "any");
+    assert_eq!(resolved.agency, AgencyLevel::Standard);
+    assert_eq!(resolved.max_tool_iterations, 200);
+}
+
+#[test]
+fn resolve_agency_unrestricted_sets_high_iterations() {
+    let mut config = AletheiaConfig::default();
+    config.agents.list.push(NousDefinition {
+        id: "free".to_owned(),
+        name: None,
+        model: None,
+        workspace: "/home/user/nous/free".to_owned(),
+        thinking_enabled: None,
+        agency: Some(AgencyLevel::Unrestricted),
+        allowed_roots: Vec::new(),
+        domains: Vec::new(),
+        default: false,
+        recall: None,
+    });
+
+    let resolved = resolve_nous(&config, "free");
+    assert_eq!(resolved.agency, AgencyLevel::Unrestricted);
+    assert_eq!(resolved.max_tool_iterations, 10_000);
+}
+
+#[test]
+fn resolve_agency_restricted_uses_old_defaults() {
+    let mut config = AletheiaConfig::default();
+    config.agents.list.push(NousDefinition {
+        id: "safe".to_owned(),
+        name: None,
+        model: None,
+        workspace: "/home/user/nous/safe".to_owned(),
+        thinking_enabled: None,
+        agency: Some(AgencyLevel::Restricted),
+        allowed_roots: Vec::new(),
+        domains: Vec::new(),
+        default: false,
+        recall: None,
+    });
+
+    let resolved = resolve_nous(&config, "safe");
+    assert_eq!(resolved.agency, AgencyLevel::Restricted);
+    assert_eq!(resolved.max_tool_iterations, 50);
+}
+
+#[test]
+fn resolve_agency_per_agent_overrides_global() {
+    let mut config = AletheiaConfig::default();
+    config.agents.defaults.agency = AgencyLevel::Restricted;
+    config.agents.list.push(NousDefinition {
+        id: "override".to_owned(),
+        name: None,
+        model: None,
+        workspace: "/home/user/nous/override".to_owned(),
+        thinking_enabled: None,
+        agency: Some(AgencyLevel::Unrestricted),
+        allowed_roots: Vec::new(),
+        domains: Vec::new(),
+        default: false,
+        recall: None,
+    });
+
+    let resolved = resolve_nous(&config, "override");
+    assert_eq!(resolved.agency, AgencyLevel::Unrestricted);
+    assert_eq!(resolved.max_tool_iterations, 10_000);
+
+    // Agent without override should use global
+    let other = resolve_nous(&config, "other");
+    assert_eq!(other.agency, AgencyLevel::Restricted);
+    assert_eq!(other.max_tool_iterations, 50);
+}
+
+#[test]
+fn agency_from_json() {
+    let json = r#"{
+        "agents": {
+            "defaults": {
+                "agency": "unrestricted"
+            },
+            "list": [{
+                "id": "restricted-agent",
+                "workspace": "/tmp/ws",
+                "agency": "restricted"
+            }]
+        }
+    }"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse agency");
+    assert_eq!(config.agents.defaults.agency, AgencyLevel::Unrestricted);
+    assert_eq!(config.agents.list[0].agency, Some(AgencyLevel::Restricted));
 }
 
 mod proptests {

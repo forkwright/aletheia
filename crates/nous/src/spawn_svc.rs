@@ -78,7 +78,7 @@ impl SpawnService for SpawnServiceImpl {
             bootstrap_max_tokens: 4_000,
             thinking_enabled: false,
             thinking_budget: 0,
-            max_tool_iterations: 25,
+            max_tool_iterations: 100,
             loop_detection_threshold: 3,
             domains: Vec::new(),
             server_tools: Vec::new(),
