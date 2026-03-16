@@ -27,7 +27,7 @@ struct RetryState {
 impl RetryState {
     fn record_failure(&mut self) {
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
-        // NOTE: exponential backoff — 1, 2, 4, 8 turns; capped at MAX_BACKOFF_TURNS
+        // NOTE: exponential backoff. 1, 2, 4, 8 turns; capped at MAX_BACKOFF_TURNS
         let shift = self.consecutive_failures.saturating_sub(1).min(3);
         self.turns_to_skip = (1u32 << shift).min(MAX_BACKOFF_TURNS);
     }
@@ -408,7 +408,7 @@ fn block_char_len(block: &ContentBlock) -> usize {
 /// Drop the oldest messages until the token estimate fits within `context_window`.
 ///
 /// Returns the number of messages dropped. Always keeps at least one message
-/// even when the remaining context still exceeds the window — dropping
+/// even when the remaining context still exceeds the window. Dropping
 /// everything would leave the conversation unrecoverable.
 ///
 /// Logs at `ERROR` level when any messages are dropped, because this is a

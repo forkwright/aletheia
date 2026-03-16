@@ -1,4 +1,4 @@
-//! Skill auto-capture — heuristic filter, signature hashing, and candidate tracking.
+//! Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
 //!
 //! ## Pipeline
 //!
@@ -27,7 +27,7 @@ pub use signature::{SequenceSignature, sequence_signature, signature_similarity}
 
 /// A recorded tool call used as input for skill pattern analysis.
 ///
-/// This is a lightweight record — a subset of a full tool execution record —
+/// This is a lightweight record, a subset of a full tool execution record,
 /// carrying only what the heuristic filter needs.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolCallRecord {

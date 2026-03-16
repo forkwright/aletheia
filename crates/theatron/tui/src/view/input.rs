@@ -18,7 +18,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         theme.colors.accent
     };
 
-    // NOTE: ASCII-only prompt — bytes equal display columns
+    // NOTE: ASCII-only prompt. Bytes equal display columns
     let prompt_width = prompt_str.len();
     let content_width = area.width.max(1) as usize;
     let visible_rows = area.height.saturating_sub(1) as usize;
@@ -84,7 +84,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
 /// Compute word-wrapped line ranges for `text`.
 ///
-/// Returns a `Vec` of `(start_byte, end_byte)` pairs — one per visual line.
+/// Returns a `Vec` of `(start_byte, end_byte)` pairs: one per visual line.
 /// The content to render for line `i` is `&text[start..end]`.
 /// Whitespace at word-wrap break points is consumed (not included in either line).
 ///
@@ -140,12 +140,12 @@ pub(crate) fn word_wrap_lines(
         }
 
         if let Some(ws_b) = last_ws_byte {
-            // NOTE: break at the last whitespace — exclude it from both lines
+            // NOTE: break at the last whitespace. Exclude it from both lines
             let ws_len = remaining[ws_b..].chars().next().map_or(1, |c| c.len_utf8());
             lines.push((pos, pos + ws_b));
             pos += ws_b + ws_len; // skip over the whitespace
         } else {
-            // NOTE: no whitespace within `avail` — char-wrap at the boundary
+            // NOTE: no whitespace within `avail`. Char-wrap at the boundary
             lines.push((pos, pos + byte_at_avail));
             pos += byte_at_avail;
         }
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn char_wrap_when_no_space() {
-        // "abcdefgh" with avail=5 — no spaces, char wrap
+        // "abcdefgh" with avail=5: no spaces, char wrap
         let ranges = word_wrap_lines("abcdefgh", 5, 5);
         assert_eq!(ranges[0], (0, 5)); // "abcde"
         assert_eq!(ranges[1], (5, 8)); // "fgh"

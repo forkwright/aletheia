@@ -1,4 +1,4 @@
-//! Signal channel provider — wraps signal-cli JSON-RPC.
+//! Signal channel provider: wraps signal-cli JSON-RPC.
 
 /// JSON-RPC client for the signal-cli HTTP daemon.
 pub mod client;
@@ -239,7 +239,7 @@ impl ChannelProvider for SignalProvider {
             };
 
             // WHY: buffer immediately when the connection is known to be unavailable.
-            // For Connected state: attempt the send directly — no separate check-then-act,
+            // For Connected state: attempt the send directly. No separate check-then-act,
             // so there is no TOCTOU window. If the connection dropped since we last polled,
             // the HTTP error handler below buffers the message.
             {
@@ -259,7 +259,7 @@ impl ChannelProvider for SignalProvider {
                     error: None,
                 },
                 Err(e) => {
-                    // WHY: buffer on transport failure — handles the case where the connection
+                    // WHY: buffer on transport failure. Handles the case where the connection
                     // dropped between the state check and this send (no TOCTOU window).
                     if matches!(e, error::Error::Http { .. }) {
                         let mut s = state_mutex.lock().await;

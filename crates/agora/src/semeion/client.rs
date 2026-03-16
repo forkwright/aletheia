@@ -146,7 +146,7 @@ impl SignalClient {
         Err(last_err.expect("at least one attempt was made"))
     }
 
-    /// Health check — hits the signal-cli check endpoint.
+    /// Health check: hits the signal-cli check endpoint.
     pub async fn health(&self) -> bool {
         let result = self
             .client

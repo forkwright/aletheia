@@ -61,7 +61,7 @@ pub struct ModelPricing {
 pub struct ChannelBinding {
     /// Channel type (e.g., "signal").
     pub channel: String,
-    /// Source pattern — phone number, group ID, or "*" for default.
+    /// Source pattern: phone number, group ID, or "*" for default.
     pub source: String,
     /// Nous ID to route to.
     pub nous_id: String,
@@ -120,7 +120,7 @@ impl Default for RecallWeights {
 /// Per-factor engine scoring weights for the mneme `RecallEngine`.
 ///
 /// These multipliers determine how much each retrieval signal contributes to the
-/// final relevance score. Weights need not sum to 1.0 — the engine normalises
+/// final relevance score. Weights need not sum to 1.0. The engine normalises
 /// the weighted sum automatically. Defaults match the mneme engine's built-in
 /// values so that omitting this section produces identical behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize)]

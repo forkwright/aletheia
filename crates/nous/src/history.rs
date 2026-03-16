@@ -1,4 +1,4 @@
-//! History stage — loads conversation context from the session store.
+//! History stage: loads conversation context from the session store.
 //!
 //! Retrieves the most recent messages that fit within the remaining token
 //! budget, converts them to pipeline messages, and appends the current
@@ -126,7 +126,7 @@ pub fn load_history(
         loaded_count += 1;
     }
 
-    // WHY: restore chronological order — collected newest-first
+    // WHY: restore chronological order. Collected newest-first
     collected.reverse();
 
     // INVARIANT: truncated when eligible messages exceed what was loaded
@@ -237,7 +237,7 @@ mod tests {
 
         let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
         assert!(!roles.contains(&"tool_result"));
-        // 3 messages loaded (user, assistant, assistant) — tool_result skipped
+        // 3 messages loaded (user, assistant, assistant): tool_result skipped
         assert_eq!(result.messages_loaded, 3);
     }
 

@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn missed_since_stale_returns_false() {
-        // Last run more than 24h ago — too stale to catch up.
+        // Last run more than 24h ago: too stale to catch up.
         let schedule = Schedule::Cron("0 0 * * * *".to_owned());
         let last_run = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(25))
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn missed_since_recent_cron_returns_true() {
-        // Hourly cron, last run 2 hours ago — should have missed at least one window.
+        // Hourly cron, last run 2 hours ago. Should have missed at least one window.
         let schedule = Schedule::Cron("0 0 * * * *".to_owned());
         let last_run = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(2))

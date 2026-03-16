@@ -155,7 +155,7 @@ impl VectorCache {
     // INVARIANT: callers must call ensure_key() before v_dist/k_dist/get_key.
     // The cache is guaranteed to contain the key after ensure_key succeeds
     // (though LRU eviction may have removed it if capacity is very small and
-    // many keys were ensured between the ensure and the access — callers that
+    // many keys were ensured between the ensure and the access. Callers that
     // need multiple keys should ensure them close to their use site).
     fn v_dist(&mut self, v: &Vector, key: &CompoundKey) -> Result<f64> {
         let v2 = self
@@ -1312,7 +1312,7 @@ mod tests {
         assert!(!res.rows.is_empty(), "search should return results");
         assert!(res.rows.len() <= 3, "should return at most k=3 results");
         // The closest vector should be id=5 (exact match)
-        // HNSW is approximate — the exact match (id=5) should be among top results
+        // HNSW is approximate: the exact match (id=5) should be among top results
         let ids: Vec<i64> = res.rows.iter().filter_map(|r| r[0].get_int()).collect();
         assert!(
             ids.contains(&5),
@@ -1377,7 +1377,7 @@ mod tests {
         }
         // Delete vector id=5
         db.run_default("?[id] <- [[5]] :rm vectors {}").unwrap();
-        // Search for nearest to [5,5,5,5] — should NOT return id=5
+        // Search for nearest to [5,5,5,5]: should NOT return id=5
         let res = db.run_default(
             r#"?[id, dist] := ~vectors:idx{id | query: vec([5.0, 5.0, 5.0, 5.0]), k: 3, ef: 50, bind_distance: dist}"#,
         ).unwrap();

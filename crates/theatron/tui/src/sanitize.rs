@@ -20,41 +20,41 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
     while i < len {
         let b = bytes[i];
 
-        // NOTE: 7-bit ESC introducer — 0x1B
+        // NOTE: 7-bit ESC introducer. 0x1B
         if b == 0x1B && i + 1 < len {
             let next = bytes[i + 1];
             match next {
-                // NOTE: CSI — ESC [
+                // NOTE: CSI. ESC [
                 b'[' => {
                     i = skip_csi(bytes, i + 2);
                     continue;
                 }
-                // NOTE: OSC — ESC ]
+                // NOTE: OSC. ESC ]
                 b']' => {
                     i = skip_osc(bytes, i + 2);
                     continue;
                 }
-                // NOTE: DCS — ESC P
+                // NOTE: DCS. ESC P
                 b'P' => {
                     i = skip_until_st(bytes, i + 2);
                     continue;
                 }
-                // NOTE: APC — ESC _
+                // NOTE: APC. ESC _
                 b'_' => {
                     i = skip_until_st(bytes, i + 2);
                     continue;
                 }
-                // NOTE: SOS — ESC X
+                // NOTE: SOS. ESC X
                 b'X' => {
                     i = skip_until_st(bytes, i + 2);
                     continue;
                 }
-                // NOTE: PM — ESC ^
+                // NOTE: PM. ESC ^
                 b'^' => {
                     i = skip_until_st(bytes, i + 2);
                     continue;
                 }
-                // NOTE: ESC ( — character set designation, e.g., ESC(B for ASCII
+                // NOTE: ESC (. Character set designation, e.g., ESC(B for ASCII
                 b'(' | b')' | b'*' | b'+' if i + 2 < len => {
                     i += 3;
                     continue;
@@ -65,7 +65,7 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
                     continue;
                 }
                 _ => {
-                    // NOTE: unrecognized ESC sequence — skip the ESC byte
+                    // NOTE: unrecognized ESC sequence. Skip the ESC byte
                     i += 1;
                     continue;
                 }
@@ -92,7 +92,7 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
             continue;
         }
 
-        // NOTE: DEL — 0x7F
+        // NOTE: DEL. 0x7F
         if b == 0x7F {
             out.push('\u{2421}');
             i += 1;
@@ -100,40 +100,40 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
         }
 
         if let Some((ch, char_len)) = decode_utf8_char(bytes, i) {
-            // NOTE: Unicode C1 control characters (U+0080–U+009F) — handle as named sequences
+            // NOTE: Unicode C1 control characters (U+0080–U+009F). Handle as named sequences
             if ('\u{0080}'..='\u{009F}').contains(&ch) {
                 match ch {
-                    // NOTE: 8-bit CSI — U+009B
+                    // NOTE: 8-bit CSI. U+009B
                     '\u{009B}' => {
                         i = skip_csi(bytes, i + char_len);
                         continue;
                     }
-                    // NOTE: 8-bit OSC — U+009D
+                    // NOTE: 8-bit OSC. U+009D
                     '\u{009D}' => {
                         i = skip_osc(bytes, i + char_len);
                         continue;
                     }
-                    // NOTE: 8-bit DCS — U+0090
+                    // NOTE: 8-bit DCS. U+0090
                     '\u{0090}' => {
                         i = skip_until_st(bytes, i + char_len);
                         continue;
                     }
-                    // NOTE: 8-bit APC — U+009F
+                    // NOTE: 8-bit APC. U+009F
                     '\u{009F}' => {
                         i = skip_until_st(bytes, i + char_len);
                         continue;
                     }
-                    // NOTE: 8-bit SOS — U+0098
+                    // NOTE: 8-bit SOS. U+0098
                     '\u{0098}' => {
                         i = skip_until_st(bytes, i + char_len);
                         continue;
                     }
-                    // NOTE: 8-bit PM — U+009E
+                    // NOTE: 8-bit PM. U+009E
                     '\u{009E}' => {
                         i = skip_until_st(bytes, i + char_len);
                         continue;
                     }
-                    // NOTE: 8-bit ST — U+009C, drop
+                    // NOTE: 8-bit ST. U+009C, drop
                     '\u{009C}' => {
                         i += char_len;
                         continue;
@@ -147,7 +147,7 @@ pub fn sanitize_for_display(s: &str) -> Cow<'_, str> {
             out.push(ch);
             i += char_len;
         } else {
-            // NOTE: invalid UTF-8 byte — skip
+            // NOTE: invalid UTF-8 byte. Skip
             i += 1;
         }
     }
@@ -205,7 +205,7 @@ fn skip_osc(bytes: &[u8], start: usize) -> usize {
         }
         i += 1;
     }
-    // NOTE: unterminated sequence — consume to end of input
+    // NOTE: unterminated sequence. Consume to end of input
     len
 }
 
@@ -223,7 +223,7 @@ fn skip_until_st(bytes: &[u8], start: usize) -> usize {
         }
         i += 1;
     }
-    // NOTE: unterminated sequence — consume to end of input
+    // NOTE: unterminated sequence. Consume to end of input
     len
 }
 
@@ -272,7 +272,7 @@ fn decode_utf8_char(bytes: &[u8], start: usize) -> Option<(char, usize)> {
     Some((ch, ch.len_utf8()))
 }
 
-/// Legacy alias — prefer `sanitize_for_display` for new code.
+/// Legacy alias: prefer `sanitize_for_display` for new code.
 #[cfg(test)]
 fn strip_ansi(s: &str) -> Cow<'_, str> {
     sanitize_for_display(s)
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn strip_osc_clipboard_injection() {
-        // OSC 52 — clipboard write
+        // OSC 52: clipboard write
         let input = "\x1b]52;c;SGVsbG8gV29ybGQ=\x07safe content";
         assert_eq!(sanitize_for_display(input), "safe content");
     }

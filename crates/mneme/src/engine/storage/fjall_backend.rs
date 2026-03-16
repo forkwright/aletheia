@@ -64,7 +64,7 @@ pub fn new_cozo_fjall(
     Ok(ret)
 }
 
-/// fjall storage engine — pure Rust, LSM-tree, LZ4 compression.
+/// fjall storage engine: pure Rust, LSM-tree, LZ4 compression.
 ///
 /// No delta buffer needed: fjall `SingleWriterWriteTx` provides
 /// read-your-own-writes natively within the transaction.

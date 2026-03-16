@@ -75,7 +75,7 @@ impl SseEventRouter {
             SseEvent::StatusUpdate { nous_id, status } => self.on_status_update(nous_id, status),
             SseEvent::SessionCreated { .. } | SseEvent::SessionArchived { .. } => {
                 // Session lifecycle events are noted but don't update EventState
-                // directly — session list refresh is handled by the session service.
+                // directly: session list refresh is handled by the session service.
                 tracing::debug!(?event, "session lifecycle event (no state change)");
                 false
             }

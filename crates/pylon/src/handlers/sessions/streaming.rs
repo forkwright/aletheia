@@ -28,7 +28,7 @@ use crate::stream::{SseEvent, TurnOutcome, UsageData, WebchatEvent};
 use super::types::{SendMessageRequest, StreamTurnRequest};
 use super::{find_session, resolve_session};
 
-/// POST /api/v1/sessions/{id}/messages — send a message and stream the response via SSE.
+/// POST /api/v1/sessions/{id}/messages: send a message and stream the response via SSE.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/{id}/messages",
@@ -46,7 +46,7 @@ use super::{find_session, resolve_session};
     ),
     security(("bearer_auth" = []))
 )]
-// NOTE(#940): ~89 lines excluding match arms — single SSE handler with preflight checks,
+// NOTE(#940): ~89 lines excluding match arms: single SSE handler with preflight checks,
 // idempotency guard, and spawned turn task. The match arms account for the bulk of raw
 // line count; the control flow is a single cohesive request lifecycle.
 #[expect(
@@ -230,7 +230,7 @@ pub async fn send_message(
     ))
 }
 
-/// POST /api/v1/sessions/stream — stream a conversation turn (TUI protocol).
+/// POST /api/v1/sessions/stream: stream a conversation turn (TUI protocol).
 ///
 /// Accepts the webchat-style `StreamRequest` (agentId, message, sessionKey) and
 /// returns SSE events in the `WebchatEvent` format that the TUI expects:
@@ -252,7 +252,7 @@ pub async fn send_message(
     ),
     security(("bearer_auth" = []))
 )]
-// NOTE(#940): ~109 lines excluding match arms — sequential SSE bridge setup with
+// NOTE(#940): ~109 lines excluding match arms: sequential SSE bridge setup with
 // turn spawn and completion event emission. Match arms inflate raw line count.
 #[expect(
     clippy::too_many_lines,
@@ -449,11 +449,11 @@ pub async fn stream_turn(
     ))
 }
 
-/// GET /api/v1/events — global SSE keep-alive channel.
+/// GET /api/v1/events: global SSE keep-alive channel.
 ///
 /// Returns a persistent SSE connection with periodic keep-alive comments.
 /// Full server-side broadcast (system events, agent status changes) requires
-/// wiring a `tokio::sync::broadcast` channel into `AppState` — that is tracked
+/// wiring a `tokio::sync::broadcast` channel into `AppState`: that is tracked
 /// in issue #1248 and is out of scope here.
 #[utoipa::path(
     get,
@@ -469,7 +469,7 @@ pub async fn events(
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     // WHY: emit periodic comment-only events so the connection stays alive and
     // proxies do not close it. Real domain events require a broadcast channel
-    // wired into AppState — deferred to issue #1248.
+    // wired into AppState: deferred to issue #1248.
     let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(30)))
         .map(|_| Ok::<Event, Infallible>(Event::default().comment("keepalive")));
 
@@ -565,7 +565,7 @@ fn classify_llm_error(err: &aletheia_hermeneus::error::Error) -> (&'static str, 
 
 /// Emit turn result as individual SSE events to a single client channel.
 ///
-/// Each SSE endpoint serves exactly one client — there is no multi-subscriber
+/// Each SSE endpoint serves exactly one client. There is no multi-subscriber
 /// broadcast. Serialization happens once at the stream boundary (`ReceiverStream::map`).
 async fn emit_turn_result_events(tx: &mpsc::Sender<SseEvent>, result: &TurnResult) {
     if !result.content.is_empty() {

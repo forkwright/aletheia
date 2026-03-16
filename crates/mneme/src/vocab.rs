@@ -6,17 +6,17 @@
 pub enum RelationType {
     /// Matched a known vocabulary type (canonical uppercase form).
     Valid(&'static str),
-    /// Matched a rejected type — must not be persisted.
+    /// Matched a rejected type: must not be persisted.
     Rejected,
-    /// No match in vocabulary or rejected list — caller decides whether to persist.
+    /// No match in vocabulary or rejected list. Caller decides whether to persist.
     Unknown(String),
 }
 
 /// Relationship types that must never enter the knowledge graph.
-/// INVARIANT: `RELATES_TO` eliminated in vocab redesign — see `semantic-invariants.md`
+/// INVARIANT: `RELATES_TO` eliminated in vocab redesign. See `semantic-invariants.md`
 const REJECTED_TYPES: &[&str] = &["RELATES_TO", "IS"];
 
-/// Controlled vocabulary — mirrors Python `vocab.py` `_HARDCODED_VOCAB`.
+/// Controlled vocabulary: mirrors Python `vocab.py` `_HARDCODED_VOCAB`.
 const CONTROLLED_VOCAB: &[&str] = &[
     "COMMUNICATES_VIA",
     "COMPATIBLE_WITH",

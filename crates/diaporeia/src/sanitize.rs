@@ -30,7 +30,7 @@ pub(crate) fn strip_paths(message: &str) -> String {
             last_pushed_byte
         };
 
-        // WHY: skip '/' that follows '/' or ':' — those are URI separators, not paths
+        // WHY: skip '/' that follows '/' or ':'. Those are URI separators, not paths
         let is_word_boundary = !matches!(prev_byte, Some(b'/' | b':'));
 
         let after_slash = &remaining[slash_pos + 1..];
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn preserves_uri_scheme_double_slash() {
-        // NOTE: `://` must not be treated as a path boundary — the ':' preceding '/'
+        // NOTE: `://` must not be treated as a path boundary. The ':' preceding '/'
         // means no boundary, and last_pushed_byte carries that across iterations.
         let msg = "unknown resource URI: aletheia://nous/agent1/soul";
         let sanitized = strip_paths(msg);

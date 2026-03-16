@@ -76,7 +76,7 @@ impl CredentialProvider for StaticCredentialProvider {
 
 fn build_http_client() -> Result<Client> {
     // reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
-    // install_default() is idempotent — subsequent calls return Err and are ignored.
+    // install_default() is idempotent: subsequent calls return Err and are ignored.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     Client::builder()
@@ -146,7 +146,7 @@ impl AnthropicProvider {
         })
     }
 
-    /// Streaming completion — accumulates into a final `CompletionResponse`
+    /// Streaming completion: accumulates into a final `CompletionResponse`
     /// while emitting deltas to the callback.
     ///
     /// Retries on transient errors (overloaded, rate-limited) with exponential
@@ -326,7 +326,7 @@ impl AnthropicProvider {
                     return Ok(resp);
                 }
                 Err(e) => {
-                    // If content was already streamed, we can't retry — it would
+                    // If content was already streamed, we can't retry. It would
                     // produce duplicates. Propagate immediately.
                     if content_started {
                         tracing::error!("SSE error after content started streaming — cannot retry");
@@ -667,7 +667,7 @@ fn model_family(model: &str) -> &str {
 ///
 /// Lookup order:
 /// 1. Exact model ID match.
-/// 2. Family match — any pricing key whose [`model_family`] matches the
+/// 2. Family match: any pricing key whose [`model_family`] matches the
 ///    requested model's family (e.g. `claude-sonnet-4-6` covers
 ///    `claude-sonnet-4-20250514`).
 ///

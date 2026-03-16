@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn scroll_up_clamped_to_content_height_with_messages() {
         use crate::app::test_helpers::test_app_with_messages;
-        // Two short messages, very tall terminal — content fits, max_offset = 0.
+        // Two short messages, very tall terminal: content fits, max_offset = 0.
         let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hey")]);
         app.rebuild_virtual_scroll();
         app.auto_scroll = false;
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn scroll_up_does_not_clamp_empty_messages() {
-        // Without messages the clamp must not activate — existing behaviour preserved.
+        // Without messages the clamp must not activate. Existing behaviour preserved.
         let mut app = test_app();
         handle_scroll_up(&mut app);
         assert_eq!(app.scroll_offset, 3);
@@ -287,7 +287,7 @@ mod tests {
         app.rebuild_virtual_scroll();
         app.auto_scroll = false;
         handle_scroll_page_up(&mut app);
-        // Content fits in the tall test terminal — offset must be clamped to 0.
+        // Content fits in the tall test terminal. Offset must be clamped to 0.
         assert_eq!(app.scroll_offset, 0);
         assert!(app.auto_scroll);
     }
@@ -322,7 +322,7 @@ mod tests {
         // Scroll up to a large offset that will exceed content after resize
         app.scroll_offset = 9999;
         app.auto_scroll = false;
-        // Resize to a very tall terminal — content now fits, offset must be clamped to 0
+        // Resize to a very tall terminal: content now fits, offset must be clamped to 0
         handle_resize(&mut app, 120, 200);
         assert_eq!(app.scroll_offset, 0);
         assert!(app.auto_scroll);
@@ -347,7 +347,7 @@ mod tests {
         app.rebuild_virtual_scroll();
         app.scroll_offset = 5;
         app.auto_scroll = false;
-        // Resize with same height — offset within valid range should be preserved
+        // Resize with same height: offset within valid range should be preserved
         handle_resize(&mut app, 120, 40);
         assert!(!app.auto_scroll);
         assert_eq!(app.scroll_offset, 5);

@@ -62,7 +62,7 @@ pub fn supports_hyperlinks() -> bool {
 }
 
 fn probe_hyperlink_support() -> bool {
-    // NOTE: TERM_PROGRAM — most reliable signal on macOS and some Linux terminals
+    // NOTE: TERM_PROGRAM. Most reliable signal on macOS and some Linux terminals
     if let Ok(prog) = std::env::var("TERM_PROGRAM") {
         match prog.as_str() {
             "iTerm.app" | "WezTerm" | "ghostty" | "Ghostty" | "kitty" => return true,
@@ -112,8 +112,8 @@ fn probe_hyperlink_support() -> bool {
 /// **Trailing punctuation** (`.`, `,`, `;`, `!`, `?`, `:`) is stripped.
 /// A trailing `)` is stripped only when the URL contains fewer `(` than `)`.
 ///
-/// The caller is responsible for skipping code blocks and inline code —
-/// those contexts should not be passed to this function.
+/// The caller is responsible for skipping code blocks and inline code.
+/// Those contexts should not be passed to this function.
 pub fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
     #[expect(
         clippy::expect_used,

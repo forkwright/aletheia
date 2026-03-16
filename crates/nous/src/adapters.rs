@@ -12,8 +12,8 @@
 //! 1. `block_in_place` removes the current thread from Tokio's async worker
 //!    pool, allowing other tasks (including any task that holds the mutex) to
 //!    be scheduled on the remaining worker threads.
-//! 2. `Handle::block_on` then drives `store.lock().await` — proper async lock
-//!    acquisition — to completion on this now-blocking thread.
+//! 2. `Handle::block_on` then drives `store.lock().await`: proper async lock
+//! acquisition: to completion on this now-blocking thread.
 //!
 //! Together this eliminates the `blocking_lock` shortcut (which internally
 //! used Tokio's bare `block_on`) in favour of the documented
@@ -174,7 +174,7 @@ mod tests {
     /// context running on a multi-thread Tokio runtime.
     ///
     /// The adapter uses `block_in_place` + `Handle::block_on(store.lock().await)`
-    /// internally, which requires the multi-thread runtime — this test confirms
+    /// internally, which requires the multi-thread runtime: this test confirms
     /// that path works end-to-end without deadlocking.
     #[tokio::test(flavor = "multi_thread")]
     async fn note_adapter_lock_works_in_async_context() {
@@ -208,7 +208,7 @@ mod tests {
     }
 
     /// Verify that two concurrent tasks can each acquire the adapter lock
-    /// without deadlocking — lock is released between calls.
+    /// without deadlocking: lock is released between calls.
     #[tokio::test(flavor = "multi_thread")]
     async fn note_adapter_lock_released_between_calls() {
         let store = test_store();

@@ -44,7 +44,7 @@ pub enum DownReason {
         /// Milliseconds to wait before retrying, from the `retry-after` header.
         retry_after_ms: u64,
     },
-    /// Authentication failed — no auto-recovery.
+    /// Authentication failed: no auto-recovery.
     AuthFailure,
     /// Request timed out repeatedly.
     Timeout,
@@ -76,7 +76,7 @@ struct TrackerInner {
 
 /// Tracks health for a single LLM provider.
 ///
-/// Thread-safe via `std::sync::Mutex` — all operations are short
+/// Thread-safe via `std::sync::Mutex`: all operations are short
 /// (no `.await` while holding the lock).
 pub struct ProviderHealthTracker {
     inner: Mutex<TrackerInner>,
@@ -166,7 +166,7 @@ impl ProviderHealthTracker {
             }
             ProviderHealth::Up => {}
             ProviderHealth::Down { .. } => {
-                // Success while Down means a probe succeeded — transition to Up
+                // Success while Down means a probe succeeded. Transition to Up
                 inner.health = ProviderHealth::Up;
             }
         }
@@ -230,7 +230,7 @@ impl ProviderHealthTracker {
                     }
                 }
             }
-            // ParseResponse, UnsupportedModel, ProviderInit — not availability issues
+            // ParseResponse, UnsupportedModel, ProviderInit: not availability issues
             _ => {}
         }
     }

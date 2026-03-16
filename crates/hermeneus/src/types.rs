@@ -44,7 +44,7 @@ impl std::fmt::Display for Role {
     }
 }
 
-/// Message content — either plain text or structured blocks.
+/// Message content: either plain text or structured blocks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Content {
@@ -140,7 +140,7 @@ pub enum ContentBlock {
     /// Server-side code execution result.
     ///
     /// Returned by the `code_execution_20250522` server tool. No client `tool_result`
-    /// is needed — the server executed the code and returns stdout, stderr, and return code.
+    /// is needed: the server executed the code and returns stdout, stderr, and return code.
     #[serde(rename = "code_execution_result")]
     CodeExecutionResult {
         /// The Python code that was executed.
@@ -154,7 +154,7 @@ pub enum ContentBlock {
     },
 }
 
-/// Tool result content — simple text or rich content blocks.
+/// Tool result content: simple text or rich content blocks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 #[non_exhaustive]

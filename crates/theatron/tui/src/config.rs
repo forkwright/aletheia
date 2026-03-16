@@ -240,7 +240,7 @@ mod tests {
         // We can't mutate env vars (unsafe-code is denied in this crate).
         // Verify that when neither env nor file provides workspace_root, it is None.
         if std::env::var("ALETHEIA_ROOT").is_ok() {
-            // Skip: env is set externally — can't control it without unsafe
+            // Skip: env is set externally. Can't control it without unsafe
             return;
         }
         let config = Config::load(None, None, None, None).unwrap();

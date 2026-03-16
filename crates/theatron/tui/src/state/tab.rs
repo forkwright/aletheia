@@ -15,7 +15,7 @@ pub(crate) type TabId = u64;
 /// Per-tab snapshot of isolated session state.
 #[derive(Debug, Clone)]
 pub(crate) struct TabState {
-    /// PERF: ArcVec clone is O(1) — tab switch shares the Arc pointer, not the Vec content.
+    /// PERF: ArcVec clone is O(1). Tab switch shares the Arc pointer, not the Vec content.
     pub(crate) messages: ArcVec<ChatMessage>,
     pub(crate) focused_session_id: Option<SessionId>,
     pub(crate) input: InputState,

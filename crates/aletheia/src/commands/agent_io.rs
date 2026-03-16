@@ -692,7 +692,7 @@ fn generate_simple_embedding(text: &str) -> Vec<f32> {
             if embedding.len() >= dim {
                 break;
             }
-            // WHY: map byte to [-1.0, 1.0] — value fits without overflow, truncation is harmless
+            // WHY: map byte to [-1.0, 1.0]. Value fits without overflow, truncation is harmless
             #[expect(clippy::cast_possible_truncation, reason = "result fits in f32 range")]
             embedding.push((f64::from(*byte) / 127.5 - 1.0) as f32);
         }

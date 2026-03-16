@@ -49,18 +49,18 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
 
     info!("aletheia starting");
 
-    // Root cancellation token — cancelled on SIGTERM/SIGINT.
+    // Root cancellation token: cancelled on SIGTERM/SIGINT.
     // Child tokens are propagated to every actor and daemon task.
     let shutdown_token = CancellationToken::new();
 
-    // Oikos — instance directory resolution
+    // Oikos: instance directory resolution
     let oikos = match &cli.instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
     info!(root = %oikos.root().display(), "instance discovered");
 
-    // Startup validation — fail fast before any actors or stores initialise
+    // Startup validation: fail fast before any actors or stores initialise
     oikos.validate().context("instance layout invalid")?;
 
     // Config cascade: defaults → TOML → env
@@ -93,7 +93,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         }
     }
 
-    // Domain packs — load external knowledge packs declared in config
+    // Domain packs: load external knowledge packs declared in config
     let loaded_packs = aletheia_thesauros::loader::load_packs(&config.packs);
     let packs = Arc::new(loaded_packs);
 
@@ -112,7 +112,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     // JWT manager
     let jwt_manager = JwtManager::new(JwtConfig::default());
 
-    // Build shared registries — single instances used by both NousManager and AppState
+    // Build shared registries: single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry(&config, &oikos));
     let mut tool_registry = build_tool_registry()?;
 
@@ -125,7 +125,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     let tool_registry = Arc::new(tool_registry);
     let oikos_arc = Arc::new(oikos);
 
-    // Embedding provider — drives recall query embedding
+    // Embedding provider: drives recall query embedding
     let embedding_config = EmbeddingConfig {
         provider: config.embedding.provider.clone(),
         model: config.embedding.model.clone(),
@@ -241,7 +241,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     });
 
     // Spawn nous actors
-    // Clone knowledge_store Arc before moving into NousManager — needed for daemon executor.
+    // Clone knowledge_store Arc before moving into NousManager. Needed for daemon executor.
     #[cfg(feature = "recall")]
     let knowledge_store_for_daemon = knowledge_store.clone();
 
@@ -303,7 +303,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         info!(count = nous_manager.count(), "nous actors spawned");
     }
 
-    // Daemon — background maintenance tasks
+    // Daemon: background maintenance tasks
     let maintenance_config = build_maintenance_config(&oikos_arc, &config.maintenance);
     let daemon_token = shutdown_token.child_token();
     let mut daemon_runner =
@@ -328,10 +328,10 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     );
     info!("daemon started");
 
-    // Wrap in Arc — shared between dispatcher and AppState
+    // Wrap in Arc: shared between dispatcher and AppState
     let nous_manager = Arc::new(nous_manager);
 
-    // Signal ready — all actors spawned, safe to accept inbound messages
+    // Signal ready: all actors spawned, safe to accept inbound messages
     nous_manager.ready();
 
     // Channel registry + inbound dispatch (gated on ready signal)
@@ -339,7 +339,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     let (_channel_registry, _dispatch_handle) =
         start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref());
 
-    // Daemon runners — per-agent background task scheduling
+    // Daemon runners: per-agent background task scheduling
     let daemon_bridge = Arc::new(crate::daemon_bridge::NousDaemonBridge::new(Arc::clone(
         &nous_manager,
     )));
@@ -377,7 +377,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         info!(count = config.agents.list.len(), "daemon runners spawned");
     }
 
-    // Pylon HTTP gateway — shares registries with NousManager
+    // Pylon HTTP gateway: shares registries with NousManager
     let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc).unwrap_or_else(|e| {
         tracing::warn!("failed to load config, using defaults: {e}");
         aletheia_taxis::config::AletheiaConfig::default()
@@ -451,7 +451,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
 
     // ── Drain ordering ──────────────────────────────────────────────────────
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
-    // 2. Root token is cancelled — daemon tasks observe it and exit their loops.
+    // 2. Root token is cancelled: daemon tasks observe it and exit their loops.
     // 3. Wait for system daemon to finish in-flight maintenance work.
     // 4. Drain nous actors with a timeout, flushing fjall WAL and other state.
     //    Awaiting join handles ensures Arc<Database> drops, checkpointing the WAL.
@@ -473,7 +473,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         ),
     }
 
-    // Step 4: drain nous actors — cancel tokens fire, messages drain, WAL flushed.
+    // Step 4: drain nous actors: cancel tokens fire, messages drain, WAL flushed.
     state.nous_manager.drain(shutdown_timeout).await;
 
     // Step 5: AppState and session store drop here as `state` goes out of scope.
@@ -530,7 +530,7 @@ fn build_provider_registry(
         }
     }
 
-    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention — always treat as OAuth
+    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention. Always treat as OAuth
     chain.push(Box::new(EnvCredentialProvider::with_source(
         "ANTHROPIC_AUTH_TOKEN",
         CredentialSource::OAuth,

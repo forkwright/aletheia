@@ -2,7 +2,7 @@
 //!
 //! The daemon crate defines this interface; the binary crate implements it
 //! where concrete types (`KnowledgeStore`) are available. All methods are
-//! blocking (CozoDB is sync) — the runner wraps calls in `spawn_blocking`.
+//! blocking (CozoDB is sync): the runner wraps calls in `spawn_blocking`.
 
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,7 @@ pub struct MaintenanceReport {
 /// Bridge trait for knowledge graph maintenance operations.
 ///
 /// Daemon crate defines it, binary crate implements it where `KnowledgeStore`
-/// is available. All methods are blocking — the runner wraps in `spawn_blocking`.
+/// is available. All methods are blocking. The runner wraps in `spawn_blocking`.
 pub trait KnowledgeMaintenanceExecutor: Send + Sync {
     /// Refresh temporal decay scores for all entities/edges.
     fn refresh_decay_scores(&self, nous_id: &str) -> crate::error::Result<MaintenanceReport>;

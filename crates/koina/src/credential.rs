@@ -36,7 +36,7 @@ pub struct Credential {
 /// token rotation and background OAuth refresh.
 ///
 /// Implementations must be `Send + Sync` for use across threads and in async
-/// contexts. The `get_credential()` method is intentionally synchronous — the
+/// contexts. The `get_credential()` method is intentionally synchronous. The
 /// refreshing providers store the current token in memory and refresh
 /// asynchronously in a background task.
 pub trait CredentialProvider: Send + Sync {

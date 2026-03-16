@@ -1,7 +1,7 @@
 //! Fuzz target for mneme knowledge store write/read round-trip.
 //!
 //! Exercises fact serialization, timestamp parsing, fact type classification,
-//! and — when valid input is produced — actual insert/read against an in-memory
+//! and (when valid input is produced) actual insert/read against an in-memory
 //! CozoDB knowledge store. Catches edge cases in bi-temporal semantics,
 //! epistemic tier encoding, and content boundary validation.
 
@@ -23,11 +23,11 @@ static STORE: LazyLock<std::sync::Arc<KnowledgeStore>> =
 static FACT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fuzz_target!(|data: &[u8]| {
-    // 1. Fact JSON deserialization — malformed content, invalid confidence,
+    // 1. Fact JSON deserialization: malformed content, invalid confidence,
     //    missing fields, unexpected types, oversized payloads.
     let _ = serde_json::from_slice::<Fact>(data);
 
-    // 2. Timestamp parsing — ISO 8601, date-only, far-future sentinel,
+    // 2. Timestamp parsing: ISO 8601, date-only, far-future sentinel,
     //    empty strings, garbage input.
     if let Ok(s) = std::str::from_utf8(data) {
         let parsed = parse_timestamp(s);
@@ -41,11 +41,11 @@ fuzz_target!(|data: &[u8]| {
             );
         }
 
-        // 3. FactType classification — keyword heuristics on arbitrary strings.
+        // 3. FactType classification: keyword heuristics on arbitrary strings.
         let _ = FactType::classify(s);
         let _ = FactType::from_str_lossy(s);
 
-        // 4. ForgetReason parsing — enum from string.
+        // 4. ForgetReason parsing: enum from string.
         let _ = s.parse::<ForgetReason>();
 
         // 5. EpistemicTier serde roundtrip.
@@ -74,7 +74,7 @@ fuzz_target!(|data: &[u8]| {
             &content
         };
 
-        // Derive confidence from first byte — clamp to [0.0, 1.0].
+        // Derive confidence from first byte: clamp to [0.0, 1.0].
         let confidence = f64::from(data[0]) / 255.0;
 
         // Derive tier from second byte.

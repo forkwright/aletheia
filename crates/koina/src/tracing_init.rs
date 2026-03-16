@@ -40,7 +40,7 @@ pub fn init_json() {
 
 #[cfg(test)]
 mod tests {
-    // NOTE: tracing init is global state — can only test it doesn't panic; integration tests exercise actual output
+    // NOTE: tracing init is global state. Can only test it doesn't panic; integration tests exercise actual output
 
     #[test]
     fn env_filter_parses_default() {

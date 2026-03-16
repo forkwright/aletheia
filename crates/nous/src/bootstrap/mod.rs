@@ -373,11 +373,11 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
         }
 
         if kept.is_empty() {
-            // NOTE: no single section fits in budget — fall back to line-by-line truncation
+            // NOTE: no single section fits in budget. Fall back to line-by-line truncation
             return self.truncate_by_lines(section, max_tokens);
         }
 
-        // NOTE: reverse restores chronological order — kept is newest-first from the backwards iteration
+        // NOTE: reverse restores chronological order. Kept is newest-first from the backwards iteration
         kept.reverse();
 
         // WHY: prepend marker so callers can see that oldest sections were dropped
@@ -418,7 +418,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
         }
 
         if kept.is_empty() {
-            // NOTE: even one line exceeds budget — return only the truncation marker
+            // NOTE: even one line exceeds budget. Return only the truncation marker
             let content = "... [truncated for token budget] ...".to_owned();
             let final_tokens = self.estimator.estimate(&content);
             return BootstrapSection {
@@ -430,7 +430,7 @@ impl<'a, E: TokenEstimator> BootstrapAssembler<'a, E> {
             };
         }
 
-        // NOTE: reverse restores chronological order — kept is newest-first from the backwards iteration
+        // NOTE: reverse restores chronological order. Kept is newest-first from the backwards iteration
         kept.reverse();
 
         // WHY: prepend marker so callers can see that oldest lines were dropped

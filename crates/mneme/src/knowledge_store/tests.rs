@@ -2580,7 +2580,7 @@ mod search_correctness_tests {
         }
     }
 
-    // Bug #1114 — search_vectors must not return forgotten facts.
+    // Bug #1114: search_vectors must not return forgotten facts.
     #[test]
     fn search_vectors_excludes_forgotten_facts() {
         let store = make_store();
@@ -2625,7 +2625,7 @@ mod search_correctness_tests {
         );
     }
 
-    // Bug #1117 — insert_embedding must reject vectors with wrong dimension.
+    // Bug #1117: insert_embedding must reject vectors with wrong dimension.
     #[test]
     fn insert_embedding_rejects_wrong_dimension() {
         let store = make_store(); // DIM = 4
@@ -2659,7 +2659,7 @@ mod search_correctness_tests {
         );
     }
 
-    // Bug #1117 — insert_embedding must accept vectors with correct dimension.
+    // Bug #1117: insert_embedding must accept vectors with correct dimension.
     #[test]
     fn insert_embedding_accepts_correct_dimension() {
         let store = make_store(); // DIM = 4
@@ -2767,7 +2767,7 @@ mod merge_proptests {
             let canonical_idx = canonical_raw % n;
             // WHY: `1 + (merge_shift % (n-1))` is in 1..n-1, so adding it to
             // canonical_idx and wrapping modulo n can never yield canonical_idx
-            // again — canonical and merged are always distinct.
+            // again: canonical and merged are always distinct.
             let merged_idx = (canonical_idx + 1 + (merge_shift % (n - 1))) % n;
 
             let store = make_store();
@@ -2835,7 +2835,7 @@ mod merge_proptests {
                 "canonical entity must still exist after merge"
             );
 
-            // Invariant: no orphaned edges — merged entity must have zero relationships
+            // Invariant: no orphaned edges: merged entity must have zero relationships
             let rels_touching_merged = count_rels_touching(&store, &format!("e{merged_idx}"));
             prop_assert_eq!(
                 rels_touching_merged,

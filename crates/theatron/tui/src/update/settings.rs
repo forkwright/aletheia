@@ -4,7 +4,7 @@ use crate::sanitize::sanitize_for_display;
 use crate::state::Overlay;
 use crate::state::settings::{EditState, FieldType, SaveStatus, SettingsOverlay};
 
-// SAFETY: sanitized at ingestion — config from API is sanitized via sanitize_config_json.
+// SAFETY: sanitized at ingestion. Config from API is sanitized via sanitize_config_json.
 pub async fn handle_open(app: &mut App) {
     match app.client.config().await {
         Ok(config) => {
@@ -19,7 +19,7 @@ pub async fn handle_open(app: &mut App) {
     }
 }
 
-// SAFETY: sanitized at ingestion — config values from API are sanitized in SettingsOverlay.
+// SAFETY: sanitized at ingestion. Config values from API are sanitized in SettingsOverlay.
 // Config values are mostly numbers/bools; string values are sanitized by sanitize_config_json.
 pub fn handle_loaded(app: &mut App, config: serde_json::Value) {
     let clean_config = sanitize_config_json(config);
@@ -174,7 +174,7 @@ pub fn handle_saved(app: &mut App) {
     app.rebuild_virtual_scroll();
 }
 
-// SAFETY: sanitized at ingestion — error messages may contain external data.
+// SAFETY: sanitized at ingestion. Error messages may contain external data.
 pub fn handle_save_error(app: &mut App, msg: String) {
     if let Some(Overlay::Settings(s)) = &mut app.overlay {
         s.save_status = SaveStatus::Error(sanitize_for_display(&msg).into_owned());

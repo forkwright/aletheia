@@ -113,7 +113,7 @@ pub fn render(
                 }
                 Tag::Paragraph => {
                     flush_line(&mut lines, &mut current_spans, &mut current_col);
-                    // WHY: emit │ prefix here after flush so it leads content — if pushed in
+                    // WHY: emit │ prefix here after flush so it leads content. If pushed in
                     // Tag::BlockQuote, Paragraph would flush it alone before any text arrived.
                     for _ in 0..blockquote_depth {
                         push_span(
@@ -127,7 +127,7 @@ pub fn render(
                     }
                 }
                 Tag::BlockQuote(_) => {
-                    // WHY: do not push │ here — Tag::Paragraph does it so the border lands on content line
+                    // WHY: do not push │ here. Tag::Paragraph does it so the border lands on content line
                     flush_line(&mut lines, &mut current_spans, &mut current_col);
                     let style = theme.style_muted();
                     style_stack.push(style);
@@ -288,7 +288,7 @@ pub fn render(
                 } else if in_table {
                     current_cell.push_str(&text);
                 } else if link_url.is_some() {
-                    // NOTE: inside a markdown link — accumulate display text, URL detection skipped
+                    // NOTE: inside a markdown link. Accumulate display text, URL detection skipped
                     link_text_buf.push_str(&text);
                     let style = current_style(&style_stack);
                     push_span(
@@ -323,7 +323,7 @@ pub fn render(
                 if in_table {
                     current_cell.push_str(&format!("`{code}`"));
                 } else {
-                    // NOTE: inline code — rendered with code style, URLs not linkified
+                    // NOTE: inline code. Rendered with code style, URLs not linkified
                     let s = format!("`{code}`");
                     push_span(
                         &mut current_spans,
@@ -352,7 +352,7 @@ pub fn render(
 
     flush_line(&mut lines, &mut current_spans, &mut current_col);
 
-    // WHY: suppress unused warning — kept for future header-specific styling
+    // WHY: suppress unused warning. Kept for future header-specific styling
     let _ = is_table_head;
 
     (lines, md_links)
@@ -1295,13 +1295,13 @@ mod tests {
     fn whitespace_only_input_renders_empty() {
         // Must not panic and should produce no meaningful content
         let lines = test_render("   \n\n   ");
-        // No assertion on exact count — just that it doesn't crash
+        // No assertion on exact count: just that it doesn't crash
         let _ = lines;
     }
 
     #[test]
     fn deeply_nested_list_indents_each_level() {
-        // 5 levels of nesting — must not panic, indent grows correctly
+        // 5 levels of nesting: must not panic, indent grows correctly
         let md = "- l1\n  - l2\n    - l3\n      - l4\n        - l5";
         let lines = test_render(md);
         let all = all_lines_text(&lines);
@@ -1357,14 +1357,14 @@ mod tests {
 
     #[test]
     fn unclosed_bold_marker_renders_as_plain_text() {
-        // pulldown-cmark treats unclosed ** as literal asterisks — must not panic
+        // pulldown-cmark treats unclosed ** as literal asterisks. Must not panic
         let lines = test_render("**not closed");
         let _ = all_lines_text(&lines);
     }
 
     #[test]
     fn ansi_escape_sequences_pass_through_unchanged() {
-        // The renderer itself does not strip ANSI — callers sanitize before passing.
+        // The renderer itself does not strip ANSI. Callers sanitize before passing.
         // Verify the renderer handles arbitrary bytes without panicking.
         let lines = test_render("plain text without escapes");
         let all = all_lines_text(&lines);

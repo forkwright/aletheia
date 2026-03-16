@@ -1,4 +1,4 @@
-//! `DiaporeiaServer` — MCP server implementation.
+//! `DiaporeiaServer`: MCP server implementation.
 //!
 //! Implements `rmcp::ServerHandler` using the `#[tool_handler]` macro.
 //! Tools are registered via `#[tool_router]` on the server struct.
@@ -35,7 +35,7 @@ impl DiaporeiaServer {
     }
 }
 
-// NOTE: type alias required by rmcp — get_info must return this exact name
+// NOTE: type alias required by rmcp. Get_info must return this exact name
 type ServerInfo = InitializeResult;
 
 #[tool_handler]
@@ -75,7 +75,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         _params: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
-        // NOTE: static resources only — dynamic listing deferred
+        // NOTE: static resources only. Dynamic listing deferred
         Ok(ListResourcesResult {
             resources: vec![],
             next_cursor: None,

@@ -1,7 +1,7 @@
-//! Instinct system — behavioral memory from tool usage patterns.
+//! Instinct system: behavioral memory from tool usage patterns.
 //!
 //! Observes tool usage, aggregates patterns, and creates preference facts
-//! when consistent behavioral patterns emerge. Not facts about the world —
+//! when consistent behavioral patterns emerge. Not facts about the world,
 //! facts about how to operate.
 //!
 //! Example: "When asked about code, use file search before web search"

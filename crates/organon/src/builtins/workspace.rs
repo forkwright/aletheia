@@ -51,7 +51,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
     // WHY: LLMs commonly emit `~/file` or `~` to refer to HOME. Without
     // expansion the path resolves relative to workspace, producing a confusing
     // "outside allowed roots" error. Expand before any other resolution so the
-    // absolute path check below works correctly — closes #1244.
+    // absolute path check below works correctly: closes #1244.
     let expanded = expand_tilde_str(raw);
     let raw_expanded = expanded.as_ref();
 
@@ -93,7 +93,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
                 }
             })
         } else {
-            // Parent doesn't exist yet (will be created by write) — use normalized
+            // Parent doesn't exist yet (will be created by write): use normalized
             Ok(normalized.clone())
         }
     } else {
@@ -203,7 +203,7 @@ impl ToolExecutor for ReadExecutor {
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
             let path = validate_path(path_str, ctx, &input.name)?;
 
-            // File size guard — reject files larger than 50 MB
+            // File size guard: reject files larger than 50 MB
             match std::fs::metadata(&path) {
                 Ok(meta) if meta.len() > MAX_READ_BYTES => {
                     return Ok(err_result(format!(

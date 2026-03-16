@@ -244,7 +244,7 @@ pub fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
 /// Ensure the `schema_version` table exists with the `description` column.
 fn bootstrap_version_table(conn: &Connection) -> Result<()> {
     if schema_version_table_exists(conn) {
-        // Older databases may lack the description column — add it if missing.
+        // Older databases may lack the description column. Add it if missing.
         if !has_description_column(conn) {
             conn.execute_batch(
                 "ALTER TABLE schema_version ADD COLUMN description TEXT NOT NULL DEFAULT ''",

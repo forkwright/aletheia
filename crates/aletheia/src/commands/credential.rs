@@ -1,4 +1,4 @@
-//! `aletheia credential` — credential status and OAuth refresh.
+//! `aletheia credential`: credential status and OAuth refresh.
 
 use std::path::PathBuf;
 

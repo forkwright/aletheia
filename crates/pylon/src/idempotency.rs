@@ -41,15 +41,15 @@ struct CacheEntry {
 enum EntryState {
     /// Request is currently being processed.
     InFlight,
-    /// Request completed — cached response ready to replay.
+    /// Request completed: cached response ready to replay.
     Completed { status: StatusCode, body: String },
 }
 
 /// Result of looking up an idempotency key.
 pub(crate) enum LookupResult {
-    /// Key not seen before — caller should proceed with the request.
+    /// Key not seen before: caller should proceed with the request.
     Miss,
-    /// A previous request with this key completed — return the cached response.
+    /// A previous request with this key completed. Return the cached response.
     Hit {
         // WHY: Reserved for non-SSE endpoints that replay the HTTP status code
         // directly. SSE handlers use only `body` (the serialized event payload).

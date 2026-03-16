@@ -494,7 +494,7 @@ pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'stat
     lines
 }
 
-/// Render a complete diff view state into ratatui Lines (mutable — updates total_lines).
+/// Render a complete diff view state into ratatui Lines (mutable. Updates total_lines).
 #[cfg(test)]
 pub(crate) fn render_diff_view(
     state: &mut DiffViewState,

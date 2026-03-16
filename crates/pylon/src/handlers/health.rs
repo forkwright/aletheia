@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 
 use crate::state::AppState;
 
-/// GET /api/health — liveness + readiness check.
+/// GET /api/health: liveness + readiness check.
 #[utoipa::path(
     get,
     path = "/api/health",
@@ -156,7 +156,7 @@ mod tests {
         let json = serde_json::to_value(&check).unwrap();
         assert_eq!(json["name"], "session_store");
         assert_eq!(json["status"], "pass");
-        // message is None — serializes as null (no skip annotation)
+        // message is None: serializes as null (no skip annotation)
         assert!(json["message"].is_null());
     }
 

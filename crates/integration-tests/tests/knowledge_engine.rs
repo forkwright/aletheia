@@ -71,7 +71,7 @@ fn fact_round_trip() {
 fn hnsw_vector_search() {
     let dim = 16;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig { dim }).expect("open_mem");
-    // MockEmbeddingProvider is deterministic by text input — satisfies the
+    // MockEmbeddingProvider is deterministic by text input. Satisfies the
     // "deterministic random vectors" constraint from CONTEXT.md.
     let provider = MockEmbeddingProvider::new(dim);
 
@@ -92,7 +92,7 @@ fn hnsw_vector_search() {
         store.insert_embedding(&chunk).expect("insert embedding");
     }
 
-    // Query with the "apple" vector — should find "apple" as nearest neighbor.
+    // Query with the "apple" vector: should find "apple" as nearest neighbor.
     let query_vec = provider.embed("apple").expect("embed query");
     let results = store.search_vectors(query_vec, 3, 20).expect("search");
 
@@ -230,7 +230,7 @@ fn hybrid_retrieval_end_to_end() {
         store.insert_fact(&fact).expect("insert fact");
     }
 
-    // Insert 5 embeddings — Rust facts get a similar vector cluster.
+    // Insert 5 embeddings: Rust facts get a similar vector cluster.
     // fact-1, fact-3, fact-5: Rust-related [0.9, 0.1, ...]; fact-2, fact-4: other [0.1, 0.9, ...]
     let rust_vec: Vec<f32> = vec![0.9, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
     let other_vec: Vec<f32> = vec![0.1, 0.9, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1];

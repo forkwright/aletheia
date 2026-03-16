@@ -1,4 +1,4 @@
-//! Execute stage — LLM call and tool iteration loop.
+//! Execute stage: LLM call and tool iteration loop.
 
 mod dispatch;
 
@@ -134,7 +134,7 @@ fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtract {
     extract
 }
 
-/// Execute stage — calls the LLM and iterates on tool use.
+/// Execute stage: calls the LLM and iterates on tool use.
 ///
 /// This is the core agent loop. It:
 /// 1. Builds a `CompletionRequest` from pipeline context
@@ -218,7 +218,7 @@ pub async fn execute(
         final_content = extracted.text_parts.join("");
         final_stop_reason = response.stop_reason.to_string();
 
-        // WHY: only break on no local tool uses — server tool results don't require client tool_result
+        // WHY: only break on no local tool uses. Server tool results don't require client tool_result
         if extracted.tool_uses.is_empty() || response.stop_reason != StopReason::ToolUse {
             break;
         }
@@ -268,7 +268,7 @@ pub async fn execute(
     })
 }
 
-/// Streaming execute stage — same as [`execute`] but emits real-time events.
+/// Streaming execute stage: same as [`execute`] but emits real-time events.
 ///
 /// Uses `complete_streaming()` when the provider supports it, falling back to
 /// `complete()` otherwise. Tool start/result events are emitted via the channel.

@@ -1287,7 +1287,7 @@ async fn metrics_returns_200_with_prometheus_content_type() {
 #[tokio::test]
 async fn metrics_no_auth_required() {
     let (app, _dir) = app().await;
-    // No authorization header — should still succeed
+    // No authorization header: should still succeed
     let resp = app
         .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
         .await
@@ -1505,7 +1505,7 @@ async fn archive_via_post_returns_204() {
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    // Archived sessions are non-retrievable via GET — same semantics as DELETE (#1251).
+    // Archived sessions are non-retrievable via GET. Same semantics as DELETE (#1251).
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
@@ -2523,7 +2523,7 @@ async fn idempotency_key_replay_returns_cached_completion() {
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
-    // First request — completes and caches the real stop_reason and usage.
+    // First request: completes and caches the real stop_reason and usage.
     let req1 = send_message_req(id, Some("replay-key-001"));
     let resp1 = router.clone().oneshot(req1).await.unwrap();
     assert_eq!(resp1.status(), StatusCode::OK);
@@ -2541,7 +2541,7 @@ async fn idempotency_key_replay_returns_cached_completion() {
     // Brief yield to let the turn task mark the entry as completed.
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    // Second request with the same key — cache hit returns the cached body.
+    // Second request with the same key: cache hit returns the cached body.
     let req2 = send_message_req(id, Some("replay-key-001"));
     let resp2 = router.clone().oneshot(req2).await.unwrap();
     assert_eq!(resp2.status(), StatusCode::OK);
@@ -2774,7 +2774,7 @@ async fn sse_stream_text_delta_precedes_message_complete() {
 }
 
 /// Malformed event: sending invalid JSON in the request body returns a 4xx
-/// HTTP error. The handler rejects the bad request before streaming starts —
+/// HTTP error. The handler rejects the bad request before streaming starts;
 /// it does not crash or produce a 5xx.
 #[tokio::test]
 async fn sse_send_message_with_invalid_json_body_returns_client_error() {
@@ -2801,13 +2801,13 @@ async fn sse_send_message_with_invalid_json_body_returns_client_error() {
 }
 
 /// Error event: the fallback serialization-error data string is valid JSON
-/// with a `message` field — not empty data. This verifies that the SSE error
+/// with a `message` field: not empty data. This verifies that the SSE error
 /// fallback path produces a well-formed JSON payload per the stream contract.
 #[test]
 fn sse_serialization_fallback_data_is_valid_json_with_message_field() {
     // WHY: sse_event_to_axum (and the stream_turn equivalent) fall back to
     // this literal string when serde_json::to_string fails. Verify the string
-    // is valid JSON with a non-empty message field — not an empty data line.
+    // is valid JSON with a non-empty message field. Not an empty data line.
     let fallback_data = r#"{"message":"serialization failed"}"#;
     let parsed: serde_json::Value =
         serde_json::from_str(fallback_data).expect("fallback data must be valid JSON");
@@ -2902,7 +2902,7 @@ async fn sse_dropping_response_body_does_not_panic() {
         .to_str()
         .unwrap();
     assert!(ct.contains("text/event-stream"));
-    // Body is dropped here — the spawned task detects the closed channel and exits.
+    // Body is dropped here: the spawned task detects the closed channel and exits.
     drop(resp);
 
     // Brief yield to let the background task observe channel closure.

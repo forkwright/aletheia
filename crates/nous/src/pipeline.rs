@@ -25,7 +25,7 @@ use crate::history::{self, HistoryConfig, HistoryResult};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
-/// Input to the pipeline — an inbound message.
+/// Input to the pipeline: an inbound message.
 #[derive(Debug, Clone)]
 pub struct PipelineInput {
     /// The user's message content.
@@ -94,13 +94,13 @@ pub enum GuardResult {
     Allow,
     /// Request is rate-limited (retry after ms).
     RateLimited { retry_after_ms: u64 },
-    /// Loop detected — abort.
+    /// Loop detected: abort.
     LoopDetected { pattern: String },
     /// Request rejected for safety.
     Rejected { reason: String },
 }
 
-/// Loop detector — tracks repeated tool call patterns with a capped ring buffer.
+/// Loop detector: tracks repeated tool call patterns with a capped ring buffer.
 #[derive(Debug, Clone)]
 pub struct LoopDetector {
     /// Recent tool call signatures (ring buffer, capped at `window` entries).
@@ -133,7 +133,7 @@ impl LoopDetector {
 
     /// Record a tool call and check for loops.
     ///
-    /// Returns `Some(pattern)` if a loop is detected — either N consecutive
+    /// Returns `Some(pattern)` if a loop is detected. Either N consecutive
     /// identical calls, or a repeating sequence of length
     /// 2–`CYCLE_DETECTION_MAX_LEN` repeated at least N times, where
     /// N = threshold. This catches both single-tool hammering and longer
@@ -155,7 +155,7 @@ impl LoopDetector {
             return Some(signature);
         }
 
-        // NOTE: cycle detection — a cycle of length L is confirmed when the last L×threshold
+        // NOTE: cycle detection. A cycle of length L is confirmed when the last L×threshold
         // history entries consist of exactly `threshold` repetitions of the same L-length pattern;
         // `VecDeque::get` is used to avoid allocation in the inner comparison.
         for cycle_len in 2..=CYCLE_DETECTION_MAX_LEN {
@@ -212,7 +212,7 @@ impl LoopDetector {
     }
 }
 
-/// Interaction signal — classifies what kind of work a turn involved.
+/// Interaction signal: classifies what kind of work a turn involved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -231,7 +231,7 @@ pub enum InteractionSignal {
     ErrorRecovery,
 }
 
-/// Turn result — the output of processing one turn.
+/// Turn result: the output of processing one turn.
 #[derive(Debug, Clone)]
 pub struct TurnResult {
     /// Assistant's response content.
@@ -342,7 +342,7 @@ pub async fn assemble_context_with_extra(
     Ok(())
 }
 
-/// Guard stage — check rate limits, loop detection, safety.
+/// Guard stage: check rate limits, loop detection, safety.
 ///
 /// Enforces the per-session token spending cap from
 /// [`NousConfig::session_token_cap`]. A cap of `0` disables the check.
@@ -474,7 +474,7 @@ pub async fn run_pipeline(
     Ok(result)
 }
 
-/// Context stage — assemble bootstrap and system prompt.
+/// Context stage: assemble bootstrap and system prompt.
 async fn run_context_stage(
     oikos: &Oikos,
     config: &NousConfig,
@@ -501,7 +501,7 @@ async fn run_context_stage(
     Ok(())
 }
 
-/// Recall stage — retrieve relevant knowledge from vector/BM25 search.
+/// Recall stage: retrieve relevant knowledge from vector/BM25 search.
 async fn run_recall_stage(
     config: &NousConfig,
     pipeline_config: &PipelineConfig,
@@ -574,7 +574,7 @@ async fn run_recall_stage(
     crate::metrics::record_stage(&config.id, "recall", start.elapsed().as_secs_f64());
 }
 
-/// History stage — load conversation history within token budget.
+/// History stage: load conversation history within token budget.
 async fn run_history_stage(
     config: &NousConfig,
     ctx: &mut PipelineContext,
@@ -590,7 +590,7 @@ async fn run_history_stage(
     let _guard = span.enter();
     let start = Instant::now();
 
-    // NOTE: Waterfall — unused system-prompt budget flows into the history budget
+    // NOTE: Waterfall. Unused system-prompt budget flows into the history budget
     // so tokens not consumed by bootstrap or recall are not wasted.
     ctx.history_budget += ctx.remaining_tokens.max(0);
 
@@ -624,7 +624,7 @@ async fn run_history_stage(
     Ok(())
 }
 
-/// Guard stage — check rate limits, loop detection, safety.
+/// Guard stage: check rate limits, loop detection, safety.
 fn run_guard_stage(session: &SessionState, config: &NousConfig) -> error::Result<()> {
     let span = info_span!(
         "pipeline_stage",
@@ -667,7 +667,7 @@ fn run_guard_stage(session: &SessionState, config: &NousConfig) -> error::Result
     }
 }
 
-/// Execute stage — call LLM with optional timeout and streaming.
+/// Execute stage: call LLM with optional timeout and streaming.
 #[expect(
     clippy::too_many_arguments,
     reason = "stage receives all pipeline dependencies"
@@ -755,7 +755,7 @@ async fn run_execute_stage(
     Ok(result)
 }
 
-/// Finalize stage — persist turn results to durable storage.
+/// Finalize stage: persist turn results to durable storage.
 async fn run_finalize_stage(
     config: &NousConfig,
     input: &PipelineInput,

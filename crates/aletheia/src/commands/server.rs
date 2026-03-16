@@ -1,4 +1,4 @@
-//! Default server startup — runs when no subcommand is given.
+//! Default server startup: runs when no subcommand is given.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -64,7 +64,7 @@ pub struct Args {
     reason = "binary entrypoint — sequential init steps"
 )]
 pub async fn run(args: Args) -> Result<()> {
-    // Oikos is pure path resolution — no IO, safe before tracing is set up.
+    // Oikos is pure path resolution. No IO, safe before tracing is set up.
     let oikos = match &args.instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
@@ -91,13 +91,13 @@ pub async fn run(args: Args) -> Result<()> {
 
     info!("aletheia starting");
 
-    // Root cancellation token — cancelled on SIGTERM/SIGINT.
+    // Root cancellation token: cancelled on SIGTERM/SIGINT.
     // Child tokens are propagated to every actor and daemon task.
     let shutdown_token = CancellationToken::new();
 
     info!(root = %oikos.root().display(), "instance discovered");
 
-    // Startup validation — fail fast before any actors or stores initialise
+    // Startup validation: fail fast before any actors or stores initialise
     oikos.validate().context("instance layout invalid")?;
 
     info!(
@@ -106,7 +106,7 @@ pub async fn run(args: Args) -> Result<()> {
         "config loaded"
     );
 
-    // Validate all config sections — fail fast before any actors or stores initialise.
+    // Validate all config sections: fail fast before any actors or stores initialise.
     let config_value =
         serde_json::to_value(&config).context("failed to serialize config for validation")?;
     for section in &[
@@ -126,7 +126,7 @@ pub async fn run(args: Args) -> Result<()> {
     }
     info!("config validated");
 
-    // JWT key validation — fail if auth mode requires JWT and the key is still the placeholder.
+    // JWT key validation: fail if auth mode requires JWT and the key is still the placeholder.
     let jwt_key = config
         .gateway
         .auth
@@ -146,7 +146,7 @@ pub async fn run(args: Args) -> Result<()> {
         );
     }
 
-    // Validate per-agent workspace paths — fatal if any agent workspace is invalid.
+    // Validate per-agent workspace paths: fatal if any agent workspace is invalid.
     for agent in &config.agents.list {
         oikos.validate_workspace_path(&agent.workspace).with_context(|| {
             format!(
@@ -156,7 +156,7 @@ pub async fn run(args: Args) -> Result<()> {
         })?;
     }
 
-    // Domain packs — load external knowledge packs declared in config
+    // Domain packs: load external knowledge packs declared in config
     let loaded_packs = aletheia_thesauros::loader::load_packs(&config.packs);
     let packs = Arc::new(loaded_packs);
 
@@ -172,13 +172,13 @@ pub async fn run(args: Args) -> Result<()> {
     ));
     info!(path = %db_path.display(), "session store opened");
 
-    // JWT manager — use the resolved key (validated above; placeholder only reaches here when mode="none").
+    // JWT manager: use the resolved key (validated above; placeholder only reaches here when mode="none").
     let jwt_manager = JwtManager::new(JwtConfig {
         signing_key: SecretString::from(effective_jwt_key),
         ..JwtConfig::default()
     });
 
-    // Build shared registries — single instances used by both NousManager and AppState
+    // Build shared registries: single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry(&config, &oikos));
     let mut tool_registry = build_tool_registry(&config.sandbox)?;
 
@@ -191,7 +191,7 @@ pub async fn run(args: Args) -> Result<()> {
     let tool_registry = Arc::new(tool_registry);
     let oikos_arc = Arc::new(oikos);
 
-    // Embedding provider — drives recall query embedding
+    // Embedding provider: drives recall query embedding
     let embedding_config = EmbeddingConfig {
         provider: config.embedding.provider.clone(),
         model: config.embedding.model.clone(),
@@ -302,7 +302,7 @@ pub async fn run(args: Args) -> Result<()> {
     });
 
     // Spawn nous actors
-    // Clone knowledge_store Arc before moving into NousManager — needed for daemon executor.
+    // Clone knowledge_store Arc before moving into NousManager. Needed for daemon executor.
     #[cfg(feature = "recall")]
     let knowledge_store_for_daemon = knowledge_store.clone();
 
@@ -367,7 +367,7 @@ pub async fn run(args: Args) -> Result<()> {
         info!(count = nous_manager.count(), "nous actors spawned");
     }
 
-    // Daemon — background maintenance tasks
+    // Daemon: background maintenance tasks
     let maintenance_config = maintenance::build_config(&oikos_arc, &config.maintenance);
     let daemon_token = shutdown_token.child_token();
     let mut daemon_runner =
@@ -391,7 +391,7 @@ pub async fn run(args: Args) -> Result<()> {
     );
     info!("daemon started");
 
-    // Log retention — runs immediately at startup then every 24 h.
+    // Log retention: runs immediately at startup then every 24 h.
     // Reuses TraceRotator (from aletheia-oikonomos) to prune daily log files
     // older than logging.retention_days rather than duplicating the cleanup
     // logic. Files are moved to logs/archive/ and immediately pruned
@@ -402,10 +402,10 @@ pub async fn run(args: Args) -> Result<()> {
         shutdown_token.child_token(),
     );
 
-    // Wrap in Arc — shared between dispatcher and AppState
+    // Wrap in Arc: shared between dispatcher and AppState
     let nous_manager = Arc::new(nous_manager);
 
-    // Signal ready — all actors spawned, safe to accept inbound messages
+    // Signal ready: all actors spawned, safe to accept inbound messages
     nous_manager.ready();
 
     // Channel registry + inbound dispatch (gated on ready signal)
@@ -413,7 +413,7 @@ pub async fn run(args: Args) -> Result<()> {
     let (_channel_registry, _dispatch_handle) =
         start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref());
 
-    // Daemon runners — per-agent background task scheduling
+    // Daemon runners: per-agent background task scheduling
     let daemon_bridge = Arc::new(daemon_bridge::NousDaemonBridge::new(Arc::clone(
         &nous_manager,
     )));
@@ -451,7 +451,7 @@ pub async fn run(args: Args) -> Result<()> {
         info!(count = config.agents.list.len(), "daemon runners spawned");
     }
 
-    // Pylon HTTP gateway — shares registries with NousManager
+    // Pylon HTTP gateway: shares registries with NousManager
     let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc).unwrap_or_else(|e| {
         tracing::warn!("failed to load config, using defaults: {e}");
         aletheia_taxis::config::AletheiaConfig::default()
@@ -479,7 +479,7 @@ pub async fn run(args: Args) -> Result<()> {
 
     #[cfg(feature = "mcp")]
     let app = {
-        // Diaporeia MCP server — shares state with pylon, zero overhead.
+        // Diaporeia MCP server: shares state with pylon, zero overhead.
         let diaporeia_state = Arc::new(aletheia_diaporeia::state::DiaporeiaState {
             session_store: Arc::clone(&state.session_store),
             nous_manager: Arc::clone(&state.nous_manager),
@@ -507,7 +507,7 @@ pub async fn run(args: Args) -> Result<()> {
         other => other,
     };
 
-    // Warn unconditionally when auth is disabled — every request is granted Operator role.
+    // Warn unconditionally when auth is disabled. Every request is granted Operator role.
     if config.gateway.auth.mode == "none" {
         warn!("auth mode is 'none' -- all requests granted Operator role");
     }
@@ -554,7 +554,7 @@ pub async fn run(args: Args) -> Result<()> {
 
     // ── Drain ordering ──────────────────────────────────────────────────────
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
-    // 2. Root token is cancelled — daemon tasks observe it and exit their loops.
+    // 2. Root token is cancelled: daemon tasks observe it and exit their loops.
     // 3. Wait for system daemon to finish in-flight maintenance work.
     // 4. Drain nous actors with a timeout, flushing fjall WAL and other state.
     //    Awaiting join handles ensures Arc<Database> drops, checkpointing the WAL.
@@ -576,7 +576,7 @@ pub async fn run(args: Args) -> Result<()> {
         ),
     }
 
-    // Step 4: drain nous actors — cancel tokens fire, messages drain, WAL flushed.
+    // Step 4: drain nous actors: cancel tokens fire, messages drain, WAL flushed.
     state.nous_manager.drain(shutdown_timeout).await;
 
     // Step 5: AppState and session store drop here as `state` goes out of scope.
@@ -633,7 +633,7 @@ fn build_provider_registry(
         }
     }
 
-    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention — always treat as OAuth
+    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention. Always treat as OAuth
     chain.push(Box::new(EnvCredentialProvider::with_source(
         "ANTHROPIC_AUTH_TOKEN",
         CredentialSource::OAuth,
@@ -641,7 +641,7 @@ fn build_provider_registry(
     // ANTHROPIC_API_KEY: auto-detects OAuth tokens by sk-ant-oat prefix
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
 
-    // Claude Code credentials file — lowest priority in the chain.
+    // Claude Code credentials file: lowest priority in the chain.
     // Enabled when credential.source is "auto" (default) or "claude-code".
     let cred_source = config.credential.source.as_str();
     if matches!(cred_source, "auto" | "claude-code") {
@@ -656,7 +656,7 @@ fn build_provider_registry(
             if let Some(provider) = claude_code_provider(&path) {
                 chain.push(provider);
             } else if cred_source == "claude-code" {
-                // Explicit claude-code source but file missing/invalid — warn loudly
+                // Explicit claude-code source but file missing/invalid: warn loudly
                 warn!(
                     path = %path.display(),
                     "credential.source is \"claude-code\" but credentials file not found or invalid"
@@ -817,10 +817,10 @@ fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: Cancellatio
                     trace_dir: dir,
                     archive_dir,
                     max_age_days: retention_days,
-                    // No size-based eviction — only age matters for log retention.
+                    // No size-based eviction: only age matters for log retention.
                     max_total_size_mb: 1_000_000,
                     compress: false,
-                    // Prune every archived file immediately — net effect is deletion.
+                    // Prune every archived file immediately: net effect is deletion.
                     max_archives: 0,
                 };
 
@@ -856,9 +856,9 @@ fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: Cancellatio
 
 /// Initialise the global tracing subscriber with dual output:
 ///
-/// - **Console** — human-readable (or JSON) at `log_level`, respecting
+/// - **Console**: human-readable (or JSON) at `log_level`, respecting
 ///   `RUST_LOG` when set.
-/// - **File** — always JSON at `file_level` (default `"warn"`), written to
+/// - **File**: always JSON at `file_level` (default `"warn"`), written to
 ///   `log_dir/aletheia.log.<date>` with daily rotation via `tracing_appender`.
 ///
 /// Returns the [`WorkerGuard`] that must be kept alive for the entire process
@@ -873,7 +873,7 @@ fn init_tracing(
     let console_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(format!("aletheia={log_level},{log_level}")));
 
-    // File filter: configured level, default "warn" — captures WARN+ even
+    // File filter: configured level, default "warn": captures WARN+ even
     // when the console is set to INFO.
     let file_filter = EnvFilter::try_new(file_level).with_context(|| {
         format!("invalid logging.level '{file_level}' — use a tracing directive such as 'warn'")
@@ -885,7 +885,7 @@ fn init_tracing(
     let file_appender = tracing_appender::rolling::daily(log_dir, "aletheia.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    // File layer — always JSON for machine-readable structured output.
+    // File layer: always JSON for machine-readable structured output.
     let file_layer = fmt::layer()
         .json()
         .with_ansi(false)
@@ -893,7 +893,7 @@ fn init_tracing(
         .with_writer(non_blocking)
         .with_filter(file_filter);
 
-    // Console layers — exactly one is Some, the other None.
+    // Console layers: exactly one is Some, the other None.
     // Option<L> implements Layer<S> as a no-op when None, so both arms compose
     // cleanly without type-erasing via Box<dyn Layer>.
     let console_filter_clone = console_filter.clone();

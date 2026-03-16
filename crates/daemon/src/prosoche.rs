@@ -1,4 +1,4 @@
-//! Prosoche (προσοχή) — "directed attention." Periodic check-in that monitors
+//! Prosoche (προσοχή): "directed attention." Periodic check-in that monitors
 //! calendar, tasks, and system health for a nous.
 
 use std::path::{Path, PathBuf};
@@ -228,7 +228,7 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // File doesn't exist — not an error for health checks.
+                // File doesn't exist: not an error for health checks.
             }
             Err(e) => {
                 tracing::warn!(

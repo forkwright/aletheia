@@ -15,7 +15,7 @@ use crate::handle::NousHandle;
 // --- Test infrastructure ---
 
 struct MockProvider {
-    // std::sync::Mutex is intentional — test mock, never crosses .await
+    // std::sync::Mutex is intentional: test mock, never crosses .await
     response: Mutex<CompletionResponse>,
 }
 
@@ -410,7 +410,7 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
 async fn actor_survives_pipeline_panic() {
     let (handle, join, _dir) = spawn_panicking_actor();
 
-    // First turn panics — should return an error, not kill the actor
+    // First turn panics: should return an error, not kill the actor
     let result = handle.send_turn("main", "Hello").await;
     assert!(result.is_err(), "panicking turn should return error");
     let msg = result.unwrap_err().to_string();
@@ -419,7 +419,7 @@ async fn actor_survives_pipeline_panic() {
         "error should mention panic: {msg}"
     );
 
-    // Actor is still alive — can respond to status
+    // Actor is still alive: can respond to status
     let status = handle.status().await.expect("actor should still be alive");
     assert_eq!(status.panic_count, 1);
     assert_eq!(status.lifecycle, NousLifecycle::Idle);
@@ -468,7 +468,7 @@ async fn send_timeout_fires_when_inbox_full() {
     let (tx, _rx) = mpsc::channel(1);
     let handle = NousHandle::new("test-agent".to_owned(), tx.clone());
 
-    // Fill the inbox — don't drop _rx so the channel stays open
+    // Fill the inbox: don't drop _rx so the channel stays open
     // Send one message to fill the single slot
     let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
     tx.send(NousMessage::Turn {
@@ -481,7 +481,7 @@ async fn send_timeout_fires_when_inbox_full() {
     .await
     .expect("fill inbox");
 
-    // Now the inbox is full — send_turn_with_timeout should fail
+    // Now the inbox is full. Send_turn_with_timeout should fail
     let result = handle
         .send_turn_with_timeout("main", "Hello", std::time::Duration::from_millis(50))
         .await;
@@ -525,12 +525,12 @@ async fn degraded_state_after_repeated_panics() {
 async fn background_task_reaping() {
     let (handle, join, _dir) = spawn_test_actor();
 
-    // Run a turn — this may spawn background tasks (extraction etc.)
+    // Run a turn: this may spawn background tasks (extraction etc.)
     // Even if no tasks spawn, the reaping code runs each loop iteration.
     let result = handle.send_turn("main", "Hello").await.expect("turn");
     assert_eq!(result.content, "Hello from actor!");
 
-    // The actor is still responsive — reaping didn't break anything.
+    // The actor is still responsive. Reaping didn't break anything.
     let status = handle.status().await.expect("status");
     assert_eq!(status.lifecycle, NousLifecycle::Idle);
 
@@ -546,7 +546,7 @@ async fn status_includes_uptime() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     let status = handle.status().await.expect("status");
-    // Uptime should be non-zero — the actor has been alive for at least a few ms
+    // Uptime should be non-zero: the actor has been alive for at least a few ms
     assert!(
         !status.uptime.is_zero(),
         "uptime should be non-zero, got {:?}",
@@ -611,7 +611,7 @@ async fn session_id_adoption_prevents_fk_divergence() {
     let store = Arc::new(tokio::sync::Mutex::new(store));
     let (handle, join, _dir) = spawn_test_actor_with_store(Arc::clone(&store));
 
-    // Send a turn with the DB session ID — actor must adopt it
+    // Send a turn with the DB session ID. Actor must adopt it
     let result = handle
         .send_turn_with_session_id(
             "main",

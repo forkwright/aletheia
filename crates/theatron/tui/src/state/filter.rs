@@ -1,4 +1,4 @@
-//! Live filter state — `/` mode for real-time content narrowing.
+//! Live filter state: `/` mode for real-time content narrowing.
 
 #[non_exhaustive]
 #[derive(Debug, Default, Clone, PartialEq)]

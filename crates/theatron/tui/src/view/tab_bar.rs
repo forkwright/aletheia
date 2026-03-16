@@ -1,4 +1,4 @@
-//! Tab bar rendering — shows open tabs at the top of the main area.
+//! Tab bar rendering: shows open tabs at the top of the main area.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

@@ -12,7 +12,7 @@ pub enum ColorDepth {
     Basic,
 }
 
-/// Background brightness — drives palette selection.
+/// Background brightness: drives palette selection.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemeMode {
@@ -92,7 +92,7 @@ pub struct ThinkingColors {
 }
 
 /// Semantic color palette for the entire TUI.
-/// Every color usage flows through this — no ad-hoc `Color::Cyan` calls.
+/// Every color usage flows through this: no ad-hoc `Color::Cyan` calls.
 ///
 /// Structured as nested groups so the active theme can be swapped as a single
 /// value without touching individual call sites.
@@ -141,7 +141,7 @@ impl Theme {
         }
     }
 
-    /// Full 24-bit RGB palette — the target experience.
+    /// Full 24-bit RGB palette: the target experience.
     pub(crate) fn truecolor() -> Self {
         Self {
             colors: Colors {
@@ -190,7 +190,7 @@ impl Theme {
         }
     }
 
-    /// 24-bit RGB light palette — readable on white/light terminal backgrounds.
+    /// 24-bit RGB light palette: readable on white/light terminal backgrounds.
     pub(crate) fn truecolor_light() -> Self {
         Self {
             colors: Colors {
@@ -239,7 +239,7 @@ impl Theme {
         }
     }
 
-    /// 256-color fallback — approximates the true color palette.
+    /// 256-color fallback: approximates the true color palette.
     pub(crate) fn color256() -> Self {
         Self {
             colors: Colors {
@@ -337,7 +337,7 @@ impl Theme {
         }
     }
 
-    /// Basic 16-color ANSI — widest compatibility.
+    /// Basic 16-color ANSI: widest compatibility.
     pub(crate) fn basic() -> Self {
         Self {
             colors: Colors {
@@ -539,7 +539,7 @@ fn detect_background() -> ThemeMode {
 
 /// Detect terminal color capability from environment variables.
 fn detect_color_depth() -> ColorDepth {
-    // WHY: COLORTERM is the most reliable indicator — check it before TERM.
+    // WHY: COLORTERM is the most reliable indicator. Check it before TERM.
     if let Ok(ct) = std::env::var("COLORTERM") {
         match ct.as_str() {
             "truecolor" | "24bit" => return ColorDepth::TrueColor,

@@ -15,7 +15,7 @@ pub const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(30);
 /// Cloneable handle for communicating with a nous actor.
 ///
 /// All external interaction with a [`NousActor`](crate::actor::NousActor) goes through its handle.
-/// The handle is `Clone + Send + Sync` — safe to share across tasks.
+/// The handle is `Clone + Send + Sync`. Safe to share across tasks.
 #[derive(Clone)]
 pub struct NousHandle {
     id: String,
@@ -102,7 +102,7 @@ impl NousHandle {
     ///
     /// # Cancel safety
     ///
-    /// Not cancel-safe. Same as [`send_turn`](Self::send_turn) — if cancelled
+    /// Not cancel-safe. Same as [`send_turn`](Self::send_turn): if cancelled
     /// between the inbox send and reply receipt, the turn runs but the result
     /// is discarded.
     pub async fn send_turn_streaming(
@@ -370,7 +370,7 @@ mod tests {
     }
 
     /// Verify the actor pattern: when the oneshot reply sender fires into a
-    /// dropped receiver, it does not panic — the `let _ = reply.send(result)`
+    /// dropped receiver, it does not panic. The `let _ = reply.send(result)`
     /// pattern silently discards the error.
     #[tokio::test]
     async fn actor_continues_after_reply_channel_dropped() {
@@ -383,7 +383,7 @@ mod tests {
             while let Some(msg) = rx.recv().await {
                 match msg {
                     NousMessage::Turn { reply, .. } | NousMessage::StreamingTurn { reply, .. } => {
-                        // Actor sends result — receiver may already be dropped.
+                        // Actor sends result: receiver may already be dropped.
                         // This must not panic.
                         let _ = reply.send(Err(crate::error::PipelineStageSnafu {
                             stage: "test",
@@ -415,7 +415,7 @@ mod tests {
         };
         assert!(send_result.is_ok());
 
-        // Actor should still be alive — send shutdown and verify it processed the turn
+        // Actor should still be alive. Send shutdown and verify it processed the turn
         let _ = handle.shutdown().await;
         let received = actor.await.expect("actor should not panic");
         assert_eq!(received, 1, "actor should have processed the turn");

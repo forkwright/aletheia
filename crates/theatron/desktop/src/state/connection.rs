@@ -27,12 +27,12 @@ pub enum ConnectionState {
     Disconnected,
     /// Initial connection in progress (first attempt).
     Connecting,
-    /// Connected and healthy — health checks passing.
+    /// Connected and healthy: health checks passing.
     Connected,
     /// Lost connection, attempting to restore. `attempt` counts consecutive
     /// failures (1-indexed).
     Reconnecting { attempt: u32 },
-    /// Permanently failed — requires user intervention (e.g. bad URL, auth
+    /// Permanently failed: requires user intervention (e.g. bad URL, auth
     /// rejected, max retries exceeded).
     Failed { reason: String },
 }
@@ -106,7 +106,7 @@ impl Default for ConnectionConfig {
 /// Initial backoff delay after a connection failure.
 const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
 
-/// Maximum backoff delay — caps exponential growth.
+/// Maximum backoff delay: caps exponential growth.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 /// Interval between periodic health checks once connected.
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn backoff_zero_attempt() {
-        // attempt 0 is an edge case — should not underflow.
+        // attempt 0 is an edge case. Should not underflow.
         let d = backoff_duration(0);
         assert!(d <= MAX_BACKOFF);
     }

@@ -1,4 +1,4 @@
-//! `aletheia tls` — TLS certificate management.
+//! `aletheia tls`: TLS certificate management.
 
 use std::path::{Path, PathBuf};
 
@@ -78,7 +78,7 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
     std::fs::write(&key_path, key_pair.serialize_pem())
         .with_context(|| format!("failed to write {}", key_path.display()))?;
 
-    // WHY: restrict private key to owner-read-only (0600) — security requirement
+    // WHY: restrict private key to owner-read-only (0600). Security requirement
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

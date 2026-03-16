@@ -20,7 +20,7 @@ pub enum NousMessage {
         /// a new one, preventing FK constraint failures in finalize and tools.
         session_id: Option<String>,
         content: String,
-        /// Caller's tracing span — propagated into the pipeline task for request correlation.
+        /// Caller's tracing span: propagated into the pipeline task for request correlation.
         span: tracing::Span,
         reply: oneshot::Sender<error::Result<TurnResult>>,
     },
@@ -31,13 +31,13 @@ pub enum NousMessage {
         session_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
-        /// Caller's tracing span — propagated into the pipeline task for request correlation.
+        /// Caller's tracing span: propagated into the pipeline task for request correlation.
         span: tracing::Span,
         reply: oneshot::Sender<error::Result<TurnResult>>,
     },
     /// Query current lifecycle state.
     Status { reply: oneshot::Sender<NousStatus> },
-    /// Liveness ping — actor replies immediately to prove it's alive.
+    /// Liveness ping: actor replies immediately to prove it's alive.
     Ping { reply: oneshot::Sender<()> },
     /// Transition to dormant (sleep).
     Sleep,
@@ -57,7 +57,7 @@ pub enum NousLifecycle {
     Idle,
     /// Paused, inbox buffered. Wakes on message or schedule.
     Dormant,
-    /// Too many panics — only accepts Status and Ping queries.
+    /// Too many panics: only accepts Status and Ping queries.
     Degraded,
 }
 

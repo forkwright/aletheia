@@ -1,4 +1,4 @@
-//! Turn execution — handles individual turns with panic boundary protection.
+//! Turn execution: handles individual turns with panic boundary protection.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -62,19 +62,19 @@ impl NousActor {
         }
 
         self.active_session = None;
-        // WHY: only reset to Idle if not degraded — preserve degraded state
+        // WHY: only reset to Idle if not degraded. Preserve degraded state
         if self.lifecycle != NousLifecycle::Degraded {
             self.lifecycle = NousLifecycle::Idle;
         }
         self.active_turn.store(false, Ordering::Release);
 
-        // WHY: ignore send error — caller may have dropped the receiver
+        // WHY: ignore send error. Caller may have dropped the receiver
         let _ = reply.send(result);
     }
 
     /// # Cancel safety
     ///
-    /// Not cancel-safe in isolation — same profile as `handle_turn`.
+    /// Not cancel-safe in isolation: same profile as `handle_turn`.
     /// Sets `lifecycle` and `active_session` before the `.await` point.
     /// Only called from the sequential actor loop.
     pub(super) async fn handle_streaming_turn(
@@ -118,13 +118,13 @@ impl NousActor {
         }
 
         self.active_session = None;
-        // WHY: only reset to Idle if not degraded — preserve degraded state
+        // WHY: only reset to Idle if not degraded. Preserve degraded state
         if self.lifecycle != NousLifecycle::Degraded {
             self.lifecycle = NousLifecycle::Idle;
         }
         self.active_turn.store(false, Ordering::Release);
 
-        // WHY: ignore send error — caller may have dropped the receiver
+        // WHY: ignore send error. Caller may have dropped the receiver
         let _ = reply.send(result);
     }
 
@@ -166,7 +166,7 @@ impl NousActor {
         self.handle_pipeline_result(result, session_key)
     }
 
-    // NOTE(#940): 113 lines — setup and spawn a single pipeline task with streaming
+    // NOTE(#940): 113 lines: setup and spawn a single pipeline task with streaming
     // bridge. The sequential setup + spawn is one cohesive operation.
     /// Spawn the pipeline as a separate tokio task to catch panics.
     ///
@@ -355,7 +355,7 @@ impl NousActor {
     ///
     /// Cancel-safe. Session creation via `entry().or_insert_with()` is
     /// idempotent. If cancelled during `run_pipeline`, the session exists
-    /// but the turn is incomplete — no persistent state is corrupted.
+    /// but the turn is incomplete. No persistent state is corrupted.
     pub(super) async fn execute_turn(
         &mut self,
         session_key: &str,
@@ -365,7 +365,7 @@ impl NousActor {
             .sessions
             .entry(session_key.to_owned())
             .or_insert_with(|| {
-                // WHY: cross-nous messages carry no database session ID — generate one so finalize can create the DB row
+                // WHY: cross-nous messages carry no database session ID. Generate one so finalize can create the DB row
                 let id = SessionId::new().to_string();
                 debug!(session_key, session_id = %id, "creating new session");
                 SessionState::new(id, session_key.to_owned(), &self.config)

@@ -10,7 +10,7 @@ use super::*;
 use crate::message::NousLifecycle;
 
 struct MockProvider {
-    // std::sync::Mutex is intentional — test mock, never crosses .await
+    // std::sync::Mutex is intentional: test mock, never crosses .await
     response: Mutex<CompletionResponse>,
 }
 
@@ -283,7 +283,7 @@ async fn drain_stops_all_actors() {
         .spawn(demiurge_config(), PipelineConfig::default())
         .await;
 
-    // drain() takes &self — no mutable access needed.
+    // drain() takes &self: no mutable access needed.
     mgr.drain(Duration::from_secs(5)).await;
 
     // After drain join handles are taken and tasks have stopped.
@@ -370,7 +370,7 @@ async fn check_health_detects_dead_actor() {
     assert!(!syn_health.alive, "dead actor should not be alive");
 }
 
-/// An actor processing a long turn cannot respond to pings — the inbox is
+/// An actor processing a long turn cannot respond to pings. The inbox is
 /// occupied. `check_health` must report it alive as long as `active_turn`
 /// is set, distinguishing "busy" from "dead".
 #[tokio::test]
@@ -392,14 +392,14 @@ async fn check_health_busy_actor_reports_alive() {
     handle.shutdown().await.expect("shutdown sent");
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    // Ping fails but active_turn is set — must report healthy-busy, not dead.
+    // Ping fails but active_turn is set. Must report healthy-busy, not dead.
     let health = mgr.check_health().await;
     assert!(
         health.get("syn").expect("syn health").alive,
         "busy actor (active_turn=true) must report alive even when ping fails"
     );
 
-    // Clear the flag: actor is now both dead and idle — must report unhealthy.
+    // Clear the flag: actor is now both dead and idle. Must report unhealthy.
     mgr.actors
         .get("syn")
         .expect("actor registered")

@@ -75,7 +75,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         );
     }
 
-    // Empty state: no messages and not streaming — show helpful placeholder.
+    // Empty state: no messages and not streaming. Show helpful placeholder.
     if app.messages.is_empty() && app.active_turn_id.is_none() && !filter_active {
         lines.push(Line::from(vec![
             Span::raw(" "),
@@ -129,7 +129,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         }
     }
 
-    // Pre-compute per-line widths — needed for resolve_osc_links and scroll calc.
+    // Pre-compute per-line widths: needed for resolve_osc_links and scroll calc.
     let line_widths: Vec<usize> = lines
         .iter()
         .map(|line| line.spans.iter().map(|s| s.content.len()).sum())
@@ -197,7 +197,7 @@ fn resolve_osc_links(
         return Vec::new();
     }
 
-    // Extract accent RGB — fall back to a sensible default for non-Rgb variants.
+    // Extract accent RGB: fall back to a sensible default for non-Rgb variants.
     let accent = match theme.colors.accent {
         ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
         _ => (120, 180, 255),
@@ -265,7 +265,7 @@ fn render_virtual_messages(
     para_links: &mut Vec<(usize, u16, String, String)>,
 ) {
     // Ensure the virtual scroll cache is populated and matches current width.
-    // This is a read-only check — cache rebuilds happen in the update layer.
+    // This is a read-only check. Cache rebuilds happen in the update layer.
     // If the cache is stale (width changed or item count mismatch), fall back to
     // full iteration for this single frame. The next update tick will rebuild.
     let needs_fallback = app.virtual_scroll.len() != app.messages.len()
@@ -391,7 +391,7 @@ fn render_message(
         render_tool_summary(&msg.tool_calls, lines, theme);
     }
 
-    // Message content — markdown parsed with syntax highlighting
+    // Message content: markdown parsed with syntax highlighting
     let (md_lines, md_links) = markdown::render(
         &msg.text,
         ctx.inner_width.saturating_sub(2),
@@ -604,7 +604,7 @@ fn render_streaming(
                 };
                 tool_spans.push(Span::styled(label, Style::default().fg(color)));
             } else {
-                // Currently running tool — animated
+                // Currently running tool: animated
                 let ch = theme::spinner_frame(app.tick_count);
                 tool_spans.push(Span::styled(
                     format!("{} {}", ch, tc.name),
@@ -623,7 +623,7 @@ fn render_streaming(
             theme.style_assistant(),
         )]));
 
-        // Use cached markdown if available (streaming content — links not tracked for OSC 8)
+        // Use cached markdown if available (streaming content. Links not tracked for OSC 8)
         let rendered = if app.markdown_cache.text == app.streaming_text {
             app.markdown_cache.lines.clone()
         } else {
@@ -654,7 +654,7 @@ fn render_streaming(
             ),
         ]));
     } else if app.active_turn_id.is_some() {
-        // No text yet — show spinner with agent name
+        // No text yet: show spinner with agent name
         let ch = theme::spinner_frame(app.tick_count);
 
         lines.push(Line::from(vec![

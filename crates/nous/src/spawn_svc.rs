@@ -48,7 +48,7 @@ impl SpawnServiceImpl {
 }
 
 impl SpawnService for SpawnServiceImpl {
-    // NOTE(#940): 130 lines — sequential ephemeral-actor lifecycle: build config, spawn
+    // NOTE(#940): 130 lines. Sequential ephemeral-actor lifecycle: build config, spawn
     // actor, run single turn, teardown. Splitting would fragment a cohesive lifecycle.
     #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
     fn spawn_and_run(
@@ -122,7 +122,7 @@ impl SpawnService for SpawnServiceImpl {
                     return Err(format!("failed to write SOUL.md: {e}"));
                 }
 
-                // WHY: ephemeral actors get their own cancellation token — short-lived, no shared parent
+                // WHY: ephemeral actors get their own cancellation token. Short-lived, no shared parent
                 let ephemeral_cancel = CancellationToken::new();
                 let (handle, join_handle, _active_turn) = actor::spawn(
                     config,
@@ -198,7 +198,7 @@ mod tests {
     use super::*;
 
     struct MockProvider {
-        // std::sync::Mutex is intentional — test mock, never crosses .await
+        // std::sync::Mutex is intentional: test mock, never crosses .await
         response: Mutex<CompletionResponse>,
     }
 

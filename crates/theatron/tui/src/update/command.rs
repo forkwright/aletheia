@@ -144,7 +144,7 @@ pub async fn handle_select(app: &mut App) {
         if extra_args.is_empty() {
             app.command_palette.input = execute_as;
         } else {
-            // NOTE: preserve typed args — user may have typed extra text beyond the suggestion base
+            // NOTE: preserve typed args. User may have typed extra text beyond the suggestion base
             let suggestion_has_args = execute_as.contains(' ');
             if suggestion_has_args {
                 app.command_palette.input = execute_as;
@@ -338,7 +338,7 @@ async fn execute_recall(app: &mut App, query: &str) {
     let query = query.to_string();
     match client.recall(&nous_id, &query).await {
         Ok(result) => {
-            // SAFETY: sanitized at ingestion — recall results from memory API.
+            // SAFETY: sanitized at ingestion. Recall results from memory API.
             let clean = sanitize_for_display(&result).into_owned();
             let display = if clean.len() > 200 {
                 format!("{}...", safe_truncate(&clean, 200))

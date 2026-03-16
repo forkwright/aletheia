@@ -1,6 +1,6 @@
-//! aletheia-mneme — session store and memory engine
+//! aletheia-mneme: session store and memory engine
 //!
-//! Mneme (Μνήμη) — "memory." Manages sessions, messages, and usage tracking
+//! Mneme (Μνήμη): "memory." Manages sessions, messages, and usage tracking
 //! via embedded `SQLite` and the Datalog knowledge engine.
 //!
 //! Depends on `aletheia-koina` for types and errors.
@@ -21,7 +21,7 @@ pub(crate) mod dedup;
 pub mod embedding;
 /// Mneme-specific error types and result alias.
 pub mod error;
-/// Agent export — build an `AgentFile` from session store and workspace.
+/// Agent export: build an `AgentFile` from session store and workspace.
 #[cfg(feature = "sqlite")]
 pub mod export;
 /// LLM-driven knowledge extraction pipeline (entities, relationships, facts).
@@ -33,10 +33,10 @@ pub(crate) mod graph_intelligence;
 pub mod hnsw_index;
 /// Newtype wrappers for mneme-local domain identifiers.
 pub mod id;
-/// Agent import — restore an agent from a portable `AgentFile`.
+/// Agent import: restore an agent from a portable `AgentFile`.
 #[cfg(feature = "sqlite")]
 pub mod import;
-/// Instinct system — behavioral memory from tool usage patterns.
+/// Instinct system: behavioral memory from tool usage patterns.
 pub mod instinct;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
 pub mod knowledge;
@@ -45,7 +45,7 @@ pub mod knowledge_store;
 /// Versioned `SQLite` schema migration runner.
 #[cfg(feature = "sqlite")]
 pub mod migration;
-/// Agent portability schema — `AgentFile` format for cross-runtime export/import.
+/// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 #[cfg(feature = "sqlite")]
 pub mod portability;
 /// Typed Datalog query builder for compile-time schema validation.
@@ -63,12 +63,12 @@ pub mod retention;
 pub mod schema;
 /// Skill storage helpers and SKILL.md parser.
 pub mod skill;
-/// Skill auto-capture — heuristic filter, signature hashing, and candidate tracking.
+/// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
 pub mod skills;
 /// `SQLite` session store (WAL mode, prepared statements, transactional writes).
 #[cfg(feature = "sqlite")]
 pub mod store;
-/// Ecological succession — domain volatility tracking and adaptive decay rates.
+/// Ecological succession: domain volatility tracking and adaptive decay rates.
 pub(crate) mod succession;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types;
@@ -111,7 +111,7 @@ mod coexistence_tests {
         let ss = SessionStore::open_in_memory()
             .expect("SessionStore::open_in_memory should succeed with sqlite feature");
 
-        // Both instances are live in the same process — no link conflict.
+        // Both instances are live in the same process. No link conflict.
         drop(ks);
         drop(ss);
     }

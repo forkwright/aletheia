@@ -1,9 +1,9 @@
 //! Three-tier cascade resolution.
 //!
 //! Walks the oikos hierarchy to discover and resolve files:
-//!   1. `instance/nous/{id}/{subdir}/` — agent-specific
-//!   2. `instance/shared/{subdir}/`    — shared across all agents
-//!   3. `instance/theke/{subdir}/`     — human + agent collaborative
+//! 1. `instance/nous/{id}/{subdir}/`: agent-specific
+//! 2. `instance/shared/{subdir}/`: shared across all agents
+//! 3. `instance/theke/{subdir}/`: human + agent collaborative
 //!
 //! Most specific wins on name collision.
 
@@ -54,10 +54,10 @@ pub struct CascadeEntry {
 /// is returned (nous > shared > theke).
 ///
 /// # Arguments
-/// * `oikos` — The oikos instance for path resolution
-/// * `nous_id` — Agent ID for tier-1 resolution
-/// * `subdir` — Subdirectory name (e.g. "tools", "hooks", "templates")
-/// * `ext` — Optional extension filter (e.g. "md", "yaml"). Without the dot.
+/// * `oikos`: The oikos instance for path resolution
+/// * `nous_id`: Agent ID for tier-1 resolution
+/// * `subdir`: Subdirectory name (e.g. "tools", "hooks", "templates")
+/// * `ext`: Optional extension filter (e.g. "md", "yaml"). Without the dot.
 #[must_use]
 pub fn discover(
     oikos: &Oikos,
@@ -96,7 +96,7 @@ pub fn discover(
                 }
             }
 
-            // WHY: most specific wins — only insert if not already seen
+            // WHY: most specific wins. Only insert if not already seen
             seen.entry(name.clone()).or_insert_with(|| CascadeEntry {
                 path,
                 tier: *tier,

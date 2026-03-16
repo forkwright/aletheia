@@ -1,4 +1,4 @@
-//! Agent portability schema — AgentFile format for cross-runtime export/import.
+//! Agent portability schema: AgentFile format for cross-runtime export/import.
 
 use std::collections::HashMap;
 
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// Agent file format version.
 pub const AGENT_FILE_VERSION: u32 = 1;
 
-/// Portable agent file — wire-compatible with the TypeScript `AgentFile` format.
+/// Portable agent file: wire-compatible with the TypeScript `AgentFile` format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentFile {
@@ -34,7 +34,7 @@ pub struct NousInfo {
     pub config: serde_json::Value,
 }
 
-/// Workspace file snapshot — text content included, binary paths listed.
+/// Workspace file snapshot: text content included, binary paths listed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceData {
@@ -94,7 +94,7 @@ pub struct MemoryData {
     pub graph: Option<GraphData>,
 }
 
-/// Memory vector entry (embeddings omitted — regenerated on import).
+/// Memory vector entry (embeddings omitted: regenerated on import).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedVector {

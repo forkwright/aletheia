@@ -1,4 +1,4 @@
-//! Unit tests for ecological succession — volatility computation, adaptive stability,
+//! Unit tests for ecological succession: volatility computation, adaptive stability,
 //! domain profiling, and integration with the recall scoring pipeline.
 //!
 //! NOTE: The prompt's Context section describes the volatility multiplier as
@@ -104,7 +104,7 @@ fn compute_volatility_fractional_supersession_rate() {
 // NOTE: The actual formula is `1.5 - volatility`, not `1.0 / (1.0 + 0.1 * count)`.
 // The implementation intentionally gives a boost (1.5×) for stable domains
 // and a penalty (0.5×) for volatile ones. The range is [0.5, 1.5].
-// The prompt's Context section describes a different formula — see PR observations.
+// The prompt's Context section describes a different formula. See PR observations.
 
 #[test]
 fn volatility_multiplier_zero_volatility_returns_one_point_five() {
@@ -173,7 +173,7 @@ fn volatility_multiplier_always_positive() {
 
 #[test]
 fn volatility_multiplier_negative_input_clamped() {
-    // Requirement 8: out-of-range inputs are clamped — negative treated as 0
+    // Requirement 8: out-of-range inputs are clamped. Negative treated as 0
     let m = volatility_multiplier(-1.0);
     assert!(
         (m - 1.5).abs() < f64::EPSILON,
@@ -299,7 +299,7 @@ fn adaptive_stability_verified_two_times_inferred_at_same_volatility() {
 // Supersession chain tests (requirements 13–16)
 // ---------------------------------------------------------------------------
 
-// Pure GraphContext tests — no engine required. Chain lengths are injected
+// Pure GraphContext tests: no engine required. Chain lengths are injected
 // directly into the context, matching how the engine populates them at runtime.
 
 #[test]

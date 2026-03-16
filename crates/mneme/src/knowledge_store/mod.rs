@@ -3,7 +3,7 @@
 //! This module requires the `mneme-engine` feature flag.
 //!
 //! **Coexistence with `sqlite` feature:** No link conflict. The `mneme-engine`
-//! vendored CozoDB uses only mem/redb/fjall storage backends — no C++
+//! vendored CozoDB uses only mem/redb/fjall storage backends. No C++
 //! dependencies. `rusqlite` (used by the `sqlite` feature) compiles with
 //! `features = ["bundled"]`, keeping its symbols isolated. Both features may
 //! be enabled simultaneously.
@@ -179,7 +179,7 @@ use crate::query::queries;
 /// Hides the `crate::engine::NamedRows` type from callers, keeping `CozoDB`
 /// internals encapsulated within the knowledge layer.
 ///
-/// Row values are [`crate::engine::DataValue`] — call `.get_str()`, `.get_float()`,
+/// Row values are [`crate::engine::DataValue`]: call `.get_str()`, `.get_float()`,
 /// etc. to extract typed values.
 #[cfg(feature = "mneme-engine")]
 #[derive(Debug, Clone)]
@@ -504,7 +504,7 @@ impl KnowledgeStore {
     /// Run a custom Datalog query with an optional timeout.
     ///
     /// If the query exceeds the timeout, returns `Error::QueryTimeout`.
-    /// The `:timeout` directive is injected into the script — callers should not include it.
+    /// The `:timeout` directive is injected into the script. Callers should not include it.
     ///
     /// Note: timeout detection relies on the engine error containing "killed before completion"
     /// (from `CozoDB`'s internal `ProcessKilled` error). This is a known fragile dependency.
@@ -539,7 +539,7 @@ impl KnowledgeStore {
             })
     }
 
-    /// Raw mutable query escape hatch — runs script with `ScriptMutability::Mutable`.
+    /// Raw mutable query escape hatch: runs script with `ScriptMutability::Mutable`.
     /// Required for `:rm` and `:put` operations from caller code.
     ///
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep `CozoDB` internals

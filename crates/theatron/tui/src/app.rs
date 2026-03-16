@@ -51,7 +51,7 @@ pub struct App {
     // Dashboard state
     pub agents: Vec<AgentState>,
     pub focused_agent: Option<NousId>,
-    /// PERF: ArcVec clone is O(1) — tab switches share the Arc pointer, not the Vec.
+    /// PERF: ArcVec clone is O(1). Tab switches share the Arc pointer, not the Vec.
     pub messages: ArcVec<ChatMessage>,
     pub focused_session_id: Option<SessionId>,
     pub daily_cost_cents: u32,
@@ -88,10 +88,10 @@ pub struct App {
     pub auto_scroll: bool,
     pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
 
-    // Virtual scroll — O(viewport) rendering for large message lists
+    // Virtual scroll: O(viewport) rendering for large message lists
     pub(crate) virtual_scroll: VirtualScroll,
 
-    // Markdown cache — avoid re-parsing on every frame
+    // Markdown cache: avoid re-parsing on every frame
     pub markdown_cache: MarkdownCache,
 
     // Tick counter for spinner animation
@@ -269,7 +269,7 @@ impl App {
             }
         }
 
-        // SAFETY: sanitized at ingestion — all agent fields from API are sanitized here.
+        // SAFETY: sanitized at ingestion. All agent fields from API are sanitized here.
         // Best-effort: if agent fetch fails, start with empty list and show error toast.
         let agents = match self.client.agents().await {
             Ok(a) => a,
@@ -411,7 +411,7 @@ impl App {
 
             match self.client.history(&session_id).await {
                 Ok(history) => {
-                    // SAFETY: sanitized at ingestion — all message fields from API.
+                    // SAFETY: sanitized at ingestion. All message fields from API.
                     self.messages = history
                         .into_iter()
                         .filter_map(|m| {
@@ -568,7 +568,7 @@ impl App {
     #[tracing::instrument(skip_all)]
     pub fn view(&mut self, frame: &mut Frame) -> Vec<OscLink> {
         if !self.dirty {
-            // PERF: No state changed since last frame — replay the cached buffer.
+            // PERF: No state changed since last frame. Replay the cached buffer.
             // ratatui diffs against the previous frame, so identical content produces
             // zero terminal output. This skips all layout and widget computation.
             if let Some(ref cached) = self.frame_cache
@@ -577,7 +577,7 @@ impl App {
                 *frame.buffer_mut() = cached.clone();
                 return Vec::new();
             }
-            // Cache miss (terminal resized or first frame) — fall through to full render.
+            // Cache miss (terminal resized or first frame): fall through to full render.
         }
         let links = view::render(self, frame);
         self.frame_cache = Some(frame.buffer_mut().clone());
@@ -895,7 +895,7 @@ mod tests {
     #[test]
     fn tab_switch_messages_copy_on_write_isolated() {
         // After save_to_active_tab, the tab and the app share Arc storage.
-        // A push to app.messages triggers COW — the tab's snapshot is unaffected.
+        // A push to app.messages triggers COW: the tab's snapshot is unaffected.
         let mut app = test_app_with_messages(vec![("user", "hello"), ("assistant", "world")]);
         let agent = test_agent("syn", "Syn");
         let agent_id = agent.id.clone();

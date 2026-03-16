@@ -5,7 +5,7 @@ use crate::id::{NousId, PlanId, SessionId, TurnId};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
     pub id: NousId,
-    /// Display name — falls back to `id` if absent.
+    /// Display name: falls back to `id` if absent.
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
@@ -242,7 +242,7 @@ pub struct DailyEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentsResponse {
-    /// Server returns `{"nous": [...]}` — accept both keys for resilience.
+    /// Server returns `{"nous": [...]}`: accept both keys for resilience.
     #[serde(alias = "agents")]
     pub nous: Vec<Agent>,
 }

@@ -61,7 +61,7 @@ impl SessionStore {
     /// Get message history for a session with optional `seq < before_seq` filter.
     ///
     /// The `before_seq` filter is applied at the SQL level so the database
-    /// only returns rows that satisfy `seq < before_seq` — the LIMIT clause
+    /// only returns rows that satisfy `seq < before_seq`. The LIMIT clause
     /// then operates on that already-filtered set.
     #[instrument(skip(self))]
     pub fn get_history_filtered(
@@ -264,13 +264,13 @@ impl SessionStore {
     /// In a single transaction:
     /// 1. Delete any existing summary at seq 0 (previous distillation result, distilled or not)
     /// 2. Delete all messages marked `is_distilled = 1`
-    /// 3. Insert summary at seq 0 — safe because remaining undistilled messages have seq ≥ 1
+    /// 3. Insert summary at seq 0: safe because remaining undistilled messages have seq ≥ 1
     /// 4. Recalculate session token and message counts
     ///
     /// WHY: The former approach shifted undistilled seq values up by 1 before inserting at seq 0.
     /// That caused a `UNIQUE(session_id, seq)` violation whenever consecutive undistilled messages
     /// existed (e.g. seq \[3,4,5\]: shifting 3→4 conflicts with existing 4). The shift is also
-    /// unnecessary because the UNIQUE constraint is only violated if seq 0 already exists —
+    /// unnecessary because the UNIQUE constraint is only violated if seq 0 already exists;
     /// deleting the old summary first makes seq 0 available without any renumbering.
     #[instrument(skip(self, content))]
     pub fn insert_distillation_summary(&self, session_id: &str, content: &str) -> Result<()> {
