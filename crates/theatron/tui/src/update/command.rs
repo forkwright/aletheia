@@ -62,9 +62,8 @@ pub fn handle_delete_word(app: &mut App) {
 }
 
 pub fn handle_up(app: &mut App) {
-    // WHY: When palette input is empty, up navigates command history (like shell).
-    // When there's input, up navigates the suggestion list.
-    if app.command_palette.input.is_empty() || app.command_history_index.is_some() {
+    if app.command_history_index.is_some() {
+        // WHY: Already in history-browsing mode — continue navigating history.
         if !app.command_history.is_empty() {
             let idx = match app.command_history_index {
                 Some(i) if i + 1 < app.command_history.len() => i + 1,
@@ -593,6 +592,15 @@ mod tests {
         }
         handle_delete_word(&mut app);
         assert_eq!(app.command_palette.input, "hello ");
+    }
+
+    #[test]
+    fn handle_up_decrements_selected() {
+        let mut app = test_app();
+        handle_open(&mut app);
+        app.command_palette.selected = 3;
+        handle_up(&mut app);
+        assert_eq!(app.command_palette.selected, 2);
     }
 
     #[test]
