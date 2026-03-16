@@ -112,7 +112,8 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     // Body size limit
     router = router.layer(DefaultBodyLimit::max(security.body_limit_bytes));
 
-    // Error response enrichment (innermost — body not yet compressed)
+    // Error response enrichment: inside compression (body uncompressed), outside
+    // rate_limit and CSRF so their error responses get request_id injected.
     router = router.layer(axum::middleware::from_fn(enrich_error_response));
 
     // HTTP metrics recording
