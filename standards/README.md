@@ -297,12 +297,39 @@ Concurrency bugs live in interleavings, not in text. Static analysis and code re
 
 ---
 
-## Configuration
+## Configuration & Operability
+
+This project is maintained by a single developer with AI agents. Every design decision must account for that: one person deploys, monitors, debugs, and evolves the system. Complexity that requires a team is a bug.
+
+### Configuration
 
 - **Config in environment, not code.** Values that vary between deploys: credentials, hostnames, feature flags: live in environment variables or external config stores, never compiled in.
 - **No hardcoded secrets.** Connection strings, API keys, and passwords never in source. Not in config files committed to git. Use secret stores or environment injection.
 - **Inject inward, never fetch.** Configuration values are pushed from the outermost layer (main, entry point) and injected into inner modules. Inner code receives config. It never reads environment variables or config files directly.
-- **Fail on invalid config at startup.** Validate all configuration during initialization. Don't discover bad config at 3 AM when the code path first executes.
+- **Fail on invalid config at startup.** Validate all configuration during initialization with clear error messages. Don't discover bad config at 3 AM when the code path first executes.
+- **Sensible defaults for everything.** A fresh deployment with zero config should start, serve health, and explain what's missing. Not crash with a stack trace.
+
+### Deployment
+
+- **One command to deploy.** Build, stop, copy, refresh credentials, start, health check. If it takes more than one command, wrap it in a script.
+- **One command to roll back.** Previous binary preserved. Swap and restart.
+- **Self-diagnosing errors.** When something fails, the error message must say what's wrong AND how to fix it. "embed-candle feature not enabled: build with --features embed-candle" is good. "provider unavailable" is bad.
+- **No manual token management.** Credential lifecycle (refresh, rotation, expiry) is the system's job, not the operator's. If a token expires, the system refreshes it. If refresh fails, the error says why and how to re-authenticate.
+- **Health check that checks everything.** Not just "process is running" but "can reach LLM, can write to store, can read config, credentials valid." One endpoint, complete picture.
+
+### Maintenance
+
+- **Automated monitoring.** Health checks on a timer. Token expiry warnings before they expire. Cost tracking. Log rotation. If it needs watching, automate the watching.
+- **No tribal knowledge.** Every operational procedure is documented or scripted. A fresh agent session with access to the repo should be able to deploy, diagnose, and fix without prior context.
+- **Upgrades are boring.** Pull, build, deploy script. No migration scripts to run manually. No config format changes without backward compatibility. Schema migrations run automatically on startup.
+- **Logs tell the full story.** Structured JSON with correlation IDs. When something breaks, the logs contain everything needed to diagnose without reproducing. No "turn on debug logging and try again."
+
+### Code for One Developer + AI
+
+- **Minimize moving parts.** Single binary over microservices. Embedded databases over external services. Fewer processes = fewer failure modes.
+- **Automate the automation.** Standards are enforced by linters, not code review. Deployments are scripts, not runbooks. Issue triage generates prompts. Prompts dispatch agents. Agents create PRs. Steward merges them. The human architects; the system executes.
+- **Make agents effective.** Clear CLAUDE.md, accurate docs, self-documenting code. An agent reading the repo for the first time should understand the architecture, find the right file, and make the right change without asking.
+- **No context required.** Every error, every log, every doc assumes the reader has zero prior context. The system explains itself. If understanding requires "you had to be there," something is missing.
 
 ---
 
