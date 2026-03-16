@@ -349,6 +349,66 @@ fn model_family_strips_last_segment() {
     assert_eq!(model_family("somemodel"), "somemodel");
 }
 
+/// Operator configs often only include pricing for the primary model.
+/// Built-in defaults must fill in the rest so background-task models
+/// (e.g. Haiku for extraction) always have pricing.
+#[test]
+fn merge_pricing_fills_defaults_for_unconfigured_models() {
+    let config = ProviderConfig {
+        api_key: Some("sk-test".to_owned()),
+        pricing: HashMap::from([(
+            "claude-sonnet-4-6".to_owned(),
+            ModelPricing {
+                input_cost_per_mtok: 99.0,
+                output_cost_per_mtok: 99.0,
+            },
+        )]),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+
+    // Operator override is preserved.
+    let sonnet = &provider.pricing["claude-sonnet-4-6"];
+    assert!(
+        (sonnet.input_cost_per_mtok - 99.0).abs() < f64::EPSILON,
+        "operator override should win"
+    );
+
+    // Built-in haiku pricing is present even though operator didn't configure it.
+    let haiku = provider
+        .pricing
+        .get("claude-haiku-4-5-20251001")
+        .expect("haiku pricing must be present from defaults");
+    assert!(
+        (haiku.input_cost_per_mtok - 0.8).abs() < f64::EPSILON,
+        "haiku input price should be $0.80/MTok"
+    );
+    assert!(
+        (haiku.output_cost_per_mtok - 4.0).abs() < f64::EPSILON,
+        "haiku output price should be $4.00/MTok"
+    );
+}
+
+/// Empty operator pricing should fall back entirely to built-in defaults.
+#[test]
+fn merge_pricing_empty_operator_uses_all_defaults() {
+    let config = ProviderConfig {
+        api_key: Some("sk-test".to_owned()),
+        pricing: HashMap::new(),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+
+    // All first-party models from ProviderConfig::default() must be present.
+    let defaults = ProviderConfig::default();
+    for model in defaults.pricing.keys() {
+        assert!(
+            provider.pricing.contains_key(model),
+            "missing default pricing for {model}"
+        );
+    }
+}
+
 #[test]
 fn backoff_delay_respects_retry_after() {
     let err = error::RateLimitedSnafu {
