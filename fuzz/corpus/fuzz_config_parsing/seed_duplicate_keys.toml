@@ -1,0 +1,16 @@
+[gateway]
+port = 3000
+port = 9999
+bind = "localhost"
+bind = "0.0.0.0"
+
+[agents]
+[agents]
+
+[agents.defaults]
+contextTokens = 200000
+contextTokens = 100000
+
+[gateway.auth]
+mode = "token"
+mode = "jwt"

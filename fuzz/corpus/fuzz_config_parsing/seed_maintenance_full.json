@@ -1,0 +1,1 @@
+{"maintenance":{"traceRotation":{"maxAgeDays":0,"maxTotalSizeMb":0},"driftDetection":{},"dbMonitoring":{"warnThresholdMb":500,"alertThresholdMb":100},"retention":{"sessionMaxAgeDays":0,"orphanMessageMaxAgeDays":-1},"knowledgeMaintenanceEnabled":true},"credential":{"source":"claude-code","claudeCodeCredentials":"/tmp/creds"},"sandbox":{"enabled":true}}

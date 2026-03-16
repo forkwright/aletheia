@@ -1,0 +1,6 @@
+[agents
+[gateway
+port = 3000
+[agents.list
+id = "alice"
+[maintenance.traceRotation

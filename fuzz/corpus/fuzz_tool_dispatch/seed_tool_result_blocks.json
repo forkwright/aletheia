@@ -1,0 +1,1 @@
+{"type":"tool_result","tool_use_id":"toolu_01","content":[{"type":"text","text":"result text"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}},{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}}],"is_error":false}
