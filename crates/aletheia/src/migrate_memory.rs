@@ -1,4 +1,4 @@
-//! One-time migration of Mem0/Qdrant memories into embedded `KnowledgeStore`.
+//! One-time migration of Qdrant memories into embedded `KnowledgeStore`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

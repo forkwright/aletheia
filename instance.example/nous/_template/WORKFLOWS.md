@@ -34,7 +34,7 @@
 
 | Tool | Use |
 |------|-----|
-| `mem0_search` / `memory_search` | Semantic search across long-term memory |
+| `memory_search` | Semantic search across long-term memory |
 | `consolidate-memory` | Merge/deduplicate memory entries |
 | `aletheia-graph` | Knowledge graph queries |
 | Daily logs | `memory/YYYY-MM-DD.md` — manual session logs |
