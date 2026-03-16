@@ -317,6 +317,5 @@ mod tests {
             )
             .expect("stratification query must succeed in test")
             .rows;
-        // dbg!(res);
     }
 }
