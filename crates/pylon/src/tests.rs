@@ -3003,3 +3003,474 @@ async fn send_message_to_archived_session_returns_409() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "conflict");
 }
+
+// ---------------------------------------------------------------------------
+// Error response envelope tests
+//
+// Each test verifies: HTTP status code, error JSON structure ({error: {code, message}}),
+// and the specific error code string.
+// ---------------------------------------------------------------------------
+
+/// Verify the standard error envelope shape returned by the router.
+///
+/// Checks `{error: {code: "<expected>", message: <string>, request_id: <string>}}`.
+fn assert_error_envelope(body: &serde_json::Value, expected_code: &str) {
+    let error = body
+        .get("error")
+        .unwrap_or_else(|| panic!("response body missing 'error' key: {body}"));
+    assert!(error.is_object(), "error must be an object");
+    assert_eq!(
+        error["code"].as_str().unwrap_or(""),
+        expected_code,
+        "unexpected error code in: {error}"
+    );
+    assert!(
+        error["message"].is_string(),
+        "error.message must be a string: {error}"
+    );
+    assert!(
+        error["request_id"].is_string(),
+        "error.request_id must be present: {error}"
+    );
+}
+
+// ---- Session handler error responses ----
+
+#[tokio::test]
+async fn create_session_empty_nous_id_returns_400_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "",
+            "session_key": "key-1"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "bad_request");
+}
+
+#[tokio::test]
+async fn create_session_empty_session_key_returns_400_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": ""
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "bad_request");
+}
+
+#[tokio::test]
+async fn create_session_unknown_nous_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "nonexistent-agent",
+            "session_key": "key-1"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "nous_not_found");
+}
+
+#[tokio::test]
+async fn get_nonexistent_session_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/sessions/does-not-exist"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "session_not_found");
+}
+
+#[tokio::test]
+async fn close_nonexistent_session_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_delete("/api/v1/sessions/does-not-exist"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "session_not_found");
+}
+
+#[tokio::test]
+async fn archive_nonexistent_session_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request("POST", "/api/v1/sessions/does-not-exist/archive", None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "session_not_found");
+}
+
+#[tokio::test]
+async fn unarchive_nonexistent_session_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request("POST", "/api/v1/sessions/does-not-exist/unarchive", None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "session_not_found");
+}
+
+#[tokio::test]
+async fn rename_nonexistent_session_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/sessions/does-not-exist/name",
+        Some(serde_json::json!({ "name": "new-name" })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "session_not_found");
+}
+
+#[tokio::test]
+async fn rename_session_empty_name_returns_400_with_envelope() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "PUT",
+        &format!("/api/v1/sessions/{id}/name"),
+        Some(serde_json::json!({ "name": "" })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "bad_request");
+}
+
+#[tokio::test]
+async fn history_nonexistent_session_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/sessions/does-not-exist/history"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "session_not_found");
+}
+
+#[tokio::test]
+async fn get_archived_session_returns_404_with_envelope() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let del = router
+        .clone()
+        .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(del.status(), StatusCode::NO_CONTENT);
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "session_not_found");
+}
+
+#[tokio::test]
+async fn duplicate_session_key_returns_409_with_envelope() {
+    let (router, _dir) = app().await;
+
+    let req1 = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "dup-envelope-check"
+        })),
+    );
+    let resp1 = router.clone().oneshot(req1).await.unwrap();
+    assert_eq!(resp1.status(), StatusCode::CREATED);
+
+    let req2 = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "dup-envelope-check"
+        })),
+    );
+    let resp2 = router.clone().oneshot(req2).await.unwrap();
+    assert_eq!(resp2.status(), StatusCode::CONFLICT);
+    let body = body_json(resp2).await;
+    assert_error_envelope(&body, "conflict");
+}
+
+// ---- Message handler error responses ----
+
+#[tokio::test]
+async fn send_message_nonexistent_session_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions/does-not-exist/messages",
+        Some(serde_json::json!({ "content": "hello" })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "session_not_found");
+}
+
+#[tokio::test]
+async fn send_empty_message_returns_400_with_envelope() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "" })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "bad_request");
+}
+
+#[tokio::test]
+async fn send_message_archived_session_returns_409_with_envelope() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let del = router
+        .clone()
+        .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(del.status(), StatusCode::NO_CONTENT);
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "hello" })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "conflict");
+}
+
+#[tokio::test]
+async fn send_message_missing_content_field_returns_client_error() {
+    let (router, _dir) = app().await;
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let token = default_token();
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/v1/sessions/{id}/messages"))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(r#"{"not_content": "value"}"#))
+        .unwrap();
+
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert!(resp.status().is_client_error());
+}
+
+// ---- Knowledge handler error responses ----
+
+#[tokio::test]
+async fn get_nonexistent_fact_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/knowledge/facts/nonexistent-fact-id"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "not_found");
+}
+
+#[tokio::test]
+async fn update_confidence_above_one_returns_400_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/knowledge/facts/fact-1/confidence",
+        Some(serde_json::json!({ "confidence": 1.5 })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "bad_request");
+}
+
+#[tokio::test]
+async fn update_confidence_negative_returns_400_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/knowledge/facts/fact-1/confidence",
+        Some(serde_json::json!({ "confidence": -0.1 })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "bad_request");
+}
+
+#[tokio::test]
+async fn update_confidence_valid_returns_501_not_implemented() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/knowledge/facts/fact-1/confidence",
+        Some(serde_json::json!({ "confidence": 0.5 })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "not_implemented");
+}
+
+#[tokio::test]
+async fn forget_fact_without_knowledge_store_returns_503() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/knowledge/facts/fact-1/forget",
+        Some(serde_json::json!({})),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "service_unavailable");
+}
+
+#[tokio::test]
+async fn restore_fact_without_knowledge_store_returns_503() {
+    let (app, _dir) = app().await;
+    let req = authed_request("POST", "/api/v1/knowledge/facts/fact-1/restore", None);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "service_unavailable");
+}
+
+// ---- Nous handler error responses ----
+
+#[tokio::test]
+async fn get_unknown_nous_status_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/nous/nonexistent-agent"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "nous_not_found");
+}
+
+#[tokio::test]
+async fn get_unknown_nous_tools_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/nous/nonexistent-agent/tools"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "nous_not_found");
+}
+
+// ---- Config handler error responses ----
+
+#[tokio::test]
+async fn get_unknown_config_section_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/config/nonexistent"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "not_found");
+}
+
+#[tokio::test]
+async fn update_unknown_config_section_returns_404_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/config/nonexistent",
+        Some(serde_json::json!({ "key": "value" })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "not_found");
+}
+
+// ---- General: auth errors return consistent envelope ----
+
+#[tokio::test]
+async fn unauthorized_returns_401_with_envelope() {
+    let (app, _dir) = app().await;
+    let req = json_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "test"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    let body = body_json(resp).await;
+    assert_error_envelope(&body, "unauthorized");
+}
+
+// ---- General: fallback route error envelope ----
+
+#[tokio::test]
+async fn unknown_route_returns_404_with_error_envelope() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(
+            Request::get("/api/v1/nonexistent-endpoint")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = body_json(resp).await;
+    assert!(body["error"].is_object());
+    assert!(body["error"]["code"].is_string());
+    assert!(body["error"]["message"].is_string());
+}
