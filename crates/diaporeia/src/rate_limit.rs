@@ -6,6 +6,7 @@ use std::time::Instant;
 use aletheia_taxis::config::McpRateLimitConfig;
 
 /// Operation cost tier for rate limiting.
+#[derive(Clone, Copy)]
 pub(crate) enum Tier {
     /// Expensive operations: `session_message`, `session_create`, `knowledge_search`.
     Expensive,
@@ -78,6 +79,7 @@ impl TokenBucket {
         }
     }
 
+    #[expect(clippy::expect_used, reason = "mutex poisoning is unrecoverable")]
     fn try_acquire(&self) -> bool {
         let mut state = self.inner.lock().expect("rate limiter lock poisoned");
         let now = Instant::now();
@@ -129,7 +131,9 @@ mod tests {
     #[test]
     fn rate_limit_error_has_correct_code() {
         let limiter = RateLimiter::from_config(&test_config(true, 0, 0));
-        let err = limiter.check(Tier::Expensive).unwrap_err();
+        let Err(err) = limiter.check(Tier::Expensive) else {
+            panic!("expected rate limit error")
+        };
         assert_eq!(err.code, rmcp::model::ErrorCode(-32000));
         assert!(err.message.contains("rate limit exceeded"));
     }
@@ -158,7 +162,7 @@ mod tests {
 
         // Manually advance time by adjusting last_refill.
         {
-            let mut state = bucket.inner.lock().expect("lock");
+            let mut state = bucket.inner.lock().unwrap_or_else(|p| panic!("{p}"));
             state.last_refill -= std::time::Duration::from_secs(2);
         }
 

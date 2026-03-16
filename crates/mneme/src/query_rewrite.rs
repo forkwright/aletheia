@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! LLM-powered query rewriting for the recall pipeline.
 //!
 //! Rewrites natural language queries into multiple search variants before

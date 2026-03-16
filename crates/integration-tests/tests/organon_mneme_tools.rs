@@ -14,6 +14,7 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+use aletheia_organon::error::KnowledgeAdapterError;
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
@@ -248,7 +249,8 @@ impl KnowledgeSearchService for StubKnowledgeService {
         query: &str,
         _nous_id: &str,
         _limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, KnowledgeAdapterError>> + Send + '_>>
+    {
         let results: Vec<MemoryResult> = self
             .facts
             .lock()
@@ -270,7 +272,7 @@ impl KnowledgeSearchService for StubKnowledgeService {
         fact_id: &str,
         _new_content: &str,
         _nous_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, KnowledgeAdapterError>> + Send + '_>> {
         let mut n = self.next_id.lock().unwrap();
         let new_id = format!("fact-corrected-{n}");
         *n += 1;
@@ -285,7 +287,7 @@ impl KnowledgeSearchService for StubKnowledgeService {
         &self,
         fact_id: &str,
         _reason: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), KnowledgeAdapterError>> + Send + '_>> {
         self.retracted.lock().unwrap().push(fact_id.to_owned());
         Box::pin(std::future::ready(Ok(())))
     }
@@ -295,7 +297,8 @@ impl KnowledgeSearchService for StubKnowledgeService {
         _nous_id: Option<&str>,
         _since: Option<&str>,
         _limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, KnowledgeAdapterError>> + Send + '_>>
+    {
         let facts: Vec<FactSummary> = self
             .audited
             .lock()
@@ -320,7 +323,11 @@ impl KnowledgeSearchService for StubKnowledgeService {
         fact_id: &str,
         reason: &str,
     ) -> Pin<
-        Box<dyn Future<Output = Result<aletheia_organon::types::FactSummary, String>> + Send + '_>,
+        Box<
+            dyn Future<Output = Result<aletheia_organon::types::FactSummary, KnowledgeAdapterError>>
+                + Send
+                + '_,
+        >,
     > {
         let summary = aletheia_organon::types::FactSummary {
             id: fact_id.to_owned(),
@@ -339,7 +346,11 @@ impl KnowledgeSearchService for StubKnowledgeService {
         &self,
         fact_id: &str,
     ) -> Pin<
-        Box<dyn Future<Output = Result<aletheia_organon::types::FactSummary, String>> + Send + '_>,
+        Box<
+            dyn Future<Output = Result<aletheia_organon::types::FactSummary, KnowledgeAdapterError>>
+                + Send
+                + '_,
+        >,
     > {
         let summary = aletheia_organon::types::FactSummary {
             id: fact_id.to_owned(),
@@ -362,7 +373,10 @@ impl KnowledgeSearchService for StubKnowledgeService {
         _row_limit: Option<usize>,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<aletheia_organon::types::DatalogResult, String>> + Send + '_,
+            dyn Future<
+                    Output = Result<aletheia_organon::types::DatalogResult, KnowledgeAdapterError>,
+                > + Send
+                + '_,
         >,
     > {
         Box::pin(std::future::ready(Ok(
