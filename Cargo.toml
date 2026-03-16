@@ -139,7 +139,7 @@ regex = "1"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 
 # Database
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 
 # String similarity
 strsim = "0.11"
