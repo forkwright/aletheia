@@ -6,7 +6,7 @@
 //! - **Vectors**: embedding-indexed for semantic recall
 //!
 //! Uses `CozoDB` Datalog for graph traversal and HNSW for vector search.
-//! Embedded, no sidecar. Replaced the former Mem0 stack (Qdrant + Neo4j + Ollama).
+//! Embedded, no sidecar. Replaced the former Qdrant + Neo4j sidecar stack.
 
 use crate::id::{EmbeddingId, EntityId, FactId};
 use serde::{Deserialize, Serialize};

@@ -93,7 +93,7 @@ enum Command {
     SessionExport(SessionExportArgs),
     /// Launch the terminal dashboard
     Tui(TuiArgs),
-    /// Migrate memories from Qdrant (Mem0) into embedded `KnowledgeStore`
+    /// Migrate memories from Qdrant into embedded `KnowledgeStore`
     MigrateMemory(MigrateMemoryArgs),
     /// Initialize a new instance
     Init(InitArgs),

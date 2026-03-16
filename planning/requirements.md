@@ -11,7 +11,7 @@ Functional and non-functional requirements. Updated through Wave 9 (#756).
 | ID | Requirement | Status |
 |----|-------------|--------|
 | MEM-01 | Hybrid recall: vector + graph + BM25 with MMR diversity | Done |
-| MEM-02 | Mem0 sidecar integration | Inactive: replaced by mneme direct implementation |
+| MEM-02 | External sidecar integration | Inactive: replaced by mneme direct implementation |
 | MEM-03 | Explicit forgetting API | Done (#736) |
 | MEM-04 | Distillation + memory flush (melete) | Done |
 
