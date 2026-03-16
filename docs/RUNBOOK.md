@@ -67,10 +67,31 @@ Or send SIGTERM / Ctrl+C to the running process. The binary shuts down gracefull
 ## Deploy / update
 
 ```bash
+# Automated (recommended):
+scripts/deploy.sh                    # pull, build, stop, copy, refresh token, start, health check
+
+# Manual:
 cd <repo>
 git pull origin main
 cargo build --release
-systemctl --user restart aletheia
+systemctl --user stop aletheia
+cp target/release/aletheia ~/ergon/bin/aletheia
+systemctl --user start aletheia
+curl -sf http://localhost:18789/api/health | jq .
+```
+
+## Health monitoring
+
+```bash
+# One-off check:
+scripts/health-monitor.sh
+
+# With Signal notification on failure:
+scripts/health-monitor.sh --notify
+
+# Systemd timer (every 5 minutes):
+cp instance.example/services/aletheia-health.{service,timer} ~/.config/systemd/user/
+systemctl --user enable --now aletheia-health.timer
 ```
 
 ---
