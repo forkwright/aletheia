@@ -1419,7 +1419,7 @@ fn fold_non_ascii_char(c: char) -> Option<&'static str> {
         '\u{2011}' | // ‑  [NON-BREAKING HYPHEN]
         '\u{2012}' | // ‒  [FIGURE DASH]
         '\u{2013}' | // –  [EN DASH]
-        '\u{2014}' | // —  [EM DASH]
+        '\u{2014}' | //:  [EM DASH]
         '\u{207B}' | // ⁻  [SUPERSCRIPT MINUS]
         '\u{208B}' | // ₋  [SUBSCRIPT MINUS]
         '\u{FF0D}' // －  [FULLWIDTH HYPHEN-MINUS]

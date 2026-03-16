@@ -1,8 +1,8 @@
-//! Instinct system — behavioral memory from tool usage patterns.
+//! Instinct system: behavioral memory from tool usage patterns.
 //!
 //! Observes tool usage, aggregates patterns, and creates preference facts
-//! when consistent behavioral patterns emerge. Not facts about the world —
-//! facts about how to operate.
+//! when consistent behavioral patterns emerge. Not facts about the world,
+//! but facts about how to operate.
 //!
 //! Example: "When asked about code, use file search before web search"
 //! (observed 47/50 times) → stored as a `FactType::Preference` fact.

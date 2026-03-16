@@ -1,4 +1,4 @@
-//! Cross-format compatibility test — verifies Rust can parse TS-exported `AgentFile`.
+//! Cross-format compatibility test: verifies Rust can parse TS-exported `AgentFile`.
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 

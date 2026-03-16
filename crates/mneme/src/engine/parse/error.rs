@@ -37,7 +37,7 @@ pub enum ParseError {
         location: snafu::Location,
     },
 
-    /// Raw pest parser failure — wraps the pest error so span details are preserved.
+    /// Raw pest parser failure: wraps the pest error so span details are preserved.
     ///
     /// Constructed by callers that have a pest error in hand; `parse_script` uses
     /// [`Syntax`] instead so it can attach span information inline.

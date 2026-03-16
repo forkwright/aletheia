@@ -1,4 +1,4 @@
-//! aletheia-melete — context distillation engine
+//! aletheia-melete: context distillation engine
 
 /// Context distillation engine: token budgeting, LLM-driven summarization, and verbatim tail preservation.
 pub mod distill;

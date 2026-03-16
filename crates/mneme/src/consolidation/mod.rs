@@ -2,7 +2,7 @@
 //!
 //! When an entity has 10+ facts or a community cluster exceeds 20 facts,
 //! the system sends them to an LLM for summarization into fewer, higher-quality
-//! facts. Originals are superseded, not deleted — full provenance is preserved
+//! facts. Originals are superseded, not deleted: full provenance is preserved
 //! via the `consolidation_audit` relation.
 //!
 //! ## Safeguards
@@ -76,7 +76,7 @@ pub enum ConsolidationError {
         location: snafu::Location,
     },
 
-    /// Rate limit exceeded — too soon since the last consolidation cycle.
+    /// Rate limit exceeded: too soon since the last consolidation cycle.
     #[snafu(display(
         "rate limited: last consolidation was {elapsed_hours:.1}h ago (min {min_hours:.1}h)"
     ))]
@@ -287,7 +287,7 @@ fn extract_json_array(s: &str) -> Option<&str> {
 
 /// Datalog query: find entities with more than N active facts older than the age gate.
 ///
-/// Parameters: `$min_count` (Int), `$cutoff` (String — ISO 8601 timestamp),
+/// Parameters: `$min_count` (Int), `$cutoff` (String: ISO 8601 timestamp),
 ///             `$nous_id` (String).
 ///
 /// Returns: `[entity_id, fact_count]` sorted by `fact_count` descending.
@@ -311,7 +311,7 @@ candidates[entity_id, count(fact_id)] :=
 
 /// Datalog query: find community clusters with more than N active facts older than the age gate.
 ///
-/// Parameters: `$min_count` (Int), `$cutoff` (String — ISO 8601 timestamp),
+/// Parameters: `$min_count` (Int), `$cutoff` (String: ISO 8601 timestamp),
 ///             `$nous_id` (String).
 ///
 /// Returns: `[cluster_id, fact_count]` sorted by `fact_count` descending.

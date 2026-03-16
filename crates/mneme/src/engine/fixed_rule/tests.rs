@@ -6,7 +6,7 @@
 //! Key conventions:
 //! - Fixed rule options are comma-separated (same as relation args), no semicolon.
 //! - Algorithms using `as_directed_graph(true)` or `as_directed_weighted_graph(true, …)`
-//!   mirror edges internally — supply edges in ONE direction to avoid duplicates.
+//!   mirror edges internally: supply edges in ONE direction to avoid duplicates.
 //! - Algorithms that do not mirror (DegreeCentrality, BFS, DFS) expect explicit
 //!   bidirectional edges if undirected semantics are needed.
 #![expect(clippy::unwrap_used, reason = "test assertions")]
@@ -1250,7 +1250,7 @@ end[]   <- [[1]]
     }
 
     // ────────────────────────────────────────────────────────────────────────
-    // 20. KCore (new algorithm — k-core decomposition)
+    // 20. KCore (new algorithm: k-core decomposition)
     // ────────────────────────────────────────────────────────────────────────
 
     /// Clique K4 + pendant: K4 nodes are in 3-core; pendant is in 1-core.
@@ -1348,7 +1348,7 @@ edges[src, dst] <- []
         assert!(res.is_empty(), "Empty graph ⇒ no k-core rows");
     }
 
-    /// Disconnected graph — two K3 cliques + isolated edge:
+    /// Disconnected graph: two K3 cliques + isolated edge:
     /// K3 nodes are in 2-core; isolated-edge nodes are in 1-core.
     #[test]
     fn test_kcore_when_disconnected_graph_assigns_per_component_cores() {

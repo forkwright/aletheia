@@ -306,7 +306,7 @@ mod tests {
 
         let msg = extract_message(&env).unwrap();
         assert_eq!(msg.text, "hi");
-        assert_eq!(msg.timestamp, 0); // no timestamp available — warns at runtime
+        assert_eq!(msg.timestamp, 0); // no timestamp available: warns at runtime
     }
 
     #[test]

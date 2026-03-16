@@ -25,7 +25,7 @@ pub(crate) struct AuthConfig {
     pub jwt: JwtConfig,
 }
 
-/// The main auth service — wraps JWT, API keys, and password auth.
+/// The main auth service: wraps JWT, API keys, and password auth.
 pub(crate) struct AuthService {
     jwt: JwtManager,
     store: AuthStore,

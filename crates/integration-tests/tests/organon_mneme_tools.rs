@@ -115,7 +115,7 @@ async fn note_add_and_list_uses_real_store() {
     );
     assert!(r.content.text_summary().contains("#1"));
 
-    // List notes — should show the note
+    // List notes: should show the note
     let list = tool_input("note", serde_json::json!({"action": "list"}));
     let r = reg.execute(&list, &ctx).await.expect("execute");
     assert!(!r.is_error);
@@ -216,7 +216,7 @@ struct StubKnowledgeService {
     next_id: std::sync::Mutex<u32>,
     corrected: std::sync::Mutex<Vec<(String, String)>>, // (old_id, new_id)
     retracted: std::sync::Mutex<Vec<String>>,
-    audited: std::sync::Mutex<Vec<(String, String)>>, // (id, content) — FactSummary not Clone
+    audited: std::sync::Mutex<Vec<(String, String)>>, // (id, content): FactSummary not Clone
 }
 
 impl StubKnowledgeService {

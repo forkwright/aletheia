@@ -480,7 +480,7 @@ impl TaskRunner {
         task.consecutive_failures += 1;
         task.last_run = Some(jiff::Timestamp::now());
 
-        // WHY: GraphHealthCheck is a diagnostic — failures don't count toward auto-disable.
+        // WHY: GraphHealthCheck is a diagnostic: failures don't count toward auto-disable.
         let exempt = matches!(
             task.def.action,
             TaskAction::Builtin(BuiltinTask::GraphHealthCheck)

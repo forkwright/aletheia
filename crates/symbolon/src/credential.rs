@@ -68,9 +68,9 @@ impl CredentialFile {
     ///
     /// Accepts two on-disk layouts:
     ///
-    /// * **Flat** — `{"token": "...", "refreshToken": "..."}` (native) or with the
+    /// * **Flat**: `{"token": "...", "refreshToken": "..."}` (native) or with the
     ///   `"accessToken"` alias produced by older Claude Code versions.
-    /// * **Wrapped** — `{"claudeAiOauth": {"accessToken": "...", ...}}` — the nested
+    /// * **Wrapped**: `{"claudeAiOauth": {"accessToken": "...", ...}}`: the nested
     ///   format written by current Claude Code releases.
     ///
     /// WHY: Claude Code changed its `.credentials.json` layout to nest all OAuth fields
@@ -180,7 +180,7 @@ fn base64url_decode(s: &str) -> Option<Vec<u8>> {
             b'0'..=b'9' => Some(b - b'0' + 52),
             b'-' | b'+' => Some(62),
             b'_' | b'/' => Some(63),
-            b'=' => Some(0), // padding — treated as zero bits
+            b'=' => Some(0), // padding: treated as zero bits
             _ => None,
         }
     }
@@ -221,7 +221,7 @@ fn base64url_decode(s: &str) -> Option<Vec<u8>> {
 /// non-network way to detect a stale token and allow fallthrough to a refreshable
 /// file-based provider.
 ///
-/// NOTE: signature is intentionally not verified — only the expiry claim is read.
+/// NOTE: signature is intentionally not verified: only the expiry claim is read.
 /// Returns `None` when the token has no recognisable payload segment or no `exp`
 /// field; the caller must treat `None` as "expiry unknown" (do not fall through).
 fn decode_jwt_exp_secs(token: &str) -> Option<u64> {
@@ -276,8 +276,8 @@ impl CredentialProvider for EnvCredentialProvider {
 
             // When the env var holds an OAuth access token, check whether it has
             // an embedded expiry claim. If the token appears expired, fall through
-            // to the next provider — typically a file-based provider with a live
-            // refresh token — rather than blocking the chain with a stale credential.
+            // to the next provider: typically a file-based provider with a live
+            // refresh token: rather than blocking the chain with a stale credential.
             // WHY: static env var tokens cannot be refreshed; a refreshable file
             // provider downstream must get a chance to supply a valid credential.
             if v.starts_with(OAUTH_TOKEN_PREFIX)

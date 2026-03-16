@@ -434,7 +434,7 @@ pub struct ExportedSkill {
 /// Creates the directory structure and writes each skill as a SKILL.md file
 /// with YAML frontmatter. Existing files are overwritten.
 ///
-/// This is a pure library function — no knowledge store dependency. Pass in
+/// This is a pure library function: no knowledge store dependency. Pass in
 /// already-resolved `SkillContent` values. The CLI and energeia bridge both
 /// use this same function.
 ///

@@ -293,7 +293,7 @@ impl<'s, S: Storage<'s>> Db<S> {
 
     /// Backup the running database into an Sqlite file.
     ///
-    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    /// Not currently supported: requires the removed `storage-sqlite` feature.
     pub fn backup_db(&'s self, _out_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
             operation: "backup",
@@ -303,7 +303,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
     /// Restore from an Sqlite backup.
     ///
-    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    /// Not currently supported: requires the removed `storage-sqlite` feature.
     pub fn restore_backup(&'s self, _in_file: impl AsRef<Path>) -> Result<()> {
         UnsupportedSnafu {
             operation: "restore",
@@ -313,7 +313,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
     /// Import data from relations in a backup file.
     ///
-    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    /// Not currently supported: requires the removed `storage-sqlite` feature.
     pub fn import_from_backup(
         &'s self,
         _in_file: impl AsRef<Path>,
@@ -453,7 +453,7 @@ impl<'s, S: Storage<'s>> Db<S> {
 #[derive(Clone, Default)]
 pub struct Poison(pub(crate) Arc<AtomicBool>);
 
-/// Typed error for query cancellation — enables downstream matching without string parsing.
+/// Typed error for query cancellation: enables downstream matching without string parsing.
 #[derive(Debug, Snafu)]
 #[snafu(display("Running query is killed before completion"))]
 pub(crate) struct ProcessKilled;

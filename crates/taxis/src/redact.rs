@@ -1,4 +1,4 @@
-//! Config redaction — strips secrets from config before API exposure.
+//! Config redaction: strips secrets from config before API exposure.
 
 use serde_json::Value;
 use tracing::debug;

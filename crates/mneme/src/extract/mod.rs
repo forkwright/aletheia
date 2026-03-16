@@ -1,4 +1,4 @@
-//! Knowledge extraction pipeline — LLM-driven entity/relationship/fact extraction.
+//! Knowledge extraction pipeline: LLM-driven entity/relationship/fact extraction.
 
 /// Context-dependent extraction refinement: turn classification, correction
 /// detection, quality filters, and fact type classification.
@@ -794,7 +794,7 @@ mod tests {
     #[test]
     fn parse_missing_fields_errors() {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
-        // Missing required fields — serde_json requires all fields on Extraction.
+        // Missing required fields: serde_json requires all fields on Extraction.
         // "facts" key with only "content" is wrong shape (ExtractedFact needs subject/predicate/object).
         let json = r#"{"facts": [{"content": "test"}]}"#;
         let result = engine.parse_response(json);
@@ -816,7 +816,7 @@ mod tests {
     #[test]
     fn parse_confidence_preserves_out_of_range() {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
-        // NOTE: The parser does NOT clamp confidence values — it stores them as-is.
+        // NOTE: The parser does NOT clamp confidence values: it stores them as-is.
         // This is a documentation test: values outside [0,1] parse without error
         // but are semantically invalid. Validation should happen at the persist layer.
         let json = r#"{
@@ -860,7 +860,7 @@ mod tests {
             .parse_response(json)
             .expect("all entity types including unknown should parse");
         assert_eq!(extraction.entities.len(), 6);
-        // entity_type is a free-form string — no validation at parse time
+        // entity_type is a free-form string: no validation at parse time
         assert_eq!(extraction.entities[5].entity_type, "unknown_type");
     }
 
@@ -887,7 +887,7 @@ mod tests {
     #[test]
     fn parse_does_not_deduplicate_entities() {
         let engine = ExtractionEngine::new(ExtractionConfig::default());
-        // NOTE: The parser does NOT deduplicate entities — it returns them as-is.
+        // NOTE: The parser does NOT deduplicate entities: it returns them as-is.
         // Deduplication is the responsibility of the persist layer.
         let json = r#"{
             "entities": [
@@ -1196,7 +1196,7 @@ mod tests {
         let result = engine
             .persist(&extraction, &store, "session:test", "syn")
             .expect("persist should succeed even when relationship type is unknown");
-        // Unknown types are now rejected — not persisted — to keep the vocab clean.
+        // Unknown types are now rejected: not persisted: to keep the vocab clean.
         assert_eq!(result.relationships_inserted, 0);
         assert_eq!(result.relationships_skipped, 1);
     }

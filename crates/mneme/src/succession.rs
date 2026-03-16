@@ -1,4 +1,4 @@
-//! Ecological succession — tracking how knowledge evolves over time.
+//! Ecological succession: tracking how knowledge evolves over time.
 //!
 //! Detects supersession patterns, identifies volatile vs stable domains,
 //! and adapts FSRS decay rates accordingly. Facts in frequently-changing
@@ -48,7 +48,7 @@ pub struct DomainVolatility {
     pub computed_at: jiff::Timestamp,
 }
 
-/// Per-nous knowledge profile — diagnostic view of what a nous "knows about."
+/// Per-nous knowledge profile: diagnostic view of what a nous "knows about."
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeProfile {
     /// The nous whose profile this is.
@@ -124,7 +124,7 @@ pub fn adaptive_stability(
 /// Joins `facts` with `fact_entities` and supersession chain data to produce:
 /// `[entity_id, total_facts, superseded_facts, avg_chain_length]`
 ///
-/// Run after `SUPERSESSION_CHAIN_LENGTHS` — uses the same `chain[]` recursion inline.
+/// Run after `SUPERSESSION_CHAIN_LENGTHS`: uses the same `chain[]` recursion inline.
 pub const ENTITY_VOLATILITY_METRICS: &str = r"
 chain[id, d] := *facts{id, superseded_by}, is_null(superseded_by), d = 0
 chain[id, n] := *facts{id, superseded_by}, superseded_by = next_id, not is_null(next_id),

@@ -1,4 +1,4 @@
-/// Message selection handlers — navigation, actions, and SelectionContext sync.
+/// Message selection handlers: navigation, actions, and SelectionContext sync.
 use crate::app::App;
 use crate::msg::{ErrorToast, MessageActionKind};
 use crate::state::SelectionContext;

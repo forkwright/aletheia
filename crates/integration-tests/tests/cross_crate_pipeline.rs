@@ -541,7 +541,7 @@ async fn full_turn_lifecycle_sse_events_and_persistence() {
         "message_complete should have output_tokens"
     );
 
-    // Verify persistence — history should have user + assistant
+    // Verify persistence: history should have user + assistant
     let history = harness.get_history(&router, id).await;
     let messages = history["messages"].as_array().expect("messages array");
     assert!(
@@ -741,7 +741,7 @@ async fn session_lifecycle_create_list_archive_unarchive_rename() {
     let messages = history["messages"].as_array().expect("messages");
     assert!(messages.len() >= 2, "should have user + assistant messages");
 
-    // List sessions — should include our session
+    // List sessions: should include our session
     let resp = router
         .clone()
         .oneshot(harness.authed_get("/api/v1/sessions?nous_id=test-nous"))
@@ -795,7 +795,7 @@ async fn session_lifecycle_create_list_archive_unarchive_rename() {
     let resp = router.clone().oneshot(req).await.expect("rename");
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
-    // Verify renamed — check via list endpoint where display_name is returned
+    // Verify renamed: check via list endpoint where display_name is returned
     let resp = router
         .clone()
         .oneshot(harness.authed_get("/api/v1/sessions?nous_id=test-nous"))
@@ -861,7 +861,7 @@ async fn auth_expired_token_returns_401() {
         nous_id: None,
         iss: "aletheia-test".to_owned(),
         iat: 1_000_000,
-        exp: 1_000_001, // 1970-01-12 — well past any leeway
+        exp: 1_000_001, // 1970-01-12: well past any leeway
         jti: "expired-test".to_owned(),
         kind: aletheia_symbolon::types::TokenKind::Access,
     };

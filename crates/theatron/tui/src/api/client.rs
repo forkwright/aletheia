@@ -25,7 +25,7 @@ fn encode_path(s: &str) -> String {
 ///
 /// Default headers set here apply to every request made with this client:
 /// - Authorization: Bearer <token> (if a token is configured)
-/// - x-requested-with: aletheia (CSRF mitigation — server rejects absent header)
+/// - x-requested-with: aletheia (CSRF mitigation: server rejects absent header)
 /// - Content-Type: application/json
 /// - Accept: application/json (SSE callers override this per-request to text/event-stream)
 ///
@@ -111,14 +111,14 @@ impl ApiClient {
     }
 
     fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        // NOTE: no per-request header injection — token is fixed at construction
+        // NOTE: no per-request header injection: token is fixed at construction
         self.client.request(method, self.url(path))
     }
 
     #[tracing::instrument(skip(self))]
     pub async fn health(&self) -> Result<bool> {
         // WHY: check reachability, not health status. A 503 (unhealthy)
-        // means the server IS running but has degraded checks — still usable.
+        // means the server IS running but has degraded checks: still usable.
         let resp = self.client.get(self.url("/api/health")).send().await;
         Ok(resp.is_ok())
     }

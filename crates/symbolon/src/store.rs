@@ -345,7 +345,7 @@ fn get_schema_version(conn: &Connection) -> Result<u32> {
         return Ok(0);
     }
 
-    // NOTE: the table exists — any failure to read the version signals corruption.
+    // NOTE: the table exists: any failure to read the version signals corruption.
     conn.query_row(
         "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
         [],

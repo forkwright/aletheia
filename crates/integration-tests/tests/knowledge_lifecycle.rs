@@ -109,7 +109,7 @@ fn retract_fact(store: &Arc<KnowledgeStore>, fact_id: &str, retraction_time: &st
     store.run_mut_query(script, params).expect("retract fact");
 }
 
-/// Raw Datalog audit query — returns ALL facts for a `nous_id` without temporal filtering.
+/// Raw Datalog audit query: returns ALL facts for a `nous_id` without temporal filtering.
 /// This is what `audit_facts` SHOULD do (the adapter currently filters out historical facts).
 fn audit_all_facts(store: &Arc<KnowledgeStore>, nous_id: &str) -> Vec<AuditRow> {
     let script = r"
@@ -255,7 +255,7 @@ fn full_knowledge_lifecycle() {
         "2026-06-01T00:00:00Z",
     );
 
-    // 3. Verify correction — only new fact visible
+    // 3. Verify correction: only new fact visible
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after correct");
@@ -301,7 +301,7 @@ fn full_knowledge_lifecycle() {
     // 4. Retract the corrected fact
     retract_fact(&store, "f-2", "2026-06-15T00:00:00Z");
 
-    // 5. Verify retraction — nothing visible
+    // 5. Verify retraction: nothing visible
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after retract");
@@ -767,22 +767,22 @@ fn full_forget_lifecycle() {
     );
     store.insert_fact(&fact).expect("insert");
 
-    // 2. Search — found
+    // 2. Search: found
     let results = store.query_facts(nous, query_time, 10).expect("query");
     assert_eq!(results.len(), 1);
 
-    // 3. Forget — privacy
+    // 3. Forget: privacy
     store
         .forget_fact("f-lifecycle", ForgetReason::Privacy)
         .expect("forget");
 
-    // 4. Search — not found
+    // 4. Search: not found
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after forget");
     assert!(results.is_empty());
 
-    // 5. Audit — found with metadata
+    // 5. Audit: found with metadata
     let audit = audit_all_facts(&store, nous);
     assert_eq!(audit.len(), 1);
     assert!(audit[0].is_forgotten);
@@ -791,7 +791,7 @@ fn full_forget_lifecycle() {
     // 6. Unforget
     store.unforget_fact("f-lifecycle").expect("unforget");
 
-    // 7. Search — found again
+    // 7. Search: found again
     let results = store
         .query_facts(nous, query_time, 10)
         .expect("query after unforget");

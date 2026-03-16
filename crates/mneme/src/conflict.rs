@@ -1,15 +1,15 @@
 //! Conflict detection pipeline for fact insertion.
 //!
 //! Before every fact insertion, the pipeline detects whether a new fact
-//! contradicts, refines, duplicates, or supplements existing facts — and
+//! contradicts, refines, duplicates, or supplements existing facts: and
 //! resolves the conflict automatically where confidence allows.
 //!
 //! ## 4-Phase Pipeline
 //!
-//! 1. **Intra-batch dedup** — string-exact or cosine ≥ 0.95 duplicates within the batch
-//! 2. **Candidate retrieval** — HNSW cosine + BM25 subject match against existing facts
-//! 3. **LLM classification** — classify (new_fact, candidate) pairs
-//! 4. **Action resolution** — determine insert/supersede/drop based on classification
+//! 1. **Intra-batch dedup**: string-exact or cosine ≥ 0.95 duplicates within the batch
+//! 2. **Candidate retrieval**: HNSW cosine + BM25 subject match against existing facts
+//! 3. **LLM classification**: classify (new_fact, candidate) pairs
+//! 4. **Action resolution**: determine insert/supersede/drop based on classification
 
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;

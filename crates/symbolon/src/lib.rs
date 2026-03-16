@@ -1,6 +1,6 @@
-//! aletheia-symbolon — authentication and authorization
+//! aletheia-symbolon: authentication and authorization
 //!
-//! Symbolon (σύμβολον — "token, credential") handles JWT sessions,
+//! Symbolon (σύμβολον: "token, credential") handles JWT sessions,
 //! API key validation, Argon2id password hashing, and RBAC permission checks.
 
 /// API key generation, validation, and revocation.

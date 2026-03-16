@@ -43,7 +43,7 @@ impl ToolExecutor for ShellToolExecutor {
             });
             let timeout = Duration::from_millis(self.timeout_ms);
 
-            // WHY: retry on ETXTBSY (errno 26) — benign race between writing/chmod and exec
+            // WHY: retry on ETXTBSY (errno 26): benign race between writing/chmod and exec
             let mut child = {
                 let mut last_err = None;
                 let mut spawned = None;
@@ -324,7 +324,7 @@ mod tests {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).unwrap();
             }
-            // WHY: explicit File ensures fd is closed before chmod/exec — avoids ETXTBSY
+            // WHY: explicit File ensures fd is closed before chmod/exec: avoids ETXTBSY
             let file = std::fs::File::create(&path).unwrap();
             std::io::Write::write_all(&mut &file, content.as_bytes()).unwrap();
             file.sync_all().unwrap();

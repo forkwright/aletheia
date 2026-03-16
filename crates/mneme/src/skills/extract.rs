@@ -5,7 +5,7 @@
 //! sequences, sends it to a cost-effective LLM (Haiku), and parses the
 //! structured skill definition from the response.
 //!
-//! The extracted skill is stored with `status: "pending_review"` — it is NOT
+//! The extracted skill is stored with `status: "pending_review"`: it is NOT
 //! automatically activated. A human or orchestrator must approve it first.
 
 use serde::{Deserialize, Serialize};
@@ -124,14 +124,14 @@ impl<P: SkillExtractionProvider> SkillExtractor<P> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DedupOutcome {
-    /// No duplicate found — promote normally.
+    /// No duplicate found: promote normally.
     Unique,
-    /// Existing skill is better — discard candidate.
+    /// Existing skill is better: discard candidate.
     DiscardCandidate {
         /// The ID of the existing skill that wins.
         existing_id: String,
     },
-    /// Candidate is better — supersede the existing skill.
+    /// Candidate is better: supersede the existing skill.
     SupersedeExisting {
         /// The ID of the existing skill to supersede.
         existing_id: String,

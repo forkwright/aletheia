@@ -1,4 +1,4 @@
-//! Finalize stage — persists the pipeline result to durable storage.
+//! Finalize stage: persists the pipeline result to durable storage.
 //!
 //! After the execute stage produces a `TurnResult`, the finalize stage:
 //! 1. Persists the user's message
@@ -24,7 +24,7 @@ use crate::session::SessionState;
 /// are a millisecond timestamp, so the result is monotonically increasing
 /// within each millisecond and practically unique across restarts.
 fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
-    // NOTE: ULID is 128-bit — shift right 65 bits to keep upper 63 bits (47-bit timestamp + 16-bit randomness prefix); mask ensures sign bit is zero so cast to i64 never wraps
+    // NOTE: ULID is 128-bit: shift right 65 bits to keep upper 63 bits (47-bit timestamp + 16-bit randomness prefix); mask ensures sign bit is zero so cast to i64 never wraps
     let raw = u128::from(*ulid);
     ((raw >> 65) & 0x7FFF_FFFF_FFFF_FFFF) as i64
 }
@@ -59,14 +59,14 @@ pub struct FinalizeResult {
 /// Persist turn results to the session store.
 ///
 /// Errors from the store are propagated but callers should treat them as
-/// non-fatal — the user already has their response.
+/// non-fatal: the user already has their response.
 ///
 /// # Session guarantee
 ///
 /// The nous actor creates sessions in memory (not in `SQLite`). Before
 /// appending messages we ensure the session record exists in the store,
 /// avoiding a FOREIGN KEY constraint violation on the `messages` table.
-// NOTE(#940): 120 lines — sequential persistence pipeline: persist assistant message,
+// NOTE(#940): 120 lines: sequential persistence pipeline: persist assistant message,
 // store tool results, update session, emit events. One cohesive commit sequence.
 #[expect(
     clippy::too_many_lines,
@@ -80,9 +80,9 @@ pub fn finalize(
     result: &TurnResult,
     config: &FinalizeConfig,
 ) -> error::Result<FinalizeResult> {
-    // INVARIANT: dedup guard — skip if this turn was already finalized (usage record exists)
+    // INVARIANT: dedup guard: skip if this turn was already finalized (usage record exists)
     //
-    // WHY: turn_id (fresh ULID) is the dedup key rather than session_id — see issue #1036
+    // WHY: turn_id (fresh ULID) is the dedup key rather than session_id: see issue #1036
     let turn_seq = turn_seq_from_ulid(&session.turn_id);
     if store
         .usage_exists_for_turn(&session.id, turn_seq)
@@ -102,7 +102,7 @@ pub fn finalize(
     let mut messages_persisted = 0usize;
 
     if config.persist_messages {
-        // WHY: ensure session row exists before child messages — FK constraint on messages table would otherwise fail
+        // WHY: ensure session row exists before child messages: FK constraint on messages table would otherwise fail
         store
             .find_or_create_session(
                 &session.id,
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn finalize_creates_session_if_missing() {
         let store = SessionStore::open_in_memory().expect("in-memory store");
-        // Do NOT call store.create_session — the actor wouldn't have done so.
+        // Do NOT call store.create_session: the actor wouldn't have done so.
         let config_nous = NousConfig {
             id: "test-nous".to_owned(),
             model: "test-model".to_owned(),
@@ -406,7 +406,7 @@ mod tests {
     /// but the actor's `SessionState` holds a different ID "B". Before the fix,
     /// `find_or_create_session` would find the existing session by
     /// (`nous_id`, `session_key`) and return ID "A", but `append_message` would
-    /// use the actor's ID "B" — causing an FK constraint violation.
+    /// use the actor's ID "B": causing an FK constraint violation.
     ///
     /// After the fix, the actor adopts the DB session ID so both match.
     #[test]
@@ -431,7 +431,7 @@ mod tests {
         let result = simple_result();
         let finalize_config = FinalizeConfig::default();
 
-        // This must succeed — no FK violation because IDs match.
+        // This must succeed: no FK violation because IDs match.
         let fr = finalize(&store, &session, "Hello", &result, &finalize_config)
             .expect("finalize should not fail with matching session IDs");
         assert_eq!(fr.messages_persisted, 2);
@@ -480,7 +480,7 @@ mod tests {
         //
         // The finalize function calls find_or_create_session with the actor's
         // session.id as the `id` param. Since an active session already exists
-        // for (nous_id, session_key), it returns that existing session — but
+        // for (nous_id, session_key), it returns that existing session: but
         // does NOT create a new row with the actor's ID. Subsequent
         // append_message calls use the actor's ID, which has no row → FK error.
         let result = finalize(

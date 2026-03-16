@@ -279,7 +279,7 @@ impl KnowledgeStore {
         Ok(results)
     }
 
-    /// Approve a pending merge — execute it.
+    /// Approve a pending merge: execute it.
     #[instrument(skip(self))]
     pub fn approve_merge(
         &self,

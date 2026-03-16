@@ -75,7 +75,7 @@ impl From<Error> for rmcp::ErrorData {
     fn from(err: Error) -> Self {
         let message = crate::sanitize::strip_paths(&err.to_string());
         match &err {
-            // NOTE: client provided an invalid agent or session ID — include what wasn't found
+            // NOTE: client provided an invalid agent or session ID: include what wasn't found
             Error::NousNotFound { .. } | Error::SessionNotFound { .. } => {
                 rmcp::ErrorData::invalid_params(message, None)
             }

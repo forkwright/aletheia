@@ -1,4 +1,4 @@
-//! Instance drift detection — compare instance against template.
+//! Instance drift detection: compare instance against template.
 
 use std::fs;
 use std::path::{Path, PathBuf};

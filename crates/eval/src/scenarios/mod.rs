@@ -1,4 +1,4 @@
-//! Scenario registry — all built-in behavioral scenarios.
+//! Scenario registry: all built-in behavioral scenarios.
 
 mod auth;
 mod conversation;

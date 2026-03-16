@@ -398,7 +398,7 @@ async fn test_exec_failed_command_reports_nonzero_exit_code() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = test_ctx(dir.path());
     // WHY: Use explicit `sh -c 'exit 42'` to test non-zero exit codes.
-    // Exec no longer passes the whole string to a shell — the shell is invoked
+    // Exec no longer passes the whole string to a shell: the shell is invoked
     // explicitly here as the program, which is safe.
     let input = tool_input("exec", serde_json::json!({ "command": "sh -c 'exit 42'" }));
     let result = ExecExecutor {
@@ -680,7 +680,7 @@ async fn exec_permissive_sandbox_runs_tool_regardless_of_landlock_availability()
 #[tokio::test]
 async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() {
     // Enforcing enforcement when Landlock is absent: must get a clear error
-    // naming Landlock and ABI — not an opaque "Permission denied".
+    // naming Landlock and ABI: not an opaque "Permission denied".
     // When Landlock IS available on the CI kernel, the command runs normally.
     use crate::sandbox::probe_landlock_abi;
 
@@ -773,7 +773,7 @@ fn parse_command_args_rejects_whitespace_only_command() {
 
 #[test]
 fn parse_command_args_treats_shell_metacharacters_as_literals() {
-    // WHY: Shell injection prevention — semicolons, pipes, and ampersands must
+    // WHY: Shell injection prevention: semicolons, pipes, and ampersands must
     // not be interpreted as command separators or operators when the LLM
     // includes them in a command string.
     let (prog, args) = parse_command_args("echo hello; rm -rf /").expect("parse");

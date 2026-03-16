@@ -1,4 +1,4 @@
-//! Dispatch helpers — tool execution, signal classification, message conversion.
+//! Dispatch helpers: tool execution, signal classification, message conversion.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

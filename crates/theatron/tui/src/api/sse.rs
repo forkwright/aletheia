@@ -78,7 +78,7 @@ impl SseConnection {
                                 if let Some(parsed) = parse_sse_event(&msg.event, &msg.data)
                                     && tx.send(parsed).await.is_err()
                                 {
-                                    // WHY: receiver dropped — shut down the SSE loop
+                                    // WHY: receiver dropped: shut down the SSE loop
                                     return;
                                 }
                             }

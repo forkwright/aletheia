@@ -44,7 +44,7 @@ impl FixedRule for KCore {
         let adj: Vec<Vec<u32>> = (0..n as u32)
             .map(|node| {
                 let mut nb: Vec<u32> = graph.out_neighbors(node).collect();
-                // Deduplicate — edges may have been mirrored by as_directed_graph.
+                // Deduplicate: edges may have been mirrored by as_directed_graph.
                 nb.sort_unstable();
                 nb.dedup();
                 nb
@@ -62,7 +62,7 @@ impl FixedRule for KCore {
         let max_degree = effective_degree.iter().copied().max().unwrap_or(0);
         let mut k: u32 = 1;
         while k <= max_degree {
-            // Collect seeds — alive nodes whose degree has dropped below k.
+            // Collect seeds: alive nodes whose degree has dropped below k.
             let mut queue: Vec<u32> = (0..n as u32)
                 .filter(|&v| alive[v as usize] && effective_degree[v as usize] < k)
                 .collect();

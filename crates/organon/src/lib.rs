@@ -1,6 +1,6 @@
-//! aletheia-organon — tool registry, definitions, and built-in tool stubs
+//! aletheia-organon: tool registry, definitions, and built-in tool stubs
 //!
-//! Organon (ὄργανον) — "instrument." The formal instruments through which
+//! Organon (ὄργανον): "instrument." The formal instruments through which
 //! agent capability expresses. Provides the tool registry, definition types,
 //! and stub implementations for built-in tools.
 //!
@@ -11,7 +11,7 @@ pub mod builtins;
 /// Organon-specific error types and result alias.
 pub mod error;
 pub mod metrics;
-/// RAII guard for subprocess lifecycle — kills and reaps on drop.
+/// RAII guard for subprocess lifecycle: kills and reaps on drop.
 pub(crate) mod process_guard;
 /// Central tool registry for runtime discovery and dispatch.
 pub mod registry;

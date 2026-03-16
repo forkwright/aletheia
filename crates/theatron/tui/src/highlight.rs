@@ -8,7 +8,7 @@ use syntect::util::LinesWithEndings;
 use crate::theme::ThemeMode;
 
 /// Lazily-loaded syntax highlighting resources.
-/// syntect's SyntaxSet + ThemeSet are expensive to build — load once.
+/// syntect's SyntaxSet + ThemeSet are expensive to build: load once.
 pub struct Highlighter {
     syntax_set: SyntaxSet,
     theme_set: ThemeSet,
