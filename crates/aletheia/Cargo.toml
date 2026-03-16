@@ -13,7 +13,7 @@ name = "aletheia"
 path = "src/main.rs"
 
 [features]
-default = ["tui", "recall", "storage-fjall"]
+default = ["tui", "recall", "storage-fjall", "embed-candle"]
 # MCP server (Model Context Protocol). Disabled by default: adds context-window
 # cost and auth friction for local deployments. Enable with `--features mcp`.
 mcp = ["dep:aletheia-diaporeia"]
@@ -21,8 +21,7 @@ mcp = ["dep:aletheia-diaporeia"]
 recall = ["aletheia-nous/knowledge-store", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall", "aletheia-pylon/knowledge-store"]
 # fjall storage backend for mneme (LSM-tree, pure Rust, LZ4 compression).
 storage-fjall = ["aletheia-mneme/storage-fjall"]
-# Local ML embeddings via candle. Opt-in: not included in default builds.
-# Use: cargo build --features embed-candle
+# Local ML embeddings via candle.
 embed-candle = ["aletheia-mneme/embed-candle"]
 migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall"]
 tls = ["aletheia-pylon/tls"]
