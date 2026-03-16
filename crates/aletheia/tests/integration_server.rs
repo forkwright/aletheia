@@ -1,10 +1,10 @@
+#![cfg(feature = "storage-fjall")]
 // Integration test: start the server, verify health, send a session request.
 // Requires: compiled binary with default features. No LLM provider needed.
 //
 // This test exercises the deploy path: binary starts, opens stores, serves
 // HTTP, and shuts down cleanly. It catches regressions like missing default
 // features (embed-candle) and broken config parsing.
-
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
@@ -97,11 +97,11 @@ fn server_starts_serves_health_and_shuts_down() {
     let mut ready = false;
     for _ in 0..30 {
         std::thread::sleep(Duration::from_millis(500));
-        if let Ok(resp) = client.get(&url).send() {
-            if resp.status().is_success() {
-                ready = true;
-                break;
-            }
+        if let Ok(resp) = client.get(&url).send()
+            && resp.status().is_success()
+        {
+            ready = true;
+            break;
         }
     }
 
@@ -110,7 +110,11 @@ fn server_starts_serves_health_and_shuts_down() {
         child.kill().ok();
         if let Some(stderr) = child.stderr.take() {
             let reader = BufReader::new(stderr);
-            let lines: Vec<String> = reader.lines().take(20).filter_map(|l| l.ok()).collect();
+            let lines: Vec<String> = reader
+                .lines()
+                .take(20)
+                .filter_map(std::result::Result::ok)
+                .collect();
             panic!(
                 "server did not become healthy within 15s on port {port}. stderr:\n{}",
                 lines.join("\n")

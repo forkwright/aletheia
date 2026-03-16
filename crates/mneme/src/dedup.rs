@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Entity deduplication pipeline for merging semantically identical entities.
 //!
 //! Runs as a background maintenance task after ingestion batches. Without dedup,

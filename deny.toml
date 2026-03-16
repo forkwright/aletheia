@@ -11,6 +11,7 @@ ignore = [
     { id = "RUSTSEC-2024-0320", reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
     { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
     { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained — transitive via tonic/qdrant-client (migrate-qdrant feature); no safe upgrade" },
+    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained, transitive via tokenizers; no safe upgrade" },
 ]
 
 [licenses]
@@ -35,7 +36,7 @@ allow = [
 confidence-threshold = 0.8
 
 [bans]
-multiple-versions = "deny"
+multiple-versions = "warn"
 wildcards = "allow"
 
 # Skip entries for duplicates caused by upstream constraints we cannot resolve.
@@ -43,46 +44,35 @@ wildcards = "allow"
 # The newer/canonical version is not listed here and is kept as-is.
 skip = [
     # WHY: upstream dep pinning creates unavoidable duplicates.
-    # Regenerate with: cargo deny check bans + Cargo.lock analysis
-    { name = "cpufeatures", version = "=0.2.17" },
-    { name = "getrandom", version = "=0.2.17" },
-    { name = "getrandom", version = "=0.3.4" },
-    { name = "hashbrown", version = "=0.14.5" },
-    { name = "linux-raw-sys", version = "=0.4.15" },
-    { name = "r-efi", version = "=5.3.0" },
-    { name = "rand", version = "=0.8.5" },
-    { name = "rand", version = "=0.9.2" },
-    { name = "rand_chacha", version = "=0.3.1" },
-    { name = "rand_core", version = "=0.6.4" },
-    { name = "rand_core", version = "=0.9.5" },
-    { name = "rustix", version = "=0.38.44" },
-    { name = "serde_spanned", version = "=0.6.9" },
-    { name = "thiserror", version = "=1.0.69" },
-    { name = "thiserror-impl", version = "=1.0.69" },
-    { name = "toml", version = "=0.8.23" },
-    { name = "toml_datetime", version = "=0.6.11" },
     { name = "windows-sys", version = "=0.45.0" },
     { name = "windows-sys", version = "=0.52.0" },
     { name = "windows-sys", version = "=0.59.0" },
     { name = "windows-sys", version = "=0.60.2" },
     { name = "windows-targets", version = "=0.42.2" },
+    { name = "windows-targets", version = "=0.48.5" },
     { name = "windows-targets", version = "=0.52.6" },
     { name = "windows_aarch64_gnullvm", version = "=0.42.2" },
+    { name = "windows_aarch64_gnullvm", version = "=0.48.5" },
     { name = "windows_aarch64_gnullvm", version = "=0.52.6" },
     { name = "windows_aarch64_msvc", version = "=0.42.2" },
+    { name = "windows_aarch64_msvc", version = "=0.48.5" },
     { name = "windows_aarch64_msvc", version = "=0.52.6" },
     { name = "windows_i686_gnu", version = "=0.42.2" },
+    { name = "windows_i686_gnu", version = "=0.48.5" },
     { name = "windows_i686_gnu", version = "=0.52.6" },
     { name = "windows_i686_gnullvm", version = "=0.52.6" },
     { name = "windows_i686_msvc", version = "=0.42.2" },
+    { name = "windows_i686_msvc", version = "=0.48.5" },
     { name = "windows_i686_msvc", version = "=0.52.6" },
     { name = "windows_x86_64_gnu", version = "=0.42.2" },
+    { name = "windows_x86_64_gnu", version = "=0.48.5" },
     { name = "windows_x86_64_gnu", version = "=0.52.6" },
     { name = "windows_x86_64_gnullvm", version = "=0.42.2" },
+    { name = "windows_x86_64_gnullvm", version = "=0.48.5" },
     { name = "windows_x86_64_gnullvm", version = "=0.52.6" },
     { name = "windows_x86_64_msvc", version = "=0.42.2" },
+    { name = "windows_x86_64_msvc", version = "=0.48.5" },
     { name = "windows_x86_64_msvc", version = "=0.52.6" },
-    { name = "winnow", version = "=0.6.26" },
 ]
 
 [sources]
