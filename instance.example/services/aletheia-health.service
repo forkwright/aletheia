@@ -1,0 +1,9 @@
+[Unit]
+Description=Aletheia health check
+After=aletheia.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/ergon/scripts/health-monitor.sh
+StandardOutput=append:%h/ergon/instance/logs/health.log
+StandardError=append:%h/ergon/instance/logs/health.log

@@ -1,0 +1,10 @@
+[Unit]
+Description=Aletheia health check timer
+
+[Timer]
+OnActiveSec=60
+OnUnitActiveSec=300
+AccuracySec=30
+
+[Install]
+WantedBy=timers.target
