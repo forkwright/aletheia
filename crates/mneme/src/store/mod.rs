@@ -64,6 +64,17 @@ impl SessionStore {
         Ok(Self { conn })
     }
 
+    /// Lightweight liveness check: executes `SELECT 1` against the connection.
+    ///
+    /// # Errors
+    /// Returns an error if the database connection is broken.
+    pub fn ping(&self) -> Result<()> {
+        self.conn
+            .query_row("SELECT 1", [], |_| Ok(()))
+            .context(error::DatabaseSnafu)?;
+        Ok(())
+    }
+
     /// Get a reference to the underlying connection.
     #[must_use]
     pub fn conn(&self) -> &Connection {
