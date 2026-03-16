@@ -694,7 +694,7 @@ aletheia/
 
 ### Aletheia-specific packaging notes
 
-From the [Nix integration plan](../planning/nix-integration.md):
+Key packaging constraints:
 
 - **Single static binary.** No sidecars, no external databases.
 - **hf-hub model download is RUNTIME, not build-time.** Don't pre-fetch models in the derivation. The binary downloads them on first run via `hf-hub`.
