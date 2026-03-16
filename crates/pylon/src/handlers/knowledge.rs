@@ -14,7 +14,6 @@ use crate::state::AppState;
 
 /// Query parameters for listing facts.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FactsQuery {
     /// Filter by nous agent ID.
     #[serde(default)]
@@ -98,7 +97,6 @@ pub struct UpdateConfidenceRequest {
 
 /// Search query parameters.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SearchQuery {
     pub q: String,
     #[serde(default)]
@@ -606,18 +604,17 @@ pub async fn timeline(
 fn get_stored_facts(state: &AppState, query: &FactsQuery) -> Vec<aletheia_mneme::knowledge::Fact> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        // Require an explicit nous_id so the Datalog query filters at the
-        // storage level rather than scanning the entire fact table.
-        if let Some(nous_id) = query.nous_id.as_deref() {
-            // Fetch exactly as many rows as offset + limit so subsequent
-            // in-memory pagination does not load more than needed.
-            let fetch_limit =
-                i64::try_from((query.offset + query.limit).min(10_000)).unwrap_or(i64::MAX);
-            match store.audit_all_facts(nous_id, fetch_limit) {
-                Ok(facts) => return facts,
-                Err(e) => {
-                    tracing::warn!(error = %e, "failed to query knowledge store");
-                }
+        let fetch_limit =
+            i64::try_from((query.offset + query.limit).min(10_000)).unwrap_or(i64::MAX);
+        let result = if let Some(nous_id) = query.nous_id.as_deref() {
+            store.audit_all_facts(nous_id, fetch_limit)
+        } else {
+            store.list_all_facts(fetch_limit)
+        };
+        match result {
+            Ok(facts) => return facts,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to query knowledge store");
             }
         }
     }
@@ -626,7 +623,18 @@ fn get_stored_facts(state: &AppState, query: &FactsQuery) -> Vec<aletheia_mneme:
     Vec::new()
 }
 
-fn get_stored_entities(_state: &AppState) -> Vec<aletheia_mneme::knowledge::Entity> {
+fn get_stored_entities(state: &AppState) -> Vec<aletheia_mneme::knowledge::Entity> {
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        match store.list_entities() {
+            Ok(entities) => return entities,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to query knowledge store entities");
+            }
+        }
+    }
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = state;
     Vec::new()
 }
 
