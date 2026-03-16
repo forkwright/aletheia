@@ -19,7 +19,8 @@ members = [
     "crates/taxis",
     "crates/thesauros",
     "crates/theatron/core",
-    "crates/theatron/desktop",
+    # WHY: excluded until CI has glib/gtk system deps for Dioxus
+    # "crates/theatron/desktop",
     "crates/theatron/tui",
 ]
 

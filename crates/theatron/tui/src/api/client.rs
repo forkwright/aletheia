@@ -119,11 +119,7 @@ impl ApiClient {
     pub async fn health(&self) -> Result<bool> {
         // WHY: check reachability, not health status. A 503 (unhealthy)
         // means the server IS running but has degraded checks — still usable.
-        let resp = self
-            .client
-            .get(self.url("/api/health"))
-            .send()
-            .await;
+        let resp = self.client.get(self.url("/api/health")).send().await;
         Ok(resp.is_ok())
     }
 
