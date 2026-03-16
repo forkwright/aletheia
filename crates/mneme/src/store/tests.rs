@@ -1115,6 +1115,26 @@ fn update_display_name_sets_name() {
 }
 
 #[test]
+fn display_name_round_trip_via_list() {
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create session");
+
+    store
+        .update_display_name("ses-1", "Research Chat")
+        .expect("update display name");
+
+    let sessions = store.list_sessions(Some("syn")).expect("list sessions");
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(
+        sessions[0].display_name.as_deref(),
+        Some("Research Chat"),
+        "display_name should be returned by list_sessions after update"
+    );
+}
+
+#[test]
 fn update_display_name_overwrites_previous() {
     let store = test_store();
     store

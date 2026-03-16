@@ -104,6 +104,9 @@ pub struct SessionResponse {
     pub status: String,
     /// LLM model used for this session, if set.
     pub model: Option<String>,
+    /// Human-readable display name, if set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Total messages stored in this session.
     pub message_count: i64,
     /// Estimated total tokens across all messages.
@@ -122,6 +125,7 @@ impl SessionResponse {
             session_key: s.session_key.clone(),
             status: s.status.as_str().to_owned(),
             model: s.model.clone(),
+            name: s.display_name.clone(),
             message_count: s.message_count,
             token_count_estimate: s.token_count_estimate,
             created_at: s.created_at.clone(),
