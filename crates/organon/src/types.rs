@@ -251,6 +251,8 @@ impl ToolStats {
     }
 }
 
+use crate::error::{KnowledgeAdapterError, PlanningAdapterError};
+
 /// Cross-nous message routing for tool executors.
 pub trait CrossNousService: Send + Sync {
     /// Fire-and-forget send to another agent.
@@ -295,13 +297,13 @@ pub trait PlanningService: Send + Sync {
         mode: &str,
         appetite_minutes: Option<u32>,
         owner: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 
     /// Load a project by ID. Returns JSON representation.
     fn load_project(
         &self,
         project_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 
     /// Apply a named state transition to a project. Returns updated project JSON.
     ///
@@ -314,7 +316,7 @@ pub trait PlanningService: Send + Sync {
         &self,
         project_id: &str,
         transition: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 
     /// Add a phase to a project. Returns updated project JSON.
     fn add_phase(
@@ -322,7 +324,7 @@ pub trait PlanningService: Send + Sync {
         project_id: &str,
         name: &str,
         goal: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 
     /// Mark a plan as complete within a phase. Returns updated project JSON.
     fn complete_plan(
@@ -331,7 +333,7 @@ pub trait PlanningService: Send + Sync {
         phase_id: &str,
         plan_id: &str,
         achievement: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 
     /// Mark a plan as failed within a phase. Returns updated project JSON.
     fn fail_plan(
@@ -340,10 +342,12 @@ pub trait PlanningService: Send + Sync {
         phase_id: &str,
         plan_id: &str,
         reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 
     /// List all projects. Returns JSON array of project summaries.
-    fn list_projects(&self) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    fn list_projects(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>>;
 }
 
 /// A result from knowledge store search.
@@ -375,38 +379,38 @@ pub trait KnowledgeSearchService: Send + Sync {
         query: &str,
         nous_id: &str,
         limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, KnowledgeAdapterError>> + Send + '_>>;
 
     fn correct_fact(
         &self,
         fact_id: &str,
         new_content: &str,
         nous_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<String, KnowledgeAdapterError>> + Send + '_>>;
 
     fn retract_fact(
         &self,
         fact_id: &str,
         reason: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<(), KnowledgeAdapterError>> + Send + '_>>;
 
     fn audit_facts(
         &self,
         nous_id: Option<&str>,
         since: Option<&str>,
         limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, KnowledgeAdapterError>> + Send + '_>>;
 
     fn forget_fact(
         &self,
         fact_id: &str,
         reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>>;
 
     fn unforget_fact(
         &self,
         fact_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>>;
 
     fn datalog_query(
         &self,
@@ -414,7 +418,7 @@ pub trait KnowledgeSearchService: Send + Sync {
         params: Option<serde_json::Value>,
         timeout_secs: Option<f64>,
         row_limit: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, String>> + Send + '_>>;
+    ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, KnowledgeAdapterError>> + Send + '_>>;
 }
 
 /// Result from a read-only Datalog query.
