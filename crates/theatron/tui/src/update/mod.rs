@@ -82,6 +82,8 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
 
         Msg::ScrollUp => navigation::handle_scroll_up(app),
         Msg::ScrollDown => navigation::handle_scroll_down(app),
+        Msg::ScrollLineUp => navigation::handle_scroll_line_up(app),
+        Msg::ScrollLineDown => navigation::handle_scroll_line_down(app),
         Msg::ScrollPageUp => navigation::handle_scroll_page_up(app),
         Msg::ScrollPageDown => navigation::handle_scroll_page_down(app),
         Msg::ScrollToBottom => navigation::handle_scroll_to_bottom(app),

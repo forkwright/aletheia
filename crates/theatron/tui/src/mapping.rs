@@ -236,8 +236,8 @@ impl App {
                 Some(Msg::OpenOverlay(OverlayKind::SessionPicker))
             }
 
-            (KeyModifiers::SHIFT, KeyCode::Up) => Some(Msg::ScrollUp),
-            (KeyModifiers::SHIFT, KeyCode::Down) => Some(Msg::ScrollDown),
+            (KeyModifiers::SHIFT, KeyCode::Up) => Some(Msg::ScrollLineUp),
+            (KeyModifiers::SHIFT, KeyCode::Down) => Some(Msg::ScrollLineDown),
 
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => Some(Msg::SelectNext),
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => Some(Msg::SelectPrev),
@@ -1010,11 +1010,11 @@ mod tests {
     }
 
     #[test]
-    fn shift_up_scrolls() {
+    fn shift_up_scrolls_one_line() {
         let app = test_app();
         let event = Event::Terminal(key_mod(KeyCode::Up, KeyModifiers::SHIFT));
         let msg = app.map_event(event);
-        assert!(matches!(msg, Some(Msg::ScrollUp)));
+        assert!(matches!(msg, Some(Msg::ScrollLineUp)));
     }
 
     // --- Settings overlay key mapping ---

@@ -68,6 +68,8 @@ pub enum Msg {
 
     ScrollUp,
     ScrollDown,
+    ScrollLineUp,
+    ScrollLineDown,
     ScrollPageUp,
     ScrollPageDown,
     ScrollToBottom,
