@@ -92,6 +92,18 @@ fn build_http_client() -> Result<Client> {
 }
 
 impl AnthropicProvider {
+    /// Merge operator-provided pricing on top of built-in defaults.
+    ///
+    /// Built-in pricing covers all first-party Anthropic models. Operator
+    /// overrides win when both maps contain the same key, so custom rates
+    /// are respected while models the operator did not configure (e.g.
+    /// background-task models like Haiku) still have pricing.
+    fn merge_pricing(config: &ProviderConfig) -> HashMap<String, ModelPricing> {
+        let mut merged = ProviderConfig::default().pricing;
+        merged.extend(config.pricing.clone());
+        merged
+    }
+
     /// Create a provider from configuration with a static API key.
     ///
     /// # Errors
@@ -119,7 +131,7 @@ impl AnthropicProvider {
                 .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
             api_version: DEFAULT_API_VERSION.to_owned(),
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
-            pricing: config.pricing.clone(),
+            pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
         })
     }
@@ -141,7 +153,7 @@ impl AnthropicProvider {
                 .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
             api_version: DEFAULT_API_VERSION.to_owned(),
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
-            pricing: config.pricing.clone(),
+            pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
         })
     }
