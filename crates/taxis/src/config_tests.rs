@@ -38,6 +38,9 @@ fn defaults_are_sensible() {
     assert_eq!(config.maintenance.db_monitoring.warn_threshold_mb, 100);
     assert!(!config.maintenance.retention.enabled);
     assert!(config.pricing.is_empty());
+    assert!(config.mcp.rate_limit.enabled);
+    assert_eq!(config.mcp.rate_limit.message_requests_per_minute, 60);
+    assert_eq!(config.mcp.rate_limit.read_requests_per_minute, 300);
 }
 
 #[test]

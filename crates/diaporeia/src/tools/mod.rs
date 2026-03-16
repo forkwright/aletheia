@@ -11,6 +11,7 @@ use rmcp::{tool, tool_router};
 use snafu::{OptionExt as _, ResultExt as _};
 
 use crate::error::{NousNotFoundSnafu, PipelineSnafu, SerializationSnafu, SessionStoreSnafu};
+use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
 
 /// Register all tools on the server via the `#[tool_router]` macro.
@@ -25,6 +26,7 @@ impl DiaporeiaServer {
         &self,
         Parameters(params): Parameters<params::SessionCreateParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
         let session_id = ulid::Ulid::new().to_string();
 
@@ -56,6 +58,7 @@ impl DiaporeiaServer {
         &self,
         Parameters(params): Parameters<params::SessionListParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let store = self.state.session_store.lock().await;
         let sessions = store
             .list_sessions(params.nous_id.as_deref())
@@ -92,6 +95,7 @@ impl DiaporeiaServer {
         &self,
         Parameters(params): Parameters<params::SessionMessageParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
         let handle = self
             .state
             .nous_manager
@@ -123,6 +127,7 @@ impl DiaporeiaServer {
         &self,
         Parameters(params): Parameters<params::SessionHistoryParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let store = self.state.session_store.lock().await;
         let messages = store
             .get_history(&params.session_id, params.limit)
@@ -153,6 +158,7 @@ impl DiaporeiaServer {
     /// List all registered nous agents with their current status.
     #[tool(description = "List all registered nous agents with their current status")]
     async fn nous_list(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let statuses = self.state.nous_manager.list().await;
 
         let list: Vec<serde_json::Value> = statuses
@@ -184,6 +190,7 @@ impl DiaporeiaServer {
         &self,
         Parameters(params): Parameters<params::NousIdParam>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let handle = self
             .state
             .nous_manager
@@ -226,6 +233,7 @@ impl DiaporeiaServer {
         &self,
         Parameters(params): Parameters<params::NousIdParam>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let _handle = self
             .state
             .nous_manager
@@ -262,6 +270,7 @@ impl DiaporeiaServer {
         &self,
         Parameters(_params): Parameters<params::KnowledgeSearchParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Expensive)?;
         // TODO(#1137): Wire to RecallEngine when knowledge store integration is complete.
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             "Knowledge search is not available in this configuration. \
@@ -274,6 +283,7 @@ impl DiaporeiaServer {
     /// Get the runtime configuration with sensitive fields redacted.
     #[tool(description = "Get the runtime configuration with sensitive fields redacted")]
     async fn config_get(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let config = self.state.config.read().await;
 
         let redacted = serde_json::json!({
@@ -307,6 +317,7 @@ impl DiaporeiaServer {
     /// System health check with uptime, actor health, and version info.
     #[tool(description = "System health check with uptime, actor health, and version info")]
     async fn system_health(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.rate_limiter.check(Tier::Cheap)?;
         let health = self.state.nous_manager.check_health().await;
         let uptime = self.state.start_time.elapsed();
 
