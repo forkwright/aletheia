@@ -622,28 +622,27 @@ fn build_provider_registry(
         .or_else(claude_code_default_path);
 
     // When source is "claude-code", prioritize Claude Code credentials
-    if cred_source == "claude-code" {
-        if let Some(ref cc_path) = claude_code_path {
-            if let Some(provider) = claude_code_provider(cc_path) {
-                chain.push(provider);
-            }
-        }
+    if cred_source == "claude-code"
+        && let Some(ref cc_path) = claude_code_path
+        && let Some(provider) = claude_code_provider(cc_path)
+    {
+        chain.push(provider);
     }
 
-    if cred_file.exists() {
-        if let Some(cred) = CredentialFile::load(&cred_file) {
-            if cred.has_refresh_token() {
-                if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
-                    info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)");
-                    chain.push(Box::new(refreshing));
-                } else {
-                    info!(path = %cred_file.display(), "credential file found (static)");
-                    chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
-                }
+    if cred_file.exists()
+        && let Some(cred) = CredentialFile::load(&cred_file)
+    {
+        if cred.has_refresh_token() {
+            if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
+                info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)");
+                chain.push(Box::new(refreshing));
             } else {
-                info!(path = %cred_file.display(), "credential file found (static API key)");
+                info!(path = %cred_file.display(), "credential file found (static)");
                 chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
             }
+        } else {
+            info!(path = %cred_file.display(), "credential file found (static API key)");
+            chain.push(Box::new(FileCredentialProvider::new(cred_file.clone())));
         }
     }
 
@@ -656,12 +655,11 @@ fn build_provider_registry(
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
 
     // When source is "auto", add Claude Code credentials as lowest-priority fallback
-    if cred_source == "auto" {
-        if let Some(ref cc_path) = claude_code_path {
-            if let Some(provider) = claude_code_provider(cc_path) {
-                chain.push(provider);
-            }
-        }
+    if cred_source == "auto"
+        && let Some(ref cc_path) = claude_code_path
+        && let Some(provider) = claude_code_provider(cc_path)
+    {
+        chain.push(provider);
     }
 
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
