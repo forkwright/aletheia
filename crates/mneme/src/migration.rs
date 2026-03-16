@@ -201,6 +201,14 @@ pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
             version: migration.version,
         })?;
 
+        // WHY: PRAGMA user_version provides a lightweight, standard SQLite
+        // mechanism for external tools to query schema version without
+        // knowing about the schema_version table.
+        tx.pragma_update(None, "user_version", migration.version)
+            .context(error::MigrationSnafu {
+                version: migration.version,
+            })?;
+
         tx.commit().context(error::MigrationSnafu {
             version: migration.version,
         })?;
@@ -438,6 +446,33 @@ mod tests {
         bootstrap_version_table(&conn).expect("bootstrap_version_table should succeed on fresh DB");
         let version = get_schema_version(&conn);
         assert_eq!(version, 0);
+    }
+
+    #[test]
+    fn pragma_user_version_tracks_schema_version() {
+        let conn = fresh_conn();
+        run_migrations(&conn).expect("migrations should apply successfully");
+
+        let pragma_version: u32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("PRAGMA user_version should be readable");
+        assert_eq!(
+            pragma_version, 4,
+            "PRAGMA user_version should match latest migration version"
+        );
+    }
+
+    #[test]
+    fn pragma_user_version_zero_before_migration() {
+        let conn = fresh_conn();
+
+        let pragma_version: u32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("PRAGMA user_version should be readable on fresh DB");
+        assert_eq!(
+            pragma_version, 0,
+            "PRAGMA user_version should be 0 on a fresh database"
+        );
     }
 
     #[test]
