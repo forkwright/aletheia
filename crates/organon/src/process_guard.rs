@@ -1,7 +1,7 @@
 //! RAII guard for subprocess lifecycle management.
 //!
 //! [`ProcessGuard`] wraps a [`std::process::Child`] and guarantees the child
-//! process is killed and reaped when the guard is dropped — including on
+//! process is killed and reaped when the guard is dropped: including on
 //! panic.  This prevents both orphan processes (child outlives parent) and
 //! zombie accumulation (child exited but not reaped).
 //!
@@ -17,7 +17,7 @@
 //! // Poll, read I/O, enforce a deadline…
 //! match guard.get_mut().try_wait() { ... }
 //!
-//! // Timeout path: just return early — drop kills the child automatically.
+//! // Timeout path: just return early: drop kills the child automatically.
 //!
 //! // Normal exit path: detach to take ownership back and read stdio.
 //! let mut child = guard.detach();
@@ -76,11 +76,11 @@ impl Drop for ProcessGuard {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
             // WHY: kill() may return ESRCH if the process already exited;
-            // safe to ignore — we are cleaning up, not asserting liveness.
+            // safe to ignore: we are cleaning up, not asserting liveness.
             let _ = child.kill();
             // INVARIANT: wait() after kill() prevents zombie accumulation.
             // If try_wait() already reaped the zombie, wait() returns ECHILD
-            // which is safe to ignore — the goal (no zombie) is already met.
+            // which is safe to ignore: the goal (no zombie) is already met.
             let _ = child.wait();
         }
     }
@@ -206,7 +206,7 @@ mod tests {
             .spawn()
             .expect("spawn echo");
         let _guard = ProcessGuard::new(child);
-        // guard dropped here — process may already be dead
+        // guard dropped here: process may already be dead
     }
 
     /// Panic while a guard is live causes Drop to run and kill the child.

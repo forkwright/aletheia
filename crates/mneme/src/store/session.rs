@@ -104,7 +104,7 @@ impl SessionStore {
             info!(id, nous_id, session_key, %session_type, "created session");
         }
 
-        // Fetch the session — either just-created or pre-existing.
+        // Fetch the session: either just-created or pre-existing.
         let mut stmt = self
             .conn
             .prepare_cached("SELECT * FROM sessions WHERE nous_id = ?1 AND session_key = ?2")

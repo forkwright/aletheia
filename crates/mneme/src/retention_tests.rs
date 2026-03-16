@@ -717,8 +717,8 @@ fn retention_boundary_age_keeps_within_threshold() {
     let dir = tempfile::tempdir().expect("temp dir should be created");
 
     // Policy: 30-day max age.
-    // 29-day session is within threshold — must be kept.
-    // 31-day session is past threshold — must be deleted.
+    // 29-day session is within threshold: must be kept.
+    // 31-day session is past threshold: must be deleted.
     insert_session(&conn, "boundary-young", "alice", "archived", 29);
     insert_session(&conn, "boundary-old", "alice", "archived", 31);
 

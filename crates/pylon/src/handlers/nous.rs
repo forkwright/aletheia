@@ -11,7 +11,7 @@ use crate::error::{ApiError, ErrorResponse, NousNotFoundSnafu};
 use crate::extract::Claims;
 use crate::state::AppState;
 
-/// GET /api/v1/nous — list registered nous agents.
+/// GET /api/v1/nous: list registered nous agents.
 #[utoipa::path(
     get,
     path = "/api/v1/nous",
@@ -36,7 +36,7 @@ pub async fn list(State(state): State<Arc<AppState>>, _claims: Claims) -> Json<N
     Json(NousListResponse { nous })
 }
 
-/// GET /api/v1/nous/{id} — get nous status.
+/// GET /api/v1/nous/{id}: get nous status.
 #[utoipa::path(
     get,
     path = "/api/v1/nous/{id}",
@@ -78,7 +78,7 @@ pub async fn get_status(
     }))
 }
 
-/// GET /api/v1/nous/{id}/tools — list tools available to a nous.
+/// GET /api/v1/nous/{id}/tools: list tools available to a nous.
 #[utoipa::path(
     get,
     path = "/api/v1/nous/{id}/tools",

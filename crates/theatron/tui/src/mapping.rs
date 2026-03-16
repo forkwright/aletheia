@@ -1,4 +1,4 @@
-/// Event-to-Msg translation — maps terminal, SSE, and stream events to application messages.
+/// Event-to-Msg translation: maps terminal, SSE, and stream events to application messages.
 use crossterm::event::{
     Event as TermEvent, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind,
 };
@@ -105,7 +105,7 @@ impl App {
             return self.map_ops_pane_key(key);
         }
 
-        // Configurable keymap — covers global Ctrl+key shortcuts.
+        // Configurable keymap: covers global Ctrl+key shortcuts.
         if let Some(action) = self.keymap.lookup(key.modifiers, key.code) {
             return Some(action.to_msg());
         }
@@ -459,7 +459,7 @@ impl App {
             };
         }
 
-        // WHY: `?` toggles help overlay — pressing it again closes it.
+        // WHY: `?` toggles help overlay: pressing it again closes it.
         if matches!(&self.overlay, Some(Overlay::Help))
             && matches!(
                 (key.modifiers, key.code),

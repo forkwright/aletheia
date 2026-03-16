@@ -19,7 +19,7 @@ pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
     }
 }
 
-/// OSC52 clipboard escape sequence — works over SSH, inside tmux/screen.
+/// OSC52 clipboard escape sequence: works over SSH, inside tmux/screen.
 /// Supported by: iTerm2, Kitty, WezTerm, Alacritty, GNOME Terminal (VTE 0.76+).
 fn copy_osc52(text: &str) -> Result<(), String> {
     use base64::{Engine, engine::general_purpose::STANDARD};

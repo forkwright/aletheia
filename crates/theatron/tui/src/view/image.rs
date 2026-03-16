@@ -24,9 +24,9 @@ pub(crate) enum GraphicsProtocol {
     Kitty,
     /// Sixel protocol available (terminal also supports true color).
     Sixel,
-    /// True-color terminal — use half-block character rendering.
+    /// True-color terminal: use half-block character rendering.
     TrueColor,
-    /// Basic terminal — show filename and file size only.
+    /// Basic terminal: show filename and file size only.
     TextOnly,
 }
 

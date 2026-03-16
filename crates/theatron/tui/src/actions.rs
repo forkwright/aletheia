@@ -1,4 +1,4 @@
-/// App action methods — message sending, tab completion, scroll state, cursor helpers.
+/// App action methods: message sending, tab completion, scroll state, cursor helpers.
 use tracing::Instrument;
 
 /// Maximum number of per-agent scroll states retained in memory.
@@ -281,7 +281,7 @@ mod tests {
         app.auto_scroll = false;
 
         app.save_scroll_state();
-        // Well under the cap — no pruning should occur.
+        // Well under the cap: no pruning should occur.
         assert_eq!(app.scroll_states.len(), 1);
     }
 

@@ -1,4 +1,4 @@
-//! Background dispatch loop — routes inbound messages to nous actors.
+//! Background dispatch loop: routes inbound messages to nous actors.
 
 use std::sync::Arc;
 

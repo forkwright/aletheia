@@ -1,13 +1,13 @@
-//! Recall engine — 6-factor scoring for knowledge retrieval.
+//! Recall engine: 6-factor scoring for knowledge retrieval.
 //!
 //! Combines multiple signals to rank recall results:
 //!
-//! 1. **Vector similarity** — cosine distance from HNSW search
-//! 2. **Decay** — FSRS power-law decay from last access time
-//! 3. **Relevance** — nous-specific boost (your own memories rank higher)
-//! 4. **Epistemic tier** — verified > inferred > assumed
-//! 5. **Relationship proximity** — graph distance from query context entities
-//! 6. **Access frequency** — memories accessed more often are more salient
+//! 1. **Vector similarity**: cosine distance from HNSW search
+//! 2. **Decay**: FSRS power-law decay from last access time
+//! 3. **Relevance**: nous-specific boost (your own memories rank higher)
+//! 4. **Epistemic tier**: verified > inferred > assumed
+//! 5. **Relationship proximity**: graph distance from query context entities
+//! 6. **Access frequency**: memories accessed more often are more salient
 //!
 //! Each factor produces a score in [0.0, 1.0]. The final score is a weighted
 //! combination, configurable per-nous via oikos cascade.
@@ -19,7 +19,7 @@ use tracing::instrument;
 /// Configuration for recall scoring weights.
 ///
 /// All weights should sum to ~1.0 for interpretable scores,
-/// but this is not enforced — the engine normalizes output.
+/// but this is not enforced: the engine normalizes output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallWeights {
     /// Weight for vector similarity (cosine distance). Default: 0.35
@@ -342,7 +342,7 @@ pub fn compute_effective_stability(
 /// This is the same formula as [`compute_effective_stability`] but takes string
 /// parameters for compatibility with the knowledge store's string-typed fields.
 ///
-/// The stored value is for diagnostics/reporting — actual `R(t)` is computed
+/// The stored value is for diagnostics/reporting: actual `R(t)` is computed
 /// on-the-fly at query time via [`RecallEngine::score_decay`].
 #[must_use]
 pub fn refresh_stability_hours(fact_type: &str, tier: &str, access_count: u32) -> f64 {

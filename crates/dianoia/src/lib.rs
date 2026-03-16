@@ -1,6 +1,6 @@
-//! aletheia-dianoia — planning and project orchestration
+//! aletheia-dianoia: planning and project orchestration
 //!
-//! Dianoia (διάνοια) — "thinking through." The systematic, step-by-step
+//! Dianoia (διάνοια): "thinking through." The systematic, step-by-step
 //! reasoning process. Manages multi-phase projects from research through
 //! execution to verification. Three modes: full project, quick task,
 //! autonomous background.

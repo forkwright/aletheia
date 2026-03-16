@@ -23,7 +23,7 @@ pub fn streamable_http_router(state: Arc<DiaporeiaState>) -> axum::Router {
     axum::Router::new().nest_service("/mcp", service)
 }
 
-/// Run MCP over stdio (blocking — intended for `aletheia mcp` subcommand).
+/// Run MCP over stdio (blocking: intended for `aletheia mcp` subcommand).
 ///
 /// Reads JSON-RPC from stdin, writes to stdout. Blocks until the connection
 /// closes or the shutdown token fires.

@@ -1,4 +1,4 @@
-//! Cross-nous messaging — fire-and-forget, request-response, and delivery audit.
+//! Cross-nous messaging: fire-and-forget, request-response, and delivery audit.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;

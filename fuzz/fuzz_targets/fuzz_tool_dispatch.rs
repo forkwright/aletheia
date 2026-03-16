@@ -13,11 +13,11 @@ fuzz_target!(|data: &[u8]| {
     //    Malformed JSON, unexpected `type` tags, missing fields, extra fields.
     let _ = serde_json::from_slice::<aletheia_hermeneus::types::ContentBlock>(data);
 
-    // 2. ToolCall deserialization — the struct persisted per-turn.
+    // 2. ToolCall deserialization: the struct persisted per-turn.
     //    Unexpected types in `input` (Value), missing optional `result`, etc.
     let _ = serde_json::from_slice::<aletheia_nous::pipeline::ToolCall>(data);
 
-    // 3. ToolName validation — arbitrary strings against the allowlist regex.
+    // 3. ToolName validation: arbitrary strings against the allowlist regex.
     //    Empty, oversized (>128), unicode, special chars, null bytes.
     if let Ok(s) = std::str::from_utf8(data) {
         let _ = aletheia_koina::id::ToolName::new(s);
@@ -30,7 +30,7 @@ fuzz_target!(|data: &[u8]| {
         assert!(!s.is_empty());
     }
 
-    // 5. LoopDetector — feed arbitrary tool_name:input_hash sequences.
+    // 5. LoopDetector: feed arbitrary tool_name:input_hash sequences.
     //    Tests cycle detection with varied pattern lengths and thresholds.
     if data.len() >= 4 {
         if let Ok(s) = std::str::from_utf8(&data[1..]) {
@@ -53,6 +53,6 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    // 6. InteractionSignal serde roundtrip — enum variant coverage.
+    // 6. InteractionSignal serde roundtrip: enum variant coverage.
     let _ = serde_json::from_slice::<aletheia_nous::pipeline::InteractionSignal>(data);
 });

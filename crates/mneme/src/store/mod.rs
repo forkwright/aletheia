@@ -3,9 +3,9 @@
 //! WAL mode, prepared statement caching, transactional message appends.
 //!
 //! Split into sub-modules by responsibility:
-//! - `session` — session CRUD operations
-//! - `message` — message history, distillation pipeline, usage recording
-//! - `peripherals` — agent notes and blackboard
+//! - `session`: session CRUD operations
+//! - `message`: message history, distillation pipeline, usage recording
+//! - `peripherals`: agent notes and blackboard
 
 mod message;
 mod peripherals;
@@ -23,7 +23,7 @@ use crate::error::{self, Result};
 use crate::migration;
 use crate::types::{Message, Role, Session, SessionStatus, SessionType};
 
-/// The session store — wraps a `SQLite` connection.
+/// The session store: wraps a `SQLite` connection.
 pub struct SessionStore {
     conn: Connection,
 }

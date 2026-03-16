@@ -1,4 +1,4 @@
-//! Scenario runner — orchestrates evaluation execution.
+//! Scenario runner: orchestrates evaluation execution.
 
 use std::time::{Duration, Instant};
 

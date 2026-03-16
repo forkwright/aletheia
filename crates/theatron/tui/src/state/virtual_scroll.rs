@@ -148,12 +148,12 @@ impl VirtualScroll {
     }
 
     /// Find the item index that contains the given absolute line position.
-    /// Uses binary search on prefix sums — O(log n).
+    /// Uses binary search on prefix sums: O(log n).
     fn item_at_line(&self, line: u64) -> usize {
         if line == 0 {
             return 0;
         }
-        // NOTE: binary search — find first i where prefix_sums[i+1] > line,
+        // NOTE: binary search: find first i where prefix_sums[i+1] > line,
         // i.e. the item whose cumulative range includes `line`.
         let n = self.item_heights.len();
         if n == 0 {

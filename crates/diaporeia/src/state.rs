@@ -1,7 +1,7 @@
 //! Shared state for the diaporeia MCP server.
 //!
 //! Parallel to pylon's `AppState` but without HTTP-specific fields.
-//! Constructed from the same shared `Arc`s as `AppState` — zero duplication.
+//! Constructed from the same shared `Arc`s as `AppState`: zero duplication.
 
 use std::sync::Arc;
 use std::time::Instant;

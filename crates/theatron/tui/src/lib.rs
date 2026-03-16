@@ -107,7 +107,7 @@ async fn run_tui_inner(
     result
 }
 
-/// Tick interval in milliseconds — drives spinner animation and cursor blink (~60 fps).
+/// Tick interval in milliseconds: drives spinner animation and cursor blink (~60 fps).
 const TICK_INTERVAL_MS: u64 = 16;
 
 async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result<()> {
@@ -126,7 +126,7 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
         let osc_links = link_cell.into_inner();
 
         // NOTE: Emit OSC 8 sequences post-render. OSC 8 is independent of visual
-        // rendering — re-writing link text wrapped in open/close sequences marks those
+        // rendering: re-writing link text wrapped in open/close sequences marks those
         // cells clickable without altering their visual appearance.
         if !osc_links.is_empty() {
             emit_osc8_links(terminal.backend_mut(), &osc_links).context(IoSnafu {
@@ -245,7 +245,7 @@ mod tests {
         let mut opt: Option<api::sse::SseConnection> = None;
         tokio::select! {
             biased;
-            _ = rx => {} // ready immediately — proves recv_sse(None) did not resolve first
+            _ = rx => {} // ready immediately: proves recv_sse(None) did not resolve first
             _ = recv_sse(&mut opt) => panic!("recv_sse(None) must not resolve"),
         }
     }
@@ -257,7 +257,7 @@ mod tests {
         let mut opt: Option<tokio::sync::mpsc::Receiver<events::StreamEvent>> = None;
         tokio::select! {
             biased;
-            _ = rx => {} // ready immediately — proves recv_stream(None) did not resolve first
+            _ = rx => {} // ready immediately: proves recv_stream(None) did not resolve first
             _ = recv_stream(&mut opt) => panic!("recv_stream(None) must not resolve"),
         }
     }

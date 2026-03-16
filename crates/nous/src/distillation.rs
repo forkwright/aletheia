@@ -57,7 +57,7 @@ pub fn should_trigger_distillation(
     context_window: u64,
     config: &DistillTriggerConfig,
 ) -> Option<String> {
-    // WHY: never distill on the first turn — no history to summarize
+    // WHY: never distill on the first turn: no history to summarize
     if session.message_count <= 0 {
         return None;
     }
@@ -139,7 +139,7 @@ pub async fn maybe_distill(
         return Ok(None);
     };
 
-    // INVARIANT: idempotency guard — skip if distillation applied recently (< 60s) to protect against concurrent background tasks
+    // INVARIANT: idempotency guard: skip if distillation applied recently (< 60s) to protect against concurrent background tasks
     if let Some(ref last) = session.last_distilled_at
         && let Ok(last_ts) = last.parse::<jiff::Timestamp>()
     {
@@ -378,7 +378,7 @@ mod tests {
     /// Verify that `apply_distillation` writes a summary and marks messages distilled in the store.
     ///
     /// This exercises the trigger path that fires after `should_trigger_distillation` returns
-    /// Some — confirming that the store mutation side-effects actually occur.
+    /// Some: confirming that the store mutation side-effects actually occur.
     #[test]
     fn apply_distillation_updates_store() {
         use aletheia_melete::distill::DistillResult;
@@ -407,7 +407,7 @@ mod tests {
         let history = store.get_history("ses-1", None).expect("history");
         assert_eq!(history.len(), 5);
 
-        // Distill all 5 messages — avoids the seq-shift conflict that occurs when
+        // Distill all 5 messages: avoids the seq-shift conflict that occurs when
         // undistilled messages have adjacent seq numbers after partial distillation.
         let result = DistillResult {
             summary: "Summary of previous turns.".to_owned(),

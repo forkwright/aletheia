@@ -1,4 +1,4 @@
-//! Instinct observation bridge — records tool usage from the nous pipeline
+//! Instinct observation bridge: records tool usage from the nous pipeline
 //! into mneme's instinct system for behavioral pattern learning.
 
 use tracing::{debug, instrument, warn};

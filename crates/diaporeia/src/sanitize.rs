@@ -30,8 +30,11 @@ pub(crate) fn strip_paths(message: &str) -> String {
             last_pushed_byte
         };
 
-        // WHY: skip '/' that follows '/' or ':' — those are URI separators, not paths
-        let is_word_boundary = !matches!(prev_byte, Some(b'/' | b':'));
+        // WHY: only treat '/' as an absolute path start when preceded by whitespace
+        // or at the beginning of the string. This avoids false positives on relative
+        // paths (config/settings.toml) and fractions (3/4).
+        let is_abs_path_start =
+            prev_byte.is_none() || prev_byte.is_some_and(|b| b.is_ascii_whitespace());
 
         let after_slash = &remaining[slash_pos + 1..];
         let next_is_path_char = after_slash
@@ -39,7 +42,7 @@ pub(crate) fn strip_paths(message: &str) -> String {
             .next()
             .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'));
 
-        if is_word_boundary && next_is_path_char {
+        if is_abs_path_start && next_is_path_char {
             result.push_str(&remaining[..slash_pos]);
             result.push_str("[server path]");
             last_pushed_byte = Some(b']');
@@ -80,7 +83,7 @@ mod tests {
 
     #[test]
     fn preserves_uri_scheme_double_slash() {
-        // NOTE: `://` must not be treated as a path boundary — the ':' preceding '/'
+        // NOTE: `://` must not be treated as a path boundary: the ':' preceding '/'
         // means no boundary, and last_pushed_byte carries that across iterations.
         let msg = "unknown resource URI: aletheia://nous/agent1/soul";
         let sanitized = strip_paths(msg);

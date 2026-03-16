@@ -1,4 +1,4 @@
-//! Instance maintenance services — trace rotation, drift detection, DB monitoring, retention.
+//! Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 
 /// Database size monitoring with configurable warning and alert thresholds.
 pub mod db_monitor;

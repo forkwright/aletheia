@@ -1,4 +1,4 @@
-//! JWT auth extractor — validates Bearer tokens via symbolon.
+//! JWT auth extractor: validates Bearer tokens via symbolon.
 
 use std::sync::Arc;
 
@@ -20,7 +20,7 @@ pub struct Claims {
     pub sub: String,
     /// Authorization role governing API access.
     pub role: Role,
-    /// Optional nous scope — when set, restricts access to a single agent.
+    /// Optional nous scope: when set, restricts access to a single agent.
     pub nous_id: Option<String>,
 }
 
@@ -34,7 +34,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         // WHY: Granting Operator role bypasses all access controls and lets
         // any network caller manage agents, modify config, and access all
         // sessions. Auth-disabled deployments should receive the least
-        // privilege needed for basic use — Readonly restricts mutations.
+        // privilege needed for basic use: Readonly restricts mutations.
         if state.auth_mode == "none" {
             return Ok(Self {
                 sub: "anonymous".to_owned(),

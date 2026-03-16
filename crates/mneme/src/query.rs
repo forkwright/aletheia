@@ -1,4 +1,4 @@
-//! Typed Datalog query builder — compile-time schema validation for KnowledgeStore.
+//! Typed Datalog query builder: compile-time schema validation for KnowledgeStore.
 
 use std::collections::BTreeMap;
 

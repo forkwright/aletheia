@@ -63,7 +63,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             Span::styled(name, name_style),
         ];
 
-        // NOTE: shown only for unfocused agents — clears when the user switches focus
+        // NOTE: shown only for unfocused agents: clears when the user switches focus
         if !is_focused && agent.unread_count > 0 {
             let badge = if agent.unread_count > 9 {
                 " 9+".to_string()

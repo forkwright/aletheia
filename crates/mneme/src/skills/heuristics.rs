@@ -3,8 +3,8 @@
 //! Identifies which sequences are worth tracking as skill candidates.
 //! The filter has two layers:
 //!
-//! 1. **Must-pass gates** — hard rejections (too short, too narrow, anti-patterns).
-//! 2. **Scored signals** — coherence, diversity, and completion contribute to
+//! 1. **Must-pass gates**: hard rejections (too short, too narrow, anti-patterns).
+//! 2. **Scored signals**: coherence, diversity, and completion contribute to
 //!    the total score (0.0–1.0).
 
 use serde::{Deserialize, Serialize};
@@ -442,9 +442,9 @@ mod tests {
 
     #[test]
     fn antipattern_debugging_spiral_requires_both_conditions() {
-        // High Bash but low errors — not a spiral
+        // High Bash but low errors: not a spiral
         let calls = seq(&["Read", "Grep", "Bash", "Bash", "Bash", "Bash", "Edit"]);
-        // 7 calls: 4 Bash (57%), 0 errors (0%) — not rejected
+        // 7 calls: 4 Bash (57%), 0 errors (0%): not rejected
         let score = score_sequence(&calls);
         // passes the spiral check (error_ratio = 0)
         assert!(!score.details.iter().any(|d| d.contains("debugging spiral")));
@@ -465,7 +465,7 @@ mod tests {
 
     #[test]
     fn antipattern_single_file_edit_not_triggered_with_search() {
-        // Same but has Grep — not a single-file edit
+        // Same but has Grep: not a single-file edit
         let calls = seq(&["Grep", "Read", "Edit", "Read", "Bash", "Bash"]);
         let score = score_sequence(&calls);
         // Should pass the single-file check
@@ -474,7 +474,7 @@ mod tests {
 
     #[test]
     fn antipattern_single_file_edit_not_triggered_with_multiple_writes() {
-        // Multiple writes — not a single-file edit
+        // Multiple writes: not a single-file edit
         let calls = seq(&["Read", "Edit", "Edit", "Write", "Bash", "Bash"]);
         let score = score_sequence(&calls);
         assert!(!score.details.iter().any(|d| d.contains("single-file edit")));
@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn antipattern_config_specific_rejected() {
-        // Read, Glob, and Bash only — no writes, no search.
+        // Read, Glob, and Bash only: no writes, no search.
         // Three distinct tool names passes the distinct-tool gate, but the
         // config-specific anti-pattern then fires because all activity is
         // just reading/glob and running checks without writing anything.

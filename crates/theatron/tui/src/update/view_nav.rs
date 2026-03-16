@@ -1,4 +1,4 @@
-//! View stack navigation handlers — drill-in (Enter) and pop-back (Esc).
+//! View stack navigation handlers: drill-in (Enter) and pop-back (Esc).
 
 use crate::app::App;
 use crate::state::SavedScrollState;
@@ -27,7 +27,7 @@ fn restore_view_scroll(app: &mut App) {
     }
 }
 
-/// Handle Enter — drill into a detail view based on the current context.
+/// Handle Enter: drill into a detail view based on the current context.
 ///
 /// The drill-in target depends on the current view:
 /// - Home + agent sidebar focused → Sessions for that agent
@@ -82,7 +82,7 @@ pub(crate) fn handle_drill_in(app: &mut App) {
     }
 }
 
-/// Handle Esc — pop back to the previous view.
+/// Handle Esc: pop back to the previous view.
 ///
 /// At Home, Esc deselects the message (existing behavior) or does nothing.
 pub(crate) fn handle_pop_back(app: &mut App) {

@@ -136,7 +136,7 @@ pub fn print_report_json(report: &RunReport) {
     }
 }
 
-/// Typed outcome kind for JSON serialization — avoids bare "passed"/"failed"/"skipped" strings.
+/// Typed outcome kind for JSON serialization: avoids bare "passed"/"failed"/"skipped" strings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]

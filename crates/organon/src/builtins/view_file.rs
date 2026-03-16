@@ -1,4 +1,4 @@
-//! view_file tool — images, PDFs, and text with multimodal support.
+//! view_file tool: images, PDFs, and text with multimodal support.
 #![expect(
     clippy::expect_used,
     reason = "ToolName::new() with static string literals is infallible — name validation would only fail on invalid chars which these names don't contain"

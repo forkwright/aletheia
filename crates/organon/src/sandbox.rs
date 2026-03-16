@@ -95,7 +95,7 @@ impl SandboxConfig {
 
         // WHY: System binary dirs are always executable. workspace and
         // allowed_roots are also added so agents can execute scripts they own
-        // or that live in shared data directories — closes #1246.
+        // or that live in shared data directories: closes #1246.
         // /lib and /lib64 are included because the kernel opens the ELF
         // dynamic linker (ld-linux-*.so) with exec intent during execve().
         // Without Execute on these paths, all dynamically-linked binaries
@@ -452,7 +452,7 @@ pub fn apply_sandbox(
     // arena mutex that another thread held at the moment of fork. If the child
     // then calls malloc, it may deadlock on that copied mutex.
     // Modern per-thread allocator arenas (glibc ptmalloc, jemalloc) make this
-    // unlikely in practice — each thread has its own arena — but the risk is
+    // unlikely in practice: each thread has its own arena: but the risk is
     // not zero on arena exhaustion when threads share an arena.
     // No deadlock has been observed in production use.
     // TODO(#1140): pre-compile seccomp BPF in the parent and use raw Landlock
@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn expand_tilde_replaces_home() {
-        // Only meaningful when HOME is set — guard with an env check.
+        // Only meaningful when HOME is set: guard with an env check.
         if let Ok(home) = std::env::var("HOME") {
             let p = expand_tilde(Path::new("~/scripts"));
             assert_eq!(p, PathBuf::from(format!("{home}/scripts")));

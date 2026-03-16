@@ -1,15 +1,15 @@
 //! Entity deduplication pipeline for merging semantically identical entities.
 //!
 //! Runs as a background maintenance task after ingestion batches. Without dedup,
-//! the knowledge graph fragments — the same person becomes 10 nodes with 1 edge
+//! the knowledge graph fragments: the same person becomes 10 nodes with 1 edge
 //! each instead of 1 node with 10 edges.
 //!
 //! # Three-phase pipeline
 //!
-//! 1. **Candidate generation** — find potential duplicate pairs within same entity type
-//! 2. **Merge scoring** — weighted composite of name similarity, embedding similarity,
+//! 1. **Candidate generation**: find potential duplicate pairs within same entity type
+//! 2. **Merge scoring**: weighted composite of name similarity, embedding similarity,
 //!    type match, and alias overlap
-//! 3. **Merge execution** — transfer edges, aliases, fact_entities, and record audit trail
+//! 3. **Merge execution**: transfer edges, aliases, fact_entities, and record audit trail
 
 use crate::id::EntityId;
 
@@ -40,11 +40,11 @@ pub struct EntityMergeCandidate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MergeDecision {
-    /// Score ≥ 0.90 — merge automatically.
+    /// Score ≥ 0.90: merge automatically.
     AutoMerge,
-    /// 0.70 ≤ score < 0.90 — queue for human review.
+    /// 0.70 ≤ score < 0.90: queue for human review.
     Review,
-    /// Score < 0.70 — skip.
+    /// Score < 0.70: skip.
     Skip,
 }
 

@@ -377,7 +377,7 @@ fn connected_components_disconnected_nodes_have_no_proximity_path() {
     // Component 1: A and B are reachable from the seed (A).
     ctx.proximity.insert("a".to_owned(), Some(0));
     ctx.proximity.insert("b".to_owned(), Some(1));
-    // Component 2: C and D are not reachable — absent from the proximity map.
+    // Component 2: C and D are not reachable: absent from the proximity map.
 
     assert_eq!(
         ctx.hops("a"),
@@ -517,7 +517,7 @@ mod engine_tests {
     #[test]
     fn graph_scores_relation_created_by_init_schema() {
         let store = test_store();
-        // graph_scores created during init_schema — query should succeed
+        // graph_scores created during init_schema: query should succeed
         let ctx = store.load_graph_context().expect("load_graph_context");
         assert!(ctx.is_empty());
     }
@@ -778,7 +778,7 @@ mod engine_tests {
         assert_eq!(proximity.get("a").copied(), Some(0));
         assert_eq!(proximity.get("b").copied(), Some(1));
         assert_eq!(proximity.get("e").copied(), Some(4));
-        // f is at hop 5 — beyond the 4-hop boundary, must be absent
+        // f is at hop 5: beyond the 4-hop boundary, must be absent
         assert_eq!(
             proximity.get("f").copied(),
             None,
@@ -936,7 +936,7 @@ fn pagerank_disconnected_graph_all_nodes_have_nonzero_scores() {
 }
 
 // ---------------------------------------------------------------------------
-// BFS proximity — focused single-property tests
+// BFS proximity: focused single-property tests
 // ---------------------------------------------------------------------------
 
 /// Requirement: BFS finds direct neighbor at hop count 1.
@@ -974,7 +974,7 @@ fn bfs_unreachable_entity_returns_none() {
     let mut ctx = GraphContext::default();
     ctx.proximity.insert("alice".to_owned(), Some(0));
     ctx.proximity.insert("bob".to_owned(), Some(1));
-    // charlie is not reachable — absent from the proximity map
+    // charlie is not reachable: absent from the proximity map
 
     assert_eq!(
         ctx.hops("charlie"),
@@ -1001,7 +1001,7 @@ fn bfs_cycle_seed_stays_at_hop_zero() {
     assert_eq!(ctx.hops("charlie"), Some(2), "cycle: second hop stays at 2");
 }
 
-/// Requirement: BFS respects 4-hop bound — entities at hop 5+ return None.
+/// Requirement: BFS respects 4-hop bound: entities at hop 5+ return None.
 #[test]
 fn bfs_5hop_node_beyond_boundary_returns_none() {
     let mut ctx = GraphContext::default();
@@ -1010,7 +1010,7 @@ fn bfs_5hop_node_beyond_boundary_returns_none() {
     ctx.proximity.insert("c".to_owned(), Some(2));
     ctx.proximity.insert("d".to_owned(), Some(3));
     ctx.proximity.insert("e".to_owned(), Some(4));
-    // "f" at hop 5 is beyond the BFS boundary — not inserted into proximity
+    // "f" at hop 5 is beyond the BFS boundary: not inserted into proximity
 
     assert_eq!(
         ctx.hops("f"),
@@ -1031,7 +1031,7 @@ fn bfs_empty_seed_context_all_return_none() {
 }
 
 // ---------------------------------------------------------------------------
-// GraphDirtyFlag — focused single-property tests
+// GraphDirtyFlag: focused single-property tests
 // ---------------------------------------------------------------------------
 
 /// Requirement: flag starts clean after construction.

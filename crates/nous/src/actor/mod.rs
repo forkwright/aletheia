@@ -67,7 +67,7 @@ pub struct NousActor {
     oikos: Arc<Oikos>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
-    /// BM25 text search — used as recall fallback when embedding provider is mock.
+    /// BM25 text search: used as recall fallback when embedding provider is mock.
     #[cfg(feature = "knowledge-store")]
     text_search: Option<Arc<dyn crate::recall::TextSearch>>,
     session_store: Option<Arc<Mutex<SessionStore>>>,
@@ -171,7 +171,7 @@ impl NousActor {
         }
     }
 
-    // NOTE(#940): 92 lines — actor message loop with tokio::select!. Under the 100-line
+    // NOTE(#940): 92 lines: actor message loop with tokio::select!. Under the 100-line
     // threshold but noted for completeness; the select loop is one cohesive operation.
     /// Run the actor loop until shutdown or all handles are dropped.
     ///
@@ -277,7 +277,7 @@ impl NousActor {
 
     /// # Cancel safety
     ///
-    /// Cancel-safe. No state is modified before the `.await` point — only
+    /// Cancel-safe. No state is modified before the `.await` point: only
     /// local variables are prepared from the envelope. If cancelled, the
     /// actor remains in a consistent state.
     async fn handle_cross_message(
@@ -348,7 +348,7 @@ impl NousActor {
     ///
     /// Returns bootstrap sections for skills relevant to `content`. Returns an
     /// empty vec when the knowledge-store feature is disabled, when no
-    /// `KnowledgeStore` is configured, or when no skills match — preserving
+    /// `KnowledgeStore` is configured, or when no skills match: preserving
     /// existing behaviour in all degraded cases.
     ///
     /// # Cancel safety
@@ -356,7 +356,7 @@ impl NousActor {
     /// Cancel-safe. The inner `resolve_skills` spawns a separate Tokio task for
     /// the blocking search; cancelling this future at the await point loses the
     /// skill result but leaves no inconsistent state.
-    // WHY: body has no .await without knowledge-store feature — kept async so callers .await uniformly
+    // WHY: body has no .await without knowledge-store feature: kept async so callers .await uniformly
     #[cfg_attr(
         not(feature = "knowledge-store"),
         expect(

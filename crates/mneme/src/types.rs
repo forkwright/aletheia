@@ -33,7 +33,7 @@ impl std::fmt::Display for SessionStatus {
     }
 }
 
-/// Session type — classifies session lifecycle behavior.
+/// Session type: classifies session lifecycle behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -200,7 +200,7 @@ pub struct UsageRecord {
     pub model: Option<String>,
 }
 
-/// Blackboard entry — shared agent state with TTL.
+/// Blackboard entry: shared agent state with TTL.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlackboardRow {
     pub key: String,
@@ -211,7 +211,7 @@ pub struct BlackboardRow {
     pub expires_at: Option<String>,
 }
 
-/// Agent note — explicit agent-written context that survives distillation.
+/// Agent note: explicit agent-written context that survives distillation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentNote {
     /// Database-assigned row identifier.

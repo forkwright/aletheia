@@ -50,7 +50,7 @@ pub enum ConfigError {
 // Config file wrapper
 // ---------------------------------------------------------------------------
 
-/// TOML file envelope — the `[connection]` table within `desktop.toml`.
+/// TOML file envelope: the `[connection]` table within `desktop.toml`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 struct DesktopConfig {
     #[serde(default)]

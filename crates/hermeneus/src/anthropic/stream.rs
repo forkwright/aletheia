@@ -246,7 +246,7 @@ impl StreamAccumulator {
                 });
             }
             WireStreamEvent::MessageStop {} | WireStreamEvent::Ping {} => {
-                // Final event or keepalive — nothing to accumulate.
+                // Final event or keepalive: nothing to accumulate.
             }
             WireStreamEvent::Error { error } => {
                 return Err(super::error::map_sse_error(error));
@@ -270,7 +270,7 @@ impl StreamAccumulator {
                     name,
                     input_json,
                 } => {
-                    // An empty string means no input_json_delta events were sent — the
+                    // An empty string means no input_json_delta events were sent: the
                     // tool takes no arguments.  Skip parsing to avoid a spurious WARN.
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
@@ -345,7 +345,7 @@ impl StreamAccumulator {
 /// Parse SSE lines from a reader, dispatching events to the accumulator.
 ///
 /// Uses lossy UTF-8 conversion so that proxy-injected non-UTF8 bytes do not
-/// abort the stream — replacement characters (`\u{FFFD}`) appear in event
+/// abort the stream: replacement characters (`\u{FFFD}`) appear in event
 /// data instead of causing an error.
 #[cfg(test)]
 pub(crate) fn parse_sse_stream(
@@ -416,7 +416,7 @@ fn convert_wire_usage(wire: &WireUsage) -> Usage {
 /// Reads the response body byte-by-byte via [`Response::chunk`], accumulating
 /// bytes until a newline and dispatching complete SSE events as they arrive.
 /// Unlike `parse_sse_stream` (test-only sync variant), this does not buffer the entire response body
-/// before parsing — each event is processed as soon as the final byte of its
+/// before parsing: each event is processed as soon as the final byte of its
 /// `data:` line is received.
 ///
 /// Uses lossy UTF-8 so proxy-injected non-UTF-8 bytes produce replacement
@@ -794,7 +794,7 @@ data: {\"type\":\"message_stop\"}\n\
     }
 
     /// Tools with no parameters send a `tool_use` block with zero `input_json_delta`
-    /// events — the accumulated input string stays empty.  The parser must not
+    /// events: the accumulated input string stays empty.  The parser must not
     /// emit a WARN and must return an empty object as the input value.
     #[test]
     fn tool_use_with_no_input_produces_empty_object_without_warning() {

@@ -1,4 +1,4 @@
-//! `aletheia health` — HTTP health check against a running instance.
+//! `aletheia health`: HTTP health check against a running instance.
 
 use anyhow::{Context, Result};
 use clap::Args;
