@@ -49,7 +49,7 @@ impl NousHandle {
         session_key: impl Into<String>,
         content: impl Into<String>,
     ) -> error::Result<TurnResult> {
-        self.send_turn_with_session_id(session_key, None, content, DEFAULT_SEND_TIMEOUT)
+        self.send_turn_full(session_key, None, content, None, DEFAULT_SEND_TIMEOUT)
             .await
     }
 
@@ -65,11 +65,57 @@ impl NousHandle {
         content: impl Into<String>,
         timeout: Duration,
     ) -> error::Result<TurnResult> {
+        self.send_turn_full(session_key, session_id, content, None, timeout)
+            .await
+    }
+
+    /// Send a turn with a model override.
+    ///
+    /// When `model_override` is `Some`, the actor uses this model for the turn
+    /// instead of the agent's configured conversation model. Used by daemon
+    /// tasks to route through cheaper model tiers.
+    pub async fn send_turn_with_model(
+        &self,
+        session_key: impl Into<String>,
+        content: impl Into<String>,
+        model_override: Option<String>,
+    ) -> error::Result<TurnResult> {
+        self.send_turn_full(
+            session_key,
+            None,
+            content,
+            model_override,
+            DEFAULT_SEND_TIMEOUT,
+        )
+        .await
+    }
+
+    /// Send a turn message with a configurable inbox timeout.
+    pub async fn send_turn_with_timeout(
+        &self,
+        session_key: impl Into<String>,
+        content: impl Into<String>,
+        timeout: Duration,
+    ) -> error::Result<TurnResult> {
+        self.send_turn_full(session_key, None, content, None, timeout)
+            .await
+    }
+
+    /// Full-parameter turn send: session ID, model override, and timeout.
+    async fn send_turn_full(
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        content: impl Into<String>,
+        model_override: Option<String>,
+        timeout: Duration,
+    ) -> error::Result<TurnResult> {
         let (tx, rx) = oneshot::channel();
         let msg = NousMessage::Turn {
             session_key: session_key.into(),
             session_id,
             content: content.into(),
+            model_override,
             span: tracing::Span::current(),
             reply: tx,
         };
@@ -80,17 +126,6 @@ impl NousHandle {
             }
             .build()
         })?
-    }
-
-    /// Send a turn message with a configurable inbox timeout.
-    pub async fn send_turn_with_timeout(
-        &self,
-        session_key: impl Into<String>,
-        content: impl Into<String>,
-        timeout: Duration,
-    ) -> error::Result<TurnResult> {
-        self.send_turn_with_session_id(session_key, None, content, timeout)
-            .await
     }
 
     /// Send a turn message with real-time streaming and await the result.
@@ -135,6 +170,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             content: content.into(),
+            model_override: None,
             stream_tx,
             span: tracing::Span::current(),
             reply: tx,
@@ -408,6 +444,7 @@ mod tests {
                     session_key: "main".to_owned(),
                     session_id: None,
                     content: "hello".to_owned(),
+                    model_override: None,
                     span: tracing::Span::current(),
                     reply: reply_tx,
                 })

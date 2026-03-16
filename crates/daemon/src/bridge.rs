@@ -13,11 +13,17 @@ use crate::runner::ExecutionResult;
 /// Uses boxed futures for object safety (`Arc<dyn DaemonBridge>`).
 pub trait DaemonBridge: Send + Sync {
     /// Send a prompt to a nous actor for processing within a given session.
+    ///
+    /// When `model_override` is `Some`, the nous actor uses this model for the
+    /// turn instead of the agent's configured conversation model. Used by
+    /// daemon tasks (e.g. prosoche heartbeat) to route trivial prompts through
+    /// a cheaper model tier.
     fn send_prompt(
         &self,
         nous_id: &str,
         session_key: &str,
         prompt: &str,
+        model_override: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>>;
 }
 
@@ -30,6 +36,7 @@ impl DaemonBridge for NoopBridge {
         _nous_id: &str,
         _session_key: &str,
         _prompt: &str,
+        _model_override: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
         Box::pin(async {
             tracing::warn!("no daemon bridge configured — prompt not sent");
@@ -48,8 +55,9 @@ impl DaemonBridge for Arc<dyn DaemonBridge> {
         nous_id: &str,
         session_key: &str,
         prompt: &str,
+        model_override: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
-        (**self).send_prompt(nous_id, session_key, prompt)
+        (**self).send_prompt(nous_id, session_key, prompt, model_override)
     }
 }
 
@@ -62,7 +70,7 @@ mod tests {
     async fn noop_bridge_returns_not_success() {
         let bridge = NoopBridge;
         let result = bridge
-            .send_prompt("test-nous", "test-session", "hello")
+            .send_prompt("test-nous", "test-session", "hello", None)
             .await
             .expect("should not error");
         assert!(!result.success, "NoopBridge should return success=false");
@@ -72,7 +80,7 @@ mod tests {
     async fn noop_bridge_output_contains_no_bridge() {
         let bridge = NoopBridge;
         let result = bridge
-            .send_prompt("test-nous", "test-session", "hello")
+            .send_prompt("test-nous", "test-session", "hello", None)
             .await
             .expect("should not error");
         let output = result.output.expect("should have output");

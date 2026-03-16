@@ -475,6 +475,7 @@ async fn send_timeout_fires_when_inbox_full() {
         session_key: "main".to_owned(),
         session_id: None,
         content: "filler".to_owned(),
+        model_override: None,
         span: tracing::Span::current(),
         reply: reply_tx,
     })

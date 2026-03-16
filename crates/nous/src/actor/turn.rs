@@ -28,6 +28,7 @@ impl NousActor {
         session_key: String,
         session_id: Option<String>,
         content: String,
+        model_override: Option<String>,
         caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
@@ -45,6 +46,7 @@ impl NousActor {
                 &session_key,
                 session_id.as_deref(),
                 &content,
+                model_override,
                 caller_span,
             )
             .await;
@@ -77,11 +79,16 @@ impl NousActor {
     /// Not cancel-safe in isolation — same profile as `handle_turn`.
     /// Sets `lifecycle` and `active_session` before the `.await` point.
     /// Only called from the sequential actor loop.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "model_override adds one param to turn handler"
+    )]
     pub(super) async fn handle_streaming_turn(
         &mut self,
         session_key: String,
         session_id: Option<String>,
         content: String,
+        model_override: Option<String>,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
@@ -100,6 +107,7 @@ impl NousActor {
                 &session_key,
                 session_id.as_deref(),
                 &content,
+                model_override,
                 &stream_tx,
                 caller_span,
             )
@@ -136,11 +144,19 @@ impl NousActor {
         session_key: &str,
         session_id: Option<&str>,
         content: &str,
+        model_override: Option<String>,
         caller_span: tracing::Span,
     ) -> crate::error::Result<TurnResult> {
         // WHY: pipeline spawned in separate task so panics are caught by JoinHandle, not the actor loop
         let result = self
-            .spawn_pipeline_task(session_key, session_id, content, None, caller_span)
+            .spawn_pipeline_task(
+                session_key,
+                session_id,
+                content,
+                model_override,
+                None,
+                caller_span,
+            )
             .await;
         self.handle_pipeline_result(result, session_key)
     }
@@ -151,6 +167,7 @@ impl NousActor {
         session_key: &str,
         session_id: Option<&str>,
         content: &str,
+        model_override: Option<String>,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
         caller_span: tracing::Span,
     ) -> crate::error::Result<TurnResult> {
@@ -159,6 +176,7 @@ impl NousActor {
                 session_key,
                 session_id,
                 content,
+                model_override,
                 Some(stream_tx.clone()),
                 caller_span,
             )
@@ -166,8 +184,12 @@ impl NousActor {
         self.handle_pipeline_result(result, session_key)
     }
 
-    // NOTE(#940): 113 lines — setup and spawn a single pipeline task with streaming
+    // NOTE(#940): setup and spawn a single pipeline task with streaming
     // bridge. The sequential setup + spawn is one cohesive operation.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "sequential pipeline setup — splitting would scatter context"
+    )]
     /// Spawn the pipeline as a separate tokio task to catch panics.
     ///
     /// When `db_session_id` is `Some`, the actor adopts that ID for the
@@ -179,6 +201,7 @@ impl NousActor {
         session_key: &str,
         db_session_id: Option<&str>,
         content: &str,
+        model_override: Option<String>,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         caller_span: tracing::Span,
     ) -> Result<crate::error::Result<TurnResult>, tokio::task::JoinError> {
@@ -227,7 +250,10 @@ impl NousActor {
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 
         let oikos = Arc::clone(&self.oikos);
-        let config = self.config.clone();
+        let mut config = self.config.clone();
+        if let Some(model) = model_override {
+            config.model = model;
+        }
         let pipeline_config = self.pipeline_config.clone();
         let providers = Arc::clone(&self.providers);
         let tools = Arc::clone(&self.tools);

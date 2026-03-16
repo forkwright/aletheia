@@ -350,7 +350,8 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
             agent_def.id.clone(),
             agent_token,
             daemon_bridge.clone(),
-        );
+        )
+        .with_daemon_model(config.maintenance.daemon_model.clone());
         runner.register(aletheia_oikonomos::schedule::TaskDef {
             id: format!("{}-prosoche", agent_def.id),
             name: "Prosoche attention check".to_owned(),

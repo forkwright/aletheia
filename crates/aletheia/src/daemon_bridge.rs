@@ -24,11 +24,13 @@ impl DaemonBridge for NousDaemonBridge {
         nous_id: &str,
         session_key: &str,
         prompt: &str,
+        model_override: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = aletheia_oikonomos::error::Result<ExecutionResult>> + Send + '_>>
     {
         let nous_id = nous_id.to_owned();
         let session_key = session_key.to_owned();
         let prompt = prompt.to_owned();
+        let model_override = model_override.map(ToOwned::to_owned);
 
         Box::pin(async move {
             let Some(handle) = self.nous_manager.get(&nous_id).cloned() else {
@@ -39,7 +41,10 @@ impl DaemonBridge for NousDaemonBridge {
                 });
             };
 
-            match handle.send_turn(&session_key, &prompt).await {
+            match handle
+                .send_turn_with_model(&session_key, &prompt, model_override)
+                .await
+            {
                 Ok(result) => {
                     tracing::debug!(
                         nous_id = %nous_id,

@@ -27,6 +27,10 @@ pub struct TaskRunner {
     in_flight: HashMap<String, InFlightTask>,
     /// Optional SQLite-backed state store for cross-restart persistence.
     state_store: Option<crate::state::TaskStateStore>,
+    /// Model override for daemon tasks (prosoche heartbeat, etc.).
+    /// When set, daemon-initiated LLM calls use this model instead of the
+    /// agent's conversation model.
+    daemon_model: Option<String>,
 }
 
 /// Tracks a task that is currently executing.
@@ -69,6 +73,7 @@ impl TaskRunner {
             knowledge_executor: None,
             in_flight: HashMap::new(),
             state_store: None,
+            daemon_model: None,
         }
     }
 
@@ -88,6 +93,7 @@ impl TaskRunner {
             knowledge_executor: None,
             in_flight: HashMap::new(),
             state_store: None,
+            daemon_model: None,
         }
     }
 
@@ -95,6 +101,13 @@ impl TaskRunner {
     #[must_use]
     pub fn with_maintenance(mut self, config: MaintenanceConfig) -> Self {
         self.maintenance = Some(config);
+        self
+    }
+
+    /// Set the model used for daemon-initiated LLM calls (e.g. prosoche).
+    #[must_use]
+    pub fn with_daemon_model(mut self, model: String) -> Self {
+        self.daemon_model = Some(model);
         self
     }
 
@@ -632,6 +645,7 @@ impl TaskRunner {
             let maintenance = self.maintenance.clone();
             let retention_executor = self.retention_executor.clone();
             let knowledge_executor = self.knowledge_executor.clone();
+            let daemon_model = self.daemon_model.clone();
 
             let span = tracing::info_span!(
                 "task_execute",
@@ -649,6 +663,7 @@ impl TaskRunner {
                         maintenance.as_ref(),
                         retention_executor,
                         knowledge_executor,
+                        daemon_model.as_deref(),
                     )
                     .await
                 }

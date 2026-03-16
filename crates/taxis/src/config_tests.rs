@@ -37,6 +37,7 @@ fn defaults_are_sensible() {
     assert!(config.maintenance.db_monitoring.enabled);
     assert_eq!(config.maintenance.db_monitoring.warn_threshold_mb, 100);
     assert!(!config.maintenance.retention.enabled);
+    assert_eq!(config.maintenance.daemon_model, "claude-haiku-4-5-20251001");
     assert!(config.pricing.is_empty());
     assert!(config.mcp.rate_limit.enabled);
     assert_eq!(config.mcp.rate_limit.message_requests_per_minute, 60);

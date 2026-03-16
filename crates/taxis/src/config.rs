@@ -601,7 +601,7 @@ pub struct DataConfig {
 #[serde(default)]
 pub struct RetentionConfig {}
 /// Instance maintenance settings.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct MaintenanceSettings {
@@ -616,6 +616,27 @@ pub struct MaintenanceSettings {
     /// Whether background knowledge graph maintenance tasks are enabled.
     #[serde(default)]
     pub knowledge_maintenance_enabled: bool,
+    /// Model used for daemon tasks (prosoche heartbeat, etc.) instead of the
+    /// agent's conversation model. Defaults to Haiku for cost efficiency.
+    #[serde(default = "default_daemon_model")]
+    pub daemon_model: String,
+}
+
+impl Default for MaintenanceSettings {
+    fn default() -> Self {
+        Self {
+            trace_rotation: TraceRotationSettings::default(),
+            drift_detection: DriftDetectionSettings::default(),
+            db_monitoring: DbMonitoringSettings::default(),
+            retention: RetentionSettings::default(),
+            knowledge_maintenance_enabled: false,
+            daemon_model: default_daemon_model(),
+        }
+    }
+}
+
+fn default_daemon_model() -> String {
+    "claude-haiku-4-5-20251001".to_owned()
 }
 
 /// Trace file rotation settings.
@@ -820,7 +841,7 @@ pub struct McpConfig {
 /// Per-session rate limiting configuration for MCP requests.
 ///
 /// Applies separate token bucket limits for expensive operations
-/// (session_message, session_create, knowledge_search) and cheap
+/// (`session_message`, `session_create`, `knowledge_search`) and cheap
 /// read/status operations. Limits are enforced per MCP session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

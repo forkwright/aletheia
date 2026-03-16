@@ -20,6 +20,9 @@ pub enum NousMessage {
         /// a new one, preventing FK constraint failures in finalize and tools.
         session_id: Option<String>,
         content: String,
+        /// Override the agent's configured model for this turn. Used by daemon
+        /// tasks (e.g. prosoche heartbeat) to route through a cheaper model.
+        model_override: Option<String>,
         /// Caller's tracing span — propagated into the pipeline task for request correlation.
         span: tracing::Span,
         reply: oneshot::Sender<error::Result<TurnResult>>,
@@ -30,6 +33,8 @@ pub enum NousMessage {
         /// Database session ID from the session store. See `Turn::session_id`.
         session_id: Option<String>,
         content: String,
+        /// Override the agent's configured model for this turn.
+        model_override: Option<String>,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         /// Caller's tracing span — propagated into the pipeline task for request correlation.
         span: tracing::Span,
