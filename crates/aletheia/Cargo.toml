@@ -27,6 +27,7 @@ embed-candle = ["aletheia-mneme/embed-candle"]
 migrate-qdrant = ["dep:qdrant-client", "aletheia-mneme/mneme-engine", "aletheia-mneme/storage-fjall"]
 tls = ["aletheia-pylon/tls"]
 tui = ["dep:theatron-tui"]
+desktop = ["dep:theatron-desktop"]
 
 [dependencies]
 aletheia-diaporeia = { path = "../diaporeia", optional = true }
@@ -44,6 +45,7 @@ aletheia-agora = { path = "../agora" }
 aletheia-dokimion = { path = "../eval" }
 aletheia-thesauros = { path = "../thesauros" }
 theatron-tui = { path = "../theatron/tui", optional = true }
+theatron-desktop = { path = "../theatron/desktop", optional = true }
 
 secrecy = { workspace = true }
 tokio = { workspace = true }
