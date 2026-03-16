@@ -51,7 +51,12 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                 })
                 .collect();
         }
-        app.load_focused_session().await;
+        // WHY: skip reload when a stream is pending or active — the optimistic
+        // user message and streaming state must not be clobbered by a full
+        // history fetch triggered by SSE reconnection.
+        if app.stream_rx.is_none() && app.active_turn_id.is_none() {
+            app.load_focused_session().await;
+        }
     }
 }
 
@@ -115,9 +120,13 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
             }
         }
     }
+    // WHY: stream_rx is set by send_message before active_turn_id is set by
+    // StreamTurnStart. Without this guard, a turn:after arriving in that gap
+    // triggers load_focused_session which replaces the optimistic user message.
     if is_focused
         && app.focused_session_id.as_ref() == Some(&session_id)
         && app.active_turn_id.is_none()
+        && app.stream_rx.is_none()
     {
         app.load_focused_session().await;
     }
@@ -406,5 +415,92 @@ mod tests {
         handle_sse_tool_called(&mut app, "nonexistent".into(), "tool".to_string());
         handle_sse_tool_failed(&mut app, "nonexistent".into());
         handle_sse_distill_before(&mut app, "nonexistent".into());
+    }
+
+    #[tokio::test]
+    async fn turn_after_preserves_optimistic_message_when_stream_pending() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+        app.focused_session_id = Some("s1".into());
+
+        app.messages.push(crate::state::ChatMessage {
+            role: "user".to_string(),
+            text: "hello".to_string(),
+            text_lower: "hello".to_string(),
+            timestamp: None,
+            model: None,
+            is_streaming: false,
+            tool_calls: Vec::new(),
+        });
+
+        // Simulate the gap: stream started (stream_rx set) but StreamTurnStart
+        // has not yet arrived (active_turn_id is None).
+        let (_tx, rx) = tokio::sync::mpsc::channel(1);
+        app.stream_rx = Some(rx);
+
+        handle_sse_turn_after(&mut app, "syn".into(), "s1".into()).await;
+
+        assert_eq!(app.messages.len(), 1, "optimistic message must survive");
+        assert_eq!(app.messages[0].text, "hello");
+    }
+
+    #[tokio::test]
+    async fn turn_after_preserves_messages_when_turn_active() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+        app.focused_session_id = Some("s1".into());
+        app.active_turn_id = Some("t1".into());
+
+        app.messages.push(crate::state::ChatMessage {
+            role: "user".to_string(),
+            text: "hello".to_string(),
+            text_lower: "hello".to_string(),
+            timestamp: None,
+            model: None,
+            is_streaming: false,
+            tool_calls: Vec::new(),
+        });
+
+        handle_sse_turn_after(&mut app, "syn".into(), "s1".into()).await;
+
+        assert_eq!(
+            app.messages.len(),
+            1,
+            "messages must survive during active turn"
+        );
+        assert_eq!(app.messages[0].text, "hello");
+    }
+
+    #[tokio::test]
+    async fn connected_preserves_optimistic_message_when_stream_pending() {
+        let mut app = test_app();
+        app.agents.push(test_agent("syn", "Syn"));
+        app.focused_agent = Some("syn".into());
+        app.focused_session_id = Some("s1".into());
+        app.sse_connected = false;
+
+        app.messages.push(crate::state::ChatMessage {
+            role: "user".to_string(),
+            text: "hello".to_string(),
+            text_lower: "hello".to_string(),
+            timestamp: None,
+            model: None,
+            is_streaming: false,
+            tool_calls: Vec::new(),
+        });
+
+        let (_tx, rx) = tokio::sync::mpsc::channel(1);
+        app.stream_rx = Some(rx);
+
+        handle_sse_connected(&mut app).await;
+
+        assert_eq!(
+            app.messages.len(),
+            1,
+            "optimistic message must survive reconnect"
+        );
+        assert_eq!(app.messages[0].text, "hello");
     }
 }
