@@ -7,7 +7,7 @@ use aletheia_taxis::config::McpRateLimitConfig;
 
 /// Operation cost tier for rate limiting.
 pub(crate) enum Tier {
-    /// Expensive operations: session_message, session_create, knowledge_search.
+    /// Expensive operations: `session_message`, `session_create`, `knowledge_search`.
     Expensive,
     /// Cheap operations: list, status, health, config reads.
     Cheap,

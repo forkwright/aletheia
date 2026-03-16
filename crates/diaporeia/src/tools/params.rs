@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn session_list_params_allows_empty_filter() {
-        let json = r#"{}"#;
+        let json = r"{}";
         let params: SessionListParams = serde_json::from_str(json).unwrap();
         assert!(params.nous_id.is_none());
     }
