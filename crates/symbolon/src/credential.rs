@@ -465,6 +465,10 @@ impl RefreshingCredentialProvider {
     }
 
     /// Signal the background refresh task to stop.
+    #[expect(
+        dead_code,
+        reason = "called from integration tests in credential_tests.rs"
+    )]
     pub(crate) fn shutdown(&self) {
         self.shutdown.store(true, Ordering::Relaxed);
     }
