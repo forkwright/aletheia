@@ -26,7 +26,7 @@ pub async fn check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let mut checks = Vec::new();
 
     // Check session store connectivity
-    let store_ok = state.session_store.lock().await.list_sessions(None).is_ok();
+    let store_ok = state.session_store.lock().await.ping().is_ok();
     checks.push(HealthCheck {
         name: "session_store",
         status: if store_ok { "pass" } else { "fail" },
