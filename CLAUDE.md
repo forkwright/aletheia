@@ -155,6 +155,15 @@ Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 | GET | `/api/v1/knowledge/search` | Full-text search (query: `q`, `nous_id`, `limit`) |
 | GET | `/api/v1/knowledge/timeline` | Fact activity timeline |
 
+## Scripts
+
+| Script | Usage |
+|--------|-------|
+| `scripts/deploy.sh` | Deploy binary to local instance. `--build` to compile, `--restart` to restart service. No flags = full deploy. |
+| `scripts/health-monitor.sh` | Health check: service status, API health, token expiry, LLM cost. `--notify` for Signal alerts. |
+
+Systemd timer for health monitoring: `instance.example/services/aletheia-health.{service,timer}` (5-minute interval).
+
 ## Git
 
 Conventional commits: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`. Present tense imperative, first line ≤72 chars. Scope is the crate name.
