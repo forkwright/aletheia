@@ -69,7 +69,6 @@ dependencies = [
  "snafu",
  "supports-color",
  "tempfile",
- "theatron-desktop",
  "theatron-tui",
  "time",
  "tokio",

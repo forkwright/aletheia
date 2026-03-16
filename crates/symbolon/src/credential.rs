@@ -465,7 +465,6 @@ impl RefreshingCredentialProvider {
     }
 
     /// Signal the background refresh task to stop.
-    #[expect(dead_code, reason = "credential internal; no caller yet")]
     pub(crate) fn shutdown(&self) {
         self.shutdown.store(true, Ordering::Relaxed);
     }
