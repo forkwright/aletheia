@@ -1,4 +1,4 @@
-//! Hot-reload classification — which settings need a restart vs live update.
+//! Hot-reload classification: which settings need a restart vs live update.
 
 /// Field path prefixes that require a process restart to take effect.
 const RESTART_PREFIXES: &[&str] = &[

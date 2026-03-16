@@ -188,7 +188,7 @@ mod tests {
         assert!(s10 > s0);
         assert!(s100 > s10);
         assert!(s1000 > s100);
-        // Growth is bounded — even 1000 accesses doesn't double stability
+        // Growth is bounded: even 1000 accesses doesn't double stability
         let growth_ratio = s1000 / s0;
         assert!(
             growth_ratio < 2.0,

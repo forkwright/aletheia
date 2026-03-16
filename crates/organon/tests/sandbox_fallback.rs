@@ -61,7 +61,7 @@ mod linux {
     }
 
     /// Strict enforcement must return a clear, named error when Landlock is
-    /// unavailable — never an opaque "Permission denied (os error 13)".
+    /// unavailable: never an opaque "Permission denied (os error 13)".
     /// When Landlock IS available the command executes normally.
     #[test]
     fn strict_enforcement_returns_clear_error_when_landlock_unavailable()

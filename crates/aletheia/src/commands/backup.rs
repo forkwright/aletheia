@@ -1,4 +1,4 @@
-//! `aletheia backup` — database backup management.
+//! `aletheia backup`: database backup management.
 
 use std::path::PathBuf;
 

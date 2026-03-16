@@ -1,4 +1,4 @@
-//! `aletheia check-config` — validate configuration without starting any services.
+//! `aletheia check-config`: validate configuration without starting any services.
 
 use std::path::PathBuf;
 

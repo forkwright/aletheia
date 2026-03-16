@@ -40,7 +40,7 @@ const HEARTBEAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45
 /// Initial backoff delay after a connection failure.
 const INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// Maximum backoff delay — caps exponential growth.
+/// Maximum backoff delay: caps exponential growth.
 const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Manages the global SSE connection to `/api/v1/events`.
@@ -135,7 +135,7 @@ impl SseConnection {
                                 if let Some(parsed) = parse_sse_event(&msg.event, &msg.data)
                                     && tx.send(parsed).await.is_err()
                                 {
-                                    // Receiver dropped — shut down.
+                                    // Receiver dropped: shut down.
                                     return;
                                 }
                             }

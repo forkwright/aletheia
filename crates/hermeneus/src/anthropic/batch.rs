@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A batch request — multiple messages requests submitted together.
+/// A batch request: multiple messages requests submitted together.
 #[derive(Debug, Clone, Serialize)]
 pub struct BatchRequest {
     pub requests: Vec<BatchItem>,

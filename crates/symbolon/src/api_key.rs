@@ -2,7 +2,7 @@
 //!
 //! Key format: `ale_{prefix}_{secret}` where secret is 32 random bytes hex-encoded.
 //! The prefix identifies the key holder (for logs/audit).
-//! The secret is hashed with blake3 before storage — never stored in plaintext.
+//! The secret is hashed with blake3 before storage: never stored in plaintext.
 
 use std::time::Duration;
 

@@ -1,6 +1,6 @@
-//! aletheia-hermeneus — Anthropic-native LLM provider
+//! aletheia-hermeneus: Anthropic-native LLM provider
 //!
-//! Hermeneus (Ἑρμηνεύς) — "interpreter." Anthropic-native types and client
+//! Hermeneus (Ἑρμηνεύς): "interpreter." Anthropic-native types and client
 //! for LLM interaction. Other providers implement adapters that map to/from
 //! the Anthropic type system.
 //!

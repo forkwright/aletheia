@@ -1,4 +1,4 @@
-//! Graph-enhanced recall scoring — wires `PageRank`, `Louvain` community detection,
+//! Graph-enhanced recall scoring: wires `PageRank`, `Louvain` community detection,
 //! and bounded BFS proximity into the 6-factor recall pipeline.
 //!
 //! This module provides:
@@ -85,7 +85,7 @@ impl GraphContext {
 /// A verified fact about a hub entity is worth more than one about a peripheral entity.
 ///
 /// `importance` is the normalized `PageRank` in [0.0, 1.0].
-/// Boost range: [1.0, 1.5] — at importance=0.0 the score is unchanged.
+/// Boost range: [1.0, 1.5]: at importance=0.0 the score is unchanged.
 #[must_use]
 pub fn score_epistemic_tier_with_importance(base_tier_score: f64, importance: f64) -> f64 {
     let boost = 1.0 + (importance.clamp(0.0, 1.0) * 0.5); // [1.0, 1.5]
@@ -302,7 +302,7 @@ impl crate::knowledge_store::KnowledgeStore {
                 "cluster" => {
                     ctx.clusters.insert(entity_id.to_owned(), cluster_id);
                 }
-                // pagerank_max meta entry — normalization already done in Datalog
+                // pagerank_max meta entry: normalization already done in Datalog
                 _ => {}
             }
         }
@@ -439,7 +439,7 @@ impl crate::knowledge_store::KnowledgeStore {
 
     /// Compute domain volatility and store scores in `graph_scores`.
     ///
-    /// Intended for background scheduling — runs the volatility Datalog,
+    /// Intended for background scheduling: runs the volatility Datalog,
     /// computes scores, and upserts them into `graph_scores` with
     /// `score_type = "volatility"`.
     pub fn compute_and_store_volatility(&self) -> crate::error::Result<()> {

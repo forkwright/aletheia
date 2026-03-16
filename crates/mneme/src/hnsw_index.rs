@@ -139,7 +139,7 @@ impl HnswIndex {
                 // because mmap is not used. `load_hnsw` copies all point data into
                 // heap-owned allocations inside `Hnsw`; the loader is not accessed
                 // after this call returns. The `_loader` Box is stored in the struct
-                // to satisfy the type system — see the safety invariant on `HnswIndex`.
+                // to satisfy the type system: see the safety invariant on `HnswIndex`.
                 #[expect(
                     unsafe_code,
                     reason = "lifetime extension: Hnsw owns its data after load (no mmap)"
@@ -277,7 +277,7 @@ mod tests {
         index.insert(&v2, 1);
         index.insert(&v3, 2);
 
-        // Query close to v1 — should return v1 (id=0) and v3 (id=2) as nearest
+        // Query close to v1: should return v1 (id=0) and v3 (id=2) as nearest
         let query = vec![0.95, 0.05, 0.0, 0.0];
         let results = index.search(&query, 2, 16);
 

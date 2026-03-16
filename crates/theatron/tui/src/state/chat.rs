@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 /// Shared-ownership message history vector.
 ///
-/// `Clone` increments an `Arc` reference count — O(1) regardless of message count.
+/// `Clone` increments an `Arc` reference count: O(1) regardless of message count.
 /// `DerefMut` uses `Arc::make_mut` for copy-on-write semantics: mutation is free
 /// when this is the sole owner, and clones the `Vec` exactly once when another
 /// `Arc` still holds a reference.
@@ -106,7 +106,7 @@ mod tests {
     fn arc_vec_clone_is_shared_not_copied() {
         let v: ArcVec<i32> = vec![1, 2, 3].into();
         let v2 = v.clone();
-        // Both point to the same allocation — pointer equality.
+        // Both point to the same allocation: pointer equality.
         assert!(std::ptr::eq(Arc::as_ptr(&v.0), Arc::as_ptr(&v2.0)));
     }
 

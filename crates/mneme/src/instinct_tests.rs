@@ -519,7 +519,7 @@ fn five_successful_calls_at_threshold_triggers_pattern() {
 
 #[test]
 fn ten_calls_below_80_percent_success_rate_does_not_trigger() {
-    // 7 successes + 3 failures = 70% — below MIN_SUCCESS_RATE of 80%.
+    // 7 successes + 3 failures = 70%: below MIN_SUCCESS_RATE of 80%.
     let mut observations: Vec<_> = (0..7)
         .map(|i| {
             make_observation(
@@ -668,7 +668,7 @@ fn sanitize_array_parameter_values_element_by_element() {
 
 #[test]
 fn different_nous_observations_aggregate_together_without_filter() {
-    // aggregate_observations groups by (tool_name, context_category) only — not nous_id.
+    // aggregate_observations groups by (tool_name, context_category) only: not nous_id.
     // Callers must filter by nous_id before calling to get per-nous patterns.
     let mut observations: Vec<ToolObservation> = (0..3)
         .map(|i| ToolObservation {
@@ -749,7 +749,7 @@ fn two_tools_identical_parameters_produce_separate_patterns() {
 #[test]
 fn tool_name_matching_is_case_sensitive() {
     // Both classify as Code context (classification lowercases the tool name),
-    // but the pattern key uses the original tool_name — so "Grep" ≠ "grep".
+    // but the pattern key uses the original tool_name: so "Grep" ≠ "grep".
     let mut observations = Vec::new();
     for i in 0..5 {
         observations.push(make_observation(

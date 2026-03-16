@@ -100,7 +100,7 @@ mod tests {
     fn distinct_types_prevent_mixup() {
         let nous = NousId::from("agent".to_string());
         let session = SessionId::from("agent".to_string());
-        // These are different types — can't accidentally compare or swap them
+        // These are different types: can't accidentally compare or swap them
         assert_eq!(&*nous, &*session);
     }
 

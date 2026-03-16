@@ -14,7 +14,7 @@ pub use aletheia_hermeneus::types::{
     DocumentSource, ImageSource, ToolResultBlock, ToolResultContent,
 };
 
-/// Tool definition — the rich metadata that organon tracks internally.
+/// Tool definition: the rich metadata that organon tracks internally.
 ///
 /// Converted to `hermeneus::types::ToolDefinition` (the lean LLM wire format)
 /// via `ToolRegistry::to_hermeneus_tools`.
@@ -127,7 +127,7 @@ impl std::fmt::Display for PropertyType {
     }
 }
 
-/// Semantic tool category — classifies tool purpose.
+/// Semantic tool category: classifies tool purpose.
 ///
 /// This is a semantic classification, not a loading strategy.
 /// The loading strategy (essential vs available) is orthogonal.
@@ -171,7 +171,7 @@ impl std::fmt::Display for ToolCategory {
 /// What the tool executor returns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
-    /// Result content — text or rich content blocks.
+    /// Result content: text or rich content blocks.
     pub content: ToolResultContent,
     /// Whether this result represents an error.
     pub is_error: bool,

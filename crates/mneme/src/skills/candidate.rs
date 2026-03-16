@@ -1,8 +1,8 @@
-//! Skill candidate tracking — Rule of Three promotion.
+//! Skill candidate tracking: Rule of Three promotion.
 //!
 //! A [`CandidateTracker`] accumulates tool call sequences that pass the
 //! heuristic filter.  When the same pattern recurs 3 or more times, it is
-//! **promoted** — signalling that an LLM extraction pass should turn it into
+//! **promoted**: signalling that an LLM extraction pass should turn it into
 //! a proper [`crate::skill::SkillContent`].
 //!
 //! ## Storage
@@ -80,7 +80,7 @@ impl SkillCandidate {
 /// Outcome from [`CandidateTracker::track_sequence`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrackResult {
-    /// Sequence failed the heuristic gates — not tracked.
+    /// Sequence failed the heuristic gates: not tracked.
     Rejected,
     /// New candidate created (first occurrence).
     New,

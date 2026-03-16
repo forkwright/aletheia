@@ -65,7 +65,7 @@ pub enum ConnectionError {
 /// Minimal HTTP client for pylon communication.
 ///
 /// Wraps `reqwest::Client` with pre-configured auth headers and base URL.
-/// This is a temporary implementation — once theatron-core exposes `ApiClient`,
+/// This is a temporary implementation: once theatron-core exposes `ApiClient`,
 /// this should be replaced.
 #[derive(Clone)]
 pub struct PylonClient {
@@ -84,7 +84,7 @@ impl PylonClient {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-        // CSRF mitigation — pylon rejects requests without this header.
+        // CSRF mitigation: pylon rejects requests without this header.
         headers.insert("x-requested-with", HeaderValue::from_static("aletheia"));
 
         if let Some(ref token) = config.auth_token {
@@ -245,7 +245,7 @@ impl ConnectionService {
             }
         }
 
-        // Connected — enter periodic health check loop.
+        // Connected: enter periodic health check loop.
         self.health_check_loop(&client).await;
     }
 

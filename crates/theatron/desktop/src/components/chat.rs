@@ -108,7 +108,7 @@ impl Default for ChatState {
 /// this runs inside a `use_coroutine` that reads from the stream receiver
 /// and writes into signals.
 pub struct ChatStateManager {
-    /// Pending text delta buffer — not yet flushed to state.
+    /// Pending text delta buffer: not yet flushed to state.
     text_buffer: String,
     /// Pending thinking delta buffer.
     thinking_buffer: String,
@@ -387,7 +387,7 @@ mod tests {
         mgr.last_flush = Instant::now();
 
         let changed = mgr.apply(StreamEvent::TextDelta("he".to_string()), &mut state);
-        // Debounce not elapsed and no newline — should buffer.
+        // Debounce not elapsed and no newline: should buffer.
         assert!(!changed);
         assert!(state.streaming.text.is_empty());
 

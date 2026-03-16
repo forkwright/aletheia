@@ -2,7 +2,7 @@ use crate::api::types::*;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
 /// Every possible state transition in the application.
-/// No I/O happens here — only data describing what happened.
+/// No I/O happens here: only data describing what happened.
 #[non_exhaustive]
 #[derive(Debug)]
 #[allow(

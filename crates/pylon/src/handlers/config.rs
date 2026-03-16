@@ -35,7 +35,7 @@ pub struct ConfigUpdateResponse {
     pub restart_required: Vec<String>,
 }
 
-/// GET /api/v1/config — full redacted config.
+/// GET /api/v1/config: full redacted config.
 #[utoipa::path(
     get,
     path = "/api/v1/config",
@@ -55,7 +55,7 @@ pub async fn get_config(
     Ok(Json(redacted))
 }
 
-/// GET /api/v1/config/{section} — redacted config section.
+/// GET /api/v1/config/{section}: redacted config section.
 #[utoipa::path(
     get,
     path = "/api/v1/config/{section}",
@@ -91,7 +91,7 @@ pub async fn get_section(
     }
 }
 
-/// PUT /api/v1/config/{section} — update and persist a config section.
+/// PUT /api/v1/config/{section}: update and persist a config section.
 #[utoipa::path(
     put,
     path = "/api/v1/config/{section}",
@@ -237,7 +237,7 @@ mod tests {
     fn deep_merge_replaces_array_wholesale() {
         let mut base = json!({"items": [1, 2, 3]});
         deep_merge(&mut base, json!({"items": [4, 5]}));
-        // Arrays are not merged — patch replaces entirely
+        // Arrays are not merged: patch replaces entirely
         let items = base["items"].as_array().unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0], 4);

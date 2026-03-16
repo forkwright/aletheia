@@ -1,4 +1,4 @@
-//! Unified channel listener — merges inbound messages from all providers.
+//! Unified channel listener: merges inbound messages from all providers.
 
 use std::future::Future;
 use std::sync::Arc;

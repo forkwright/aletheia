@@ -199,7 +199,7 @@ mod tests {
         use crate::engine::parse::fts::parse_fts_query;
 
         proptest! {
-            /// The FTS parser must never panic on arbitrary input — it should return a
+            /// The FTS parser must never panic on arbitrary input: it should return a
             /// parse error instead. Panics indicate logic bugs in the parser itself.
             #[test]
             fn fts_parser_never_panics(input in "\\PC{0,500}") {
@@ -232,7 +232,7 @@ mod tests {
             ) {
                 // NOTE: the pest grammar matches keywords greedily, so words
                 // starting with AND/OR/NOT/NEAR (e.g. "ORa") confuse the parser.
-                // Filter those out — the underlying grammar bug is tracked separately.
+                // Filter those out: the underlying grammar bug is tracked separately.
                 let conflicts_with_kw = |w: &str| {
                     let u = w.to_uppercase();
                     matches!(u.as_str(), "AND" | "OR" | "NOT" | "NEAR")

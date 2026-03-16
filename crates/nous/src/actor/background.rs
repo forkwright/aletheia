@@ -1,4 +1,4 @@
-//! Background tasks — extraction, skill analysis, distillation, and task reaping.
+//! Background tasks: extraction, skill analysis, distillation, and task reaping.
 
 use std::sync::Arc;
 
@@ -179,7 +179,7 @@ impl NousActor {
         use std::sync::atomic::Ordering;
 
         // WHY: two turns finishing close together can both observe the distillation trigger before
-        // either task commits — the atomic flag ensures only one distillation task runs at a time (#1035)
+        // either task commits: the atomic flag ensures only one distillation task runs at a time (#1035)
         if self
             .distillation_in_progress
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -324,7 +324,7 @@ async fn run_extraction(
     }
 }
 
-// NOTE(#940): 113 lines — extract → persist → handle lifecycle for skill extraction.
+// NOTE(#940): 113 lines: extract → persist → handle lifecycle for skill extraction.
 // Single cohesive async operation, splitting would obscure the three-phase flow.
 /// Run LLM skill extraction as a background task. Logs results, never panics.
 async fn run_skill_extraction(
@@ -389,7 +389,7 @@ async fn run_skill_extraction(
                             id: fact_id.clone(),
                             nous_id: nous_id.to_owned(),
                             content,
-                            confidence: 0.6, // Pending review — moderate confidence
+                            confidence: 0.6, // Pending review: moderate confidence
                             tier: aletheia_mneme::knowledge::EpistemicTier::Inferred,
                             valid_from: now,
                             valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),

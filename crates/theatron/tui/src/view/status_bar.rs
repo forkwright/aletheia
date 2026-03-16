@@ -62,11 +62,11 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     right_spans.push(Span::raw(" "));
     let right_width: usize = right_spans.iter().map(|s| s.content.width()).sum();
 
-    // Connection status (highest priority — always shown first).
+    // Connection status (highest priority: always shown first).
     let conn_spans = connection_indicator_spans(app, theme);
     let conn_width: usize = conn_spans.iter().map(|s| s.content.width()).sum();
 
-    // Agent identity (second priority — truncated when narrow).
+    // Agent identity (second priority: truncated when narrow).
     let agent_spans = agent_identity_spans(app, theme);
     let agent_width: usize = agent_spans.iter().map(|s| s.content.width()).sum();
 
@@ -185,7 +185,7 @@ fn truncate_spans_to_width(spans: Vec<Span<'static>>, max_width: usize) -> Vec<S
         }
     }
 
-    // All spans fit within the budget but total was over max_width — append ellipsis.
+    // All spans fit within the budget but total was over max_width: append ellipsis.
     if remaining > 0
         && let Some(last) = result.last_mut()
     {

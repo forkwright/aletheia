@@ -59,7 +59,7 @@ pub enum TokenKind {
 /// JWT claims payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    /// Subject — user or agent ID.
+    /// Subject: user or agent ID.
     pub sub: String,
     /// RBAC role.
     pub role: Role,

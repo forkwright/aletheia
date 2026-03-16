@@ -1,4 +1,4 @@
-//! Agent import — restore an agent from a portable `AgentFile`.
+//! Agent import: restore an agent from a portable `AgentFile`.
 
 use std::path::Path;
 
@@ -39,7 +39,7 @@ pub struct ImportResult {
 
 /// Import an agent from a portable `AgentFile`.
 ///
-/// `id_generator` produces new session IDs — the caller provides this because
+/// `id_generator` produces new session IDs: the caller provides this because
 /// mneme doesn't depend on `ulid`.
 ///
 /// # Errors

@@ -315,7 +315,7 @@ mod proptests {
     }
 
     proptest! {
-        /// The Datalog parser must never panic on arbitrary input — it should return a
+        /// The Datalog parser must never panic on arbitrary input: it should return a
         /// parse error for invalid input, never crash. Panics indicate parser logic bugs.
         #[test]
         fn datalog_parser_never_panics(input in "\\PC{0,500}") {

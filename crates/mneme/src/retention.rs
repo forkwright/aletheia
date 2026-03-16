@@ -1,4 +1,4 @@
-//! Session retention policies — configurable cleanup of old sessions and orphan messages.
+//! Session retention policies: configurable cleanup of old sessions and orphan messages.
 
 use std::path::Path;
 

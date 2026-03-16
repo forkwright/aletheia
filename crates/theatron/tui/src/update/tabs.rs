@@ -58,7 +58,7 @@ pub(crate) fn handle_g_prefix(app: &mut App) {
     app.pending_g = true;
 }
 
-/// Handle :tab command — switch to tab by name/partial match.
+/// Handle :tab command: switch to tab by name/partial match.
 pub(crate) fn handle_tab_command(app: &mut App, args: &str) {
     if args.is_empty() {
         app.error_toast = Some(ErrorToast::new("Usage: :tab <name>".into()));

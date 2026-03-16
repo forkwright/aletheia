@@ -1,6 +1,6 @@
-//! aletheia-koina — core types, errors, and tracing for Aletheia
+//! aletheia-koina: core types, errors, and tracing for Aletheia
 //!
-//! Koina (κοινά) — "shared things." The common foundation that every crate depends on.
+//! Koina (κοινά): "shared things." The common foundation that every crate depends on.
 //! Imports nothing from other Aletheia crates. Contains only types, error definitions,
 //! and tracing initialization.
 

@@ -1,6 +1,6 @@
 //! Engine integration for fact consolidation.
 //!
-//! Implements consolidation operations on `KnowledgeStore` — candidate
+//! Implements consolidation operations on `KnowledgeStore`: candidate
 //! identification, LLM-driven consolidation execution, and audit trail.
 
 use std::collections::BTreeMap;

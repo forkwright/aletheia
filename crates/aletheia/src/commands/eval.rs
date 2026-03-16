@@ -1,4 +1,4 @@
-//! `aletheia eval` — behavioral evaluation scenarios against a live instance.
+//! `aletheia eval`: behavioral evaluation scenarios against a live instance.
 
 use anyhow::Result;
 use clap::Args;

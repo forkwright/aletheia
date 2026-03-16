@@ -140,7 +140,7 @@ fn cache_turns_marks_text_content_as_blocks() {
     // Last message (current turn) should NOT have cache_control
     let last_content = &msgs[2]["content"];
     if last_content.is_string() {
-        // plain text, no cache_control — correct
+        // plain text, no cache_control: correct
     } else {
         assert!(
             last_content[0].get("cache_control").is_none(),

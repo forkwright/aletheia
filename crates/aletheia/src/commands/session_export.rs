@@ -1,4 +1,4 @@
-//! `aletheia export <session-id>` — export a session as Markdown or JSON.
+//! `aletheia export <session-id>`: export a session as Markdown or JSON.
 
 use std::fmt::Write as _;
 use std::io::Write as _;

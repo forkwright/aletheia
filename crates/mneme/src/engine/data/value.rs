@@ -221,7 +221,7 @@ impl serde::Serialize for Vector {
                 let ptr = arr.as_ptr() as *const u8;
                 // SAFETY: `ptr` comes from a valid &[f32] allocation. Reinterpreting as
                 // &[u8] is safe because u8 has alignment 1 (always satisfied) and `len`
-                // is exactly `size_of_val(arr)` — the true byte length of the slice.
+                // is exactly `size_of_val(arr)`: the true byte length of the slice.
                 let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
                 state.serialize_element(&VecBytes(bytes))?;
             }
@@ -234,7 +234,7 @@ impl serde::Serialize for Vector {
                 let ptr = arr.as_ptr() as *const u8;
                 // SAFETY: `ptr` comes from a valid &[f64] allocation. Reinterpreting as
                 // &[u8] is safe because u8 has alignment 1 (always satisfied) and `len`
-                // is exactly `size_of_val(arr)` — the true byte length of the slice.
+                // is exactly `size_of_val(arr)`: the true byte length of the slice.
                 let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
                 state.serialize_element(&VecBytes(bytes))?;
             }

@@ -184,7 +184,7 @@ pub async fn handle_confidence_submit(app: &mut App) {
         .selected_fact()
         .map(|f| (f.id.clone(), f.confidence));
     if let Some((id, prev_conf)) = selected {
-        // NOTE: optimistic update — applied locally before the API round-trip to avoid UI lag
+        // NOTE: optimistic update: applied locally before the API round-trip to avoid UI lag
         if let Some(f) = app.memory.facts.iter_mut().find(|f| f.id == id) {
             f.confidence = conf;
         }
@@ -231,7 +231,7 @@ pub async fn handle_search_submit(app: &mut App) {
         return;
     }
     app.memory.search_active = false;
-    // NOTE: local fuzzy filtering — server-side semantic search not yet wired in
+    // NOTE: local fuzzy filtering: server-side semantic search not yet wired in
     let query = app.memory.search_query.to_lowercase();
     let terms: Vec<&str> = query.split_whitespace().collect();
 

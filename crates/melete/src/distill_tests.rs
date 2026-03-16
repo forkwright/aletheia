@@ -667,7 +667,7 @@ fn enforce_context_limit_drops_oldest_messages_when_over() {
 #[test]
 fn enforce_context_limit_keeps_at_least_one_message() {
     let mut messages = vec![text_msg(Role::User, "x".repeat(1000).as_str())];
-    // NOTE: window of 1 token — impossible to satisfy, but we must keep the last message
+    // NOTE: window of 1 token: impossible to satisfy, but we must keep the last message
     let dropped = enforce_context_limit(&mut messages, 1);
     assert_eq!(dropped, 0, "single message must not be dropped");
     assert_eq!(messages.len(), 1);
@@ -676,9 +676,9 @@ fn enforce_context_limit_keeps_at_least_one_message() {
 #[test]
 fn enforce_context_limit_drops_from_front() {
     let mut messages = vec![
-        text_msg(Role::User, &"a".repeat(400)), // oldest — should be dropped
+        text_msg(Role::User, &"a".repeat(400)), // oldest: should be dropped
         text_msg(Role::User, &"b".repeat(400)),
-        text_msg(Role::User, &"c".repeat(4)), // newest — should be kept
+        text_msg(Role::User, &"c".repeat(4)), // newest: should be kept
     ];
     // NOTE: 201 total tokens, window of 2 keeps last ~8 chars = 2 tokens
     let dropped = enforce_context_limit(&mut messages, 2);
@@ -806,7 +806,7 @@ async fn distill_result_contains_memory_flush_field() {
         .distill(&messages, "test", &provider, 1)
         .await
         .unwrap();
-    // NOTE: assert the field exists — mock summary has no decisions to assert content on
+    // NOTE: assert the field exists: mock summary has no decisions to assert content on
     let _ = &result.memory_flush;
 }
 

@@ -32,7 +32,7 @@ pub enum SseEvent {
         is_error: bool,
     },
 
-    /// Turn completed — final event in the stream.
+    /// Turn completed: final event in the stream.
     #[serde(rename = "message_complete")]
     MessageComplete {
         stop_reason: String,

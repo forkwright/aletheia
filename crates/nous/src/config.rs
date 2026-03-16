@@ -97,7 +97,7 @@ impl Default for NousConfig {
     }
 }
 
-/// Pipeline configuration — controls stage behavior.
+/// Pipeline configuration: controls stage behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineConfig {
     /// Token budget for history (remaining after bootstrap).
@@ -123,7 +123,7 @@ impl Default for PipelineConfig {
 /// Per-stage time budget configuration (seconds).
 ///
 /// Each field is a maximum wall-clock duration for that pipeline stage.
-/// `total_secs` is a hard cap — if elapsed time exceeds it, remaining
+/// `total_secs` is a hard cap: if elapsed time exceeds it, remaining
 /// stages are skipped and a partial result is returned.
 /// A value of 0 means no limit for that stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]

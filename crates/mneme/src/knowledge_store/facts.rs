@@ -184,7 +184,7 @@ impl KnowledgeStore {
         for id in fact_ids {
             // Read the current fact rows, increment in Rust, then write back.
             // `CozoDB` in-memory read-modify-write in a single Datalog rule does not
-            // reflect the mutation in subsequent reads — avoid that pattern.
+            // reflect the mutation in subsequent reads: avoid that pattern.
             let facts = match self.read_facts_by_id(id.as_str()) {
                 Ok(f) => f,
                 Err(e) => {
@@ -203,7 +203,7 @@ impl KnowledgeStore {
         Ok(())
     }
 
-    /// Async `increment_access` — wraps sync call in `spawn_blocking`.
+    /// Async `increment_access`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self), fields(count = fact_ids.len()))]
     pub async fn increment_access_async(
         self: &std::sync::Arc<Self>,
@@ -345,7 +345,7 @@ impl KnowledgeStore {
         rows_to_facts(rows, nous_id)
     }
 
-    /// Async `list_forgotten` — wraps sync call in `spawn_blocking`.
+    /// Async `list_forgotten`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self))]
     pub async fn list_forgotten_async(
         self: &std::sync::Arc<Self>,
@@ -596,7 +596,7 @@ impl KnowledgeStore {
 
     // --- Async wrappers ---
 
-    /// Async `forget_fact` — wraps sync call in `spawn_blocking`.
+    /// Async `forget_fact`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self))]
     pub async fn forget_fact_async(
         self: &std::sync::Arc<Self>,
@@ -610,7 +610,7 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
-    /// Async `unforget_fact` — wraps sync call in `spawn_blocking`.
+    /// Async `unforget_fact`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self))]
     pub async fn unforget_fact_async(
         self: &std::sync::Arc<Self>,
@@ -623,7 +623,7 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
-    /// Async `audit_all_facts` — wraps sync call in `spawn_blocking`.
+    /// Async `audit_all_facts`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self))]
     pub async fn audit_all_facts_async(
         self: &std::sync::Arc<Self>,
@@ -637,7 +637,7 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
-    /// Async `insert_fact` — wraps sync call in `spawn_blocking`.
+    /// Async `insert_fact`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
     pub async fn insert_fact_async(
         self: &std::sync::Arc<Self>,
@@ -650,7 +650,7 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
-    /// Async `query_facts` — wraps sync call in `spawn_blocking`.
+    /// Async `query_facts`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self))]
     pub async fn query_facts_async(
         self: &std::sync::Arc<Self>,

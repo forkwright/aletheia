@@ -1,4 +1,4 @@
-//! Diaporeia — MCP server interface for Aletheia.
+//! Diaporeia: MCP server interface for Aletheia.
 //!
 //! The passage through (διαπορεία) for external AI agents to access Aletheia's
 //! cognitive agent capabilities via the Model Context Protocol.

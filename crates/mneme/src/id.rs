@@ -39,7 +39,7 @@ macro_rules! define_id {
                 Ok(Self(id))
             }
 
-            /// Create without validation — for internal row parsing where
+            /// Create without validation: for internal row parsing where
             /// the ID was already validated on insert.
             #[must_use]
             // `#[expect]` cannot be used: the macro is invoked for multiple ID types; some
@@ -136,7 +136,7 @@ mod tests {
     fn fact_id_and_entity_id_are_distinct_types() {
         let fact: FactId = "id-1".into();
         let entity: EntityId = "id-1".into();
-        // Same string content, but different types — this is the point.
+        // Same string content, but different types: this is the point.
         assert_eq!(fact.as_str(), entity.as_str());
     }
 

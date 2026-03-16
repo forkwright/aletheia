@@ -324,7 +324,7 @@ fn entity_overflow_query_excludes_verified_tier_facts() {
 }
 
 // ---------------------------------------------------------------------------
-// Response parsing — edge cases
+// Response parsing: edge cases
 // ---------------------------------------------------------------------------
 
 /// Requirement 28: empty array response is valid (no consolidation produced).
@@ -353,7 +353,7 @@ fn parse_response_missing_required_content_field_errors() {
 }
 
 // ---------------------------------------------------------------------------
-// Batch processing — boundary conditions
+// Batch processing: boundary conditions
 // ---------------------------------------------------------------------------
 
 /// Requirement 30: single-fact batch is valid (no off-by-one).

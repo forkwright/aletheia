@@ -415,7 +415,7 @@ fn chain_empty_providers_returns_none() {
 
 #[test]
 fn claude_code_default_path_uses_home() {
-    // NOTE: depends on $HOME being set — typical in CI and dev
+    // NOTE: depends on $HOME being set: typical in CI and dev
     if let Some(path) = claude_code_default_path() {
         assert!(path.ends_with(".claude/.credentials.json"));
     }

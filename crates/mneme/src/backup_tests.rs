@@ -500,7 +500,7 @@ fn backup_path_with_dots() {
 fn backup_path_empty_string() {
     let path = Path::new("");
     // Empty string passes SQL-injection validation (all chars are vacuously safe).
-    // This documents current behavior — empty paths would fail at the filesystem
+    // This documents current behavior: empty paths would fail at the filesystem
     // level during VACUUM INTO, not at validation time.
     assert!(
         validate_backup_path(path).is_ok(),

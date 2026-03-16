@@ -53,7 +53,7 @@ fn insert_fact_then_search_increments_access_count() {
     };
     store.insert_embedding(&chunk).expect("insert embedding");
 
-    // Search with the same vector — should find our fact
+    // Search with the same vector: should find our fact
     let results = store.search_vectors(embedding, 5, 20).expect("search");
     assert!(!results.is_empty(), "search must return results");
     assert_eq!(results[0].source_id, "f-track-1");

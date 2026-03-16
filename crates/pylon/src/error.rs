@@ -93,7 +93,7 @@ pub enum ApiError {
         location: snafu::Location,
     },
 
-    /// Idempotency conflict — a request with this key is already in flight (409).
+    /// Idempotency conflict: a request with this key is already in flight (409).
     #[snafu(display("conflict: {message}"))]
     Conflict {
         message: String,

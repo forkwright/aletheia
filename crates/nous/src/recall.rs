@@ -1,4 +1,4 @@
-//! Recall pipeline stage — retrieves relevant knowledge and injects into context.
+//! Recall pipeline stage: retrieves relevant knowledge and injects into context.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -241,7 +241,7 @@ impl RecallStageResult {
     }
 }
 
-/// Recall stage — scores and formats knowledge for injection into the system prompt.
+/// Recall stage: scores and formats knowledge for injection into the system prompt.
 pub struct RecallStage {
     engine: RecallEngine,
     config: RecallConfig,
@@ -301,7 +301,7 @@ impl RecallStage {
     /// then formats the top results as a markdown section for the system prompt.
     /// When `iterative` is enabled, runs a second cycle with terminology-refined queries.
     ///
-    /// Non-fatal errors are returned as `Err` — the caller should catch and continue.
+    /// Non-fatal errors are returned as `Err`: the caller should catch and continue.
     #[instrument(skip_all, fields(nous_id = %nous_id))]
     pub fn run(
         &self,

@@ -599,7 +599,7 @@ async fn in_flight_reported_in_status() {
     let statuses = runner.status();
     assert!(statuses[0].in_flight);
 
-    // Clean up — abort so the test doesn't hang.
+    // Clean up: abort so the test doesn't hang.
     if let Some(task) = runner.in_flight.remove("inflight-task") {
         task.handle.abort();
     }

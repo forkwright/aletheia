@@ -435,7 +435,7 @@ outputCostPerMtok = 15.0
     );
     // WHY: single-agent init always produces a single-agent config.
     // Append permissive sandbox defaults so the agent is functional on kernels
-    // without Landlock and can execute scripts from HOME — closes #1247.
+    // without Landlock and can execute scripts from HOME: closes #1247.
     config.push_str(SINGLE_AGENT_SANDBOX_TOML);
     config
 }
@@ -446,7 +446,7 @@ outputCostPerMtok = 15.0
 /// home directory and should not be blocked by strict Landlock enforcement
 /// when kernels do not support it. `enforcement=permissive` keeps the agent
 /// functional on older kernels; `extraExecPaths = ["~"]` grants exec access
-/// to HOME so scripts installed there are reachable — closes #1247.
+/// to HOME so scripts installed there are reachable: closes #1247.
 const SINGLE_AGENT_SANDBOX_TOML: &str = r#"
 # --- Sandbox ---
 # Single-agent permissive defaults: enforcement falls back gracefully on

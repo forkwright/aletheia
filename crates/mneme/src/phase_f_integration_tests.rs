@@ -76,7 +76,7 @@ fn preference_fact_type_has_8760_base_stability_hours() {
     );
 
     // INSTINCT_STABILITY_HOURS is the initial stored stability for newly created instinct
-    // facts — set intentionally low (7 days) so facts must be confirmed before persisting.
+    // facts: set intentionally low (7 days) so facts must be confirmed before persisting.
     assert_eq!(
         INSTINCT_STABILITY_HOURS, 168.0,
         "instinct facts start with 168-hour (7-day) initial stability"

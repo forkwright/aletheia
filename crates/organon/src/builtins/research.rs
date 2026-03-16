@@ -90,7 +90,7 @@ async fn validate_url_not_internal(url_str: &str) -> std::result::Result<(), Str
 struct WebFetchExecutor;
 
 impl ToolExecutor for WebFetchExecutor {
-    // NOTE(#940): 109 lines — single SSRF-safe HTTP fetch operation: validate URL,
+    // NOTE(#940): 109 lines: single SSRF-safe HTTP fetch operation: validate URL,
     // build client, send response, process response. One cohesive I/O operation.
     fn execute<'a>(
         &'a self,
@@ -203,7 +203,7 @@ impl ToolExecutor for WebFetchExecutor {
     }
 }
 
-// NOTE(#940): 100 lines — byte-level HTML tag stripping state machine. The sequential
+// NOTE(#940): 100 lines: byte-level HTML tag stripping state machine. The sequential
 // character-by-character logic is inherently one operation; splitting would break the
 // state machine's flow.
 /// Strip HTML tags and collapse whitespace for readable text extraction.

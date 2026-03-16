@@ -1,4 +1,4 @@
-//! Aletheia cognitive agent runtime — binary entrypoint.
+//! Aletheia cognitive agent runtime: binary entrypoint.
 
 mod commands;
 mod daemon_bridge;

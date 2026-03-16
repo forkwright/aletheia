@@ -1,4 +1,4 @@
-//! Tool registry — the single source of truth for available tools.
+//! Tool registry: the single source of truth for available tools.
 
 use std::collections::HashSet;
 use std::future::Future;

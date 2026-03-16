@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use snafu::{ResultExt, ensure};
 
-/// The oikos — resolved instance paths.
+/// The oikos: resolved instance paths.
 ///
 /// All paths are absolute. Construct via [`Oikos::discover`] or [`Oikos::from_root`].
 #[derive(Debug, Clone)]
@@ -497,7 +497,7 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("config")).unwrap();
         std::fs::create_dir_all(dir.path().join("data")).unwrap();
         let oikos = Oikos::from_root(dir.path());
-        // NOTE: missing nous/ is a warning, not an error — the test verifies this
+        // NOTE: missing nous/ is a warning, not an error: the test verifies this
         assert!(oikos.validate().is_ok());
     }
 
@@ -513,7 +513,7 @@ mod tests {
 
         std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o555)).unwrap();
 
-        // NOTE: skip if running as root — root bypasses file permission checks
+        // NOTE: skip if running as root: root bypasses file permission checks
         let probe = data.join(".root-probe");
         let is_root = std::fs::write(&probe, b"x").is_ok();
         let _ = std::fs::remove_file(&probe);

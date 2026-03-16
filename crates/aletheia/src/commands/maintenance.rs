@@ -1,4 +1,4 @@
-//! `aletheia maintenance` — instance maintenance task management.
+//! `aletheia maintenance`: instance maintenance task management.
 
 use std::path::PathBuf;
 

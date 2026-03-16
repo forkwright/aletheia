@@ -1,4 +1,4 @@
-//! Config section validation — rejects invalid values before persisting.
+//! Config section validation: rejects invalid values before persisting.
 
 use serde_json::Value;
 use snafu::Snafu;

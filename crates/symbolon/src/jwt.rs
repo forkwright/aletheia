@@ -172,7 +172,7 @@ impl JwtManager {
             nous_id: nous_id.map(str::to_owned),
             iss: self.config.issuer.clone(),
             iat: now,
-            // WHY: saturate to i64::MAX — a TTL exceeding ~292 billion years is effectively infinite
+            // WHY: saturate to i64::MAX: a TTL exceeding ~292 billion years is effectively infinite
             exp: now + i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX),
             jti: ulid::Ulid::new().to_string(),
             kind,
@@ -267,7 +267,7 @@ mod tests {
             nous_id: None,
             iss: "aletheia-test".to_owned(),
             iat: 1_000_000,
-            exp: 1_000_001, // 1970 — long expired
+            exp: 1_000_001, // 1970: long expired
             jti: "expired-jti".to_owned(),
             kind: TokenKind::Access,
         };

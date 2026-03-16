@@ -1,4 +1,4 @@
-//! CLI subcommand handlers — one module per subcommand.
+//! CLI subcommand handlers: one module per subcommand.
 
 pub mod add_nous;
 pub mod agent_io;

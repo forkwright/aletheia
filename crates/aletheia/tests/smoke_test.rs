@@ -144,7 +144,7 @@ fn completions_invalid_shell_fails() {
         .failure();
 }
 
-// ── Health — graceful failure without a server ────────────────────────────────
+// ── Health: graceful failure without a server ────────────────────────────────
 
 #[test]
 fn health_graceful_failure_no_server() {
@@ -173,7 +173,7 @@ fn health_graceful_failure_no_server() {
     );
 }
 
-// ── Status — graceful failure without a server ────────────────────────────────
+// ── Status: graceful failure without a server ────────────────────────────────
 
 #[test]
 fn status_graceful_failure_no_server() {
@@ -189,7 +189,7 @@ fn status_graceful_failure_no_server() {
     );
 }
 
-// ── Init — non-destructive (isolated temp dir) ────────────────────────────────
+// ── Init: non-destructive (isolated temp dir) ────────────────────────────────
 
 #[test]
 fn init_with_missing_api_key_fails_usefully() {
@@ -197,7 +197,7 @@ fn init_with_missing_api_key_fails_usefully() {
     let instance_path = tmp.path().join("instance");
 
     // Run with --yes (non-interactive) but no API key set.
-    // Should either succeed (unlikely in CI) or fail with a useful message —
+    // Should either succeed (unlikely in CI) or fail with a useful message,
     // not panic or exit 101.
     let output = aletheia()
         .args([
@@ -224,7 +224,7 @@ fn init_with_missing_api_key_fails_usefully() {
     );
 }
 
-// ── Import — missing file produces useful error ───────────────────────────────
+// ── Import: missing file produces useful error ───────────────────────────────
 
 #[test]
 fn import_missing_file_produces_error() {
@@ -240,7 +240,7 @@ fn import_missing_file_produces_error() {
         );
 }
 
-// ── Seed-skills — missing dir exits non-zero ──────────────────────────────────
+// ── Seed-skills: missing dir exits non-zero ──────────────────────────────────
 
 #[test]
 fn seed_skills_missing_dir_exits_nonzero() {

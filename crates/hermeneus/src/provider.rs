@@ -1,4 +1,4 @@
-//! LLM provider trait — Anthropic-native with adapter support.
+//! LLM provider trait: Anthropic-native with adapter support.
 //!
 //! Defines the interface all providers must implement. Types are modeled
 //! on the Anthropic Messages API; other providers adapt to this surface.
@@ -157,7 +157,7 @@ struct ProviderEntry {
     health: ProviderHealthTracker,
 }
 
-/// Provider registry — maps model IDs to providers with health tracking.
+/// Provider registry: maps model IDs to providers with health tracking.
 #[derive(Default)]
 pub struct ProviderRegistry {
     providers: Vec<ProviderEntry>,

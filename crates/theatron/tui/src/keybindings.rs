@@ -1,4 +1,4 @@
-/// Context-aware keybinding registry — single source of truth for help overlay and status bar hints.
+/// Context-aware keybinding registry: single source of truth for help overlay and status bar hints.
 use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -703,7 +703,7 @@ impl KeyMap {
             action_to_keys.entry(action).or_default().extend(keys);
         }
 
-        // Apply overrides — replaces all default keys for the given action.
+        // Apply overrides: replaces all default keys for the given action.
         for action in Action::all() {
             if let Some(key_str) = overrides.get(action.config_key()) {
                 if let Some(parsed) = parse_key_combo(key_str) {
@@ -867,7 +867,7 @@ pub(crate) fn parse_key_combo(s: &str) -> Option<(KeyModifiers, KeyCode)> {
     Some((modifiers, code))
 }
 
-/// Determine active contexts. Help overlay is transparent — it shows the underlying context.
+/// Determine active contexts. Help overlay is transparent: it shows the underlying context.
 pub fn current_contexts(app: &App) -> Vec<KeyContext> {
     let mut contexts = vec![KeyContext::Global];
 
@@ -923,7 +923,7 @@ pub fn current_contexts(app: &App) -> Vec<KeyContext> {
     contexts
 }
 
-/// Label for the help overlay title — reflects the source context, not the overlay itself.
+/// Label for the help overlay title: reflects the source context, not the overlay itself.
 pub fn context_label(app: &App) -> &'static str {
     match &app.overlay {
         Some(Overlay::Help) | None => {
@@ -1154,7 +1154,7 @@ mod tests {
     fn context_label_overlay_variants() {
         let mut app = test_app();
         app.overlay = Some(Overlay::Help);
-        // Help overlay is transparent — shows underlying context
+        // Help overlay is transparent: shows underlying context
         assert_eq!(context_label(&app), "Chat");
 
         app.overlay = Some(Overlay::AgentPicker { cursor: 0 });

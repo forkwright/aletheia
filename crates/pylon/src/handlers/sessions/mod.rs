@@ -24,7 +24,7 @@ use crate::error::{
 use crate::extract::Claims;
 use crate::state::AppState;
 
-/// POST /api/v1/sessions — create a new session.
+/// POST /api/v1/sessions: create a new session.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions",
@@ -77,7 +77,7 @@ pub async fn create(
     let session = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
         // WHY: use create_session (not find_or_create) so that any existing session
-        // with this (nous_id, session_key) pair — active or archived — produces a
+        // with this (nous_id, session_key) pair: active or archived: produces a
         // 409 Conflict rather than silently returning the existing session (#1249).
         // The UNIQUE(nous_id, session_key) schema constraint enforces this even under
         // concurrent requests.
@@ -100,7 +100,7 @@ pub async fn create(
     ))
 }
 
-/// GET /api/v1/sessions — list sessions, optionally filtered by agent.
+/// GET /api/v1/sessions: list sessions, optionally filtered by agent.
 #[utoipa::path(
     get,
     path = "/api/v1/sessions",
@@ -155,7 +155,7 @@ pub async fn list_sessions(
     Ok(Json(ListSessionsResponse { sessions: items }))
 }
 
-/// GET /api/v1/sessions/{id} — get session state.
+/// GET /api/v1/sessions/{id}: get session state.
 #[utoipa::path(
     get,
     path = "/api/v1/sessions/{id}",
@@ -182,7 +182,7 @@ pub async fn get_session(
     Ok(Json(SessionResponse::from_mneme(&session)))
 }
 
-/// DELETE /api/v1/sessions/{id} — close (archive) a session.
+/// DELETE /api/v1/sessions/{id}: close (archive) a session.
 #[utoipa::path(
     delete,
     path = "/api/v1/sessions/{id}",
@@ -203,7 +203,7 @@ pub async fn close(
     archive_session_by_id(&state, &id).await
 }
 
-/// POST /api/v1/sessions/{id}/archive — archive a session.
+/// POST /api/v1/sessions/{id}/archive: archive a session.
 ///
 /// Same behavior as DELETE but via POST, matching the TUI's API contract.
 #[utoipa::path(
@@ -244,7 +244,7 @@ async fn archive_session_by_id(state: &Arc<AppState>, id: &str) -> Result<Status
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /api/v1/sessions/{id}/unarchive — reactivate an archived session.
+/// POST /api/v1/sessions/{id}/unarchive: reactivate an archived session.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/{id}/unarchive",
@@ -278,7 +278,7 @@ pub async fn unarchive(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// PUT /api/v1/sessions/{id}/name — rename a session.
+/// PUT /api/v1/sessions/{id}/name: rename a session.
 #[utoipa::path(
     put,
     path = "/api/v1/sessions/{id}/name",
@@ -328,7 +328,7 @@ const MAX_HISTORY_LIMIT: u32 = 1000;
 /// Default number of messages when no limit is supplied.
 const DEFAULT_HISTORY_LIMIT: u32 = 50;
 
-/// GET /api/v1/sessions/{id}/history — get conversation history.
+/// GET /api/v1/sessions/{id}/history: get conversation history.
 #[utoipa::path(
     get,
     path = "/api/v1/sessions/{id}/history",
@@ -428,7 +428,7 @@ pub(crate) async fn resolve_session(
 ///
 /// `SQLite` always includes "UNIQUE constraint failed" in the error message for
 /// constraint violations. We match on the string because pylon does not take a
-/// direct rusqlite dependency — the type lives inside mneme's `Database` variant.
+/// direct rusqlite dependency: the type lives inside mneme's `Database` variant.
 fn is_unique_constraint_violation(err: &aletheia_mneme::error::Error) -> bool {
     err.to_string().contains("UNIQUE constraint failed")
 }

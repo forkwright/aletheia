@@ -1,4 +1,4 @@
-//! Conversation scenarios — message flow, SSE, history.
+//! Conversation scenarios: message flow, SSE, history.
 
 use snafu::OptionExt as _;
 use tracing::Instrument;

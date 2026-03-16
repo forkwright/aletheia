@@ -17,7 +17,7 @@ pub enum View {
     },
     /// Full message detail (content, tool results, metadata).
     MessageDetail { message_index: usize },
-    /// Memory inspector — browsing the knowledge graph.
+    /// Memory inspector: browsing the knowledge graph.
     MemoryInspector,
     /// Fact detail within the memory inspector.
     FactDetail { fact_id: String },

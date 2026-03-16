@@ -12,7 +12,7 @@ use crate::state::AppState;
 /// Prometheus content type for the metrics endpoint.
 pub(crate) const METRICS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
-/// GET /metrics — Prometheus text-format metrics exposition.
+/// GET /metrics: Prometheus text-format metrics exposition.
 #[utoipa::path(
     get,
     path = "/metrics",

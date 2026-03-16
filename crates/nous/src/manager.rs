@@ -47,7 +47,7 @@ struct ActorEntry {
     /// When the actor was last (re)started.
     last_start: std::time::Instant,
     /// Shared with the actor task. `true` while the actor is processing a turn.
-    /// Readable without queuing through the inbox — used by `check_health` to
+    /// Readable without queuing through the inbox: used by `check_health` to
     /// distinguish a busy (healthy) actor from an unresponsive (dead) one.
     active_turn: Arc<AtomicBool>,
 }
@@ -165,7 +165,7 @@ impl NousManager {
         if let Some(old) = self.actors.remove(&id) {
             warn!(nous_id = %id, "replacing existing actor");
             let _ = old.handle.shutdown().await;
-            // WHY: take join handle before awaiting — must not hold MutexGuard across .await
+            // WHY: take join handle before awaiting: must not hold MutexGuard across .await
             let join_opt = old.join.lock().expect("join mutex not poisoned").take();
             if let Some(join) = join_opt {
                 let _ = join.await;
@@ -354,7 +354,7 @@ impl NousManager {
         let prev_restart_count = entry.restart_count;
 
         if let Some(old) = self.actors.remove(id) {
-            // WHY: take join handle before awaiting — must not hold MutexGuard across .await
+            // WHY: take join handle before awaiting: must not hold MutexGuard across .await
             let join_opt = old.join.lock().expect("join mutex not poisoned").take();
             if let Some(join) = join_opt {
                 let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
@@ -448,7 +448,7 @@ impl NousManager {
             .map(|(id, e)| (id.clone(), e.handle.clone()))
             .collect();
 
-        // WHY: take all join handles before any await — must not hold MutexGuard across .await
+        // WHY: take all join handles before any await: must not hold MutexGuard across .await
         let joins: Vec<(String, Option<JoinHandle<()>>)> = self
             .actors
             .drain()
@@ -477,7 +477,7 @@ impl NousManager {
 
     /// Cancel all actors and wait for them to drain, bounded by a timeout.
     ///
-    /// 1. Cancels the root token — all child actor tokens fire simultaneously.
+    /// 1. Cancels the root token: all child actor tokens fire simultaneously.
     /// 2. Unregisters from the cross-nous router so no new messages arrive.
     /// 3. Awaits each actor join handle within the provided `timeout`.
     /// 4. On timeout, logs a warning and returns; Tokio will abort the tasks
@@ -509,7 +509,7 @@ impl NousManager {
             }
         }
 
-        // WHY: take handles before await — must not hold MutexGuard across .await
+        // WHY: take handles before await: must not hold MutexGuard across .await
         let mut joins: Vec<(String, JoinHandle<()>)> = self
             .actors
             .iter()
@@ -540,7 +540,7 @@ impl NousManager {
     /// Send shutdown to all actors without requiring `&mut self`.
     ///
     /// Used when the manager is behind `Arc` and mutable access is unavailable.
-    /// Does not drain the entries — cleanup happens when the `Arc` drops.
+    /// Does not drain the entries: cleanup happens when the `Arc` drops.
     /// Prefer [`drain`](Self::drain) when clean resource release is needed.
     ///
     /// # Cancel safety

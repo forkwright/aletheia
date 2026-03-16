@@ -223,7 +223,7 @@ async fn assemble_cascade_theke_fallback() {
 
 #[tokio::test]
 async fn assemble_nous_overrides_theke() {
-    // SOUL.md in both tiers — nous wins
+    // SOUL.md in both tiers: nous wins
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     fs::create_dir_all(root.join("nous/syn")).unwrap();

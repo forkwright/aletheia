@@ -1,4 +1,4 @@
-//! Context-dependent extraction refinement — turn classification, correction
+//! Context-dependent extraction refinement: turn classification, correction
 //! detection, quality filters, and fact type classification.
 //!
 //! Different conversation turn types (tool-heavy, discussion, planning,
@@ -11,17 +11,17 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum TurnType {
-    /// General conversation — extract facts, entities, relationships.
+    /// General conversation: extract facts, entities, relationships.
     Discussion,
-    /// Code/tool output dominant — extract decisions, skip noise.
+    /// Code/tool output dominant: extract decisions, skip noise.
     ToolHeavy,
-    /// Architecture/design — extract decisions and rationale.
+    /// Architecture/design: extract decisions and rationale.
     Planning,
-    /// Error investigation — extract resolution, skip stack traces.
+    /// Error investigation: extract resolution, skip stack traces.
     Debugging,
-    /// Explicit corrections — high priority extraction.
+    /// Explicit corrections: high priority extraction.
     Correction,
-    /// How-to/instructions — extract steps and dependencies.
+    /// How-to/instructions: extract steps and dependencies.
     Procedural,
 }
 

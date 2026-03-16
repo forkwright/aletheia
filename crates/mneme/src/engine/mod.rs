@@ -172,7 +172,7 @@ impl Db {
 
     /// Backup the running database into an `SQLite` file.
     ///
-    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    /// Not currently supported: requires the removed `storage-sqlite` feature.
     pub fn backup_db(&self, out_file: impl AsRef<Path>) -> crate::engine::Result<()> {
         let path = out_file.as_ref();
         let result = match self {
@@ -185,7 +185,7 @@ impl Db {
 
     /// Restore from an `SQLite` backup.
     ///
-    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    /// Not currently supported: requires the removed `storage-sqlite` feature.
     pub fn restore_backup(&self, in_file: impl AsRef<Path>) -> crate::engine::Result<()> {
         let path = in_file.as_ref();
         let result = match self {
@@ -198,7 +198,7 @@ impl Db {
 
     /// Import data from relations in a backup file.
     ///
-    /// Not currently supported — requires the removed `storage-sqlite` feature.
+    /// Not currently supported: requires the removed `storage-sqlite` feature.
     pub fn import_from_backup(
         &self,
         in_file: impl AsRef<Path>,

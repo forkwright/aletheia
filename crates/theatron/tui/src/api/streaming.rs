@@ -10,7 +10,7 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 /// Streams a turn response from POST /api/v1/sessions/stream.
 /// Returns a channel that yields parsed StreamEvents.
 ///
-/// `client` must be the shared instance from `ApiClient::raw_client()` — auth headers
+/// `client` must be the shared instance from `ApiClient::raw_client()`: auth headers
 /// are already embedded. `Accept: text/event-stream` is set per-request to override
 /// the client-level `Accept: application/json` default.
 #[tracing::instrument(skip_all)]

@@ -1,4 +1,4 @@
-/// Render the operations pane — right-side panel showing thinking, tool calls, and diffs.
+/// Render the operations pane: right-side panel showing thinking, tool calls, and diffs.
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};

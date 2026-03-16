@@ -1,4 +1,4 @@
-//! Session manager — creates, finds, and manages agent sessions.
+//! Session manager: creates, finds, and manages agent sessions.
 
 use tracing::{info, instrument};
 use ulid::Ulid;
@@ -84,7 +84,7 @@ impl SessionState {
     }
 }
 
-/// The session manager — coordinates session lifecycle.
+/// The session manager: coordinates session lifecycle.
 #[derive(Debug)]
 pub struct SessionManager {
     config: NousConfig,

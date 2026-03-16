@@ -76,7 +76,7 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
 
                 if show_agent_label {
                     let fallback_label: String;
-                    // WHY: char_indices().nth(8) instead of &s[..8] — byte slicing panics
+                    // WHY: char_indices().nth(8) instead of &s[..8]: byte slicing panics
                     // on non-ASCII boundaries; IDs are ASCII in practice but the panic is avoidable.
                     let agent_label = match app.agents.iter().find(|a| a.id == session.nous_id) {
                         Some(a) => a.name.as_str(),

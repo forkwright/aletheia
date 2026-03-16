@@ -1,6 +1,6 @@
-//! aletheia-agora — channel registry and provider implementations
+//! aletheia-agora: channel registry and provider implementations
 //!
-//! Agora (ἀγορά) — "gathering place." The public square where messages flow
+//! Agora (ἀγορά): "gathering place." The public square where messages flow
 //! between Aletheia and the outside world. Provides the channel abstraction
 //! and registry, with Signal (semeion) as the first provider.
 

@@ -83,7 +83,7 @@ impl KnowledgeStore {
         Ok(results)
     }
 
-    /// Async `search_vectors` — wraps sync call in `spawn_blocking`.
+    /// Async `search_vectors`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self, query_vec))]
     pub async fn search_vectors_async(
         self: &std::sync::Arc<Self>,
@@ -98,7 +98,7 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
-    /// BM25 full-text recall — returns `RecallResult` compatible rows without requiring embeddings.
+    /// BM25 full-text recall: returns `RecallResult` compatible rows without requiring embeddings.
     ///
     /// Used as a fallback when the embedding provider is unavailable or in mock mode.
     /// Distance is the reciprocal of the BM25 score (lower = more relevant).
@@ -158,7 +158,7 @@ impl KnowledgeStore {
         Ok(results)
     }
 
-    /// Async `search_hybrid` — wraps sync call in `spawn_blocking`.
+    /// Async `search_hybrid`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
     pub async fn search_hybrid_async(
         self: &std::sync::Arc<Self>,
@@ -340,7 +340,7 @@ impl KnowledgeStore {
         graph_results
     }
 
-    /// Async tiered search — wraps sync call in `spawn_blocking`.
+    /// Async tiered search: wraps sync call in `spawn_blocking`.
     ///
     /// Note: the `RewriteProvider` must be `Send + Sync + 'static` for async usage.
     pub async fn search_tiered_async(

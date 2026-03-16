@@ -84,7 +84,7 @@ impl QueryRewriter {
 
     /// Rewrite a query into multiple search variants using an LLM.
     ///
-    /// Returns the original query plus generated variants. Never fails —
+    /// Returns the original query plus generated variants. Never fails;
     /// falls back to the original query on any error.
     #[instrument(skip(self, provider, context))]
     pub fn rewrite(

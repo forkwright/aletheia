@@ -49,7 +49,7 @@ pub trait EmbeddingProvider: Send + Sync {
     fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>>;
 
     /// Embed multiple text chunks in a batch. Default implementation
-    /// calls `embed` sequentially — providers should override for efficiency.
+    /// calls `embed` sequentially: providers should override for efficiency.
     fn embed_batch(&self, texts: &[&str]) -> EmbeddingResult<Vec<Vec<f32>>> {
         texts.iter().map(|t| self.embed(t)).collect()
     }
@@ -64,7 +64,7 @@ pub trait EmbeddingProvider: Send + Sync {
 /// A mock embedding provider for testing.
 ///
 /// Produces deterministic vectors based on text hash.
-/// Not suitable for real semantic similarity — use only in tests.
+/// Not suitable for real semantic similarity: use only in tests.
 #[derive(Debug)]
 pub struct MockEmbeddingProvider {
     dim: usize,
@@ -421,8 +421,8 @@ pub use candle_provider::CandelProvider;
 /// Embedding provider configuration.
 ///
 /// Available providers:
-/// - `"mock"` — deterministic hash-based vectors for testing (always available)
-/// - `"candle"` — local pure-Rust embeddings via candle (requires `embed-candle` feature)
+/// - `"mock"`: deterministic hash-based vectors for testing (always available)
+/// - `"candle"`: local pure-Rust embeddings via candle (requires `embed-candle` feature)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EmbeddingConfig {
     /// Provider type: `mock`, `candle`, `voyage`.

@@ -139,7 +139,7 @@ pub async fn record_http_metrics(request: Request, next: Next) -> Response {
 /// Per-IP sliding-window rate limiter.
 ///
 /// Each IP gets a fixed window of `window` duration. The window resets when
-/// expired. Uses `std::sync::Mutex` (not tokio) — the critical section is
+/// expired. Uses `std::sync::Mutex` (not tokio): the critical section is
 /// short and contains no `.await` points.
 pub struct RateLimiter {
     max_requests: u32,
@@ -180,7 +180,7 @@ impl RateLimiter {
 
         if let Some((window_start, count)) = state.get_mut(client) {
             if now.duration_since(*window_start) >= self.window {
-                // Window expired — start a new one.
+                // Window expired: start a new one.
                 *window_start = now;
                 *count = 1;
                 None
@@ -203,7 +203,7 @@ impl RateLimiter {
 ///
 /// Priority order:
 /// 1. Peer TCP address from `ConnectInfo<SocketAddr>` (most trustworthy)
-/// 2. `X-Forwarded-For` / `X-Real-IP` headers — only when `trust_proxy` is
+/// 2. `X-Forwarded-For` / `X-Real-IP` headers: only when `trust_proxy` is
 ///    true, because clients control these headers and can spoof them
 /// 3. Fallback literal `"peer"` (`ConnectInfo` not injected by the server)
 ///
@@ -214,7 +214,7 @@ fn extract_client_key(request: &Request, trust_proxy: bool) -> String {
     use axum::extract::ConnectInfo;
     use std::net::SocketAddr;
 
-    // Prefer the actual peer address — not spoofable.
+    // Prefer the actual peer address: not spoofable.
     if let Some(info) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
         return info.0.ip().to_string();
     }

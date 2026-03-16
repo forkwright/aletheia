@@ -1,4 +1,4 @@
-//! Agent export — build an `AgentFile` from session store and workspace.
+//! Agent export: build an `AgentFile` from session store and workspace.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -51,7 +51,7 @@ impl Default for ExportOptions {
 /// Export an agent to a portable `AgentFile`.
 ///
 /// The caller resolves paths and config from Oikos/taxis, then passes
-/// simple types here — mneme never touches taxis.
+/// simple types here: mneme never touches taxis.
 ///
 /// # Errors
 ///

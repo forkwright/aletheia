@@ -24,7 +24,7 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
 }
 
 #[tracing::instrument(skip_all, fields(len = text.len()))]
-// SAFETY: sanitized at ingestion — streaming text from LLM API.
+// SAFETY: sanitized at ingestion: streaming text from LLM API.
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
     app.streaming_text.push_str(&clean);
@@ -42,7 +42,7 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
 }
 
 #[tracing::instrument(skip_all, fields(len = text.len()))]
-// SAFETY: sanitized at ingestion — thinking text from LLM API.
+// SAFETY: sanitized at ingestion: thinking text from LLM API.
 pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
     app.streaming_thinking.push_str(&clean);
@@ -50,7 +50,7 @@ pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
 }
 
 #[tracing::instrument(skip_all, fields(%tool_name))]
-// SAFETY: sanitized at ingestion — tool names from stream API.
+// SAFETY: sanitized at ingestion: tool names from stream API.
 pub(crate) fn handle_stream_tool_start(
     app: &mut App,
     tool_name: String,
@@ -101,7 +101,7 @@ pub(crate) fn handle_stream_tool_result(
 }
 
 #[tracing::instrument(skip_all, fields(%tool_name, %risk))]
-// SAFETY: sanitized at ingestion — tool approval data from stream API.
+// SAFETY: sanitized at ingestion: tool approval data from stream API.
 pub(crate) fn handle_stream_tool_approval_required(
     app: &mut App,
     turn_id: TurnId,
@@ -150,7 +150,7 @@ pub(crate) fn handle_stream_plan_complete(app: &mut App, status: String) {
 }
 
 #[tracing::instrument(skip_all)]
-// SAFETY: sanitized at ingestion — plan step labels and roles from stream API.
+// SAFETY: sanitized at ingestion: plan step labels and roles from stream API.
 pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     app.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
         plan_id: plan.id,
@@ -170,7 +170,7 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
 }
 
 #[tracing::instrument(skip_all)]
-// SAFETY: sanitized at ingestion — streaming_text already sanitized via handle_stream_text_delta,
+// SAFETY: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta,
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
     if !app.streaming_text.is_empty() {
@@ -234,7 +234,7 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
 }
 
 #[tracing::instrument(skip_all)]
-// SAFETY: sanitized at ingestion — error messages may contain external data.
+// SAFETY: sanitized at ingestion: error messages may contain external data.
 pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");
     app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
@@ -585,7 +585,7 @@ mod tests {
         let mut app = test_app();
         app.auto_scroll = false;
         app.scroll_offset = 10;
-        // streaming_text is empty — no message is committed, offset unchanged
+        // streaming_text is empty: no message is committed, offset unchanged
         handle_stream_turn_complete(&mut app, make_outcome()).await;
         assert_eq!(app.scroll_offset, 10);
         assert!(!app.auto_scroll);

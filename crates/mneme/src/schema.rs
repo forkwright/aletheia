@@ -3,10 +3,10 @@
 //! The DDL is the v1 baseline. Migration management lives in `migration.rs`.
 //! This matches the TS schema exactly for wire-compatible databases.
 
-/// Valid agent note categories. Single source of truth — used by DDL CHECK constraint and import validation.
+/// Valid agent note categories. Single source of truth: used by DDL CHECK constraint and import validation.
 pub const VALID_CATEGORIES: &[&str] = &["task", "decision", "preference", "correction", "context"];
 
-/// Base DDL — creates all tables for a fresh database (migration v1).
+/// Base DDL: creates all tables for a fresh database (migration v1).
 pub const DDL: &str = r"
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,

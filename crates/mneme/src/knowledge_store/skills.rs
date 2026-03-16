@@ -169,7 +169,7 @@ impl KnowledgeStore {
         rows_to_facts(rows, nous_id)
     }
 
-    /// Approve a pending skill — move it from `skill_pending` to `skill`.
+    /// Approve a pending skill: move it from `skill_pending` to `skill`.
     ///
     /// Supersedes the pending fact and creates a new fact with `fact_type = "skill"`.
     /// Returns the new fact ID.
@@ -239,7 +239,7 @@ impl KnowledgeStore {
         Ok(new_id)
     }
 
-    /// Reject a pending skill — mark it as forgotten.
+    /// Reject a pending skill: mark it as forgotten.
     #[instrument(skip(self))]
     pub fn reject_pending_skill(
         &self,

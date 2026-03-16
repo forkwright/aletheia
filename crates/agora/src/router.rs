@@ -1,4 +1,4 @@
-//! Message routing — resolves inbound messages to nous targets.
+//! Message routing: resolves inbound messages to nous targets.
 
 use tracing::debug;
 

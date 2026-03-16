@@ -1,4 +1,4 @@
-//! State for the operations pane — right-side panel showing thinking, tool calls, and diffs.
+//! State for the operations pane: right-side panel showing thinking, tool calls, and diffs.
 
 /// Which pane currently has keyboard focus.
 #[non_exhaustive]

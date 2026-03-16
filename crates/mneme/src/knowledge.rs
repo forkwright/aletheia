@@ -1,4 +1,4 @@
-//! Knowledge store — facts, entities, and vectors via `CozoDB`.
+//! Knowledge store: facts, entities, and vectors via `CozoDB`.
 //!
 //! Complements the `SQLite` session store with structured knowledge:
 //! - **Facts**: extracted from conversations, bi-temporal (`valid_from`/`valid_to`)
@@ -127,7 +127,7 @@ impl EpistemicTier {
         }
     }
 
-    /// FSRS stability multiplier — verified facts decay 2× slower than inferred.
+    /// FSRS stability multiplier: verified facts decay 2× slower than inferred.
     #[must_use]
     pub fn stability_multiplier(self) -> f64 {
         match self {
@@ -207,19 +207,19 @@ impl std::str::FromStr for ForgetReason {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum FactType {
-    /// "My name is X" — very stable (2 years).
+    /// "My name is X": very stable (2 years).
     Identity,
-    /// "I prefer tabs" — stable (1 year).
+    /// "I prefer tabs": stable (1 year).
     Preference,
-    /// "I know Rust" — moderately stable (6 months).
+    /// "I know Rust": moderately stable (6 months).
     Skill,
-    /// "X works at Y" — moderate (3 months).
+    /// "X works at Y": moderate (3 months).
     Relationship,
-    /// "We discussed X" — short-lived (30 days).
+    /// "We discussed X": short-lived (30 days).
     Event,
-    /// "TODO: fix bug" — ephemeral (7 days).
+    /// "TODO: fix bug": ephemeral (7 days).
     Task,
-    /// "Build was slow" — very ephemeral (3 days).
+    /// "Build was slow": very ephemeral (3 days).
     Observation,
 }
 

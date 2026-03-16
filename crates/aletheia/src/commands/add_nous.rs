@@ -1,4 +1,4 @@
-//! `aletheia add-nous` — scaffold a new nous agent directory.
+//! `aletheia add-nous`: scaffold a new nous agent directory.
 
 use std::path::PathBuf;
 
@@ -239,7 +239,7 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
     list.push(entry);
 
-    // WHY: atomic write — write to .tmp then rename, preserving existing comments in the file
+    // WHY: atomic write: write to .tmp then rename, preserving existing comments in the file
     std::fs::create_dir_all(&config_dir)
         .with_context(|| format!("failed to create {}", config_dir.display()))?;
     let tmp = config_dir.join("aletheia.toml.tmp");

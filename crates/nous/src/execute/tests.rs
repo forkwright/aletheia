@@ -25,7 +25,7 @@ use crate::session::SessionState;
 // --- Test Infrastructure ---
 
 struct MockProvider {
-    // std::sync::Mutex is intentional — test mock, never crosses .await
+    // std::sync::Mutex is intentional: test mock, never crosses .await
     responses: Mutex<Vec<CompletionResponse>>,
 }
 
@@ -483,7 +483,7 @@ async fn tool_error_captured_not_propagated() {
 #[tokio::test]
 async fn max_iterations_stops_loop() {
     let mut providers = ProviderRegistry::new();
-    // Provider always returns tool use — would loop forever without max_iterations.
+    // Provider always returns tool use: would loop forever without max_iterations.
     // Supply enough unique-id responses to feed several iterations.
     let responses: Vec<_> = (0..10)
         .map(|i| make_tool_response("echo", &format!("tu_{i}"), serde_json::json!({"i": i})))

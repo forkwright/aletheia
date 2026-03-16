@@ -10,7 +10,7 @@ use crate::state::{ActiveTool, AgentState, AgentStatus};
 const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 #[tracing::instrument(skip_all)]
-// SAFETY: sanitized at ingestion — agent data from API is sanitized here on SSE reconnect.
+// SAFETY: sanitized at ingestion: agent data from API is sanitized here on SSE reconnect.
 pub(crate) async fn handle_sse_connected(app: &mut App) {
     let was_disconnected = !app.sse_connected;
     app.sse_connected = true;
@@ -51,7 +51,7 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                 })
                 .collect();
         }
-        // WHY: skip reload when a stream is pending or active — the optimistic
+        // WHY: skip reload when a stream is pending or active: the optimistic
         // user message and streaming state must not be clobbered by a full
         // history fetch triggered by SSE reconnection.
         if app.stream_rx.is_none() && app.active_turn_id.is_none() {
@@ -135,7 +135,7 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %tool_name))]
-// SAFETY: sanitized at ingestion — tool name from SSE event.
+// SAFETY: sanitized at ingestion: tool name from SSE event.
 pub(crate) fn handle_sse_tool_called(app: &mut App, nous_id: NousId, tool_name: String) {
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.active_tool = Some(ActiveTool {
@@ -189,7 +189,7 @@ pub(crate) fn handle_sse_distill_before(app: &mut App, nous_id: NousId) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %stage))]
-// SAFETY: sanitized at ingestion — distill stage from SSE event.
+// SAFETY: sanitized at ingestion: distill stage from SSE event.
 pub(crate) fn handle_sse_distill_stage(app: &mut App, nous_id: NousId, stage: String) {
     if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.compaction_stage = Some(sanitize_for_display(&stage).into_owned());
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn sse_nonexistent_agent_noop() {
         let mut app = test_app();
-        // No agents — should not panic
+        // No agents: should not panic
         handle_sse_turn_before(&mut app, "nonexistent".into());
         handle_sse_tool_called(&mut app, "nonexistent".into(), "tool".to_string());
         handle_sse_tool_failed(&mut app, "nonexistent".into());

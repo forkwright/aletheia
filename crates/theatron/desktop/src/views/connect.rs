@@ -1,4 +1,4 @@
-//! Connection view — first-run experience and reconnection UI.
+//! Connection view: first-run experience and reconnection UI.
 //!
 //! Shown when the app is not connected to a pylon instance. Provides inputs
 //! for server URL and auth token, a connect button, and a status indicator
