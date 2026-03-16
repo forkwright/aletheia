@@ -420,8 +420,6 @@ mod test {
         let mut m1 = HashValues::new([1, 2, 3, 4, 5, 6].iter(), &perms);
         let mut m2 = HashValues::new([4, 3, 2, 1, 5, 6].iter(), &perms);
         assert_eq!(m1.0, m2.0);
-        // println!("{:?}", &m1.0);
-        // println!("{:?}", &m2.0);
         assert_eq!(m1.jaccard(&m2), 1.0);
         m1.update([7, 8, 9].iter(), &perms);
         assert!(m1.jaccard(&m2) < 1.0);
@@ -429,7 +427,6 @@ mod test {
         m2.update([17, 18, 19].iter(), &perms);
         assert!(m1.jaccard(&m2) < 1.0);
         println!("{:?}", m1.jaccard(&m2));
-        // println!("{:?}", m2.get_byte_chunks(2).collect_vec());
         assert_eq!(
             perms.0,
             HashPermutations::from_bytes(perms.as_bytes()).unwrap().0
