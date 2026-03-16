@@ -182,4 +182,49 @@ mod tests {
             PhaseState::Failed { can_retry: false }
         );
     }
+
+    #[test]
+    fn phase_state_serde_roundtrip() {
+        let states = [
+            PhaseState::Pending,
+            PhaseState::Active,
+            PhaseState::Executing,
+            PhaseState::Verifying,
+            PhaseState::Complete,
+            PhaseState::Failed { can_retry: true },
+            PhaseState::Failed { can_retry: false },
+        ];
+        for state in &states {
+            let json = serde_json::to_string(state).unwrap();
+            let back: PhaseState = serde_json::from_str(&json).unwrap();
+            assert_eq!(&back, state, "roundtrip failed for {state:?}");
+        }
+    }
+
+    #[test]
+    fn completion_percentage_failed_plans_count_as_terminal() {
+        let mut phase = Phase::new("P1".into(), "g".into(), 1);
+        let mut p1 = Plan::new("t1".into(), "d1".into(), 1);
+        p1.state = PlanState::Failed;
+        let mut p2 = Plan::new("t2".into(), "d2".into(), 1);
+        p2.state = PlanState::Stuck;
+        let p3 = Plan::new("t3".into(), "d3".into(), 1);
+        phase.add_plan(p1);
+        phase.add_plan(p2);
+        phase.add_plan(p3);
+        let pct = phase.completion_percentage();
+        assert!(
+            (pct - 66.666_666_666_666_66).abs() < 0.01,
+            "expected ~66.67%, got {pct}"
+        );
+    }
+
+    #[test]
+    fn phase_with_single_executing_plan_is_zero_percent() {
+        let mut phase = Phase::new("P1".into(), "g".into(), 1);
+        let mut plan = Plan::new("t1".into(), "d1".into(), 1);
+        plan.state = PlanState::Executing;
+        phase.add_plan(plan);
+        assert!((phase.completion_percentage() - 0.0).abs() < f64::EPSILON);
+    }
 }

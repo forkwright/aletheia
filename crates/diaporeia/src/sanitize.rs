@@ -134,4 +134,26 @@ mod tests {
             "trailing lone slash must be left unchanged"
         );
     }
+
+    #[test]
+    fn preserves_relative_path_in_error_message() {
+        let msg = "failed to find config/settings.toml in search path";
+        let sanitized = strip_paths(msg);
+        assert_eq!(sanitized, msg, "relative paths must not be altered");
+    }
+
+    #[test]
+    fn strips_path_with_dots_and_underscores() {
+        let msg = "error at /var/lib/aletheia_data/nous.v2/config.toml";
+        let sanitized = strip_paths(msg);
+        assert!(!sanitized.contains("/var/lib"));
+        assert!(sanitized.contains("[server path]"));
+    }
+
+    #[test]
+    fn preserves_forward_slash_in_fraction() {
+        let msg = "processed 3/4 items successfully";
+        let sanitized = strip_paths(msg);
+        assert_eq!(sanitized, msg, "numeric fractions must not be altered");
+    }
 }

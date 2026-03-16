@@ -426,4 +426,85 @@ mod tests {
     fn complete_is_not_active() {
         assert!(!ProjectState::Complete.is_active());
     }
+
+    #[test]
+    fn project_state_serde_roundtrip() {
+        for state in [
+            ProjectState::Created,
+            ProjectState::Questioning,
+            ProjectState::Researching,
+            ProjectState::Scoping,
+            ProjectState::Planning,
+            ProjectState::Discussing,
+            ProjectState::Executing,
+            ProjectState::Verifying,
+            ProjectState::Complete,
+            ProjectState::Abandoned,
+        ] {
+            let json = serde_json::to_string(&state).unwrap();
+            let back: ProjectState = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, state, "roundtrip failed for {state:?}");
+        }
+    }
+
+    #[test]
+    fn paused_state_serde_roundtrip_preserves_previous() {
+        let paused = ProjectState::Paused {
+            previous: Box::new(ProjectState::Executing),
+        };
+        let json = serde_json::to_string(&paused).unwrap();
+        let back: ProjectState = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back,
+            ProjectState::Paused {
+                previous: Box::new(ProjectState::Executing)
+            }
+        );
+    }
+
+    #[test]
+    fn revert_then_complete_lifecycle() {
+        let state = ProjectState::Verifying;
+        let state = state
+            .transition(Transition::Revert {
+                to: ProjectState::Executing,
+            })
+            .unwrap();
+        assert_eq!(state, ProjectState::Executing);
+        let state = state.transition(Transition::StartVerification).unwrap();
+        assert_eq!(state, ProjectState::Verifying);
+        let state = state.transition(Transition::Complete).unwrap();
+        assert_eq!(state, ProjectState::Complete);
+    }
+
+    #[test]
+    fn cannot_revert_from_non_verifying_state() {
+        let state = ProjectState::Executing;
+        let result = state.transition(Transition::Revert {
+            to: ProjectState::Scoping,
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn every_non_terminal_state_can_abandon() {
+        let states = vec![
+            ProjectState::Created,
+            ProjectState::Questioning,
+            ProjectState::Researching,
+            ProjectState::Scoping,
+            ProjectState::Planning,
+            ProjectState::Discussing,
+            ProjectState::Executing,
+            ProjectState::Verifying,
+            ProjectState::Paused {
+                previous: Box::new(ProjectState::Scoping),
+            },
+        ];
+        for state in states {
+            let result = state.clone().transition(Transition::Abandon);
+            assert!(result.is_ok(), "Abandon should succeed from {state:?}");
+            assert_eq!(result.unwrap(), ProjectState::Abandoned);
+        }
+    }
 }

@@ -124,6 +124,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn send_params_serde_roundtrip() {
+        let params = SendParams {
+            to: "+15550100".to_owned(),
+            text: "hello world".to_owned(),
+            account_id: Some("acct1".to_owned()),
+            thread_id: None,
+            attachments: Some(vec!["photo.jpg".to_owned()]),
+        };
+        let json = serde_json::to_string(&params).expect("serialize");
+        let back: SendParams = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.to, params.to);
+        assert_eq!(back.text, params.text);
+        assert_eq!(back.account_id, params.account_id);
+        assert_eq!(back.thread_id, params.thread_id);
+        assert_eq!(back.attachments, params.attachments);
+    }
+
+    #[test]
+    fn send_params_skips_none_fields_in_json() {
+        let params = SendParams {
+            to: "+15550100".to_owned(),
+            text: "hello".to_owned(),
+            account_id: None,
+            thread_id: None,
+            attachments: None,
+        };
+        let json = serde_json::to_string(&params).expect("serialize");
+        assert!(!json.contains("account_id"));
+        assert!(!json.contains("thread_id"));
+        assert!(!json.contains("attachments"));
+    }
+
+    #[test]
     fn inbound_message_serde_roundtrip() {
         let msg = InboundMessage {
             channel: "signal".to_owned(),

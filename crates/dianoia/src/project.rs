@@ -254,4 +254,52 @@ mod tests {
         project.scope = Some("crate dianoia only".into());
         assert_eq!(project.scope.as_deref(), Some("crate dianoia only"));
     }
+
+    #[test]
+    fn project_serde_roundtrip_with_phases_and_plans() {
+        use crate::plan::Plan;
+
+        let mut project = Project::new(
+            "full-test".into(),
+            "roundtrip test".into(),
+            ProjectMode::Quick {
+                appetite_minutes: 15,
+            },
+            "alice".into(),
+        );
+        let mut phase = Phase::new("Phase 1".into(), "Foundation".into(), 1);
+        phase.add_plan(Plan::new("task-a".into(), "do A".into(), 1));
+        phase.add_plan(Plan::new("task-b".into(), "do B".into(), 2));
+        project.add_phase(phase);
+
+        let json = serde_json::to_string(&project).unwrap();
+        let back: Project = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.id, project.id);
+        assert_eq!(back.name, "full-test");
+        assert_eq!(
+            back.mode,
+            ProjectMode::Quick {
+                appetite_minutes: 15
+            }
+        );
+        assert_eq!(back.phases.len(), 1);
+        assert_eq!(back.phases[0].plans.len(), 2);
+        assert_eq!(back.phases[0].plans[0].title, "task-a");
+    }
+
+    #[test]
+    fn project_mode_serde_roundtrip() {
+        let modes = [
+            ProjectMode::Full,
+            ProjectMode::Quick {
+                appetite_minutes: 42,
+            },
+            ProjectMode::Background,
+        ];
+        for mode in &modes {
+            let json = serde_json::to_string(mode).unwrap();
+            let back: ProjectMode = serde_json::from_str(&json).unwrap();
+            assert_eq!(&back, mode, "roundtrip failed for {mode:?}");
+        }
+    }
 }

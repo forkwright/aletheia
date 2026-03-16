@@ -62,3 +62,79 @@ pub(crate) struct KnowledgeSearchParams {
     /// Maximum number of results to return.
     pub limit: Option<u32>,
 }
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_create_params_deserializes_with_defaults() {
+        let json = r#"{"nous_id": "syn"}"#;
+        let params: SessionCreateParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.nous_id, "syn");
+        assert!(params.session_key.is_none());
+    }
+
+    #[test]
+    fn session_create_params_deserializes_with_session_key() {
+        let json = r#"{"nous_id": "chiron", "session_key": "debug-session"}"#;
+        let params: SessionCreateParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.nous_id, "chiron");
+        assert_eq!(params.session_key.as_deref(), Some("debug-session"));
+    }
+
+    #[test]
+    fn session_message_params_requires_all_fields() {
+        let json = r#"{"nous_id": "syn", "session_key": "main", "content": "hello agent"}"#;
+        let params: SessionMessageParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.nous_id, "syn");
+        assert_eq!(params.session_key, "main");
+        assert_eq!(params.content, "hello agent");
+    }
+
+    #[test]
+    fn session_message_params_rejects_missing_content() {
+        let json = r#"{"nous_id": "syn", "session_key": "main"}"#;
+        let result = serde_json::from_str::<SessionMessageParams>(json);
+        assert!(
+            result.is_err(),
+            "missing required field 'content' must fail"
+        );
+    }
+
+    #[test]
+    fn session_history_params_deserializes_with_optional_limit() {
+        let json = r#"{"session_id": "01HXYZ123", "limit": 50}"#;
+        let params: SessionHistoryParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.session_id, "01HXYZ123");
+        assert_eq!(params.limit, Some(50));
+
+        let json_no_limit = r#"{"session_id": "01HXYZ123"}"#;
+        let params2: SessionHistoryParams = serde_json::from_str(json_no_limit).unwrap();
+        assert!(params2.limit.is_none());
+    }
+
+    #[test]
+    fn nous_id_param_deserializes_from_json() {
+        let json = r#"{"nous_id": "syn"}"#;
+        let params: NousIdParam = serde_json::from_str(json).unwrap();
+        assert_eq!(params.nous_id, "syn");
+    }
+
+    #[test]
+    fn knowledge_search_params_deserializes_with_all_optional_fields() {
+        let json = r#"{"query": "session recall", "nous_id": "chiron", "limit": 10}"#;
+        let params: KnowledgeSearchParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.query, "session recall");
+        assert_eq!(params.nous_id.as_deref(), Some("chiron"));
+        assert_eq!(params.limit, Some(10));
+    }
+
+    #[test]
+    fn session_list_params_allows_empty_filter() {
+        let json = r#"{}"#;
+        let params: SessionListParams = serde_json::from_str(json).unwrap();
+        assert!(params.nous_id.is_none());
+    }
+}

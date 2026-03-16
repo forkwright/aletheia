@@ -293,4 +293,65 @@ mod tests {
         let msg = group_message("+1234567890", "group-abc");
         assert_eq!(reply_target(&msg), "group:group-abc");
     }
+
+    #[test]
+    fn source_binding_takes_priority_over_channel_default() {
+        let router = MessageRouter::new(
+            vec![
+                binding("signal", "*", "default-nous"),
+                binding("signal", "+15550100", "alice-nous"),
+            ],
+            None,
+        );
+        let msg = dm_message("+15550100");
+        let decision = router.resolve(&msg).expect("should match");
+        assert_eq!(decision.nous_id, "alice-nous");
+        assert_eq!(decision.matched_by, MatchReason::SourceBinding);
+    }
+
+    #[test]
+    fn bindings_on_different_channel_do_not_cross_match() {
+        let router = MessageRouter::new(
+            vec![
+                binding("slack", "+15550100", "slack-nous"),
+                binding("discord", "group-abc", "discord-nous"),
+            ],
+            None,
+        );
+        let msg = dm_message("+15550100");
+        assert!(
+            router.resolve(&msg).is_none(),
+            "signal message must not match slack or discord bindings"
+        );
+    }
+
+    #[test]
+    fn global_default_session_key_uses_sender() {
+        let router = MessageRouter::new(vec![], Some("fallback-nous".to_owned()));
+        let msg = dm_message("+15550101");
+        let decision = router.resolve(&msg).expect("should match");
+        assert_eq!(decision.session_key, "+15550101");
+        assert_eq!(decision.matched_by, MatchReason::GlobalDefault);
+    }
+
+    #[test]
+    fn group_binding_matches_regardless_of_sender() {
+        let router = MessageRouter::new(vec![binding("signal", "group-xyz", "group-nous")], None);
+        let msg_a = group_message("+15550100", "group-xyz");
+        let msg_b = group_message("+15550199", "group-xyz");
+        let decision_a = router.resolve(&msg_a).expect("should match");
+        let decision_b = router.resolve(&msg_b).expect("should match");
+        assert_eq!(decision_a.nous_id, "group-nous");
+        assert_eq!(decision_b.nous_id, "group-nous");
+    }
+
+    #[test]
+    fn session_key_without_placeholders_is_literal() {
+        let mut b = binding("signal", "+15550100", "syn");
+        b.session_key = "fixed-key".to_owned();
+        let router = MessageRouter::new(vec![b], None);
+        let msg = dm_message("+15550100");
+        let decision = router.resolve(&msg).expect("should match");
+        assert_eq!(decision.session_key, "fixed-key");
+    }
 }

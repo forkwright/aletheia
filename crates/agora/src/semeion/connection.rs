@@ -173,4 +173,69 @@ mod tests {
         let drained = state.drain_all();
         assert!(drained.is_empty());
     }
+
+    #[test]
+    fn reconnecting_state_tracks_attempt_count() {
+        let mut state = AccountState::new(10);
+        assert_eq!(state.state, ConnectionState::Connected);
+        state.state = ConnectionState::Reconnecting { attempt: 1 };
+        assert_eq!(state.state, ConnectionState::Reconnecting { attempt: 1 });
+        state.state = ConnectionState::Reconnecting { attempt: 5 };
+        if let ConnectionState::Reconnecting { attempt } = state.state {
+            assert_eq!(attempt, 5);
+        } else {
+            panic!("expected Reconnecting state");
+        }
+    }
+
+    #[test]
+    fn buffer_capacity_one_drops_oldest_on_second_enqueue() {
+        let mut state = AccountState::new(1);
+        state.enqueue(test_params("first"));
+        assert_eq!(state.buffered_count(), 1);
+        assert_eq!(state.dropped_count, 0);
+
+        state.enqueue(test_params("second"));
+        assert_eq!(state.buffered_count(), 1);
+        assert_eq!(state.dropped_count, 1);
+
+        let drained = state.drain_all();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].message.as_deref(), Some("second"));
+    }
+
+    #[test]
+    fn drain_resets_buffer_then_accepts_new_messages() {
+        let mut state = AccountState::new(10);
+        state.enqueue(test_params("a"));
+        state.enqueue(test_params("b"));
+        assert_eq!(state.buffered_count(), 2);
+
+        let _ = state.drain_all();
+        assert_eq!(state.buffered_count(), 0);
+
+        state.enqueue(test_params("c"));
+        assert_eq!(state.buffered_count(), 1);
+    }
+
+    #[test]
+    fn buffering_during_reconnect_then_draining_on_restore() {
+        let mut state = AccountState::new(10);
+        state.state = ConnectionState::Reconnecting { attempt: 1 };
+        state.enqueue(test_params("buffered-during-reconnect"));
+        assert_eq!(state.buffered_count(), 1);
+
+        state.state = ConnectionState::Connected;
+        let drained = state.drain_all();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(
+            drained[0].message.as_deref(),
+            Some("buffered-during-reconnect")
+        );
+    }
+
+    #[test]
+    fn reconnect_delay_u32_max_caps_at_sixty_seconds() {
+        assert_eq!(reconnect_delay(u32::MAX), Duration::from_secs(60));
+    }
 }

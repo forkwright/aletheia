@@ -212,4 +212,59 @@ mod tests {
         assert_eq!(blocker.plan_id, plan_id);
         assert_eq!(blocker.detected_at, now);
     }
+
+    #[test]
+    fn plan_state_serde_roundtrip() {
+        let states = [
+            PlanState::Pending,
+            PlanState::Ready,
+            PlanState::Executing,
+            PlanState::Complete,
+            PlanState::Failed,
+            PlanState::Skipped,
+            PlanState::Stuck,
+        ];
+        for state in &states {
+            let json = serde_json::to_string(state).unwrap();
+            let back: PlanState = serde_json::from_str(&json).unwrap();
+            assert_eq!(&back, state, "roundtrip failed for {state:?}");
+        }
+    }
+
+    #[test]
+    fn plan_serde_roundtrip_preserves_fields() {
+        let mut plan = Plan::new("test task".into(), "do the thing".into(), 2);
+        plan.depends_on = vec![Ulid::new()];
+        plan.achievements = vec!["milestone reached".into()];
+
+        let json = serde_json::to_string(&plan).unwrap();
+        let back: Plan = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.id, plan.id);
+        assert_eq!(back.title, "test task");
+        assert_eq!(back.description, "do the thing");
+        assert_eq!(back.wave, 2);
+        assert_eq!(back.depends_on, plan.depends_on);
+        assert_eq!(back.achievements, vec!["milestone reached"]);
+        assert_eq!(back.max_iterations, 10);
+    }
+
+    #[test]
+    fn mark_stuck_then_add_another_blocker() {
+        let mut plan = Plan::new("task".into(), "desc".into(), 1);
+        let blocker1 = Blocker {
+            description: "first blocker".into(),
+            plan_id: plan.id,
+            detected_at: jiff::Timestamp::now(),
+        };
+        plan.mark_stuck(blocker1);
+        assert_eq!(plan.state, PlanState::Stuck);
+        assert_eq!(plan.blockers.len(), 1);
+
+        plan.blockers.push(Blocker {
+            description: "second blocker".into(),
+            plan_id: plan.id,
+            detected_at: jiff::Timestamp::now(),
+        });
+        assert_eq!(plan.blockers.len(), 2);
+    }
 }
