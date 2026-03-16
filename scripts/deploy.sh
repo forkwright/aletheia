@@ -1,77 +1,89 @@
 #!/usr/bin/env bash
-# deploy.sh — Build and deploy Aletheia
-#
-# Usage: ./scripts/deploy.sh [--dry-run]
-#
-# Steps:
-#   1. Pull latest main
-#   2. Build Rust binary (release)
-#   3. Validate config (aletheia health)
-#   4. Restart daemon
-#
-# Rollback: ./scripts/rollback.sh
+# Deploy aletheia binary to the local instance.
+# Usage: scripts/deploy.sh [--build] [--restart]
+#   --build    Build release binary before deploying (default: use existing)
+#   --restart  Restart systemd service after deploy (default: just copy)
+#   No flags:  build + copy + restart (full deploy)
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BACKUP_DIR="$REPO_ROOT/.deploy-backup"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INSTANCE_ROOT="${ALETHEIA_INSTANCE:-$HOME/ergon/instance}"
+BINARY_SRC="$REPO_ROOT/target/release/aletheia"
+BINARY_DST="${ALETHEIA_BINARY:-$HOME/ergon/bin/aletheia}"
+SERVICE="aletheia.service"
 
-DRY_RUN=false
-
-for arg in "$@"; do
-  case "$arg" in
-    --dry-run) DRY_RUN=true ;;
-    *) echo "error: unknown option: $arg" >&2; exit 1 ;;
-  esac
+# Parse flags
+BUILD=false
+RESTART=false
+if [[ $# -eq 0 ]]; then
+    BUILD=true
+    RESTART=true
+fi
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --build) BUILD=true; shift ;;
+        --restart) RESTART=true; shift ;;
+        *) echo "Unknown flag: $1"; exit 1 ;;
+    esac
 done
 
-log() { echo "[deploy] $(date +%H:%M:%S) $*"; }
-die() { echo "[deploy] ERROR: $*" >&2; exit 1; }
+# Refresh OAuth token from Claude Code credentials
+refresh_token() {
+    local cred_file="$HOME/.claude/.credentials.json"
+    if [[ -f "$cred_file" ]]; then
+        local token
+        token=$(python3 -c "import json; d=json.load(open('$cred_file')); print(d['claudeAiOauth']['accessToken'])" 2>/dev/null)
+        if [[ -n "$token" ]]; then
+            local svc_file="$HOME/.config/systemd/user/$SERVICE"
+            if grep -q "ANTHROPIC_AUTH_TOKEN" "$svc_file" 2>/dev/null; then
+                sed -i "s|ANTHROPIC_AUTH_TOKEN=.*|ANTHROPIC_AUTH_TOKEN=$token|" "$svc_file"
+                echo "Token updated in $SERVICE"
+            fi
+        fi
+    fi
+}
 
-# 1. Pull latest
-log "Pulling latest main..."
-cd "$REPO_ROOT"
-git checkout main
-git pull --rebase origin main
-
-# 2. Build Rust binary
-log "Building release binary..."
-cargo build --release || die "Rust build failed"
-
-# 3. Back up current binary
-log "Backing up current binary to $BACKUP_DIR/$TIMESTAMP..."
-mkdir -p "$BACKUP_DIR/$TIMESTAMP"
-if [[ -f "$REPO_ROOT/target/release/aletheia" ]]; then
-  cp "$REPO_ROOT/target/release/aletheia" "$BACKUP_DIR/$TIMESTAMP/aletheia"
-fi
-git rev-parse HEAD > "$BACKUP_DIR/$TIMESTAMP/git-sha"
-
-# Keep only last 5 backups
-mapfile -t old_backups < <(find "$BACKUP_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%p\n' | sort -rn | tail -n +6 | cut -f2-)
-for f in "${old_backups[@]}"; do rm -rf "$f"; done
-
-if [[ "$DRY_RUN" == "true" ]]; then
-  log "Dry run — skipping restart. Binary built and backed up."
-  exit 0
+# Build
+if $BUILD; then
+    echo "Building release binary..."
+    cd "$REPO_ROOT"
+    cargo build --release -p aletheia
+    echo "Built: $(./target/release/aletheia --version)"
 fi
 
-# 4. Validate
-log "Validating..."
-"$REPO_ROOT/target/release/aletheia" health || log "Warning: health check failed (may not be running yet)"
+# Verify binary exists
+if [[ ! -f "$BINARY_SRC" ]]; then
+    echo "Error: binary not found at $BINARY_SRC"
+    echo "Run with --build or build manually first."
+    exit 1
+fi
 
-# 5. Restart daemon
-log "Restarting aletheia daemon..."
-sudo systemctl restart aletheia || die "Daemon restart failed"
+# Stop service if running
+if systemctl --user is-active "$SERVICE" &>/dev/null; then
+    echo "Stopping $SERVICE..."
+    systemctl --user stop "$SERVICE"
+fi
 
-# 6. Verify
-sleep 3
-if systemctl is-active --quiet aletheia; then
-  log "✓ Deploy complete. Daemon is running."
-  log "  Backup: $BACKUP_DIR/$TIMESTAMP"
-  log "  Rollback: ./scripts/rollback.sh"
-else
-  log "⚠ Daemon failed to start. Rolling back..."
-  "$REPO_ROOT/scripts/rollback.sh"
-  die "Deploy failed — rolled back to previous version"
+# Copy binary
+mkdir -p "$(dirname "$BINARY_DST")"
+cp "$BINARY_SRC" "$BINARY_DST"
+echo "Deployed: $BINARY_DST"
+
+# Refresh token
+refresh_token
+
+# Restart
+if $RESTART; then
+    systemctl --user daemon-reload
+    systemctl --user start "$SERVICE"
+    sleep 3
+    if systemctl --user is-active "$SERVICE" &>/dev/null; then
+        echo "Service running."
+        curl -sf http://localhost:18789/api/health 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Health: {d[\"status\"]} v{d[\"version\"]}')" 2>/dev/null || echo "Health check: waiting..."
+    else
+        echo "ERROR: Service failed to start"
+        journalctl --user -eu "$SERVICE" --since "10 sec ago" --no-pager | tail -5
+        exit 1
+    fi
 fi
