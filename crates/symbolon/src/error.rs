@@ -95,6 +95,16 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// JWT signing key is the insecure default placeholder.
+    #[snafu(display(
+        "insecure JWT signing key: default placeholder active with auth mode '{auth_mode}'. Set auth.jwt_secret in config or the ALETHEIA_JWT_SECRET env var. Generate one with: openssl rand -hex 32"
+    ))]
+    InsecureKey {
+        auth_mode: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Auth database schema version table is corrupted or unreadable.
     #[snafu(display("auth database schema is corrupted: {source}"))]
     SchemaCorrupted {
