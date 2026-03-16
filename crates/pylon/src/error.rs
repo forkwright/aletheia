@@ -72,9 +72,9 @@ pub enum ApiError {
         location: snafu::Location,
     },
 
-    #[snafu(display("rate limited, retry after {retry_after_ms}ms"))]
+    #[snafu(display("rate limited, retry after {retry_after_secs}s"))]
     RateLimited {
-        retry_after_ms: u64,
+        retry_after_secs: u64,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -127,10 +127,12 @@ impl IntoResponse for ApiError {
             Self::Internal { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", None),
             Self::Unauthorized { .. } => (StatusCode::UNAUTHORIZED, "unauthorized", None),
             Self::NotFound { .. } => (StatusCode::NOT_FOUND, "not_found", None),
-            Self::RateLimited { retry_after_ms, .. } => (
+            Self::RateLimited {
+                retry_after_secs, ..
+            } => (
                 StatusCode::TOO_MANY_REQUESTS,
                 "rate_limited",
-                Some(serde_json::json!({ "retry_after_ms": retry_after_ms })),
+                Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
             ),
             Self::Conflict { .. } => (StatusCode::CONFLICT, "conflict", None),
             Self::Forbidden { .. } => (StatusCode::FORBIDDEN, "forbidden", None),
@@ -146,8 +148,11 @@ impl IntoResponse for ApiError {
         };
 
         // WHY: retry_after_secs must be extracted before self is moved into client_message construction below.
-        let retry_after_secs = if let Self::RateLimited { retry_after_ms, .. } = &self {
-            Some(retry_after_ms.div_ceil(1000))
+        let retry_after_secs = if let Self::RateLimited {
+            retry_after_secs, ..
+        } = &self
+        {
+            Some(*retry_after_secs)
         } else {
             None
         };
@@ -223,7 +228,7 @@ impl From<aletheia_hermeneus::error::Error> for ApiError {
         use aletheia_hermeneus::error::Error;
         match err {
             Error::RateLimited { retry_after_ms, .. } => Self::RateLimited {
-                retry_after_ms,
+                retry_after_secs: retry_after_ms.div_ceil(1000),
                 location: snafu::Location::default(),
             },
             Error::AuthFailed { message, .. } => Self::ServiceUnavailable {
@@ -231,7 +236,7 @@ impl From<aletheia_hermeneus::error::Error> for ApiError {
                 location: snafu::Location::default(),
             },
             Error::ApiError { status: 429, .. } => Self::RateLimited {
-                retry_after_ms: 0,
+                retry_after_secs: 0,
                 location: snafu::Location::default(),
             },
             Error::ApiError {
@@ -300,7 +305,7 @@ mod tests {
     #[test]
     fn rate_limited_includes_retry_after_header() {
         let err = ApiError::RateLimited {
-            retry_after_ms: 5000,
+            retry_after_secs: 5,
             location: snafu::Location::default(),
         };
         let response = err.into_response();
@@ -313,9 +318,9 @@ mod tests {
     }
 
     #[test]
-    fn rate_limited_zero_ms_has_retry_after() {
+    fn rate_limited_zero_secs_has_retry_after() {
         let err = ApiError::RateLimited {
-            retry_after_ms: 0,
+            retry_after_secs: 0,
             location: snafu::Location::default(),
         };
         let response = err.into_response();
