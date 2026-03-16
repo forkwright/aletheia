@@ -50,9 +50,9 @@ pub(crate) struct NousIdParam {
 
 /// Parameters for knowledge search.
 #[derive(Debug, Deserialize, JsonSchema)]
-#[expect(
+#[allow(
     dead_code,
-    reason = "fields used for JSON Schema generation; tool is a Phase 1 stub"
+    reason = "fields read via Deserialize + JsonSchema, not direct access"
 )]
 pub(crate) struct KnowledgeSearchParams {
     /// The search query text.
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn session_list_params_allows_empty_filter() {
-        let json = r#"{}"#;
+        let json = r"{}";
         let params: SessionListParams = serde_json::from_str(json).unwrap();
         assert!(params.nous_id.is_none());
     }

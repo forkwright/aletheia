@@ -465,6 +465,7 @@ impl RefreshingCredentialProvider {
     }
 
     /// Signal the background refresh task to stop.
+    #[cfg(test)]
     pub(crate) fn shutdown(&self) {
         self.shutdown.store(true, Ordering::Relaxed);
     }

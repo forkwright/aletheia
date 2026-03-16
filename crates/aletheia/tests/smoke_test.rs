@@ -257,6 +257,41 @@ fn seed_skills_missing_dir_exits_nonzero() {
         .failure();
 }
 
+// ── Check-config — embed-candle detection ─────────────────────────────────────
+
+#[test]
+fn check_config_reports_embed_candle_status() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let instance = tmp.path();
+
+    // Create minimal instance layout so check-config can proceed.
+    std::fs::create_dir_all(instance.join("config")).unwrap();
+    std::fs::create_dir_all(instance.join("data")).unwrap();
+
+    let output = aletheia()
+        .args([
+            "--instance-root",
+            instance.to_str().unwrap(),
+            "check-config",
+        ])
+        .output()
+        .expect("failed to run check-config");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    if cfg!(feature = "embed-candle") {
+        assert!(
+            stdout.contains("[pass] embedding: embed-candle compiled"),
+            "expected [pass] embedding when embed-candle compiled; got: {stdout}"
+        );
+    } else {
+        assert!(
+            stdout.contains("[FAIL] embedding: embed-candle feature not compiled"),
+            "expected [FAIL] embedding when embed-candle not compiled; got: {stdout}"
+        );
+    }
+}
+
 // ── Unknown subcommand exits non-zero ─────────────────────────────────────────
 
 #[test]

@@ -1,7 +1,7 @@
-//! Figment-based configuration loading with TOML cascade.
+//! Figment-based configuration loading with TOML/YAML cascade.
 
 use figment::Figment;
-use figment::providers::{Env, Format, Serialized, Toml};
+use figment::providers::{Env, Format, Serialized, Toml, Yaml};
 use snafu::ResultExt;
 use tracing::warn;
 
@@ -9,11 +9,11 @@ use crate::config::AletheiaConfig;
 use crate::error::{FigmentSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
 use crate::oikos::Oikos;
 
-/// Load configuration with cascade: defaults → TOML → environment.
+/// Load configuration with cascade: defaults → config file → environment.
 ///
 /// Resolution order (later wins):
 /// 1. Compiled defaults ([`AletheiaConfig::default()`])
-/// 2. `{oikos.config()}/aletheia.toml` (if it exists)
+/// 2. `{oikos.config()}/aletheia.toml` or `aletheia.yaml` (TOML takes precedence)
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
 #[expect(
     clippy::result_large_err,
@@ -25,13 +25,19 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
 
     let mut figment = Figment::new().merge(Serialized::defaults(AletheiaConfig::default()));
 
-    if toml_path.exists() {
-        figment = figment.merge(Toml::file(&toml_path));
-    } else if yaml_path.exists() {
+    let has_toml = toml_path.exists();
+    let has_yaml = yaml_path.exists();
+
+    if has_toml && has_yaml {
         warn!(
-            "Found aletheia.yaml but not aletheia.toml — run migration or rename. \
-             See docs/CONFIGURATION.md."
+            "Both aletheia.toml and aletheia.yaml found — using TOML, ignoring YAML. \
+             Remove aletheia.yaml to silence this warning."
         );
+        figment = figment.merge(Toml::file(&toml_path));
+    } else if has_toml {
+        figment = figment.merge(Toml::file(&toml_path));
+    } else if has_yaml {
+        figment = figment.merge(Yaml::file(&yaml_path));
     } else {
         warn!(
             "No config file found, using defaults. \
@@ -139,6 +145,55 @@ mod tests {
 
             assert_eq!(config.gateway.port, 18789);
             assert_eq!(config.agents.defaults.context_tokens, 200_000);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn load_from_yaml_file() {
+        figment::Jail::expect_with(|jail| {
+            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
+            jail.create_file(
+                "config/aletheia.yaml",
+                "gateway:\n  port: 8888\nagents:\n  defaults:\n    contextTokens: 50000\n",
+            )?;
+
+            let oikos = Oikos::from_root(jail.directory());
+            let config = load_config(&oikos).map_err(|e| e.to_string())?;
+
+            assert_eq!(config.gateway.port, 8888);
+            assert_eq!(config.agents.defaults.context_tokens, 50_000);
+            assert_eq!(config.agents.defaults.model.primary, "claude-sonnet-4-6");
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn toml_takes_precedence_over_yaml() {
+        figment::Jail::expect_with(|jail| {
+            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
+            jail.create_file("config/aletheia.toml", "[gateway]\nport = 1111\n")?;
+            jail.create_file("config/aletheia.yaml", "gateway:\n  port: 2222\n")?;
+
+            let oikos = Oikos::from_root(jail.directory());
+            let config = load_config(&oikos).map_err(|e| e.to_string())?;
+
+            assert_eq!(config.gateway.port, 1111);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn env_overrides_yaml() {
+        figment::Jail::expect_with(|jail| {
+            std::fs::create_dir_all(jail.directory().join("config")).map_err(|e| e.to_string())?;
+            jail.create_file("config/aletheia.yaml", "gateway:\n  port: 8888\n")?;
+            jail.set_env("ALETHEIA_GATEWAY__PORT", "5555");
+
+            let oikos = Oikos::from_root(jail.directory());
+            let config = load_config(&oikos).map_err(|e| e.to_string())?;
+
+            assert_eq!(config.gateway.port, 5555);
             Ok(())
         });
     }

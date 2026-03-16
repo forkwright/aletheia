@@ -820,7 +820,7 @@ pub struct McpConfig {
 /// Per-session rate limiting configuration for MCP requests.
 ///
 /// Applies separate token bucket limits for expensive operations
-/// (session_message, session_create, knowledge_search) and cheap
+/// (`session_message`, `session_create`, `knowledge_search`) and cheap
 /// read/status operations. Limits are enforced per MCP session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

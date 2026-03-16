@@ -6,8 +6,9 @@ use std::time::Instant;
 use aletheia_taxis::config::McpRateLimitConfig;
 
 /// Operation cost tier for rate limiting.
+#[derive(Clone, Copy)]
 pub(crate) enum Tier {
-    /// Expensive operations: session_message, session_create, knowledge_search.
+    /// Expensive operations: `session_message`, `session_create`, `knowledge_search`.
     Expensive,
     /// Cheap operations: list, status, health, config reads.
     Cheap,
@@ -78,6 +79,10 @@ impl TokenBucket {
         }
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "poisoned mutex = prior panic, unrecoverable"
+    )]
     fn try_acquire(&self) -> bool {
         let mut state = self.inner.lock().expect("rate limiter lock poisoned");
         let now = Instant::now();
@@ -94,6 +99,7 @@ impl TokenBucket {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

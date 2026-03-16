@@ -11,6 +11,10 @@ use aletheia_taxis::validate::validate_section;
 /// Run `aletheia check-config`: load config, validate all sections, report and exit.
 ///
 /// Exits 0 on success, 1 if any check fails.
+#[expect(
+    clippy::too_many_lines,
+    reason = "sequential validation checks read best as one flow"
+)]
 pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
@@ -67,6 +71,19 @@ pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
             }
         } else {
             println!("  [pass] {section} (using defaults)");
+        }
+    }
+
+    if config.embedding.provider == "candle" {
+        if cfg!(feature = "embed-candle") {
+            println!("  [pass] embedding: embed-candle compiled");
+        } else {
+            println!(
+                "  [FAIL] embedding: embed-candle feature not compiled\n         \
+                 Build with: cargo build --features embed-candle\n         \
+                 Or set embedding.provider to \"mock\" in config."
+            );
+            all_ok = false;
         }
     }
 
