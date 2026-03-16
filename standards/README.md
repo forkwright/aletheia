@@ -1,6 +1,6 @@
 # Coding Standards
 
-> Universal principles for all code, all languages, all projects. Language-specific rules live in separate files in this directory — they are **additive** to this document. Read this first.
+> Universal principles for all code, all languages, all projects. Language-specific rules live in separate files in this directory: they are **additive** to this document. Read this first.
 
 ---
 
@@ -10,19 +10,27 @@
 
 **Fail fast, fail loud.** Crash on invariant violations. No defensive fallbacks for impossible states. Sentinel values and silent degradation are bugs. Surface errors at the point of origin with full context.
 
-**Parse, don't validate.** Invalid data cannot exist past the point of construction. Newtypes, validation constructors, and type-level guarantees enforce invariants at the boundary — HTTP handlers, config loading, deserialization, CLI argument parsing. Once a value is constructed, its validity is a compile-time or construction-time guarantee. Deserialization must route through the parser: derive-based frameworks (`serde`, `System.Text.Json`, `encoding/json`) bypass constructors by default.
+**Parse, don't validate.** Invalid data cannot exist past the point of construction. Newtypes, validation constructors, and type-level guarantees enforce invariants at the boundary: HTTP handlers, config loading, deserialization, CLI argument parsing. Once a value is constructed, its validity is a compile-time or construction-time guarantee. Deserialization must route through the parser: derive-based frameworks (`serde`, `System.Text.Json`, `encoding/json`) bypass constructors by default.
 
 **Prefer immutable.** Default to immutable data. Require explicit justification for mutability. Mutable shared state is the root of most concurrency bugs and a common source of aliasing surprises.
 
 **Minimize surface area.** Private by default. Every public item is a commitment. Expose the smallest API that serves the need. `pub(crate)` (Rust), `internal` (C#), unexported (Kotlin/TS), `_prefix` (Python).
 
-**No dead weight.** No dead code. No commented-out blocks. No unused imports. Delete it — git has history. No hardcoded IDs, dates, or magic numbers. Parameterize or reference a constant.
+**No dead weight.** No dead code. No commented-out blocks. No unused imports. Delete it: git has history. No hardcoded IDs, dates, or magic numbers. Parameterize or reference a constant.
 
-**No shortcuts.** Build the right thing from the start. If the SDK is better than the CLI wrapper, build the SDK. If the architecture needs three crates, build three crates. Don't ship a "quick version" you know you'll replace — time spent on throwaway work is stolen from the real thing. MVPs are for validating markets, not for code you're certain about.
+**Define once, reference everywhere.** Every value, pattern, and behavior has exactly one authoritative definition. Constants, not literals. Functions, not copy-paste. Macros or generics when the same structure repeats across types. Config files for values that vary by environment. If you're typing the same string, number, or pattern a second time, extract it. Three copies of a mock struct is three bugs waiting to diverge. The cost of extraction is always less than the cost of inconsistency.
 
-**Best tool for the job.** Every decision — language, library, architecture, data structure — is made on merit. No defaults by inertia. No "we've always done it this way." If the current tool is wrong, replace it. If a better option exists and the migration cost is justified, migrate. Comfort with a tool is not a reason to use it; fitness for the problem is.
+This applies at every level:
+- **Literals**: model names, header values, schema names, timeouts, limits. Named constants in the lowest common module.
+- **Patterns**: error handling boilerplate, validation logic, serialization. Shared functions or macros.
+- **Test fixtures**: mock providers, setup helpers, sample data. Shared test utilities module.
+- **Config defaults**: define in one place (config struct Default impl), reference from there. Never hardcode the same default in two files.
 
-**No compromise on quality.** Every PR should be clean, tested, and reviewed before merge. Fix issues immediately, don't defer. "Good enough" is not a standard. The goal is code you'd be confident handing to a stranger with zero context — they should be able to read it, understand it, and trust it. Cutting corners creates debt that compounds faster than the time it "saved."
+**No shortcuts.** Build the right thing from the start. If the SDK is better than the CLI wrapper, build the SDK. If the architecture needs three crates, build three crates. Don't ship a "quick version" you know you'll replace: time spent on throwaway work is stolen from the real thing. MVPs are for validating markets, not for code you're certain about.
+
+**Best tool for the job.** Every decision: language, library, architecture, data structure: is made on merit. No defaults by inertia. No "we've always done it this way." If the current tool is wrong, replace it. If a better option exists and the migration cost is justified, migrate. Comfort with a tool is not a reason to use it; fitness for the problem is.
+
+**No compromise on quality.** Every PR should be clean, tested, and reviewed before merge. Fix issues immediately, don't defer. "Good enough" is not a standard. The goal is code you'd be confident handing to a stranger with zero context: they should be able to read it, understand it, and trust it. Cutting corners creates debt that compounds faster than the time it "saved."
 
 **Format at the boundary.** Percentages as decimals (0.42), currency as numbers, dates as timestamps internally. Format when rendering for display, not in queries or transforms.
 
@@ -82,11 +90,11 @@ Usage:
 
 ### Banned Patterns
 
-- Bare `// TODO` or `// FIXME` without an issue number — invisible debt
-- `// HACK`, `// XXX`, `// TEMP` — use `FIXME(#NNN)` with a tracking issue
-- `// NOTE:` as a substitute for clear code — rewrite the code first
-- Commented-out code blocks — delete them, git has history
-- End-of-line comments explaining what a line does — rename the variable instead
+- Bare `// TODO` or `// FIXME` without an issue number: invisible debt
+- `// HACK`, `// XXX`, `// TEMP`: use `FIXME(#NNN)` with a tracking issue
+- `// NOTE:` as a substitute for clear code: rewrite the code first
+- Commented-out code blocks: delete them, git has history
+- End-of-line comments explaining what a line does: rename the variable instead
 
 ### Doc Comments
 
@@ -95,7 +103,7 @@ Doc comments (`///` in Rust, `/** */` in TS/Kotlin, `<summary>` in C#, docstring
 - Public API items that cross module boundaries
 - Functions that can panic or throw unexpectedly (document when/why)
 - Functions with non-obvious error conditions
-- `unsafe` functions — mandatory safety contract documentation
+- `unsafe` functions: mandatory safety contract documentation
 
 Not required on:
 - Private/internal functions with self-documenting signatures
@@ -116,7 +124,7 @@ One-line file headers (module-level doc comment) are encouraged: describe the mo
 | Constants | `UPPER_SNAKE_CASE` | `MAX_TURNS`, `DEFAULT_PORT` |
 | Events | `noun:verb` | `turn:before`, `tool:called` |
 
-Function and variable casing is language-specific — see individual language files.
+Function and variable casing is language-specific: see individual language files.
 
 **Universal naming rules:**
 - Verb-first for functions: `load_config`, `create_session`, `parse_input`. Drop `get_` prefix on simple getters.
@@ -136,7 +144,7 @@ Process:
 2. Construct from Greek roots using the prefix-root-suffix system
 3. Validate with the layer test (L1 practical → L4 reflexive)
 4. Check topology against existing names in the ecosystem
-5. If no Greek word fits naturally, the essential nature isn't clear yet — wait
+5. If no Greek word fits naturally, the essential nature isn't clear yet: wait
 
 ### File & Directory Organization
 
@@ -151,7 +159,7 @@ Process:
 
 - `snake_case` for directories. No hyphens, no camelCase, no spaces.
 - Max 2–3 nesting levels inside any project. Flat > nested.
-- No version numbers in filenames — version in file headers or git tags.
+- No version numbers in filenames: version in file headers or git tags.
 
 ### Project Structure
 
@@ -187,10 +195,10 @@ Language-specific layouts (crate structure, package hierarchy) live in the langu
 
 Every error must:
 
-1. **Carry context** — what operation failed, with what inputs
-2. **Be typed** — callers can match on error kind, not parse strings
-3. **Propagate** — chain errors with context, never swallow the cause
-4. **Surface** — log at the point of *handling*, not the point of *origin*
+1. **Carry context**: what operation failed, with what inputs
+2. **Be typed**: callers can match on error kind, not parse strings
+3. **Propagate**: chain errors with context, never swallow the cause
+4. **Surface**: log at the point of *handling*, not the point of *origin*
 
 ### Fail Fast
 
@@ -202,7 +210,7 @@ Every error must:
 ### No Silent Catch
 
 - Every catch/except/match block must: log, propagate, return a meaningful value, or explain why it discards
-- `/* intentional: reason */` for deliberate discard — never an empty catch body
+- `/* intentional: reason */` for deliberate discard: never an empty catch body
 - If you're catching to ignore, you're hiding a bug
 
 ### No Sentinel Values
@@ -221,7 +229,7 @@ Acquired resources must have a defined cleanup path. Use RAII (`Drop` in Rust), 
 
 ### Ownership
 
-Every spawned task, goroutine, thread, or async operation must have a defined owner responsible for its lifecycle. Fire-and-forget is banned — if you spawn it, something must join, cancel, or supervise it.
+Every spawned task, goroutine, thread, or async operation must have a defined owner responsible for its lifecycle. Fire-and-forget is banned: if you spawn it, something must join, cancel, or supervise it.
 
 ### Shared State
 
@@ -250,9 +258,9 @@ Concurrency bugs live in interleavings, not in text. Static analysis and code re
 
 ## Configuration
 
-- **Config in environment, not code.** Values that vary between deploys — credentials, hostnames, feature flags — live in environment variables or external config stores, never compiled in.
+- **Config in environment, not code.** Values that vary between deploys: credentials, hostnames, feature flags: live in environment variables or external config stores, never compiled in.
 - **No hardcoded secrets.** Connection strings, API keys, and passwords never in source. Not in config files committed to git. Use secret stores or environment injection.
-- **Inject inward, never fetch.** Configuration values are pushed from the outermost layer (main, entry point) and injected into inner modules. Inner code receives config — it never reads environment variables or config files directly.
+- **Inject inward, never fetch.** Configuration values are pushed from the outermost layer (main, entry point) and injected into inner modules. Inner code receives config. It never reads environment variables or config files directly.
 - **Fail on invalid config at startup.** Validate all configuration during initialization. Don't discover bad config at 3 AM when the code path first executes.
 
 ---
@@ -369,7 +377,7 @@ All test data must be synthetic. No real personal information in test fixtures, 
 
 **Never use:** real names, emails, usernames, internal IPs/hostnames, personal facts, credentials, or API keys. Never copy production data into test environments.
 
-**Test data builders:** Use builder/factory patterns with sensible defaults. Each test overrides only the fields it cares about. When a field is added to the struct, only the builder default needs updating — not every test.
+**Test data builders:** Use builder/factory patterns with sensible defaults. Each test overrides only the fields it cares about. When a field is added to the struct, only the builder default needs updating: not every test.
 
 **Determinism:** Any randomized test data must be seeded. The seed must be logged or persisted. Proptest regression files, hypothesis databases, and equivalent fixtures are checked into version control.
 
@@ -428,7 +436,7 @@ One task, one worktree. Don't reuse worktrees. Build and test in the worktree, n
 ### PR Discipline
 
 - PR title matches the conventional commit format
-- PR description states what changed and why — not how (the code shows how)
+- PR description states what changed and why: not how (the code shows how)
 - Every PR targets `main`
 - Lint and type checks pass before pushing (don't rely solely on CI)
 
@@ -541,7 +549,7 @@ Access control fails closed. If authorization state is unknown or ambiguous, den
 
 - **Never log secrets.** Credentials, tokens, API keys, passwords. Redact or omit.
 - **Never log PII at info level or above.** User emails, names, IPs are debug-level at most, and only when necessary for diagnosis.
-- **Handle errors once.** Each error is either logged **or** propagated — never both. Logging at the origin and propagating with context produces duplicate noise. Log at the point where the error is finally handled.
+- **Handle errors once.** Each error is either logged **or** propagated: never both. Logging at the origin and propagating with context produces duplicate noise. Log at the point where the error is finally handled.
 - **Guard expensive construction.** Don't compute values for log messages that won't be emitted at the current level. Check the level before building the message, or use lazy evaluation.
 - **Include correlation IDs.** Every request, session, or operation chain carries an ID that appears in all related log entries.
 
@@ -563,7 +571,7 @@ Access control fails closed. If authorization state is unknown or ambiguous, den
 
 ## Writing
 
-All prose — documentation, READMEs, specs, PR descriptions, commit bodies, comments — follows the same standards. Full treatment in `WRITING.md`. Summary:
+All prose: documentation, READMEs, specs, PR descriptions, commit bodies, comments: follows the same standards. Full treatment in `WRITING.md`. Summary:
 
 - **Direct and concrete.** State the thing. No throat-clearing, no preamble, no "it's worth noting that."
 - **Active voice.** "The server rejects malformed requests" not "Malformed requests are rejected by the server."
@@ -599,23 +607,23 @@ All prose — documentation, READMEs, specs, PR descriptions, commit bodies, com
 
 Patterns that AI agents (Claude Code, Copilot, Cursor) consistently get wrong, validated through 2025-2026 testing:
 
-1. **Over-engineering** — wrapper types with no value, trait abstractions with one implementation, premature generalization
-2. **Outdated patterns** — using deprecated libraries, old language features, patterns from 3 years ago
-3. **Hallucinated APIs** — method signatures that don't exist. Always `cargo check` / compile / type-check.
-4. **Clone/copy to satisfy type system** — restructure ownership instead of papering over it
-5. **Comments restating code** — the code is the documentation. Delete the comment.
-6. **Inconsistent error handling** — mixing error strategies within a codebase
-7. **Test names like `test_add` or `it_works`** — names must describe behavior
-8. **Suppressing warnings** — fix the warning, don't suppress it. `#[allow]` / `@SuppressWarnings` require justification.
-9. **Adding dependencies for trivial functionality** — if it's 10 lines, write it
-10. **Performing social commentary in code comments** — no "this is a great pattern" or "elegant solution". Just the code.
-11. **Silent failure** — removing safety checks, swallowing errors, or generating plausible-looking but incorrect output to avoid crashing. AI produces code that *runs* but silently does the wrong thing. Worse than a crash.
-12. **Hallucinated dependencies** — referencing packages that don't exist. 20% of AI code samples reference nonexistent packages. Attackers register these names (slopsquatting). Verify every dependency.
-13. **Code duplication over refactoring** — generating new code blocks rather than reusing existing functions. AI doesn't propose "use the existing function at line 340." Extract and reuse.
-14. **Context drift in multi-file changes** — patterns applied consistently to early files but drifting in later files as context fills. Renaming a type in 30 of 50 files. Validate consistency post-refactor.
-15. **Tautological tests** — mocking the system under test, asserting on values constructed inside the test, achieving 100% coverage with near-zero defect detection. If the test can't fail when the code is wrong, it's not a test.
-16. **Concurrency errors** — naive locking, missing synchronization, holding locks across await points. AI can describe race conditions but cannot diagnose them because bugs live in interleavings, not in text.
-17. **Stripping existing safety checks** — removing input validation, authentication checks, rate limiting, or error boundaries during refactoring because it doesn't understand *why* they were there. Preserve every guard unless you can explain why it's unnecessary.
-18. **Adding unrequested features** — padding implementations with config options, extra error variants, helper functions, and generalization nobody asked for. Implement exactly what was specified. Extra code is extra maintenance, extra surface area, and extra merge conflicts.
-19. **Refactoring adjacent code** — renaming variables in untouched files, reorganizing imports in modules that aren't part of the task, adding docstrings to functions that weren't changed. Diff noise kills parallel work and obscures the actual change. Touch only what the task requires.
-20. **Happy-path-only tests** — writing tests for the success case and ignoring error paths, boundary conditions, and edge cases. If every test passes a valid input and asserts on the expected output, the test suite is decorative.
+1. **Over-engineering**: wrapper types with no value, trait abstractions with one implementation, premature generalization
+2. **Outdated patterns**: using deprecated libraries, old language features, patterns from 3 years ago
+3. **Hallucinated APIs**: method signatures that don't exist. Always `cargo check` / compile / type-check.
+4. **Clone/copy to satisfy type system**: restructure ownership instead of papering over it
+5. **Comments restating code**: the code is the documentation. Delete the comment.
+6. **Inconsistent error handling**: mixing error strategies within a codebase
+7. **Test names like `test_add` or `it_works`**: names must describe behavior
+8. **Suppressing warnings**: fix the warning, don't suppress it. `#[allow]` / `@SuppressWarnings` require justification.
+9. **Adding dependencies for trivial functionality**: if it's 10 lines, write it
+10. **Performing social commentary in code comments**: no "this is a great pattern" or "elegant solution". Just the code.
+11. **Silent failure**: removing safety checks, swallowing errors, or generating plausible-looking but incorrect output to avoid crashing. AI produces code that *runs* but silently does the wrong thing. Worse than a crash.
+12. **Hallucinated dependencies**: referencing packages that don't exist. 20% of AI code samples reference nonexistent packages. Attackers register these names (slopsquatting). Verify every dependency.
+13. **Code duplication over refactoring**: generating new code blocks rather than reusing existing functions. AI doesn't propose "use the existing function at line 340." Extract and reuse.
+14. **Context drift in multi-file changes**: patterns applied consistently to early files but drifting in later files as context fills. Renaming a type in 30 of 50 files. Validate consistency post-refactor.
+15. **Tautological tests**: mocking the system under test, asserting on values constructed inside the test, achieving 100% coverage with near-zero defect detection. If the test can't fail when the code is wrong, it's not a test.
+16. **Concurrency errors**: naive locking, missing synchronization, holding locks across await points. AI can describe race conditions but cannot diagnose them because bugs live in interleavings, not in text.
+17. **Stripping existing safety checks**: removing input validation, authentication checks, rate limiting, or error boundaries during refactoring because it doesn't understand *why* they were there. Preserve every guard unless you can explain why it's unnecessary.
+18. **Adding unrequested features**: padding implementations with config options, extra error variants, helper functions, and generalization nobody asked for. Implement exactly what was specified. Extra code is extra maintenance, extra surface area, and extra merge conflicts.
+19. **Refactoring adjacent code**: renaming variables in untouched files, reorganizing imports in modules that aren't part of the task, adding docstrings to functions that weren't changed. Diff noise kills parallel work and obscures the actual change. Touch only what the task requires.
+20. **Happy-path-only tests**: writing tests for the success case and ignoring error paths, boundary conditions, and edge cases. If every test passes a valid input and asserts on the expected output, the test suite is decorative.
