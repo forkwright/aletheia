@@ -9,7 +9,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
-use crate::error::ApiError;
+use crate::error::{ApiError, BadRequestSnafu};
 use crate::state::AppState;
 
 /// Query parameters for listing facts.
@@ -51,6 +51,18 @@ fn default_sort() -> String {
 fn default_order() -> String {
     "desc".to_string()
 }
+
+/// Valid sort fields for fact listing.
+const VALID_SORT_FIELDS: &[&str] = &[
+    "confidence",
+    "recency",
+    "created",
+    "access_count",
+    "fsrs_review",
+];
+
+/// Valid sort directions (checked case-insensitively).
+const VALID_ORDER_VALUES: &[&str] = &["asc", "desc"];
 
 /// Hard upper bound on the `limit` query parameter for all knowledge endpoints.
 const MAX_LIMIT: usize = 1000;
@@ -164,6 +176,26 @@ pub struct TimelineResponse {
     pub events: Vec<TimelineEvent>,
 }
 
+/// Validate sort/order query parameters, returning 400 with descriptive errors.
+fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
+    if !VALID_SORT_FIELDS.contains(&sort) {
+        return Err(BadRequestSnafu {
+            message: format!(
+                "invalid sort field '{sort}': valid fields are {}",
+                VALID_SORT_FIELDS.join(", "),
+            ),
+        }
+        .build());
+    }
+    if !VALID_ORDER_VALUES.contains(&order.to_ascii_lowercase().as_str()) {
+        return Err(BadRequestSnafu {
+            message: format!("invalid order '{order}': valid values are asc, desc",),
+        }
+        .build());
+    }
+    Ok(())
+}
+
 /// GET /api/v1/knowledge/facts
 ///
 /// List facts with sorting, filtering, and pagination.
@@ -186,6 +218,7 @@ pub struct TimelineResponse {
     ),
     responses(
         (status = 200, description = "Fact list with total count"),
+        (status = 400, description = "Invalid sort or order parameter", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -197,6 +230,8 @@ pub async fn list_facts(
     use aletheia_mneme::knowledge::EpistemicTier;
 
     query.limit = query.limit.min(MAX_LIMIT);
+    validate_sort_order(&query.sort, &query.order)?;
+    query.order = query.order.to_ascii_lowercase();
 
     let mut facts = get_stored_facts(&state, &query);
 
@@ -864,5 +899,46 @@ mod tests {
         let response = EntitiesResponse { entities: vec![] };
         let json = serde_json::to_value(&response).unwrap();
         assert!(json["entities"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn validate_sort_order_accepts_all_valid_sort_fields() {
+        for field in VALID_SORT_FIELDS {
+            assert!(validate_sort_order(field, "asc").is_ok());
+            assert!(validate_sort_order(field, "desc").is_ok());
+        }
+    }
+
+    #[test]
+    fn validate_sort_order_rejects_invalid_sort_field() {
+        let err = validate_sort_order("invalid_field", "asc").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid sort field 'invalid_field'"), "{msg}");
+        assert!(msg.contains("confidence"), "{msg}");
+        assert!(msg.contains("recency"), "{msg}");
+    }
+
+    #[test]
+    fn validate_sort_order_rejects_invalid_order() {
+        let err = validate_sort_order("confidence", "upward").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid order 'upward'"), "{msg}");
+    }
+
+    #[test]
+    fn validate_sort_order_accepts_case_insensitive_order() {
+        assert!(validate_sort_order("confidence", "ASC").is_ok());
+        assert!(validate_sort_order("confidence", "DESC").is_ok());
+        assert!(validate_sort_order("confidence", "Asc").is_ok());
+        assert!(validate_sort_order("confidence", "Desc").is_ok());
+    }
+
+    #[test]
+    fn sort_facts_with_uppercase_order() {
+        let mut facts = vec![make_fact("a", "low", 0.3), make_fact("b", "high", 0.9)];
+        // After validation, order is normalized to lowercase before reaching sort_facts
+        sort_facts(&mut facts, "confidence", "desc");
+        assert_eq!(facts[0].id.as_str(), "b");
+        assert_eq!(facts[1].id.as_str(), "a");
     }
 }
