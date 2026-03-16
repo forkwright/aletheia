@@ -50,10 +50,27 @@ impl Default for JwtConfig {
 
 impl JwtConfig {
     /// Returns `true` if the signing key is the insecure placeholder.
-    #[expect(dead_code, reason = "auth guard helper; no caller yet outside tests")]
     #[must_use]
-    pub(crate) fn has_insecure_key(&self) -> bool {
+    pub fn has_insecure_key(&self) -> bool {
         self.signing_key.expose_secret() == INSECURE_DEFAULT_KEY
+    }
+
+    /// Reject the insecure default key when the auth mode requires JWT signing.
+    ///
+    /// Auth mode `"none"` is always allowed (the key is unused). Any other
+    /// mode triggers an error if the key is still the default placeholder.
+    pub fn validate_for_auth_mode(&self, auth_mode: &str) -> Result<()> {
+        if auth_mode != "none" && self.has_insecure_key() {
+            tracing::error!(
+                auth_mode,
+                "JWT signing key is the insecure default, refusing to start"
+            );
+            return Err(error::InsecureKeySnafu {
+                auth_mode: auth_mode.to_owned(),
+            }
+            .build());
+        }
+        Ok(())
     }
 }
 
@@ -314,5 +331,44 @@ mod tests {
         assert!(mgr.validate("not.a.jwt").is_err());
         assert!(mgr.validate("").is_err());
         assert!(mgr.validate("abc123").is_err());
+    }
+
+    #[test]
+    fn has_insecure_key_true_for_default_config() {
+        let config = JwtConfig::default();
+        assert!(config.has_insecure_key());
+    }
+
+    #[test]
+    fn has_insecure_key_false_for_custom_key() {
+        let config = JwtConfig {
+            signing_key: SecretString::from("my-secure-production-key".to_owned()),
+            ..JwtConfig::default()
+        };
+        assert!(!config.has_insecure_key());
+    }
+
+    #[test]
+    fn rejects_insecure_key_with_jwt_auth_mode() {
+        let config = JwtConfig::default();
+        assert!(config.validate_for_auth_mode("jwt").is_err());
+        assert!(config.validate_for_auth_mode("token").is_err());
+    }
+
+    #[test]
+    fn allows_insecure_key_with_auth_mode_none() {
+        let config = JwtConfig::default();
+        assert!(config.validate_for_auth_mode("none").is_ok());
+    }
+
+    #[test]
+    fn allows_secure_key_with_any_auth_mode() {
+        let config = JwtConfig {
+            signing_key: SecretString::from("my-secure-production-key".to_owned()),
+            ..JwtConfig::default()
+        };
+        assert!(config.validate_for_auth_mode("jwt").is_ok());
+        assert!(config.validate_for_auth_mode("token").is_ok());
+        assert!(config.validate_for_auth_mode("none").is_ok());
     }
 }
