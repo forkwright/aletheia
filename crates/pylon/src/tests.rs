@@ -2163,7 +2163,7 @@ fn api_error_rate_limited_status_code() {
     use axum::response::IntoResponse;
 
     let err = ApiError::RateLimited {
-        retry_after_ms: 1000,
+        retry_after_secs: 1,
         location: snafu::Location::default(),
     };
     let response = err.into_response();
@@ -2215,7 +2215,7 @@ fn api_error_rate_limited_includes_details() {
     use axum::response::IntoResponse;
 
     let err = ApiError::RateLimited {
-        retry_after_ms: 5000,
+        retry_after_secs: 5,
         location: snafu::Location::default(),
     };
     let response = err.into_response();
@@ -2228,7 +2228,7 @@ fn api_error_rate_limited_includes_details() {
             .unwrap();
         serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
     });
-    assert_eq!(body["error"]["details"]["retry_after_ms"], 5000);
+    assert_eq!(body["error"]["details"]["retry_after_secs"], 5);
 }
 
 #[test]

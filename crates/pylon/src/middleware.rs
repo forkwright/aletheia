@@ -11,6 +11,8 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tracing::warn;
 
+use crate::error::{ErrorBody, ErrorResponse};
+
 /// CSRF protection state stored as a router extension.
 #[derive(Debug, Clone)]
 pub struct CsrfState {
@@ -46,14 +48,13 @@ pub async fn require_csrf_header(request: Request, next: Next) -> Response {
             Some(v) if v == csrf.header_value => next.run(request).await,
             _ => (
                 StatusCode::FORBIDDEN,
-                [(axum::http::header::CONTENT_TYPE, "application/json")],
-                serde_json::json!({
-                    "error": {
-                        "code": "csrf_rejected",
-                        "message": "missing or invalid CSRF header"
-                    }
-                })
-                .to_string(),
+                axum::Json(ErrorResponse {
+                    error: ErrorBody {
+                        code: "csrf_rejected".to_owned(),
+                        message: "missing or invalid CSRF header".to_owned(),
+                        details: None,
+                    },
+                }),
             )
                 .into_response(),
         }
@@ -254,19 +255,19 @@ pub async fn rate_limit(request: Request, next: Next) -> Response {
     };
 
     let client = extract_client_key(&request, limiter.trust_proxy);
-    if let Some(retry_after) = limiter.check(&client) {
+    if let Some(retry_after_secs) = limiter.check(&client) {
         let mut response = (
             StatusCode::TOO_MANY_REQUESTS,
-            axum::Json(serde_json::json!({
-                "error": {
-                    "code": "rate_limit_exceeded",
-                    "message": "too many requests — retry after the indicated number of seconds",
-                    "retry_after": retry_after
-                }
-            })),
+            axum::Json(ErrorResponse {
+                error: ErrorBody {
+                    code: "rate_limited".to_owned(),
+                    message: format!("rate limited, retry after {retry_after_secs}s"),
+                    details: Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
+                },
+            }),
         )
             .into_response();
-        if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after.to_string()) {
+        if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after_secs.to_string()) {
             response
                 .headers_mut()
                 .insert(axum::http::header::RETRY_AFTER, value);
