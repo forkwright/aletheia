@@ -4,7 +4,7 @@ Self-hosted multi-agent AI system with persistent memory and Signal messaging.
 
 Privacy-first. Runs on commodity hardware. No cloud dependencies beyond your LLM API key.
 
-[Standards](standards/README.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Architecture Guide](docs/ARCHITECTURE-GUIDE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Network](docs/NETWORK.md) · [Packs](docs/PACKS.md) · [Vendoring](docs/VENDORING.md) · [Releasing](docs/RELEASING.md)
+[Standards](standards/README.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Architecture](docs/ARCHITECTURE.md) · [Architecture Guide](docs/ARCHITECTURE-GUIDE.md) · [Technology](docs/TECHNOLOGY.md) · [Data](docs/DATA.md) · [Network](docs/NETWORK.md) · [Packs](docs/PACKS.md) · [Releasing](docs/RELEASING.md)
 
 ---
 
@@ -73,7 +73,7 @@ aletheia
 
 ## Why Greek?
 
-Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See [ALETHEIA.md](docs/ALETHEIA.md) for the manifesto, [gnomon.md](docs/gnomon.md) for the naming system.
+Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See [gnomon.md](docs/gnomon.md) for the naming system and [lexicon.md](docs/lexicon.md) for the full registry.
 
 ---
 
