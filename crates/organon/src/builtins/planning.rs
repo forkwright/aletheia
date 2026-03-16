@@ -65,7 +65,7 @@ impl ToolExecutor for PlanCreateExecutor {
                 .await
             {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
@@ -94,7 +94,7 @@ impl ToolExecutor for PlanResearchExecutor {
             };
             match planning.transition_project(project_id, transition).await {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
@@ -123,7 +123,7 @@ impl ToolExecutor for PlanRequirementsExecutor {
             };
             match planning.transition_project(project_id, transition).await {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
@@ -151,7 +151,7 @@ impl ToolExecutor for PlanRoadmapExecutor {
                     let phase_goal = extract_str(&input.arguments, "phase_goal", &input.name)?;
                     match planning.add_phase(project_id, phase_name, phase_goal).await {
                         Ok(json) => Ok(ToolResult::text(json)),
-                        Err(e) => Ok(ToolResult::error(e)),
+                        Err(e) => Ok(ToolResult::error(e.to_string())),
                     }
                 }
                 "start_discussion" => {
@@ -160,7 +160,7 @@ impl ToolExecutor for PlanRoadmapExecutor {
                         .await
                     {
                         Ok(json) => Ok(ToolResult::text(json)),
-                        Err(e) => Ok(ToolResult::error(e)),
+                        Err(e) => Ok(ToolResult::error(e.to_string())),
                     }
                 }
                 "start_execution" => {
@@ -169,7 +169,7 @@ impl ToolExecutor for PlanRoadmapExecutor {
                         .await
                     {
                         Ok(json) => Ok(ToolResult::text(json)),
-                        Err(e) => Ok(ToolResult::error(e)),
+                        Err(e) => Ok(ToolResult::error(e.to_string())),
                     }
                 }
                 other => Ok(ToolResult::error(format!("unknown action: {other}"))),
@@ -200,7 +200,7 @@ impl ToolExecutor for PlanDiscussExecutor {
             };
             match planning.transition_project(project_id, transition).await {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
@@ -232,7 +232,7 @@ impl ToolExecutor for PlanExecuteExecutor {
             };
             match planning.transition_project(project_id, transition).await {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
@@ -273,7 +273,7 @@ impl ToolExecutor for PlanVerifyExecutor {
             };
             match planning.transition_project(project_id, transition).await {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
@@ -296,7 +296,7 @@ impl ToolExecutor for PlanStatusExecutor {
 
             match planning.load_project(project_id).await {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
@@ -325,7 +325,7 @@ impl ToolExecutor for PlanStepCompleteExecutor {
                 .await
             {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
@@ -354,7 +354,7 @@ impl ToolExecutor for PlanStepFailExecutor {
                 .await
             {
                 Ok(json) => Ok(ToolResult::text(json)),
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }

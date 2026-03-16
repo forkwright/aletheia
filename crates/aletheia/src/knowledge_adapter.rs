@@ -7,7 +7,24 @@ use std::sync::Arc;
 use aletheia_mneme::embedding::EmbeddingProvider;
 use aletheia_mneme::knowledge::{EpistemicTier, Fact};
 use aletheia_mneme::knowledge_store::{HybridQuery, KnowledgeStore};
+use aletheia_organon::error::{
+    DatalogQuerySnafu, EmbeddingSnafu, FactQuerySnafu, InvalidReasonSnafu, KnowledgeAdapterError,
+    MutateStoreSnafu, SearchSnafu,
+};
 use aletheia_organon::types::{DatalogResult, FactSummary, KnowledgeSearchService, MemoryResult};
+use snafu::ResultExt;
+
+/// Boxes any error type for use with snafu context selectors that expect
+/// `Box<dyn Error + Send + Sync>` as source.
+trait BoxErr<T> {
+    fn box_err(self) -> Result<T, Box<dyn std::error::Error + Send + Sync>>;
+}
+
+impl<T, E: std::error::Error + Send + Sync + 'static> BoxErr<T> for Result<T, E> {
+    fn box_err(self) -> Result<T, Box<dyn std::error::Error + Send + Sync>> {
+        self.map_err(|e| Box::new(e) as _)
+    }
+}
 
 pub struct KnowledgeSearchAdapter {
     store: Arc<KnowledgeStore>,
@@ -26,14 +43,16 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         query: &str,
         nous_id: &str,
         limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, KnowledgeAdapterError>> + Send + '_>>
+    {
         let query = query.to_owned();
         let nous_id = nous_id.to_owned();
         Box::pin(async move {
             let embedding = self
                 .embedder
                 .embed(&query)
-                .map_err(|e| format!("embedding failed: {e}"))?;
+                .box_err()
+                .context(EmbeddingSnafu)?;
 
             let hybrid_query = HybridQuery {
                 text: query,
@@ -47,7 +66,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .store
                 .search_hybrid_async(hybrid_query)
                 .await
-                .map_err(|e| format!("hybrid search failed: {e}"))?;
+                .box_err()
+                .context(SearchSnafu)?;
 
             let now = jiff::Zoned::now()
                 .strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -85,7 +105,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         fact_id: &str,
         new_content: &str,
         nous_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, KnowledgeAdapterError>> + Send + '_>> {
         let fact_id = fact_id.to_owned();
         let new_content = new_content.to_owned();
         let nous_id = nous_id.to_owned();
@@ -123,7 +143,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             );
             self.store
                 .run_mut_query(retract_script, params)
-                .map_err(|e| format!("failed to supersede old fact: {e}"))?;
+                .box_err()
+                .context(MutateStoreSnafu)?;
 
             let ts_now = jiff::Timestamp::now();
             let new_fact = Fact {
@@ -147,7 +168,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             };
             self.store
                 .insert_fact(&new_fact)
-                .map_err(|e| format!("failed to insert corrected fact: {e}"))?;
+                .box_err()
+                .context(MutateStoreSnafu)?;
 
             Ok(new_id)
         })
@@ -157,7 +179,7 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         &self,
         fact_id: &str,
         _reason: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(), KnowledgeAdapterError>> + Send + '_>> {
         let fact_id = fact_id.to_owned();
         Box::pin(async move {
             let now = jiff::Zoned::now()
@@ -187,7 +209,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             );
             self.store
                 .run_mut_query(script, params)
-                .map_err(|e| format!("failed to retract fact: {e}"))?;
+                .box_err()
+                .context(MutateStoreSnafu)?;
             Ok(())
         })
     }
@@ -197,7 +220,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         nous_id: Option<&str>,
         since: Option<&str>,
         limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, KnowledgeAdapterError>> + Send + '_>>
+    {
         let nous_id = nous_id.map(str::to_owned);
         let since = since.map(str::to_owned);
         Box::pin(async move {
@@ -206,7 +230,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
                 .store
                 .audit_all_facts_async(agent.to_owned(), i64::try_from(limit).unwrap_or(i64::MAX))
                 .await
-                .map_err(|e| format!("failed to query facts: {e}"))?;
+                .box_err()
+                .context(FactQuerySnafu)?;
 
             let since_ts = since
                 .as_deref()
@@ -234,17 +259,19 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         &self,
         fact_id: &str,
         reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>> {
         let fact_id = aletheia_mneme::id::FactId::from(fact_id);
         let reason = reason.to_owned();
         Box::pin(async move {
-            let reason: aletheia_mneme::knowledge::ForgetReason =
-                reason.parse().map_err(|e: String| e)?;
+            let reason: aletheia_mneme::knowledge::ForgetReason = reason
+                .parse()
+                .map_err(|e: String| InvalidReasonSnafu { reason: e }.build())?;
             let fact = self
                 .store
                 .forget_fact_async(fact_id, reason)
                 .await
-                .map_err(|e| format!("failed to forget fact: {e}"))?;
+                .box_err()
+                .context(MutateStoreSnafu)?;
             Ok(fact_to_summary(fact))
         })
     }
@@ -252,14 +279,15 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
     fn unforget_fact(
         &self,
         fact_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, KnowledgeAdapterError>> + Send + '_>> {
         let fact_id = aletheia_mneme::id::FactId::from(fact_id);
         Box::pin(async move {
             let fact = self
                 .store
                 .unforget_fact_async(fact_id)
                 .await
-                .map_err(|e| format!("failed to unforget fact: {e}"))?;
+                .box_err()
+                .context(MutateStoreSnafu)?;
             Ok(fact_to_summary(fact))
         })
     }
@@ -270,7 +298,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         params: Option<serde_json::Value>,
         timeout_secs: Option<f64>,
         row_limit: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, KnowledgeAdapterError>> + Send + '_>>
+    {
         let query = query.to_owned();
         let row_limit = row_limit.unwrap_or(100);
         let timeout = timeout_secs.map(std::time::Duration::from_secs_f64);
@@ -286,7 +315,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
             let rows = self
                 .store
                 .run_query_with_timeout(&query, cozo_params, timeout)
-                .map_err(|e| e.to_string())?;
+                .box_err()
+                .context(DatalogQuerySnafu)?;
 
             let columns = rows.headers.iter().map(ToString::to_string).collect();
             let truncated = rows.rows.len() > row_limit;

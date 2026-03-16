@@ -8,6 +8,9 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use aletheia_koina::id::{NousId, SessionId, ToolName};
 
+use snafu::IntoError;
+
+use crate::error::{PlanningAdapterError, SaveProjectSnafu};
 use crate::registry::ToolRegistry;
 use crate::types::{
     PlanningService, ServerToolConfig, ToolCategory, ToolContext, ToolInput, ToolServices,
@@ -53,16 +56,16 @@ fn test_ctx_with_planning(planning: Arc<dyn PlanningService>) -> ToolContext {
 
 #[derive(Default)]
 struct MockPlanning {
-    create_result: Mutex<Option<Result<String, String>>>,
-    load_result: Mutex<Option<Result<String, String>>>,
+    create_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
+    load_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
     transition_calls: Mutex<Vec<(String, String)>>,
-    transition_result: Mutex<Option<Result<String, String>>>,
+    transition_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
     add_phase_calls: Mutex<Vec<(String, String, String)>>,
-    add_phase_result: Mutex<Option<Result<String, String>>>,
+    add_phase_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
     complete_plan_calls: Mutex<Vec<(String, String, String)>>,
-    complete_plan_result: Mutex<Option<Result<String, String>>>,
+    complete_plan_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
     fail_plan_calls: Mutex<Vec<(String, String, String, String)>>,
-    fail_plan_result: Mutex<Option<Result<String, String>>>,
+    fail_plan_result: Mutex<Option<Result<String, PlanningAdapterError>>>,
 }
 
 impl PlanningService for MockPlanning {
@@ -74,7 +77,7 @@ impl PlanningService for MockPlanning {
         _mode: &str,
         _appetite_minutes: Option<u32>,
         _owner: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let result = self.create_result.lock().unwrap().take().unwrap_or(Ok(
             r#"{"id":"01J0000000000000000000000","name":"test","state":"Created"}"#.to_owned(),
         ));
@@ -84,7 +87,7 @@ impl PlanningService for MockPlanning {
     fn load_project(
         &self,
         _project_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let result = self.load_result.lock().unwrap().take().unwrap_or(Ok(
             r#"{"id":"01J0000000000000000000000","state":"Created"}"#.to_owned(),
         ));
@@ -95,7 +98,7 @@ impl PlanningService for MockPlanning {
         &self,
         project_id: &str,
         transition: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         self.transition_calls
             .lock()
             .unwrap()
@@ -111,7 +114,7 @@ impl PlanningService for MockPlanning {
         project_id: &str,
         name: &str,
         goal: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         self.add_phase_calls.lock().unwrap().push((
             project_id.to_owned(),
             name.to_owned(),
@@ -129,7 +132,7 @@ impl PlanningService for MockPlanning {
         phase_id: &str,
         plan_id: &str,
         _achievement: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         self.complete_plan_calls.lock().unwrap().push((
             project_id.to_owned(),
             phase_id.to_owned(),
@@ -150,7 +153,7 @@ impl PlanningService for MockPlanning {
         phase_id: &str,
         plan_id: &str,
         reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         self.fail_plan_calls.lock().unwrap().push((
             project_id.to_owned(),
             phase_id.to_owned(),
@@ -166,7 +169,9 @@ impl PlanningService for MockPlanning {
         Box::pin(async move { result })
     }
 
-    fn list_projects(&self) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    fn list_projects(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         Box::pin(async { Ok("[]".to_owned()) })
     }
 }
@@ -221,7 +226,10 @@ async fn plan_create_success() {
 #[tokio::test]
 async fn plan_create_error_propagates() {
     let mock = Arc::new(MockPlanning::default());
-    *mock.create_result.lock().unwrap() = Some(Err("project already exists".to_owned()));
+    *mock.create_result.lock().unwrap() = Some(Err(SaveProjectSnafu.into_error(Box::new(
+        std::io::Error::new(std::io::ErrorKind::AlreadyExists, "project already exists"),
+    )
+        as Box<dyn std::error::Error + Send + Sync>)));
     let ctx = test_ctx_with_planning(mock);
     let mut reg = ToolRegistry::new();
     super::register(&mut reg).expect("register");

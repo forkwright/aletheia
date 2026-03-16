@@ -334,6 +334,31 @@ fn estimate_cost_haiku_family_resolution() {
     );
 }
 
+/// Default pricing table must resolve `claude-haiku-4-5-20251001` via exact
+/// match. This is the production scenario: extraction uses Haiku, and the
+/// built-in defaults must cover it without relying on family fallback.
+#[test]
+fn estimate_cost_default_pricing_resolves_haiku() {
+    let pricing = ProviderConfig::default().pricing;
+
+    // Exact match: the default table contains "claude-haiku-4-5-20251001".
+    let cost = estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1_000_000, 1_000_000);
+    // (1M * 0.8 + 1M * 4.0) / 1M = $4.80
+    assert!(
+        (cost - 4.8).abs() < 0.0001,
+        "expected ~$4.80 for haiku from default pricing, got {cost}"
+    );
+
+    // All first-party models must resolve to non-zero cost.
+    for model in SUPPORTED_MODELS {
+        let c = estimate_cost(&pricing, model, 1000, 1000);
+        assert!(
+            c > 0.0,
+            "default pricing must cover supported model {model}, got cost={c}"
+        );
+    }
+}
+
 #[test]
 fn model_family_strips_last_segment() {
     assert_eq!(model_family("claude-sonnet-4-20250514"), "claude-sonnet-4");

@@ -88,7 +88,7 @@ impl ToolExecutor for DatalogQueryExecutor {
                     }
                     Ok(ToolResult::text(output))
                 }
-                Err(e) => Ok(ToolResult::error(e)),
+                Err(e) => Ok(ToolResult::error(e.to_string())),
             }
         })
     }
