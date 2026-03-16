@@ -33,7 +33,11 @@
 |-------|-------|------|---------------------|
 | **Taxis** | τάξις | "config" | The arrangement that makes a collection coherent, Aristotle's word for ordered structure. Config loading (figment YAML cascade), path resolution, oikos hierarchy. |
 | **Hermeneus** | ἑρμηνεύς | "provider" | Hermes' art of carrying meaning across worlds. Anthropic client, model routing, credential management. The translation layer between nous and LLM backends. |
-| **Mneme** | μνήμη | "store" | Memory as active faculty, the Muse's gift, not passive storage. Unified memory store: embeddings, knowledge graph, hybrid recall. |
+| **Mneme** | μνήμη | "memory" | Memory as active faculty, the Muse's gift, not passive storage. Facade re-exporting eidos, krites, graphe, episteme. |
+| **Eidos** | εἶδος | "types" | The visible form: what makes a Fact a Fact, a Session a Session. Shared memory types, IDs, error definitions. |
+| **Krites** | κριτής | "engine" | The judge: evaluates queries, decides what follows from rules and facts. Vendored CozoDB datalog engine. |
+| **Graphe** | γραφή | "session" | The inscription: messages written, turns recorded, history preserved. SQLite session persistence. |
+| **Episteme** | ἐπιστήμη | "knowledge" | Systematic knowledge: extraction, recall, scoring, dedup, succession. Transforms raw experience into understanding. |
 | **Organon** | ὄργανον | "tools" | Aristotle's name for the instruments of thought, that by which the mind extends itself. Tool registry, definitions, built-in tool set. |
 | **Agora** | ἀγορά | "channels" | The gathering place, Greek civic space where voices meet and meaning is made public. Channel registry, ChannelProvider trait, Signal JSON-RPC client. |
 | **Melete** | μελέτη | "distillation" | Disciplined practice, one of the original Muses. Context distillation, compression strategies, token budget management. Attending carefully to what was. |

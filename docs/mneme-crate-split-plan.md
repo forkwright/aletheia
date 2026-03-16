@@ -1,8 +1,8 @@
 # Mneme Crate Split Plan
 
-> Research document for issue #1214. Proposes decomposing `aletheia-mneme`
-> (105K lines, 185 files) into focused crates with clearer module boundaries
-> and faster incremental compiles.
+> Decompose `aletheia-mneme` (105K lines, 185 files) into four named crates
+> per gnomon.md: **eidos** (types), **krites** (engine), **graphe** (session),
+> **episteme** (knowledge). Sequencing in kanon roadmap wave 10.
 
 ---
 
@@ -10,9 +10,9 @@
 
 | Component | Lines | Files | Feature gate |
 |-----------|------:|------:|--------------|
-| Engine (vendored CozoDB) | 68,829 | 118 | `mneme-engine` |
+| Engine (vendored CozoDB) | 68,829 | 118 | `krites` |
 | Session store (SQLite) | 1,966 | 4 | `sqlite` |
-| Knowledge store (Datalog) | 6,917 | 8 | `mneme-engine` |
+| Knowledge store (Datalog) | 6,917 | 8 | `krites` |
 | Knowledge types + pipelines | ~9,500 | 16 | always / mixed |
 | Embedding / HNSW | ~860 | 2 | `embed-candle` / `hnsw_rs` |
 | Import / Export / Portability | ~1,280 | 3 | `sqlite` |
@@ -130,35 +130,34 @@ operates at crate granularity.
 
 ### Four new crates
 
-| Crate | Contents | Lines (approx) | Key dependencies |
-|-------|----------|---------------:|-----------------|
-| **mneme-types** | `types.rs`, `id.rs`, `error.rs`, `vocab.rs`, `knowledge.rs`, `embedding.rs` (trait only) | ~2,400 | serde, jiff, snafu, ulid |
-| **mneme-engine** | `engine/` (entire vendored CozoDB tree) | ~68,800 | ndarray, rayon, crossbeam, pest, fjall (opt), +15 |
-| **mneme-session** | `store/`, `schema.rs`, `migration.rs`, `backup.rs`, `retention.rs`, `portability.rs`, `import.rs`, `export.rs` | ~5,200 | rusqlite, mneme-types |
-| **mneme-knowledge** | `knowledge_store/`, `query.rs`, `recall.rs`, `graph_intelligence.rs`, `conflict.rs`, `dedup.rs`, `succession.rs`, `instinct.rs`, `skill.rs`, `skills/`, `extract/`, `consolidation/`, `query_rewrite.rs`, `hnsw_index.rs`, embedding impls | ~23,700 | mneme-types, mneme-engine, hnsw_rs (opt), strsim |
+| Crate | Greek | Essential Nature | Contents | Lines | Key deps |
+|-------|-------|------------------|----------|------:|----------|
+| **eidos** | εἶδος (visible form) | The forms that make memory's contents recognizable | `types.rs`, `id.rs`, `error.rs`, `vocab.rs`, `knowledge.rs`, `embedding.rs` (trait) | ~2,400 | serde, jiff, snafu, ulid |
+| **krites** | κριτής (judge) | Evaluates queries, decides what follows from rules and facts | `engine/` (vendored CozoDB) | ~68,800 | ndarray, rayon, crossbeam, pest, fjall (opt) |
+| **graphe** | γραφή (inscription) | Messages inscribed, turns recorded, history preserved | `store/`, `schema.rs`, `migration.rs`, `backup.rs`, `retention.rs`, `portability.rs`, `import.rs`, `export.rs` | ~5,200 | rusqlite, eidos |
+| **episteme** | ἐπιστήμη (systematic knowledge) | Transforms raw extraction into recalled, scored, deduplicated understanding | `knowledge_store/`, `query.rs`, `recall.rs`, `graph_intelligence.rs`, `conflict.rs`, `dedup.rs`, `succession.rs`, `instinct.rs`, `skill.rs`, `skills/`, `extract/`, `consolidation/`, `query_rewrite.rs`, `hnsw_index.rs`, embedding impls | ~23,700 | eidos, krites, hnsw_rs (opt), strsim |
 
-Plus the existing **aletheia-mneme** crate becomes a thin facade re-exporting
-from the four sub-crates, so downstream `use aletheia_mneme::*` continues to
-compile unchanged.
+The existing **aletheia-mneme** becomes a thin facade re-exporting from the
+four sub-crates. Downstream `use aletheia_mneme::*` compiles unchanged.
 
 ### Dependency graph after split
 
 ```
-mneme-types          (leaf — no workspace deps)
-    ▲       ▲
-    │       │
-mneme-session   mneme-engine       (independent of each other)
-    ▲               ▲
-    │               │
-    └───┬───────────┘
-        │
-  mneme-knowledge                  (depends on types + engine)
-        ▲
-        │
-  aletheia-mneme                   (facade: re-exports all four)
+eidos              (leaf: no workspace deps)
+  ▲       ▲
+  │       │
+graphe   krites    (independent of each other)
+  ▲       ▲
+  │       │
+  └───┬───┘
+      │
+  episteme         (depends on eidos + krites)
+      ▲
+      │
+  aletheia-mneme   (facade: re-exports all four)
 ```
 
-`mneme-session` and `mneme-engine` have **no dependency on each other**.
+`graphe` and `krites` have **no dependency on each other**.
 This is the key property that enables parallel compilation and independent
 iteration.
 
@@ -166,7 +165,7 @@ iteration.
 
 ## Public API surface per crate
 
-### mneme-types
+### eidos
 
 ```rust
 // Domain types
@@ -205,7 +204,7 @@ pub enum Error { ... }
 pub type Result<T> = std::result::Result<T, Error>;
 ```
 
-### mneme-engine
+### krites
 
 ```rust
 // Database facade
@@ -235,7 +234,7 @@ pub struct MemStorage;
 pub struct FjallStorage;  // feature = "storage-fjall"
 ```
 
-### mneme-session
+### graphe
 
 ```rust
 // Session store
@@ -279,7 +278,7 @@ pub struct AgentFile { ... }
 pub struct ExportedSession { ... }
 ```
 
-### mneme-knowledge
+### episteme
 
 ```rust
 // Knowledge store
@@ -363,12 +362,12 @@ cost.
 
 | Change location | Crates recompiled | Lines recompiled | Estimated time |
 |-----------------|:-----------------:|:----------------:|:--------------:|
-| `mneme-types` | types + session + knowledge + facade | ~100K | ~50–80s (similar to today, but parallelized) |
-| `mneme-session` | session + facade | ~5K | ~3–5s |
-| `mneme-engine` | engine + knowledge + facade | ~93K | ~45–70s |
-| `mneme-knowledge` | knowledge + facade | ~24K | ~10–15s |
-| `mneme-session` only (no type change) | session + facade | ~5K | **~3–5s** (vs 45–90s today) |
-| `mneme-knowledge` only (no type change) | knowledge + facade | ~24K | **~10–15s** (vs 45–90s today) |
+| `eidos` | types + session + knowledge + facade | ~100K | ~50–80s (similar to today, but parallelized) |
+| `graphe` | session + facade | ~5K | ~3–5s |
+| `krites` | engine + knowledge + facade | ~93K | ~45–70s |
+| `episteme` | knowledge + facade | ~24K | ~10–15s |
+| `graphe` only (no type change) | session + facade | ~5K | **~3–5s** (vs 45–90s today) |
+| `episteme` only (no type change) | knowledge + facade | ~24K | **~10–15s** (vs 45–90s today) |
 
 **Key wins:**
 - Session store changes (the most frequent during feature work) drop from
@@ -376,13 +375,13 @@ cost.
 - Knowledge pipeline changes (recall tuning, extraction prompts) drop from
   45–90s to 10–15s — **4–6x faster**.
 - Engine changes remain expensive but are rare (vendored, stable code).
-- `mneme-session` and `mneme-engine` compile **in parallel** since they're
+- `graphe` and `krites` compile **in parallel** since they're
   independent — the critical path shortens.
 
 ### Why this works
 
 The engine is vendored and rarely changes. Today, every mneme edit pays the
-engine tax. After splitting, only changes to `mneme-engine` or `mneme-types`
+engine tax. After splitting, only changes to `krites` or `eidos`
 trigger engine recompilation. Session and knowledge work — the common case —
 avoids it entirely.
 
@@ -390,7 +389,7 @@ avoids it entirely.
 
 ## Migration plan
 
-### Phase 1: Extract `mneme-types` (lowest risk, highest prerequisite value)
+### Phase 1: Extract eidos (lowest risk, highest prerequisite value)
 
 **What moves:** `types.rs`, `id.rs`, `error.rs`, `vocab.rs`, `knowledge.rs`,
 `EmbeddingProvider` trait from `embedding.rs`.
@@ -400,29 +399,29 @@ creates the shared foundation. Zero behavioral change — these are pure data
 types with `Serialize`/`Deserialize`.
 
 **Steps:**
-1. Create `crates/mneme-types/` with `Cargo.toml` (deps: serde, jiff, snafu, ulid, compact_str).
+1. Create `crates/eidos/` with `Cargo.toml` (deps: serde, jiff, snafu, ulid, compact_str).
 2. Move type files. Update `use crate::` → `use mneme_types::`.
-3. Add `mneme-types` as dependency to `aletheia-mneme`.
+3. Add `eidos` as dependency to `aletheia-mneme`.
 4. Re-export from `aletheia-mneme::*` for backward compatibility.
 5. Verify: `cargo test --workspace`.
 
 **Risk:** Low. Pure data types, no runtime behavior.
 
-### Phase 2: Extract `mneme-engine` (largest code mass, cleanest boundary)
+### Phase 2: Extract krites (largest code mass, cleanest boundary)
 
 **What moves:** The entire `engine/` directory (68K lines).
 
-**Why second:** The engine is already feature-gated behind `mneme-engine` and
+**Why second:** The engine is already feature-gated behind `krites` and
 has a narrow public API (`Db`, `DataValue`, `NamedRows`, `FixedRule`). The
 `#[expect(...)]` lint suppressions on vendored modules already document the
 boundary. This is the highest-value split for compile times.
 
 **Steps:**
-1. Create `crates/mneme-engine/` with `Cargo.toml` (deps: ndarray, rayon,
+1. Create `crates/krites/` with `Cargo.toml` (deps: ndarray, rayon,
    crossbeam, pest, fjall (opt), etc.).
 2. Move `engine/` directory wholesale. The `pub(crate)` items become `pub`
    within the new crate, with `mod.rs` re-exporting the narrow public API.
-3. Add `mneme-engine` as dependency to `aletheia-mneme`.
+3. Add `krites` as dependency to `aletheia-mneme`.
 4. Update `knowledge_store/` imports: `crate::engine::` → `mneme_engine::`.
 5. Re-export `Db`, `DataValue`, `NamedRows` etc. from facade.
 6. Verify: `cargo test --workspace`.
@@ -432,30 +431,30 @@ and are accessed by `knowledge_store/` via `crate::engine::`. These become
 cross-crate imports and may require visibility adjustments. The engine's lint
 `#[expect]` attributes may need scope changes.
 
-### Phase 3: Extract `mneme-session` (clean SQLite boundary)
+### Phase 3: Extract graphe (clean SQLite boundary)
 
 **What moves:** `store/`, `schema.rs`, `migration.rs`, `backup.rs`,
 `retention.rs`, `portability.rs`, `import.rs`, `export.rs`.
 
-**Why third:** Session store depends only on `mneme-types`. No engine
+**Why third:** Session store depends only on `eidos`. No engine
 dependency (except `import_knowledge` which is feature-gated and can stay in
-the facade or move to `mneme-knowledge`). Extracting after types are stable
+the facade or move to `episteme`). Extracting after types are stable
 avoids churn.
 
 **Steps:**
-1. Create `crates/mneme-session/` with `Cargo.toml` (deps: rusqlite,
-   mneme-types, jiff, snafu, tracing, ulid, serde_json).
+1. Create `crates/graphe/` with `Cargo.toml` (deps: rusqlite,
+   eidos, jiff, snafu, tracing, ulid, serde_json).
 2. Move session files. Update imports.
-3. Move `import_knowledge()` to `mneme-knowledge` (it depends on the engine).
+3. Move `import_knowledge()` to `episteme` (it depends on the engine).
 4. Re-export `SessionStore` etc. from facade.
 5. Verify: `cargo test --workspace`.
 
 **Risk:** Low. Clean boundary already exists via feature gating. The only
 cross-boundary concern is `import.rs`/`export.rs` which reference
 `portability.rs` knowledge types under feature gates — these feature-gated
-paths move to `mneme-knowledge`.
+paths move to `episteme`.
 
-### Phase 4: Extract `mneme-knowledge` (remaining non-engine, non-session code)
+### Phase 4: Extract episteme (remaining non-engine, non-session code)
 
 **What moves:** `knowledge_store/`, `query.rs`, `recall.rs`,
 `graph_intelligence.rs`, `conflict.rs`, `dedup.rs`, `succession.rs`,
@@ -467,10 +466,10 @@ graph_intelligence → succession → knowledge_store). Waiting until types and
 engine are stable makes the extraction mechanical.
 
 **Steps:**
-1. Create `crates/mneme-knowledge/` with `Cargo.toml` (deps: mneme-types,
-   mneme-engine, strsim, hnsw_rs (opt), serde, snafu, tracing, jiff).
+1. Create `crates/episteme/` with `Cargo.toml` (deps: eidos,
+   krites, strsim, hnsw_rs (opt), serde, snafu, tracing, jiff).
 2. Move files. Update imports throughout.
-3. Move feature-gated knowledge export/import paths from `mneme-session`.
+3. Move feature-gated knowledge export/import paths from `graphe`.
 4. Re-export from facade.
 5. Verify: `cargo test --workspace`.
 
@@ -526,7 +525,7 @@ they actually need, eliminating transitive compilation of unused code.
    other projects or versioned independently?
 
 4. **Embedding provider placement:** The `EmbeddingProvider` trait is used by
-   both knowledge_store and nous. Placing it in `mneme-types` (as proposed)
+   both knowledge_store and nous. Placing it in `eidos` (as proposed)
    keeps it leaf-level but adds a trait to what is otherwise a pure data crate.
 
 ---
@@ -542,7 +541,7 @@ they actually need, eliminating transitive compilation of unused code.
   level. After extraction to own crate, these can be narrowed to specific
   lints per function. (`crates/mneme/src/engine/mod.rs:30-97`)
 
-- **Idea:** `mneme-session` could become a generic embedded session store
+- **Idea:** `graphe` could become a generic embedded session store
   usable outside aletheia, since it has no domain-specific logic beyond types.
 
 - **Missing test:** No integration test verifies that the facade re-exports
