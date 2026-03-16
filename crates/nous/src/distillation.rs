@@ -11,6 +11,28 @@ use aletheia_mneme::types::{Role as MnemeRole, Session};
 
 use crate::error;
 
+/// Context token count that triggers immediate distillation.
+// NOTE: absolute ceiling, independent of context window size
+const CONTEXT_TOKEN_TRIGGER: u64 = 120_000;
+
+/// Message count that triggers immediate distillation regardless of token usage.
+const MESSAGE_COUNT_TRIGGER: i64 = 150;
+
+// NOTE: conversion factor for computing days from jiff signed-duration seconds
+const SECS_PER_DAY: i64 = 86_400;
+
+/// Days since last distillation before a session is considered stale.
+const STALE_DAYS_THRESHOLD: i64 = 7;
+
+/// Minimum messages for the stale-session distillation trigger.
+const STALE_MIN_MESSAGES: i64 = 20;
+
+/// Message count that triggers first-time distillation for never-distilled sessions.
+const NEVER_DISTILLED_MIN_MESSAGES: i64 = 30;
+
+/// Minimum messages for the legacy context-ratio distillation trigger.
+const LEGACY_THRESHOLD_MIN_MESSAGES: i64 = 10;
+
 /// Configuration for distillation triggers.
 #[derive(Debug, Clone)]
 pub struct DistillTriggerConfig {
@@ -57,25 +79,28 @@ pub fn should_trigger_distillation(
     )]
     let actual_context_u64 = actual_context as u64;
 
-    if actual_context_u64 >= 120_000 {
+    if actual_context_u64 >= CONTEXT_TOKEN_TRIGGER {
         return Some(format!("context={actual_context} >= 120K"));
     }
 
-    if session.message_count >= 150 {
-        return Some(format!("message_count={} >= 150", session.message_count));
+    if session.message_count >= MESSAGE_COUNT_TRIGGER {
+        return Some(format!(
+            "message_count={} >= {MESSAGE_COUNT_TRIGGER}",
+            session.message_count
+        ));
     }
 
     if let Some(ref last) = session.last_distilled_at
         && let Ok(last_ts) = last.parse::<jiff::Timestamp>()
     {
         let age = jiff::Timestamp::now().duration_since(last_ts);
-        let days = age.as_secs() / 86_400;
-        if days >= 7 && session.message_count >= 20 {
+        let days = age.as_secs() / SECS_PER_DAY;
+        if days >= STALE_DAYS_THRESHOLD && session.message_count >= STALE_MIN_MESSAGES {
             return Some(format!("stale ({days}d) + {} msgs", session.message_count));
         }
     }
 
-    if session.distillation_count == 0 && session.message_count >= 30 {
+    if session.distillation_count == 0 && session.message_count >= NEVER_DISTILLED_MIN_MESSAGES {
         return Some(format!("never distilled + {} msgs", session.message_count));
     }
 
@@ -86,7 +111,7 @@ pub fn should_trigger_distillation(
         reason = "context_window * ratio is a rough threshold; precision/truncation acceptable"
     )]
     let threshold = (context_window as f64 * config.max_history_share) as u64;
-    if actual_context_u64 >= threshold && session.message_count >= 10 {
+    if actual_context_u64 >= threshold && session.message_count >= LEGACY_THRESHOLD_MIN_MESSAGES {
         return Some(format!(
             "legacy threshold ({actual_context} >= {threshold})"
         ));
