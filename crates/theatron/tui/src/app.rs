@@ -475,7 +475,7 @@ impl App {
             crate::update::update(self, msg).await;
             return;
         }
-        // WHY: Tick fires at 30 fps even when nothing changes. Only mark dirty when
+        // WHY: Tick fires at 60 fps even when nothing changes. Only mark dirty when
         // tick-driven animation is actually visible: streaming spinner or toast dismissal.
         let had_animation = self.active_turn_id.is_some()
             || self.error_toast.is_some()

@@ -78,18 +78,22 @@ pub struct ChatMessage {
 
 /// Paired streaming-markdown text and its pre-rendered line cache.
 ///
-/// Invariant: `lines` always corresponds to the rendering of `text`.
-/// Both fields are cleared or updated together via [`MarkdownCache::clear`].
+/// Invariant: `lines` always corresponds to the rendering of `text` at `width`.
+/// All fields are cleared or updated together via [`MarkdownCache::clear`].
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MarkdownCache {
     pub(crate) text: String,
+    /// Render width used to produce `lines`. The view checks this to detect
+    /// width mismatches (e.g. sidebar toggled mid-stream) and re-renders.
+    pub(crate) width: usize,
     pub(crate) lines: Vec<ratatui::text::Line<'static>>,
 }
 
 impl MarkdownCache {
-    /// Clear both the cached text and rendered lines atomically.
+    /// Clear the cached text, width, and rendered lines atomically.
     pub(crate) fn clear(&mut self) {
         self.text.clear();
+        self.width = 0;
         self.lines.clear();
     }
 }
