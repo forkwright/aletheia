@@ -110,6 +110,23 @@ pub struct CrossNousEnvelope {
     pub(crate) reply_tx: Option<oneshot::Sender<CrossNousReply>>,
 }
 
+/// Drop guard that removes a `pending_replies` entry on all exit paths.
+///
+/// Uses `try_write()` for best-effort cleanup to avoid deadlocks when the
+/// lock is already held by the current task.
+struct PendingReplyGuard {
+    map: Arc<RwLock<HashMap<Ulid, oneshot::Sender<CrossNousReply>>>>,
+    id: Ulid,
+}
+
+impl Drop for PendingReplyGuard {
+    fn drop(&mut self) {
+        if let Ok(mut map) = self.map.try_write() {
+            map.remove(&self.id);
+        }
+    }
+}
+
 /// Routes cross-nous messages between registered actors.
 pub struct CrossNousRouter {
     routes: Arc<RwLock<HashMap<String, mpsc::Sender<CrossNousEnvelope>>>>,
@@ -239,6 +256,10 @@ impl CrossNousRouter {
         let msg_id = message.id;
 
         self.pending_replies.write().await.insert(msg_id, reply_tx);
+        let _guard = PendingReplyGuard {
+            map: Arc::clone(&self.pending_replies),
+            id: msg_id,
+        };
 
         let envelope = CrossNousEnvelope {
             message: message.clone(),
@@ -246,7 +267,6 @@ impl CrossNousRouter {
         };
 
         if sender.send(envelope).await.is_err() {
-            self.pending_replies.write().await.remove(&msg_id);
             self.log_delivery(
                 &message,
                 &DeliveryState::Failed {
@@ -272,7 +292,6 @@ impl CrossNousRouter {
                 }
             }
             () = tokio::time::sleep(timeout_dur) => {
-                self.pending_replies.write().await.remove(&msg_id);
                 self.log_delivery(&message, &DeliveryState::TimedOut).await;
                 AskTimeoutSnafu {
                     nous_id: to,
@@ -686,5 +705,47 @@ mod tests {
         let router = CrossNousRouter::default();
         // Just verify it doesn't panic
         assert!(router.routes.try_read().is_ok());
+    }
+
+    #[tokio::test]
+    async fn ask_cleans_up_pending_replies_on_success() {
+        let (router, mut rx) = setup_router().await;
+        let router_for_reply = router.clone();
+
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_secs(5));
+
+        let ask_handle = tokio::spawn(async move { router_for_reply.ask(msg).await });
+
+        let envelope = rx.recv().await.unwrap();
+        let reply = CrossNousReply {
+            in_reply_to: envelope.message.id,
+            from: "target".to_owned(),
+            content: "answer".to_owned(),
+            created_at: jiff::Timestamp::now(),
+        };
+        router.reply(reply).await.unwrap();
+
+        let result = ask_handle.await.unwrap().unwrap();
+        assert_eq!(result.content, "answer");
+
+        assert!(
+            router.pending_replies.read().await.is_empty(),
+            "pending_replies should be empty after successful reply"
+        );
+    }
+
+    #[tokio::test]
+    async fn ask_cleans_up_pending_replies_on_timeout() {
+        let (router, _rx) = setup_router().await;
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_millis(10));
+        let err = router.ask(msg).await;
+        assert!(err.is_err());
+
+        assert!(
+            router.pending_replies.read().await.is_empty(),
+            "pending_replies should be empty after timeout"
+        );
     }
 }
