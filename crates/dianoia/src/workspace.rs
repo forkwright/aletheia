@@ -283,4 +283,33 @@ mod tests {
         assert!(root.join("artifacts").is_dir());
         assert!(root.join(".dianoia").join("blockers").is_dir());
     }
+
+    #[test]
+    fn save_and_load_preserves_state_after_transition() {
+        use crate::state::Transition;
+
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+
+        let mut project = Project::new(
+            "lifecycle-test".into(),
+            "test state persistence".into(),
+            ProjectMode::Full,
+            "syn".into(),
+        );
+        project.advance(Transition::StartQuestioning).unwrap();
+        project.advance(Transition::StartResearch).unwrap();
+        ws.save_project(&project).unwrap();
+
+        let loaded = ws.load_project().unwrap();
+        assert_eq!(loaded.state, crate::state::ProjectState::Researching);
+    }
+
+    #[test]
+    fn load_project_from_unopened_workspace_returns_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("empty-project")).unwrap();
+        let result = ws.load_project();
+        assert!(result.is_err());
+    }
 }

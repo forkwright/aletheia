@@ -648,6 +648,165 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
+        let dir = setup_pack_dir(&[("tools/cat.sh", "#!/bin/sh\ncat")]);
+        make_executable(&dir, "tools/cat.sh");
+
+        let executor = ShellToolExecutor {
+            command_path: dir.path().join("tools/cat.sh").canonicalize().unwrap(),
+            pack_root: dir.path().to_path_buf(),
+            timeout_ms: 5000,
+        };
+
+        let input = ToolInput {
+            name: ToolName::new("cat_tool").unwrap(),
+            tool_use_id: "toolu_meta".to_owned(),
+            arguments: serde_json::json!({
+                "cmd": "; rm -rf / && echo pwned | cat /etc/passwd $(whoami) `id`"
+            }),
+        };
+        let ctx = ToolContext {
+            nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+            session_id: aletheia_koina::id::SessionId::new(),
+            workspace: dir.path().to_path_buf(),
+            allowed_roots: vec![],
+            services: None,
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+        };
+
+        let result = executor.execute(&input, &ctx).await.unwrap();
+        let text = result.content.text_summary();
+        assert!(
+            text.contains("; rm -rf /"),
+            "metacharacters must pass through uninterpreted as JSON stdin data"
+        );
+        assert!(
+            text.contains("$(whoami)"),
+            "subshell expansion must not execute"
+        );
+        assert!(text.contains("`id`"), "backtick expansion must not execute");
+    }
+
+    #[test]
+    fn validate_command_path_rejects_absolute_path_outside_root() {
+        let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
+        let result = validate_command_path(dir.path(), "/etc/passwd");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(
+                err,
+                error::Error::ToolCommandNotFound { .. } | error::Error::ToolCommandEscape { .. }
+            ),
+            "absolute path outside pack root must be rejected"
+        );
+    }
+
+    #[test]
+    fn validate_command_path_rejects_dotdot_traversal() {
+        let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
+        let result = validate_command_path(dir.path(), "tools/../../etc/passwd");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(
+                err,
+                error::Error::ToolCommandNotFound { .. } | error::Error::ToolCommandEscape { .. }
+            ),
+            ".. traversal must be rejected"
+        );
+    }
+
+    #[test]
+    fn validate_command_path_rejects_symlink_escape() {
+        let dir = setup_pack_dir(&[("tools/legit.sh", "#!/bin/sh")]);
+        let symlink_path = dir.path().join("tools/escape");
+        std::os::unix::fs::symlink("/etc", &symlink_path).unwrap();
+
+        let result = validate_command_path(dir.path(), "tools/escape/passwd");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(
+                err,
+                error::Error::ToolCommandNotFound { .. } | error::Error::ToolCommandEscape { .. }
+            ),
+            "symlink escape must be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn shell_executor_does_not_expand_env_vars_in_arguments() {
+        let dir = setup_pack_dir(&[("tools/cat.sh", "#!/bin/sh\ncat")]);
+        make_executable(&dir, "tools/cat.sh");
+
+        let executor = ShellToolExecutor {
+            command_path: dir.path().join("tools/cat.sh").canonicalize().unwrap(),
+            pack_root: dir.path().to_path_buf(),
+            timeout_ms: 5000,
+        };
+
+        let input = ToolInput {
+            name: ToolName::new("cat_tool").unwrap(),
+            tool_use_id: "toolu_env".to_owned(),
+            arguments: serde_json::json!({
+                "path": "$HOME/.ssh/id_rsa"
+            }),
+        };
+        let ctx = ToolContext {
+            nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+            session_id: aletheia_koina::id::SessionId::new(),
+            workspace: dir.path().to_path_buf(),
+            allowed_roots: vec![],
+            services: None,
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+        };
+
+        let result = executor.execute(&input, &ctx).await.unwrap();
+        let text = result.content.text_summary();
+        assert!(
+            text.contains("$HOME"),
+            "environment variable must not be expanded: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn shell_executor_timeout_returns_error() {
+        let dir = setup_pack_dir(&[("tools/slow.sh", "#!/bin/sh\nsleep 60")]);
+        make_executable(&dir, "tools/slow.sh");
+
+        let executor = ShellToolExecutor {
+            command_path: dir.path().join("tools/slow.sh").canonicalize().unwrap(),
+            pack_root: dir.path().to_path_buf(),
+            timeout_ms: 100,
+        };
+
+        let input = ToolInput {
+            name: ToolName::new("slow_tool").unwrap(),
+            tool_use_id: "toolu_slow".to_owned(),
+            arguments: serde_json::json!({}),
+        };
+        let ctx = ToolContext {
+            nous_id: aletheia_koina::id::NousId::new("test").unwrap(),
+            session_id: aletheia_koina::id::SessionId::new(),
+            workspace: dir.path().to_path_buf(),
+            allowed_roots: vec![],
+            services: None,
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+        };
+
+        let result = executor.execute(&input, &ctx).await.unwrap();
+        assert!(result.is_error);
+        assert!(
+            result.content.text_summary().contains("timed out"),
+            "timeout error expected"
+        );
+    }
+
+    #[tokio::test]
     async fn shell_executor_truncates_at_char_boundary() {
         // NOTE: U+2026 (3 bytes: 0xE2 0x80 0xA6) is placed straddling MAX_OUTPUT_BYTES
         // so that naive truncate() would panic on the invalid byte boundary
