@@ -18,8 +18,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         theme.colors.accent
     };
 
-    // NOTE: ASCII-only prompt — bytes equal display columns
-    let prompt_width = prompt_str.len();
+    let prompt_width = UnicodeWidthStr::width(prompt_str);
     let content_width = area.width.max(1) as usize;
     let visible_rows = area.height.saturating_sub(1) as usize;
 
@@ -291,5 +290,42 @@ mod tests {
         let text = "foo bar";
         let ranges = word_wrap_lines(text, 4, 4);
         assert_eq!(*ranges.last().unwrap(), (4, 7)); // "bar" ends at text.len()
+    }
+
+    #[test]
+    fn unicode_prompt_width_uses_display_columns() {
+        let prompt = "› ";
+        assert_eq!(prompt.len(), 4); // 3-byte U+203A + 1-byte space
+        assert_eq!(UnicodeWidthStr::width(prompt), 2); // 1 display col + 1 space
+    }
+
+    #[test]
+    fn cursor_correct_with_empty_input() {
+        let text = "";
+        let prompt_width = UnicodeWidthStr::width("› ");
+        let ranges = word_wrap_lines(text, 18, 20);
+        let (row, col) = cursor_visual_position(&ranges, text, 0, prompt_width);
+        assert_eq!(row, 0);
+        assert_eq!(col, 2); // prompt display width only
+    }
+
+    #[test]
+    fn cursor_correct_after_multiple_characters() {
+        let text = "abcde";
+        let prompt_width = UnicodeWidthStr::width("› ");
+        let ranges = word_wrap_lines(text, 18, 20);
+        let (row, col) = cursor_visual_position(&ranges, text, 5, prompt_width);
+        assert_eq!(row, 0);
+        assert_eq!(col, 7); // prompt(2) + 5 chars
+    }
+
+    #[test]
+    fn cursor_correct_after_backspace_to_middle() {
+        let text = "abcd";
+        let prompt_width = UnicodeWidthStr::width("› ");
+        let ranges = word_wrap_lines(text, 18, 20);
+        let (row, col) = cursor_visual_position(&ranges, text, 3, prompt_width);
+        assert_eq!(row, 0);
+        assert_eq!(col, 5); // prompt(2) + 3 chars
     }
 }
