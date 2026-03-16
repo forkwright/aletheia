@@ -9,7 +9,19 @@ use aletheia_dianoia::plan::PlanState;
 use aletheia_dianoia::project::{Project, ProjectMode};
 use aletheia_dianoia::state::{ProjectState, Transition};
 use aletheia_dianoia::workspace::ProjectWorkspace;
+use aletheia_organon::error::{
+    InvalidInputSnafu, InvalidTransitionSnafu, JoinSnafu, PlanningAdapterError, SerializeSnafu,
+    WorkspaceSnafu,
+};
 use aletheia_organon::types::PlanningService;
+use snafu::ResultExt;
+
+/// Box an error for use as a snafu context source.
+fn boxed(
+    e: impl std::error::Error + Send + Sync + 'static,
+) -> Box<dyn std::error::Error + Send + Sync> {
+    Box::new(e)
+}
 
 pub struct FilesystemPlanningService {
     projects_root: PathBuf,
@@ -30,7 +42,7 @@ impl PlanningService for FilesystemPlanningService {
         mode: &str,
         appetite_minutes: Option<u32>,
         owner: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let root = self.projects_root.clone();
         let name = name.to_owned();
         let description = description.to_owned();
@@ -45,30 +57,34 @@ impl PlanningService for FilesystemPlanningService {
                     project.scope = Some(s);
                 }
                 let ws_path = root.join(project.id.to_string());
-                let ws = ProjectWorkspace::create(&ws_path).map_err(|e| e.to_string())?;
-                ws.save_project(&project).map_err(|e| e.to_string())?;
-                serde_json::to_string_pretty(&project).map_err(|e| e.to_string())
+                let ws =
+                    ProjectWorkspace::create(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                ws.save_project(&project)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
+                serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
-            .map_err(|e| e.to_string())?
+            .context(JoinSnafu)?
         })
     }
 
     fn load_project(
         &self,
         project_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let root = self.projects_root.clone();
         let project_id = project_id.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| e.to_string())?;
-                let project = ws.load_project().map_err(|e| e.to_string())?;
-                serde_json::to_string_pretty(&project).map_err(|e| e.to_string())
+                let ws =
+                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
+                serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
-            .map_err(|e| e.to_string())?
+            .context(JoinSnafu)?
         })
     }
 
@@ -76,23 +92,28 @@ impl PlanningService for FilesystemPlanningService {
         &self,
         project_id: &str,
         transition: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let root = self.projects_root.clone();
         let project_id = project_id.to_owned();
         let transition_str = transition.to_owned();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| e.to_string())?;
-                let mut project = ws.load_project().map_err(|e| e.to_string())?;
-                let transition = parse_transition(&transition_str)
-                    .ok_or_else(|| format!("unknown transition: {transition_str}"))?;
-                project.advance(transition).map_err(|e| e.to_string())?;
-                ws.save_project(&project).map_err(|e| e.to_string())?;
-                serde_json::to_string_pretty(&project).map_err(|e| e.to_string())
+                let ws =
+                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let mut project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
+                let transition = parse_transition(&transition_str)?;
+                project
+                    .advance(transition)
+                    .map_err(boxed)
+                    .context(InvalidTransitionSnafu)?;
+                ws.save_project(&project)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
+                serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
-            .map_err(|e| e.to_string())?
+            .context(JoinSnafu)?
         })
     }
 
@@ -101,7 +122,7 @@ impl PlanningService for FilesystemPlanningService {
         project_id: &str,
         name: &str,
         goal: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let root = self.projects_root.clone();
         let project_id = project_id.to_owned();
         let name = name.to_owned();
@@ -109,17 +130,20 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| e.to_string())?;
-                let mut project = ws.load_project().map_err(|e| e.to_string())?;
+                let ws =
+                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let mut project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
                 #[expect(clippy::cast_possible_truncation, reason = "phase count fits in u32")]
                 let order = project.phases.len() as u32 + 1;
                 let phase = Phase::new(name, goal, order);
                 project.add_phase(phase);
-                ws.save_project(&project).map_err(|e| e.to_string())?;
-                serde_json::to_string_pretty(&project).map_err(|e| e.to_string())
+                ws.save_project(&project)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
+                serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
-            .map_err(|e| e.to_string())?
+            .context(JoinSnafu)?
         })
     }
 
@@ -129,7 +153,7 @@ impl PlanningService for FilesystemPlanningService {
         phase_id: &str,
         plan_id: &str,
         achievement: Option<&str>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let root = self.projects_root.clone();
         let project_id = project_id.to_owned();
         let phase_id = phase_id.to_owned();
@@ -138,18 +162,21 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| e.to_string())?;
-                let mut project = ws.load_project().map_err(|e| e.to_string())?;
+                let ws =
+                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let mut project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
                 let plan = find_plan_mut(&mut project, &phase_id, &plan_id)?;
                 plan.state = PlanState::Complete;
                 if let Some(a) = achievement {
                     plan.achievements.push(a);
                 }
-                ws.save_project(&project).map_err(|e| e.to_string())?;
-                serde_json::to_string_pretty(&project).map_err(|e| e.to_string())
+                ws.save_project(&project)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
+                serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
-            .map_err(|e| e.to_string())?
+            .context(JoinSnafu)?
         })
     }
 
@@ -159,7 +186,7 @@ impl PlanningService for FilesystemPlanningService {
         phase_id: &str,
         plan_id: &str,
         reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let root = self.projects_root.clone();
         let project_id = project_id.to_owned();
         let phase_id = phase_id.to_owned();
@@ -168,8 +195,9 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws = ProjectWorkspace::open(&ws_path).map_err(|e| e.to_string())?;
-                let mut project = ws.load_project().map_err(|e| e.to_string())?;
+                let ws =
+                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let mut project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
                 let plan = find_plan_mut(&mut project, &phase_id, &plan_id)?;
                 plan.state = PlanState::Failed;
                 plan.blockers.push(aletheia_dianoia::plan::Blocker {
@@ -177,25 +205,32 @@ impl PlanningService for FilesystemPlanningService {
                     plan_id: plan.id,
                     detected_at: jiff::Timestamp::now(),
                 });
-                ws.save_project(&project).map_err(|e| e.to_string())?;
-                serde_json::to_string_pretty(&project).map_err(|e| e.to_string())
+                ws.save_project(&project)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
+                serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
             .await
-            .map_err(|e| e.to_string())?
+            .context(JoinSnafu)?
         })
     }
 
-    fn list_projects(&self) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    fn list_projects(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<String, PlanningAdapterError>> + Send + '_>> {
         let root = self.projects_root.clone();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || list_projects_sync(&root))
                 .await
-                .map_err(|e| e.to_string())?
+                .context(JoinSnafu)?
         })
     }
 }
 
-fn parse_mode(mode: &str, appetite_minutes: Option<u32>) -> Result<ProjectMode, String> {
+fn parse_mode(
+    mode: &str,
+    appetite_minutes: Option<u32>,
+) -> Result<ProjectMode, PlanningAdapterError> {
     match mode {
         "full" => Ok(ProjectMode::Full),
         "quick" => {
@@ -205,12 +240,15 @@ fn parse_mode(mode: &str, appetite_minutes: Option<u32>) -> Result<ProjectMode, 
             })
         }
         "background" => Ok(ProjectMode::Background),
-        other => Err(format!("unknown mode: {other}")),
+        other => InvalidInputSnafu {
+            message: format!("unknown mode: {other}"),
+        }
+        .fail(),
     }
 }
 
-fn parse_transition(s: &str) -> Option<Transition> {
-    Some(match s {
+fn parse_transition(s: &str) -> Result<Transition, PlanningAdapterError> {
+    let transition = match s {
         "start_questioning" => Transition::StartQuestioning,
         "start_research" => Transition::StartResearch,
         "skip_research" => Transition::SkipResearch,
@@ -233,45 +271,69 @@ fn parse_transition(s: &str) -> Option<Transition> {
         "revert_to_executing" => Transition::Revert {
             to: ProjectState::Executing,
         },
-        _ => return None,
-    })
+        _ => {
+            return InvalidInputSnafu {
+                message: format!("unknown transition: {s}"),
+            }
+            .fail();
+        }
+    };
+    Ok(transition)
 }
 
 fn find_plan_mut<'a>(
     project: &'a mut Project,
     phase_id: &str,
     plan_id: &str,
-) -> Result<&'a mut aletheia_dianoia::plan::Plan, String> {
-    let phase_ulid: ulid::Ulid = phase_id
-        .parse()
-        .map_err(|e| format!("invalid phase_id: {e}"))?;
-    let plan_ulid: ulid::Ulid = plan_id
-        .parse()
-        .map_err(|e| format!("invalid plan_id: {e}"))?;
+) -> Result<&'a mut aletheia_dianoia::plan::Plan, PlanningAdapterError> {
+    let phase_ulid: ulid::Ulid = phase_id.parse().map_err(|e| {
+        InvalidInputSnafu {
+            message: format!("invalid phase_id: {e}"),
+        }
+        .build()
+    })?;
+    let plan_ulid: ulid::Ulid = plan_id.parse().map_err(|e| {
+        InvalidInputSnafu {
+            message: format!("invalid plan_id: {e}"),
+        }
+        .build()
+    })?;
 
     let phase = project
         .phases
         .iter_mut()
         .find(|p| p.id == phase_ulid)
-        .ok_or_else(|| format!("phase not found: {phase_id}"))?;
+        .ok_or_else(|| {
+            InvalidInputSnafu {
+                message: format!("phase not found: {phase_id}"),
+            }
+            .build()
+        })?;
 
     phase
         .plans
         .iter_mut()
         .find(|p| p.id == plan_ulid)
-        .ok_or_else(|| format!("plan not found: {plan_id}"))
+        .ok_or_else(|| {
+            InvalidInputSnafu {
+                message: format!("plan not found: {plan_id}"),
+            }
+            .build()
+        })
 }
 
-fn list_projects_sync(root: &Path) -> Result<String, String> {
+fn list_projects_sync(root: &Path) -> Result<String, PlanningAdapterError> {
     if !root.exists() {
         return Ok("[]".to_owned());
     }
 
-    let entries = std::fs::read_dir(root).map_err(|e| e.to_string())?;
+    let entries = std::fs::read_dir(root)
+        .map_err(boxed)
+        .context(WorkspaceSnafu)?;
     let mut summaries = Vec::new();
 
     for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let entry = entry.map_err(boxed).context(WorkspaceSnafu)?;
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -280,7 +342,9 @@ fn list_projects_sync(root: &Path) -> Result<String, String> {
         if !project_file.exists() {
             continue;
         }
-        let contents = std::fs::read_to_string(&project_file).map_err(|e| e.to_string())?;
+        let contents = std::fs::read_to_string(&project_file)
+            .map_err(boxed)
+            .context(WorkspaceSnafu)?;
         let project: Project = match serde_json::from_str(&contents) {
             Ok(p) => p,
             Err(_) => continue,
@@ -296,7 +360,7 @@ fn list_projects_sync(root: &Path) -> Result<String, String> {
         }));
     }
 
-    serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
+    serde_json::to_string_pretty(&summaries).context(SerializeSnafu)
 }
 
 #[cfg(test)]

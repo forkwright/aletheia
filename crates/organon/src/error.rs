@@ -66,3 +66,95 @@ pub enum StoreError {
     #[snafu(display("{message}"))]
     Store { message: String },
 }
+
+/// Error from `PlanningService` adapter operations.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+#[non_exhaustive]
+pub enum PlanningAdapterError {
+    /// Workspace create/open/save/load failure.
+    #[snafu(display("workspace operation failed"))]
+    Workspace {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Project state transition rejected.
+    #[snafu(display("invalid project transition"))]
+    InvalidTransition {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// JSON serialization failure.
+    #[snafu(display("failed to serialize project"))]
+    Serialize {
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Background task join failure.
+    #[snafu(display("background task failed"))]
+    Join {
+        source: tokio::task::JoinError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Invalid input (bad mode, unknown transition name, invalid ID, entity not found).
+    #[snafu(display("{message}"))]
+    InvalidInput {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
+
+/// Error from `KnowledgeSearchService` adapter operations.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+#[non_exhaustive]
+pub enum KnowledgeAdapterError {
+    /// Embedding generation failure.
+    #[snafu(display("embedding failed"))]
+    Embedding {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Hybrid search failure.
+    #[snafu(display("knowledge search failed"))]
+    Search {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Fact or datalog query failure.
+    #[snafu(display("knowledge query failed"))]
+    Query {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Fact mutation failure (insert, supersede, retract, forget, unforget).
+    #[snafu(display("fact mutation failed"))]
+    Mutation {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Invalid input (unparseable reason, etc.).
+    #[snafu(display("{message}"))]
+    InvalidInput {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+}
