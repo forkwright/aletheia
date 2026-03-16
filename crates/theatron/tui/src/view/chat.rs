@@ -623,17 +623,14 @@ fn render_streaming(
             theme.style_assistant(),
         )]));
 
-        // Use cached markdown if available (streaming content — links not tracked for OSC 8)
-        let rendered = if app.markdown_cache.text == app.streaming_text {
+        // Use cached markdown if text AND width match (streaming content, no OSC 8 links).
+        let render_width = inner_width.saturating_sub(2);
+        let rendered = if app.markdown_cache.text == app.streaming_text
+            && app.markdown_cache.width == render_width
+        {
             app.markdown_cache.lines.clone()
         } else {
-            markdown::render(
-                &app.streaming_text,
-                inner_width.saturating_sub(2),
-                theme,
-                &app.highlighter,
-            )
-            .0
+            markdown::render(&app.streaming_text, render_width, theme, &app.highlighter).0
         };
 
         for line in rendered {

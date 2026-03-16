@@ -28,13 +28,14 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
     app.streaming_text.push_str(&clean);
-    let delta = app.streaming_text.len() as i64 - app.markdown_cache.text.len() as i64;
-    if delta >= 64 || text.contains('\n') {
-        let width = app.terminal_width.saturating_sub(2).max(1) as usize;
-        app.markdown_cache.lines =
-            crate::markdown::render(&app.streaming_text, width, &app.theme, &app.highlighter).0;
-        app.markdown_cache.text = app.streaming_text.clone();
-    }
+    // PERF: Update the markdown cache on every delta so the view can use the
+    // cached lines (cheap clone) instead of calling markdown::render per frame.
+    // The width subtracts 4 to match the view's inner_width.saturating_sub(2).
+    let width = app.terminal_width.saturating_sub(4).max(1) as usize;
+    app.markdown_cache.lines =
+        crate::markdown::render(&app.streaming_text, width, &app.theme, &app.highlighter).0;
+    app.markdown_cache.text = app.streaming_text.clone();
+    app.markdown_cache.width = width;
     if app.auto_scroll {
         app.scroll_offset = 0;
     }
@@ -519,21 +520,21 @@ mod tests {
     }
 
     #[test]
-    fn text_delta_triggers_markdown_cache_on_newline() {
+    fn text_delta_always_updates_markdown_cache() {
         let mut app = test_app();
-        handle_stream_text_delta(&mut app, "line1\nline2".to_string());
-        // newline should trigger markdown re-render
-        assert!(!app.markdown_cache.text.is_empty());
+        handle_stream_text_delta(&mut app, "hello".to_string());
+        assert_eq!(app.markdown_cache.text, "hello");
+        assert!(!app.markdown_cache.lines.is_empty());
     }
 
     #[test]
-    fn text_delta_uses_terminal_width_not_hardcoded() {
+    fn text_delta_cache_tracks_width() {
         let mut app = test_app();
         app.terminal_width = 80;
-        // Trigger a cache update via newline
         handle_stream_text_delta(&mut app, "hello\nworld".to_string());
-        // Cache should be populated (width is passed correctly even if _width is unused internally)
         assert_eq!(app.markdown_cache.text, "hello\nworld");
+        // Width should be terminal_width - 4 (matching the view's inner_width - 2)
+        assert_eq!(app.markdown_cache.width, 76);
     }
 
     fn make_outcome() -> TurnOutcome {

@@ -107,8 +107,8 @@ async fn run_tui_inner(
     result
 }
 
-/// Tick interval in milliseconds — drives spinner animation and cursor blink (~30 fps).
-const TICK_INTERVAL_MS: u64 = 33;
+/// Tick interval in milliseconds — drives spinner animation and cursor blink (~60 fps).
+const TICK_INTERVAL_MS: u64 = 16;
 
 async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result<()> {
     let mut term_events = EventStream::new();

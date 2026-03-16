@@ -12,7 +12,7 @@ pub enum Event {
     Sse(SseEvent),
     /// Per-session streaming response
     Stream(StreamEvent),
-    /// 30fps UI tick
+    /// 60fps UI tick
     Tick,
 }
 
