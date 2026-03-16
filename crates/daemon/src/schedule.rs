@@ -45,6 +45,11 @@ pub struct TaskDef {
     /// Whether to catch up missed cron windows on startup (within last 24h).
     /// Default: true for maintenance tasks, false for prosoche.
     pub catch_up: bool,
+    /// Model override for bridge-dispatched tasks (e.g. prosoche heartbeats).
+    ///
+    /// When set, the bridge uses this model instead of the agent's conversation
+    /// model, allowing cheap models for trivial daemon prompts.
+    pub model_override: Option<String>,
 }
 
 impl Default for TaskDef {
@@ -59,6 +64,7 @@ impl Default for TaskDef {
             active_window: None,
             timeout: Duration::from_secs(300),
             catch_up: true,
+            model_override: None,
         }
     }
 }

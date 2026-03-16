@@ -22,6 +22,7 @@ pub(crate) async fn execute_action(
     maintenance: Option<&MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    model_override: Option<&str>,
 ) -> Result<ExecutionResult> {
     match action {
         TaskAction::Command(cmd) => execute_command(cmd).await,
@@ -33,6 +34,7 @@ pub(crate) async fn execute_action(
                 maintenance,
                 retention_executor,
                 knowledge_executor,
+                model_override,
             )
             .await
         }
@@ -83,12 +85,13 @@ pub(crate) async fn execute_builtin(
     maintenance: Option<&MaintenanceConfig>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
+    model_override: Option<&str>,
 ) -> Result<ExecutionResult> {
     match builtin {
         BuiltinTask::Prosoche => {
             if let Some(bridge) = bridge {
                 let prompt = "Run your prosoche heartbeat check per PROSOCHE.md.";
-                match bridge.send_prompt(nous_id, "daemon:prosoche", prompt).await {
+                match bridge.send_prompt(nous_id, "daemon:prosoche", prompt, model_override).await {
                     Ok(result) => {
                         tracing::debug!(
                             nous_id = %nous_id,

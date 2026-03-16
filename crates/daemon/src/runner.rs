@@ -632,6 +632,7 @@ impl TaskRunner {
             let maintenance = self.maintenance.clone();
             let retention_executor = self.retention_executor.clone();
             let knowledge_executor = self.knowledge_executor.clone();
+            let model_override = self.tasks[i].def.model_override.clone();
 
             let span = tracing::info_span!(
                 "task_execute",
@@ -649,6 +650,7 @@ impl TaskRunner {
                         maintenance.as_ref(),
                         retention_executor,
                         knowledge_executor,
+                        model_override.as_deref(),
                     )
                     .await
                 }

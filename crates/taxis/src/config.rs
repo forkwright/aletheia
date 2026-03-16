@@ -200,6 +200,26 @@ impl Default for RecallSettings {
     }
 }
 
+/// Daemon task configuration (prosoche heartbeats, background prompts).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct DaemonConfig {
+    /// Model used for daemon-initiated prompts (prosoche heartbeats, etc.).
+    ///
+    /// Defaults to `claude-haiku-4-5-20251001` because daemon tasks produce
+    /// trivial output (e.g. `HEARTBEAT_OK`) and do not need a frontier model.
+    pub model: String,
+}
+
+impl Default for DaemonConfig {
+    fn default() -> Self {
+        Self {
+            model: "claude-haiku-4-5-20251001".to_owned(),
+        }
+    }
+}
+
 /// Default values applied to every agent unless overridden.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -239,6 +259,8 @@ pub struct AgentDefaults {
     /// `bootstrap` (the remainder, capped at `bootstrap_max_tokens`).
     /// Default: 0.6 (60 % of the context window).
     pub history_budget_ratio: f64,
+    /// Daemon task settings (prosoche heartbeats, background prompts).
+    pub daemon: DaemonConfig,
 }
 
 impl Default for AgentDefaults {
@@ -256,6 +278,7 @@ impl Default for AgentDefaults {
             recall: RecallSettings::default(),
             chars_per_token: 4,
             history_budget_ratio: 0.6,
+            daemon: DaemonConfig::default(),
         }
     }
 }
@@ -329,6 +352,9 @@ pub struct NousDefinition {
     /// Recall pipeline override; when `None`, inherits from [`AgentDefaults::recall`].
     #[serde(default)]
     pub recall: Option<RecallSettings>,
+    /// Daemon task override; when `None`, inherits from [`AgentDefaults::daemon`].
+    #[serde(default)]
+    pub daemon: Option<DaemonConfig>,
 }
 
 /// HTTP gateway configuration.
@@ -822,6 +848,8 @@ pub struct ResolvedNousConfig {
     pub chars_per_token: u32,
     /// Fraction of the context window reserved for conversation history.
     pub history_budget_ratio: f64,
+    /// Model used for daemon-initiated prompts (prosoche heartbeats).
+    pub daemon_model: String,
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -867,6 +895,13 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         .and_then(|a| a.recall.clone())
         .unwrap_or_else(|| defaults.recall.clone());
 
+    let daemon_model = agent
+        .and_then(|a| a.daemon.as_ref())
+        .map_or_else(
+            || defaults.daemon.model.clone(),
+            |d| d.model.clone(),
+        );
+
     ResolvedNousConfig {
         id: nous_id.to_owned(),
         name,
@@ -885,6 +920,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         recall,
         chars_per_token: defaults.chars_per_token,
         history_budget_ratio: defaults.history_budget_ratio,
+        daemon_model,
     }
 }
 

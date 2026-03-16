@@ -38,6 +38,10 @@ fn defaults_are_sensible() {
     assert_eq!(config.maintenance.db_monitoring.warn_threshold_mb, 100);
     assert!(!config.maintenance.retention.enabled);
     assert!(config.pricing.is_empty());
+    assert_eq!(
+        config.agents.defaults.daemon.model,
+        "claude-haiku-4-5-20251001"
+    );
 }
 
 #[test]
@@ -107,6 +111,7 @@ fn resolve_merges_agent_overrides() {
         domains: vec!["code".to_owned()],
         default: false,
         recall: None,
+        daemon: None,
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -132,6 +137,7 @@ fn resolve_merges_allowed_roots() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        daemon: None,
     });
 
     let resolved = resolve_nous(&config, "syn");
@@ -151,10 +157,40 @@ fn resolve_thinking_override() {
         domains: Vec::new(),
         default: false,
         recall: None,
+        daemon: None,
     });
 
     let resolved = resolve_nous(&config, "thinker");
     assert!(resolved.thinking_enabled);
+}
+
+#[test]
+fn resolve_daemon_model_defaults_to_haiku() {
+    let config = AletheiaConfig::default();
+    let resolved = resolve_nous(&config, "any-agent");
+    assert_eq!(resolved.daemon_model, "claude-haiku-4-5-20251001");
+}
+
+#[test]
+fn resolve_daemon_model_agent_override() {
+    let mut config = AletheiaConfig::default();
+    config.agents.list.push(NousDefinition {
+        id: "syn".to_owned(),
+        name: None,
+        model: None,
+        workspace: "/home/user/nous/syn".to_owned(),
+        thinking_enabled: None,
+        allowed_roots: Vec::new(),
+        domains: Vec::new(),
+        default: false,
+        recall: None,
+        daemon: Some(DaemonConfig {
+            model: "claude-sonnet-4-6".to_owned(),
+        }),
+    });
+
+    let resolved = resolve_nous(&config, "syn");
+    assert_eq!(resolved.daemon_model, "claude-sonnet-4-6");
 }
 
 #[test]
