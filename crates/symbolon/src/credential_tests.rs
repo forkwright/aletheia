@@ -539,3 +539,138 @@ fn seconds_remaining_positive_for_future_expiry() {
         "expected ~3600s remaining, got {remaining}"
     );
 }
+
+// --- Integration: credential file refresh cycle ---
+
+#[tokio::test]
+async fn refreshing_provider_reads_credential_file_and_provides_token() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    let far_future_ms = unix_epoch_ms() + 7_200_000;
+    let cred = CredentialFile {
+        token: "sk-ant-oat-initial-token".to_owned(),
+        refresh_token: Some("rt-test-refresh".to_owned()),
+        expires_at: Some(far_future_ms),
+        scopes: Some(vec!["user:inference".to_owned()]),
+        subscription_type: Some("max".to_owned()),
+    };
+    cred.save(&path).unwrap();
+
+    let provider = RefreshingCredentialProvider::new(path.clone()).expect("should create provider");
+    let resolved = provider.get_credential().unwrap();
+    assert_eq!(resolved.secret, "sk-ant-oat-initial-token");
+    assert_eq!(resolved.source, CredentialSource::OAuth);
+
+    // Shut down background task to avoid leaking
+    provider.shutdown();
+}
+
+#[tokio::test]
+async fn refresh_write_back_preserves_subscription_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    let cred = CredentialFile {
+        token: "sk-ant-oat-original".to_owned(),
+        refresh_token: Some("rt-original".to_owned()),
+        expires_at: Some(unix_epoch_ms() + 7_200_000),
+        scopes: Some(vec!["user:inference".to_owned()]),
+        subscription_type: Some("max".to_owned()),
+    };
+    cred.save(&path).unwrap();
+
+    // Simulate what refresh_loop does after a successful OAuth response:
+    // read the original file, build a new CredentialFile with refreshed tokens,
+    // and verify subscription_type is preserved in the write-back.
+    let original = CredentialFile::load(&path).unwrap();
+    let refreshed = CredentialFile {
+        token: "sk-ant-oat-refreshed".to_owned(),
+        refresh_token: Some("rt-new".to_owned()),
+        expires_at: Some(unix_epoch_ms() + 28_800_000),
+        scopes: original.scopes.clone(),
+        subscription_type: original.subscription_type.clone(),
+    };
+    refreshed.save(&path).unwrap();
+
+    let reloaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(reloaded.token, "sk-ant-oat-refreshed");
+    assert_eq!(reloaded.refresh_token.as_deref(), Some("rt-new"));
+    assert_eq!(
+        reloaded.subscription_type.as_deref(),
+        Some("max"),
+        "subscription_type must survive refresh write-back"
+    );
+}
+
+#[tokio::test]
+async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+
+    // Write in Claude Code claudeAiOauth wrapper format (with subscriptionType)
+    std::fs::write(
+        &path,
+        r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped","expiresAt":9999999999000,"subscriptionType":"pro_plus"}}"#,
+    )
+    .unwrap();
+
+    let original = CredentialFile::load(&path).unwrap();
+    assert_eq!(original.subscription_type.as_deref(), Some("pro_plus"));
+
+    // Simulate refresh write-back preserving subscription_type
+    let refreshed = CredentialFile {
+        token: "sk-ant-oat-new".to_owned(),
+        refresh_token: Some("rt-new".to_owned()),
+        expires_at: Some(unix_epoch_ms() + 28_800_000),
+        scopes: None,
+        subscription_type: original.subscription_type,
+    };
+    refreshed.save(&path).unwrap();
+
+    let reloaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(
+        reloaded.subscription_type.as_deref(),
+        Some("pro_plus"),
+        "subscription_type from Claude Code wrapper must survive refresh"
+    );
+}
+
+#[tokio::test]
+async fn refreshing_provider_shuts_down_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".credentials.json");
+    let cred = CredentialFile {
+        token: "sk-ant-oat-token".to_owned(),
+        refresh_token: Some("rt-test".to_owned()),
+        expires_at: Some(unix_epoch_ms() + 7_200_000),
+        scopes: None,
+        subscription_type: None,
+    };
+    cred.save(&path).unwrap();
+
+    let provider = RefreshingCredentialProvider::new(path).expect("should create provider");
+    provider.shutdown();
+    // Drop triggers abort of background task; should not panic
+    drop(provider);
+}
+
+#[tokio::test]
+async fn credential_file_roundtrip_preserves_all_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("full.json");
+
+    let original = CredentialFile {
+        token: "sk-ant-oat-full".to_owned(),
+        refresh_token: Some("rt-full".to_owned()),
+        expires_at: Some(1_800_000_000_000),
+        scopes: Some(vec!["user:inference".to_owned(), "org:admin".to_owned()]),
+        subscription_type: Some("enterprise".to_owned()),
+    };
+    original.save(&path).unwrap();
+
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, original.token);
+    assert_eq!(loaded.refresh_token, original.refresh_token);
+    assert_eq!(loaded.expires_at, original.expires_at);
+    assert_eq!(loaded.scopes, original.scopes);
+    assert_eq!(loaded.subscription_type, original.subscription_type);
+}

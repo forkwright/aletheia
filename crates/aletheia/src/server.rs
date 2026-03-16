@@ -1,5 +1,6 @@
 //! Server startup, actor wiring, and HTTP gateway initialization.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -30,7 +31,7 @@ use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
 use aletheia_symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
-    RefreshingCredentialProvider,
+    RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
 };
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::config::resolve_nous;
@@ -508,12 +509,31 @@ fn build_provider_registry(
             })
             .collect();
 
-    // Build credential chain: file (with refresh) → env
+    // Build credential chain based on config.credential.source:
+    //   "auto"       -> instance file -> env vars -> Claude Code credentials
+    //   "api-key"    -> instance file -> env vars only
+    //   "claude-code" -> Claude Code credentials -> instance file -> env vars
+    let cred_source = config.credential.source.as_str();
     let cred_file = oikos.credentials().join("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
+    let claude_code_path = config
+        .credential
+        .claude_code_credentials
+        .as_ref()
+        .map(PathBuf::from)
+        .or_else(claude_code_default_path);
+
+    // When source is "claude-code", prioritize Claude Code credentials
+    if cred_source == "claude-code" {
+        if let Some(ref cc_path) = claude_code_path {
+            if let Some(provider) = claude_code_provider(cc_path) {
+                chain.push(provider);
+            }
+        }
+    }
+
     if cred_file.exists() {
-        // Check if file has a refresh token for OAuth mode
         if let Some(cred) = CredentialFile::load(&cred_file) {
             if cred.has_refresh_token() {
                 if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
@@ -530,13 +550,22 @@ fn build_provider_registry(
         }
     }
 
-    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention — always treat as OAuth
+    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention -- always treat as OAuth
     chain.push(Box::new(EnvCredentialProvider::with_source(
         "ANTHROPIC_AUTH_TOKEN",
         CredentialSource::OAuth,
     )));
     // ANTHROPIC_API_KEY: auto-detects OAuth tokens by sk-ant-oat prefix
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
+
+    // When source is "auto", add Claude Code credentials as lowest-priority fallback
+    if cred_source == "auto" {
+        if let Some(ref cc_path) = claude_code_path {
+            if let Some(provider) = claude_code_provider(cc_path) {
+                chain.push(provider);
+            }
+        }
+    }
 
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
 
