@@ -79,6 +79,47 @@ impl KnowledgeStore {
         )
     }
 
+    /// List all entities in the knowledge store.
+    #[instrument(skip(self))]
+    pub fn list_entities(&self) -> crate::error::Result<Vec<crate::knowledge::Entity>> {
+        use std::collections::BTreeMap;
+
+        let script = r"?[id, name, entity_type, aliases, created_at, updated_at] :=
+            *entities{id, name, entity_type, aliases, created_at, updated_at}
+            :order name";
+        let rows = self.run_read(script, BTreeMap::new())?;
+
+        let mut entities = Vec::new();
+        for row in &rows.rows {
+            if row.len() < 6 {
+                continue;
+            }
+            let aliases_str = extract_str(&row[3])?;
+            let aliases: Vec<String> = if aliases_str.is_empty() {
+                Vec::new()
+            } else {
+                aliases_str
+                    .split(',')
+                    .map(|s| s.trim().to_owned())
+                    .collect()
+            };
+            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
+                .unwrap_or_else(jiff::Timestamp::now);
+            let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row[5])?)
+                .unwrap_or_else(jiff::Timestamp::now);
+
+            entities.push(crate::knowledge::Entity {
+                id: crate::id::EntityId::new_unchecked(extract_str(&row[0])?),
+                name: extract_str(&row[1])?,
+                entity_type: extract_str(&row[2])?,
+                aliases,
+                created_at,
+                updated_at,
+            });
+        }
+        Ok(entities)
+    }
+
     /// Find duplicate entity candidates for a given nous.
     ///
     /// Loads all entities, groups by type, and runs the 3-phase candidate

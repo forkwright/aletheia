@@ -2366,6 +2366,94 @@ mod knowledge_store_tests {
         );
     }
 
+    #[test]
+    fn list_all_facts_returns_facts_across_agents() {
+        let store = make_store();
+        store
+            .insert_fact(&make_fact("f1", "agent-a", "Fact from agent A"))
+            .expect("insert a");
+        store
+            .insert_fact(&make_fact("f2", "agent-b", "Fact from agent B"))
+            .expect("insert b");
+
+        let all = store.list_all_facts(100).expect("list_all_facts");
+        assert_eq!(all.len(), 2, "both agents' facts must be returned");
+        let ids: Vec<&str> = all.iter().map(|f| f.id.as_str()).collect();
+        assert!(ids.contains(&"f1"));
+        assert!(ids.contains(&"f2"));
+        assert_eq!(
+            all.iter().find(|f| f.id.as_str() == "f1").unwrap().nous_id,
+            "agent-a"
+        );
+        assert_eq!(
+            all.iter().find(|f| f.id.as_str() == "f2").unwrap().nous_id,
+            "agent-b"
+        );
+    }
+
+    #[test]
+    fn list_all_facts_empty_store_returns_empty() {
+        let store = make_store();
+        let all = store.list_all_facts(100).expect("list_all_facts empty");
+        assert!(all.is_empty());
+    }
+
+    #[test]
+    fn list_entities_returns_inserted_entities() {
+        let store = make_store();
+        store
+            .insert_entity(&make_entity("e1", "Alice", "person"))
+            .expect("insert alice");
+        store
+            .insert_entity(&make_entity("e2", "Aletheia", "project"))
+            .expect("insert aletheia");
+
+        let entities = store.list_entities().expect("list_entities");
+        assert_eq!(entities.len(), 2, "both entities must be returned");
+        let names: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"Alice"));
+        assert!(names.contains(&"Aletheia"));
+    }
+
+    #[test]
+    fn list_entities_empty_store_returns_empty() {
+        let store = make_store();
+        let entities = store.list_entities().expect("list_entities empty");
+        assert!(entities.is_empty());
+    }
+
+    #[test]
+    fn write_then_read_roundtrip_facts_and_entities() {
+        let store = make_store();
+
+        let fact = make_fact("rt-1", "chiron", "Alice prefers dark mode");
+        store.insert_fact(&fact).expect("insert fact");
+
+        let entity = make_entity("e-alice", "Alice", "person");
+        store.insert_entity(&entity).expect("insert entity");
+
+        store
+            .insert_fact_entity(&fact.id, &entity.id)
+            .expect("link fact to entity");
+
+        // Read via scoped query (simulates ?nous_id=chiron)
+        let scoped = store.audit_all_facts("chiron", 100).expect("audit scoped");
+        assert_eq!(scoped.len(), 1);
+        assert_eq!(scoped[0].content, "Alice prefers dark mode");
+
+        // Read via unscoped query (simulates no nous_id filter)
+        let unscoped = store.list_all_facts(100).expect("list_all_facts");
+        assert_eq!(unscoped.len(), 1);
+        assert_eq!(unscoped[0].content, "Alice prefers dark mode");
+        assert_eq!(unscoped[0].nous_id, "chiron");
+
+        // Read entities
+        let entities = store.list_entities().expect("list_entities");
+        assert_eq!(entities.len(), 1);
+        assert_eq!(entities[0].name, "Alice");
+        assert_eq!(entities[0].entity_type, "person");
+    }
+
     mod proptests {
         use super::*;
         use proptest::prelude::*;

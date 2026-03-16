@@ -535,6 +535,47 @@ impl KnowledgeStore {
             .context(crate::error::JoinSnafu)?
     }
 
+    /// List all facts across all agents, ordered by `recorded_at` descending.
+    ///
+    /// Unlike [`audit_all_facts`](Self::audit_all_facts), this does not require
+    /// a `nous_id` filter and returns facts from every agent.
+    #[instrument(skip(self))]
+    pub fn list_all_facts(&self, limit: i64) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use crate::engine::DataValue;
+        use std::collections::BTreeMap;
+
+        let mut params = BTreeMap::new();
+        params.insert(String::from("limit"), DataValue::from(limit));
+
+        let script = r"
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason] :=
+                *facts{id, valid_from, content, nous_id, confidence, tier,
+                       valid_to, superseded_by, source_session_id, recorded_at,
+                       access_count, last_accessed_at, stability_hours, fact_type,
+                       is_forgotten, forgotten_at, forget_reason}
+            :order -recorded_at
+            :limit $limit
+        ";
+        let rows = self.run_read(script, params)?;
+        super::marshal::rows_to_raw_facts(rows)
+    }
+
+    /// Async `list_all_facts` wrapper.
+    #[instrument(skip(self))]
+    pub async fn list_all_facts_async(
+        self: &std::sync::Arc<Self>,
+        limit: i64,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        use snafu::ResultExt;
+        let this = std::sync::Arc::clone(self);
+        tokio::task::spawn_blocking(move || this.list_all_facts(limit))
+            .await
+            .context(crate::error::JoinSnafu)?
+    }
+
     /// Audit query: returns all facts regardless of forgotten/superseded/temporal state.
     #[instrument(skip(self))]
     pub fn audit_all_facts(
