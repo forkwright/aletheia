@@ -78,6 +78,16 @@ workspace = "nous/main"
 # retentionDays = 14         # delete log files older than N days
 # level = "warn"             # tracing filter: warn | error | info | debug
 
+# --- Credential resolution ---
+# Controls how the server discovers LLM API credentials.
+# source: "auto" (default) | "api-key" | "claude-code"
+#   auto       -> instance credential file -> env vars -> Claude Code credentials
+#   api-key    -> instance credential file and env vars only
+#   claude-code -> Claude Code credentials first, then instance file and env vars
+# [credential]
+# source = "auto"
+# claudeCodeCredentials = "~/.claude/.credentials.json"  # override default path
+
 # --- Cost tracking ---
 # [pricing."claude-sonnet-4-6"]
 # inputCostPerMtok = 3.0

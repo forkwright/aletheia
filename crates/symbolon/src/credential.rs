@@ -411,6 +411,7 @@ struct RefreshState {
     current_token: String,
     refresh_token: String,
     expires_at_ms: u64,
+    subscription_type: Option<String>,
 }
 
 /// Wraps a credential file with background OAuth token refresh.
@@ -439,6 +440,7 @@ impl RefreshingCredentialProvider {
                 );
                 0
             }),
+            subscription_type: cred.subscription_type,
         })));
 
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -520,7 +522,7 @@ async fn refresh_loop(
             break;
         }
 
-        let (refresh_token, needs_refresh) = {
+        let (refresh_token, subscription_type, needs_refresh) = {
             let Ok(guard) = state.read() else {
                 continue;
             };
@@ -532,14 +534,14 @@ async fn refresh_loop(
             let remaining_secs = (s.expires_at_ms as i64 - now_ms as i64) / 1000;
             #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
             let needs = remaining_secs < REFRESH_THRESHOLD_SECS as i64;
-            (s.refresh_token.clone(), needs)
+            (s.refresh_token.clone(), s.subscription_type.clone(), needs)
         };
 
         if !needs_refresh {
             continue;
         }
 
-        info!("credential refresh needed — refreshing OAuth token");
+        info!("credential refresh needed -- refreshing OAuth token");
 
         match do_refresh(&client, &refresh_token).await {
             Some(resp) => {
@@ -551,6 +553,7 @@ async fn refresh_loop(
                         current_token: resp.access_token.clone(),
                         refresh_token: resp.refresh_token.clone(),
                         expires_at_ms,
+                        subscription_type: subscription_type.clone(),
                     });
                 }
 
@@ -562,7 +565,7 @@ async fn refresh_loop(
                     refresh_token: Some(resp.refresh_token),
                     expires_at: Some(expires_at_ms),
                     scopes,
-                    subscription_type: None,
+                    subscription_type,
                 };
                 if let Err(e) = cred_file.save(&path) {
                     warn!(error = %e, "failed to write refreshed credential file");
