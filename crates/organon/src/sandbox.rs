@@ -96,11 +96,18 @@ impl SandboxConfig {
         // WHY: System binary dirs are always executable. workspace and
         // allowed_roots are also added so agents can execute scripts they own
         // or that live in shared data directories — closes #1246.
+        // /lib and /lib64 are included because the kernel opens the ELF
+        // dynamic linker (ld-linux-*.so) with exec intent during execve().
+        // Without Execute on these paths, all dynamically-linked binaries
+        // fail with "Permission denied" even when the binary itself is in an
+        // allowed exec path.
         let mut exec_paths = vec![
             PathBuf::from("/usr/bin"),
             PathBuf::from("/usr/local/bin"),
             PathBuf::from("/bin"),
             PathBuf::from("/usr/lib"),
+            PathBuf::from("/lib"),
+            PathBuf::from("/lib64"),
         ];
 
         write_paths.push(workspace.to_path_buf());
@@ -180,7 +187,13 @@ impl SandboxPolicy {
             RulesetCreatedAttr, RulesetStatus,
         };
 
-        let abi = ABI::V3;
+        // WHY: Use the highest filesystem-relevant ABI the crate supports so
+        // the ruleset handles all known access types. The crate's best-effort
+        // mechanism silently drops flags the running kernel does not recognize,
+        // making this safe across kernel versions. V5 added IoctlDev; without
+        // handling it on V5+ kernels, ioctl on device files (/dev/null,
+        // /dev/tty) would be uncontrolled by the sandbox policy.
+        let abi = ABI::V5;
 
         let read_access = AccessFs::ReadFile | AccessFs::ReadDir;
         let write_access = read_access
@@ -225,6 +238,13 @@ impl SandboxPolicy {
         let ruleset = add(ruleset, &self.read_paths, read_access)?;
         let ruleset = add(ruleset, &self.write_paths, write_access)?;
         let ruleset = add(ruleset, &self.exec_paths, exec_access)?;
+
+        // WHY: IoctlDev (V5+) controls ioctl on device files. Grant it to
+        // /dev so child processes can perform terminal operations and interact
+        // with device nodes like /dev/null and /dev/tty. On pre-V5 kernels
+        // this flag is silently dropped by the crate's best-effort mechanism.
+        let dev = [PathBuf::from("/dev")];
+        let ruleset = add(ruleset, &dev, read_access | AccessFs::IoctlDev)?;
 
         let status = ruleset
             .restrict_self()
@@ -580,6 +600,8 @@ mod tests {
         assert!(policy.read_paths.contains(&PathBuf::from("/etc")));
         assert!(policy.exec_paths.contains(&PathBuf::from("/usr/bin")));
         assert!(policy.exec_paths.contains(&PathBuf::from("/bin")));
+        assert!(policy.exec_paths.contains(&PathBuf::from("/lib")));
+        assert!(policy.exec_paths.contains(&PathBuf::from("/lib64")));
         assert!(policy.write_paths.contains(&PathBuf::from("/tmp")));
     }
 
@@ -827,6 +849,8 @@ mod tests {
             PathBuf::from("/usr/bin"),
             PathBuf::from("/bin"),
             PathBuf::from("/usr/lib"),
+            PathBuf::from("/lib"),
+            PathBuf::from("/lib64"),
         ];
 
         let policy = SandboxPolicy {
@@ -976,6 +1000,8 @@ mod tests {
                 PathBuf::from("/usr/bin"),
                 PathBuf::from("/bin"),
                 PathBuf::from("/usr/lib"),
+                PathBuf::from("/lib"),
+                PathBuf::from("/lib64"),
             ],
             enforcement: SandboxEnforcement::Enforcing,
         };
@@ -994,6 +1020,41 @@ mod tests {
                 stdout.trim().ends_with('1')
             },
             "writing outside workspace should be blocked"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn exec_succeeds_under_sandbox_with_absolute_and_bare_paths() {
+        use std::process::Command;
+
+        if probe_landlock_abi().is_none() {
+            return;
+        }
+
+        let config = SandboxConfig::default();
+        let dir = tempfile::tempdir().expect("create temp dir");
+
+        // Absolute path: bypasses PATH resolution, still needs dynamic linker.
+        let policy = config.build_policy(dir.path(), &[]);
+        let mut cmd = Command::new("/usr/bin/uname");
+        apply_sandbox(&mut cmd, policy).expect("apply sandbox");
+        let output = cmd.output().expect("spawn");
+        assert!(
+            output.status.success(),
+            "absolute path exec must succeed under sandbox: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Bare command: needs PATH resolution + dynamic linker loading.
+        let policy = config.build_policy(dir.path(), &[]);
+        let mut cmd = Command::new("uname");
+        apply_sandbox(&mut cmd, policy).expect("apply sandbox");
+        let output = cmd.output().expect("spawn");
+        assert!(
+            output.status.success(),
+            "bare command exec must succeed under sandbox: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 }
