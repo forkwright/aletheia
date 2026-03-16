@@ -1,0 +1,145 @@
+/*
+ * Base styles: reset, body defaults, scrollbar, selection, focus ring.
+ *
+ * Imports tokens and themes so a single stylesheet entry point is needed.
+ */
+
+@import "fonts.css";
+@import "tokens.css";
+@import "themes.css";
+
+/* ===================================================================== */
+/* Reset                                                                 */
+/* ===================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* ===================================================================== */
+/* Body defaults                                                         */
+/* ===================================================================== */
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: var(--weight-normal);
+  line-height: var(--leading-normal);
+  color: var(--text-primary);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings use display font */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+h1 { font-size: var(--text-3xl); }
+h2 { font-size: var(--text-2xl); }
+h3 { font-size: var(--text-xl); }
+
+/* Code uses monospace */
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+pre {
+  overflow-x: auto;
+  background-color: var(--code-bg);
+  color: var(--code-fg);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+/* ===================================================================== */
+/* Selection                                                             */
+/* ===================================================================== */
+
+::selection {
+  background-color: var(--selection-bg);
+  color: var(--selection-fg);
+}
+
+/* ===================================================================== */
+/* Focus ring                                                            */
+/* ===================================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ===================================================================== */
+/* Scrollbar styling                                                     */
+/* ===================================================================== */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Firefox scrollbar */
+@supports (scrollbar-color: auto) {
+  * {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    scrollbar-width: thin;
+  }
+}
+
+/* ===================================================================== */
+/* Utility: smooth transitions for theme switching                       */
+/* ===================================================================== */
+
+[data-theme] {
+  transition:
+    background-color var(--transition-measured),
+    color var(--transition-measured),
+    border-color var(--transition-measured);
+}

@@ -1,0 +1,182 @@
+/*
+ * Theme definitions: dark (default) and light.
+ *
+ * Applied via [data-theme] attribute on the root element.
+ * All color tokens consumed by components reference these properties.
+ */
+
+/* ===================================================================== */
+/* Dark theme — default                                                  */
+/* ===================================================================== */
+
+[data-theme="dark"],
+:root {
+  /* Backgrounds */
+  --bg: #12110f;
+  --bg-surface: #1a1816;
+  --bg-surface-bright: #24211e;
+  --bg-surface-dim: #0d0c0a;
+  --bg-overlay: rgb(18 17 15 / 0.85);
+
+  /* Text */
+  --text-primary: #e8e6e3;
+  --text-secondary: #a8a49e;
+  --text-muted: #706c66;
+  --text-inverse: #12110f;
+
+  /* Borders */
+  --border: #2e2b27;
+  --border-focused: #9A7B4F;
+  --border-separator: #221f1c;
+  --border-selected: #9A7B4F;
+
+  /* Status — muted earth tones */
+  --status-success: #5C7A4A;
+  --status-warning: #B8923B;
+  --status-error: #A04040;
+  --status-info: #5A7A8A;
+
+  --status-success-bg: #1a2214;
+  --status-warning-bg: #261f10;
+  --status-error-bg: #261414;
+  --status-info-bg: #141e24;
+
+  /* Roles */
+  --role-user: #9A7B4F;
+  --role-assistant: #5C7A4A;
+  --role-system: #706c66;
+
+  /* Code */
+  --code-fg: #d4d0ca;
+  --code-bg: #1a1816;
+  --code-lang: #706c66;
+
+  /* Syntax — warm-shifted */
+  --syntax-keyword: #CC7755;
+  --syntax-string: #7A9B6A;
+  --syntax-comment: #706c66;
+  --syntax-function: #B08E5C;
+  --syntax-type: #8A9AB0;
+  --syntax-number: #C4913A;
+  --syntax-operator: #a8a49e;
+
+  /* Thinking */
+  --thinking-fg: #706c66;
+  --thinking-border: #2e2b27;
+
+  /* Scrollbar */
+  --scrollbar-track: #1a1816;
+  --scrollbar-thumb: #2e2b27;
+  --scrollbar-thumb-hover: #3d3832;
+
+  /* Focus ring */
+  --focus-ring: rgb(154 123 79 / 0.5);
+
+  /* Selection */
+  --selection-bg: rgb(154 123 79 / 0.3);
+  --selection-fg: #e8e6e3;
+
+  /* ------------------------------------------------------------------ */
+  /* Dye palette — Greek-named semantic colors                          */
+  /* ------------------------------------------------------------------ */
+
+  /* Aima (blood) — critical, destructive, danger */
+  --aima: #9B4444;
+  --aima-bg: #261818;
+
+  /* Thanatochromia (death) — terminal, finalized, archived */
+  --thanatochromia: #6B5B6B;
+  --thanatochromia-bg: #1E1A1E;
+
+  /* Aporia (uncertainty) — pending, ambiguous, needs attention */
+  --aporia: #B8923B;
+  --aporia-bg: #261F14;
+
+  /* Natural (undyed leather) — neutral, default, organic */
+  --natural: #A08060;
+  --natural-bg: #221C14;
+}
+
+/* ===================================================================== */
+/* Light theme                                                           */
+/* ===================================================================== */
+
+[data-theme="light"] {
+  /* Backgrounds — warm parchment */
+  --bg: #F5F0E8;
+  --bg-surface: #EDE8E0;
+  --bg-surface-bright: #FDFAF5;
+  --bg-surface-dim: #E4DFD7;
+  --bg-overlay: rgb(245 240 232 / 0.85);
+
+  /* Text — deep warm brown */
+  --text-primary: #2C2418;
+  --text-secondary: #5C5248;
+  --text-muted: #8A8078;
+  --text-inverse: #F5F0E8;
+
+  /* Borders */
+  --border: #D4CFC7;
+  --border-focused: #9A7B4F;
+  --border-separator: #E0DBD3;
+  --border-selected: #9A7B4F;
+
+  /* Status — same palette, lighter values */
+  --status-success: #4A6A3A;
+  --status-warning: #9A7A2E;
+  --status-error: #8A3030;
+  --status-info: #4A6A7A;
+
+  --status-success-bg: #E8F0E0;
+  --status-warning-bg: #F5EDD8;
+  --status-error-bg: #F5E0E0;
+  --status-info-bg: #E0ECF2;
+
+  /* Roles */
+  --role-user: #7A6240;
+  --role-assistant: #4A6A3A;
+  --role-system: #8A8078;
+
+  /* Code */
+  --code-fg: #3C3428;
+  --code-bg: #EDE8E0;
+  --code-lang: #8A8078;
+
+  /* Syntax — warm-shifted counterpart */
+  --syntax-keyword: #A05A3A;
+  --syntax-string: #5A7A4A;
+  --syntax-comment: #8A8078;
+  --syntax-function: #8A6A38;
+  --syntax-type: #5A6A80;
+  --syntax-number: #A07A2A;
+  --syntax-operator: #5C5248;
+
+  /* Thinking */
+  --thinking-fg: #8A8078;
+  --thinking-border: #D4CFC7;
+
+  /* Scrollbar */
+  --scrollbar-track: #EDE8E0;
+  --scrollbar-thumb: #D4CFC7;
+  --scrollbar-thumb-hover: #C0BAB0;
+
+  /* Focus ring */
+  --focus-ring: rgb(154 123 79 / 0.4);
+
+  /* Selection */
+  --selection-bg: rgb(154 123 79 / 0.25);
+  --selection-fg: #2C2418;
+
+  /* Dye palette — same hues, adapted for light background */
+  --aima: #8A3030;
+  --aima-bg: #F5E0E0;
+
+  --thanatochromia: #5C4C5C;
+  --thanatochromia-bg: #EDE0ED;
+
+  --aporia: #9A7A2E;
+  --aporia-bg: #F5EDD8;
+
+  --natural: #8A6A44;
+  --natural-bg: #EDE4D8;
+}
