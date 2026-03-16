@@ -99,13 +99,13 @@ pub fn all_keybindings() -> &'static [Keybinding] {
         },
         Keybinding {
             keys: "Shift+Up",
-            description: "Scroll up",
+            description: "Scroll up 1 line",
             contexts: &[KeyContext::Chat],
             show_in_status_bar: false,
         },
         Keybinding {
             keys: "Shift+Down",
-            description: "Scroll down",
+            description: "Scroll down 1 line",
             contexts: &[KeyContext::Chat],
             show_in_status_bar: false,
         },
@@ -600,6 +600,8 @@ pub(crate) enum Action {
     ScrollPageDown,
     ScrollUp,
     ScrollDown,
+    ScrollLineUp,
+    ScrollLineDown,
 }
 
 impl Action {
@@ -625,6 +627,8 @@ impl Action {
             Self::ScrollPageDown => Msg::ScrollPageDown,
             Self::ScrollUp => Msg::ScrollUp,
             Self::ScrollDown => Msg::ScrollDown,
+            Self::ScrollLineUp => Msg::ScrollLineUp,
+            Self::ScrollLineDown => Msg::ScrollLineDown,
         }
     }
 
@@ -649,6 +653,8 @@ impl Action {
             Self::ScrollPageDown => "scroll_page_down",
             Self::ScrollUp => "scroll_up",
             Self::ScrollDown => "scroll_down",
+            Self::ScrollLineUp => "scroll_line_up",
+            Self::ScrollLineDown => "scroll_line_down",
         }
     }
 
@@ -673,6 +679,8 @@ impl Action {
             Self::ScrollPageDown,
             Self::ScrollUp,
             Self::ScrollDown,
+            Self::ScrollLineUp,
+            Self::ScrollLineDown,
         ]
     }
 }
@@ -796,9 +804,12 @@ impl KeyMap {
                 Action::ScrollPageDown,
                 vec![(KeyModifiers::NONE, KeyCode::PageDown)],
             ),
-            (Action::ScrollUp, vec![(KeyModifiers::SHIFT, KeyCode::Up)]),
             (
-                Action::ScrollDown,
+                Action::ScrollLineUp,
+                vec![(KeyModifiers::SHIFT, KeyCode::Up)],
+            ),
+            (
+                Action::ScrollLineDown,
                 vec![(KeyModifiers::SHIFT, KeyCode::Down)],
             ),
         ]

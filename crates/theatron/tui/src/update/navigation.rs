@@ -16,6 +16,21 @@ pub(crate) fn handle_scroll_down(app: &mut App) {
     }
 }
 
+pub(crate) fn handle_scroll_line_up(app: &mut App) {
+    app.scroll_offset = app.scroll_offset.saturating_add(1);
+    app.auto_scroll = false;
+    clamp_scroll_offset(app);
+}
+
+pub(crate) fn handle_scroll_line_down(app: &mut App) {
+    if app.scroll_offset >= 1 {
+        app.scroll_offset -= 1;
+    } else {
+        app.scroll_offset = 0;
+        app.auto_scroll = true;
+    }
+}
+
 /// Approximate chat viewport height from the current terminal height.
 ///
 /// Subtracts fixed chrome: title bar (1) + status bar (2) + minimum input area (3).
@@ -223,6 +238,43 @@ mod tests {
         app.scroll_offset = 50;
         app.auto_scroll = false;
         handle_scroll_to_bottom(&mut app);
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_line_up_increases_offset_by_one() {
+        let mut app = test_app();
+        handle_scroll_line_up(&mut app);
+        assert_eq!(app.scroll_offset, 1);
+        assert!(!app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_line_up_accumulates() {
+        let mut app = test_app();
+        handle_scroll_line_up(&mut app);
+        handle_scroll_line_up(&mut app);
+        handle_scroll_line_up(&mut app);
+        assert_eq!(app.scroll_offset, 3);
+    }
+
+    #[test]
+    fn scroll_line_down_decreases_offset_by_one() {
+        let mut app = test_app();
+        app.scroll_offset = 5;
+        app.auto_scroll = false;
+        handle_scroll_line_down(&mut app);
+        assert_eq!(app.scroll_offset, 4);
+        assert!(!app.auto_scroll);
+    }
+
+    #[test]
+    fn scroll_line_down_to_zero_enables_auto_scroll() {
+        let mut app = test_app();
+        app.scroll_offset = 1;
+        app.auto_scroll = false;
+        handle_scroll_line_down(&mut app);
         assert_eq!(app.scroll_offset, 0);
         assert!(app.auto_scroll);
     }
