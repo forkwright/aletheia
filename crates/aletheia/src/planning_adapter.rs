@@ -57,8 +57,9 @@ impl PlanningService for FilesystemPlanningService {
                     project.scope = Some(s);
                 }
                 let ws_path = root.join(project.id.to_string());
-                let ws =
-                    ProjectWorkspace::create(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let ws = ProjectWorkspace::create(&ws_path)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
                 ws.save_project(&project)
                     .map_err(boxed)
                     .context(WorkspaceSnafu)?;
@@ -78,8 +79,9 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws =
-                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
                 let project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
                 serde_json::to_string_pretty(&project).context(SerializeSnafu)
             })
@@ -99,8 +101,9 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws =
-                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
                 let mut project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
                 let transition = parse_transition(&transition_str)?;
                 project
@@ -130,8 +133,9 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws =
-                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
                 let mut project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
                 #[expect(clippy::cast_possible_truncation, reason = "phase count fits in u32")]
                 let order = project.phases.len() as u32 + 1;
@@ -162,8 +166,9 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws =
-                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
                 let mut project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
                 let plan = find_plan_mut(&mut project, &phase_id, &plan_id)?;
                 plan.state = PlanState::Complete;
@@ -195,8 +200,9 @@ impl PlanningService for FilesystemPlanningService {
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
                 let ws_path = root.join(&project_id);
-                let ws =
-                    ProjectWorkspace::open(&ws_path).map_err(boxed).context(WorkspaceSnafu)?;
+                let ws = ProjectWorkspace::open(&ws_path)
+                    .map_err(boxed)
+                    .context(WorkspaceSnafu)?;
                 let mut project = ws.load_project().map_err(boxed).context(WorkspaceSnafu)?;
                 let plan = find_plan_mut(&mut project, &phase_id, &plan_id)?;
                 plan.state = PlanState::Failed;

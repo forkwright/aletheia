@@ -377,14 +377,22 @@ pub trait KnowledgeSearchService: Send + Sync {
         query: &str,
         nous_id: &str,
         limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, crate::error::KnowledgeAdapterError>> + Send + '_>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Vec<MemoryResult>, crate::error::KnowledgeAdapterError>>
+                + Send
+                + '_,
+        >,
+    >;
 
     fn correct_fact(
         &self,
         fact_id: &str,
         new_content: &str,
         nous_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<String, crate::error::KnowledgeAdapterError>> + Send + '_>>;
+    ) -> Pin<
+        Box<dyn Future<Output = Result<String, crate::error::KnowledgeAdapterError>> + Send + '_>,
+    >;
 
     fn retract_fact(
         &self,
@@ -397,18 +405,36 @@ pub trait KnowledgeSearchService: Send + Sync {
         nous_id: Option<&str>,
         since: Option<&str>,
         limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, crate::error::KnowledgeAdapterError>> + Send + '_>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Vec<FactSummary>, crate::error::KnowledgeAdapterError>>
+                + Send
+                + '_,
+        >,
+    >;
 
     fn forget_fact(
         &self,
         fact_id: &str,
         reason: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, crate::error::KnowledgeAdapterError>> + Send + '_>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<FactSummary, crate::error::KnowledgeAdapterError>>
+                + Send
+                + '_,
+        >,
+    >;
 
     fn unforget_fact(
         &self,
         fact_id: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<FactSummary, crate::error::KnowledgeAdapterError>> + Send + '_>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<FactSummary, crate::error::KnowledgeAdapterError>>
+                + Send
+                + '_,
+        >,
+    >;
 
     fn datalog_query(
         &self,
@@ -416,7 +442,13 @@ pub trait KnowledgeSearchService: Send + Sync {
         params: Option<serde_json::Value>,
         timeout_secs: Option<f64>,
         row_limit: Option<usize>,
-    ) -> Pin<Box<dyn Future<Output = Result<DatalogResult, crate::error::KnowledgeAdapterError>> + Send + '_>>;
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<DatalogResult, crate::error::KnowledgeAdapterError>>
+                + Send
+                + '_,
+        >,
+    >;
 }
 
 /// Result from a read-only Datalog query.

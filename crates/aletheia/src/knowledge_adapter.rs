@@ -38,9 +38,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         query: &str,
         nous_id: &str,
         limit: usize,
-    ) -> Pin<
-        Box<dyn Future<Output = Result<Vec<MemoryResult>, KnowledgeAdapterError>> + Send + '_>,
-    > {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<MemoryResult>, KnowledgeAdapterError>> + Send + '_>>
+    {
         let query = query.to_owned();
         let nous_id = nous_id.to_owned();
         Box::pin(async move {
@@ -216,9 +215,8 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         nous_id: Option<&str>,
         since: Option<&str>,
         limit: usize,
-    ) -> Pin<
-        Box<dyn Future<Output = Result<Vec<FactSummary>, KnowledgeAdapterError>> + Send + '_>,
-    > {
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<FactSummary>, KnowledgeAdapterError>> + Send + '_>>
+    {
         let nous_id = nous_id.map(str::to_owned);
         let since = since.map(str::to_owned);
         Box::pin(async move {
@@ -260,10 +258,9 @@ impl KnowledgeSearchService for KnowledgeSearchAdapter {
         let fact_id = aletheia_mneme::id::FactId::from(fact_id);
         let reason = reason.to_owned();
         Box::pin(async move {
-            let reason: aletheia_mneme::knowledge::ForgetReason =
-                reason.parse().map_err(|e: String| {
-                    InvalidInputSnafu { message: e }.build()
-                })?;
+            let reason: aletheia_mneme::knowledge::ForgetReason = reason
+                .parse()
+                .map_err(|e: String| InvalidInputSnafu { message: e }.build())?;
             let fact = self
                 .store
                 .forget_fact_async(fact_id, reason)
