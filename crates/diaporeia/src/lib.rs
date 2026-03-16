@@ -15,6 +15,7 @@
 //! - **stdio**: For `aletheia mcp` subcommand (Claude Code / local agent).
 
 pub mod error;
+pub(crate) mod rate_limit;
 mod resources;
 pub(crate) mod sanitize;
 pub mod server;

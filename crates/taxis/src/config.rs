@@ -34,6 +34,8 @@ pub struct AletheiaConfig {
     pub credential: CredentialConfig,
     /// Structured file logging configuration.
     pub logging: LoggingSettings,
+    /// MCP server configuration.
+    pub mcp: McpConfig,
 }
 
 /// Sandbox enforcement level for tool execution.
@@ -802,6 +804,42 @@ impl Default for LoggingSettings {
             log_dir: None,
             retention_days: 14,
             level: "warn".to_owned(),
+        }
+    }
+}
+
+/// MCP server configuration.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct McpConfig {
+    /// Per-session rate limiting for MCP tool calls.
+    pub rate_limit: McpRateLimitConfig,
+}
+
+/// Per-session rate limiting configuration for MCP requests.
+///
+/// Applies separate token bucket limits for expensive operations
+/// (session_message, session_create, knowledge_search) and cheap
+/// read/status operations. Limits are enforced per MCP session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct McpRateLimitConfig {
+    /// Whether MCP rate limiting is active.
+    pub enabled: bool,
+    /// Maximum requests per minute for expensive operations.
+    pub message_requests_per_minute: u32,
+    /// Maximum requests per minute for read/status operations.
+    pub read_requests_per_minute: u32,
+}
+
+impl Default for McpRateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            message_requests_per_minute: 60,
+            read_requests_per_minute: 300,
         }
     }
 }

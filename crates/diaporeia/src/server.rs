@@ -12,6 +12,7 @@ use rmcp::model::{
 };
 use rmcp::tool_handler;
 
+use crate::rate_limit::RateLimiter;
 use crate::resources;
 use crate::state::DiaporeiaState;
 
@@ -22,14 +23,26 @@ use crate::state::DiaporeiaState;
 #[derive(Clone)]
 pub struct DiaporeiaServer {
     pub(crate) state: Arc<DiaporeiaState>,
+    pub(crate) rate_limiter: Arc<RateLimiter>,
     tool_router: ToolRouter<Self>,
 }
 
 impl DiaporeiaServer {
     /// Create a new server instance with shared state.
+    ///
+    /// Each instance gets its own rate limiter (per-session limiting).
+    /// Configuration is read from the shared config at construction time.
     pub fn with_state(state: Arc<DiaporeiaState>) -> Self {
+        let rate_limiter = {
+            // NOTE: blocking read is acceptable here because this runs once per
+            // session creation, not in a hot loop. The RwLock is only contended
+            // during config reload.
+            let config = state.config.blocking_read();
+            Arc::new(RateLimiter::from_config(&config.mcp.rate_limit))
+        };
         Self {
             state,
+            rate_limiter,
             tool_router: Self::tool_router(),
         }
     }
