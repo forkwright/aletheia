@@ -283,6 +283,7 @@ impl NousHandle {
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
+    use tracing::Instrument;
 
     #[test]
     fn handle_id_returns_correct_value() {
@@ -357,11 +358,14 @@ mod tests {
         let handle = NousHandle::new("syn".to_owned(), tx);
 
         // Spawn a task that receives the message but drops the reply channel
-        tokio::spawn(async move {
-            if let Some(NousMessage::Turn { reply, .. }) = rx.recv().await {
-                drop(reply);
+        tokio::spawn(
+            async move {
+                if let Some(NousMessage::Turn { reply, .. }) = rx.recv().await {
+                    drop(reply);
+                }
             }
-        });
+            .instrument(tracing::info_span!("test_drop_reply")),
+        );
 
         let err = handle.send_turn("main", "Hello").await;
         assert!(err.is_err());
@@ -378,27 +382,30 @@ mod tests {
         let handle = NousHandle::new("syn".to_owned(), tx);
 
         // Simulate actor loop: receive messages and reply
-        let actor = tokio::spawn(async move {
-            let mut received = 0u32;
-            while let Some(msg) = rx.recv().await {
-                match msg {
-                    NousMessage::Turn { reply, .. } | NousMessage::StreamingTurn { reply, .. } => {
-                        // Actor sends result: receiver may already be dropped.
-                        // This must not panic.
-                        let _ = reply.send(Err(crate::error::PipelineStageSnafu {
-                            stage: "test",
-                            message: "simulated",
+        let actor = tokio::spawn(
+            async move {
+                let mut received = 0u32;
+                while let Some(msg) = rx.recv().await {
+                    match msg {
+                        NousMessage::Turn { reply, .. }
+                        | NousMessage::StreamingTurn { reply, .. } => {
+                            // Actor sends result: receiver may already be dropped.
+                            // This must not panic.
+                            let _ = reply.send(Err(crate::error::PipelineStageSnafu {
+                                stage: "test",
+                                message: "simulated",
+                            }
+                            .build()));
+                            received += 1;
                         }
-                        .build()));
-                        received += 1;
+                        NousMessage::Shutdown => break,
+                        _ => {}
                     }
-                    NousMessage::Shutdown => break,
-                    // NOTE: test actor ignores non-Turn/non-Shutdown messages
-                    _ => {}
                 }
+                received
             }
-            received
-        });
+            .instrument(tracing::info_span!("test_actor_loop")),
+        );
 
         // Send a turn, then drop the handle's receiver (simulating client disconnect)
         let send_result = {

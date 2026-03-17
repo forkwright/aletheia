@@ -301,6 +301,7 @@ impl From<tokio::task::JoinError> for ApiError {
 mod tests {
     use super::*;
     use axum::response::IntoResponse;
+    use tracing::Instrument;
 
     #[test]
     fn rate_limited_includes_retry_after_header() {
@@ -427,9 +428,12 @@ mod tests {
 
     #[tokio::test]
     async fn join_error_returns_generic_message() {
-        let join_err = tokio::spawn(async { panic!("database connection string leaked") })
-            .await
-            .unwrap_err();
+        let join_err = tokio::spawn(
+            async { panic!("database connection string leaked") }
+                .instrument(tracing::info_span!("test_panic_task")),
+        )
+        .await
+        .unwrap_err();
         let api_err = ApiError::from(join_err);
         let response = api_err.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);

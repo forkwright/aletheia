@@ -2,6 +2,7 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 use super::*;
 use crate::execution::execute_builtin;
+use tracing::Instrument;
 
 fn make_echo_task(id: &str) -> TaskDef {
     TaskDef {
@@ -34,9 +35,12 @@ async fn shutdown_exits_run_loop() {
     let token = CancellationToken::new();
     let mut runner = TaskRunner::new("test-nous", token.clone());
 
-    let handle = tokio::spawn(async move {
-        runner.run().await;
-    });
+    let handle = tokio::spawn(
+        async move {
+            runner.run().await;
+        }
+        .instrument(tracing::info_span!("test_runner")),
+    );
 
     token.cancel();
 
@@ -313,9 +317,12 @@ async fn child_token_cancelled_by_parent() {
     let child = parent.child_token();
     let mut runner = TaskRunner::new("test-nous", child);
 
-    let handle = tokio::spawn(async move {
-        runner.run().await;
-    });
+    let handle = tokio::spawn(
+        async move {
+            runner.run().await;
+        }
+        .instrument(tracing::info_span!("test_runner")),
+    );
 
     parent.cancel();
 
@@ -332,9 +339,12 @@ async fn dropped_token_stops_runner() {
     let child = token.child_token();
     let mut runner = TaskRunner::new("test-nous", child);
 
-    let handle = tokio::spawn(async move {
-        runner.run().await;
-    });
+    let handle = tokio::spawn(
+        async move {
+            runner.run().await;
+        }
+        .instrument(tracing::info_span!("test_runner")),
+    );
 
     token.cancel();
     drop(token);
@@ -348,9 +358,12 @@ async fn shutdown_completes_within_timeout() {
     let token = CancellationToken::new();
     let mut runner = TaskRunner::new("test-nous", token.clone());
 
-    let handle = tokio::spawn(async move {
-        runner.run().await;
-    });
+    let handle = tokio::spawn(
+        async move {
+            runner.run().await;
+        }
+        .instrument(tracing::info_span!("test_runner")),
+    );
 
     token.cancel();
     let timeout = Duration::from_secs(2);
@@ -371,8 +384,12 @@ async fn independent_child_tokens_isolated() {
     let mut runner_a = TaskRunner::new("nous-a", child_a.clone());
     let mut runner_b = TaskRunner::new("nous-b", child_b);
 
-    let handle_a = tokio::spawn(async move { runner_a.run().await });
-    let handle_b = tokio::spawn(async move { runner_b.run().await });
+    let handle_a = tokio::spawn(
+        async move { runner_a.run().await }.instrument(tracing::info_span!("test_runner_a")),
+    );
+    let handle_b = tokio::spawn(
+        async move { runner_b.run().await }.instrument(tracing::info_span!("test_runner_b")),
+    );
 
     child_a.cancel();
 
@@ -449,13 +466,16 @@ async fn hung_task_cancelled_after_2x_timeout() {
     runner.register(task);
 
     // Simulate a hung task by spawning a long sleep.
-    let handle = tokio::spawn(async {
-        tokio::time::sleep(Duration::from_secs(60)).await;
-        Ok(ExecutionResult {
-            success: true,
-            output: None,
-        })
-    });
+    let handle = tokio::spawn(
+        async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(ExecutionResult {
+                success: true,
+                output: None,
+            })
+        }
+        .instrument(tracing::info_span!("test_hung_task")),
+    );
 
     runner.in_flight.insert(
         "hung-task".to_owned(),
@@ -579,13 +599,16 @@ async fn in_flight_reported_in_status() {
     let mut runner = TaskRunner::new("test-nous", token);
     runner.register(make_echo_task("inflight-task"));
 
-    let handle = tokio::spawn(async {
-        tokio::time::sleep(Duration::from_secs(60)).await;
-        Ok(ExecutionResult {
-            success: true,
-            output: None,
-        })
-    });
+    let handle = tokio::spawn(
+        async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(ExecutionResult {
+                success: true,
+                output: None,
+            })
+        }
+        .instrument(tracing::info_span!("test_inflight_task")),
+    );
     runner.in_flight.insert(
         "inflight-task".to_owned(),
         InFlightTask {

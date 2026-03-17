@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
+use tracing::Instrument;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -773,18 +774,21 @@ async fn concurrent_session_creation() {
 
     for i in 0..5 {
         let router = build_router(Arc::clone(&state), &test_security_config());
-        handles.push(tokio::spawn(async move {
-            let req = authed_request(
-                "POST",
-                "/api/v1/sessions",
-                Some(serde_json::json!({
-                    "nous_id": "syn",
-                    "session_key": format!("concurrent-{i}")
-                })),
-            );
-            let resp = router.oneshot(req).await.unwrap();
-            resp.status()
-        }));
+        handles.push(tokio::spawn(
+            async move {
+                let req = authed_request(
+                    "POST",
+                    "/api/v1/sessions",
+                    Some(serde_json::json!({
+                        "nous_id": "syn",
+                        "session_key": format!("concurrent-{i}")
+                    })),
+                );
+                let resp = router.oneshot(req).await.unwrap();
+                resp.status()
+            }
+            .instrument(tracing::info_span!("test_session_create", index = i)),
+        ));
     }
 
     for handle in handles {
@@ -2789,30 +2793,33 @@ async fn sse_concurrent_connections_each_receive_complete_stream() {
     let mut handles = Vec::new();
     for i in 0..3u32 {
         let router = build_router(Arc::clone(&state), &test_security_config());
-        handles.push(tokio::spawn(async move {
-            // Each concurrent client creates its own session to avoid sharing state.
-            let create_req = authed_request(
-                "POST",
-                "/api/v1/sessions",
-                Some(serde_json::json!({
-                    "nous_id": "syn",
-                    "session_key": format!("concurrent-sse-{i}"),
-                })),
-            );
-            let create_resp = router.clone().oneshot(create_req).await.unwrap();
-            assert_eq!(create_resp.status(), StatusCode::CREATED);
-            let session = body_json(create_resp).await;
-            let id = session["id"].as_str().unwrap().to_owned();
+        handles.push(tokio::spawn(
+            async move {
+                // Each concurrent client creates its own session to avoid sharing state.
+                let create_req = authed_request(
+                    "POST",
+                    "/api/v1/sessions",
+                    Some(serde_json::json!({
+                        "nous_id": "syn",
+                        "session_key": format!("concurrent-sse-{i}"),
+                    })),
+                );
+                let create_resp = router.clone().oneshot(create_req).await.unwrap();
+                assert_eq!(create_resp.status(), StatusCode::CREATED);
+                let session = body_json(create_resp).await;
+                let id = session["id"].as_str().unwrap().to_owned();
 
-            let msg_req = authed_request(
-                "POST",
-                &format!("/api/v1/sessions/{id}/messages"),
-                Some(serde_json::json!({ "content": format!("Hello from client {i}") })),
-            );
-            let resp = router.oneshot(msg_req).await.unwrap();
-            assert_eq!(resp.status(), StatusCode::OK);
-            body_string(resp).await
-        }));
+                let msg_req = authed_request(
+                    "POST",
+                    &format!("/api/v1/sessions/{id}/messages"),
+                    Some(serde_json::json!({ "content": format!("Hello from client {i}") })),
+                );
+                let resp = router.oneshot(msg_req).await.unwrap();
+                assert_eq!(resp.status(), StatusCode::OK);
+                body_string(resp).await
+            }
+            .instrument(tracing::info_span!("test_sse_connection", index = i)),
+        ));
     }
 
     for handle in handles {

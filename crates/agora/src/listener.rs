@@ -129,6 +129,7 @@ impl Drop for ChannelListener {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use tracing::Instrument;
 
     #[test]
     fn redact_phone_long_number() {
@@ -216,9 +217,12 @@ mod tests {
     async fn listener_stop_aborts_tasks() {
         let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
 
-        let handle = tokio::spawn(async {
-            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-        });
+        let handle = tokio::spawn(
+            async {
+                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+            }
+            .instrument(tracing::info_span!("test_sleep_task")),
+        );
 
         let listener = ChannelListener::from_parts(rx, vec![handle]);
         listener.stop();
@@ -231,10 +235,13 @@ mod tests {
 
         let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
 
-        let handle = tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-            finished_clone.store(true, std::sync::atomic::Ordering::Relaxed);
-        });
+        let handle = tokio::spawn(
+            async move {
+                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                finished_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            .instrument(tracing::info_span!("test_sleep_task")),
+        );
 
         {
             let _listener = ChannelListener::from_parts(rx, vec![handle]);
@@ -252,9 +259,12 @@ mod tests {
     async fn into_receiver_returns_handles() {
         let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
 
-        let handle = tokio::spawn(async {
-            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-        });
+        let handle = tokio::spawn(
+            async {
+                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+            }
+            .instrument(tracing::info_span!("test_sleep_task")),
+        );
 
         let listener = ChannelListener::from_parts(rx, vec![handle]);
         let (_rx, handles) = listener.into_receiver();
