@@ -17,6 +17,18 @@ impl NousId {
     }
 }
 
+impl std::fmt::Display for NousId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for NousId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl From<String> for NousId {
     fn from(s: String) -> Self {
         Self(CompactString::from(s))
@@ -26,6 +38,12 @@ impl From<String> for NousId {
 impl From<&str> for NousId {
     fn from(s: &str) -> Self {
         Self(CompactString::from(s))
+    }
+}
+
+impl From<NousId> for String {
+    fn from(id: NousId) -> Self {
+        id.0.into()
     }
 }
 
@@ -53,6 +71,18 @@ impl SessionId {
     }
 }
 
+impl std::fmt::Display for SessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for SessionId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl From<String> for SessionId {
     fn from(s: String) -> Self {
         Self(CompactString::from(s))
@@ -62,6 +92,12 @@ impl From<String> for SessionId {
 impl From<&str> for SessionId {
     fn from(s: &str) -> Self {
         Self(CompactString::from(s))
+    }
+}
+
+impl From<SessionId> for String {
+    fn from(id: SessionId) -> Self {
+        id.0.into()
     }
 }
 
@@ -76,6 +112,18 @@ impl std::ops::Deref for SessionId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TurnId(CompactString);
 
+impl std::fmt::Display for TurnId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for TurnId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl From<String> for TurnId {
     fn from(s: String) -> Self {
         Self(CompactString::from(s))
@@ -85,6 +133,12 @@ impl From<String> for TurnId {
 impl From<&str> for TurnId {
     fn from(s: &str) -> Self {
         Self(CompactString::from(s))
+    }
+}
+
+impl From<TurnId> for String {
+    fn from(id: TurnId) -> Self {
+        id.0.into()
     }
 }
 
@@ -99,6 +153,18 @@ impl std::ops::Deref for TurnId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ToolId(CompactString);
 
+impl std::fmt::Display for ToolId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for ToolId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl From<String> for ToolId {
     fn from(s: String) -> Self {
         Self(CompactString::from(s))
@@ -108,6 +174,12 @@ impl From<String> for ToolId {
 impl From<&str> for ToolId {
     fn from(s: &str) -> Self {
         Self(CompactString::from(s))
+    }
+}
+
+impl From<ToolId> for String {
+    fn from(id: ToolId) -> Self {
+        id.0.into()
     }
 }
 
@@ -358,6 +430,58 @@ mod tests {
             ConnectionState::Reconnecting { attempt: 3 },
             ConnectionState::Reconnecting { attempt: 3 },
         );
+    }
+
+    #[test]
+    fn nous_id_display() {
+        let id = NousId::from("syn");
+        assert_eq!(id.to_string(), "syn");
+    }
+
+    #[test]
+    fn nous_id_as_ref() {
+        let id = NousId::from("syn");
+        let s: &str = id.as_ref();
+        assert_eq!(s, "syn");
+    }
+
+    #[test]
+    fn nous_id_into_string() {
+        let id = NousId::from("syn");
+        let s: String = id.into();
+        assert_eq!(s, "syn");
+    }
+
+    #[test]
+    fn session_id_display() {
+        let id = SessionId::from("sess-1");
+        assert_eq!(id.to_string(), "sess-1");
+    }
+
+    #[test]
+    fn session_id_into_string() {
+        let id = SessionId::from("sess-1");
+        let s: String = id.into();
+        assert_eq!(s, "sess-1");
+    }
+
+    #[test]
+    fn turn_id_display() {
+        let id = TurnId::from("42");
+        assert_eq!(id.to_string(), "42");
+    }
+
+    #[test]
+    fn tool_id_display() {
+        let id = ToolId::from("t1");
+        assert_eq!(id.to_string(), "t1");
+    }
+
+    #[test]
+    fn tool_id_into_string() {
+        let id = ToolId::from("t1");
+        let s: String = id.into();
+        assert_eq!(s, "t1");
     }
 
     #[test]
