@@ -374,11 +374,11 @@ mod tests {
         let refresh = mgr.issue_refresh("user-1", Role::Operator).unwrap();
         let pair = mgr.refresh(&refresh).unwrap();
 
-        let access_claims = mgr.validate(&pair.access_token).unwrap();
+        let access_claims = mgr.validate(pair.access_token.expose_secret()).unwrap();
         assert_eq!(access_claims.sub, "user-1");
         assert_eq!(access_claims.kind, TokenKind::Access);
 
-        let refresh_claims = mgr.validate(&pair.refresh_token).unwrap();
+        let refresh_claims = mgr.validate(pair.refresh_token.expose_secret()).unwrap();
         assert_eq!(refresh_claims.kind, TokenKind::Refresh);
     }
 

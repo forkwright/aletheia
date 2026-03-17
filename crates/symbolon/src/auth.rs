@@ -219,7 +219,7 @@ mod tests {
     fn test_service() -> AuthService {
         AuthService::in_memory(AuthConfig {
             jwt: JwtConfig {
-                signing_key: SecretString::from("test-jwt-secret".to_owned()),
+                signing_key: secrecy::SecretString::from("test-jwt-secret"),
                 access_ttl: Duration::from_secs(3600),
                 refresh_ttl: Duration::from_secs(86400),
                 issuer: "aletheia-test".to_owned(),
