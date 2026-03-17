@@ -19,6 +19,7 @@ use tokio::sync::Mutex as TokioMutex;
 use tower::ServiceExt;
 
 use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
+use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::*;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -35,56 +36,6 @@ use tokio_util::sync::CancellationToken;
 // ---------------------------------------------------------------------------
 // Mock providers
 // ---------------------------------------------------------------------------
-
-/// Returns a fixed text response.
-struct MockProvider {
-    response: CompletionResponse,
-}
-
-impl MockProvider {
-    fn new(text: &str) -> Self {
-        Self {
-            response: CompletionResponse {
-                id: "msg_mock".to_owned(),
-                model: "mock-model".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![ContentBlock::Text {
-                    text: text.to_owned(),
-                    citations: None,
-                }],
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 5,
-                    ..Usage::default()
-                },
-            },
-        }
-    }
-}
-
-impl LlmProvider for MockProvider {
-    fn complete<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
-                + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async { Ok(self.response.clone()) })
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &["mock-model"]
-    }
-
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
-    fn name(&self) -> &str {
-        "mock"
-    }
-}
 
 /// Captures all LLM requests for inspection.
 struct CapturingMockProvider {
@@ -210,38 +161,6 @@ impl LlmProvider for SequentialMockProvider {
     }
 }
 
-/// Returns an error from the LLM.
-struct ErrorProvider;
-
-impl LlmProvider for ErrorProvider {
-    fn complete<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
-                + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async {
-            Err(aletheia_hermeneus::error::ApiRequestSnafu {
-                message: "simulated provider failure".to_owned(),
-            }
-            .build())
-        })
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &["mock-model"]
-    }
-
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
-    fn name(&self) -> &str {
-        "mock-error"
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Test harness
 // ---------------------------------------------------------------------------
@@ -254,7 +173,10 @@ struct TestHarness {
 
 impl TestHarness {
     async fn build() -> Self {
-        Self::build_with_provider(Box::new(MockProvider::new("Hello from mock!"))).await
+        Self::build_with_provider(Box::new(
+            MockProvider::new("Hello from mock!").models(&["mock-model"]),
+        ))
+        .await
     }
 
     async fn build_capturing(text: &str) -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
@@ -967,7 +889,12 @@ async fn error_empty_rename_returns_400() {
 
 #[tokio::test]
 async fn error_provider_failure_returns_sse_error_event() {
-    let harness = TestHarness::build_with_provider(Box::new(ErrorProvider)).await;
+    let harness = TestHarness::build_with_provider(Box::new(
+        MockProvider::error("simulated provider failure")
+            .models(&["mock-model"])
+            .named("mock-error"),
+    ))
+    .await;
     let router = harness.router();
 
     let session = harness.create_session(&router).await;

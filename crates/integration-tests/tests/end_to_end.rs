@@ -13,6 +13,7 @@ use secrecy::SecretString;
 use tower::ServiceExt;
 
 use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
+use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::*;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -26,55 +27,6 @@ use aletheia_taxis::oikos::Oikos;
 use tokio_util::sync::CancellationToken;
 
 // --- Mock Providers ---
-
-struct MockProvider {
-    response: CompletionResponse,
-}
-
-impl MockProvider {
-    fn new() -> Self {
-        Self {
-            response: CompletionResponse {
-                id: "msg_test".to_owned(),
-                model: "mock-model".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![ContentBlock::Text {
-                    text: "Hello from mock!".to_owned(),
-                    citations: None,
-                }],
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 5,
-                    ..Usage::default()
-                },
-            },
-        }
-    }
-}
-
-impl LlmProvider for MockProvider {
-    fn complete<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
-                + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async { Ok(self.response.clone()) })
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &["mock-model"]
-    }
-
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
-    fn name(&self) -> &str {
-        "mock"
-    }
-}
 
 struct CapturingMockProvider {
     response: CompletionResponse,
@@ -147,7 +99,10 @@ struct TestHarness {
 
 impl TestHarness {
     async fn build() -> Self {
-        Self::build_with_provider(Box::new(MockProvider::new())).await
+        Self::build_with_provider(Box::new(
+            MockProvider::new("Hello from mock!").models(&["mock-model"]),
+        ))
+        .await
     }
 
     async fn build_capturing() -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
