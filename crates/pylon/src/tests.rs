@@ -104,6 +104,9 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
 
     let jwt_manager = test_jwt_manager();
 
+    let default_config = aletheia_taxis::config::AletheiaConfig::default();
+    let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -113,9 +116,8 @@ async fn test_state_with_provider(with_provider: bool) -> (Arc<AppState>, tempfi
         jwt_manager,
         start_time: Instant::now(),
         auth_mode: "token".to_owned(),
-        config: Arc::new(tokio::sync::RwLock::new(
-            aletheia_taxis::config::AletheiaConfig::default(),
-        )),
+        config: Arc::new(tokio::sync::RwLock::new(default_config)),
+        config_tx,
         idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
@@ -1350,6 +1352,8 @@ async fn cors_rejects_unlisted_origin() {
 
 async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
+    let default_config = aletheia_taxis::config::AletheiaConfig::default();
+    let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config);
     let state = Arc::new(AppState {
         auth_mode: "none".to_owned(),
         session_store: Arc::clone(&state.session_store),
@@ -1360,6 +1364,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         jwt_manager: Arc::clone(&state.jwt_manager),
         start_time: state.start_time,
         config: Arc::clone(&state.config),
+        config_tx,
         idempotency_cache: Arc::clone(&state.idempotency_cache),
         shutdown: state.shutdown.clone(),
         #[cfg(feature = "knowledge-store")]

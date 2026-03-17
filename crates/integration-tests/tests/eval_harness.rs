@@ -86,6 +86,8 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         .issue_access("test-user", Role::Operator, None)
         .expect("test token");
 
+    let default_config = aletheia_taxis::config::AletheiaConfig::default();
+    let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
     let state = Arc::new(AppState {
         session_store,
         nous_manager: Arc::new(nous_manager),
@@ -95,9 +97,8 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
         jwt_manager,
         start_time: Instant::now(),
         auth_mode: "token".to_owned(),
-        config: Arc::new(tokio::sync::RwLock::new(
-            aletheia_taxis::config::AletheiaConfig::default(),
-        )),
+        config: Arc::new(tokio::sync::RwLock::new(default_config)),
+        config_tx,
         idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
