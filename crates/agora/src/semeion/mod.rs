@@ -267,7 +267,7 @@ impl ChannelProvider for SignalProvider {
                     }
                     SendResult {
                         sent: false,
-                        error: Some(format!("{e}")),
+                        error: Some(e.to_string()),
                     }
                 }
             }

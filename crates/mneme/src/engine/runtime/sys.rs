@@ -420,7 +420,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         let mut rows = vec![];
         let mut idx = 0;
         for col in &handle.metadata.keys {
-            let default_expr = col.default_gen.as_ref().map(|r#gen| format!("{}", r#gen));
+            let default_expr = col.default_gen.as_ref().map(|r#gen| r#gen.to_string());
 
             rows.push(vec![
                 json!(col.name),
@@ -433,7 +433,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             idx += 1;
         }
         for col in &handle.metadata.non_keys {
-            let default_expr = col.default_gen.as_ref().map(|r#gen| format!("{}", r#gen));
+            let default_expr = col.default_gen.as_ref().map(|r#gen| r#gen.to_string());
 
             rows.push(vec![
                 json!(col.name),
