@@ -25,8 +25,9 @@ pub(crate) fn handle_scroll_line_up(app: &mut App) {
 pub(crate) fn handle_scroll_line_down(app: &mut App) {
     if app.viewport.render.scroll_offset >= 1 {
         app.viewport.render.scroll_offset -= 1;
-    } else {
-        app.viewport.render.scroll_offset = 0;
+    }
+    // WHY: Re-enable auto-scroll when the user scrolls back to the bottom.
+    if app.viewport.render.scroll_offset == 0 {
         app.viewport.render.auto_scroll = true;
     }
 }
