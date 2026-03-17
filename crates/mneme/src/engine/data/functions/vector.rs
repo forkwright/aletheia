@@ -5,6 +5,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use rand::Rng;
 
+use super::arg;
 use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::engine::data::relation::VecElementType;
@@ -33,7 +34,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
         }
     };
 
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Json(j) => {
             let arr = j.0.as_array().ok_or_else(|| {
                 TypeMismatchSnafu {
@@ -198,7 +199,7 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
-    let len = args[0].get_int().ok_or_else(|| {
+    let len = arg(args, 0)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "rand_vec",
             expected: "an integer",
@@ -246,7 +247,7 @@ pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_l2_normalize(args: &[DataValue]) -> Result<DataValue> {
-    let a = &args[0];
+    let a = arg(args, 0)?;
     match a {
         DataValue::Vec(Vector::F32(a)) => {
             let norm = a.dot(a).sqrt();
@@ -265,8 +266,8 @@ pub(crate) fn op_l2_normalize(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
-    let a = &args[0];
-    let b = &args[1];
+    let a = arg(args, 0)?;
+    let b = arg(args, 1)?;
     match (a, b) {
         (DataValue::Vec(Vector::F32(a)), DataValue::Vec(Vector::F32(b))) => {
             if a.len() != b.len() {
@@ -299,8 +300,8 @@ pub(crate) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
-    let a = &args[0];
-    let b = &args[1];
+    let a = arg(args, 0)?;
+    let b = arg(args, 1)?;
     match (a, b) {
         (DataValue::Vec(Vector::F32(a)), DataValue::Vec(Vector::F32(b))) => {
             if a.len() != b.len() {
@@ -333,8 +334,8 @@ pub(crate) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_cos_dist(args: &[DataValue]) -> Result<DataValue> {
-    let a = &args[0];
-    let b = &args[1];
+    let a = arg(args, 0)?;
+    let b = arg(args, 1)?;
     match (a, b) {
         (DataValue::Vec(Vector::F32(a)), DataValue::Vec(Vector::F32(b))) => {
             if a.len() != b.len() {

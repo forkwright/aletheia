@@ -9,6 +9,8 @@ type Result<T> = DataResult<T>;
 use crate::engine::data::json::JsonValue;
 use crate::engine::data::value::{DataValue, JsonData};
 
+use super::arg;
+
 pub(crate) fn deep_merge_json(value1: JsonValue, value2: JsonValue) -> JsonValue {
     match (value1, value2) {
         (JsonValue::Object(mut obj1), JsonValue::Object(obj2)) => {
@@ -107,9 +109,9 @@ fn get_json_path_immutable_local<'a>(
 }
 
 pub(crate) fn get_impl(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::List(l) => {
-            let n = args[1].get_int().ok_or_else(|| {
+            let n = arg(args, 1)?.get_int().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "get",
                     expected: "an integer as second argument",
@@ -117,10 +119,12 @@ pub(crate) fn get_impl(args: &[DataValue]) -> Result<DataValue> {
                 .build()
             })?;
             let idx = get_index(n, l.len(), false)?;
-            Ok(l[idx].clone())
+            Ok(l.get(idx)
+                .ok_or_else(|| IndexOutOfBoundsSnafu { index: idx as i64 }.build())?
+                .clone())
         }
         DataValue::Json(json) => {
-            let res = match &args[1] {
+            let res = match arg(args, 1)? {
                 DataValue::Str(s) => json
                     .get(s as &str)
                     .ok_or_else(|| {
@@ -171,7 +175,7 @@ pub(crate) fn op_list(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Str(_) => {
             let mut ret: String = Default::default();
             for arg in args {
@@ -228,15 +232,15 @@ pub(crate) fn op_concat(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_append(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::List(l) => {
             let mut l = l.clone();
-            l.push(args[1].clone());
+            l.push(arg(args, 1)?.clone());
             Ok(DataValue::List(l))
         }
         DataValue::Set(l) => {
             let mut l = l.iter().cloned().collect_vec();
-            l.push(args[1].clone());
+            l.push(arg(args, 1)?.clone());
             Ok(DataValue::List(l))
         }
         _ => TypeMismatchSnafu {
@@ -248,14 +252,14 @@ pub(crate) fn op_append(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_prepend(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::List(pl) => {
-            let mut l = vec![args[1].clone()];
+            let mut l = vec![arg(args, 1)?.clone()];
             l.extend_from_slice(pl);
             Ok(DataValue::List(l))
         }
         DataValue::Set(pl) => {
-            let mut l = vec![args[1].clone()];
+            let mut l = vec![arg(args, 1)?.clone()];
             l.extend(pl.iter().cloned());
             Ok(DataValue::List(l))
         }
@@ -294,7 +298,7 @@ pub(crate) fn op_union(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_difference(args: &[DataValue]) -> Result<DataValue> {
-    let mut start: BTreeSet<_> = match &args[0] {
+    let mut start: BTreeSet<_> = match arg(args, 0)? {
         DataValue::List(l) => l.iter().cloned().collect(),
         DataValue::Set(s) => s.iter().cloned().collect(),
         _ => {
@@ -305,7 +309,7 @@ pub(crate) fn op_difference(args: &[DataValue]) -> Result<DataValue> {
             .fail();
         }
     };
-    for arg in &args[1..] {
+    for arg in args.get(1..).unwrap_or_default() {
         match arg {
             DataValue::List(l) => {
                 for el in l {
@@ -330,7 +334,7 @@ pub(crate) fn op_difference(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
-    let mut start: BTreeSet<_> = match &args[0] {
+    let mut start: BTreeSet<_> = match arg(args, 0)? {
         DataValue::List(l) => l.iter().cloned().collect(),
         DataValue::Set(s) => s.iter().cloned().collect(),
         _ => {
@@ -341,7 +345,7 @@ pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
             .fail();
         }
     };
-    for arg in &args[1..] {
+    for arg in args.get(1..).unwrap_or_default() {
         match arg {
             DataValue::List(l) => {
                 let other: BTreeSet<_> = l.iter().cloned().collect();
@@ -361,7 +365,7 @@ pub(crate) fn op_intersection(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_length(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match &args[0] {
+    Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Set(s) => s.len() as i64,
         DataValue::List(l) => l.len() as i64,
         DataValue::Str(s) => s.chars().count() as i64,
@@ -378,7 +382,7 @@ pub(crate) fn op_length(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_first(args: &[DataValue]) -> Result<DataValue> {
-    Ok(args[0]
+    Ok(arg(args, 0)?
         .get_slice()
         .ok_or_else(|| {
             TypeMismatchSnafu {
@@ -393,7 +397,7 @@ pub(crate) fn op_first(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_last(args: &[DataValue]) -> Result<DataValue> {
-    Ok(args[0]
+    Ok(arg(args, 0)?
         .get_slice()
         .ok_or_else(|| {
             TypeMismatchSnafu {
@@ -408,7 +412,7 @@ pub(crate) fn op_last(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_sorted(args: &[DataValue]) -> Result<DataValue> {
-    let mut arg = args[0]
+    let mut a = arg(args, 0)?
         .get_slice()
         .ok_or_else(|| {
             TypeMismatchSnafu {
@@ -418,12 +422,12 @@ pub(crate) fn op_sorted(args: &[DataValue]) -> Result<DataValue> {
             .build()
         })?
         .to_vec();
-    arg.sort();
-    Ok(DataValue::List(arg))
+    a.sort();
+    Ok(DataValue::List(a))
 }
 
 pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
-    let mut arg = args[0]
+    let mut a = arg(args, 0)?
         .get_slice()
         .ok_or_else(|| {
             TypeMismatchSnafu {
@@ -433,19 +437,19 @@ pub(crate) fn op_reverse(args: &[DataValue]) -> Result<DataValue> {
             .build()
         })?
         .to_vec();
-    arg.reverse();
-    Ok(DataValue::List(arg))
+    a.reverse();
+    Ok(DataValue::List(a))
 }
 
 pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
-    let arg = args[0].get_slice().ok_or_else(|| {
+    let a = arg(args, 0)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "chunks",
             expected: "a list as first argument",
         }
         .build()
     })?;
-    let n = args[1].get_int().ok_or_else(|| {
+    let n = arg(args, 1)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "chunks",
             expected: "an integer as second argument",
@@ -458,7 +462,7 @@ pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
             message: "second argument to 'chunks' must be positive"
         }
     );
-    let res = arg
+    let res = a
         .chunks(n as usize)
         .map(|el| DataValue::List(el.to_vec()))
         .collect_vec();
@@ -466,14 +470,14 @@ pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
-    let arg = args[0].get_slice().ok_or_else(|| {
+    let a = arg(args, 0)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "chunks_exact",
             expected: "a list as first argument",
         }
         .build()
     })?;
-    let n = args[1].get_int().ok_or_else(|| {
+    let n = arg(args, 1)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "chunks_exact",
             expected: "an integer as second argument",
@@ -486,7 +490,7 @@ pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
             message: "second argument to 'chunks_exact' must be positive"
         }
     );
-    let res = arg
+    let res = a
         .chunks_exact(n as usize)
         .map(|el| DataValue::List(el.to_vec()))
         .collect_vec();
@@ -494,14 +498,14 @@ pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_windows(args: &[DataValue]) -> Result<DataValue> {
-    let arg = args[0].get_slice().ok_or_else(|| {
+    let a = arg(args, 0)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "windows",
             expected: "a list as first argument",
         }
         .build()
     })?;
-    let n = args[1].get_int().ok_or_else(|| {
+    let n = arg(args, 1)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "windows",
             expected: "an integer as second argument",
@@ -514,7 +518,7 @@ pub(crate) fn op_windows(args: &[DataValue]) -> Result<DataValue> {
             message: "second argument to 'windows' must be positive"
         }
     );
-    let res = arg
+    let res = a
         .windows(n as usize)
         .map(|el| DataValue::List(el.to_vec()))
         .collect_vec();
@@ -542,21 +546,21 @@ pub(crate) fn op_maybe_get(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_slice(args: &[DataValue]) -> Result<DataValue> {
-    let l = args[0].get_slice().ok_or_else(|| {
+    let l = arg(args, 0)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "slice",
             expected: "a list as first argument",
         }
         .build()
     })?;
-    let m = args[1].get_int().ok_or_else(|| {
+    let m = arg(args, 1)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "slice",
             expected: "an integer as second argument",
         }
         .build()
     })?;
-    let n = args[2].get_int().ok_or_else(|| {
+    let n = arg(args, 2)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "slice",
             expected: "an integer as third argument",
@@ -565,13 +569,17 @@ pub(crate) fn op_slice(args: &[DataValue]) -> Result<DataValue> {
     })?;
     let m = get_index(m, l.len(), false)?;
     let n = get_index(n, l.len(), true)?;
-    Ok(DataValue::List(l[m..n].to_vec()))
+    Ok(DataValue::List(
+        l.get(m..n)
+            .ok_or_else(|| IndexOutOfBoundsSnafu { index: n as i64 }.build())?
+            .to_vec(),
+    ))
 }
 
 pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
     let [start, end] = match args.len() {
         1 => {
-            let end = args[0].get_int().ok_or_else(|| {
+            let end = arg(args, 0)?.get_int().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "int_range",
                     expected: "an integer for end",
@@ -581,14 +589,14 @@ pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
             [0, end]
         }
         2 => {
-            let start = args[0].get_int().ok_or_else(|| {
+            let start = arg(args, 0)?.get_int().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "int_range",
                     expected: "an integer for start",
                 }
                 .build()
             })?;
-            let end = args[1].get_int().ok_or_else(|| {
+            let end = arg(args, 1)?.get_int().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "int_range",
                     expected: "an integer for end",
@@ -598,21 +606,21 @@ pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
             [start, end]
         }
         3 => {
-            let start = args[0].get_int().ok_or_else(|| {
+            let start = arg(args, 0)?.get_int().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "int_range",
                     expected: "an integer for start",
                 }
                 .build()
             })?;
-            let end = args[1].get_int().ok_or_else(|| {
+            let end = arg(args, 1)?.get_int().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "int_range",
                     expected: "an integer for end",
                 }
                 .build()
             })?;
-            let step = args[2].get_int().ok_or_else(|| {
+            let step = arg(args, 2)?.get_int().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "int_range",
                     expected: "an integer for step",
@@ -646,7 +654,7 @@ pub(crate) fn op_int_range(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_assert(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Bool(true) => Ok(DataValue::from(true)),
         _ => AssertionFailedSnafu {
             message: format!("{args:?}"),

@@ -6,12 +6,13 @@ use itertools::Itertools;
 use snafu::ResultExt;
 use unicode_normalization::UnicodeNormalization;
 
+use super::arg;
 use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::engine::data::value::{DataValue, RegexWrapper};
 
 pub(crate) fn op_str_includes(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(l), DataValue::Str(r)) => Ok(DataValue::from(l.find(r as &str).is_some())),
         _ => TypeMismatchSnafu {
             op: "str_includes",
@@ -22,7 +23,7 @@ pub(crate) fn op_str_includes(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_lowercase(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.to_lowercase())),
         _ => TypeMismatchSnafu {
             op: "lowercase",
@@ -33,7 +34,7 @@ pub(crate) fn op_lowercase(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_uppercase(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.to_uppercase())),
         _ => TypeMismatchSnafu {
             op: "uppercase",
@@ -44,7 +45,7 @@ pub(crate) fn op_uppercase(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_trim(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.trim())),
         _ => TypeMismatchSnafu {
             op: "trim",
@@ -55,7 +56,7 @@ pub(crate) fn op_trim(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_trim_start(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.trim_start())),
         v => TypeMismatchSnafu {
             op: "trim_start",
@@ -66,7 +67,7 @@ pub(crate) fn op_trim_start(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_trim_end(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Str(s) => Ok(DataValue::from(s.trim_end())),
         _ => TypeMismatchSnafu {
             op: "trim_end",
@@ -77,7 +78,7 @@ pub(crate) fn op_trim_end(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_starts_with(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(l), DataValue::Str(r)) => Ok(DataValue::from(l.starts_with(r as &str))),
         (DataValue::Bytes(l), DataValue::Bytes(r)) => {
             Ok(DataValue::from(l.starts_with(r as &[u8])))
@@ -91,7 +92,7 @@ pub(crate) fn op_starts_with(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_ends_with(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(l), DataValue::Str(r)) => Ok(DataValue::from(l.ends_with(r as &str))),
         (DataValue::Bytes(l), DataValue::Bytes(r)) => Ok(DataValue::from(l.ends_with(r as &[u8]))),
         _ => TypeMismatchSnafu {
@@ -103,7 +104,7 @@ pub(crate) fn op_ends_with(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_regex(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         r @ DataValue::Regex(_) => r.clone(),
         DataValue::Str(s) => DataValue::Regex(RegexWrapper(
             regex::Regex::new(s).context(InvalidRegexSnafu)?,
@@ -119,7 +120,7 @@ pub(crate) fn op_regex(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_regex_matches(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(s), DataValue::Regex(r)) => Ok(DataValue::from(r.0.is_match(s))),
         _ => TypeMismatchSnafu {
             op: "regex_matches",
@@ -130,7 +131,7 @@ pub(crate) fn op_regex_matches(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_regex_replace(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1], &args[2]) {
+    match (arg(args, 0)?, arg(args, 1)?, arg(args, 2)?) {
         (DataValue::Str(s), DataValue::Regex(r), DataValue::Str(rp)) => {
             Ok(DataValue::Str(r.0.replace(s, rp as &str).into()))
         }
@@ -143,7 +144,7 @@ pub(crate) fn op_regex_replace(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_regex_replace_all(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1], &args[2]) {
+    match (arg(args, 0)?, arg(args, 1)?, arg(args, 2)?) {
         (DataValue::Str(s), DataValue::Regex(r), DataValue::Str(rp)) => {
             Ok(DataValue::Str(r.0.replace_all(s, rp as &str).into()))
         }
@@ -156,7 +157,7 @@ pub(crate) fn op_regex_replace_all(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_regex_extract(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(s), DataValue::Regex(r)) => {
             let found =
                 r.0.find_iter(s)
@@ -173,7 +174,7 @@ pub(crate) fn op_regex_extract(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_regex_extract_first(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(s), DataValue::Regex(r)) => {
             let found = r.0.find(s).map(|v| DataValue::from(v.as_str()));
             Ok(found.unwrap_or(DataValue::Null))
@@ -187,7 +188,7 @@ pub(crate) fn op_regex_extract_first(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_unicode_normalize(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Str(s), DataValue::Str(n)) => Ok(DataValue::Str(match n as &str {
             "nfc" => s.nfc().collect(),
             "nfd" => s.nfd().collect(),
@@ -209,7 +210,7 @@ pub(crate) fn op_unicode_normalize(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Bytes(b) => {
             let s = STANDARD.encode(b);
             Ok(DataValue::from(s))
@@ -224,7 +225,7 @@ pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Str(s) => {
             let b = STANDARD.decode(s).map_err(|_| {
                 EncodingFailedSnafu {
@@ -244,7 +245,7 @@ pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::List(
-        args[0]
+        arg(args, 0)?
             .get_str()
             .ok_or_else(|| {
                 TypeMismatchSnafu {
@@ -264,14 +265,14 @@ pub(crate) fn op_chars(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
-    let s = args[0].get_str().ok_or_else(|| {
+    let s = arg(args, 0)?.get_str().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "slice_string",
             expected: "a string as first argument",
         }
         .build()
     })?;
-    let m = args[1].get_int().ok_or_else(|| {
+    let m = arg(args, 1)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "slice_string",
             expected: "an integer as second argument",
@@ -284,7 +285,7 @@ pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
             message: "second argument to 'slice_string' mut be a positive integer"
         }
     );
-    let n = args[2].get_int().ok_or_else(|| {
+    let n = arg(args, 2)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "slice_string",
             expected: "an integer as third argument",
@@ -304,7 +305,7 @@ pub(crate) fn op_slice_string(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn op_from_substrings(args: &[DataValue]) -> Result<DataValue> {
     let mut ret = String::new();
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::List(ss) => {
             for arg in ss {
                 if let DataValue::Str(s) = arg {
