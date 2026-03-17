@@ -12,7 +12,7 @@ use crate::types::InboundMessage;
 
 fn redact_phone(phone: &str) -> String {
     if phone.len() > 4 {
-        format!("...{}", &phone[phone.len() - 4..])
+        format!("...{}", phone.get(phone.len() - 4..).unwrap_or(""))
     } else {
         "****".to_owned()
     }

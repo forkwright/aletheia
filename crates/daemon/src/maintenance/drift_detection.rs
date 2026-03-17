@@ -124,12 +124,12 @@ impl DriftDetector {
 
         for pattern in &self.config.ignore_patterns {
             if pattern.ends_with('/') {
-                let prefix = &pattern[..pattern.len() - 1];
+                let prefix = pattern.get(..pattern.len() - 1).unwrap_or("");
                 if path_str.starts_with(prefix) || path_str == *prefix {
                     return true;
                 }
             } else if pattern.starts_with("*.") {
-                let ext = &pattern[1..];
+                let ext = pattern.get(1..).unwrap_or("");
                 if path_str.ends_with(ext) {
                     return true;
                 }

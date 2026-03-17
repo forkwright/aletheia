@@ -170,7 +170,7 @@ fn render_thinking_block(
 
         for line in display_lines {
             let display = if line.len() > inner_width.saturating_sub(3) {
-                &line[..inner_width.saturating_sub(6)]
+                line.get(..inner_width.saturating_sub(6)).unwrap_or(line)
             } else {
                 line
             };
@@ -291,13 +291,15 @@ fn render_tool_call(
                 Span::styled("input:", theme.style_muted()),
             ]));
             let truncated_input = if input.len() > JSON_TRUNCATE_BYTES {
-                format!("{}...", &input[..JSON_TRUNCATE_BYTES])
+                format!("{}...", input.get(..JSON_TRUNCATE_BYTES).unwrap_or(input))
             } else {
                 input.clone()
             };
             for json_line in truncated_input.lines() {
                 let display = if json_line.len() > inner_width.saturating_sub(4) {
-                    &json_line[..inner_width.saturating_sub(7)]
+                    json_line
+                        .get(..inner_width.saturating_sub(7))
+                        .unwrap_or(json_line)
                 } else {
                     json_line
                 };
@@ -323,7 +325,9 @@ fn render_tool_call(
 
             for out_line in display_lines {
                 let display = if out_line.len() > inner_width.saturating_sub(4) {
-                    &out_line[..inner_width.saturating_sub(7)]
+                    out_line
+                        .get(..inner_width.saturating_sub(7))
+                        .unwrap_or(out_line)
                 } else {
                     out_line
                 };

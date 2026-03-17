@@ -36,23 +36,23 @@ pub(crate) fn strip_paths(message: &str) -> String {
         let is_abs_path_start =
             prev_byte.is_none() || prev_byte.is_some_and(|b| b.is_ascii_whitespace());
 
-        let after_slash = &remaining[slash_pos + 1..];
+        let after_slash = remaining.get(slash_pos + 1..).unwrap_or("");
         let next_is_path_char = after_slash
             .chars()
             .next()
             .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'));
 
         if is_abs_path_start && next_is_path_char {
-            result.push_str(&remaining[..slash_pos]);
+            result.push_str(remaining.get(..slash_pos).unwrap_or(""));
             result.push_str("[server path]");
             last_pushed_byte = Some(b']');
 
             let path_len = after_slash
                 .find(|c: char| !c.is_alphanumeric() && !matches!(c, '/' | '_' | '-' | '.'))
                 .unwrap_or(after_slash.len());
-            remaining = &after_slash[path_len..];
+            remaining = after_slash.get(path_len..).unwrap_or("");
         } else {
-            result.push_str(&remaining[..=slash_pos]);
+            result.push_str(remaining.get(..=slash_pos).unwrap_or(""));
             last_pushed_byte = Some(b'/');
             remaining = after_slash;
         }

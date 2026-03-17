@@ -245,7 +245,7 @@ fn extract_urls(text: &str) -> Vec<String> {
     for word in text.split_whitespace() {
         // NOTE: handle markdown link syntax [text](url) before falling through to plain URL detection
         if let Some(paren_start) = word.find("](") {
-            let url_part = &word[paren_start + 2..];
+            let url_part = word.get(paren_start + 2..).unwrap_or("");
             let candidate = url_part
                 .trim_end_matches(')')
                 .trim_end_matches(',')

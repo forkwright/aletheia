@@ -199,11 +199,15 @@ mod tests {
             .find(marker)
             .expect("CHECK constraint for category exists in DDL");
         let inner_start = start + marker.len();
-        let inner_end = DDL[inner_start..]
+        let inner_end = DDL
+            .get(inner_start..)
+            .expect("inner_start within DDL bounds")
             .find("))")
             .expect("closing parens for CHECK constraint")
             + inner_start;
-        let inner = &DDL[inner_start..inner_end];
+        let inner = DDL
+            .get(inner_start..inner_end)
+            .expect("inner_start..inner_end within DDL bounds");
 
         let ddl_cats: Vec<&str> = inner.split(", ").map(|s| s.trim_matches('\'')).collect();
 
