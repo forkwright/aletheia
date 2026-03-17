@@ -26,6 +26,7 @@ pub struct Phase {
 
 /// Phase lifecycle states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum PhaseState {
     /// Phase has not started yet.
     Pending,

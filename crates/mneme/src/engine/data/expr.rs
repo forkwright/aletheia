@@ -23,6 +23,7 @@ use crate::engine::parse::SourceSpan;
 use crate::engine::parse::expr::expr2bytecode;
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Debug)]
+#[non_exhaustive]
 pub enum Bytecode {
     /// push 1
     Binding {
@@ -166,6 +167,7 @@ pub fn eval_bytecode(
 
 /// Expression can be evaluated to yield a DataValue
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub enum Expr {
     /// Binding to variables
     Binding {

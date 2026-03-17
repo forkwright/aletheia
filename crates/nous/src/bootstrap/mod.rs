@@ -467,7 +467,8 @@ pub fn pack_sections_to_bootstrap<E: TokenEstimator>(
                 PackPriority::Required => SectionPriority::Required,
                 PackPriority::Important => SectionPriority::Important,
                 PackPriority::Flexible => SectionPriority::Flexible,
-                PackPriority::Optional => SectionPriority::Optional,
+                // WHY: non_exhaustive fallback -- unknown priorities treated as optional
+                PackPriority::Optional | _ => SectionPriority::Optional,
             };
             BootstrapSection {
                 name: format!("[{}] {}", s.pack_name, s.name),

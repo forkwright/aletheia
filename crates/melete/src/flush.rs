@@ -28,6 +28,7 @@ pub struct FlushItem {
 
 /// How a flush item was identified.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub enum FlushSource {
     /// Extracted from conversation by LLM.
     Extracted,

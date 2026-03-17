@@ -125,6 +125,7 @@ impl From<(i64, bool)> for Validity {
 
 /// A Value in the database
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize, serde::Serialize, Hash)]
+#[non_exhaustive]
 pub enum DataValue {
     /// null
     Null,
@@ -187,6 +188,7 @@ impl Hash for JsonData {
 
 /// Vector of floating numbers
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Vector {
     /// 32-bit float array
     F32(Array1<f32>),
@@ -476,6 +478,7 @@ impl From<bool> for DataValue {
 
 /// Representing a number
 #[derive(Copy, Clone, serde::Deserialize, serde::Serialize)]
+#[non_exhaustive]
 pub enum Num {
     /// intger number
     Int(i64),

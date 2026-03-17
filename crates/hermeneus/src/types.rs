@@ -17,6 +17,7 @@ pub struct Message {
 /// Message role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum Role {
     /// System prompt (Anthropic: separate field, `OpenAI`: system message).
     System,
@@ -47,6 +48,7 @@ impl std::fmt::Display for Role {
 /// Message content: either plain text or structured blocks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum Content {
     /// Plain text content.
     Text(String),

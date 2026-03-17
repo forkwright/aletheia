@@ -40,6 +40,7 @@ impl RetryState {
 
 /// Sections that can appear in a distillation summary.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DistillSection {
     /// One-sentence overview of the conversation topic.
     Summary,
@@ -383,6 +384,7 @@ fn content_char_len(content: &Content) -> usize {
     match content {
         Content::Text(s) => s.len(),
         Content::Blocks(blocks) => blocks.iter().map(block_char_len).sum(),
+        _ => 0,
     }
 }
 

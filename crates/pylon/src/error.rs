@@ -25,6 +25,7 @@ pub struct ErrorBody {
 /// HTTP API errors, each mapped to an appropriate status code via [`IntoResponse`].
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
+#[non_exhaustive]
 pub enum ApiError {
     /// Requested session does not exist (404).
     #[snafu(display("session not found: {id}"))]

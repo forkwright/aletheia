@@ -117,6 +117,7 @@ fn convert_internal(e: crate::engine::error::InternalError) -> Error {
 }
 
 /// Public facade replacing `DbInstance`. Dispatches to concrete storage implementations.
+#[non_exhaustive]
 pub enum Db {
     Mem(crate::engine::runtime::db::Db<MemStorage>),
     #[cfg(feature = "storage-fjall")]
