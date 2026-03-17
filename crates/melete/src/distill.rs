@@ -179,6 +179,7 @@ pub struct DistillResult {
 #[derive(Debug)]
 pub struct DistillEngine {
     config: DistillConfig,
+    // WHY: std::sync::Mutex: retry counter check/increment is O(1), never crosses an await point.
     retry_state: std::sync::Mutex<RetryState>,
 }
 

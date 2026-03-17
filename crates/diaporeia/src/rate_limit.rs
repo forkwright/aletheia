@@ -1,5 +1,6 @@
 //! Per-session token bucket rate limiter for MCP requests.
 
+// WHY: std::sync::Mutex (not tokio): bucket check is O(1) arithmetic, never crosses an await point.
 use std::sync::Mutex;
 use std::time::Instant;
 
