@@ -55,17 +55,17 @@ pub enum Error {
     },
 
     /// JWT encoding failed.
-    #[snafu(display("token encode error: {source}"))]
+    #[snafu(display("token encode error: {message}"))]
     TokenEncode {
-        source: jsonwebtoken::errors::Error,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
 
     /// JWT decoding failed.
-    #[snafu(display("token decode error: {source}"))]
+    #[snafu(display("token decode error: {message}"))]
     TokenDecode {
-        source: jsonwebtoken::errors::Error,
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
