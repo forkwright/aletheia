@@ -5,6 +5,8 @@ use std::path::Path;
 use owo_colors::OwoColorize;
 use snafu::{ResultExt, Snafu};
 
+use aletheia_koina::http::{API_HEALTH, API_V1};
+
 #[derive(Debug, Snafu)]
 pub(crate) enum StatusError {
     #[snafu(display("failed to connect to {endpoint}"))]
@@ -90,7 +92,7 @@ struct NousInfo {
 }
 
 async fn fetch_health(url: &str) -> Result<HealthResponse, StatusError> {
-    let endpoint = format!("{url}/api/health");
+    let endpoint = format!("{url}{API_HEALTH}");
     let resp = reqwest::get(&endpoint).await.context(ConnectSnafu {
         endpoint: endpoint.clone(),
     })?;
@@ -98,7 +100,7 @@ async fn fetch_health(url: &str) -> Result<HealthResponse, StatusError> {
 }
 
 async fn fetch_nous(url: &str) -> Result<Vec<NousInfo>, StatusError> {
-    let endpoint = format!("{url}/api/v1/nous");
+    let endpoint = format!("{url}{API_V1}/nous");
     let resp = reqwest::get(&endpoint).await.context(ConnectSnafu {
         endpoint: endpoint.clone(),
     })?;

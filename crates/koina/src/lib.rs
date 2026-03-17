@@ -10,6 +10,8 @@ pub mod credential;
 pub mod disk_space;
 /// Error types shared across all Aletheia crates (file I/O, JSON, identifiers).
 pub mod error;
+/// Shared HTTP constants (content types, auth prefix, API paths).
+pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
 /// Declarative macros for reducing boilerplate ([`newtype_id!`]).

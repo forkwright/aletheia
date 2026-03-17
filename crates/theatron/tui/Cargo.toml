@@ -12,6 +12,7 @@ name = "aletheia-tui"
 path = "src/main.rs"
 
 [dependencies]
+aletheia-koina = { path = "../../koina" }
 theatron-core = { path = "../core" }
 aletheia-koina = { path = "../../koina" }
 

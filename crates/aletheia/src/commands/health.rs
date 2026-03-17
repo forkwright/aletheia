@@ -3,6 +3,8 @@
 use anyhow::{Context, Result};
 use clap::Args;
 
+use aletheia_koina::http::API_HEALTH;
+
 #[derive(Debug, Clone, Args)]
 pub struct HealthArgs {
     /// Server URL to check
@@ -12,7 +14,7 @@ pub struct HealthArgs {
 
 pub async fn run(args: &HealthArgs) -> Result<()> {
     let url = &args.url;
-    let endpoint = format!("{url}/api/health");
+    let endpoint = format!("{url}{API_HEALTH}");
     let resp = reqwest::get(&endpoint).await.map_err(|e| {
         if e.is_connect() {
             anyhow::anyhow!(
