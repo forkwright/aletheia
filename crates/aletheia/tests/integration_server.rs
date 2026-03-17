@@ -58,7 +58,7 @@ enabled = false
     tmp
 }
 
-/// Send a raw HTTP GET request and return (status_code, body).
+/// Send a raw HTTP GET request and return (`status_code`, body).
 fn http_get(port: u16, path: &str) -> Option<(u16, String)> {
     let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).ok()?;
     stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
@@ -119,11 +119,11 @@ fn server_starts_serves_health_and_shuts_down() {
     let mut ready = false;
     for _ in 0..30 {
         std::thread::sleep(Duration::from_millis(500));
-        if let Some((code, _)) = http_get(port, "/api/health") {
-            if code == 200 {
-                ready = true;
-                break;
-            }
+        if let Some((code, _)) = http_get(port, "/api/health")
+            && code == 200
+        {
+            ready = true;
+            break;
         }
     }
 

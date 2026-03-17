@@ -314,7 +314,6 @@ mod tests {
 
     #[test]
     fn in_window_overnight_covers_late_or_early() {
-        // Overnight window 22-06: hour >= 22 OR hour < 6
         let now_hour = u8::try_from(jiff::Zoned::now().hour()).unwrap();
         let result = Schedule::in_window(Some((22, 6)));
         let expected = !(6..22).contains(&now_hour);
@@ -323,7 +322,6 @@ mod tests {
 
     #[test]
     fn in_window_daytime_range() {
-        // Daytime window 9-17: hour >= 9 AND hour < 17
         let now_hour = u8::try_from(jiff::Zoned::now().hour()).unwrap();
         let result = Schedule::in_window(Some((9, 17)));
         let expected = (9..17).contains(&now_hour);
@@ -337,7 +335,6 @@ mod tests {
             .next_run()
             .expect("no error")
             .expect("should have next");
-        // Should be very close to now (within a few seconds).
         let diff = next
             .since(jiff::Timestamp::now())
             .expect("since should work");
@@ -363,7 +360,7 @@ mod tests {
 
     #[test]
     fn in_window_same_start_end() {
-        // (10, 10): start <= end path, hour >= 10 && hour < 10 is always false.
+        // NOTE: (10, 10): start <= end path, hour >= 10 && hour < 10 is always false.
         assert!(
             !Schedule::in_window(Some((10, 10))),
             "same start and end should always be false"
@@ -421,7 +418,7 @@ mod tests {
 
     #[test]
     fn missed_since_stale_returns_false() {
-        // Last run more than 24h ago: too stale to catch up.
+        // NOTE: Last run more than 24h ago: too stale to catch up.
         let schedule = Schedule::Cron("0 0 * * * *".to_owned());
         let last_run = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(25))
@@ -431,7 +428,7 @@ mod tests {
 
     #[test]
     fn missed_since_recent_cron_returns_true() {
-        // Hourly cron, last run 2 hours ago: should have missed at least one window.
+        // NOTE: Hourly cron, last run 2 hours ago: should have missed at least one window.
         let schedule = Schedule::Cron("0 0 * * * *".to_owned());
         let last_run = jiff::Timestamp::now()
             .checked_sub(jiff::SignedDuration::from_hours(2))

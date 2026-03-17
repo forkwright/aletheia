@@ -87,12 +87,10 @@ impl CredentialFile {
     pub fn load(path: &Path) -> Option<Self> {
         let contents = std::fs::read_to_string(path).ok()?;
 
-        // Try flat format first (native "token" field or "accessToken" alias).
         if let Ok(cred) = serde_json::from_str::<Self>(&contents) {
             return Some(cred);
         }
 
-        // Try claudeAiOauth wrapper format written by current Claude Code releases.
         let outer: serde_json::Value = serde_json::from_str(&contents).ok()?;
         serde_json::from_value(outer.get("claudeAiOauth")?.clone()).ok()
     }
@@ -168,7 +166,7 @@ impl std::fmt::Debug for OAuthResponse {
 }
 
 fn default_expires_in() -> u64 {
-    28800 // 8 hours
+    28800 // NOTE: 8 hours
 }
 
 /// OAuth token prefix used by Claude Code for OAuth access tokens.
@@ -188,13 +186,12 @@ fn base64url_decode(s: &str) -> Option<Vec<u8>> {
             b'0'..=b'9' => Some(b - b'0' + 52),
             b'-' | b'+' => Some(62),
             b'_' | b'/' => Some(63),
-            b'=' => Some(0), // padding: treated as zero bits
+            b'=' => Some(0), // NOTE: padding treated as zero bits
             _ => None,
         }
     }
 
     let bytes = s.as_bytes();
-    // Strip trailing padding before computing output length.
     let end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
     let bytes = &bytes[..end];
 
@@ -233,8 +230,8 @@ fn base64url_decode(s: &str) -> Option<Vec<u8>> {
 /// Returns `None` when the token has no recognisable payload segment or no `exp`
 /// field; the caller must treat `None` as "expiry unknown" (do not fall through).
 fn decode_jwt_exp_secs(token: &str) -> Option<u64> {
-    // Dot-segmented format: ignore the first segment (vendor prefix or JWT header)
-    // and decode the second segment as a JSON object containing the exp claim.
+    // NOTE: dot-segmented format — first segment is vendor prefix or JWT header,
+    // second segment is the JSON payload containing the exp claim.
     let mut segs = token.splitn(4, '.');
     let _first = segs.next()?;
     let payload_b64 = segs.next()?;
@@ -242,7 +239,7 @@ fn decode_jwt_exp_secs(token: &str) -> Option<u64> {
     let payload = base64url_decode(payload_b64)?;
     let value: serde_json::Value = serde_json::from_slice(&payload).ok()?;
 
-    // exp is stored as a u64 integer (seconds since epoch) per the JWT spec (RFC 7519).
+    // NOTE: exp is seconds since epoch per JWT spec (RFC 7519).
     value.get("exp").and_then(serde_json::Value::as_u64)
 }
 
@@ -282,10 +279,6 @@ impl CredentialProvider for EnvCredentialProvider {
                 return None;
             }
 
-            // When the env var holds an OAuth access token, check whether it has
-            // an embedded expiry claim. If the token appears expired, fall through
-            // to the next provider: typically a file-based provider with a live
-            // refresh token: rather than blocking the chain with a stale credential.
             // WHY: static env var tokens cannot be refreshed; a refreshable file
             // provider downstream must get a chance to supply a valid credential.
             if v.starts_with(OAUTH_TOKEN_PREFIX)

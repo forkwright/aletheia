@@ -53,7 +53,7 @@ fn generate_csrf_token() -> String {
     let bytes: [u8; 16] = rand::random();
     let mut s = String::with_capacity(32);
     for b in &bytes {
-        // String's fmt::Write implementation is infallible.
+        // NOTE: String's fmt::Write implementation is infallible.
         let _ = write!(s, "{b:02x}");
     }
     s
@@ -120,7 +120,6 @@ mod tests {
     #[test]
     fn from_gateway_replaces_insecure_default_token() {
         let gateway = GatewayConfig::default();
-        // Default config ships with the insecure "aletheia" value.
         assert_eq!(gateway.csrf.header_value, INSECURE_CSRF_DEFAULT);
         let sec = SecurityConfig::from_gateway(&gateway);
         assert_ne!(
@@ -157,7 +156,6 @@ mod tests {
 
     #[test]
     fn generate_csrf_token_is_not_static() {
-        // Two consecutive calls must not return the same token.
         let a = generate_csrf_token();
         let b = generate_csrf_token();
         assert_ne!(

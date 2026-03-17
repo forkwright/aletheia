@@ -53,7 +53,7 @@ pub(crate) fn generate(
         key_hash,
         role,
         nous_id: nous_id.map(str::to_owned),
-        created_at: String::new(), // DB default handles this
+        created_at: String::new(), // NOTE: DB default handles this
         expires_at,
         last_used_at: None,
         revoked_at: None,
@@ -61,7 +61,6 @@ pub(crate) fn generate(
 
     store.store_api_key(&record)?;
 
-    // Re-read from DB to get populated timestamps
     let stored = store
         .find_api_key_by_hash(&record.key_hash)?
         .unwrap_or_else(|| {
@@ -84,12 +83,10 @@ pub(crate) fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
         .find_api_key_by_hash(&key_hash)?
         .ok_or_else(|| error::InvalidCredentialsSnafu.build())?;
 
-    // Check revocation
     if record.revoked_at.is_some() {
         return Err(error::InvalidCredentialsSnafu.build());
     }
 
-    // Check expiry
     if let Some(ref expires_at) = record.expires_at {
         let now = now_iso();
         if *expires_at < now {
@@ -97,7 +94,6 @@ pub(crate) fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
         }
     }
 
-    // Update last_used_at
     store.touch_api_key(&record.id)?;
 
     Ok(Claims {
@@ -146,19 +142,17 @@ fn now_iso() -> String {
 }
 
 fn time_from_unix(secs: u64) -> String {
-    // Simple ISO 8601 formatting without external dependency
+    // WHY: simple ISO 8601 formatting without external dependency
     let days = secs / 86400;
     let time_secs = secs % 86400;
     let hours = time_secs / 3600;
     let minutes = (time_secs % 3600) / 60;
     let seconds = time_secs % 60;
 
-    // Convert days since epoch to Y-M-D (simplified)
     let (year, month, day) = days_to_date(days);
     format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}.000Z")
 }
 
-// We need hex encoding for the secret bytes
 mod hex {
     const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
@@ -252,6 +246,6 @@ mod tests {
         let store = test_store();
         let (key, _) = generate(&store, "test", Role::Operator, None, None).unwrap();
         let parts: Vec<&str> = key.splitn(3, '_').collect();
-        assert_eq!(parts[2].len(), 64); // 32 bytes * 2 hex chars
+        assert_eq!(parts[2].len(), 64); // NOTE: 32 bytes * 2 hex chars
     }
 }

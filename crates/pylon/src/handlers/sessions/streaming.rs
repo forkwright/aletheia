@@ -68,7 +68,7 @@ pub async fn send_message(
             LookupResult::Miss => { /* proceed normally */ }
             LookupResult::Hit { body, .. } => {
                 tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
-                // Decode the cached turn summary stored by the original request.
+                // NOTE: Decode the cached turn summary stored by the original request.
                 let cached: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
                 let stop_reason = cached["stop_reason"]
                     .as_str()
@@ -176,7 +176,7 @@ pub async fn send_message(
                 Ok(result) => {
                     emit_turn_result_events(&tx, &result).await;
 
-                    // Store the turn summary so cache-hit replays return real data.
+                    // NOTE: Store the turn summary so cache-hit replays return real data.
                     if let Some(ref key) = idem_key {
                         let body = serde_json::json!({
                             "stop_reason": result.stop_reason,
@@ -188,11 +188,11 @@ pub async fn send_message(
                     }
                 }
                 Err(err) => {
-                    // Log full error internally; the active span carries request_id and
-                    // session/nous context. Never forward internal details to the client. (#844)
+                    // WHY: Log full error internally; the active span carries request_id and
+                    // session/nous context. Never forward internal details to the client (#844).
                     tracing::error!(error = %err, "turn failed");
 
-                    // Remove idempotency entry on error so the client can retry.
+                    // WHY: Remove idempotency entry on error so the client can retry.
                     if let Some(ref key) = idem_key {
                         idem_cache.remove(key);
                     }
@@ -204,7 +204,7 @@ pub async fn send_message(
                             message: err_message.to_owned(),
                         })
                         .await;
-                    // Always send a completion marker so the client knows the
+                    // WHY: Always send a completion marker so the client knows the
                     // stream is finished, even on error paths.
                     let _ = tx
                         .send(SseEvent::MessageComplete {
@@ -317,8 +317,7 @@ pub async fn stream_turn(
         request_id = %request_id,
     );
 
-    // Bridge nous stream events to webchat events in real-time.
-    // Returns a JoinHandle so the turn task can wait for all deltas to drain
+    // WHY: Returns a JoinHandle so the turn task can wait for all deltas to drain
     // before emitting turn_complete (prevents the race where turn_complete
     // arrives at the TUI before the final text_delta events).
     let bridge_tx = webchat_tx.clone();
@@ -364,7 +363,6 @@ pub async fn stream_turn(
         .instrument(tracing::info_span!("sse_bridge")),
     );
 
-    // Run the turn, wait for bridge to drain, then emit completion event.
     tokio::spawn(
         async move {
             match handle
@@ -378,7 +376,7 @@ pub async fn stream_turn(
                 .await
             {
                 Ok(result) => {
-                    // Wait for the bridge to finish forwarding all buffered deltas
+                    // WHY: Wait for the bridge to finish forwarding all buffered deltas
                     // before sending turn_complete. This prevents the TUI from
                     // seeing turn_complete before the final text_delta events.
                     let _ = bridge_handle.await;
@@ -400,7 +398,7 @@ pub async fn stream_turn(
                         .await;
                 }
                 Err(err) => {
-                    // Log full error internally; span carries session/nous context. (#844)
+                    // WHY: Log full error internally; span carries session/nous context (#844).
                     tracing::error!(error = %err, "streaming turn failed");
                     let _ = bridge_handle.await;
                     let (_, err_message) = turn_error_info(&err);
@@ -409,7 +407,7 @@ pub async fn stream_turn(
                             message: err_message.to_owned(),
                         })
                         .await;
-                    // Always send a completion marker so the TUI knows the stream
+                    // WHY: Always send a completion marker so the TUI knows the stream
                     // is finished, even on error paths.
                     let _ = webchat_tx
                         .send(WebchatEvent::TurnComplete {

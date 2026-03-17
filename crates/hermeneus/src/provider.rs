@@ -94,7 +94,7 @@ pub struct ProviderConfig {
 
 impl Default for ProviderConfig {
     fn default() -> Self {
-        // Built-in pricing for all first-party Anthropic models (USD per million tokens).
+        // NOTE: Built-in pricing for all first-party Anthropic models (USD per million tokens).
         // Operator configs are merged on top, so these act as sensible fallbacks.
         // Prices last verified against https://www.anthropic.com/pricing (2025-10-01).
         let pricing = HashMap::from([
@@ -304,7 +304,7 @@ mod tests {
             config.default_model.as_deref(),
             Some("claude-opus-4-20250514")
         );
-        // Default pricing must cover the models used by background tasks.
+        // WHY: Default pricing must cover the models used by background tasks.
         assert!(
             config.pricing.contains_key("claude-haiku-4-5-20251001"),
             "missing default pricing for claude-haiku-4-5-20251001"
@@ -313,7 +313,6 @@ mod tests {
             config.pricing.contains_key("claude-sonnet-4-20250514"),
             "missing default pricing for claude-sonnet-4-20250514"
         );
-        // Spot-check values for haiku.
         let haiku = &config.pricing["claude-haiku-4-5-20251001"];
         assert!(
             (haiku.input_cost_per_mtok - 0.8).abs() < f64::EPSILON,
@@ -386,7 +385,6 @@ mod tests {
     fn registry_record_unknown_is_noop() {
         let mut registry = ProviderRegistry::new();
         registry.register(Box::new(MockProvider::new("mock response")));
-        // Should not panic
         registry.record_success("nonexistent");
         let err: crate::error::Error = crate::error::ApiRequestSnafu { message: "timeout" }.build();
         registry.record_error("nonexistent", &err);

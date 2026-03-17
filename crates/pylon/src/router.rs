@@ -59,7 +59,6 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             "/config/{section}",
             get(config::get_section).put(config::update_section),
         )
-        // Knowledge graph
         .route("/knowledge/facts", get(knowledge::list_facts))
         .route("/knowledge/facts/{id}", get(knowledge::get_fact))
         .route("/knowledge/facts/{id}/forget", post(knowledge::forget_fact))
@@ -81,14 +80,12 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 
     let mut router = Router::new()
         .nest("/api/v1", v1)
-        // Infrastructure
         .route("/api/health", get(health::check))
         .route("/api/docs/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::expose));
 
     router = router.fallback(fallback_handler);
 
-    // Rate limiting: per-IP sliding window, applied before business logic
     if security.rate_limit_enabled {
         let limiter = Arc::new(
             RateLimiter::new(security.rate_limit_requests_per_minute)
@@ -99,7 +96,6 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             .layer(axum::Extension(limiter));
     }
 
-    // CSRF protection: inject state and apply middleware
     if security.csrf_enabled {
         let csrf_state = CsrfState {
             header_name: security.csrf_header_name.clone(),
@@ -110,20 +106,16 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             .layer(axum::Extension(csrf_state));
     }
 
-    // Body size limit
     router = router.layer(DefaultBodyLimit::max(security.body_limit_bytes));
 
-    // Error response enrichment: inside compression (body uncompressed), outside
+    // WARNING: Must be inside compression (body uncompressed) but outside
     // rate_limit and CSRF so their error responses get request_id injected.
     router = router.layer(axum::middleware::from_fn(enrich_error_response));
 
-    // HTTP metrics recording
     router = router.layer(axum::middleware::from_fn(record_http_metrics));
 
-    // Compression
     router = router.layer(CompressionLayer::new());
 
-    // Request tracing: reads RequestId from extensions
     router = router.layer(
         TraceLayer::new_for_http()
             .make_span_with(|request: &axum::http::Request<_>| {
@@ -152,13 +144,12 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
             ),
     );
 
-    // Request ID injection (before trace layer so span includes the ID)
+    // WARNING: Must be before trace layer so the span includes the ID.
     router = router.layer(axum::middleware::from_fn(inject_request_id));
 
-    // CORS
     router = router.layer(build_cors_layer(security));
 
-    // Security response headers (outermost: applied to every response)
+    // WARNING: Outermost layer: must wrap all other layers so headers apply to every response.
     router = apply_security_headers(router, security);
 
     router.with_state(state)
@@ -171,7 +162,6 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 async fn fallback_handler(uri: axum::http::Uri) -> Response {
     let path = uri.path();
 
-    // `/api/nous/*`: hint at v1
     if path.starts_with("/api/nous") {
         let suggestion = path.replacen("/api/", "/api/v1/", 1);
         return (
