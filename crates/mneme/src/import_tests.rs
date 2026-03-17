@@ -77,21 +77,48 @@ fn minimal_agent_file() -> AgentFile {
 
 #[test]
 fn path_traversal_rejected() {
-    assert!(!validate_relative_path("../etc/passwd"));
-    assert!(!validate_relative_path("foo/../../etc/shadow"));
-    assert!(!validate_relative_path("/absolute/path"));
-    assert!(!validate_relative_path("\\windows\\path"));
-    assert!(!validate_relative_path("C:\\Users\\evil"));
-    assert!(!validate_relative_path("file:///etc/passwd"));
-    assert!(!validate_relative_path(""));
+    assert!(
+        !validate_relative_path("../etc/passwd"),
+        "parent directory traversal should be rejected"
+    );
+    assert!(
+        !validate_relative_path("foo/../../etc/shadow"),
+        "nested parent traversal should be rejected"
+    );
+    assert!(
+        !validate_relative_path("/absolute/path"),
+        "absolute unix path should be rejected"
+    );
+    assert!(
+        !validate_relative_path("\\windows\\path"),
+        "windows backslash path should be rejected"
+    );
+    assert!(
+        !validate_relative_path("C:\\Users\\evil"),
+        "windows drive path should be rejected"
+    );
+    assert!(
+        !validate_relative_path("file:///etc/passwd"),
+        "file protocol path should be rejected"
+    );
+    assert!(!validate_relative_path(""), "empty path should be rejected");
 }
 
 #[test]
 fn valid_paths_accepted() {
-    assert!(validate_relative_path("notes.md"));
-    assert!(validate_relative_path("memory/2026-03-05.md"));
-    assert!(validate_relative_path("sub/dir/file.txt"));
-    assert!(validate_relative_path(".env"));
+    assert!(
+        validate_relative_path("notes.md"),
+        "simple filename should be accepted"
+    );
+    assert!(
+        validate_relative_path("memory/2026-03-05.md"),
+        "relative path with subdirectory should be accepted"
+    );
+    assert!(
+        validate_relative_path("sub/dir/file.txt"),
+        "deeply nested relative path should be accepted"
+    );
+    assert!(validate_relative_path(".env"), "dotfile should be accepted");
 }
 
 #[test]
@@ -110,9 +137,12 @@ fn rejects_unsupported_version() {
         &ImportOptions::default(),
     );
 
-    assert!(result.is_err());
+    assert!(result.is_err(), "unsupported version should be rejected");
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("unsupported agent file version: 99"));
+    assert!(
+        err.contains("unsupported agent file version: 99"),
+        "error should mention unsupported version"
+    );
 }
 
 #[test]
@@ -134,10 +164,13 @@ fn import_restores_workspace_files() {
     )
     .expect("import_agent should succeed");
 
-    assert_eq!(result.files_restored, 1);
+    assert_eq!(
+        result.files_restored, 1,
+        "one workspace file should be restored"
+    );
     let content =
         std::fs::read_to_string(dir.path().join("notes.md")).expect("notes.md should be written");
-    assert_eq!(content, "# Notes\n");
+    assert_eq!(content, "# Notes\n", "file content should match original");
 }
 
 #[test]
@@ -160,10 +193,16 @@ fn import_skips_existing_without_force() {
     )
     .expect("import_agent should succeed");
 
-    assert_eq!(result.files_restored, 0);
+    assert_eq!(
+        result.files_restored, 0,
+        "existing file should not be overwritten without force"
+    );
     let content =
         std::fs::read_to_string(dir.path().join("notes.md")).expect("notes.md should be readable");
-    assert_eq!(content, "original");
+    assert_eq!(
+        content, "original",
+        "existing file content should be preserved"
+    );
 }
 
 #[test]
@@ -187,10 +226,16 @@ fn import_overwrites_with_force() {
     )
     .expect("import_agent with force should succeed");
 
-    assert_eq!(result.files_restored, 1);
+    assert_eq!(
+        result.files_restored, 1,
+        "file should be restored when force is set"
+    );
     let content = std::fs::read_to_string(dir.path().join("notes.md"))
         .expect("notes.md should be overwritten");
-    assert_eq!(content, "# Notes\n");
+    assert_eq!(
+        content, "# Notes\n",
+        "file content should be overwritten by import"
+    );
 }
 
 #[test]
@@ -209,15 +254,24 @@ fn import_creates_sessions_and_messages() {
     )
     .expect("import_agent should succeed");
 
-    assert_eq!(result.sessions_imported, 1);
-    assert_eq!(result.messages_imported, 2);
-    assert_eq!(result.notes_imported, 1);
+    assert_eq!(
+        result.sessions_imported, 1,
+        "one session should be imported"
+    );
+    assert_eq!(
+        result.messages_imported, 2,
+        "two messages should be imported"
+    );
+    assert_eq!(result.notes_imported, 1, "one note should be imported");
 
     let sessions = store
         .list_sessions(Some("alice"))
         .expect("list_sessions should succeed");
-    assert_eq!(sessions.len(), 1);
-    assert!(sessions[0].session_key.starts_with("main-import-"));
+    assert_eq!(sessions.len(), 1, "one session should be stored");
+    assert!(
+        sessions[0].session_key.starts_with("main-import-"),
+        "session key should include original key and import suffix"
+    );
 }
 
 #[test]
@@ -239,11 +293,18 @@ fn import_with_target_id_override() {
     )
     .expect("import_agent with target_nous_id should succeed");
 
-    assert_eq!(result.nous_id, "bob");
+    assert_eq!(
+        result.nous_id, "bob",
+        "nous_id should be overridden to target id"
+    );
     let sessions = store
         .list_sessions(Some("bob"))
         .expect("list_sessions for bob should succeed");
-    assert_eq!(sessions.len(), 1);
+    assert_eq!(
+        sessions.len(),
+        1,
+        "one session should be stored under target id"
+    );
 }
 
 #[test]
@@ -265,9 +326,18 @@ fn import_skip_sessions_flag() {
     )
     .expect("import_agent with skip_sessions should succeed");
 
-    assert_eq!(result.sessions_imported, 0);
-    assert_eq!(result.messages_imported, 0);
-    assert_eq!(result.files_restored, 1);
+    assert_eq!(
+        result.sessions_imported, 0,
+        "sessions should not be imported when skip_sessions is set"
+    );
+    assert_eq!(
+        result.messages_imported, 0,
+        "messages should not be imported when skip_sessions is set"
+    );
+    assert_eq!(
+        result.files_restored, 1,
+        "workspace files should still be restored"
+    );
 }
 
 #[test]
@@ -289,9 +359,18 @@ fn import_skip_workspace_flag() {
     )
     .expect("import_agent with skip_workspace should succeed");
 
-    assert_eq!(result.files_restored, 0);
-    assert_eq!(result.sessions_imported, 1);
-    assert!(!dir.path().join("notes.md").exists());
+    assert_eq!(
+        result.files_restored, 0,
+        "no files should be restored when skip_workspace is set"
+    );
+    assert_eq!(
+        result.sessions_imported, 1,
+        "sessions should still be imported"
+    );
+    assert!(
+        !dir.path().join("notes.md").exists(),
+        "workspace file should not be written to disk"
+    );
 }
 
 #[test]
@@ -310,9 +389,12 @@ fn import_rejects_path_traversal() {
         &ImportOptions::default(),
     );
 
-    assert!(result.is_err());
+    assert!(result.is_err(), "path traversal should be rejected");
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("unsafe path"));
+    assert!(
+        err.contains("unsafe path"),
+        "error should mention unsafe path"
+    );
 }
 
 #[test]
@@ -336,7 +418,10 @@ fn import_validates_note_categories() {
     )
     .expect("import_agent should succeed with invalid category defaulted");
 
-    assert_eq!(result.notes_imported, 2);
+    assert_eq!(
+        result.notes_imported, 2,
+        "both valid and defaulted notes should be imported"
+    );
 }
 
 #[test]
@@ -390,15 +475,30 @@ fn export_import_roundtrip() {
     )
     .expect("import_agent roundtrip should succeed");
 
-    assert_eq!(result.nous_id, "eve-clone");
-    assert_eq!(result.files_restored, 1);
-    assert_eq!(result.sessions_imported, 1);
-    assert_eq!(result.messages_imported, 2);
-    assert_eq!(result.notes_imported, 1);
+    assert_eq!(
+        result.nous_id, "eve-clone",
+        "nous_id should match target id"
+    );
+    assert_eq!(
+        result.files_restored, 1,
+        "one workspace file should be restored"
+    );
+    assert_eq!(
+        result.sessions_imported, 1,
+        "one session should be restored"
+    );
+    assert_eq!(
+        result.messages_imported, 2,
+        "two messages should be restored"
+    );
+    assert_eq!(result.notes_imported, 1, "one note should be restored");
 
     let content = std::fs::read_to_string(import_dir.path().join("readme.md"))
         .expect("readme.md should be restored");
-    assert_eq!(content, "# Hello");
+    assert_eq!(
+        content, "# Hello",
+        "file content should survive export/import roundtrip"
+    );
 }
 
 #[test]
@@ -434,8 +534,14 @@ fn import_empty_agent_file() {
     )
     .expect("import_agent with empty file should succeed");
 
-    assert_eq!(result.files_restored, 0);
-    assert_eq!(result.sessions_imported, 0);
+    assert_eq!(
+        result.files_restored, 0,
+        "no files should be restored from empty workspace"
+    );
+    assert_eq!(
+        result.sessions_imported, 0,
+        "no sessions should be imported from empty agent file"
+    );
 }
 
 #[test]
@@ -478,9 +584,18 @@ fn import_missing_optional_sections() {
     }"#;
 
     let agent: AgentFile = serde_json::from_str(json).expect("parse minimal agent file JSON");
-    assert!(agent.nous.name.is_none());
-    assert!(agent.nous.model.is_none());
-    assert!(agent.memory.is_none());
+    assert!(
+        agent.nous.name.is_none(),
+        "nous name should be absent when not provided"
+    );
+    assert!(
+        agent.nous.model.is_none(),
+        "nous model should be absent when not provided"
+    );
+    assert!(
+        agent.memory.is_none(),
+        "memory section should be absent when not provided"
+    );
 
     let store = test_store();
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -494,8 +609,14 @@ fn import_missing_optional_sections() {
     )
     .expect("import_agent with sparse file should succeed");
 
-    assert_eq!(result.sessions_imported, 0);
-    assert_eq!(result.files_restored, 0);
+    assert_eq!(
+        result.sessions_imported, 0,
+        "no sessions should be imported from sparse file"
+    );
+    assert_eq!(
+        result.files_restored, 0,
+        "no files should be restored from empty workspace"
+    );
 }
 
 #[test]
@@ -542,14 +663,23 @@ fn export_import_preserves_timestamps() {
     let sessions = import_store
         .list_sessions(Some("ts-agent"))
         .expect("list_sessions should succeed");
-    assert_eq!(sessions.len(), 1);
-    assert_eq!(sessions[0].created_at, orig_created);
-    assert_eq!(sessions[0].updated_at, orig_updated);
+    assert_eq!(sessions.len(), 1, "one session should be imported");
+    assert_eq!(
+        sessions[0].created_at, orig_created,
+        "session created_at should be preserved"
+    );
+    assert_eq!(
+        sessions[0].updated_at, orig_updated,
+        "session updated_at should be preserved"
+    );
 
     let messages = import_store
         .get_history(&sessions[0].id, None)
         .expect("get_history should succeed");
-    assert_eq!(messages[0].created_at, orig_msg_ts);
+    assert_eq!(
+        messages[0].created_at, orig_msg_ts,
+        "message timestamp should be preserved"
+    );
 }
 
 #[test]
@@ -603,7 +733,10 @@ fn export_import_preserves_unicode() {
 
     let content = std::fs::read_to_string(import_dir.path().join("unicode.txt"))
         .expect("unicode.txt should be restored");
-    assert_eq!(content, combined);
+    assert_eq!(
+        content, combined,
+        "unicode file content should survive export/import roundtrip"
+    );
 
     let sessions = import_store
         .list_sessions(Some("uni"))
@@ -611,7 +744,10 @@ fn export_import_preserves_unicode() {
     let messages = import_store
         .get_history(&sessions[0].id, None)
         .expect("get_history should succeed");
-    assert_eq!(messages[0].content, combined);
+    assert_eq!(
+        messages[0].content, combined,
+        "unicode message content should survive export/import roundtrip"
+    );
 }
 
 #[test]
@@ -651,9 +787,13 @@ fn export_import_large_data() {
     )
     .expect("export_agent should succeed");
 
-    assert_eq!(exported.sessions.len(), 100);
+    assert_eq!(
+        exported.sessions.len(),
+        100,
+        "all 100 sessions should be exported"
+    );
     let total_msgs: usize = exported.sessions.iter().map(|s| s.messages.len()).sum();
-    assert_eq!(total_msgs, 1000);
+    assert_eq!(total_msgs, 1000, "all 1000 messages should be exported");
 
     let json = serde_json::to_string(&exported).expect("serialize large export");
     let restored: AgentFile = serde_json::from_str(&json).expect("deserialize large agent file");
@@ -670,8 +810,14 @@ fn export_import_large_data() {
     )
     .expect("import_agent large data should succeed");
 
-    assert_eq!(result.sessions_imported, 100);
-    assert_eq!(result.messages_imported, 1000);
+    assert_eq!(
+        result.sessions_imported, 100,
+        "all 100 sessions should be imported"
+    );
+    assert_eq!(
+        result.messages_imported, 1000,
+        "all 1000 messages should be imported"
+    );
 }
 
 #[test]
@@ -729,7 +875,7 @@ fn import_rejects_future_version() {
         &ImportOptions::default(),
     );
 
-    assert!(result.is_err());
+    assert!(result.is_err(), "future version should be rejected");
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains(&format!("{}", AGENT_FILE_VERSION + 1)),
@@ -765,7 +911,7 @@ fn import_preserves_note_content() {
     )
     .expect("import_agent should succeed");
 
-    assert_eq!(result.notes_imported, 2);
+    assert_eq!(result.notes_imported, 2, "both notes should be imported");
 
     let sessions = store
         .list_sessions(Some("alice"))
@@ -773,10 +919,16 @@ fn import_preserves_note_content() {
     let notes = store
         .get_notes(&sessions[0].id)
         .expect("get_notes should succeed");
-    assert_eq!(notes.len(), 2);
+    assert_eq!(notes.len(), 2, "two notes should be stored");
     let contents: Vec<&str> = notes.iter().map(|n| n.content.as_str()).collect();
-    assert!(contents.contains(&"first note content"));
-    assert!(contents.contains(&"second note content"));
+    assert!(
+        contents.contains(&"first note content"),
+        "first note content should be preserved"
+    );
+    assert!(
+        contents.contains(&"second note content"),
+        "second note content should be preserved"
+    );
 }
 
 #[test]
@@ -800,8 +952,14 @@ fn import_with_empty_facts() {
     )
     .expect("import_agent with empty knowledge should succeed");
 
-    assert_eq!(result.sessions_imported, 1);
-    assert_eq!(result.messages_imported, 2);
+    assert_eq!(
+        result.sessions_imported, 1,
+        "session should still be imported with empty knowledge"
+    );
+    assert_eq!(
+        result.messages_imported, 2,
+        "messages should still be imported with empty knowledge"
+    );
 }
 
 #[test]
@@ -843,8 +1001,14 @@ fn import_multiple_sessions_counts_correctly() {
     )
     .expect("import_agent with multiple sessions should succeed");
 
-    assert_eq!(result.sessions_imported, 2);
-    assert_eq!(result.messages_imported, 3);
+    assert_eq!(
+        result.sessions_imported, 2,
+        "both sessions should be imported"
+    );
+    assert_eq!(
+        result.messages_imported, 3,
+        "all messages across both sessions should be imported"
+    );
 }
 
 #[test]
@@ -864,26 +1028,50 @@ fn import_notes_counted_in_result() {
     .expect("import_agent should succeed");
 
     // minimal_agent_file has 1 note
-    assert_eq!(result.notes_imported, 1);
+    assert_eq!(
+        result.notes_imported, 1,
+        "one note should be imported from minimal agent file"
+    );
 }
 
 #[test]
 fn validate_relative_path_rejects_windows_drive() {
-    assert!(!validate_relative_path("C:\\windows\\system32"));
-    assert!(!validate_relative_path("D:file.txt"));
+    assert!(
+        !validate_relative_path("C:\\windows\\system32"),
+        "windows absolute path should be rejected"
+    );
+    assert!(
+        !validate_relative_path("D:file.txt"),
+        "windows drive-relative path should be rejected"
+    );
 }
 
 #[test]
 fn validate_relative_path_rejects_protocol() {
-    assert!(!validate_relative_path("file:///etc/passwd"));
-    assert!(!validate_relative_path("https://evil.com/payload"));
+    assert!(
+        !validate_relative_path("file:///etc/passwd"),
+        "file protocol path should be rejected"
+    );
+    assert!(
+        !validate_relative_path("https://evil.com/payload"),
+        "url protocol path should be rejected"
+    );
 }
 
 #[test]
 fn validate_relative_path_accepts_nested_dirs() {
-    assert!(validate_relative_path("a/b/c/d.txt"));
-    assert!(validate_relative_path("memory/2026-03-09.md"));
-    assert!(validate_relative_path("SOUL.md"));
+    assert!(
+        validate_relative_path("a/b/c/d.txt"),
+        "nested relative path should be accepted"
+    );
+    assert!(
+        validate_relative_path("memory/2026-03-09.md"),
+        "date-named file in subdirectory should be accepted"
+    );
+    assert!(
+        validate_relative_path("SOUL.md"),
+        "uppercase filename should be accepted"
+    );
 }
 
 #[test]
@@ -906,10 +1094,22 @@ fn import_skip_both_flags_imports_nothing_from_disk_or_sessions() {
     )
     .expect("import_agent with both skip flags should succeed");
 
-    assert_eq!(result.files_restored, 0);
-    assert_eq!(result.sessions_imported, 0);
-    assert_eq!(result.messages_imported, 0);
-    assert_eq!(result.notes_imported, 0);
+    assert_eq!(
+        result.files_restored, 0,
+        "no files should be restored when skip_workspace is set"
+    );
+    assert_eq!(
+        result.sessions_imported, 0,
+        "no sessions should be imported when skip_sessions is set"
+    );
+    assert_eq!(
+        result.messages_imported, 0,
+        "no messages should be imported when skip_sessions is set"
+    );
+    assert_eq!(
+        result.notes_imported, 0,
+        "no notes should be imported when skip_sessions is set"
+    );
 }
 
 mod proptests {

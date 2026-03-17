@@ -1308,7 +1308,8 @@ mod tests {
     fn classify_identity() {
         assert_eq!(
             FactType::classify("I am a software engineer"),
-            FactType::Identity
+            FactType::Identity,
+            "'I am a software engineer' should classify as Identity"
         );
         assert_eq!(
             FactType::classify("My name is Alice"),
@@ -1321,7 +1322,8 @@ mod tests {
     fn classify_preference() {
         assert_eq!(
             FactType::classify("I prefer tabs over spaces"),
-            FactType::Preference
+            FactType::Preference,
+            "'I prefer tabs over spaces' should classify as Preference"
         );
         assert_eq!(
             FactType::classify("I like Rust"),
@@ -1330,7 +1332,8 @@ mod tests {
         );
         assert_eq!(
             FactType::classify("I don't like Java"),
-            FactType::Preference
+            FactType::Preference,
+            "'I don't like Java' should classify as Preference"
         );
     }
 
@@ -1338,7 +1341,8 @@ mod tests {
     fn classify_skill() {
         assert_eq!(
             FactType::classify("I know Rust and Python"),
-            FactType::Skill
+            FactType::Skill,
+            "'I know Rust and Python' should classify as Skill"
         );
         assert_eq!(
             FactType::classify("I use VS Code"),
@@ -1361,7 +1365,8 @@ mod tests {
         );
         assert_eq!(
             FactType::classify("We need to deploy by Friday"),
-            FactType::Task
+            FactType::Task,
+            "'We need to deploy by Friday' should classify as Task"
         );
     }
 
@@ -1369,11 +1374,13 @@ mod tests {
     fn classify_event() {
         assert_eq!(
             FactType::classify("Yesterday we deployed the service"),
-            FactType::Event
+            FactType::Event,
+            "'Yesterday we deployed the service' should classify as Event"
         );
         assert_eq!(
             FactType::classify("Last week the build broke"),
-            FactType::Event
+            FactType::Event,
+            "'Last week the build broke' should classify as Event"
         );
     }
 
@@ -1381,11 +1388,13 @@ mod tests {
     fn classify_relationship() {
         assert_eq!(
             FactType::classify("Alice works at Acme Corp"),
-            FactType::Relationship
+            FactType::Relationship,
+            "'Alice works at Acme Corp' should classify as Relationship"
         );
         assert_eq!(
             FactType::classify("Bob reports to Carol"),
-            FactType::Relationship
+            FactType::Relationship,
+            "'Bob reports to Carol' should classify as Relationship"
         );
     }
 
@@ -1393,11 +1402,13 @@ mod tests {
     fn classify_observation_fallback() {
         assert_eq!(
             FactType::classify("The build was slow"),
-            FactType::Observation
+            FactType::Observation,
+            "'The build was slow' should classify as Observation (fallback)"
         );
         assert_eq!(
             FactType::classify("Something happened"),
-            FactType::Observation
+            FactType::Observation,
+            "'Something happened' should classify as Observation (fallback)"
         );
     }
 
@@ -1481,7 +1492,8 @@ mod tests {
         );
         assert_eq!(
             FactType::from_str_lossy("observation"),
-            FactType::Observation
+            FactType::Observation,
+            "'observation' should parse to FactType::Observation"
         );
     }
 

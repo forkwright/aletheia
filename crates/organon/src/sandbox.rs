@@ -690,17 +690,30 @@ mod tests {
     #[test]
     fn default_config_is_enabled() {
         let config = SandboxConfig::default();
-        assert!(config.enabled);
-        assert_eq!(config.enforcement, SandboxEnforcement::Permissive);
-        assert!(config.extra_read_paths.is_empty());
-        assert!(config.extra_write_paths.is_empty());
-        assert!(config.extra_exec_paths.is_empty());
+        assert!(config.enabled, "default config should be enabled");
+        assert_eq!(
+            config.enforcement,
+            SandboxEnforcement::Permissive,
+            "default enforcement should be permissive"
+        );
+        assert!(
+            config.extra_read_paths.is_empty(),
+            "default extra_read_paths should be empty"
+        );
+        assert!(
+            config.extra_write_paths.is_empty(),
+            "default extra_write_paths should be empty"
+        );
+        assert!(
+            config.extra_exec_paths.is_empty(),
+            "default extra_exec_paths should be empty"
+        );
     }
 
     #[test]
     fn disabled_config() {
         let config = SandboxConfig::disabled();
-        assert!(!config.enabled);
+        assert!(!config.enabled, "disabled config should not be enabled");
     }
 
     #[test]
@@ -738,30 +751,63 @@ mod tests {
         };
         let json = serde_json::to_string(&config).expect("serialize");
         let back: SandboxConfig = serde_json::from_str(&json).expect("deserialize");
-        assert!(back.enabled);
-        assert_eq!(back.enforcement, SandboxEnforcement::Permissive);
-        assert_eq!(back.extra_read_paths, vec![PathBuf::from("/opt/data")]);
-        assert_eq!(back.extra_write_paths, vec![PathBuf::from("/var/cache")]);
-        assert_eq!(back.extra_exec_paths, vec![PathBuf::from("/opt/scripts")]);
+        assert!(back.enabled, "deserialized config should be enabled");
+        assert_eq!(
+            back.enforcement,
+            SandboxEnforcement::Permissive,
+            "enforcement should round-trip unchanged"
+        );
+        assert_eq!(
+            back.extra_read_paths,
+            vec![PathBuf::from("/opt/data")],
+            "extra_read_paths should round-trip unchanged"
+        );
+        assert_eq!(
+            back.extra_write_paths,
+            vec![PathBuf::from("/var/cache")],
+            "extra_write_paths should round-trip unchanged"
+        );
+        assert_eq!(
+            back.extra_exec_paths,
+            vec![PathBuf::from("/opt/scripts")],
+            "extra_exec_paths should round-trip unchanged"
+        );
     }
 
     #[test]
     fn enforcement_serde() {
         let json = serde_json::to_string(&SandboxEnforcement::Enforcing).expect("serialize");
-        assert_eq!(json, "\"enforcing\"");
+        assert_eq!(
+            json, "\"enforcing\"",
+            "Enforcing should serialize to lowercase string"
+        );
         let back: SandboxEnforcement = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, SandboxEnforcement::Enforcing);
+        assert_eq!(
+            back,
+            SandboxEnforcement::Enforcing,
+            "Enforcing should round-trip unchanged"
+        );
 
         let json = serde_json::to_string(&SandboxEnforcement::Permissive).expect("serialize");
-        assert_eq!(json, "\"permissive\"");
+        assert_eq!(
+            json, "\"permissive\"",
+            "Permissive should serialize to lowercase string"
+        );
     }
 
     #[test]
     fn config_from_yaml_defaults() {
         let json = "{}";
         let config: SandboxConfig = serde_json::from_str(json).expect("parse");
-        assert!(config.enabled);
-        assert_eq!(config.enforcement, SandboxEnforcement::Permissive);
+        assert!(
+            config.enabled,
+            "config from empty json should be enabled by default"
+        );
+        assert_eq!(
+            config.enforcement,
+            SandboxEnforcement::Permissive,
+            "config from empty json should default to permissive"
+        );
     }
 
     #[test]
@@ -769,8 +815,14 @@ mod tests {
         let config = SandboxConfig::default();
         let workspace = PathBuf::from("/home/agent/workspace");
         let policy = config.build_policy(&workspace, &[]);
-        assert!(policy.write_paths.contains(&workspace));
-        assert!(policy.read_paths.contains(&workspace));
+        assert!(
+            policy.write_paths.contains(&workspace),
+            "workspace should be in write_paths"
+        );
+        assert!(
+            policy.read_paths.contains(&workspace),
+            "workspace should be in read_paths"
+        );
     }
 
     #[test]
@@ -793,14 +845,38 @@ mod tests {
     fn policy_includes_system_paths() {
         let config = SandboxConfig::default();
         let policy = config.build_policy(Path::new("/tmp/ws"), &[]);
-        assert!(policy.read_paths.contains(&PathBuf::from("/usr")));
-        assert!(policy.read_paths.contains(&PathBuf::from("/lib")));
-        assert!(policy.read_paths.contains(&PathBuf::from("/etc")));
-        assert!(policy.exec_paths.contains(&PathBuf::from("/usr/bin")));
-        assert!(policy.exec_paths.contains(&PathBuf::from("/bin")));
-        assert!(policy.exec_paths.contains(&PathBuf::from("/lib")));
-        assert!(policy.exec_paths.contains(&PathBuf::from("/lib64")));
-        assert!(policy.write_paths.contains(&PathBuf::from("/tmp")));
+        assert!(
+            policy.read_paths.contains(&PathBuf::from("/usr")),
+            "policy should include /usr in read paths"
+        );
+        assert!(
+            policy.read_paths.contains(&PathBuf::from("/lib")),
+            "policy should include /lib in read paths"
+        );
+        assert!(
+            policy.read_paths.contains(&PathBuf::from("/etc")),
+            "policy should include /etc in read paths"
+        );
+        assert!(
+            policy.exec_paths.contains(&PathBuf::from("/usr/bin")),
+            "policy should include /usr/bin in exec paths"
+        );
+        assert!(
+            policy.exec_paths.contains(&PathBuf::from("/bin")),
+            "policy should include /bin in exec paths"
+        );
+        assert!(
+            policy.exec_paths.contains(&PathBuf::from("/lib")),
+            "policy should include /lib in exec paths"
+        );
+        assert!(
+            policy.exec_paths.contains(&PathBuf::from("/lib64")),
+            "policy should include /lib64 in exec paths"
+        );
+        assert!(
+            policy.write_paths.contains(&PathBuf::from("/tmp")),
+            "policy should include /tmp in write paths"
+        );
     }
 
     #[test]
@@ -844,17 +920,25 @@ mod tests {
         // Only meaningful when HOME is set: guard with an env check.
         if let Ok(home) = std::env::var("HOME") {
             let p = expand_tilde(Path::new("~/scripts"));
-            assert_eq!(p, PathBuf::from(format!("{home}/scripts")));
+            assert_eq!(
+                p,
+                PathBuf::from(format!("{home}/scripts")),
+                "tilde prefix should be replaced with HOME value"
+            );
 
             let p2 = expand_tilde(Path::new("~"));
-            assert_eq!(p2, PathBuf::from(&home));
+            assert_eq!(p2, PathBuf::from(&home), "bare tilde should expand to HOME");
         }
     }
 
     #[test]
     fn expand_tilde_leaves_absolute_path_unchanged() {
         let p = expand_tilde(Path::new("/usr/local/bin"));
-        assert_eq!(p, PathBuf::from("/usr/local/bin"));
+        assert_eq!(
+            p,
+            PathBuf::from("/usr/local/bin"),
+            "absolute path should be returned unchanged"
+        );
     }
 
     #[test]
@@ -880,8 +964,14 @@ mod tests {
             ..SandboxConfig::default()
         };
         let policy = config.build_policy(Path::new("/tmp/ws"), &[]);
-        assert!(policy.read_paths.contains(&PathBuf::from("/opt/readonly")));
-        assert!(policy.write_paths.contains(&PathBuf::from("/var/scratch")));
+        assert!(
+            policy.read_paths.contains(&PathBuf::from("/opt/readonly")),
+            "extra_read_paths should appear in policy read_paths"
+        );
+        assert!(
+            policy.write_paths.contains(&PathBuf::from("/var/scratch")),
+            "extra_write_paths should appear in policy write_paths"
+        );
         assert!(
             policy.read_paths.contains(&PathBuf::from("/var/scratch")),
             "write paths should also be readable"
@@ -912,7 +1002,10 @@ mod tests {
             "ABI probe must be deterministic across calls"
         );
         if let Some(abi) = first {
-            assert!(abi >= 1, "ABI version must be at least 1 when available");
+            assert!(
+                abi >= 1,
+                "ABI version must be at least 1 when available, got {abi}"
+            );
         }
     }
 
@@ -1112,8 +1205,14 @@ mod tests {
         apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
         let output = cmd.output().expect("spawn child");
-        assert!(output.status.success());
-        assert!(String::from_utf8_lossy(&output.stdout).contains("hello sandbox"));
+        assert!(
+            output.status.success(),
+            "normal echo command should succeed under sandbox"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("hello sandbox"),
+            "sandbox should not suppress stdout"
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1133,7 +1232,10 @@ mod tests {
         apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
         let output = cmd.output().expect("spawn child");
-        assert!(output.status.success());
+        assert!(
+            output.status.success(),
+            "command should succeed with permissive sandbox"
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1152,8 +1254,14 @@ mod tests {
         apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
         let output = cmd.output().expect("spawn child");
-        assert!(output.status.success());
-        assert!(String::from_utf8_lossy(&output.stdout).contains("sandbox test data"));
+        assert!(
+            output.status.success(),
+            "reading a file inside workspace should succeed"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("sandbox test data"),
+            "file content should be readable inside workspace"
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1174,7 +1282,10 @@ mod tests {
 
         let output = cmd.output().expect("spawn child");
         assert!(output.status.success(), "writing in workspace should work");
-        assert!(outfile.exists());
+        assert!(
+            outfile.exists(),
+            "output file should exist after write in workspace"
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1277,15 +1388,28 @@ mod tests {
     #[test]
     fn egress_policy_serde() {
         let json = serde_json::to_string(&EgressPolicy::Deny).expect("serialize");
-        assert_eq!(json, "\"deny\"");
+        assert_eq!(
+            json, "\"deny\"",
+            "EgressPolicy::Deny should serialize to lowercase string"
+        );
         let back: EgressPolicy = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, EgressPolicy::Deny);
+        assert_eq!(
+            back,
+            EgressPolicy::Deny,
+            "EgressPolicy::Deny should round-trip unchanged"
+        );
 
         let json = serde_json::to_string(&EgressPolicy::Allow).expect("serialize");
-        assert_eq!(json, "\"allow\"");
+        assert_eq!(
+            json, "\"allow\"",
+            "EgressPolicy::Allow should serialize to lowercase string"
+        );
 
         let json = serde_json::to_string(&EgressPolicy::Allowlist).expect("serialize");
-        assert_eq!(json, "\"allowlist\"");
+        assert_eq!(
+            json, "\"allowlist\"",
+            "EgressPolicy::Allowlist should serialize to lowercase string"
+        );
     }
 
     #[test]
@@ -1297,8 +1421,16 @@ mod tests {
         };
         let json = serde_json::to_string(&config).expect("serialize");
         let back: SandboxConfig = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back.egress, EgressPolicy::Allowlist);
-        assert_eq!(back.egress_allowlist, vec!["127.0.0.1", "::1"]);
+        assert_eq!(
+            back.egress,
+            EgressPolicy::Allowlist,
+            "egress policy should round-trip unchanged"
+        );
+        assert_eq!(
+            back.egress_allowlist,
+            vec!["127.0.0.1", "::1"],
+            "egress_allowlist should round-trip unchanged"
+        );
     }
 
     #[test]
@@ -1319,7 +1451,11 @@ mod tests {
             ..SandboxConfig::default()
         };
         let policy = config.build_policy(Path::new("/tmp/ws"), &[]);
-        assert_eq!(policy.egress, EgressPolicy::Deny);
+        assert_eq!(
+            policy.egress,
+            EgressPolicy::Deny,
+            "policy should inherit deny egress from config"
+        );
     }
 
     #[test]
@@ -1476,8 +1612,14 @@ mod tests {
         apply_sandbox(&mut cmd, policy).expect("apply sandbox");
 
         let output = cmd.output().expect("spawn child");
-        assert!(output.status.success());
-        assert!(String::from_utf8_lossy(&output.stdout).contains("no egress filter"));
+        assert!(
+            output.status.success(),
+            "command should succeed with egress=allow"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("no egress filter"),
+            "stdout should be captured with egress=allow"
+        );
     }
 
     #[cfg(target_os = "linux")]

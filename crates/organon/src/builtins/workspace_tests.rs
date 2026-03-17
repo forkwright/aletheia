@@ -33,8 +33,15 @@ async fn read_existing_file() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("read", serde_json::json!({ "path": "hello.txt" }));
     let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
-    assert_eq!(result.content.text_summary(), "hello world");
-    assert!(!result.is_error);
+    assert_eq!(
+        result.content.text_summary(),
+        "hello world",
+        "read should return file contents"
+    );
+    assert!(
+        !result.is_error,
+        "reading an existing file should not produce an error"
+    );
 }
 
 #[tokio::test]
@@ -48,8 +55,15 @@ async fn read_with_max_lines() {
         serde_json::json!({ "path": "lines.txt", "maxLines": 2 }),
     );
     let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
-    assert_eq!(result.content.text_summary(), "a\nb");
-    assert!(!result.is_error);
+    assert_eq!(
+        result.content.text_summary(),
+        "a\nb",
+        "read with maxLines=2 should return only the first 2 lines"
+    );
+    assert!(
+        !result.is_error,
+        "reading with maxLines should not produce an error"
+    );
 }
 
 #[tokio::test]
@@ -58,8 +72,14 @@ async fn read_missing_file() {
     let ctx = test_ctx(dir.path());
     let input = tool_input("read", serde_json::json!({ "path": "nope.txt" }));
     let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("file not found"));
+    assert!(
+        result.is_error,
+        "reading a missing file should produce an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("file not found"),
+        "error message should indicate file not found"
+    );
 }
 
 #[tokio::test]
@@ -71,10 +91,19 @@ async fn write_creates_file() {
         serde_json::json!({ "path": "out.txt", "content": "data" }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("wrote 4 bytes"));
+    assert!(
+        !result.is_error,
+        "writing a new file should not produce an error"
+    );
+    assert!(
+        result.content.text_summary().contains("wrote 4 bytes"),
+        "success message should report bytes written"
+    );
     let on_disk = std::fs::read_to_string(dir.path().join("out.txt")).expect("read");
-    assert_eq!(on_disk, "data");
+    assert_eq!(
+        on_disk, "data",
+        "file content should match what was written"
+    );
 }
 
 #[tokio::test]
@@ -86,9 +115,15 @@ async fn write_creates_parent_dirs() {
         serde_json::json!({ "path": "sub/deep/file.txt", "content": "nested" }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "writing to a nested path should create parent directories"
+    );
     let on_disk = std::fs::read_to_string(dir.path().join("sub/deep/file.txt")).expect("read");
-    assert_eq!(on_disk, "nested");
+    assert_eq!(
+        on_disk, "nested",
+        "nested file content should match what was written"
+    );
 }
 
 #[tokio::test]
@@ -102,9 +137,12 @@ async fn write_append_mode() {
         serde_json::json!({ "path": "log.txt", "content": "second\n", "append": true }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "append write should not produce an error");
     let on_disk = std::fs::read_to_string(dir.path().join("log.txt")).expect("read");
-    assert_eq!(on_disk, "first\nsecond\n");
+    assert_eq!(
+        on_disk, "first\nsecond\n",
+        "append mode should add content after existing data"
+    );
 }
 
 #[tokio::test]
@@ -122,10 +160,19 @@ async fn edit_single_match() {
         }),
     );
     let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("edited"));
+    assert!(
+        !result.is_error,
+        "editing a file with a single match should not produce an error"
+    );
+    assert!(
+        result.content.text_summary().contains("edited"),
+        "success message should indicate the file was edited"
+    );
     let on_disk = std::fs::read_to_string(dir.path().join("code.rs")).expect("read");
-    assert_eq!(on_disk, "fn new_name() {}");
+    assert_eq!(
+        on_disk, "fn new_name() {}",
+        "file should contain the replacement text"
+    );
 }
 
 #[tokio::test]
@@ -143,8 +190,14 @@ async fn edit_not_found() {
         }),
     );
     let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("old_text not found"));
+    assert!(
+        result.is_error,
+        "editing with a non-existent old_text should produce an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("old_text not found"),
+        "error message should indicate old_text was not found"
+    );
 }
 
 #[tokio::test]
@@ -162,8 +215,14 @@ async fn edit_multiple_matches() {
         }),
     );
     let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("2 times"));
+    assert!(
+        result.is_error,
+        "editing with multiple matches should produce an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("2 times"),
+        "error message should indicate the number of matches found"
+    );
 }
 
 #[tokio::test]
@@ -177,9 +236,18 @@ async fn exec_simple_command() {
     .execute(&input, &ctx)
     .await
     .expect("execute");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("hello"));
-    assert!(result.content.text_summary().contains("exit=0"));
+    assert!(
+        !result.is_error,
+        "executing a simple echo command should not produce an error"
+    );
+    assert!(
+        result.content.text_summary().contains("hello"),
+        "output should contain the echoed text"
+    );
+    assert!(
+        result.content.text_summary().contains("exit=0"),
+        "output should report zero exit code"
+    );
 }
 
 #[tokio::test]
@@ -196,8 +264,14 @@ async fn exec_timeout() {
     .execute(&input, &ctx)
     .await
     .expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("timed out"));
+    assert!(
+        result.is_error,
+        "a command exceeding its timeout should produce an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("timed out"),
+        "error message should indicate the command timed out"
+    );
 }
 
 #[tokio::test]
@@ -209,7 +283,10 @@ async fn path_traversal_blocked() {
         .execute(&input, &ctx)
         .await
         .expect_err("should reject traversal");
-    assert!(err.to_string().contains("outside allowed roots"));
+    assert!(
+        err.to_string().contains("outside allowed roots"),
+        "path traversal should be rejected with appropriate error message"
+    );
 }
 
 #[tokio::test]
@@ -236,7 +313,10 @@ async fn test_write_when_path_argument_missing_returns_error() {
         .execute(&input, &ctx)
         .await
         .expect_err("missing path should error");
-    assert!(err.to_string().contains("missing or invalid field"));
+    assert!(
+        err.to_string().contains("missing or invalid field"),
+        "missing path argument should produce a field validation error"
+    );
 }
 
 #[tokio::test]
@@ -248,7 +328,10 @@ async fn test_write_when_content_argument_missing_returns_error() {
         .execute(&input, &ctx)
         .await
         .expect_err("missing content should error");
-    assert!(err.to_string().contains("missing or invalid field"));
+    assert!(
+        err.to_string().contains("missing or invalid field"),
+        "missing content argument should produce a field validation error"
+    );
 }
 
 #[tokio::test]
@@ -264,7 +347,10 @@ async fn test_edit_when_old_text_argument_missing_returns_error() {
         .execute(&input, &ctx)
         .await
         .expect_err("missing old_text should error");
-    assert!(err.to_string().contains("missing or invalid field"));
+    assert!(
+        err.to_string().contains("missing or invalid field"),
+        "missing old_text argument should produce a field validation error"
+    );
 }
 
 #[tokio::test]
@@ -278,7 +364,10 @@ async fn test_exec_when_command_argument_missing_returns_error() {
     .execute(&input, &ctx)
     .await
     .expect_err("missing command should error");
-    assert!(err.to_string().contains("missing or invalid field"));
+    assert!(
+        err.to_string().contains("missing or invalid field"),
+        "missing command argument should produce a field validation error"
+    );
 }
 
 #[tokio::test]
@@ -291,8 +380,15 @@ async fn test_read_ignores_unknown_extra_fields() {
         serde_json::json!({ "path": "hi.txt", "unknownField": "ignored" }),
     );
     let result = ReadExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
-    assert_eq!(result.content.text_summary(), "hello");
+    assert!(
+        !result.is_error,
+        "read with unknown extra fields should not produce an error"
+    );
+    assert_eq!(
+        result.content.text_summary(),
+        "hello",
+        "unknown fields should be ignored and file should be read normally"
+    );
 }
 
 #[tokio::test]
@@ -304,8 +400,14 @@ async fn test_write_reports_byte_count_in_success_message() {
         serde_json::json!({ "path": "out.txt", "content": "hello" }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("wrote 5 bytes"));
+    assert!(
+        !result.is_error,
+        "writing a file should not produce an error"
+    );
+    assert!(
+        result.content.text_summary().contains("wrote 5 bytes"),
+        "success message should report the correct byte count"
+    );
 }
 
 #[tokio::test]
@@ -318,9 +420,15 @@ async fn test_write_overwrite_replaces_existing_content() {
         serde_json::json!({ "path": "out.txt", "content": "new content" }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "overwrite write should not produce an error"
+    );
     let on_disk = std::fs::read_to_string(dir.path().join("out.txt")).expect("read");
-    assert_eq!(on_disk, "new content");
+    assert_eq!(
+        on_disk, "new content",
+        "overwrite should replace existing file content"
+    );
 }
 
 #[tokio::test]
@@ -332,9 +440,15 @@ async fn test_write_append_creates_file_when_absent() {
         serde_json::json!({ "path": "new.txt", "content": "data", "append": true }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "append to non-existent file should create it without error"
+    );
     let on_disk = std::fs::read_to_string(dir.path().join("new.txt")).expect("read");
-    assert_eq!(on_disk, "data");
+    assert_eq!(
+        on_disk, "data",
+        "append mode should create the file with the provided content"
+    );
 }
 
 #[tokio::test]
@@ -350,8 +464,14 @@ async fn test_edit_when_file_does_not_exist_returns_error_result() {
         }),
     );
     let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("file not found"));
+    assert!(
+        result.is_error,
+        "editing a non-existent file should produce an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("file not found"),
+        "error message should indicate the file was not found"
+    );
 }
 
 #[tokio::test]
@@ -368,7 +488,10 @@ async fn test_edit_success_message_contains_path() {
         }),
     );
     let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "edit should succeed when old_text is found exactly once"
+    );
     let text = result.content.text_summary();
     assert!(text.contains("code.rs"), "message should mention path");
 }
@@ -388,9 +511,15 @@ async fn test_edit_preserves_surrounding_content() {
         }),
     );
     let result = EditExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "edit should succeed when target text is found"
+    );
     let on_disk = std::fs::read_to_string(dir.path().join("f.txt")).expect("read");
-    assert_eq!(on_disk, "line1\nREPLACED\nline3\n");
+    assert_eq!(
+        on_disk, "line1\nREPLACED\nline3\n",
+        "surrounding content should be preserved after edit"
+    );
 }
 
 #[tokio::test]
@@ -407,8 +536,14 @@ async fn test_exec_failed_command_reports_nonzero_exit_code() {
     .execute(&input, &ctx)
     .await
     .expect("execute");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("exit=42"));
+    assert!(
+        !result.is_error,
+        "a failed command should not itself be an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("exit=42"),
+        "output should include the non-zero exit code"
+    );
 }
 
 #[tokio::test]
@@ -427,8 +562,14 @@ async fn test_exec_stderr_captured_in_output() {
     .execute(&input, &ctx)
     .await
     .expect("execute");
-    assert!(!result.is_error);
-    assert!(result.content.text_summary().contains("errline"));
+    assert!(
+        !result.is_error,
+        "a command that writes to stderr should not produce an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("errline"),
+        "stderr output should be captured in the result"
+    );
 }
 
 #[tokio::test]
@@ -442,7 +583,10 @@ async fn test_exec_working_directory_is_workspace() {
     .execute(&input, &ctx)
     .await
     .expect("execute");
-    assert!(!result.is_error);
+    assert!(
+        !result.is_error,
+        "pwd command should not produce an error result"
+    );
     let text = result.content.text_summary();
     let canonical = dir.path().canonicalize().expect("canon");
     assert!(
@@ -467,7 +611,7 @@ async fn test_exec_output_format_includes_exit_then_stdout_then_stderr() {
     .execute(&input, &ctx)
     .await
     .expect("execute");
-    assert!(!result.is_error);
+    assert!(!result.is_error, "exec should not produce an error result");
     let text = result.content.text_summary();
     let exit_pos = text.find("exit=0").expect("exit marker");
     let out_pos = text.find("out").expect("stdout");
@@ -480,27 +624,40 @@ fn test_validate_path_empty_string_returns_error() {
     let name = aletheia_koina::id::ToolName::new("read").expect("valid");
     let ctx = test_ctx(dir.path());
     let err = validate_path("", &ctx, &name).expect_err("empty path should fail");
-    assert!(err.to_string().contains("path must not be empty"));
+    assert!(
+        err.to_string().contains("path must not be empty"),
+        "empty path should produce an appropriate error message"
+    );
 }
 
 #[test]
 fn test_expand_tilde_str_expands_home() {
     if let Ok(home) = std::env::var("HOME") {
         let expanded = expand_tilde_str("~/notes.txt");
-        assert_eq!(expanded, format!("{home}/notes.txt"));
+        assert_eq!(
+            expanded,
+            format!("{home}/notes.txt"),
+            "tilde prefix should be expanded to HOME"
+        );
 
         let expanded_bare = expand_tilde_str("~");
-        assert_eq!(expanded_bare, home);
+        assert_eq!(expanded_bare, home, "bare tilde should expand to HOME");
     }
 }
 
 #[test]
 fn test_expand_tilde_str_leaves_non_tilde_unchanged() {
     let result = expand_tilde_str("/absolute/path");
-    assert_eq!(result, "/absolute/path");
+    assert_eq!(
+        result, "/absolute/path",
+        "absolute path without tilde should be unchanged"
+    );
 
     let result2 = expand_tilde_str("relative/path");
-    assert_eq!(result2, "relative/path");
+    assert_eq!(
+        result2, "relative/path",
+        "relative path without tilde should be unchanged"
+    );
 }
 
 #[test]
@@ -538,8 +695,14 @@ fn test_validate_path_relative_resolves_inside_workspace() {
     let name = aletheia_koina::id::ToolName::new("read").expect("valid");
     let ctx = test_ctx(dir.path());
     let resolved = validate_path("sub/file.txt", &ctx, &name).expect("valid relative path");
-    assert!(resolved.starts_with(dir.path()));
-    assert!(resolved.ends_with("sub/file.txt"));
+    assert!(
+        resolved.starts_with(dir.path()),
+        "resolved path should be under the workspace directory"
+    );
+    assert!(
+        resolved.ends_with("sub/file.txt"),
+        "resolved path should end with the relative path provided"
+    );
 }
 
 #[test]
@@ -548,28 +711,43 @@ fn test_validate_path_rejects_absolute_outside_allowed_roots() {
     let name = aletheia_koina::id::ToolName::new("read").expect("valid");
     let ctx = test_ctx(dir.path());
     let err = validate_path("/etc/shadow", &ctx, &name).expect_err("outside roots");
-    assert!(err.to_string().contains("outside allowed roots"));
+    assert!(
+        err.to_string().contains("outside allowed roots"),
+        "absolute path outside allowed roots should be rejected"
+    );
 }
 
 #[test]
 fn test_normalize_removes_parent_dir_traversal() {
     let input = Path::new("/a/b/../c");
     let result = normalize(input);
-    assert_eq!(result, Path::new("/a/c"));
+    assert_eq!(
+        result,
+        Path::new("/a/c"),
+        "parent directory traversal should be resolved"
+    );
 }
 
 #[test]
 fn test_normalize_removes_current_dir_component() {
     let input = Path::new("/a/./b/./c");
     let result = normalize(input);
-    assert_eq!(result, Path::new("/a/b/c"));
+    assert_eq!(
+        result,
+        Path::new("/a/b/c"),
+        "current directory components should be removed"
+    );
 }
 
 #[test]
 fn test_normalize_handles_multiple_parent_traversals() {
     let input = Path::new("/a/b/c/../../d");
     let result = normalize(input);
-    assert_eq!(result, Path::new("/a/d"));
+    assert_eq!(
+        result,
+        Path::new("/a/d"),
+        "multiple parent directory traversals should all be resolved"
+    );
 }
 
 #[test]
@@ -578,7 +756,10 @@ fn test_extract_str_missing_field_returns_invalid_input_error() {
     let name = ToolName::new("test").expect("valid");
     let args = serde_json::json!({ "other": "value" });
     let err = extract_str(&args, "path", &name).expect_err("missing should fail");
-    assert!(err.to_string().contains("missing or invalid field: path"));
+    assert!(
+        err.to_string().contains("missing or invalid field: path"),
+        "missing field error should name the missing field"
+    );
 }
 
 #[test]
@@ -587,31 +768,50 @@ fn test_extract_str_non_string_value_returns_error() {
     let name = ToolName::new("test").expect("valid");
     let args = serde_json::json!({ "path": 42 });
     let err = extract_str(&args, "path", &name).expect_err("wrong type should fail");
-    assert!(err.to_string().contains("missing or invalid field: path"));
+    assert!(
+        err.to_string().contains("missing or invalid field: path"),
+        "wrong type error should name the invalid field"
+    );
 }
 
 #[test]
 fn test_extract_opt_u64_returns_none_when_field_absent() {
     let args = serde_json::json!({});
-    assert_eq!(extract_opt_u64(&args, "maxLines"), None);
+    assert_eq!(
+        extract_opt_u64(&args, "maxLines"),
+        None,
+        "absent field should return None"
+    );
 }
 
 #[test]
 fn test_extract_opt_u64_returns_value_when_field_present() {
     let args = serde_json::json!({ "maxLines": 42 });
-    assert_eq!(extract_opt_u64(&args, "maxLines"), Some(42));
+    assert_eq!(
+        extract_opt_u64(&args, "maxLines"),
+        Some(42),
+        "present numeric field should return its value wrapped in Some"
+    );
 }
 
 #[test]
 fn test_extract_opt_bool_returns_none_when_field_absent() {
     let args = serde_json::json!({});
-    assert_eq!(extract_opt_bool(&args, "append"), None);
+    assert_eq!(
+        extract_opt_bool(&args, "append"),
+        None,
+        "absent field should return None"
+    );
 }
 
 #[test]
 fn test_extract_opt_bool_returns_value_when_field_present() {
     let args = serde_json::json!({ "append": true });
-    assert_eq!(extract_opt_bool(&args, "append"), Some(true));
+    assert_eq!(
+        extract_opt_bool(&args, "append"),
+        Some(true),
+        "present boolean field should return its value wrapped in Some"
+    );
 }
 
 #[tokio::test]
@@ -630,7 +830,10 @@ fn test_read_tool_def_has_path_as_required() {
     register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
     let tn = aletheia_koina::id::ToolName::new("read").expect("valid");
     let def = reg.get_def(&tn).expect("read registered");
-    assert!(def.input_schema.required.contains(&"path".to_owned()));
+    assert!(
+        def.input_schema.required.contains(&"path".to_owned()),
+        "read tool schema should require the path field"
+    );
 }
 
 #[test]
@@ -639,8 +842,14 @@ fn test_write_tool_def_has_path_and_content_as_required() {
     register(&mut reg, crate::sandbox::SandboxConfig::disabled()).expect("register");
     let tn = aletheia_koina::id::ToolName::new("write").expect("valid");
     let def = reg.get_def(&tn).expect("write registered");
-    assert!(def.input_schema.required.contains(&"path".to_owned()));
-    assert!(def.input_schema.required.contains(&"content".to_owned()));
+    assert!(
+        def.input_schema.required.contains(&"path".to_owned()),
+        "write tool schema should require the path field"
+    );
+    assert!(
+        def.input_schema.required.contains(&"content".to_owned()),
+        "write tool schema should require the content field"
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -728,47 +937,81 @@ async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() 
 #[test]
 fn parse_command_args_splits_simple_command() {
     let (prog, args) = parse_command_args("echo hello world").expect("parse");
-    assert_eq!(prog, "echo");
-    assert_eq!(args, ["hello", "world"]);
+    assert_eq!(prog, "echo", "program should be the first token");
+    assert_eq!(
+        args,
+        ["hello", "world"],
+        "remaining tokens should be arguments"
+    );
 }
 
 #[test]
 fn parse_command_args_handles_single_quoted_string() {
     let (prog, args) = parse_command_args("echo 'hello world'").expect("parse");
-    assert_eq!(prog, "echo");
-    assert_eq!(args, ["hello world"]);
+    assert_eq!(
+        prog, "echo",
+        "program should be parsed correctly with quoted args"
+    );
+    assert_eq!(
+        args,
+        ["hello world"],
+        "single-quoted string should be treated as one argument"
+    );
 }
 
 #[test]
 fn parse_command_args_handles_double_quoted_string() {
     let (prog, args) = parse_command_args("echo \"hello world\"").expect("parse");
-    assert_eq!(prog, "echo");
-    assert_eq!(args, ["hello world"]);
+    assert_eq!(
+        prog, "echo",
+        "program should be parsed correctly with double-quoted args"
+    );
+    assert_eq!(
+        args,
+        ["hello world"],
+        "double-quoted string should be treated as one argument"
+    );
 }
 
 #[test]
 fn parse_command_args_handles_backslash_escape_in_double_quotes() {
     let (prog, args) = parse_command_args("echo \"a\\\"b\"").expect("parse");
-    assert_eq!(prog, "echo");
-    assert_eq!(args, ["a\"b"]);
+    assert_eq!(
+        prog, "echo",
+        "program should be parsed correctly with escaped quotes"
+    );
+    assert_eq!(
+        args,
+        ["a\"b"],
+        "backslash-escaped double quote inside double quotes should be unescaped"
+    );
 }
 
 #[test]
 fn parse_command_args_rejects_unterminated_single_quote() {
     let err = parse_command_args("echo 'hello").expect_err("should fail");
-    assert!(err.contains("unterminated single quote"));
+    assert!(
+        err.contains("unterminated single quote"),
+        "unterminated single quote should produce an appropriate error message"
+    );
 }
 
 #[test]
 fn parse_command_args_rejects_empty_command() {
     let err = parse_command_args("").expect_err("should fail");
-    assert!(err.contains("empty"));
+    assert!(
+        err.contains("empty"),
+        "empty command string should produce an error mentioning 'empty'"
+    );
 }
 
 #[test]
 fn parse_command_args_rejects_whitespace_only_command() {
     let err = parse_command_args("   ").expect_err("should fail");
-    assert!(err.contains("empty"));
+    assert!(
+        err.contains("empty"),
+        "whitespace-only command string should produce an error mentioning 'empty'"
+    );
 }
 
 #[test]
@@ -777,22 +1020,42 @@ fn parse_command_args_treats_shell_metacharacters_as_literals() {
     // not be interpreted as command separators or operators when the LLM
     // includes them in a command string.
     let (prog, args) = parse_command_args("echo hello; rm -rf /").expect("parse");
-    assert_eq!(prog, "echo");
-    assert_eq!(args, ["hello;", "rm", "-rf", "/"]);
+    assert_eq!(
+        prog, "echo",
+        "program should be the first token even with shell metacharacters present"
+    );
+    assert_eq!(
+        args,
+        ["hello;", "rm", "-rf", "/"],
+        "shell metacharacters should be treated as literals, not operators"
+    );
 }
 
 #[test]
 fn parse_command_args_treats_dollar_sign_as_literal() {
     let (prog, args) = parse_command_args("echo $HOME").expect("parse");
-    assert_eq!(prog, "echo");
-    assert_eq!(args, ["$HOME"]);
+    assert_eq!(
+        prog, "echo",
+        "program should be parsed correctly when args include dollar signs"
+    );
+    assert_eq!(
+        args,
+        ["$HOME"],
+        "dollar sign should be treated as a literal, not expanded"
+    );
 }
 
 #[test]
 fn parse_command_args_program_only() {
     let (prog, args) = parse_command_args("ls").expect("parse");
-    assert_eq!(prog, "ls");
-    assert!(args.is_empty());
+    assert_eq!(
+        prog, "ls",
+        "single-token command should be parsed as the program"
+    );
+    assert!(
+        args.is_empty(),
+        "program-only command should have no arguments"
+    );
 }
 
 #[tokio::test]
@@ -804,7 +1067,10 @@ async fn write_blocks_identity_md() {
         serde_json::json!({ "path": "IDENTITY.md", "content": "tampered" }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
+    assert!(
+        result.is_error,
+        "writing to IDENTITY.md should produce an error result"
+    );
     assert!(
         result.content.text_summary().contains("protected"),
         "must mention protected: {}",
@@ -821,8 +1087,14 @@ async fn write_blocks_soul_md() {
         serde_json::json!({ "path": "SOUL.md", "content": "overwritten" }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("protected"));
+    assert!(
+        result.is_error,
+        "writing to SOUL.md should produce an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("protected"),
+        "error message should indicate the file is protected"
+    );
 }
 
 #[tokio::test]
@@ -834,8 +1106,14 @@ async fn write_blocks_goals_md() {
         serde_json::json!({ "path": "GOALS.md", "content": "replaced" }),
     );
     let result = WriteExecutor.execute(&input, &ctx).await.expect("execute");
-    assert!(result.is_error);
-    assert!(result.content.text_summary().contains("protected"));
+    assert!(
+        result.is_error,
+        "writing to GOALS.md should produce an error result"
+    );
+    assert!(
+        result.content.text_summary().contains("protected"),
+        "error message should indicate the file is protected"
+    );
 }
 
 #[tokio::test]

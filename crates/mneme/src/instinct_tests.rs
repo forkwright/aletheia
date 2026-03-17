@@ -38,10 +38,16 @@ fn observation_stores_correct_fields() {
         nous_id: "nous-1".to_owned(),
         observed_at: ts("2026-03-01T12:00:00Z"),
     };
-    assert_eq!(obs.tool_name, "grep");
-    assert_eq!(obs.nous_id, "nous-1");
-    assert!(obs.outcome.is_success());
-    assert_eq!(obs.context_summary, "searching for TODOs in code");
+    assert_eq!(
+        obs.tool_name, "grep",
+        "tool_name should be stored correctly"
+    );
+    assert_eq!(obs.nous_id, "nous-1", "nous_id should be stored correctly");
+    assert!(obs.outcome.is_success(), "outcome should be success");
+    assert_eq!(
+        obs.context_summary, "searching for TODOs in code",
+        "context_summary should be stored correctly"
+    );
 }
 
 // --- 2. Aggregation: 10 successful calls → pattern ---
@@ -60,12 +66,31 @@ fn aggregation_creates_pattern_from_successful_calls() {
         .collect();
 
     let patterns = aggregate_observations(&observations);
-    assert_eq!(patterns.len(), 1);
-    assert_eq!(patterns[0].tool_name, "grep");
-    assert_eq!(patterns[0].context_type, "code");
-    assert_eq!(patterns[0].success_count, 10);
-    assert_eq!(patterns[0].total_count, 10);
-    assert!((patterns[0].success_rate - 1.0).abs() < f64::EPSILON);
+    assert_eq!(
+        patterns.len(),
+        1,
+        "ten successful calls should produce one pattern"
+    );
+    assert_eq!(
+        patterns[0].tool_name, "grep",
+        "pattern tool_name should match observations"
+    );
+    assert_eq!(
+        patterns[0].context_type, "code",
+        "pattern context_type should be code"
+    );
+    assert_eq!(
+        patterns[0].success_count, 10,
+        "all ten calls should be counted as successful"
+    );
+    assert_eq!(
+        patterns[0].total_count, 10,
+        "total count should equal number of observations"
+    );
+    assert!(
+        (patterns[0].success_rate - 1.0).abs() < f64::EPSILON,
+        "success rate should be 100%"
+    );
 }
 
 // --- 3. Threshold: below minimum observations ---
@@ -138,10 +163,22 @@ fn pattern_generates_correct_fact_content() {
         last_observed: ts("2026-03-10T00:00:00Z"),
     };
     let content = pattern.to_fact_content();
-    assert!(content.contains("code"));
-    assert!(content.contains("grep"));
-    assert!(content.contains("80%"));
-    assert!(content.contains("n=10"));
+    assert!(
+        content.contains("code"),
+        "fact content should include context type"
+    );
+    assert!(
+        content.contains("grep"),
+        "fact content should include tool name"
+    );
+    assert!(
+        content.contains("80%"),
+        "fact content should include success rate"
+    );
+    assert!(
+        content.contains("n=10"),
+        "fact content should include observation count"
+    );
 }
 
 // --- 6. Sanitization: secrets stripped ---
@@ -156,10 +193,22 @@ fn sanitize_strips_secret_parameters() {
     });
     let sanitized = sanitize_parameters(&params);
     let obj = sanitized.as_object().expect("should be object");
-    assert_eq!(obj["api_key"], "[REDACTED]");
-    assert_eq!(obj["password"], "[REDACTED]");
-    assert_eq!(obj["url"], "https://acme.corp/api");
-    assert_eq!(obj["query"], "normal value");
+    assert_eq!(
+        obj["api_key"], "[REDACTED]",
+        "api_key field should be redacted"
+    );
+    assert_eq!(
+        obj["password"], "[REDACTED]",
+        "password field should be redacted"
+    );
+    assert_eq!(
+        obj["url"], "https://acme.corp/api",
+        "url field should pass through"
+    );
+    assert_eq!(
+        obj["query"], "normal value",
+        "non-secret field should pass through"
+    );
 }
 
 // --- 7. Context classification ---
@@ -168,7 +217,8 @@ fn sanitize_strips_secret_parameters() {
 fn classify_grep_as_code() {
     assert_eq!(
         ContextCategory::classify("grep", "anything"),
-        ContextCategory::Code
+        ContextCategory::Code,
+        "grep should classify as code"
     );
 }
 
@@ -176,7 +226,8 @@ fn classify_grep_as_code() {
 fn classify_web_search_as_research() {
     assert_eq!(
         ContextCategory::classify("web_search", "anything"),
-        ContextCategory::Research
+        ContextCategory::Research,
+        "web_search should classify as research"
     );
 }
 
@@ -184,7 +235,8 @@ fn classify_web_search_as_research() {
 fn classify_exec_as_system() {
     assert_eq!(
         ContextCategory::classify("exec", "running command"),
-        ContextCategory::System
+        ContextCategory::System,
+        "exec should classify as system"
     );
 }
 
@@ -192,7 +244,8 @@ fn classify_exec_as_system() {
 fn classify_memory_search_as_memory() {
     assert_eq!(
         ContextCategory::classify("memory_search", "looking up facts"),
-        ContextCategory::Memory
+        ContextCategory::Memory,
+        "memory_search should classify as memory"
     );
 }
 
@@ -200,7 +253,8 @@ fn classify_memory_search_as_memory() {
 fn classify_send_message_as_communication() {
     assert_eq!(
         ContextCategory::classify("send_message", "notifying user"),
-        ContextCategory::Communication
+        ContextCategory::Communication,
+        "send_message should classify as communication"
     );
 }
 
@@ -208,7 +262,8 @@ fn classify_send_message_as_communication() {
 fn classify_unknown_tool_with_code_context() {
     assert_eq!(
         ContextCategory::classify("custom_tool", "editing code file"),
-        ContextCategory::Code
+        ContextCategory::Code,
+        "unknown tool with code context summary should classify as code"
     );
 }
 
@@ -216,7 +271,8 @@ fn classify_unknown_tool_with_code_context() {
 fn classify_unknown_tool_unknown_context_as_other() {
     assert_eq!(
         ContextCategory::classify("custom_tool", "doing something"),
-        ContextCategory::Other
+        ContextCategory::Other,
+        "unknown tool with unrecognized context should classify as other"
     );
 }
 
@@ -232,7 +288,10 @@ fn sanitize_truncates_long_values() {
         content.len() <= MAX_PARAM_VALUE_LEN + 5,
         "value should be truncated to ~200 chars"
     );
-    assert!(content.ends_with("..."));
+    assert!(
+        content.ends_with("..."),
+        "truncated value should end with ellipsis"
+    );
 }
 
 // --- 9. Context summary truncation ---
@@ -240,15 +299,25 @@ fn sanitize_truncates_long_values() {
 #[test]
 fn truncate_context_summary_short_passthrough() {
     let short = "brief summary";
-    assert_eq!(truncate_context_summary(short), short);
+    assert_eq!(
+        truncate_context_summary(short),
+        short,
+        "short summary should pass through unchanged"
+    );
 }
 
 #[test]
 fn truncate_context_summary_long_truncated() {
     let long = "a".repeat(200);
     let truncated = truncate_context_summary(&long);
-    assert!(truncated.len() <= MAX_CONTEXT_SUMMARY_LEN + 5);
-    assert!(truncated.ends_with("..."));
+    assert!(
+        truncated.len() <= MAX_CONTEXT_SUMMARY_LEN + 5,
+        "truncated summary should be within limit"
+    );
+    assert!(
+        truncated.ends_with("..."),
+        "truncated summary should end with ellipsis"
+    );
 }
 
 // --- 10. ToolOutcome serialization roundtrip ---
@@ -267,7 +336,10 @@ fn tool_outcome_stored_string_roundtrip() {
     for outcome in &outcomes {
         let stored = outcome.as_stored_string();
         let back = ToolOutcome::from_stored_string(&stored);
-        assert_eq!(outcome, &back);
+        assert_eq!(
+            outcome, &back,
+            "outcome should survive stored-string roundtrip"
+        );
     }
 }
 
@@ -332,8 +404,11 @@ fn aggregation_separates_tools() {
     let patterns = aggregate_observations(&observations);
     assert_eq!(patterns.len(), 2, "should have separate patterns per tool");
     let names: Vec<_> = patterns.iter().map(|p| p.tool_name.as_str()).collect();
-    assert!(names.contains(&"grep"));
-    assert!(names.contains(&"web_search"));
+    assert!(names.contains(&"grep"), "grep pattern should be present");
+    assert!(
+        names.contains(&"web_search"),
+        "web_search pattern should be present"
+    );
 }
 
 // --- 13. Nested secret sanitization ---
@@ -348,8 +423,14 @@ fn sanitize_handles_nested_objects() {
     });
     let sanitized = sanitize_parameters(&params);
     let config = sanitized["config"].as_object().expect("nested object");
-    assert_eq!(config["api_key"], "[REDACTED]");
-    assert_eq!(config["name"], "test");
+    assert_eq!(
+        config["api_key"], "[REDACTED]",
+        "nested api_key field should be redacted"
+    );
+    assert_eq!(
+        config["name"], "test",
+        "non-secret nested field should pass through"
+    );
 }
 
 // --- 14. Observation serde roundtrip ---
@@ -366,8 +447,14 @@ fn observation_serde_roundtrip() {
     };
     let json = serde_json::to_string(&obs).expect("serialize");
     let back: ToolObservation = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(obs.tool_name, back.tool_name);
-    assert_eq!(obs.nous_id, back.nous_id);
+    assert_eq!(
+        obs.tool_name, back.tool_name,
+        "tool_name should survive serde roundtrip"
+    );
+    assert_eq!(
+        obs.nous_id, back.nous_id,
+        "nous_id should survive serde roundtrip"
+    );
 }
 
 // --- 15. ContextCategory display/parse ---
@@ -512,7 +599,10 @@ fn five_successful_calls_at_threshold_triggers_pattern() {
         1,
         "exactly {MIN_OBSERVATIONS} successful calls should meet the minimum threshold"
     );
-    assert_eq!(patterns[0].success_count, MIN_OBSERVATIONS);
+    assert_eq!(
+        patterns[0].success_count, MIN_OBSERVATIONS,
+        "success count should equal minimum observations"
+    );
 }
 
 // --- 21. Req 7: 10 calls with 70% success rate does NOT trigger (below 80%) ---
@@ -579,9 +669,12 @@ fn ten_calls_at_80_percent_success_rate_boundary_triggers_pattern() {
         1,
         "80% success rate should meet the minimum threshold"
     );
-    assert_eq!(patterns[0].success_count, 8);
-    assert_eq!(patterns[0].total_count, 10);
-    assert!((patterns[0].success_rate - 0.80).abs() < 1e-10);
+    assert_eq!(patterns[0].success_count, 8, "success count should be 8");
+    assert_eq!(patterns[0].total_count, 10, "total count should be 10");
+    assert!(
+        (patterns[0].success_rate - 0.80).abs() < 1e-10,
+        "success rate should be exactly 80%"
+    );
 }
 
 // --- 23. Req 9: Token field names are redacted ---
@@ -659,9 +752,20 @@ fn sanitize_array_parameter_values_element_by_element() {
         first.ends_with("..."),
         "long array element should be truncated"
     );
-    assert!(first.len() <= MAX_PARAM_VALUE_LEN + 3);
-    assert_eq!(items[1].as_str().expect("string"), "short item");
-    assert_eq!(items[2].as_str().expect("string"), "another normal value");
+    assert!(
+        first.len() <= MAX_PARAM_VALUE_LEN + 3,
+        "truncated element length should be within limit"
+    );
+    assert_eq!(
+        items[1].as_str().expect("string"),
+        "short item",
+        "short array element should pass through"
+    );
+    assert_eq!(
+        items[2].as_str().expect("string"),
+        "another normal value",
+        "normal array element should pass through"
+    );
 }
 
 // --- 27. Req 13: Mixed-nous observations aggregate together; per-nous filter gives independence ---
@@ -695,7 +799,7 @@ fn different_nous_observations_aggregate_together_without_filter() {
         1,
         "mixed-nous observations aggregate into one pattern"
     );
-    assert_eq!(all[0].total_count, 6);
+    assert_eq!(all[0].total_count, 6, "combined total count should be 6");
     // Alice's 3 alone → below threshold
     let alice: Vec<_> = observations
         .iter()
@@ -740,8 +844,14 @@ fn two_tools_identical_parameters_produce_separate_patterns() {
     );
     let tool_names: std::collections::HashSet<_> =
         patterns.iter().map(|p| p.tool_name.as_str()).collect();
-    assert!(tool_names.contains("grep"));
-    assert!(tool_names.contains("read_file"));
+    assert!(
+        tool_names.contains("grep"),
+        "grep pattern should be present"
+    );
+    assert!(
+        tool_names.contains("read_file"),
+        "read_file pattern should be present"
+    );
 }
 
 // --- 29. Req 15: Tool name matching is case-sensitive ---

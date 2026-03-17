@@ -599,29 +599,50 @@ mod tests {
     #[test]
     fn bold_text() {
         let (lines, _) = mk_render("**bold**");
-        assert!(!lines.is_empty());
-        assert!(line_text(&lines[0]).contains("bold"));
+        assert!(
+            !lines.is_empty(),
+            "bold text must produce at least one line"
+        );
+        assert!(
+            line_text(&lines[0]).contains("bold"),
+            "bold text must appear in output"
+        );
     }
 
     #[test]
     fn code_block() {
         let (lines, _) = mk_render("```rust\nlet x = 1;\n```");
-        assert!(all_text(&lines).contains("let x = 1"));
+        assert!(
+            all_text(&lines).contains("let x = 1"),
+            "code block content must appear in output"
+        );
     }
 
     #[test]
     fn list_items() {
         let (lines, _) = mk_render("- one\n- two");
         let text = all_text(&lines);
-        assert!(text.contains("one"));
-        assert!(text.contains("two"));
+        assert!(
+            text.contains("one"),
+            "first list item must appear in output"
+        );
+        assert!(
+            text.contains("two"),
+            "second list item must appear in output"
+        );
     }
 
     #[test]
     fn strikethrough_renders() {
         let (lines, _) = mk_render("~~deleted~~");
-        assert!(!lines.is_empty());
-        assert!(line_text(&lines[0]).contains("deleted"));
+        assert!(
+            !lines.is_empty(),
+            "strikethrough text must produce at least one line"
+        );
+        assert!(
+            line_text(&lines[0]).contains("deleted"),
+            "strikethrough text must appear in output"
+        );
     }
 
     #[test]
@@ -630,8 +651,14 @@ mod tests {
         let text = all_text(&lines);
         assert!(text.contains("click here"), "link text visible: {text}");
         assert!(!links.is_empty(), "should produce a MdLink");
-        assert_eq!(links[0].url, "https://example.com");
-        assert_eq!(links[0].text, "click here");
+        assert_eq!(
+            links[0].url, "https://example.com",
+            "first link url should be example.com"
+        );
+        assert_eq!(
+            links[0].text, "click here",
+            "first link text should match display text"
+        );
     }
 
     #[test]
@@ -655,7 +682,10 @@ mod tests {
             "URL in output: {text}"
         );
         assert!(!links.is_empty(), "auto-detected URL must produce MdLink");
-        assert_eq!(links[0].url, "https://docs.anthropic.com/api");
+        assert_eq!(
+            links[0].url, "https://docs.anthropic.com/api",
+            "auto-detected url should match source url"
+        );
     }
 
     #[test]
@@ -679,16 +709,25 @@ mod tests {
     #[test]
     fn link_text_correct() {
         let (_, links) = mk_render("[API docs](https://docs.anthropic.com)");
-        assert_eq!(links.len(), 1);
-        assert_eq!(links[0].text, "API docs");
-        assert_eq!(links[0].url, "https://docs.anthropic.com");
+        assert_eq!(links.len(), 1, "should produce exactly one link");
+        assert_eq!(
+            links[0].text, "API docs",
+            "link text should match display text"
+        );
+        assert_eq!(
+            links[0].url, "https://docs.anthropic.com",
+            "link url should match href"
+        );
     }
 
     #[test]
     fn plain_url_trailing_punctuation_stripped() {
         let (_, links) = mk_render("Visit https://example.com.");
-        assert!(!links.is_empty());
-        assert_eq!(links[0].url, "https://example.com");
+        assert!(!links.is_empty(), "plain url must produce a link");
+        assert_eq!(
+            links[0].url, "https://example.com",
+            "trailing punctuation must be stripped from url"
+        );
     }
 
     #[test]
@@ -696,8 +735,11 @@ mod tests {
         // Regression guard: the original test checked URL visibility in non-OSC8 terminals
         let (lines, _links) = mk_render("[click](https://example.com)");
         let text = all_text(&lines);
-        assert!(text.contains("click"));
-        assert!(text.contains("example.com"));
+        assert!(text.contains("click"), "link display text must appear");
+        assert!(
+            text.contains("example.com"),
+            "link url must appear in output"
+        );
     }
 
     // ── Text formatting ───────────────────────────────────────────────────
@@ -718,7 +760,10 @@ mod tests {
     #[test]
     fn italic_text_renders_with_italic_modifier() {
         let lines = test_render("*italic*");
-        assert!(!lines.is_empty());
+        assert!(
+            !lines.is_empty(),
+            "italic text must produce at least one line"
+        );
         let all = all_lines_text(&lines);
         assert!(all.contains("italic"), "expected italic text in output");
         assert!(
@@ -740,7 +785,10 @@ mod tests {
     fn bold_italic_text_renders_with_both_modifiers() {
         // ***text*** is bold + italic in CommonMark
         let lines = test_render("***combo***");
-        assert!(!lines.is_empty());
+        assert!(
+            !lines.is_empty(),
+            "bold-italic text must produce at least one line"
+        );
         assert!(
             any_line_has_modifier(&lines, "combo", Modifier::BOLD),
             "bold-italic text must have BOLD"
@@ -790,56 +838,68 @@ mod tests {
     #[test]
     fn h1_heading_renders_with_bold_and_large_size() {
         let lines = test_render("# Heading One");
-        assert!(!lines.is_empty());
+        assert!(!lines.is_empty(), "H1 must produce at least one line");
         let text = line_text(&lines[0]);
         assert!(
             text.starts_with("# "),
             "H1 must start with '# ', got: {text:?}"
         );
-        assert!(text.contains("Heading One"));
+        assert!(
+            text.contains("Heading One"),
+            "H1 text must appear in output"
+        );
     }
 
     #[test]
     fn h2_heading_renders_with_bold() {
         let lines = test_render("## Heading Two");
-        assert!(!lines.is_empty());
+        assert!(!lines.is_empty(), "H2 must produce at least one line");
         let text = line_text(&lines[0]);
         assert!(
             text.starts_with("## "),
             "H2 must start with '## ', got: {text:?}"
         );
-        assert!(text.contains("Heading Two"));
+        assert!(
+            text.contains("Heading Two"),
+            "H2 text must appear in output"
+        );
     }
 
     #[test]
     fn h3_heading_renders_without_size_modifier() {
         let lines = test_render("### Heading Three");
-        assert!(!lines.is_empty());
+        assert!(!lines.is_empty(), "H3 must produce at least one line");
         let text = line_text(&lines[0]);
         assert!(
             text.starts_with("### "),
             "H3 must start with '### ', got: {text:?}"
         );
-        assert!(text.contains("Heading Three"));
+        assert!(
+            text.contains("Heading Three"),
+            "H3 text must appear in output"
+        );
     }
 
     #[test]
     fn h4_heading_renders_without_size_modifier() {
         let lines = test_render("#### Heading Four");
-        assert!(!lines.is_empty());
+        assert!(!lines.is_empty(), "H4 must produce at least one line");
         let text = line_text(&lines[0]);
         assert!(
             text.starts_with("#### "),
             "H4 must start with '#### ', got: {text:?}"
         );
-        assert!(text.contains("Heading Four"));
+        assert!(
+            text.contains("Heading Four"),
+            "H4 text must appear in output"
+        );
     }
 
     #[test]
     fn heading_applies_correct_fg_color() {
         // Headings use style_accent_bold: accent fg + BOLD modifier
         let (lines, theme) = test_render_with_theme("# Styled Heading");
-        assert!(!lines.is_empty());
+        assert!(!lines.is_empty(), "heading must produce at least one line");
         assert!(
             any_line_has_modifier(&lines, "# ", Modifier::BOLD),
             "heading prefix must be BOLD"
@@ -870,14 +930,17 @@ mod tests {
         let lines = test_render("```python\ndef hello():\n    pass\n```");
         let all = all_lines_text(&lines);
         assert!(all.contains("def hello"), "Python code content must appear");
-        assert!(all.contains("pass"));
+        assert!(all.contains("pass"), "Python code content must appear");
     }
 
     #[test]
     fn fenced_code_block_without_language_renders_plain() {
         let lines = test_render("```\nplain code\n```");
         let all = all_lines_text(&lines);
-        assert!(all.contains("plain code"));
+        assert!(
+            all.contains("plain code"),
+            "unlanguaged code block content must appear"
+        );
         assert!(
             all.contains('╭'),
             "unlanguaged block must still have top border ╭"
@@ -959,8 +1022,8 @@ mod tests {
             all.contains('•'),
             "unordered list must use bullet character •"
         );
-        assert!(all.contains("alpha"));
-        assert!(all.contains("beta"));
+        assert!(all.contains("alpha"), "first list item must appear");
+        assert!(all.contains("beta"), "second list item must appear");
     }
 
     #[test]
@@ -968,9 +1031,9 @@ mod tests {
         let md = "- top\n  - nested\n    - deep";
         let lines = test_render(md);
         let all = all_lines_text(&lines);
-        assert!(all.contains("top"));
-        assert!(all.contains("nested"));
-        assert!(all.contains("deep"));
+        assert!(all.contains("top"), "top-level list item must appear");
+        assert!(all.contains("nested"), "nested list item must appear");
+        assert!(all.contains("deep"), "deeply nested list item must appear");
 
         // Nested items must be indented (2 spaces per level beyond first)
         let nested_line = lines.iter().find(|l| line_text(l).contains("nested"));
@@ -1044,7 +1107,10 @@ mod tests {
         );
         // Border must still be present on the same line
         let border_line = lines.iter().find(|l| line_text(l).contains('│'));
-        assert!(border_line.is_some());
+        assert!(
+            border_line.is_some(),
+            "border line must exist in bold blockquote"
+        );
         assert!(
             line_text(border_line.unwrap()).contains("bold inside"),
             "border and bold content must be on the same line"
@@ -1172,12 +1238,12 @@ mod tests {
         let md = "| X | Y | Z |\n|---|---|---|\n| a | b | c |";
         let lines = test_render(md);
         let all = all_lines_text(&lines);
-        assert!(all.contains('X'));
-        assert!(all.contains('Y'));
-        assert!(all.contains('Z'));
-        assert!(all.contains('a'));
-        assert!(all.contains('b'));
-        assert!(all.contains('c'));
+        assert!(all.contains('X'), "table header X must appear");
+        assert!(all.contains('Y'), "table header Y must appear");
+        assert!(all.contains('Z'), "table header Z must appear");
+        assert!(all.contains('a'), "table cell a must appear");
+        assert!(all.contains('b'), "table cell b must appear");
+        assert!(all.contains('c'), "table cell c must appear");
         // Column separators (┬ in top border, ┼ in header sep, ┴ in bottom)
         assert!(all.contains('┬'), "3-col table must have ┬ in top border");
         assert!(
@@ -1215,7 +1281,7 @@ mod tests {
     fn horizontal_rule_uses_dim_foreground_color() {
         let (lines, theme) = test_render_with_theme("---");
         let rule_line = lines.iter().find(|l| line_text(l).contains('─'));
-        assert!(rule_line.is_some());
+        assert!(rule_line.is_some(), "rule line must exist");
         assert!(
             span_has_fg(rule_line.unwrap(), "─", theme.text.fg_dim),
             "horizontal rule must use dim (fg_dim) color"
@@ -1227,8 +1293,14 @@ mod tests {
         // Two separate paragraphs must each appear in output
         let lines = test_render("first paragraph\n\nsecond paragraph");
         let all = all_lines_text(&lines);
-        assert!(all.contains("first paragraph"));
-        assert!(all.contains("second paragraph"));
+        assert!(
+            all.contains("first paragraph"),
+            "first paragraph must appear in output"
+        );
+        assert!(
+            all.contains("second paragraph"),
+            "second paragraph must appear in output"
+        );
 
         // They must be on different lines
         let first = lines
@@ -1237,7 +1309,10 @@ mod tests {
         let second = lines
             .iter()
             .position(|l| line_text(l).contains("second paragraph"));
-        assert!(first.is_some() && second.is_some());
+        assert!(
+            first.is_some() && second.is_some(),
+            "both paragraphs must appear on some line"
+        );
         assert_ne!(
             first.unwrap(),
             second.unwrap(),
@@ -1256,7 +1331,10 @@ mod tests {
         // The two parts must end up on separate lines
         let first = lines.iter().position(|l| line_text(l).contains("line one"));
         let second = lines.iter().position(|l| line_text(l).contains("line two"));
-        assert!(first.is_some() && second.is_some());
+        assert!(
+            first.is_some() && second.is_some(),
+            "both parts of hard break must appear on some line"
+        );
         assert_ne!(
             first.unwrap(),
             second.unwrap(),
@@ -1313,7 +1391,10 @@ mod tests {
         }
         // l5 (depth 5) must have 8-space indent (2 × (5-1))
         let l5_line = lines.iter().find(|l| line_text(l).contains("l5"));
-        assert!(l5_line.is_some());
+        assert!(
+            l5_line.is_some(),
+            "l5 (depth-5) item must appear on some line"
+        );
         let l5_text = line_text(l5_line.unwrap());
         assert!(
             l5_text.starts_with("        "),
@@ -1379,9 +1460,12 @@ mod tests {
         // Ordered lists use the same bullet renderer (no numbering yet)
         let lines = test_render("1. first\n2. second\n3. third");
         let all = all_lines_text(&lines);
-        assert!(all.contains("first"));
-        assert!(all.contains("second"));
-        assert!(all.contains("third"));
+        assert!(all.contains("first"), "first ordered list item must appear");
+        assert!(
+            all.contains("second"),
+            "second ordered list item must appear"
+        );
+        assert!(all.contains("third"), "third ordered list item must appear");
         assert!(all.contains('•'), "ordered list items must use bullet •");
     }
 
@@ -1446,6 +1530,9 @@ mod tests {
         let mut md: String = (0..50).map(|_| "> ").collect();
         md.push_str("deeply nested");
         let lines = test_render(&md);
-        assert!(!lines.is_empty());
+        assert!(
+            !lines.is_empty(),
+            "deeply nested blockquotes must produce at least one line"
+        );
     }
 }
