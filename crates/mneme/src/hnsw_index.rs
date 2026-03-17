@@ -160,6 +160,10 @@ impl HnswIndex {
     ///
     /// The `data_id` is caller-assigned and returned in search results.
     #[instrument(skip(self, vector), fields(data_id))]
+    #[expect(
+        clippy::expect_used,
+        reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
+    )]
     pub fn insert(&self, vector: &[f32], data_id: usize) {
         let guard = self.inner.read().expect("hnsw lock poisoned");
         if let Some(ref hnsw) = *guard {
@@ -169,6 +173,10 @@ impl HnswIndex {
 
     /// Insert multiple vectors in parallel.
     #[instrument(skip(self, vectors))]
+    #[expect(
+        clippy::expect_used,
+        reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
+    )]
     pub fn insert_batch(&self, vectors: &[(&Vec<f32>, usize)]) {
         let guard = self.inner.read().expect("hnsw lock poisoned");
         if let Some(ref hnsw) = *guard {
@@ -182,6 +190,10 @@ impl HnswIndex {
     ///
     /// `ef` controls search width (must be >= `k`). Higher = better recall, slower.
     #[instrument(skip(self, query), fields(k, ef))]
+    #[expect(
+        clippy::expect_used,
+        reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
+    )]
     pub fn search(&self, query: &[f32], k: usize, ef: usize) -> Vec<SearchResult> {
         let guard = self.inner.read().expect("hnsw lock poisoned");
         match *guard {
@@ -215,6 +227,10 @@ impl HnswIndex {
             .build()
         })?;
 
+        #[expect(
+            clippy::expect_used,
+            reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
+        )]
         let guard = self.inner.read().expect("hnsw lock poisoned");
         if let Some(ref hnsw) = *guard {
             use hnsw_rs::api::AnnT;
@@ -230,6 +246,10 @@ impl HnswIndex {
     }
 
     /// Returns the number of points currently in the index.
+    #[expect(
+        clippy::expect_used,
+        reason = "RwLock poisoning is unrecoverable; propagating would just defer the panic"
+    )]
     pub fn len(&self) -> usize {
         let guard = self.inner.read().expect("hnsw lock poisoned");
         match *guard {
