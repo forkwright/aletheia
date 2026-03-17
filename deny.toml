@@ -10,7 +10,6 @@ ignore = [
     { id = "RUSTSEC-2023-0071", reason = "rsa timing side-channel via jsonwebtoken — no safe upgrade, local-only use" },
     { id = "RUSTSEC-2024-0320", reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
     { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade" },
-    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile unmaintained — transitive via tonic/qdrant-client (migrate-qdrant feature); no safe upgrade" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained, transitive via tokenizers; no safe upgrade" },
 ]
 
@@ -42,36 +41,47 @@ wildcards = "allow"
 # Skip entries for duplicates caused by upstream constraints we cannot resolve.
 # Each entry exempts the named version from the multiple-versions check.
 # The newer/canonical version is not listed here and is kept as-is.
+#
+# Canonical versions: windows-sys 0.61, windows-targets 0.53, arch crates 0.53.
+# Older versions are pulled in by transitive deps that haven't migrated yet.
 skip = [
-    # WHY: upstream dep pinning creates unavoidable duplicates.
+    # WHY: jni 0.21 (via rustls-platform-verifier) pins windows-sys 0.45.
+    # Blocked until rustls-platform-verifier drops jni or jni upgrades.
     { name = "windows-sys", version = "=0.45.0" },
+
+    # WHY: ring 0.17 pins windows-sys 0.52.
+    # Blocked until ring releases a version using windows-sys 0.61.
     { name = "windows-sys", version = "=0.52.0" },
+
+    # WHY: rustix 0.38 (via procfs/prometheus) pins windows-sys 0.59.
+    # Blocked until prometheus migrates to procfs with rustix 1.x.
     { name = "windows-sys", version = "=0.59.0" },
+
+    # WHY: arboard 3.6 (via theatron-tui) pins windows-sys 0.60.
+    # Blocked until arboard releases a version using windows-sys 0.61.
     { name = "windows-sys", version = "=0.60.2" },
+
+    # WHY: windows-targets follows windows-sys version spread above.
+    # 0.42 from windows-sys 0.45 (jni chain).
+    # 0.52 from windows-sys 0.52 (ring chain).
     { name = "windows-targets", version = "=0.42.2" },
-    { name = "windows-targets", version = "=0.48.5" },
     { name = "windows-targets", version = "=0.52.6" },
+
+    # WHY: arch-specific crates follow windows-targets versions above.
     { name = "windows_aarch64_gnullvm", version = "=0.42.2" },
-    { name = "windows_aarch64_gnullvm", version = "=0.48.5" },
     { name = "windows_aarch64_gnullvm", version = "=0.52.6" },
     { name = "windows_aarch64_msvc", version = "=0.42.2" },
-    { name = "windows_aarch64_msvc", version = "=0.48.5" },
     { name = "windows_aarch64_msvc", version = "=0.52.6" },
     { name = "windows_i686_gnu", version = "=0.42.2" },
-    { name = "windows_i686_gnu", version = "=0.48.5" },
     { name = "windows_i686_gnu", version = "=0.52.6" },
     { name = "windows_i686_gnullvm", version = "=0.52.6" },
     { name = "windows_i686_msvc", version = "=0.42.2" },
-    { name = "windows_i686_msvc", version = "=0.48.5" },
     { name = "windows_i686_msvc", version = "=0.52.6" },
     { name = "windows_x86_64_gnu", version = "=0.42.2" },
-    { name = "windows_x86_64_gnu", version = "=0.48.5" },
     { name = "windows_x86_64_gnu", version = "=0.52.6" },
     { name = "windows_x86_64_gnullvm", version = "=0.42.2" },
-    { name = "windows_x86_64_gnullvm", version = "=0.48.5" },
     { name = "windows_x86_64_gnullvm", version = "=0.52.6" },
     { name = "windows_x86_64_msvc", version = "=0.42.2" },
-    { name = "windows_x86_64_msvc", version = "=0.48.5" },
     { name = "windows_x86_64_msvc", version = "=0.52.6" },
 ]
 
