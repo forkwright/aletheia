@@ -6,6 +6,126 @@ use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 
+/// Generate a newtype ID wrapper around a string-like inner type.
+///
+/// Produces a transparent serde newtype with standard string-like trait
+/// implementations. The inner type must implement `AsRef<str>`,
+/// `From<String>`, `From<&str>`, and `Into<String>`.
+///
+/// # Generated API
+///
+/// - **Derives:** `Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`, `Serialize`, `Deserialize`
+/// - **Traits:** `Display`, `FromStr`, `AsRef<str>`, `Borrow<str>`, `Deref<Target=str>`,
+///   `From<String>`, `From<&str>`, `From<T> for String`, `PartialEq<str>`
+/// - **Methods:** `new()`, `into_inner()`, `as_str()`
+///
+/// # Examples
+///
+/// ```
+/// use aletheia_koina::newtype_id;
+///
+/// newtype_id!(
+///     /// A widget identifier.
+///     pub struct WidgetId(String)
+/// );
+///
+/// let id = WidgetId::new("w-1");
+/// assert_eq!(id.as_str(), "w-1");
+/// assert_eq!(id.to_string(), "w-1");
+/// let back: String = id.into_inner();
+/// assert_eq!(back, "w-1");
+/// ```
+#[macro_export]
+macro_rules! newtype_id {
+    ($(#[$meta:meta])* $vis:vis struct $name:ident($inner:ty)) => {
+        $(#[$meta])*
+        #[derive(
+            Debug, Clone, PartialEq, Eq, Hash,
+            ::serde::Serialize, ::serde::Deserialize,
+        )]
+        #[serde(transparent)]
+        $vis struct $name($inner);
+
+        impl $name {
+            /// Create a new identifier.
+            #[must_use]
+            $vis fn new(id: impl Into<$inner>) -> Self {
+                Self(id.into())
+            }
+
+            /// Consume the wrapper and return the inner value.
+            #[must_use]
+            $vis fn into_inner(self) -> $inner {
+                self.0.into()
+            }
+
+            /// The underlying string value.
+            #[must_use]
+            $vis fn as_str(&self) -> &str {
+                self.0.as_ref()
+            }
+        }
+
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                f.write_str(self.0.as_ref())
+            }
+        }
+
+        impl ::std::str::FromStr for $name {
+            type Err = ::std::convert::Infallible;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Ok(Self(s.into()))
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.0.as_ref()
+            }
+        }
+
+        impl ::std::borrow::Borrow<str> for $name {
+            fn borrow(&self) -> &str {
+                self.0.as_ref()
+            }
+        }
+
+        impl ::std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &str {
+                self.0.as_ref()
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(s: String) -> Self {
+                Self(s.into())
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(s: &str) -> Self {
+                Self(s.into())
+            }
+        }
+
+        impl From<$name> for String {
+            fn from(id: $name) -> Self {
+                id.0.into()
+            }
+        }
+
+        impl PartialEq<str> for $name {
+            fn eq(&self, other: &str) -> bool {
+                self.as_ref() == other
+            }
+        }
+    };
+}
+
 /// A nous (agent) identifier. Lowercase alphanumeric + hyphens, 1-64 chars.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -558,5 +678,106 @@ mod tests {
             reason: "uppercase".to_owned(),
         };
         assert!(fmt.to_string().contains("Bad"));
+    }
+
+    mod newtype_id_macro {
+        newtype_id!(
+            /// Test ID using String inner type.
+            pub struct TestStringId(String)
+        );
+
+        newtype_id!(
+            /// Test ID using `CompactString` inner type.
+            pub struct TestCompactId(compact_str::CompactString)
+        );
+
+        #[test]
+        fn new_and_as_str() {
+            let id = TestStringId::new("abc");
+            assert_eq!(id.as_str(), "abc");
+        }
+
+        #[test]
+        fn into_inner_returns_owned() {
+            let id = TestStringId::new("abc");
+            let inner: String = id.into_inner();
+            assert_eq!(inner, "abc");
+        }
+
+        #[test]
+        fn display_writes_inner() {
+            let id = TestStringId::new("x-1");
+            assert_eq!(id.to_string(), "x-1");
+        }
+
+        #[test]
+        fn from_str_infallible() {
+            let id: TestStringId = "hello".parse().unwrap();
+            assert_eq!(id.as_str(), "hello");
+        }
+
+        #[test]
+        fn from_string_and_str() {
+            let a = TestStringId::from("abc");
+            let b = TestStringId::from(String::from("abc"));
+            assert_eq!(a, b);
+        }
+
+        #[test]
+        fn into_string() {
+            let id = TestStringId::new("val");
+            let s: String = id.into();
+            assert_eq!(s, "val");
+        }
+
+        #[test]
+        fn deref_to_str() {
+            let id = TestStringId::new("deref");
+            assert_eq!(&*id, "deref");
+            assert!(id.starts_with("de"));
+        }
+
+        #[test]
+        fn partial_eq_str() {
+            let id = TestStringId::new("cmp");
+            assert!(id == *"cmp");
+        }
+
+        #[test]
+        fn borrow_hashmap_lookup() {
+            let id = TestStringId::new("key");
+            let mut map = std::collections::HashMap::new();
+            map.insert(id, 1);
+            assert_eq!(map.get("key"), Some(&1));
+        }
+
+        #[test]
+        fn serde_roundtrip() {
+            let id = TestStringId::new("serde-test");
+            let json = serde_json::to_string(&id).unwrap();
+            assert_eq!(json, r#""serde-test""#);
+            let back: TestStringId = serde_json::from_str(&json).unwrap();
+            assert_eq!(id, back);
+        }
+
+        #[test]
+        fn compact_string_variant_works() {
+            let id = TestCompactId::new("compact");
+            assert_eq!(id.as_str(), "compact");
+            assert_eq!(id.to_string(), "compact");
+
+            let json = serde_json::to_string(&id).unwrap();
+            assert_eq!(json, r#""compact""#);
+            let back: TestCompactId = serde_json::from_str(&json).unwrap();
+            assert_eq!(id, back);
+        }
+
+        #[test]
+        fn distinct_types_not_interchangeable() {
+            let a = TestStringId::new("x");
+            let b = TestCompactId::new("x");
+            assert_eq!(a.as_str(), b.as_str());
+            // a == b would not compile: different types
+        }
     }
 }

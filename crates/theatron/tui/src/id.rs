@@ -6,24 +6,24 @@ use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct NousId(String);
+aletheia_koina::newtype_id!(
+    pub struct NousId(String)
+);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SessionId(String);
+aletheia_koina::newtype_id!(
+    pub struct SessionId(String)
+);
 
 // WHY: Decimal u64 strings are at most 20 bytes (u64::MAX), always within
-// CompactString's 24-byte inline limit. NousId (≤64 bytes), SessionId
-// (26-byte ULID), ToolId (≤128 bytes), and PlanId (variable) exceed it.
+// CompactString's 24-byte inline limit. NousId (<=64 bytes), SessionId
+// (26-byte ULID), ToolId (<=128 bytes), and PlanId (variable) exceed it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct TurnId(CompactString);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolId(String);
+aletheia_koina::newtype_id!(
+    pub struct ToolId(String)
+);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -82,10 +82,7 @@ macro_rules! impl_id {
     };
 }
 
-impl_id!(NousId);
-impl_id!(SessionId);
 impl_id!(TurnId);
-impl_id!(ToolId);
 impl_id!(PlanId);
 
 #[cfg(test)]
