@@ -55,6 +55,9 @@ pub mod query;
 pub(crate) mod query_rewrite;
 /// 6-factor recall scoring engine for knowledge retrieval ranking.
 pub mod recall;
+/// SQLite corruption detection, read-only fallback, and auto-repair.
+#[cfg(feature = "sqlite")]
+pub mod recovery;
 /// Session retention policies and automated cleanup of old data.
 #[cfg(feature = "sqlite")]
 pub mod retention;

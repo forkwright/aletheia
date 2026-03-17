@@ -629,6 +629,8 @@ pub struct MaintenanceSettings {
     pub db_monitoring: DbMonitoringSettings,
     /// Proactive disk space monitoring and write protection.
     pub disk_space: DiskSpaceSettings,
+    /// `SQLite` corruption recovery settings.
+    pub sqlite_recovery: SqliteRecoverySettings,
     /// Automatic data retention enforcement.
     pub retention: RetentionSettings,
     /// Whether background knowledge graph maintenance tasks are enabled.
@@ -742,6 +744,40 @@ impl Default for DiskSpaceSettings {
             warning_threshold_mb: 1024,
             critical_threshold_mb: 100,
             check_interval_secs: 60,
+        }
+    }
+}
+
+/// `SQLite` corruption recovery settings.
+///
+/// Controls how the system responds when database corruption is detected:
+/// integrity checks on open, automatic backup of corrupt files, and
+/// recovery into a fresh database.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "config struct: each bool is an independent toggle"
+)]
+pub struct SqliteRecoverySettings {
+    /// Whether corruption recovery is active.
+    pub enabled: bool,
+    /// Run `PRAGMA integrity_check` when opening a database.
+    pub integrity_check_on_open: bool,
+    /// Attempt to dump readable data into a new database on corruption.
+    pub auto_repair: bool,
+    /// Copy the corrupt file to `{path}.corrupt.{timestamp}` before repair.
+    pub backup_corrupt: bool,
+}
+
+impl Default for SqliteRecoverySettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            integrity_check_on_open: true,
+            auto_repair: true,
+            backup_corrupt: true,
         }
     }
 }
