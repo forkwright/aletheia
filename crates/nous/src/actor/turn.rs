@@ -370,7 +370,13 @@ impl NousActor {
                 // WHY: cross-nous messages carry no database session ID: generate one so finalize can create the DB row
                 let id = SessionId::new().to_string();
                 debug!(session_key, session_id = %id, "creating new session");
-                SessionState::new(id, session_key.to_owned(), &self.config)
+                let mut state = SessionState::new(id, session_key.to_owned(), &self.config);
+                // WHY: prosoche heartbeat sessions use a cheap model to avoid
+                // wasting Opus-tier capacity on routine health checks.
+                if crate::session::SessionManager::is_background(session_key) {
+                    state.model.clone_from(&self.config.prosoche_model);
+                }
+                state
             });
 
         session.next_turn();

@@ -57,6 +57,12 @@ pub struct NousConfig {
     /// heuristic. Wired from `agents.defaults.chars_per_token` at startup.
     #[serde(default = "default_chars_per_token")]
     pub chars_per_token: u32,
+    /// Model to use for prosoche heartbeat sessions instead of the primary model.
+    ///
+    /// Prosoche checks are simple health/attention tasks that don't need
+    /// advanced reasoning. Defaults to Haiku-tier to reduce cost.
+    #[serde(default = "default_prosoche_model")]
+    pub prosoche_model: String,
 }
 
 fn default_cache_enabled() -> bool {
@@ -72,6 +78,11 @@ fn default_chars_per_token() -> u32 {
     //      the serde default (used when deserialising NousConfig directly)
     //      is identical to the value wired at startup via ResolvedNousConfig.
     4
+}
+
+/// Default prosoche model: Haiku-tier for cheap heartbeat checks.
+fn default_prosoche_model() -> String {
+    "claude-haiku-4-5-20251001".to_owned()
 }
 
 impl Default for NousConfig {
@@ -93,6 +104,7 @@ impl Default for NousConfig {
             session_token_cap: default_session_token_cap(),
             recall: RecallConfig::default(),
             chars_per_token: default_chars_per_token(),
+            prosoche_model: default_prosoche_model(),
         }
     }
 }
@@ -224,10 +236,17 @@ mod tests {
             session_token_cap: 250_000,
             recall: RecallConfig::default(),
             chars_per_token: 4,
+            prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.thinking_enabled);
         assert_eq!(config.domains.len(), 1);
         assert!(!config.cache_enabled);
+    }
+
+    #[test]
+    fn prosoche_model_defaults_to_haiku() {
+        let config = NousConfig::default();
+        assert_eq!(config.prosoche_model, "claude-haiku-4-5-20251001");
     }
 }
