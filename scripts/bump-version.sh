@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Bump the workspace version in Cargo.toml and the release-please manifest.
 # Fallback for when release-please TOML updater doesn't handle Cargo.toml.
 #
 # Usage: scripts/bump-version.sh 0.11.0
-
-set -euo pipefail
 
 VERSION="${1:?Usage: $0 <version>}"
 

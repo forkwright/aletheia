@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # rollback.sh — Restore previous Aletheia deployment
 #
 # Usage: ./scripts/rollback.sh [backup-timestamp]
-
-set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="$REPO_ROOT/.deploy-backup"

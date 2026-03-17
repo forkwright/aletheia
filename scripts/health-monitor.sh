@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Health monitor for aletheia. Run via cron or systemd timer.
 # Checks service health, token expiry, and logs warnings.
 #
@@ -8,8 +9,6 @@
 #
 # Cron example (every 5 minutes):
 #   */5 * * * * /path/to/scripts/health-monitor.sh --notify >> /tmp/aletheia-health.log 2>&1
-
-set -euo pipefail
 
 HEALTH_URL="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"
 METRICS_URL="${ALETHEIA_METRICS_URL:-http://localhost:18789/metrics}"

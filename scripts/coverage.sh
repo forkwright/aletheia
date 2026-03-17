@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Baseline: TBD% line coverage (run and record after initial setup)
 #
 # Generates HTML + LCOV coverage reports for the Aletheia Rust workspace.
 # Excludes vendored mneme-engine and benchmark crate from metrics.
 #
 # Prerequisites: cargo install cargo-llvm-cov
-set -euo pipefail
 
 cargo llvm-cov \
     --workspace \
