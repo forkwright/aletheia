@@ -84,7 +84,7 @@ async fn run_tui_inner(
 
     if logout {
         config.clear_credentials()?;
-        println!("Credentials cleared.");
+        tracing::info!("credentials cleared");
         return Ok(());
     }
 
@@ -101,7 +101,7 @@ async fn run_tui_inner(
     ratatui::restore();
 
     if let Err(ref e) = result {
-        eprintln!("Error: {e}");
+        tracing::error!(error = %e, "tui exited with error");
     }
 
     result

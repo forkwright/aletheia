@@ -17,6 +17,8 @@ use crate::engine::runtime::callback::CallbackCollector;
 use crate::engine::runtime::relation::RelationId;
 use crate::engine::storage::StoreTx;
 use crate::engine::storage::temp::TempTx;
+use tracing::error;
+
 use crate::engine::{CallbackOp, NamedRows};
 
 pub struct SessionTx<'a> {
@@ -230,7 +232,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 TransactionPayload::Commit => {
                     for (lower, upper) in cleanups {
                         if let Err(err) = tx.store_tx.del_range_from_persisted(&lower, &upper) {
-                            eprintln!("{err:?}")
+                            error!(error = ?err, "failed to clean up persisted range")
                         }
                     }
 
