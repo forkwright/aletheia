@@ -1,44 +1,63 @@
 #!/usr/bin/env bash
-set -euo pipefail
-# rollback.sh — Restore previous Aletheia deployment
+# Restore previous Aletheia deployment from backup.
 #
-# Usage: ./scripts/rollback.sh [backup-timestamp]
+# Usage: scripts/rollback.sh [backup-file]
+#   backup-file  Specific backup file path (default: most recent)
+#
+# Prefer `scripts/deploy.sh --rollback` for integrated rollback with
+# logging and health verification.
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BACKUP_DIR="$REPO_ROOT/.deploy-backup"
+set -euo pipefail
 
-log() { echo "[rollback] $(date +%H:%M:%S) $*"; }
-die() { echo "[rollback] ERROR: $*" >&2; exit 1; }
+INSTANCE_ROOT="${ALETHEIA_INSTANCE:-$HOME/ergon/instance}"
+BINARY_DST="${ALETHEIA_BINARY:-$HOME/ergon/bin/aletheia}"
+BACKUP_DIR="${INSTANCE_ROOT}/.deploy-backup"
+SERVICE="aletheia.service"
+HEALTH_URL="${ALETHEIA_HEALTH_URL:-http://localhost:18789/api/health}"
 
-# Find the latest backup or use specified timestamp
+log() { echo "[rollback] $(date -u +"%Y-%m-%dT%H:%M:%SZ") $*"; }
+die() { echo "[rollback] $(date -u +"%Y-%m-%dT%H:%M:%SZ") ERROR: $*" >&2; exit 1; }
+
+# Find backup
 if [[ -n "${1:-}" ]]; then
-  BACKUP="$BACKUP_DIR/$1"
+    BACKUP="$1"
 else
-  BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%p\n' | sort -rn | head -1 | cut -f2-)
+    BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -name 'aletheia.backup.*' -type f -printf '%T@\t%p\n' 2>/dev/null \
+        | sort -rn | head -1 | cut -f2-)
 fi
 
-[[ -d "$BACKUP" ]] || die "No backup found at $BACKUP"
+[[ -f "$BACKUP" ]] || die "No backup found at ${BACKUP:-$BACKUP_DIR/}"
 
 log "Rolling back from $BACKUP..."
 
-# Restore binary
-if [[ -f "$BACKUP/aletheia" ]]; then
-  cp "$BACKUP/aletheia" "$REPO_ROOT/target/release/aletheia"
-  log "Binary restored"
+# Stop service
+if systemctl --user is-active "$SERVICE" &>/dev/null; then
+    log "Stopping $SERVICE..."
+    systemctl --user stop "$SERVICE"
 fi
 
-# Show the git SHA for reference
-if [[ -f "$BACKUP/git-sha" ]]; then
-  log "Backup was from commit: $(cat "$BACKUP/git-sha")"
-fi
+# Restore binary
+cp -- "$BACKUP" "$BINARY_DST"
+log "Binary restored to $BINARY_DST"
 
 # Restart
-log "Restarting daemon..."
-sudo systemctl restart aletheia || die "Restart failed after rollback"
+log "Starting $SERVICE..."
+systemctl --user daemon-reload
+systemctl --user start "$SERVICE"
 
-sleep 3
-if systemctl is-active --quiet aletheia; then
-  log "✓ Rollback complete. Daemon is running."
+# Health check (15s timeout for rollback)
+elapsed=0
+while (( elapsed < 15 )); do
+    if curl -sf --max-time 5 "$HEALTH_URL" &>/dev/null; then
+        log "Rollback complete. Service is healthy."
+        exit 0
+    fi
+    sleep 3
+    elapsed=$(( elapsed + 3 ))
+done
+
+if systemctl --user is-active "$SERVICE" &>/dev/null; then
+    log "Rollback complete. Service is running (health endpoint not yet responding)."
 else
-  die "Daemon failed to start after rollback"
+    die "Service failed to start after rollback"
 fi
