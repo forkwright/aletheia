@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # start.sh — Template for ~/.aletheia/start.sh
 # Copy to ~/.aletheia/start.sh and make executable.
 # Run `claude setup-token` first to get a 1-year OAuth token, then this script
 # uses credential-refresh to keep it renewed automatically on every startup.
-set -euo pipefail
 
 ALETHEIA_CREDS="$HOME/.aletheia/credentials/anthropic.json"
 CLAUDE_JSON="$HOME/.claude.json"

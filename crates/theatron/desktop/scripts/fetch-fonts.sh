@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Fetch IBM Plex Mono and Cormorant Garamond font files (OFL licensed).
 #
 # Usage: ./scripts/fetch-fonts.sh
 # Run from the desktop crate root (crates/theatron/desktop/).
-
-set -euo pipefail
 
 FONT_DIR="assets/fonts"
 WORK_DIR="$(mktemp -d)"

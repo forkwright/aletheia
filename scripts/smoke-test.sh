@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # smoke-test.sh — Release binary smoke test for the aletheia CLI.
 #
 # Exercises every subcommand to verify the binary is correctly linked,
@@ -12,8 +13,6 @@
 #   --binary PATH   Use an existing binary at PATH (skips build)
 #   --build         Force a release build before testing (default if no binary found)
 #   --help          Show this message
-
-set -euo pipefail
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
