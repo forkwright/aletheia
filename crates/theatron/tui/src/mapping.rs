@@ -105,13 +105,11 @@ impl App {
             return self.map_ops_pane_key(key);
         }
 
-        // Configurable keymap: covers global Ctrl+key shortcuts.
         if let Some(action) = self.keymap.lookup(key.modifiers, key.code) {
             return Some(action.to_msg());
         }
 
         match (key.modifiers, key.code) {
-            // Context-dependent Ctrl+W: TabClose when input is empty, DeleteWord otherwise.
             (KeyModifiers::CONTROL, KeyCode::Char('w')) if self.input.text.is_empty() => {
                 Some(Msg::TabClose)
             }
@@ -831,8 +829,6 @@ mod tests {
         assert!(matches!(msg, Some(Msg::Resize(80, 24))));
     }
 
-    // --- Selection mode tests ---
-
     #[test]
     fn selection_mode_j_moves_next() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
@@ -872,8 +868,6 @@ mod tests {
         ));
     }
 
-    // --- Command palette mode tests ---
-
     #[test]
     fn palette_esc_closes() {
         let mut app = test_app();
@@ -900,8 +894,6 @@ mod tests {
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CommandPaletteInput('a'))));
     }
-
-    // --- Filter mode tests ---
 
     #[test]
     fn filter_editing_esc_closes() {
@@ -944,8 +936,6 @@ mod tests {
         assert!(matches!(msg, Some(Msg::FilterNextMatch)));
     }
 
-    // --- Overlay tests ---
-
     #[test]
     fn overlay_esc_closes() {
         let mut app = test_app();
@@ -964,8 +954,6 @@ mod tests {
         assert!(matches!(msg, Some(Msg::OverlayUp)));
     }
 
-    // --- SSE event mapping ---
-
     #[test]
     fn sse_connected_maps() {
         let app = test_app();
@@ -981,8 +969,6 @@ mod tests {
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::Tick)));
     }
-
-    // --- Stream event mapping ---
 
     #[test]
     fn stream_text_delta_maps() {
@@ -1000,8 +986,6 @@ mod tests {
         assert!(matches!(msg, Some(Msg::StreamError(_))));
     }
 
-    // --- Scroll keys ---
-
     #[test]
     fn page_up_maps() {
         let app = test_app();
@@ -1017,8 +1001,6 @@ mod tests {
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::ScrollLineUp)));
     }
-
-    // --- Settings overlay key mapping ---
 
     #[test]
     fn settings_overlay_up_down() {
@@ -1039,8 +1021,6 @@ mod tests {
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::OverlayFilter('s'))));
     }
-
-    // --- v key enters selection ---
 
     #[test]
     fn v_on_empty_input_with_messages_enters_selection() {
@@ -1068,8 +1048,6 @@ mod tests {
         assert!(matches!(msg, Some(Msg::CharInput('v'))));
     }
 
-    // --- Enter in selection mode drills into detail view ---
-
     #[test]
     fn selection_mode_enter_drills_in() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
@@ -1078,8 +1056,6 @@ mod tests {
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::ViewDrillIn)));
     }
-
-    // --- Context actions overlay j/k navigation ---
 
     #[test]
     fn context_actions_overlay_j_moves_down() {
@@ -1115,8 +1091,6 @@ mod tests {
         assert!(matches!(msg, Some(Msg::OverlayUp)));
     }
 
-    // --- View stack navigation key tests ---
-
     #[test]
     fn esc_at_non_home_view_pops_back() {
         let mut app = test_app();
@@ -1132,7 +1106,6 @@ mod tests {
     fn esc_at_home_with_selection_deselects() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
         app.selected_message = Some(0);
-        // view_stack is Home by default
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::DeselectMessage)));
@@ -1148,8 +1121,6 @@ mod tests {
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::ViewPopBack)));
     }
-
-    // --- ScrollToBottom keybinding tests ---
 
     #[test]
     fn end_key_on_empty_input_scrolls_to_bottom() {
@@ -1168,8 +1139,6 @@ mod tests {
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CursorEnd)));
     }
-
-    // --- NextAgent/PrevAgent keybinding tests ---
 
     #[test]
     fn tab_on_empty_input_with_no_ops_cycles_next_agent() {

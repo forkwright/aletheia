@@ -411,7 +411,7 @@ mod tests {
             max_history_share: 0.7,
             ..DistillTriggerConfig::default()
         };
-        // context_window=140_000 * 0.7 = 98_000, actual=100_000 >= 98_000
+        // NOTE: context_window=140_000 * 0.7 = 98_000, actual=100_000 >= 98_000
         let result = should_trigger_distillation(&session, 140_000, &config);
         assert!(result.is_some());
         assert!(result.unwrap().contains("legacy threshold"));
@@ -432,7 +432,6 @@ mod tests {
             .create_session("ses-1", "agent-1", "main", None, None)
             .expect("create session");
 
-        // Append 5 messages so we have a non-trivial history slice.
         for i in 0..5_i64 {
             store
                 .append_message(
@@ -449,7 +448,7 @@ mod tests {
         let history = store.get_history("ses-1", None).expect("history");
         assert_eq!(history.len(), 5);
 
-        // Distill all 5 messages: avoids the seq-shift conflict that occurs when
+        // WHY: Distill all 5 messages: avoids the seq-shift conflict that occurs when
         // undistilled messages have adjacent seq numbers after partial distillation.
         let result = DistillResult {
             summary: "Summary of previous turns.".to_owned(),
@@ -469,14 +468,12 @@ mod tests {
 
         apply_distillation(&store, "ses-1", &result, &history).expect("apply distillation");
 
-        // The distillation summary should now appear in history.
         let history_after = store.get_history("ses-1", None).expect("history after");
         let has_summary = history_after
             .iter()
             .any(|m| m.content.contains("[Distillation #1]"));
         assert!(has_summary, "distillation summary message must be present");
 
-        // The session's distillation metadata should be updated.
         let session = store
             .find_session_by_id("ses-1")
             .expect("find session")

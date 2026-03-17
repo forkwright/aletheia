@@ -357,7 +357,7 @@ pub async fn history(
 ) -> Result<Json<HistoryResponse>, ApiError> {
     let _ = find_session(&state, &id).await?;
 
-    // Cap limit at MAX_HISTORY_LIMIT and apply a sensible default so a single
+    // WHY: Cap limit at MAX_HISTORY_LIMIT and apply a sensible default so a single
     // request cannot fetch an unbounded number of messages.
     let limit = params
         .limit

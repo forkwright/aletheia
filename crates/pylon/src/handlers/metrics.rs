@@ -67,15 +67,15 @@ mod tests {
         let families = prometheus::gather();
         let mut buf = Vec::new();
         encoder.encode(&families, &mut buf).unwrap();
-        // Must be valid UTF-8 (Prometheus text format is UTF-8)
+        // NOTE: Prometheus text format mandates UTF-8.
         assert!(std::str::from_utf8(&buf).is_ok());
     }
 
     #[test]
     fn text_encoder_content_type_is_text_plain() {
         let encoder = TextEncoder::new();
-        // prometheus TextEncoder declares "text/plain; version=0.0.4";
-        // we append charset=utf-8 to our served header
+        // NOTE: prometheus TextEncoder declares "text/plain; version=0.0.4";
+        // we append charset=utf-8 to our served header.
         assert!(encoder.format_type().starts_with("text/plain"));
         assert!(encoder.format_type().contains("version=0.0.4"));
     }

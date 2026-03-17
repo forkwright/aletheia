@@ -353,7 +353,7 @@ async fn poll_loop(
                         s.state = ConnectionState::Connected;
 
                         let buffered = s.drain_all();
-                        drop(s); // release lock before sending
+                        drop(s); // WHY: release lock before sending
 
                         if !buffered.is_empty() {
                             tracing::info!(count = buffered.len(), "draining buffered messages");
