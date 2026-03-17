@@ -86,6 +86,7 @@ impl SpawnService for SpawnServiceImpl {
             session_token_cap: 500_000,
             recall: crate::recall::RecallConfig::default(),
             chars_per_token: 4,
+            prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
         };
 
         let pipeline_config = PipelineConfig {

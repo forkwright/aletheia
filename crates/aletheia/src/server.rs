@@ -290,6 +290,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
                 domains,
                 server_tools: Vec::new(),
                 cache_enabled: resolved.capabilities.cache_enabled,
+                prosoche_model: resolved.prosoche_model,
             };
             nous_manager
                 .spawn(

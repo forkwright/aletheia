@@ -42,6 +42,7 @@ contextTokens = 200000
 # thinkingEnabled = false
 # thinkingBudget = 10000
 # maxToolIterations = 50
+# prosocheModel = "claude-haiku-4-5-20251001"  # model for prosoche heartbeat checks
 
 [[agents.list]]
 id = "main"
