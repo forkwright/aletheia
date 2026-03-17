@@ -65,7 +65,7 @@ pub async fn send_message(
 
     if let Some(ref key) = idempotency_key {
         match state.idempotency_cache.check_or_insert(key) {
-            LookupResult::Miss => { /* proceed normally */ }
+            LookupResult::Miss => {}
             LookupResult::Hit { body, .. } => {
                 tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
                 // NOTE: Decode the cached turn summary stored by the original request.

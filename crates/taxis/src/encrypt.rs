@@ -209,7 +209,7 @@ pub fn encrypt_value(plaintext: &str, master_key: &[u8; KEY_LEN]) -> Result<Stri
     key.seal_in_place_append_tag(nonce, Aad::empty(), &mut in_out)
         .map_err(|_unspecified| build_encrypt_error())?;
 
-    // nonce || ciphertext+tag
+    // NOTE: nonce || ciphertext+tag
     let mut payload = Vec::with_capacity(NONCE_LEN + in_out.len());
     payload.extend_from_slice(&nonce_bytes);
     payload.extend_from_slice(&in_out);
