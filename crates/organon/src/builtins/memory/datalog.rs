@@ -52,7 +52,7 @@ impl ToolExecutor for DatalogQueryExecutor {
                 .and_then(serde_json::Value::as_u64)
                 .map(|v| usize::try_from(v).unwrap_or(DEFAULT_ROW_LIMIT));
 
-            // Defense in depth: reject mutation keywords before sending to engine
+            // WHY: Defense in depth: reject mutation keywords before sending to engine
             let query_lower = query.to_lowercase();
             for kw in MUTATION_KEYWORDS {
                 if query_lower.contains(kw) {
@@ -101,7 +101,6 @@ pub(super) fn format_as_markdown_table(result: &crate::types::DatalogResult) -> 
 
     let mut out = String::new();
 
-    // Header
     out.push('|');
     for col in &result.columns {
         out.push(' ');
@@ -110,14 +109,12 @@ pub(super) fn format_as_markdown_table(result: &crate::types::DatalogResult) -> 
     }
     out.push('\n');
 
-    // Separator
     out.push('|');
     for _ in &result.columns {
         out.push_str(" --- |");
     }
     out.push('\n');
 
-    // Rows
     for row in &result.rows {
         out.push('|');
         for cell in row {

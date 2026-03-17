@@ -37,7 +37,6 @@ pub async fn complete_with_fallback(
     let primary = &request.model;
     let mut last_error = None;
 
-    // Try the primary model.
     for attempt in 0..config.retries_before_fallback.max(1) {
         if attempt > 0 {
             tracing::warn!(
@@ -64,7 +63,6 @@ pub async fn complete_with_fallback(
         }
     }
 
-    // Try each fallback model.
     for fallback_model in &config.fallback_models {
         tracing::warn!(
             primary = %primary,

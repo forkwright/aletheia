@@ -149,7 +149,6 @@ pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
         return Ok(false);
     }
 
-    // Create a fresh database and run migrations to set up schema.
     let new_conn = Connection::open(new_path).context(error::DatabaseSnafu)?;
     new_conn
         .execute_batch(
@@ -161,7 +160,8 @@ pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
 
     crate::migration::run_migrations(&new_conn)?;
 
-    // Disable FK checks during recovery so we can insert in any order.
+    // WHY: FK checks disabled so rows can be copied in arbitrary table order
+    // without triggering referential integrity violations.
     let tables = list_user_tables(&old_conn);
 
     let mut total_rows = 0u64;
@@ -180,12 +180,10 @@ pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
         }
     }
 
-    // Re-enable FK checks.
     let _ = new_conn.execute_batch("PRAGMA foreign_keys = ON;");
 
     if failed_tables.len() == tables.len() && !tables.is_empty() {
         error!("recovery failed: all tables unreadable");
-        // Clean up the failed recovery file.
         let _ = std::fs::remove_file(new_path);
         return Ok(false);
     }
@@ -202,7 +200,6 @@ pub fn attempt_recovery(corrupt_path: &Path, new_path: &Path) -> Result<bool> {
 
 /// List user tables in the database (excludes `sqlite` internals and `schema_version`).
 fn list_user_tables(conn: &Connection) -> Vec<String> {
-    // SAFETY: This query is read-only and uses a system table.
     let mut tables = Vec::new();
     let Ok(mut stmt) = conn.prepare(
         "SELECT name FROM sqlite_master
@@ -231,7 +228,6 @@ fn copy_table(
     dst: &Connection,
     table: &str,
 ) -> std::result::Result<u64, rusqlite::Error> {
-    // Get column names for the table.
     let columns = {
         let mut stmt = src.prepare(&format!(
             "PRAGMA table_info('{}')",
@@ -303,7 +299,6 @@ pub fn recover_database(path: &Path, config: &RecoveryConfig) -> Result<(Connect
         "database corruption detected, starting recovery"
     );
 
-    // Step 1: Back up corrupt file.
     if config.backup_corrupt {
         match backup_corrupt_file(path) {
             Ok(backup_path) => {
@@ -315,13 +310,11 @@ pub fn recover_database(path: &Path, config: &RecoveryConfig) -> Result<(Connect
         }
     }
 
-    // Step 2: Attempt auto-repair.
     if config.auto_repair {
         let recovery_path = path.with_extension("recovery");
 
         match attempt_recovery(path, &recovery_path) {
             Ok(true) => {
-                // Step 3: Swap recovered database into place.
                 if let Err(e) = std::fs::rename(&recovery_path, path) {
                     warn!(
                         error = %e,
@@ -330,7 +323,6 @@ pub fn recover_database(path: &Path, config: &RecoveryConfig) -> Result<(Connect
                 } else {
                     info!(path = %path_display, "recovered database swapped into place");
 
-                    // Reopen the recovered database in normal mode.
                     let conn = Connection::open(path).context(error::DatabaseSnafu)?;
                     conn.execute_batch(
                         "PRAGMA journal_mode = WAL;
@@ -357,7 +349,7 @@ pub fn recover_database(path: &Path, config: &RecoveryConfig) -> Result<(Connect
         }
     }
 
-    // Step 4: Fall back to read-only mode.
+    // WARNING: Read-only fallback -- writes will be rejected until manual repair.
     let conn = open_read_only(path)?;
     Ok((conn, StoreMode::ReadOnly))
 }

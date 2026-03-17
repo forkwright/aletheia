@@ -8,7 +8,7 @@ use crate::error::{self, Result};
 use crate::types::{Message, Role, UsageRecord};
 
 impl SessionStore {
-    // --- Messages ---
+    // NOTE: All message writes require `require_writable()` to guard degraded mode.
 
     /// Append a message to a session. Returns the sequence number.
     #[instrument(skip(self, content))]
@@ -154,7 +154,8 @@ impl SessionStore {
         let mut messages = Vec::new();
 
         if let Some(limit) = limit {
-            // Most recent N messages in chronological order
+            // WHY: Subquery reverses order (DESC) to pick the N most recent, then outer query
+            // restores chronological order (ASC) for the caller.
             let mut stmt = self
                 .conn
                 .prepare_cached(
@@ -227,7 +228,7 @@ impl SessionStore {
         Ok(result)
     }
 
-    // --- Distillation ---
+    // NOTE: Distillation marks old messages as `is_distilled=1` and replaces them with a summary.
 
     /// Mark messages as distilled and recalculate session token count.
     #[instrument(skip(self, seqs), fields(count = seqs.len()))]
@@ -242,7 +243,6 @@ impl SessionStore {
             .unchecked_transaction()
             .context(error::DatabaseSnafu)?;
 
-        // Mark each seq as distilled
         let mut stmt = tx
             .prepare_cached(
                 "UPDATE messages SET is_distilled = 1 WHERE session_id = ?1 AND seq = ?2",
@@ -254,7 +254,6 @@ impl SessionStore {
         }
         drop(stmt);
 
-        // Recalculate
         let (total_tokens, msg_count): (i64, i64) = tx
             .query_row(
                 "SELECT COALESCE(SUM(token_estimate), 0), COUNT(*) FROM messages WHERE session_id = ?1 AND is_distilled = 0",
@@ -302,9 +301,8 @@ impl SessionStore {
             .unchecked_transaction()
             .context(error::DatabaseSnafu)?;
 
-        // Delete any previous distillation summary sitting at seq 0.
-        // This covers two cases: (a) the old summary was never marked distilled because
-        // the distillation pipeline only marks conversation messages, not its own summary,
+        // WHY: Delete any previous summary at seq 0. Covers two cases: (a) the old summary
+        // was never marked distilled because the pipeline only marks conversation messages,
         // and (b) the old summary was explicitly marked distilled before this call.
         tx.execute(
             "DELETE FROM messages WHERE session_id = ?1 AND seq = 0",
@@ -312,15 +310,14 @@ impl SessionStore {
         )
         .context(error::DatabaseSnafu)?;
 
-        // Delete all messages that have been marked for distillation.
         tx.execute(
             "DELETE FROM messages WHERE session_id = ?1 AND is_distilled = 1",
             [session_id],
         )
         .context(error::DatabaseSnafu)?;
 
-        // Insert summary at seq 0. Remaining undistilled messages always have seq ≥ 1,
-        // so no UNIQUE(session_id, seq) conflict is possible here.
+        // INVARIANT: Remaining undistilled messages always have seq >= 1,
+        // so inserting at seq 0 cannot violate UNIQUE(session_id, seq).
         #[expect(clippy::cast_possible_wrap, reason = "summary length fits in i64")]
         let token_estimate = (content.len() as i64 + 3) / 4;
         tx.execute(
@@ -330,7 +327,6 @@ impl SessionStore {
         )
         .context(error::DatabaseSnafu)?;
 
-        // Recalculate session counts
         let (total_tokens, msg_count): (i64, i64) = tx
             .query_row(
                 "SELECT COALESCE(SUM(token_estimate), 0), COUNT(*) FROM messages WHERE session_id = ?1 AND is_distilled = 0",
@@ -393,7 +389,7 @@ impl SessionStore {
         Ok(())
     }
 
-    // --- Usage ---
+    // NOTE: Usage records are deduplicated by (session_id, turn_seq) at the SQL level.
 
     /// Check if usage has already been recorded for a given session + turn.
     #[instrument(skip(self), level = "debug")]

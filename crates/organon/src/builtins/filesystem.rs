@@ -40,7 +40,7 @@ fn truncate_output(mut output: String) -> String {
 }
 
 fn run_command(cmd: &mut Command) -> std::io::Result<std::process::Output> {
-    // Wrap in ProcessGuard so the child is killed and reaped on any early
+    // NOTE: Wrap in ProcessGuard so the child is killed and reaped on any early
     // return (I/O error, panic, etc.) before we reach wait().
     let mut guard = ProcessGuard::new(cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?);
 
@@ -94,7 +94,7 @@ impl ToolExecutor for GrepExecutor {
                     }
 
                     let text = truncate_output(stdout);
-                    // Enforce the line limit in case the backend (grep fallback) doesn't
+                    // WHY: Enforce the line limit in case the backend (grep fallback) doesn't
                     // natively support --max-count.
                     let n = usize::try_from(max_results).unwrap_or(usize::MAX);
                     let text = text.lines().take(n).fold(String::new(), |mut acc, line| {
@@ -183,7 +183,7 @@ impl ToolExecutor for FindExecutor {
                         return Ok(ToolResult::text("No files found."));
                     }
                     let text = truncate_output(stdout);
-                    // Enforce the result limit in case the backend (find fallback) doesn't
+                    // WHY: Enforce the result limit in case the backend (find fallback) doesn't
                     // natively support --max-results.
                     let n = usize::try_from(max_results).unwrap_or(usize::MAX);
                     let text = text.lines().take(n).fold(String::new(), |mut acc, line| {
@@ -214,7 +214,7 @@ fn try_fd(
     max_depth: Option<u64>,
 ) -> std::io::Result<std::process::Output> {
     let mut cmd = Command::new("fd");
-    // --no-ignore: workspace dirs live under gitignored paths (instance/).
+    // NOTE: --no-ignore: workspace dirs live under gitignored paths (instance/).
     // --glob: only when the pattern uses glob metacharacters (*, ?, [, {).
     //         Otherwise fd's default regex mode gives better substring matching.
     cmd.arg("--no-ignore");
@@ -252,7 +252,7 @@ fn try_find_fallback(
         cmd.arg("-type").arg(t);
     }
 
-    // fd uses regex/substring matching by default; map to find's glob matching.
+    // NOTE: fd uses regex/substring matching by default; map to find's glob matching.
     // Wrap plain strings in wildcards so "foo" matches "foo.rs", "myfoo", etc.
     let name_pattern = if pattern.is_empty() || pattern == "." {
         "*".to_owned()
@@ -337,7 +337,6 @@ fn format_system_time(time: &SystemTime) -> String {
     match time.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(dur) => {
             let secs = dur.as_secs();
-            // Simple UTC date/time formatting without external deps
             let days = secs / 86400;
             let time_of_day = secs % 86400;
             let hours = time_of_day / 3600;
@@ -351,7 +350,7 @@ fn format_system_time(time: &SystemTime) -> String {
 }
 
 fn days_to_ymd(days: u64) -> (u64, u64, u64) {
-    // Algorithm from http://howardhinnant.github.io/date_algorithms.html
+    // NOTE: Algorithm from http://howardhinnant.github.io/date_algorithms.html
     let z = days + 719_468;
     let era = z / 146_097;
     let doe = z - era * 146_097;

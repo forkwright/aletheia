@@ -209,7 +209,6 @@ impl RateLimiter {
 
         if let Some((window_start, count)) = state.get_mut(client) {
             if now.duration_since(*window_start) >= self.window {
-                // NOTE: Window expired: start a new one.
                 *window_start = now;
                 *count = 1;
                 None
@@ -248,6 +247,7 @@ fn extract_client_key(request: &Request, trust_proxy: bool) -> String {
         return info.0.ip().to_string();
     }
 
+    // NOTE: Only consult proxy headers when explicitly trusted.
     if trust_proxy {
         if let Some(xff) = request.headers().get("x-forwarded-for")
             && let Ok(s) = xff.to_str()
