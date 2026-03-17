@@ -85,6 +85,7 @@ dependencies = [
 name = "aletheia-agora"
 version = "0.12.0"
 dependencies = [
+ "aletheia-koina",
  "aletheia-taxis",
  "indexmap 2.13.0",
  "reqwest 0.13.2",
@@ -139,6 +140,7 @@ dependencies = [
 name = "aletheia-dokimion"
 version = "0.12.0"
 dependencies = [
+ "aletheia-koina",
  "owo-colors",
  "regex",
  "reqwest 0.13.2",
@@ -355,6 +357,7 @@ name = "aletheia-pylon"
 version = "0.12.0"
 dependencies = [
  "aletheia-hermeneus",
+ "aletheia-koina",
  "aletheia-mneme",
  "aletheia-nous",
  "aletheia-organon",
@@ -5877,6 +5880,7 @@ dependencies = [
 name = "theatron-tui"
 version = "0.12.0"
 dependencies = [
+ "aletheia-koina",
  "arboard",
  "base64 0.22.1",
  "clap",
