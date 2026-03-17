@@ -122,6 +122,8 @@ enum Command {
     reason = "ring crypto provider installation is infallible unless already installed"
 )]
 async fn main() -> Result<()> {
+    install_panic_hook();
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("failed to install ring crypto provider");
@@ -202,6 +204,15 @@ async fn main() -> Result<()> {
         json_logs: cli.json_logs,
     })
     .await
+}
+
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        tracing::error!(%backtrace, "panic: {info}");
+        default_hook(info);
+    }));
 }
 
 #[cfg(test)]
