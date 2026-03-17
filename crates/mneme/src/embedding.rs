@@ -30,7 +30,7 @@ pub enum EmbeddingError {
         location: snafu::Location,
     },
 
-    /// The embedding model mutex was poisoned by a prior panic.
+    /// The embedding model `RwLock` was poisoned by a prior panic.
     #[snafu(display("embedding model lock poisoned"))]
     LockPoisoned {
         #[snafu(implicit)]
@@ -132,10 +132,12 @@ mod candle_provider {
     ///
     /// Downloads and caches models from `HuggingFace` Hub on first use.
     /// Default model is `BAAI/bge-small-en-v1.5` (384 dimensions).
-    /// Thread-safe via internal mutex.
+    ///
+    /// Thread-safe via `RwLock`: multiple concurrent reads (embedding requests)
+    /// proceed in parallel. Write locks are only needed for model reload.
     pub struct CandelProvider {
-        model: std::sync::Mutex<BertModel>,
-        tokenizer: std::sync::Mutex<Tokenizer>,
+        model: std::sync::RwLock<BertModel>,
+        tokenizer: std::sync::RwLock<Tokenizer>,
         model_name: String,
         dimension: usize,
         device: Device,
@@ -239,8 +241,8 @@ mod candle_provider {
             }));
 
             Ok(Self {
-                model: std::sync::Mutex::new(model),
-                tokenizer: std::sync::Mutex::new(tokenizer),
+                model: std::sync::RwLock::new(model),
+                tokenizer: std::sync::RwLock::new(tokenizer),
                 model_name: repo_id.to_owned(),
                 dimension,
                 device,
@@ -258,10 +260,15 @@ mod candle_provider {
         }
 
         /// Tokenize, run model forward pass, and return raw hidden states + attention mask.
+        ///
+        /// Uses read locks on both tokenizer and model, allowing multiple
+        /// concurrent embedding requests to proceed in parallel.
         fn encode_and_forward(&self, texts: &[&str]) -> EmbeddingResult<(Tensor, Tensor)> {
+            // WHY: Read lock allows concurrent tokenization across callers.
+            // Tokenizer::encode_batch takes &self, no mutation needed.
             let tokenizer = self
                 .tokenizer
-                .lock()
+                .read()
                 .map_err(|_poison| LockPoisonedSnafu.build())?;
 
             let encodings = tokenizer.encode_batch(texts.to_vec(), true).map_err(|e| {
@@ -291,9 +298,11 @@ mod candle_provider {
             let attention_mask =
                 Tensor::stack(&attention_masks, 0).map_err(Self::candle_err("mask stack"))?;
 
+            // WHY: Read lock allows concurrent forward passes.
+            // BertModel::forward takes &self, no mutation needed.
             let model = self
                 .model
-                .lock()
+                .read()
                 .map_err(|_poison| LockPoisonedSnafu.build())?;
             let embeddings = model
                 .forward(&input_ids, &token_type_ids, Some(&attention_mask))
