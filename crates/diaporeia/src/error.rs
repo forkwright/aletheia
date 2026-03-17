@@ -90,7 +90,7 @@ impl From<Error> for rmcp::ErrorData {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use snafu::IntoError as _;
 

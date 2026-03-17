@@ -366,7 +366,7 @@ mod candle_provider {
     }
 
     #[cfg(test)]
-    #[allow(clippy::expect_used, reason = "test assertions")]
+    #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
     mod tests {
         use super::*;
         use candle_core::{DType, Device, Tensor};
