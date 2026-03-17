@@ -24,6 +24,9 @@ snafu = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 
+[features]
+test-utils = []
+
 [dev-dependencies]
 proptest = { workspace = true }
 static_assertions = { workspace = true }

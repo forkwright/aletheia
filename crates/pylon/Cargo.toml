@@ -56,6 +56,7 @@ aletheia-nous = { path = "../nous" }
 aletheia-symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
+aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 http-body-util = "0.1"
 jiff = { workspace = true }
 # jsonwebtoken 10.x pins rand 0.8; no released version uses rand 0.9.

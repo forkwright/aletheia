@@ -1,72 +1,16 @@
 //! Roundtrip and comprehensive tests for melete distillation pipeline.
 #![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(clippy::expect_used, reason = "test assertions")]
 
-use std::sync::Mutex;
-
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::{
-    CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role, StopReason,
-    ToolResultContent, Usage,
-};
+use aletheia_hermeneus::test_utils::MockProvider;
+use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role, ToolResultContent};
 
 use crate::distill::{DistillConfig, DistillEngine, DistillSection};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 
-struct MockProvider {
-    response: Mutex<Option<aletheia_hermeneus::error::Result<CompletionResponse>>>,
-}
-
-impl MockProvider {
-    fn with_summary(summary: &str) -> Self {
-        Self {
-            response: Mutex::new(Some(Ok(CompletionResponse {
-                id: "msg_roundtrip".to_owned(),
-                model: "claude-sonnet-4-20250514".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![ContentBlock::Text {
-                    text: summary.to_owned(),
-                    citations: None,
-                }],
-                usage: Usage {
-                    input_tokens: 5000,
-                    output_tokens: 50,
-                    cache_read_tokens: 0,
-                    cache_write_tokens: 0,
-                },
-            }))),
-        }
-    }
-}
-
-impl LlmProvider for MockProvider {
-    fn complete<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
-                + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async {
-            self.response
-                .lock()
-                .expect("lock") // INVARIANT: test mock, panic = test bug
-                .take()
-                .expect("mock provider called more than once")
-        })
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &["claude-sonnet-4-20250514"]
-    }
-
-    #[expect(clippy::unnecessary_literal_bound)]
-    fn name(&self) -> &str {
-        "mock-roundtrip"
-    }
+fn summary_provider(text: &str) -> MockProvider {
+    MockProvider::new(text)
+        .models(&["claude-sonnet-4-20250514"])
+        .named("mock-roundtrip")
 }
 
 fn text_msg(role: Role, text: &str) -> Message {
@@ -330,7 +274,7 @@ async fn test_split_when_verbatim_tail_zero_summarizes_all() {
     };
     let engine = DistillEngine::new(config);
     let messages = n_messages(6);
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -350,7 +294,7 @@ async fn test_split_when_verbatim_tail_equals_messages_distills_none() {
     };
     let engine = DistillEngine::new(config);
     let messages = n_messages(4);
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -370,7 +314,7 @@ async fn test_split_when_verbatim_tail_exceeds_messages_clamps() {
     };
     let engine = DistillEngine::new(config);
     let messages = n_messages(3);
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -395,7 +339,7 @@ async fn test_split_preserves_exact_tail_content() {
         text_msg(Role::User, "Third"),
         text_msg(Role::Assistant, "Fourth"),
     ];
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -484,7 +428,7 @@ async fn test_verbatim_tail_preserves_roles() {
         text_msg(Role::Assistant, "Recent assistant"),
         text_msg(Role::User, "Last user"),
     ];
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -506,7 +450,7 @@ async fn test_verbatim_tail_when_single_message_preserves_it() {
     };
     let engine = DistillEngine::new(config);
     let messages = vec![text_msg(Role::User, "Only message")];
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -545,7 +489,7 @@ async fn test_verbatim_tail_preserves_block_content() {
         text_msg(Role::Assistant, "Second"),
         block_msg.clone(),
     ];
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -635,7 +579,7 @@ async fn test_full_pipeline_preserves_tool_results() {
         text_msg(Role::User, "Thanks"),
         text_msg(Role::Assistant, "Welcome."),
     ];
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
     let result = engine
@@ -664,7 +608,7 @@ async fn test_full_pipeline_preserves_decisions() {
         text_msg(Role::User, "Done?"),
         text_msg(Role::Assistant, "All done."),
     ];
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
     let result = engine
@@ -693,7 +637,7 @@ async fn test_full_pipeline_preserves_corrections() {
         text_msg(Role::User, "Ship"),
         text_msg(Role::Assistant, "Shipped."),
     ];
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
     let result = engine
@@ -708,7 +652,7 @@ async fn test_full_pipeline_preserves_corrections() {
 #[tokio::test]
 async fn test_full_pipeline_reduces_token_count() {
     let messages = n_messages(20);
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
     let result = engine
@@ -727,7 +671,7 @@ async fn test_full_pipeline_reduces_token_count() {
 #[tokio::test]
 async fn test_full_pipeline_summary_contains_all_sections() {
     let messages = n_messages(10);
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
     let result = engine
@@ -757,7 +701,7 @@ async fn test_full_pipeline_verbatim_tail_integrity() {
         text_msg(Role::Assistant, "Hotel — preserved"),
         text_msg(Role::User, "India — preserved"),
     ];
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
     let result = engine
@@ -785,7 +729,7 @@ async fn test_full_pipeline_verbatim_tail_integrity() {
 
 #[tokio::test]
 async fn test_distill_when_empty_messages_returns_error() {
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
     let result = engine.distill(&[], "syn", &provider, 1).await;
@@ -802,7 +746,7 @@ async fn test_distill_when_single_message_all_verbatim() {
     };
     let engine = DistillEngine::new(config);
     let messages = vec![text_msg(Role::User, "Solo message")];
-    let provider = MockProvider::with_summary("## Summary\nSolo.");
+    let provider = summary_provider("## Summary\nSolo.");
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -828,7 +772,7 @@ async fn test_distill_when_oversized_input_handles_gracefully() {
         ));
     }
 
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
     let engine = default_engine();
 
     let result = engine
@@ -883,7 +827,7 @@ async fn test_distill_when_all_tool_call_messages() {
         ..DistillConfig::default()
     };
     let engine = DistillEngine::new(config);
-    let provider = MockProvider::with_summary(FULL_SUMMARY);
+    let provider = summary_provider(FULL_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)
@@ -906,7 +850,7 @@ async fn test_distill_when_two_messages_with_tail_three() {
         ..DistillConfig::default()
     };
     let engine = DistillEngine::new(config);
-    let provider = MockProvider::with_summary("## Summary\nGreeting.");
+    let provider = summary_provider("## Summary\nGreeting.");
 
     let result = engine
         .distill(&messages, "test", &provider, 1)

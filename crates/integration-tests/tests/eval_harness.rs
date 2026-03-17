@@ -11,8 +11,8 @@ use secrecy::SecretString;
 use tokio::net::TcpListener;
 
 use aletheia_dokimion::runner::{RunConfig, ScenarioRunner};
-use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
-use aletheia_hermeneus::types::*;
+use aletheia_hermeneus::provider::ProviderRegistry;
+use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
 use aletheia_nous::manager::NousManager;
@@ -26,55 +26,6 @@ use tokio_util::sync::CancellationToken;
 
 fn install_crypto_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
-}
-
-struct MockProvider {
-    response: CompletionResponse,
-}
-
-impl MockProvider {
-    fn new() -> Self {
-        Self {
-            response: CompletionResponse {
-                id: "msg_test".to_owned(),
-                model: "mock-model".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![ContentBlock::Text {
-                    text: "Hello from eval harness!".to_owned(),
-                    citations: None,
-                }],
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 5,
-                    ..Usage::default()
-                },
-            },
-        }
-    }
-}
-
-impl LlmProvider for MockProvider {
-    fn complete<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
-                + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async { Ok(self.response.clone()) })
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &["mock-model"]
-    }
-
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
-    fn name(&self) -> &str {
-        "mock"
-    }
 }
 
 async fn start_test_server() -> (String, String, tempfile::TempDir) {
@@ -93,7 +44,9 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
     let store = SessionStore::open_in_memory().expect("in-memory store");
 
     let mut provider_registry = ProviderRegistry::new();
-    provider_registry.register(Box::new(MockProvider::new()));
+    provider_registry.register(Box::new(
+        MockProvider::new("Hello from eval harness!").models(&["mock-model"]),
+    ));
     let provider_registry = Arc::new(provider_registry);
     let tool_registry = Arc::new(ToolRegistry::new());
     let session_store = Arc::new(TokioMutex::new(store));

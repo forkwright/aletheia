@@ -21,7 +21,7 @@ aletheia-dokimion = { path = "../eval" }
 aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
 aletheia-mneme = { path = "../mneme", default-features = false }
-aletheia-hermeneus = { path = "../hermeneus" }
+aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 aletheia-nous = { path = "../nous" }
 aletheia-organon = { path = "../organon" }
 aletheia-thesauros = { path = "../thesauros" }

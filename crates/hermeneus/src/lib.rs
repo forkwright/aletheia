@@ -15,5 +15,12 @@ pub mod health;
 pub mod metrics;
 /// [`LlmProvider`](provider::LlmProvider), [`ProviderConfig`](provider::ProviderConfig), and [`ProviderRegistry`](provider::ProviderRegistry).
 pub mod provider;
+/// Shared mock provider for tests across the workspace.
+#[cfg(any(test, feature = "test-utils"))]
+#[expect(
+    clippy::expect_used,
+    reason = "test-only code, panicking on poisoned mutex is correct"
+)]
+pub mod test_utils;
 /// Anthropic-native types for LLM requests and responses ([`CompletionRequest`](types::CompletionRequest), [`CompletionResponse`](types::CompletionResponse)).
 pub mod types;

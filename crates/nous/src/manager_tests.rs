@@ -1,48 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
-use std::sync::Mutex;
-
-use aletheia_hermeneus::provider::LlmProvider;
-use aletheia_hermeneus::types::{
-    CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
-};
+use aletheia_hermeneus::test_utils::MockProvider;
 
 use super::*;
 use crate::message::NousLifecycle;
-
-struct MockProvider {
-    // std::sync::Mutex is intentional: test mock, never crosses .await
-    response: Mutex<CompletionResponse>,
-}
-
-impl LlmProvider for MockProvider {
-    fn complete<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
-                + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async {
-            #[expect(
-                clippy::expect_used,
-                reason = "test mock: poisoned lock means a test bug"
-            )]
-            Ok(self.response.lock().expect("lock poisoned").clone())
-        })
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
-    }
-
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
-    fn name(&self) -> &str {
-        "mock"
-    }
-}
 
 fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
     let dir = tempfile::TempDir::new().expect("tmpdir");
@@ -59,22 +19,9 @@ fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
 
 fn test_providers() -> Arc<ProviderRegistry> {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider {
-        response: Mutex::new(CompletionResponse {
-            id: "resp-1".to_owned(),
-            model: "test-model".to_owned(),
-            stop_reason: StopReason::EndTurn,
-            content: vec![ContentBlock::Text {
-                text: "Hello!".to_owned(),
-                citations: None,
-            }],
-            usage: Usage {
-                input_tokens: 100,
-                output_tokens: 50,
-                ..Usage::default()
-            },
-        }),
-    }));
+    providers.register(Box::new(
+        MockProvider::new("Hello!").models(&["test-model"]),
+    ));
     Arc::new(providers)
 }
 

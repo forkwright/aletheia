@@ -241,64 +241,14 @@ impl ProviderRegistry {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use std::future::Future;
-    use std::pin::Pin;
-
     use super::*;
+    use crate::test_utils::MockProvider;
     use crate::types::*;
-
-    /// A mock provider for testing.
-    struct MockProvider {
-        models: Vec<&'static str>,
-    }
-
-    impl MockProvider {
-        fn new() -> Self {
-            Self {
-                models: vec!["mock-model-v1", "mock-model-v2"],
-            }
-        }
-    }
-
-    impl LlmProvider for MockProvider {
-        fn complete<'a>(
-            &'a self,
-            _request: &'a CompletionRequest,
-        ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
-            Box::pin(async {
-                Ok(CompletionResponse {
-                    id: "mock-response-1".to_owned(),
-                    model: "mock-model-v1".to_owned(),
-                    stop_reason: StopReason::EndTurn,
-                    content: vec![ContentBlock::Text {
-                        text: "mock response".to_owned(),
-                        citations: None,
-                    }],
-                    usage: Usage {
-                        input_tokens: 100,
-                        output_tokens: 50,
-                        ..Usage::default()
-                    },
-                })
-            })
-        }
-
-        fn supported_models(&self) -> &[&str] {
-            &self.models
-        }
-
-        #[expect(
-            clippy::unnecessary_literal_bound,
-            reason = "trait requires &str return"
-        )]
-        fn name(&self) -> &str {
-            "mock"
-        }
-    }
 
     #[tokio::test]
     async fn mock_provider_completes() {
-        let provider = MockProvider::new();
+        let provider =
+            MockProvider::new("mock response").models(&["mock-model-v1", "mock-model-v2"]);
         let request = CompletionRequest {
             model: "mock-model-v1".to_owned(),
             system: None,
@@ -315,13 +265,14 @@ mod tests {
         };
 
         let response = provider.complete(&request).await.unwrap();
-        assert_eq!(response.id, "mock-response-1");
+        assert_eq!(response.id, "msg_mock");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
     }
 
     #[test]
     fn supports_model_check() {
-        let provider = MockProvider::new();
+        let provider =
+            MockProvider::new("mock response").models(&["mock-model-v1", "mock-model-v2"]);
         assert!(provider.supports_model("mock-model-v1"));
         assert!(provider.supports_model("mock-model-v2"));
         assert!(!provider.supports_model("nonexistent"));
@@ -330,7 +281,9 @@ mod tests {
     #[test]
     fn registry_find_provider() {
         let mut registry = ProviderRegistry::new();
-        registry.register(Box::new(MockProvider::new()));
+        registry.register(Box::new(
+            MockProvider::new("mock response").models(&["mock-model-v1"]),
+        ));
 
         assert!(registry.find_provider("mock-model-v1").is_some());
         assert!(registry.find_provider("nonexistent").is_none());
@@ -381,7 +334,7 @@ mod tests {
     #[test]
     fn registry_health_starts_up() {
         let mut registry = ProviderRegistry::new();
-        registry.register(Box::new(MockProvider::new()));
+        registry.register(Box::new(MockProvider::new("mock response")));
 
         assert_eq!(registry.provider_health("mock"), Some(ProviderHealth::Up));
     }
@@ -395,7 +348,7 @@ mod tests {
     #[test]
     fn registry_record_error_updates_health() {
         let mut registry = ProviderRegistry::new();
-        registry.register(Box::new(MockProvider::new()));
+        registry.register(Box::new(MockProvider::new("mock response")));
 
         let err: crate::error::Error = crate::error::ApiRequestSnafu { message: "timeout" }.build();
         registry.record_error("mock", &err);
@@ -413,7 +366,7 @@ mod tests {
     #[test]
     fn registry_record_success_resets_health() {
         let mut registry = ProviderRegistry::new();
-        registry.register(Box::new(MockProvider::new()));
+        registry.register(Box::new(MockProvider::new("mock response")));
 
         let err: crate::error::Error = crate::error::ApiRequestSnafu { message: "timeout" }.build();
         registry.record_error("mock", &err);
@@ -425,14 +378,14 @@ mod tests {
     #[test]
     fn find_streaming_provider_returns_none_for_mock() {
         let mut registry = ProviderRegistry::new();
-        registry.register(Box::new(MockProvider::new()));
+        registry.register(Box::new(MockProvider::new("mock response")));
         assert!(registry.find_streaming_provider("mock-model-v1").is_none());
     }
 
     #[test]
     fn registry_record_unknown_is_noop() {
         let mut registry = ProviderRegistry::new();
-        registry.register(Box::new(MockProvider::new()));
+        registry.register(Box::new(MockProvider::new("mock response")));
         // Should not panic
         registry.record_success("nonexistent");
         let err: crate::error::Error = crate::error::ApiRequestSnafu { message: "timeout" }.build();
