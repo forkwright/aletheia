@@ -16,7 +16,7 @@ use super::{MAX_SPAWNED_TASKS, NousActor};
 impl NousActor {
     /// Reap completed background tasks, log failures, and count panics.
     pub(super) fn reap_background_tasks(&mut self) {
-        while let Some(result) = self.background_tasks.try_join_next() {
+        while let Some(result) = self.runtime.background_tasks.try_join_next() {
             match result {
                 // NOTE: task completed successfully, no action needed
                 Ok(()) => {}
@@ -28,7 +28,7 @@ impl NousActor {
                         self.record_panic();
                         warn!(
                             nous_id = %self.id,
-                            panic_count = self.panic_count,
+                            panic_count = self.runtime.panic_count,
                             "background task panicked"
                         );
                     } else {
@@ -53,20 +53,20 @@ impl NousActor {
         }
 
         let config = extraction_config.clone();
-        let providers = Arc::clone(&self.providers);
+        let providers = Arc::clone(&self.services.providers);
         let nous_id = self.id.clone();
         let user = user_content.to_owned();
         let assistant = assistant_content.to_owned();
         let span = tracing::info_span!("extraction", nous.id = %nous_id);
         #[cfg(feature = "knowledge-store")]
-        let knowledge_store = self.knowledge_store.clone();
+        let knowledge_store = self.stores.knowledge_store.clone();
 
-        if self.background_tasks.len() >= MAX_SPAWNED_TASKS {
+        if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
             warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping extraction");
             return;
         }
 
-        self.background_tasks.spawn(
+        self.runtime.background_tasks.spawn(
             async move {
                 run_extraction(
                     &config,
@@ -111,9 +111,10 @@ impl NousActor {
             .collect();
 
         let nous_id = self.id.clone();
-        let result = self
-            .candidate_tracker
-            .track_sequence(&records, session_key, &nous_id);
+        let result =
+            self.services
+                .candidate_tracker
+                .track_sequence(&records, session_key, &nous_id);
 
         match result {
             TrackResult::Rejected => {
@@ -144,21 +145,21 @@ impl NousActor {
 
         // WHY: extraction model (Haiku) for cost-effectiveness
         let model = extraction_config.model.clone();
-        let providers = Arc::clone(&self.providers);
+        let providers = Arc::clone(&self.services.providers);
         let nous_id = self.id.clone();
         let candidate_id = candidate_id.to_owned();
         let tool_calls = tool_calls.to_vec();
-        let tracker = Arc::clone(&self.candidate_tracker);
+        let tracker = Arc::clone(&self.services.candidate_tracker);
         #[cfg(feature = "knowledge-store")]
-        let knowledge_store = self.knowledge_store.clone();
+        let knowledge_store = self.stores.knowledge_store.clone();
         let span = tracing::info_span!("skill_extraction", nous.id = %nous_id, candidate.id = %candidate_id);
 
-        if self.background_tasks.len() >= MAX_SPAWNED_TASKS {
+        if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
             warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping skill extraction");
             return;
         }
 
-        self.background_tasks.spawn(
+        self.runtime.background_tasks.spawn(
             async move {
                 run_skill_extraction(
                     &model,
@@ -182,6 +183,7 @@ impl NousActor {
         // WHY: two turns finishing close together can both observe the distillation trigger before
         // either task commits: the atomic flag ensures only one distillation task runs at a time (#1035)
         if self
+            .runtime
             .distillation_in_progress
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
@@ -194,7 +196,8 @@ impl NousActor {
 
         // NOTE: clear immediately if no task was spawned; spawned task clears the flag itself on completion
         if !did_spawn {
-            self.distillation_in_progress
+            self.runtime
+                .distillation_in_progress
                 .store(false, Ordering::Release);
         }
     }
@@ -203,7 +206,7 @@ impl NousActor {
     async fn try_spawn_distillation(&mut self, session_key: &str) -> bool {
         use std::sync::atomic::Ordering;
 
-        let Some(ref store_arc) = self.session_store else {
+        let Some(ref store_arc) = self.stores.session_store else {
             return false;
         };
         let Some(session_state) = self.sessions.get(session_key) else {
@@ -231,24 +234,29 @@ impl NousActor {
         }
 
         let config = crate::distillation::DistillTriggerConfig::default();
-        if self.providers.find_provider(&config.model).is_none() {
+        if self
+            .services
+            .providers
+            .find_provider(&config.model)
+            .is_none()
+        {
             warn!(model = %config.model, "no provider for distillation model");
             return false;
         }
 
         let store = Arc::clone(store_arc);
-        let providers = Arc::clone(&self.providers);
+        let providers = Arc::clone(&self.services.providers);
         let nous_id = self.id.clone();
         let span =
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
 
-        if self.background_tasks.len() >= MAX_SPAWNED_TASKS {
+        if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
             warn!(nous_id = %self.id, limit = MAX_SPAWNED_TASKS, "background task limit reached, skipping distillation");
             return false;
         }
 
-        let flag = Arc::clone(&self.distillation_in_progress);
-        self.background_tasks.spawn(
+        let flag = Arc::clone(&self.runtime.distillation_in_progress);
+        self.runtime.background_tasks.spawn(
             async move {
                 run_background_distillation(store, providers, session_id, nous_id, config).await;
                 flag.store(false, Ordering::Release);
@@ -484,7 +492,7 @@ async fn run_background_distillation(
         clippy::cast_sign_loss,
         reason = "distillation count is small non-negative"
     )]
-    let distill_count = session.distillation_count as u32;
+    let distill_count = session.metrics.distillation_count as u32;
     let result = match engine
         .distill(&messages, &nous_id, provider, distill_count + 1)
         .await

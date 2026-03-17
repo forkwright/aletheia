@@ -17,9 +17,10 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
     lines.push(Line::raw(""));
 
     let agent = app
+        .dashboard
         .focused_agent
         .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| a.id == *id));
+        .and_then(|id| app.dashboard.agents.iter().find(|a| a.id == *id));
 
     if let Some(agent) = agent {
         lines.push(Line::from(vec![
@@ -43,6 +44,7 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
 
             for (idx, session) in agent.sessions.iter().enumerate() {
                 let is_focused = app
+                    .dashboard
                     .focused_session_id
                     .as_ref()
                     .is_some_and(|id| *id == session.id);
@@ -78,7 +80,12 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
                     let fallback_label: String;
                     // WHY: char_indices().nth(8) instead of &s[..8]: byte slicing panics
                     // on non-ASCII boundaries; IDs are ASCII in practice but the panic is avoidable.
-                    let agent_label = match app.agents.iter().find(|a| a.id == session.nous_id) {
+                    let agent_label = match app
+                        .dashboard
+                        .agents
+                        .iter()
+                        .find(|a| a.id == session.nous_id)
+                    {
                         Some(a) => a.name.as_str(),
                         None => {
                             let nous_id_str: &str = session.nous_id.as_ref();
@@ -145,7 +152,7 @@ pub(crate) fn render_message_detail(
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
-    if let Some(msg) = app.messages.get(message_index) {
+    if let Some(msg) = app.dashboard.messages.get(message_index) {
         let role_label = match msg.role.as_str() {
             "user" => "You",
             "assistant" => "Assistant",
@@ -242,10 +249,10 @@ pub(crate) fn render_message_detail(
     ]));
 
     let block = Block::default().borders(Borders::NONE);
-    let scroll = if app.auto_scroll {
+    let scroll = if app.viewport.render.auto_scroll {
         0
     } else {
-        app.scroll_offset as u16
+        app.viewport.render.scroll_offset as u16
     };
     let paragraph = Paragraph::new(lines)
         .block(block)
@@ -261,7 +268,7 @@ pub(crate) fn render_for_view(
     area: Rect,
     theme: &Theme,
 ) -> Vec<OscLink> {
-    match app.view_stack.current() {
+    match app.layout.view_stack.current() {
         View::Home => super::render_chat_area(app, frame, area, theme),
         View::Sessions { .. } => {
             render_sessions(app, frame, area, theme);

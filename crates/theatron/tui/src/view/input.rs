@@ -9,7 +9,7 @@ use crate::app::App;
 use crate::theme::Theme;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let is_streaming = app.active_turn_id.is_some();
+    let is_streaming = app.connection.active_turn_id.is_some();
 
     let prompt_str = if is_streaming { "queued › " } else { "› " };
     let prompt_color = if is_streaming {
@@ -23,8 +23,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let content_width = usize::from(area.width.max(1));
     let visible_rows = usize::from(area.height.saturating_sub(1));
 
-    let text = app.input.text.as_str();
-    let cursor_byte = app.input.cursor;
+    let text = app.interaction.input.text.as_str();
+    let cursor_byte = app.interaction.input.cursor;
 
     let first_line_avail = content_width.saturating_sub(prompt_width).max(1);
     let line_ranges = word_wrap_lines(text, first_line_avail, content_width);

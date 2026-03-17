@@ -4,19 +4,19 @@ use crate::msg::{ErrorToast, MessageActionKind};
 use crate::state::SelectionContext;
 
 pub(crate) fn handle_select_prev(app: &mut App) {
-    let count = app.messages.len();
+    let count = app.dashboard.messages.len();
     if count == 0 {
         return;
     }
-    match app.selected_message {
+    match app.interaction.selected_message {
         None => {
             let idx = count - 1;
-            app.selected_message = Some(idx);
-            app.auto_scroll = false;
+            app.interaction.selected_message = Some(idx);
+            app.viewport.render.auto_scroll = false;
         }
         Some(idx) => {
             if idx > 0 {
-                app.selected_message = Some(idx - 1);
+                app.interaction.selected_message = Some(idx - 1);
             }
         }
     }
@@ -24,19 +24,19 @@ pub(crate) fn handle_select_prev(app: &mut App) {
 }
 
 pub(crate) fn handle_select_next(app: &mut App) {
-    let count = app.messages.len();
+    let count = app.dashboard.messages.len();
     if count == 0 {
         return;
     }
-    match app.selected_message {
+    match app.interaction.selected_message {
         None => {
             let idx = count - 1;
-            app.selected_message = Some(idx);
-            app.auto_scroll = false;
+            app.interaction.selected_message = Some(idx);
+            app.viewport.render.auto_scroll = false;
         }
         Some(idx) => {
             if idx + 1 < count {
-                app.selected_message = Some(idx + 1);
+                app.interaction.selected_message = Some(idx + 1);
             }
         }
     }
@@ -44,32 +44,32 @@ pub(crate) fn handle_select_next(app: &mut App) {
 }
 
 pub(crate) fn handle_deselect(app: &mut App) {
-    app.selected_message = None;
-    app.selection = SelectionContext::None;
+    app.interaction.selected_message = None;
+    app.interaction.selection = SelectionContext::None;
     app.scroll_to_bottom();
 }
 
 pub(crate) fn handle_select_first(app: &mut App) {
-    if app.messages.is_empty() {
+    if app.dashboard.messages.is_empty() {
         return;
     }
-    app.selected_message = Some(0);
-    app.auto_scroll = false;
+    app.interaction.selected_message = Some(0);
+    app.viewport.render.auto_scroll = false;
     sync_selection_context(app);
 }
 
 pub(crate) fn handle_select_last(app: &mut App) {
-    if app.messages.is_empty() {
+    if app.dashboard.messages.is_empty() {
         return;
     }
-    app.selected_message = Some(app.messages.len() - 1);
-    app.auto_scroll = false;
+    app.interaction.selected_message = Some(app.dashboard.messages.len() - 1);
+    app.viewport.render.auto_scroll = false;
     sync_selection_context(app);
 }
 
 pub(crate) fn handle_message_action(app: &mut App, action: MessageActionKind) {
-    let idx = match app.selected_message {
-        Some(i) if i < app.messages.len() => i,
+    let idx = match app.interaction.selected_message {
+        Some(i) if i < app.dashboard.messages.len() => i,
         _ => return,
     };
 
@@ -87,7 +87,7 @@ pub(crate) fn handle_message_action(app: &mut App, action: MessageActionKind) {
 }
 
 fn action_copy(app: &mut App, idx: usize) {
-    let text = &app.messages[idx].text;
+    let text = &app.dashboard.messages[idx].text;
     match crate::clipboard::copy_to_clipboard(text) {
         Ok(()) => show_toast(app, "Copied to clipboard"),
         Err(e) => {
@@ -98,7 +98,7 @@ fn action_copy(app: &mut App, idx: usize) {
 }
 
 fn action_yank_code_block(app: &mut App, idx: usize) {
-    let text = &app.messages[idx].text;
+    let text = &app.dashboard.messages[idx].text;
     if let Some(code) = extract_first_code_block(text) {
         match crate::clipboard::copy_to_clipboard(&code) {
             Ok(()) => show_toast(app, "Code block copied"),
@@ -119,30 +119,30 @@ fn action_yank_code_block(app: &mut App, idx: usize) {
 }
 
 fn action_edit(app: &mut App, idx: usize) {
-    if app.messages[idx].role != "user" {
+    if app.dashboard.messages[idx].role != "user" {
         show_toast(app, "Can only edit user messages");
         return;
     }
-    let text = app.messages[idx].text.clone();
-    app.messages.remove(idx);
-    app.selected_message = None;
-    app.selection = SelectionContext::None;
-    app.input.text = text;
-    app.input.cursor = app.input.text.len();
+    let text = app.dashboard.messages[idx].text.clone();
+    app.dashboard.messages.remove(idx);
+    app.interaction.selected_message = None;
+    app.interaction.selection = SelectionContext::None;
+    app.interaction.input.text = text;
+    app.interaction.input.cursor = app.interaction.input.text.len();
 }
 
 fn action_delete(app: &mut App, idx: usize) {
-    if app.messages[idx].role != "user" {
+    if app.dashboard.messages[idx].role != "user" {
         show_toast(app, "Can only delete user messages");
         return;
     }
-    app.messages.remove(idx);
-    let count = app.messages.len();
+    app.dashboard.messages.remove(idx);
+    let count = app.dashboard.messages.len();
     if count == 0 {
-        app.selected_message = None;
-        app.selection = SelectionContext::None;
+        app.interaction.selected_message = None;
+        app.interaction.selection = SelectionContext::None;
     } else if idx >= count {
-        app.selected_message = Some(count - 1);
+        app.interaction.selected_message = Some(count - 1);
         sync_selection_context(app);
     } else {
         sync_selection_context(app);
@@ -151,7 +151,7 @@ fn action_delete(app: &mut App, idx: usize) {
 }
 
 fn action_open_links(app: &mut App, idx: usize) {
-    let text = &app.messages[idx].text;
+    let text = &app.dashboard.messages[idx].text;
     let urls = extract_urls(text);
     match urls.len() {
         0 => show_toast(app, "No links found"),
@@ -173,36 +173,36 @@ fn action_open_links(app: &mut App, idx: usize) {
 }
 
 fn action_inspect(app: &mut App, idx: usize) {
-    let msg = &app.messages[idx];
+    let msg = &app.dashboard.messages[idx];
     if msg.tool_calls.is_empty() {
         show_toast(app, "No tool calls to inspect");
         return;
     }
     let key = crate::id::ToolId::from(format!("msg:{idx}"));
-    if app.tool_expanded.contains(&key) {
-        app.tool_expanded.remove(&key);
+    if app.interaction.tool_expanded.contains(&key) {
+        app.interaction.tool_expanded.remove(&key);
     } else {
-        app.tool_expanded.insert(key);
+        app.interaction.tool_expanded.insert(key);
     }
 }
 
 fn action_quote_in_reply(app: &mut App, idx: usize) {
-    let text = &app.messages[idx].text;
+    let text = &app.dashboard.messages[idx].text;
     let quoted: String = text.lines().map(|l| format!("> {l}\n")).collect();
-    if app.input.text.is_empty() {
-        app.input.text = quoted;
+    if app.interaction.input.text.is_empty() {
+        app.interaction.input.text = quoted;
     } else {
-        app.input.text.push('\n');
-        app.input.text.push_str(&quoted);
+        app.interaction.input.text.push('\n');
+        app.interaction.input.text.push_str(&quoted);
     }
-    app.input.cursor = app.input.text.len();
+    app.interaction.input.cursor = app.interaction.input.text.len();
     show_toast(app, "Quoted in reply");
 }
 
 fn sync_selection_context(app: &mut App) {
-    app.selection = match app.selected_message {
-        Some(idx) if idx < app.messages.len() => {
-            let msg = &app.messages[idx];
+    app.interaction.selection = match app.interaction.selected_message {
+        Some(idx) if idx < app.dashboard.messages.len() => {
+            let msg = &app.dashboard.messages[idx];
             match msg.role.as_str() {
                 "user" => SelectionContext::UserMessage { index: idx },
                 "assistant" => SelectionContext::AgentResponse {
@@ -271,7 +271,7 @@ fn extract_urls(text: &str) -> Vec<String> {
 }
 
 fn show_toast(app: &mut App, message: &str) {
-    app.error_toast = Some(ErrorToast::new(message.to_string()));
+    app.viewport.error_toast = Some(ErrorToast::new(message.to_string()));
 }
 
 #[cfg(test)]
@@ -284,97 +284,97 @@ mod tests {
     fn select_prev_enters_selection_on_last() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
         handle_select_prev(&mut app);
-        assert_eq!(app.selected_message, Some(1));
-        assert!(!app.auto_scroll);
+        assert_eq!(app.interaction.selected_message, Some(1));
+        assert!(!app.viewport.render.auto_scroll);
     }
 
     #[test]
     fn select_prev_decrements() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
-        app.selected_message = Some(1);
+        app.interaction.selected_message = Some(1);
         handle_select_prev(&mut app);
-        assert_eq!(app.selected_message, Some(0));
+        assert_eq!(app.interaction.selected_message, Some(0));
     }
 
     #[test]
     fn select_prev_stops_at_zero() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_select_prev(&mut app);
-        assert_eq!(app.selected_message, Some(0));
+        assert_eq!(app.interaction.selected_message, Some(0));
     }
 
     #[test]
     fn select_prev_empty_messages_noop() {
         let mut app = test_app();
         handle_select_prev(&mut app);
-        assert!(app.selected_message.is_none());
+        assert!(app.interaction.selected_message.is_none());
     }
 
     #[test]
     fn select_next_enters_selection_on_last() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
         handle_select_next(&mut app);
-        assert_eq!(app.selected_message, Some(1));
+        assert_eq!(app.interaction.selected_message, Some(1));
     }
 
     #[test]
     fn select_next_increments() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_select_next(&mut app);
-        assert_eq!(app.selected_message, Some(1));
+        assert_eq!(app.interaction.selected_message, Some(1));
     }
 
     #[test]
     fn select_next_stops_at_end() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
-        app.selected_message = Some(1);
+        app.interaction.selected_message = Some(1);
         handle_select_next(&mut app);
-        assert_eq!(app.selected_message, Some(1));
+        assert_eq!(app.interaction.selected_message, Some(1));
     }
 
     #[test]
     fn deselect_clears_selection() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.selected_message = Some(0);
-        app.auto_scroll = false;
+        app.interaction.selected_message = Some(0);
+        app.viewport.render.auto_scroll = false;
         handle_deselect(&mut app);
-        assert!(app.selected_message.is_none());
-        assert!(app.auto_scroll);
-        assert_eq!(app.selection, SelectionContext::None);
+        assert!(app.interaction.selected_message.is_none());
+        assert!(app.viewport.render.auto_scroll);
+        assert_eq!(app.interaction.selection, SelectionContext::None);
     }
 
     #[test]
     fn select_first_goes_to_zero() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
-        app.selected_message = Some(1);
+        app.interaction.selected_message = Some(1);
         handle_select_first(&mut app);
-        assert_eq!(app.selected_message, Some(0));
+        assert_eq!(app.interaction.selected_message, Some(0));
     }
 
     #[test]
     fn select_first_empty_noop() {
         let mut app = test_app();
         handle_select_first(&mut app);
-        assert!(app.selected_message.is_none());
+        assert!(app.interaction.selected_message.is_none());
     }
 
     #[test]
     fn select_last_goes_to_end() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_select_last(&mut app);
-        assert_eq!(app.selected_message, Some(1));
+        assert_eq!(app.interaction.selected_message, Some(1));
     }
 
     #[test]
     fn sync_selection_context_user_message() {
         let mut app = test_app_with_messages(vec![("user", "hello")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         sync_selection_context(&mut app);
         assert!(matches!(
-            app.selection,
+            app.interaction.selection,
             SelectionContext::UserMessage { index: 0 }
         ));
     }
@@ -382,9 +382,9 @@ mod tests {
     #[test]
     fn sync_selection_context_agent_response_with_code() {
         let mut app = test_app_with_messages(vec![("assistant", "here is ```code```")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         sync_selection_context(&mut app);
-        match &app.selection {
+        match &app.interaction.selection {
             SelectionContext::AgentResponse {
                 index,
                 has_code,
@@ -401,9 +401,9 @@ mod tests {
     #[test]
     fn sync_selection_context_agent_response_with_links() {
         let mut app = test_app_with_messages(vec![("assistant", "see https://example.com")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         sync_selection_context(&mut app);
-        match &app.selection {
+        match &app.interaction.selection {
             SelectionContext::AgentResponse { has_links, .. } => {
                 assert!(*has_links);
             }
@@ -475,81 +475,83 @@ mod tests {
     #[test]
     fn action_edit_only_user_messages() {
         let mut app = test_app_with_messages(vec![("assistant", "can't edit this")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Edit);
         // Should show toast, not modify input
-        assert!(app.error_toast.is_some());
-        assert!(app.input.text.is_empty());
+        assert!(app.viewport.error_toast.is_some());
+        assert!(app.interaction.input.text.is_empty());
     }
 
     #[test]
     fn action_edit_user_message() {
         let mut app = test_app_with_messages(vec![("user", "edit me")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Edit);
-        assert_eq!(app.input.text, "edit me");
-        assert_eq!(app.input.cursor, 7);
-        assert!(app.selected_message.is_none());
-        assert!(app.messages.is_empty());
+        assert_eq!(app.interaction.input.text, "edit me");
+        assert_eq!(app.interaction.input.cursor, 7);
+        assert!(app.interaction.selected_message.is_none());
+        assert!(app.dashboard.messages.is_empty());
     }
 
     #[test]
     fn action_delete_user_message() {
         let mut app =
             test_app_with_messages(vec![("user", "delete me"), ("assistant", "response")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Delete);
-        assert_eq!(app.messages.len(), 1);
-        assert_eq!(app.messages[0].role, "assistant");
+        assert_eq!(app.dashboard.messages.len(), 1);
+        assert_eq!(app.dashboard.messages[0].role, "assistant");
     }
 
     #[test]
     fn action_delete_non_user_message() {
         let mut app = test_app_with_messages(vec![("assistant", "can't delete")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Delete);
-        assert_eq!(app.messages.len(), 1); // unchanged
-        assert!(app.error_toast.is_some());
+        assert_eq!(app.dashboard.messages.len(), 1); // unchanged
+        assert!(app.viewport.error_toast.is_some());
     }
 
     #[test]
     fn action_delete_last_message_clears_selection() {
         let mut app = test_app_with_messages(vec![("user", "only one")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Delete);
-        assert!(app.messages.is_empty());
-        assert!(app.selected_message.is_none());
-        assert_eq!(app.selection, SelectionContext::None);
+        assert!(app.dashboard.messages.is_empty());
+        assert!(app.interaction.selected_message.is_none());
+        assert_eq!(app.interaction.selection, SelectionContext::None);
     }
 
     #[test]
     fn action_inspect_toggles_tool_expanded() {
         let mut app = test_app_with_messages(vec![("assistant", "response")]);
-        app.messages[0].tool_calls.push(crate::state::ToolCallInfo {
-            name: "test_tool".to_string(),
-            duration_ms: Some(100),
-            is_error: false,
-        });
-        app.selected_message = Some(0);
+        app.dashboard.messages[0]
+            .tool_calls
+            .push(crate::state::ToolCallInfo {
+                name: "test_tool".to_string(),
+                duration_ms: Some(100),
+                is_error: false,
+            });
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Inspect);
-        assert_eq!(app.tool_expanded.len(), 1);
+        assert_eq!(app.interaction.tool_expanded.len(), 1);
         // Toggle off
         handle_message_action(&mut app, MessageActionKind::Inspect);
-        assert_eq!(app.tool_expanded.len(), 0);
+        assert_eq!(app.interaction.tool_expanded.len(), 0);
     }
 
     #[test]
     fn action_inspect_no_tool_calls_shows_toast() {
         let mut app = test_app_with_messages(vec![("assistant", "no tools")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::Inspect);
-        assert!(app.error_toast.is_some());
+        assert!(app.viewport.error_toast.is_some());
     }
 
     #[test]
     fn handle_message_action_out_of_bounds_noop() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.selected_message = Some(5); // out of bounds
+        app.interaction.selected_message = Some(5); // out of bounds
         handle_message_action(&mut app, MessageActionKind::Copy);
         // Should not panic
     }
@@ -564,39 +566,48 @@ mod tests {
     #[test]
     fn quote_in_reply_populates_input() {
         let mut app = test_app_with_messages(vec![("assistant", "line1\nline2")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::QuoteInReply);
-        assert!(app.input.text.contains("> line1"));
-        assert!(app.input.text.contains("> line2"));
-        assert_eq!(app.input.cursor, app.input.text.len());
+        assert!(app.interaction.input.text.contains("> line1"));
+        assert!(app.interaction.input.text.contains("> line2"));
+        assert_eq!(
+            app.interaction.input.cursor,
+            app.interaction.input.text.len()
+        );
     }
 
     #[test]
     fn quote_in_reply_appends_to_existing_input() {
         let mut app = test_app_with_messages(vec![("assistant", "quoted")]);
-        app.input.text = "existing".to_string();
-        app.input.cursor = 8;
-        app.selected_message = Some(0);
+        app.interaction.input.text = "existing".to_string();
+        app.interaction.input.cursor = 8;
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::QuoteInReply);
-        assert!(app.input.text.starts_with("existing\n"));
-        assert!(app.input.text.contains("> quoted"));
+        assert!(app.interaction.input.text.starts_with("existing\n"));
+        assert!(app.interaction.input.text.contains("> quoted"));
     }
 
     #[test]
     fn rate_response_shows_toast() {
         let mut app = test_app_with_messages(vec![("assistant", "response")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::RateResponse);
-        assert!(app.error_toast.is_some());
-        assert!(app.error_toast.unwrap().message.contains("rated"));
+        assert!(app.viewport.error_toast.is_some());
+        assert!(app.viewport.error_toast.unwrap().message.contains("rated"));
     }
 
     #[test]
     fn flag_for_review_shows_toast() {
         let mut app = test_app_with_messages(vec![("assistant", "response")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         handle_message_action(&mut app, MessageActionKind::FlagForReview);
-        assert!(app.error_toast.is_some());
-        assert!(app.error_toast.unwrap().message.contains("Flagged"));
+        assert!(app.viewport.error_toast.is_some());
+        assert!(
+            app.viewport
+                .error_toast
+                .unwrap()
+                .message
+                .contains("Flagged")
+        );
     }
 }

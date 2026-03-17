@@ -36,7 +36,7 @@ fn session_state_tracks_tokens_with_store() {
     state.token_estimate += 200;
 
     let session = store.find_session_by_id("ses-1").unwrap().unwrap();
-    assert_eq!(session.token_count_estimate, state.token_estimate);
+    assert_eq!(session.metrics.token_count_estimate, state.token_estimate);
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn distillation_threshold_aligned() {
     assert!(state.needs_distillation(0.9, 200_000));
 
     let session = store.find_session_by_id("ses-1").unwrap().unwrap();
-    assert_eq!(session.token_count_estimate, state.token_estimate);
+    assert_eq!(session.metrics.token_count_estimate, state.token_estimate);
 }
 
 #[test]

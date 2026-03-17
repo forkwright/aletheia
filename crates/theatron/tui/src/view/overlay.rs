@@ -29,7 +29,7 @@ const HELP_KEY_COLUMN_WIDTH: usize = 13;
 const TOOL_APPROVAL_INPUT_LINES: usize = 10;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let overlay = match &app.overlay {
+    let overlay = match &app.layout.overlay {
         Some(o) => o,
         None => return,
     };
@@ -139,7 +139,7 @@ fn render_agent_picker(app: &App, frame: &mut Frame, area: Rect, cursor: usize, 
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
-    for (i, agent) in app.agents.iter().enumerate() {
+    for (i, agent) in app.dashboard.agents.iter().enumerate() {
         let selected = i == cursor;
         let marker = if selected { "▸" } else { " " };
         let emoji = agent.emoji.as_deref().unwrap_or("");
@@ -190,8 +190,8 @@ fn render_session_picker(
     picker: &crate::state::SessionPickerOverlay,
     theme: &Theme,
 ) {
-    let agent_id = app.focused_agent.as_ref();
-    let agent = agent_id.and_then(|id| app.agents.iter().find(|a| &a.id == id));
+    let agent_id = app.dashboard.focused_agent.as_ref();
+    let agent = agent_id.and_then(|id| app.dashboard.agents.iter().find(|a| &a.id == id));
 
     let sessions: Vec<_> = match agent {
         Some(a) => {
@@ -217,7 +217,7 @@ fn render_session_picker(
     for (i, session) in sessions.iter().enumerate() {
         let selected = i == picker.cursor;
         let marker = if selected { "▸" } else { " " };
-        let is_current = app.focused_session_id.as_ref() == Some(&session.id);
+        let is_current = app.dashboard.focused_session_id.as_ref() == Some(&session.id);
 
         let style = if selected {
             Style::default()
@@ -427,7 +427,7 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
 
     lines.push(Line::from(Span::styled("  Connection", section_style)));
     lines.push(Line::raw(""));
-    let sse_status = if app.sse_connected {
+    let sse_status = if app.connection.sse_connected {
         Span::styled(
             "  SSE: connected ●",
             Style::default().fg(theme.status.success),
@@ -444,7 +444,10 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
         theme.style_muted(),
     )));
     lines.push(Line::from(Span::styled(
-        format!("  Terminal: {}×{}", app.terminal_width, app.terminal_height),
+        format!(
+            "  Terminal: {}×{}",
+            app.viewport.terminal_width, app.viewport.terminal_height
+        ),
         theme.style_muted(),
     )));
     lines.push(Line::raw(""));
@@ -452,7 +455,7 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
     lines.push(Line::from(Span::styled("  Agents", section_style)));
     lines.push(Line::raw(""));
 
-    for agent in &app.agents {
+    for agent in &app.dashboard.agents {
         let status_str = match agent.status {
             AgentStatus::Idle => Span::styled("idle", theme.style_dim()),
             AgentStatus::Working => {
@@ -489,7 +492,7 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
 
     lines.push(Line::raw(""));
 
-    let cost = app.daily_cost_cents as f64 / 100.0;
+    let cost = app.dashboard.daily_cost_cents as f64 / 100.0;
     lines.push(Line::from(Span::styled("  Today", section_style)));
     lines.push(Line::raw(""));
     lines.push(Line::from(Span::styled(

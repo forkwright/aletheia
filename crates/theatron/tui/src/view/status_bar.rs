@@ -113,8 +113,8 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     }
 
     // Optional: selection indicator.
-    if let Some(idx) = app.selected_message {
-        let total_msgs = app.messages.len();
+    if let Some(idx) = app.interaction.selected_message {
+        let total_msgs = app.dashboard.messages.len();
         let sel = [
             Span::styled(" │ ", theme.style_dim()),
             Span::styled("SELECTION", theme.style_accent()),
@@ -128,10 +128,16 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
     }
 
     // Optional: filter indicator.
-    if app.filter.active && !app.filter.editing && !app.filter.text.is_empty() {
+    if app.interaction.filter.active
+        && !app.interaction.filter.editing
+        && !app.interaction.filter.text.is_empty()
+    {
         let filt = [
             Span::styled(" │ ", theme.style_dim()),
-            Span::styled(format!("/{}", app.filter.text), theme.style_accent()),
+            Span::styled(
+                format!("/{}", app.interaction.filter.text),
+                theme.style_accent(),
+            ),
             Span::styled(" (Esc to clear)", theme.style_dim()),
         ];
         let filt_w: usize = filt.iter().map(|s| s.content.width()).sum();
@@ -216,9 +222,10 @@ fn truncate_str_to_cols(s: &str, max_cols: usize) -> &str {
 
 fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     let agent = app
+        .dashboard
         .focused_agent
         .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| a.id == *id));
+        .and_then(|id| app.dashboard.agents.iter().find(|a| a.id == *id));
 
     let (emoji, name) = agent
         .map(|a| (a.emoji.clone().unwrap_or_default(), a.name.clone()))
@@ -226,7 +233,7 @@ fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 
     let session_key = agent
         .and_then(|a| {
-            app.focused_session_id.as_ref().and_then(|sid| {
+            app.dashboard.focused_session_id.as_ref().and_then(|sid| {
                 a.sessions
                     .iter()
                     .find(|s| s.id == *sid)
@@ -246,11 +253,12 @@ fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 }
 
 fn connection_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
-    if app.sse_connected {
+    if app.connection.sse_connected {
         // WHY: The SSE layer triggers a reconnect after 30s of silence (READ_TIMEOUT).
         // Matching that threshold here means "Stale" only appears when the connection
         // is genuinely stuck, not during normal ping intervals (every 15-30s).
         let stale = app
+            .connection
             .sse_last_event_at
             .map(|t| t.elapsed().as_secs() > 30)
             .unwrap_or(false);
@@ -262,7 +270,7 @@ fn connection_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
         } else {
             vec![Span::styled("●", theme.style_success())]
         }
-    } else if app.sse_disconnected_at.is_some() {
+    } else if app.connection.sse_disconnected_at.is_some() {
         vec![
             Span::styled("○", theme.style_error()),
             Span::styled(" Reconnecting…", theme.style_dim()),
@@ -275,9 +283,9 @@ fn connection_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 fn cost_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
 
-    if app.session_cost_cents > 0 {
+    if app.dashboard.session_cost_cents > 0 {
         spans.push(Span::styled(
-            format_cost(app.session_cost_cents),
+            format_cost(app.dashboard.session_cost_cents),
             theme.style_fg(),
         ));
     } else {
@@ -286,9 +294,9 @@ fn cost_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 
     spans.push(Span::styled(" · ", theme.style_dim()));
 
-    if app.daily_cost_cents > 0 {
+    if app.dashboard.daily_cost_cents > 0 {
         spans.push(Span::styled(
-            format!("{}/day", format_cost(app.daily_cost_cents)),
+            format!("{}/day", format_cost(app.dashboard.daily_cost_cents)),
             theme.style_fg(),
         ));
     } else {
@@ -303,11 +311,15 @@ fn format_cost(cents: u32) -> String {
 }
 
 fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
-    let viewport = app.terminal_height.saturating_sub(CHAT_AREA_HEIGHT_OFFSET);
-    match app
-        .virtual_scroll
-        .scrollbar_position(app.scroll_offset, app.auto_scroll, viewport)
-    {
+    let viewport = app
+        .viewport
+        .terminal_height
+        .saturating_sub(CHAT_AREA_HEIGHT_OFFSET);
+    match app.viewport.render.virtual_scroll.scrollbar_position(
+        app.viewport.render.scroll_offset,
+        app.viewport.render.auto_scroll,
+        viewport,
+    ) {
         Some((offset, _size)) => {
             let pct = (offset * 100.0).round() as u16;
             vec![
@@ -321,9 +333,10 @@ fn scroll_position_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
 
 fn tool_indicator_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     let agent = app
+        .dashboard
         .focused_agent
         .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| a.id == *id));
+        .and_then(|id| app.dashboard.agents.iter().find(|a| a.id == *id));
 
     let Some(agent) = agent else {
         return Vec::new();
@@ -354,7 +367,7 @@ fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     const CONTEXT_WARN_THRESHOLD: u8 = 60;
     const CONTEXT_CRITICAL_THRESHOLD: u8 = 80;
 
-    match app.context_usage_pct {
+    match app.dashboard.context_usage_pct {
         Some(pct) => {
             let filled = (pct as usize * GAUGE_WIDTH) / 100;
             let empty = GAUGE_WIDTH.saturating_sub(filled);
@@ -484,8 +497,8 @@ mod tests {
             },
         ];
         let agent_id = agent.id.clone();
-        app.agents.push(agent);
-        app.focused_agent = Some(agent_id);
+        app.dashboard.agents.push(agent);
+        app.dashboard.focused_agent = Some(agent_id);
 
         let spans = tool_indicator_spans(&app, &app.theme);
         let text: String = spans.iter().map(|s| s.content.as_ref()).collect();

@@ -13,7 +13,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     lines.push(Line::raw(""));
 
-    if app.agents.is_empty() {
+    if app.dashboard.agents.is_empty() {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled("no agents", theme.style_dim()),
@@ -24,13 +24,13 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         ]));
     }
 
-    for agent in &app.agents {
-        let is_focused = app.focused_agent.as_ref() == Some(&agent.id);
+    for agent in &app.dashboard.agents {
+        let is_focused = app.dashboard.focused_agent.as_ref() == Some(&agent.id);
 
         let status_icon = match agent.status {
             AgentStatus::Idle => Span::styled("○", theme.style_dim()),
             AgentStatus::Working => {
-                let ch = theme::spinner_frame(app.tick_count);
+                let ch = theme::spinner_frame(app.viewport.tick_count);
                 Span::styled(ch.to_string(), Style::default().fg(theme.status.spinner))
             }
             AgentStatus::Streaming => {
@@ -80,7 +80,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
         if let Some(ref tool) = agent.active_tool {
             let elapsed = tool.started_at.elapsed().as_secs_f32();
-            let ch = theme::spinner_frame(app.tick_count);
+            let ch = theme::spinner_frame(app.viewport.tick_count);
             lines.push(Line::from(vec![
                 Span::raw("     "),
                 Span::styled(

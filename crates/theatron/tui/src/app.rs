@@ -41,39 +41,24 @@ const DEFAULT_TERMINAL_WIDTH: u16 = 120;
 /// Default terminal height used before the first resize event arrives.
 const DEFAULT_TERMINAL_HEIGHT: u16 = 40;
 
-pub struct App {
-    pub config: Config,
-    pub client: ApiClient,
-    pub theme: Theme,
-    pub highlighter: crate::highlight::Highlighter,
-    pub should_quit: bool,
+// ---------------------------------------------------------------------------
+// Sub-structs: group related fields so App stays under ~10 top-level fields.
+// ---------------------------------------------------------------------------
 
-    // Dashboard state
+/// Agent roster, sessions, messages, and cost tracking.
+pub struct DashboardState {
     pub agents: Vec<AgentState>,
     pub focused_agent: Option<NousId>,
     /// PERF: ArcVec clone is O(1): tab switches share the Arc pointer, not the Vec.
     pub messages: ArcVec<ChatMessage>,
     pub focused_session_id: Option<SessionId>,
     pub daily_cost_cents: u32,
+    pub session_cost_cents: u32,
+    pub context_usage_pct: Option<u8>,
+}
 
-    // Input
-    pub input: InputState,
-
-    // Layout
-    pub sidebar_visible: bool,
-    pub thinking_expanded: bool,
-
-    // Overlay
-    pub overlay: Option<Overlay>,
-
-    // Streaming state
-    pub active_turn_id: Option<TurnId>,
-    pub streaming_text: String,
-    pub streaming_thinking: String,
-    pub streaming_tool_calls: Vec<ToolCallInfo>,
-    pub(crate) stream_rx: Option<mpsc::Receiver<StreamEvent>>,
-
-    // SSE connection tracking
+/// SSE link, stream receiver, and reconnect bookkeeping.
+pub struct ConnectionState {
     sse: Option<SseConnection>,
     pub sse_connected: bool,
     /// When the SSE stream last disconnected. Cleared on successful reconnect.
@@ -82,81 +67,74 @@ pub struct App {
     pub sse_last_event_at: Option<std::time::Instant>,
     /// Number of SSE reconnections since startup.
     pub sse_reconnect_count: u32,
+    pub(crate) stream_rx: Option<mpsc::Receiver<StreamEvent>>,
+    pub active_turn_id: Option<TurnId>,
+    pub streaming_text: String,
+    pub streaming_thinking: String,
+    pub streaming_tool_calls: Vec<ToolCallInfo>,
+}
 
-    // Scroll
+/// Scroll position, virtual scroll index, and markdown render cache.
+pub struct RenderState {
     pub scroll_offset: usize,
     pub auto_scroll: bool,
     pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
-
-    // Virtual scroll: O(viewport) rendering for large message lists
     pub(crate) virtual_scroll: VirtualScroll,
-
-    // Markdown cache: avoid re-parsing on every frame
     pub markdown_cache: MarkdownCache,
+}
 
-    // Tick counter for spinner animation
-    pub tick_count: u64,
-
-    // Error toast (auto-dismiss after 5s)
-    pub error_toast: Option<ErrorToast>,
-    // Success toast (auto-dismiss after 5s)
-    pub success_toast: Option<ErrorToast>,
-
-    // @mention tab completion state
-    pub tab_completion: Option<TabCompletion>,
-
-    // Terminal size for responsive layout
+/// Terminal dimensions, tick counter, dirty flag, frame cache, and render state.
+pub struct ViewportState {
     pub terminal_width: u16,
     pub terminal_height: u16,
+    pub tick_count: u64,
+    pub error_toast: Option<ErrorToast>,
+    pub success_toast: Option<ErrorToast>,
+    pub(crate) dirty: bool,
+    pub(crate) frame_cache: Option<Buffer>,
+    pub render: RenderState,
+}
 
-    // Command palette (`:` mode)
+/// Input, tab completion, command palette, selection, filter, and key state.
+pub struct InteractionState {
+    pub input: InputState,
+    pub tab_completion: Option<TabCompletion>,
     pub command_palette: CommandPaletteState,
-
-    // Status bar enhanced fields
-    pub session_cost_cents: u32,
-    pub context_usage_pct: Option<u8>,
-    pub selection: SelectionContext,
-
-    // Message selection (None = auto-scroll mode, Some(index) = message selected)
-    pub selected_message: Option<usize>,
-    pub tool_expanded: HashSet<crate::id::ToolId>,
-
-    // Live filter (`/` mode)
-    pub filter: FilterState,
-
-    // Stack-based navigation (Enter drills in, Esc pops out)
-    pub view_stack: ViewStack,
-
-    // Per-view scroll state preservation
-    pub(crate) view_scroll_states: HashMap<usize, SavedScrollState>,
-
-    // Operations pane (right-side panel)
-    pub ops: OpsState,
-
-    // Multi-session tab bar
-    pub(crate) tab_bar: TabBar,
-
-    // Vim `g` prefix pending (for gt/gT two-key sequences)
-    pub(crate) pending_g: bool,
-
-    // Memory inspector panel state
-    pub memory: MemoryInspectorState,
-
-    // Persistent command history (`:` commands)
     pub command_history: Vec<String>,
     pub command_history_index: Option<usize>,
-
-    // Configurable keymap (built at init from defaults + TOML overrides).
+    pub selection: SelectionContext,
+    pub selected_message: Option<usize>,
+    pub tool_expanded: HashSet<crate::id::ToolId>,
+    pub filter: FilterState,
     pub(crate) keymap: KeyMap,
+}
 
-    // Terminal bell for new messages on inactive agents.
+/// Sidebar, overlay, view stack, ops, tabs, and memory inspector.
+pub struct LayoutState {
+    pub sidebar_visible: bool,
+    pub thinking_expanded: bool,
+    pub overlay: Option<Overlay>,
+    pub view_stack: ViewStack,
+    pub(crate) view_scroll_states: HashMap<usize, SavedScrollState>,
+    pub ops: OpsState,
+    pub(crate) tab_bar: TabBar,
+    pub memory: MemoryInspectorState,
+    pub(crate) pending_g: bool,
     pub(crate) bell_enabled: bool,
+}
 
-    // Dirty-flag rendering: true when state changed since last frame.
-    // Ticks only set this when animation is in progress (streaming or toasts).
-    pub(crate) dirty: bool,
-    // Cached buffer from the last full render, replayed on clean frames.
-    pub(crate) frame_cache: Option<Buffer>,
+pub struct App {
+    pub config: Config,
+    pub client: ApiClient,
+    pub theme: Theme,
+    pub highlighter: crate::highlight::Highlighter,
+    pub should_quit: bool,
+
+    pub dashboard: DashboardState,
+    pub connection: ConnectionState,
+    pub viewport: ViewportState,
+    pub interaction: InteractionState,
+    pub layout: LayoutState,
 }
 
 impl App {
@@ -183,55 +161,67 @@ impl App {
             theme: theme.clone(),
             highlighter: crate::highlight::Highlighter::new(theme.mode),
             should_quit: false,
-            agents: Vec::new(),
-            focused_agent: None,
-            messages: ArcVec::default(),
-            focused_session_id: None,
-            daily_cost_cents: 0,
-            input: InputState::default(),
-            sidebar_visible: true,
-            thinking_expanded: false,
-            overlay: None,
-            active_turn_id: None,
-            streaming_text: String::new(),
-            streaming_thinking: String::new(),
-            streaming_tool_calls: Vec::new(),
-            stream_rx: None,
-            sse: None,
-            sse_connected: false,
-            sse_disconnected_at: None,
-            sse_last_event_at: None,
-            sse_reconnect_count: 0,
-            scroll_offset: 0,
-            auto_scroll: true,
-            scroll_states: HashMap::new(),
-            virtual_scroll: VirtualScroll::new(),
-            markdown_cache: MarkdownCache::default(),
-            tick_count: 0,
-            error_toast: None,
-            success_toast: None,
-            tab_completion: None,
-            terminal_width: DEFAULT_TERMINAL_WIDTH,
-            terminal_height: DEFAULT_TERMINAL_HEIGHT,
-            command_palette: CommandPaletteState::default(),
-            session_cost_cents: 0,
-            context_usage_pct: None,
-            selection: SelectionContext::default(),
-            selected_message: None,
-            tool_expanded: HashSet::new(),
-            filter: FilterState::default(),
-            view_stack: ViewStack::new(),
-            view_scroll_states: HashMap::new(),
-            ops: OpsState::default(),
-            tab_bar: TabBar::new(),
-            pending_g: false,
-            memory: MemoryInspectorState::new(),
-            command_history,
-            command_history_index: None,
-            keymap,
-            bell_enabled,
-            dirty: true,
-            frame_cache: None,
+            dashboard: DashboardState {
+                agents: Vec::new(),
+                focused_agent: None,
+                messages: ArcVec::default(),
+                focused_session_id: None,
+                daily_cost_cents: 0,
+                session_cost_cents: 0,
+                context_usage_pct: None,
+            },
+            connection: ConnectionState {
+                sse: None,
+                sse_connected: false,
+                sse_disconnected_at: None,
+                sse_last_event_at: None,
+                sse_reconnect_count: 0,
+                stream_rx: None,
+                active_turn_id: None,
+                streaming_text: String::new(),
+                streaming_thinking: String::new(),
+                streaming_tool_calls: Vec::new(),
+            },
+            viewport: ViewportState {
+                terminal_width: DEFAULT_TERMINAL_WIDTH,
+                terminal_height: DEFAULT_TERMINAL_HEIGHT,
+                tick_count: 0,
+                error_toast: None,
+                success_toast: None,
+                dirty: true,
+                frame_cache: None,
+                render: RenderState {
+                    scroll_offset: 0,
+                    auto_scroll: true,
+                    scroll_states: HashMap::new(),
+                    virtual_scroll: VirtualScroll::new(),
+                    markdown_cache: MarkdownCache::default(),
+                },
+            },
+            interaction: InteractionState {
+                input: InputState::default(),
+                tab_completion: None,
+                command_palette: CommandPaletteState::default(),
+                command_history,
+                command_history_index: None,
+                selection: SelectionContext::default(),
+                selected_message: None,
+                tool_expanded: HashSet::new(),
+                filter: FilterState::default(),
+                keymap,
+            },
+            layout: LayoutState {
+                sidebar_visible: true,
+                thinking_expanded: false,
+                overlay: None,
+                view_stack: ViewStack::new(),
+                view_scroll_states: HashMap::new(),
+                ops: OpsState::default(),
+                tab_bar: TabBar::new(),
+                memory: MemoryInspectorState::new(),
+                pending_g: false,
+                bell_enabled,
+            },
         };
 
         app.connect().await?;
@@ -281,13 +271,13 @@ impl App {
             Ok(a) => a,
             Err(e) => {
                 tracing::error!("failed to load agents: {e}");
-                self.error_toast = Some(ErrorToast::new(format!(
+                self.viewport.error_toast = Some(ErrorToast::new(format!(
                     "Failed to load agents: {e}. Retry with :reconnect"
                 )));
                 Vec::new()
             }
         };
-        self.agents = agents
+        self.dashboard.agents = agents
             .into_iter()
             .map(|a| {
                 let name = sanitize_for_display(a.display_name()).into_owned();
@@ -308,23 +298,23 @@ impl App {
             })
             .collect();
 
-        self.focused_agent = self
+        self.dashboard.focused_agent = self
             .config
             .default_agent
             .clone()
             .map(NousId::from)
-            .or_else(|| self.agents.first().map(|a| a.id.clone()));
+            .or_else(|| self.dashboard.agents.first().map(|a| a.id.clone()));
 
-        if let Some(agent_id) = self.focused_agent.clone() {
+        if let Some(agent_id) = self.dashboard.focused_agent.clone() {
             if let Ok(sessions) = self.client.sessions(&agent_id).await
-                && let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id)
+                && let Some(agent) = self.dashboard.agents.iter_mut().find(|a| a.id == agent_id)
             {
                 agent.sessions = sessions;
             }
             self.load_focused_session().await;
 
             if let Ok(tools) = self.client.tools(&agent_id).await
-                && let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id)
+                && let Some(agent) = self.dashboard.agents.iter_mut().find(|a| a.id == agent_id)
             {
                 agent.tools = tools
                     .into_iter()
@@ -337,22 +327,23 @@ impl App {
 
             // Create initial tab for the default agent/session
             let agent_name = self
+                .dashboard
                 .agents
                 .iter()
                 .find(|a| a.id == agent_id)
                 .map(|a| a.name.clone())
                 .unwrap_or_else(|| agent_id.to_string());
             let title = self.tab_title_for_current(&agent_name);
-            let idx = self.tab_bar.create_tab(agent_id, title);
-            self.tab_bar.active = idx;
+            let idx = self.layout.tab_bar.create_tab(agent_id, title);
+            self.layout.tab_bar.active = idx;
             self.save_to_active_tab();
         }
 
         if let Ok(cents) = self.client.today_cost_cents().await {
-            self.daily_cost_cents = cents;
+            self.dashboard.daily_cost_cents = cents;
         }
 
-        self.sse = Some(SseConnection::connect(
+        self.connection.sse = Some(SseConnection::connect(
             self.client.raw_client().clone(),
             &self.config.url,
         ));
@@ -360,15 +351,16 @@ impl App {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self), fields(agent = ?self.focused_agent))]
+    #[tracing::instrument(skip(self), fields(agent = ?self.dashboard.focused_agent))]
     pub(crate) async fn load_focused_session(&mut self) {
-        let agent_id = match &self.focused_agent {
+        let agent_id = match &self.dashboard.focused_agent {
             Some(id) => id.clone(),
             None => return,
         };
 
         {
             let needs_load = self
+                .dashboard
                 .agents
                 .iter()
                 .find(|a| a.id == agent_id)
@@ -377,13 +369,13 @@ impl App {
 
             if needs_load
                 && let Ok(sessions) = self.client.sessions(&agent_id).await
-                && let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id)
+                && let Some(agent) = self.dashboard.agents.iter_mut().find(|a| a.id == agent_id)
             {
                 agent.sessions = sessions;
             }
         }
 
-        let agent = match self.agents.iter().find(|a| a.id == agent_id) {
+        let agent = match self.dashboard.agents.iter().find(|a| a.id == agent_id) {
             Some(a) => a,
             None => return,
         };
@@ -414,12 +406,12 @@ impl App {
 
         if let Some(session) = session {
             let session_id = session.id.clone();
-            self.focused_session_id = Some(session_id.clone());
+            self.dashboard.focused_session_id = Some(session_id.clone());
 
             match self.client.history(&session_id).await {
                 Ok(history) => {
                     // SAFETY: sanitized at ingestion: all message fields from API.
-                    self.messages = history
+                    self.dashboard.messages = history
                         .into_iter()
                         .filter_map(|m| {
                             if m.role != "user" && m.role != "assistant" {
@@ -443,7 +435,7 @@ impl App {
                         .collect();
                     // Stale streaming markdown from the previous session must not
                     // bleed through when the user switches agents.
-                    self.markdown_cache.clear();
+                    self.viewport.render.markdown_cache.clear();
                     self.rebuild_virtual_scroll();
                     self.scroll_to_bottom();
                 }
@@ -456,129 +448,133 @@ impl App {
 
     #[tracing::instrument(skip_all)]
     pub fn take_sse(&mut self) -> Option<SseConnection> {
-        self.sse.take()
+        self.connection.sse.take()
     }
 
     #[tracing::instrument(skip_all)]
     pub fn restore_sse(&mut self, sse: Option<SseConnection>) {
-        self.sse = sse;
+        self.connection.sse = sse;
     }
 
     #[tracing::instrument(skip_all)]
     pub fn take_stream(&mut self) -> Option<mpsc::Receiver<StreamEvent>> {
-        self.stream_rx.take()
+        self.connection.stream_rx.take()
     }
 
     #[tracing::instrument(skip_all)]
     pub fn restore_stream(&mut self, rx: Option<mpsc::Receiver<StreamEvent>>) {
-        self.stream_rx = rx;
+        self.connection.stream_rx = rx;
     }
 
     #[tracing::instrument(skip_all)]
     pub async fn update(&mut self, msg: Msg) {
         let is_tick = matches!(msg, Msg::Tick);
         if !is_tick {
-            self.dirty = true;
+            self.viewport.dirty = true;
             crate::update::update(self, msg).await;
             return;
         }
         // WHY: Tick fires at 60 fps even when nothing changes. Only mark dirty when
         // tick-driven animation is actually visible: streaming spinner or toast dismissal.
-        let had_animation = self.active_turn_id.is_some()
-            || self.error_toast.is_some()
-            || self.success_toast.is_some();
+        let had_animation = self.connection.active_turn_id.is_some()
+            || self.viewport.error_toast.is_some()
+            || self.viewport.success_toast.is_some();
         crate::update::update(self, msg).await;
-        let has_animation = self.active_turn_id.is_some()
-            || self.error_toast.is_some()
-            || self.success_toast.is_some();
-        self.dirty = had_animation || has_animation;
+        let has_animation = self.connection.active_turn_id.is_some()
+            || self.viewport.error_toast.is_some()
+            || self.viewport.success_toast.is_some();
+        self.viewport.dirty = had_animation || has_animation;
     }
 
     /// Save current app state into the active tab.
     pub(crate) fn save_to_active_tab(&mut self) {
-        if let Some(tab) = self.tab_bar.active_tab_mut() {
-            tab.session_id = self.focused_session_id.clone();
-            tab.state.messages = self.messages.clone();
-            tab.state.focused_session_id = self.focused_session_id.clone();
-            tab.state.input = self.input.clone();
+        if let Some(tab) = self.layout.tab_bar.active_tab_mut() {
+            tab.session_id = self.dashboard.focused_session_id.clone();
+            tab.state.messages = self.dashboard.messages.clone();
+            tab.state.focused_session_id = self.dashboard.focused_session_id.clone();
+            tab.state.input = self.interaction.input.clone();
             tab.state.scroll = SavedScrollState {
-                scroll_offset: self.scroll_offset,
-                auto_scroll: self.auto_scroll,
+                scroll_offset: self.viewport.render.scroll_offset,
+                auto_scroll: self.viewport.render.auto_scroll,
             };
-            tab.state.selected_message = self.selected_message;
-            tab.state.tool_expanded = self.tool_expanded.clone();
-            tab.state.filter = self.filter.clone();
-            tab.state.view_stack = self.view_stack.clone();
-            tab.state.streaming_text = self.streaming_text.clone();
-            tab.state.streaming_thinking = self.streaming_thinking.clone();
-            tab.state.streaming_tool_calls = self.streaming_tool_calls.clone();
-            tab.state.active_turn_id = self.active_turn_id.clone();
-            tab.state.markdown_cache = self.markdown_cache.clone();
-            tab.state.ops = self.ops.clone();
+            tab.state.selected_message = self.interaction.selected_message;
+            tab.state.tool_expanded = self.interaction.tool_expanded.clone();
+            tab.state.filter = self.interaction.filter.clone();
+            tab.state.view_stack = self.layout.view_stack.clone();
+            tab.state.streaming_text = self.connection.streaming_text.clone();
+            tab.state.streaming_thinking = self.connection.streaming_thinking.clone();
+            tab.state.streaming_tool_calls = self.connection.streaming_tool_calls.clone();
+            tab.state.active_turn_id = self.connection.active_turn_id.clone();
+            tab.state.markdown_cache = self.viewport.render.markdown_cache.clone();
+            tab.state.ops = self.layout.ops.clone();
         }
     }
 
     /// Restore app state from the active tab.
     pub(crate) fn restore_from_active_tab(&mut self) {
-        if let Some(tab) = self.tab_bar.active_tab() {
-            self.focused_agent = Some(tab.agent_id.clone());
-            self.focused_session_id = tab.state.focused_session_id.clone();
-            self.messages = tab.state.messages.clone();
-            self.input = tab.state.input.clone();
-            self.scroll_offset = tab.state.scroll.scroll_offset;
-            self.auto_scroll = tab.state.scroll.auto_scroll;
-            self.selected_message = tab.state.selected_message;
-            self.tool_expanded = tab.state.tool_expanded.clone();
-            self.filter = tab.state.filter.clone();
-            self.view_stack = tab.state.view_stack.clone();
-            self.streaming_text = tab.state.streaming_text.clone();
-            self.streaming_thinking = tab.state.streaming_thinking.clone();
-            self.streaming_tool_calls = tab.state.streaming_tool_calls.clone();
-            self.active_turn_id = tab.state.active_turn_id.clone();
-            self.markdown_cache = tab.state.markdown_cache.clone();
-            self.ops = tab.state.ops.clone();
+        if let Some(tab) = self.layout.tab_bar.active_tab() {
+            self.dashboard.focused_agent = Some(tab.agent_id.clone());
+            self.dashboard.focused_session_id = tab.state.focused_session_id.clone();
+            self.dashboard.messages = tab.state.messages.clone();
+            self.interaction.input = tab.state.input.clone();
+            self.viewport.render.scroll_offset = tab.state.scroll.scroll_offset;
+            self.viewport.render.auto_scroll = tab.state.scroll.auto_scroll;
+            self.interaction.selected_message = tab.state.selected_message;
+            self.interaction.tool_expanded = tab.state.tool_expanded.clone();
+            self.interaction.filter = tab.state.filter.clone();
+            self.layout.view_stack = tab.state.view_stack.clone();
+            self.connection.streaming_text = tab.state.streaming_text.clone();
+            self.connection.streaming_thinking = tab.state.streaming_thinking.clone();
+            self.connection.streaming_tool_calls = tab.state.streaming_tool_calls.clone();
+            self.connection.active_turn_id = tab.state.active_turn_id.clone();
+            self.viewport.render.markdown_cache = tab.state.markdown_cache.clone();
+            self.layout.ops = tab.state.ops.clone();
         }
     }
 
     /// Build a display title for the current agent+session.
     pub(crate) fn tab_title_for_current(&self, agent_name: &str) -> String {
-        let session_label = self
-            .focused_session_id
-            .as_ref()
-            .and_then(|sid| {
-                self.focused_agent.as_ref().and_then(|aid| {
-                    self.agents.iter().find(|a| a.id == *aid).and_then(|a| {
-                        a.sessions
+        let session_label =
+            self.dashboard
+                .focused_session_id
+                .as_ref()
+                .and_then(|sid| {
+                    self.dashboard.focused_agent.as_ref().and_then(|aid| {
+                        self.dashboard
+                            .agents
                             .iter()
-                            .find(|s| s.id == *sid)
-                            .map(|s| s.display_name.as_deref().unwrap_or(&s.key).to_string())
+                            .find(|a| a.id == *aid)
+                            .and_then(|a| {
+                                a.sessions.iter().find(|s| s.id == *sid).map(|s| {
+                                    s.display_name.as_deref().unwrap_or(&s.key).to_string()
+                                })
+                            })
                     })
                 })
-            })
-            .unwrap_or_else(|| "main".to_string());
+                .unwrap_or_else(|| "main".to_string());
         format!("{agent_name}: {session_label}")
     }
 
     /// Switch to a different tab by index, saving current and restoring target.
     pub(crate) fn switch_to_tab(&mut self, index: usize) {
-        if index == self.tab_bar.active {
+        if index == self.layout.tab_bar.active {
             return;
         }
         self.save_to_active_tab();
-        if !self.tab_bar.jump_to(index) {
+        if !self.layout.tab_bar.jump_to(index) {
             return;
         }
-        self.tab_bar.clear_active_unread();
+        self.layout.tab_bar.clear_active_unread();
         self.restore_from_active_tab();
     }
 
     #[tracing::instrument(skip_all)]
     pub fn view(&mut self, frame: &mut Frame) -> Vec<OscLink> {
-        if !self.dirty {
+        if !self.viewport.dirty {
             // PERF: No state changed since last frame: replay the cached buffer.
             // ratatui diffs against the previous frame, so identical content produces
             // zero terminal output. This skips all layout and widget computation.
-            if let Some(ref cached) = self.frame_cache
+            if let Some(ref cached) = self.viewport.frame_cache
                 && cached.area == frame.area()
             {
                 *frame.buffer_mut() = cached.clone();
@@ -591,25 +587,32 @@ impl App {
         // into a single markdown::render call, reducing CPU from O(tokens) to O(frames).
         self.refresh_streaming_markdown_cache();
         let links = view::render(self, frame);
-        self.frame_cache = Some(frame.buffer_mut().clone());
-        self.dirty = false;
+        self.viewport.frame_cache = Some(frame.buffer_mut().clone());
+        self.viewport.dirty = false;
         links
     }
 
     /// Rebuild the streaming markdown cache if the text has changed since the
     /// last render. Called once per frame, not per token delta.
     pub(crate) fn refresh_streaming_markdown_cache(&mut self) {
-        if self.streaming_text.is_empty() {
+        if self.connection.streaming_text.is_empty() {
             return;
         }
-        let width = self.terminal_width.saturating_sub(4).max(1) as usize;
-        if self.markdown_cache.text == self.streaming_text && self.markdown_cache.width == width {
+        let width = self.viewport.terminal_width.saturating_sub(4).max(1) as usize;
+        if self.viewport.render.markdown_cache.text == self.connection.streaming_text
+            && self.viewport.render.markdown_cache.width == width
+        {
             return;
         }
-        self.markdown_cache.lines =
-            crate::markdown::render(&self.streaming_text, width, &self.theme, &self.highlighter).0;
-        self.markdown_cache.text = self.streaming_text.clone();
-        self.markdown_cache.width = width;
+        self.viewport.render.markdown_cache.lines = crate::markdown::render(
+            &self.connection.streaming_text,
+            width,
+            &self.theme,
+            &self.highlighter,
+        )
+        .0;
+        self.viewport.render.markdown_cache.text = self.connection.streaming_text.clone();
+        self.viewport.render.markdown_cache.width = width;
     }
 }
 
@@ -688,55 +691,67 @@ pub(crate) mod test_helpers {
             theme: theme.clone(),
             highlighter: crate::highlight::Highlighter::new(theme.mode),
             should_quit: false,
-            agents: Vec::new(),
-            focused_agent: None,
-            messages: ArcVec::default(),
-            focused_session_id: None,
-            daily_cost_cents: 0,
-            input: InputState::default(),
-            sidebar_visible: true,
-            thinking_expanded: false,
-            overlay: None,
-            active_turn_id: None,
-            streaming_text: String::new(),
-            streaming_thinking: String::new(),
-            streaming_tool_calls: Vec::new(),
-            stream_rx: None,
-            sse: None,
-            sse_connected: false,
-            sse_disconnected_at: None,
-            sse_last_event_at: None,
-            sse_reconnect_count: 0,
-            scroll_offset: 0,
-            auto_scroll: true,
-            scroll_states: HashMap::new(),
-            virtual_scroll: VirtualScroll::new(),
-            markdown_cache: MarkdownCache::default(),
-            tick_count: 0,
-            error_toast: None,
-            success_toast: None,
-            tab_completion: None,
-            terminal_width: DEFAULT_TERMINAL_WIDTH,
-            terminal_height: DEFAULT_TERMINAL_HEIGHT,
-            command_palette: CommandPaletteState::default(),
-            session_cost_cents: 0,
-            context_usage_pct: None,
-            selection: SelectionContext::default(),
-            selected_message: None,
-            tool_expanded: HashSet::new(),
-            filter: FilterState::default(),
-            view_stack: ViewStack::new(),
-            view_scroll_states: HashMap::new(),
-            ops: OpsState::default(),
-            tab_bar: TabBar::new(),
-            pending_g: false,
-            memory: MemoryInspectorState::new(),
-            command_history: Vec::new(),
-            command_history_index: None,
-            keymap: KeyMap::build(&HashMap::new()),
-            bell_enabled: false,
-            dirty: true,
-            frame_cache: None,
+            dashboard: DashboardState {
+                agents: Vec::new(),
+                focused_agent: None,
+                messages: ArcVec::default(),
+                focused_session_id: None,
+                daily_cost_cents: 0,
+                session_cost_cents: 0,
+                context_usage_pct: None,
+            },
+            connection: ConnectionState {
+                sse: None,
+                sse_connected: false,
+                sse_disconnected_at: None,
+                sse_last_event_at: None,
+                sse_reconnect_count: 0,
+                stream_rx: None,
+                active_turn_id: None,
+                streaming_text: String::new(),
+                streaming_thinking: String::new(),
+                streaming_tool_calls: Vec::new(),
+            },
+            viewport: ViewportState {
+                terminal_width: DEFAULT_TERMINAL_WIDTH,
+                terminal_height: DEFAULT_TERMINAL_HEIGHT,
+                tick_count: 0,
+                error_toast: None,
+                success_toast: None,
+                dirty: true,
+                frame_cache: None,
+                render: RenderState {
+                    scroll_offset: 0,
+                    auto_scroll: true,
+                    scroll_states: HashMap::new(),
+                    virtual_scroll: VirtualScroll::new(),
+                    markdown_cache: MarkdownCache::default(),
+                },
+            },
+            interaction: InteractionState {
+                input: InputState::default(),
+                tab_completion: None,
+                command_palette: CommandPaletteState::default(),
+                command_history: Vec::new(),
+                command_history_index: None,
+                selection: SelectionContext::default(),
+                selected_message: None,
+                tool_expanded: HashSet::new(),
+                filter: FilterState::default(),
+                keymap: KeyMap::build(&HashMap::new()),
+            },
+            layout: LayoutState {
+                sidebar_visible: true,
+                thinking_expanded: false,
+                overlay: None,
+                view_stack: ViewStack::new(),
+                view_scroll_states: HashMap::new(),
+                ops: OpsState::default(),
+                tab_bar: TabBar::new(),
+                memory: MemoryInspectorState::new(),
+                pending_g: false,
+                bell_enabled: false,
+            },
         }
     }
 
@@ -745,7 +760,7 @@ pub(crate) mod test_helpers {
         for (role, text) in msgs {
             let text = text.to_string();
             let text_lower = text.to_lowercase();
-            app.messages.push(ChatMessage {
+            app.dashboard.messages.push(ChatMessage {
                 role: role.to_string(),
                 text,
                 text_lower,
@@ -787,25 +802,25 @@ mod tests {
     fn test_app_constructs_with_defaults() {
         let app = test_app();
         assert!(!app.should_quit);
-        assert!(app.auto_scroll);
-        assert!(app.sidebar_visible);
-        assert!(!app.thinking_expanded);
-        assert!(app.overlay.is_none());
-        assert!(app.messages.is_empty());
-        assert!(app.agents.is_empty());
-        assert_eq!(app.scroll_offset, 0);
-        assert_eq!(app.terminal_width, DEFAULT_TERMINAL_WIDTH);
-        assert_eq!(app.terminal_height, DEFAULT_TERMINAL_HEIGHT);
-        assert!(!app.sse_connected);
-        assert!(app.sse_disconnected_at.is_none());
+        assert!(app.viewport.render.auto_scroll);
+        assert!(app.layout.sidebar_visible);
+        assert!(!app.layout.thinking_expanded);
+        assert!(app.layout.overlay.is_none());
+        assert!(app.dashboard.messages.is_empty());
+        assert!(app.dashboard.agents.is_empty());
+        assert_eq!(app.viewport.render.scroll_offset, 0);
+        assert_eq!(app.viewport.terminal_width, DEFAULT_TERMINAL_WIDTH);
+        assert_eq!(app.viewport.terminal_height, DEFAULT_TERMINAL_HEIGHT);
+        assert!(!app.connection.sse_connected);
+        assert!(app.connection.sse_disconnected_at.is_none());
     }
 
     #[test]
     fn test_app_with_messages_populates() {
         let app = test_app_with_messages(vec![("user", "hello"), ("assistant", "hi there")]);
-        assert_eq!(app.messages.len(), 2);
-        assert_eq!(app.messages[0].role, "user");
-        assert_eq!(app.messages[1].text, "hi there");
+        assert_eq!(app.dashboard.messages.len(), 2);
+        assert_eq!(app.dashboard.messages[0].role, "user");
+        assert_eq!(app.dashboard.messages[1].text, "hi there");
     }
 
     #[test]
@@ -813,18 +828,18 @@ mod tests {
         // Verifies that the fields cleared on session switch are present and
         // behave as expected when the caller clears them.
         let mut app = test_app();
-        app.markdown_cache.text = "stale content from previous session".to_string();
-        app.markdown_cache.lines = vec![ratatui::text::Line::raw("stale line")];
+        app.viewport.render.markdown_cache.text = "stale content from previous session".to_string();
+        app.viewport.render.markdown_cache.lines = vec![ratatui::text::Line::raw("stale line")];
 
         // Simulate the clearing that load_focused_session performs on history load.
-        app.markdown_cache.clear();
+        app.viewport.render.markdown_cache.clear();
 
         assert!(
-            app.markdown_cache.text.is_empty(),
+            app.viewport.render.markdown_cache.text.is_empty(),
             "markdown text cache must be cleared on session switch"
         );
         assert!(
-            app.markdown_cache.lines.is_empty(),
+            app.viewport.render.markdown_cache.lines.is_empty(),
             "markdown line cache must be cleared on session switch"
         );
     }
@@ -848,15 +863,15 @@ mod tests {
         let mut app = test_app();
         let agent = test_agent("syn", "Syn");
         let agent_id = agent.id.clone();
-        app.agents.push(agent);
-        app.focused_agent = Some(agent_id.clone());
+        app.dashboard.agents.push(agent);
+        app.dashboard.focused_agent = Some(agent_id.clone());
 
         // Create two tabs
-        let idx0 = app.tab_bar.create_tab(agent_id.clone(), "tab0");
-        app.tab_bar.active = idx0;
+        let idx0 = app.layout.tab_bar.create_tab(agent_id.clone(), "tab0");
+        app.layout.tab_bar.active = idx0;
 
         // Set up state in tab0
-        app.messages = vec![ChatMessage {
+        app.dashboard.messages = vec![ChatMessage {
             role: "user".to_string(),
             text: "hello from tab0".to_string(),
             text_lower: "hello from tab0".to_string(),
@@ -866,17 +881,19 @@ mod tests {
             tool_calls: Vec::new(),
         }]
         .into();
-        app.scroll_offset = 42;
-        app.auto_scroll = false;
-        app.input.text = "typing in tab0".to_string();
-        app.ops.thinking.text = "thinking in tab0".to_string();
-        app.ops.push_tool_start("read_file".to_string(), None);
+        app.viewport.render.scroll_offset = 42;
+        app.viewport.render.auto_scroll = false;
+        app.interaction.input.text = "typing in tab0".to_string();
+        app.layout.ops.thinking.text = "thinking in tab0".to_string();
+        app.layout
+            .ops
+            .push_tool_start("read_file".to_string(), None);
         app.save_to_active_tab();
 
         // Create tab1 with different state
-        let idx1 = app.tab_bar.create_tab(agent_id, "tab1");
-        app.tab_bar.active = idx1;
-        app.messages = vec![ChatMessage {
+        let idx1 = app.layout.tab_bar.create_tab(agent_id, "tab1");
+        app.layout.tab_bar.active = idx1;
+        app.dashboard.messages = vec![ChatMessage {
             role: "assistant".to_string(),
             text: "hello from tab1".to_string(),
             text_lower: "hello from tab1".to_string(),
@@ -886,59 +903,59 @@ mod tests {
             tool_calls: Vec::new(),
         }]
         .into();
-        app.scroll_offset = 10;
-        app.auto_scroll = true;
-        app.input.text = "typing in tab1".to_string();
-        app.ops = OpsState::default();
+        app.viewport.render.scroll_offset = 10;
+        app.viewport.render.auto_scroll = true;
+        app.interaction.input.text = "typing in tab1".to_string();
+        app.layout.ops = OpsState::default();
         app.save_to_active_tab();
 
         // Switch back to tab0 and verify state restored
-        app.tab_bar.active = idx0;
+        app.layout.tab_bar.active = idx0;
         app.restore_from_active_tab();
 
-        assert_eq!(app.messages.len(), 1);
-        assert_eq!(app.messages[0].text, "hello from tab0");
-        assert_eq!(app.scroll_offset, 42);
-        assert!(!app.auto_scroll);
-        assert_eq!(app.input.text, "typing in tab0");
-        assert_eq!(app.ops.thinking.text, "thinking in tab0");
-        assert_eq!(app.ops.tool_calls.len(), 1);
-        assert_eq!(app.ops.tool_calls[0].name, "read_file");
+        assert_eq!(app.dashboard.messages.len(), 1);
+        assert_eq!(app.dashboard.messages[0].text, "hello from tab0");
+        assert_eq!(app.viewport.render.scroll_offset, 42);
+        assert!(!app.viewport.render.auto_scroll);
+        assert_eq!(app.interaction.input.text, "typing in tab0");
+        assert_eq!(app.layout.ops.thinking.text, "thinking in tab0");
+        assert_eq!(app.layout.ops.tool_calls.len(), 1);
+        assert_eq!(app.layout.ops.tool_calls[0].name, "read_file");
 
         // Switch to tab1 and verify its state
         app.save_to_active_tab();
-        app.tab_bar.active = idx1;
+        app.layout.tab_bar.active = idx1;
         app.restore_from_active_tab();
 
-        assert_eq!(app.messages.len(), 1);
-        assert_eq!(app.messages[0].text, "hello from tab1");
-        assert_eq!(app.scroll_offset, 10);
-        assert!(app.auto_scroll);
-        assert_eq!(app.input.text, "typing in tab1");
-        assert!(app.ops.thinking.text.is_empty());
-        assert!(app.ops.tool_calls.is_empty());
+        assert_eq!(app.dashboard.messages.len(), 1);
+        assert_eq!(app.dashboard.messages[0].text, "hello from tab1");
+        assert_eq!(app.viewport.render.scroll_offset, 10);
+        assert!(app.viewport.render.auto_scroll);
+        assert_eq!(app.interaction.input.text, "typing in tab1");
+        assert!(app.layout.ops.thinking.text.is_empty());
+        assert!(app.layout.ops.tool_calls.is_empty());
     }
 
     #[test]
     fn tab_switch_messages_copy_on_write_isolated() {
         // After save_to_active_tab, the tab and the app share Arc storage.
-        // A push to app.messages triggers COW: the tab's snapshot is unaffected.
+        // A push to app.dashboard.messages triggers COW: the tab's snapshot is unaffected.
         let mut app = test_app_with_messages(vec![("user", "hello"), ("assistant", "world")]);
         let agent = test_agent("syn", "Syn");
         let agent_id = agent.id.clone();
-        app.agents.push(agent);
-        app.focused_agent = Some(agent_id.clone());
+        app.dashboard.agents.push(agent);
+        app.dashboard.focused_agent = Some(agent_id.clone());
 
-        let idx0 = app.tab_bar.create_tab(agent_id, "tab0");
-        app.tab_bar.active = idx0;
+        let idx0 = app.layout.tab_bar.create_tab(agent_id, "tab0");
+        app.layout.tab_bar.active = idx0;
         app.save_to_active_tab();
 
         // Snapshot: 2 messages in both app and tab.
-        assert_eq!(app.messages.len(), 2);
-        assert_eq!(app.tab_bar.tabs[0].state.messages.len(), 2);
+        assert_eq!(app.dashboard.messages.len(), 2);
+        assert_eq!(app.layout.tab_bar.tabs[0].state.messages.len(), 2);
 
         // Mutation diverges app from the saved snapshot.
-        app.messages.push(ChatMessage {
+        app.dashboard.messages.push(ChatMessage {
             role: "user".to_string(),
             text: "new".to_string(),
             text_lower: "new".to_string(),
@@ -949,9 +966,9 @@ mod tests {
         });
 
         // App grew; tab snapshot is unchanged (COW semantics).
-        assert_eq!(app.messages.len(), 3);
+        assert_eq!(app.dashboard.messages.len(), 3);
         assert_eq!(
-            app.tab_bar.tabs[0].state.messages.len(),
+            app.layout.tab_bar.tabs[0].state.messages.len(),
             2,
             "tab snapshot must not be affected by app mutation"
         );
@@ -960,6 +977,9 @@ mod tests {
     #[test]
     fn dirty_starts_true_so_first_frame_renders() {
         let app = test_app();
-        assert!(app.dirty, "new App must be dirty so first frame renders");
+        assert!(
+            app.viewport.dirty,
+            "new App must be dirty so first frame renders"
+        );
     }
 }

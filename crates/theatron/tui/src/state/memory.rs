@@ -185,21 +185,54 @@ pub struct FactDetail {
     pub similar: Vec<SimilarFact>,
 }
 
-/// Full state for the memory inspector panel.
+/// State for the fact list: loaded facts, selection, sorting, detail view.
 #[derive(Debug)]
-pub struct MemoryInspectorState {
-    /// Current active tab.
-    pub tab: MemoryTab,
+pub struct FactListState {
     /// Facts loaded from the API.
     pub facts: Vec<MemoryFact>,
     /// Total count (may exceed loaded slice for pagination).
     pub total_facts: usize,
     /// Currently selected fact index in the table.
     pub selected: usize,
+    /// Scroll offset for the fact list.
+    pub scroll_offset: usize,
     /// Current sort column.
     pub sort: FactSort,
     /// Sort ascending?
     pub sort_asc: bool,
+    /// Detail view for selected fact.
+    pub detail: Option<FactDetail>,
+    /// Whether the confidence edit dialog is active.
+    pub editing_confidence: bool,
+    /// Buffer for confidence editing.
+    pub confidence_buffer: String,
+}
+
+impl FactListState {
+    pub fn new() -> Self {
+        Self {
+            facts: Vec::new(),
+            total_facts: 0,
+            selected: 0,
+            scroll_offset: 0,
+            sort: FactSort::Confidence,
+            sort_asc: false,
+            detail: None,
+            editing_confidence: false,
+            confidence_buffer: String::new(),
+        }
+    }
+}
+
+impl Default for FactListState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// State for text and type/tier filters applied to the fact list.
+#[derive(Debug)]
+pub struct MemoryFilterState {
     /// Active text filter.
     pub filter_text: String,
     /// Whether we're in filter editing mode.
@@ -208,60 +241,111 @@ pub struct MemoryInspectorState {
     pub type_filter: Option<String>,
     /// Tier filter (None = all).
     pub tier_filter: Option<String>,
-    /// Detail view for selected fact.
-    pub detail: Option<FactDetail>,
-    /// Entities loaded for graph view.
-    pub entities: Vec<MemoryEntity>,
-    /// Relationships loaded for graph view.
-    pub relationships: Vec<MemoryRelationship>,
-    /// Timeline events.
-    pub timeline_events: Vec<MemoryTimelineEvent>,
+}
+
+impl MemoryFilterState {
+    pub fn new() -> Self {
+        Self {
+            filter_text: String::new(),
+            filter_editing: false,
+            type_filter: None,
+            tier_filter: None,
+        }
+    }
+}
+
+impl Default for MemoryFilterState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// State for the memory search overlay.
+#[derive(Debug)]
+pub struct MemorySearchState {
     /// Search results.
     pub search_results: Vec<MemorySearchResult>,
     /// Whether search mode is active.
     pub search_active: bool,
     /// Search query text.
     pub search_query: String,
+}
+
+impl MemorySearchState {
+    pub fn new() -> Self {
+        Self {
+            search_results: Vec::new(),
+            search_active: false,
+            search_query: String::new(),
+        }
+    }
+}
+
+impl Default for MemorySearchState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// State for the knowledge graph and timeline views.
+#[derive(Debug)]
+pub struct MemoryGraphState {
+    /// Entities loaded for graph view.
+    pub entities: Vec<MemoryEntity>,
+    /// Relationships loaded for graph view.
+    pub relationships: Vec<MemoryRelationship>,
+    /// Timeline events.
+    pub timeline_events: Vec<MemoryTimelineEvent>,
+}
+
+impl MemoryGraphState {
+    pub fn new() -> Self {
+        Self {
+            entities: Vec::new(),
+            relationships: Vec::new(),
+            timeline_events: Vec::new(),
+        }
+    }
+}
+
+impl Default for MemoryGraphState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Full state for the memory inspector panel.
+#[derive(Debug)]
+pub struct MemoryInspectorState {
+    /// Current active tab.
+    pub tab: MemoryTab,
     /// Whether data is being loaded.
     pub loading: bool,
-    /// Scroll offset for the fact list.
-    pub scroll_offset: usize,
-    /// Whether the confidence edit dialog is active.
-    pub editing_confidence: bool,
-    /// Buffer for confidence editing.
-    pub confidence_buffer: String,
+    /// Fact list state: facts, selection, sorting, detail.
+    pub fact_list: FactListState,
+    /// Filter state: text filter, type/tier filters.
+    pub filters: MemoryFilterState,
+    /// Search state: query, results, active flag.
+    pub search: MemorySearchState,
+    /// Graph state: entities, relationships, timeline events.
+    pub graph: MemoryGraphState,
 }
 
 impl MemoryInspectorState {
     pub fn new() -> Self {
         Self {
             tab: MemoryTab::Facts,
-            facts: Vec::new(),
-            total_facts: 0,
-            selected: 0,
-            sort: FactSort::Confidence,
-            sort_asc: false,
-            filter_text: String::new(),
-            filter_editing: false,
-            type_filter: None,
-            tier_filter: None,
-            detail: None,
-            entities: Vec::new(),
-            relationships: Vec::new(),
-            timeline_events: Vec::new(),
-            search_results: Vec::new(),
-            search_active: false,
-            search_query: String::new(),
             loading: false,
-            scroll_offset: 0,
-            editing_confidence: false,
-            confidence_buffer: String::new(),
+            fact_list: FactListState::new(),
+            filters: MemoryFilterState::new(),
+            search: MemorySearchState::new(),
+            graph: MemoryGraphState::new(),
         }
     }
 
     /// Returns the currently selected fact, if any.
     pub fn selected_fact(&self) -> Option<&MemoryFact> {
-        self.facts.get(self.selected)
+        self.fact_list.facts.get(self.fact_list.selected)
     }
 
     /// Tier label abbreviation for table display.
@@ -302,15 +386,15 @@ mod tests {
     fn new_state_defaults() {
         let state = MemoryInspectorState::new();
         assert_eq!(state.tab, MemoryTab::Facts);
-        assert!(state.facts.is_empty());
-        assert_eq!(state.selected, 0);
-        assert_eq!(state.sort, FactSort::Confidence);
-        assert!(!state.sort_asc);
-        assert!(state.filter_text.is_empty());
-        assert!(!state.filter_editing);
+        assert!(state.fact_list.facts.is_empty());
+        assert_eq!(state.fact_list.selected, 0);
+        assert_eq!(state.fact_list.sort, FactSort::Confidence);
+        assert!(!state.fact_list.sort_asc);
+        assert!(state.filters.filter_text.is_empty());
+        assert!(!state.filters.filter_editing);
         assert!(!state.loading);
-        assert!(!state.search_active);
-        assert!(!state.editing_confidence);
+        assert!(!state.search.search_active);
+        assert!(!state.fact_list.editing_confidence);
     }
 
     #[test]
@@ -403,7 +487,7 @@ mod tests {
     #[test]
     fn selected_fact_with_data() {
         let mut state = MemoryInspectorState::new();
-        state.facts.push(MemoryFact {
+        state.fact_list.facts.push(MemoryFact {
             id: "f1".into(),
             nous_id: "syn".into(),
             content: "test fact".into(),
@@ -422,7 +506,7 @@ mod tests {
             forgotten_at: None,
             forget_reason: None,
         });
-        state.selected = 0;
+        state.fact_list.selected = 0;
         assert!(state.selected_fact().is_some());
         assert_eq!(state.selected_fact().unwrap().content, "test fact");
     }
@@ -522,7 +606,7 @@ mod tests {
         let a = MemoryInspectorState::new();
         let b = MemoryInspectorState::default();
         assert_eq!(a.tab, b.tab);
-        assert_eq!(a.selected, b.selected);
-        assert_eq!(a.sort, b.sort);
+        assert_eq!(a.fact_list.selected, b.fact_list.selected);
+        assert_eq!(a.fact_list.sort, b.fact_list.sort);
     }
 }

@@ -31,13 +31,14 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     let area = frame.area();
     let theme = &app.theme;
 
-    let has_toast = app.error_toast.is_some() || app.success_toast.is_some();
-    let palette_active = app.command_palette.active;
+    let has_toast = app.viewport.error_toast.is_some() || app.viewport.success_toast.is_some();
+    let palette_active = app.interaction.command_palette.active;
     let show_tabs = tab_bar::should_show(app);
 
     // NOTE: When palette is active it replaces the status bar, expanding to fit suggestions.
     let bottom_height = if palette_active {
         let suggestion_lines = app
+            .interaction
             .command_palette
             .suggestions
             .len()
@@ -83,7 +84,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
     }
 
     if has_toast {
-        if let Some(ref toast) = app.error_toast {
+        if let Some(ref toast) = app.viewport.error_toast {
             let toast_line = ratatui::text::Line::from(vec![
                 ratatui::text::Span::styled(" \u{2717} ", theme.style_error_bold()),
                 ratatui::text::Span::styled(&toast.message, theme.style_error()),
@@ -91,7 +92,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
             let toast_widget = ratatui::widgets::Paragraph::new(toast_line)
                 .style(ratatui::style::Style::default().bg(theme.colors.surface_dim));
             frame.render_widget(toast_widget, vertical[toast_idx]);
-        } else if let Some(ref toast) = app.success_toast {
+        } else if let Some(ref toast) = app.viewport.success_toast {
             let toast_line = ratatui::text::Line::from(vec![
                 ratatui::text::Span::styled(" \u{2713} ", theme.style_success_bold()),
                 ratatui::text::Span::styled(&toast.message, theme.style_success_bold()),
@@ -102,8 +103,8 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         }
     }
 
-    let show_sidebar = app.sidebar_visible && area.width >= MIN_SIDEBAR_TERMINAL_WIDTH;
-    let show_ops = app.ops.visible && area.width >= MIN_OPS_TERMINAL_WIDTH;
+    let show_sidebar = app.layout.sidebar_visible && area.width >= MIN_SIDEBAR_TERMINAL_WIDTH;
+    let show_ops = app.layout.ops.visible && area.width >= MIN_OPS_TERMINAL_WIDTH;
 
     let osc_links = if show_sidebar {
         let sidebar_and_rest = Layout::default()
@@ -118,7 +119,8 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         SIDEBAR_RECT.store_rect(sidebar_and_rest[0]);
 
         if show_ops {
-            let ops_width = ops::ops_pane_width(sidebar_and_rest[1].width, app.ops.width_pct);
+            let ops_width =
+                ops::ops_pane_width(sidebar_and_rest[1].width, app.layout.ops.width_pct);
             let chat_ops = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
@@ -137,7 +139,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         SIDEBAR_RECT.store_rect(Rect::ZERO);
 
         if show_ops {
-            let ops_width = ops::ops_pane_width(vertical[body_idx].width, app.ops.width_pct);
+            let ops_width = ops::ops_pane_width(vertical[body_idx].width, app.layout.ops.width_pct);
             let chat_ops = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
@@ -154,7 +156,7 @@ pub fn render(app: &App, frame: &mut Frame) -> Vec<OscLink> {
         }
     };
 
-    if app.overlay.is_some() {
+    if app.layout.overlay.is_some() {
         overlay::render(app, frame, area, theme);
     }
 
@@ -207,14 +209,19 @@ fn render_chat_area(
     area: Rect,
     theme: &crate::theme::Theme,
 ) -> Vec<OscLink> {
-    let prompt_len: usize = if app.active_turn_id.is_some() { 9 } else { 2 };
+    let prompt_len: usize = if app.connection.active_turn_id.is_some() {
+        9
+    } else {
+        2
+    };
     let content_width = area.width.max(1) as usize;
     let first_line_avail = content_width.saturating_sub(prompt_len).max(1);
     let wrapped_lines =
-        input::word_wrap_lines(&app.input.text, first_line_avail, content_width).len() as u16;
+        input::word_wrap_lines(&app.interaction.input.text, first_line_avail, content_width).len()
+            as u16;
     let input_height = (wrapped_lines + 1).clamp(3, 8);
 
-    let filter_height: u16 = if app.filter.editing { 1 } else { 0 };
+    let filter_height: u16 = if app.interaction.filter.editing { 1 } else { 0 };
 
     let available_body = area
         .height
@@ -225,13 +232,15 @@ fn render_chat_area(
     // or filter is active (filter bypasses virtual scroll), fall back to full-height so the
     // spacer calculation is never applied to a mismatched estimate.
     let wrap_width = area.width.saturating_sub(2).max(1);
-    let cache_fresh = app.virtual_scroll.len() == app.messages.len()
-        && (app.messages.is_empty() || app.virtual_scroll.cached_width() == wrap_width);
-    let filter_active = app.filter.active && !app.filter.text.is_empty();
+    let cache_fresh = app.viewport.render.virtual_scroll.len() == app.dashboard.messages.len()
+        && (app.dashboard.messages.is_empty()
+            || app.viewport.render.virtual_scroll.cached_width() == wrap_width);
+    let filter_active = app.interaction.filter.active && !app.interaction.filter.text.is_empty();
 
     let (spacer_height, messages_height) = if cache_fresh && !filter_active {
         // WHY: +1 for the top padding line chat::render always emits before message content.
-        let content_rows = (app.virtual_scroll.total_height() as u16).saturating_add(1);
+        let content_rows =
+            (app.viewport.render.virtual_scroll.total_height() as u16).saturating_add(1);
         if content_rows < available_body {
             (available_body - content_rows, content_rows.max(3))
         } else {
@@ -252,7 +261,7 @@ fn render_chat_area(
         .split(area);
 
     let osc_links = chat::render(app, frame, layout[1], theme);
-    if app.filter.editing {
+    if app.interaction.filter.editing {
         filter_bar::render(app, frame, layout[2], theme);
     }
     input::render(app, frame, layout[3], theme);

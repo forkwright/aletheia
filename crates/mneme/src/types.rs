@@ -113,21 +113,9 @@ impl std::fmt::Display for Role {
     }
 }
 
-/// A session record persisted in the store.
+/// Token and message count metrics for a session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Session {
-    /// Unique session identifier (ULID).
-    pub id: String,
-    /// Owning agent identifier.
-    pub nous_id: String,
-    /// Logical key used to look up or resume this session.
-    pub session_key: String,
-    /// Parent session for sub-task lineage tracking.
-    pub parent_session_id: Option<String>,
-    /// Current lifecycle status.
-    pub status: SessionStatus,
-    /// LLM model used for this session's turns.
-    pub model: Option<String>,
+pub struct SessionMetrics {
     /// Approximate total tokens consumed across all messages.
     pub token_count_estimate: i64,
     /// Number of messages in this session.
@@ -138,22 +126,50 @@ pub struct Session {
     pub bootstrap_hash: Option<String>,
     /// Number of times this session has been distilled.
     pub distillation_count: i64,
-    /// Classification of the session's lifecycle behavior.
-    pub session_type: SessionType,
     /// ISO 8601 timestamp of the last distillation, if any.
     pub last_distilled_at: Option<String>,
     /// Estimated context window token usage.
     pub computed_context_tokens: i64,
+}
+
+/// External origin and identity metadata for a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionOrigin {
+    /// Parent session for sub-task lineage tracking.
+    pub parent_session_id: Option<String>,
     /// External thread identifier (e.g. Signal group thread).
     pub thread_id: Option<String>,
     /// Transport layer that originated this session.
     pub transport: Option<String>,
     /// Human-readable display name set by the user.
     pub display_name: Option<String>,
+}
+
+/// A session record persisted in the store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    /// Unique session identifier (ULID).
+    pub id: String,
+    /// Owning agent identifier.
+    pub nous_id: String,
+    /// Logical key used to look up or resume this session.
+    pub session_key: String,
+    /// Current lifecycle status.
+    pub status: SessionStatus,
+    /// LLM model used for this session's turns.
+    pub model: Option<String>,
+    /// Classification of the session's lifecycle behavior.
+    pub session_type: SessionType,
     /// ISO 8601 timestamp when the session was created.
     pub created_at: String,
     /// ISO 8601 timestamp of the last update.
     pub updated_at: String,
+    /// Token and message count metrics.
+    #[serde(flatten)]
+    pub metrics: SessionMetrics,
+    /// External origin and identity metadata.
+    #[serde(flatten)]
+    pub origin: SessionOrigin,
 }
 
 /// A single message within a session's conversation history.
@@ -298,29 +314,33 @@ mod tests {
             id: "ses-123".to_owned(),
             nous_id: "syn".to_owned(),
             session_key: "main".to_owned(),
-            parent_session_id: None,
             status: SessionStatus::Active,
             model: Some("claude-opus-4-20250514".to_owned()),
-            token_count_estimate: 5000,
-            message_count: 12,
-            last_input_tokens: 2000,
-            bootstrap_hash: Some("abc123".to_owned()),
-            distillation_count: 2,
             session_type: SessionType::Primary,
-            last_distilled_at: None,
-            computed_context_tokens: 3000,
-            thread_id: None,
-            transport: Some("signal".to_owned()),
-            display_name: Some("My Session".to_owned()),
             created_at: "2026-02-28T00:00:00Z".to_owned(),
             updated_at: "2026-02-28T01:00:00Z".to_owned(),
+            metrics: SessionMetrics {
+                token_count_estimate: 5000,
+                message_count: 12,
+                last_input_tokens: 2000,
+                bootstrap_hash: Some("abc123".to_owned()),
+                distillation_count: 2,
+                last_distilled_at: None,
+                computed_context_tokens: 3000,
+            },
+            origin: SessionOrigin {
+                parent_session_id: None,
+                thread_id: None,
+                transport: Some("signal".to_owned()),
+                display_name: Some("My Session".to_owned()),
+            },
         };
         let json = serde_json::to_string(&session).expect("Session is serializable");
         let back: Session = serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert_eq!(session.id, back.id);
         assert_eq!(session.status, back.status);
         assert_eq!(session.session_type, back.session_type);
-        assert_eq!(session.display_name, back.display_name);
+        assert_eq!(session.origin.display_name, back.origin.display_name);
     }
 
     #[test]

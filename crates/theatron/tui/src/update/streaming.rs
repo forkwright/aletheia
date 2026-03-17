@@ -11,29 +11,29 @@ use crate::state::{
 
 #[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
 pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
-    app.active_turn_id = Some(turn_id);
-    app.streaming_text.clear();
-    app.streaming_thinking.clear();
-    app.streaming_tool_calls.clear();
-    app.markdown_cache.clear();
-    if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
+    app.connection.active_turn_id = Some(turn_id);
+    app.connection.streaming_text.clear();
+    app.connection.streaming_thinking.clear();
+    app.connection.streaming_tool_calls.clear();
+    app.viewport.render.markdown_cache.clear();
+    if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Streaming;
     }
-    app.ops.clear_turn();
-    app.ops.auto_show_if_configured();
+    app.layout.ops.clear_turn();
+    app.layout.ops.auto_show_if_configured();
 }
 
 #[tracing::instrument(skip_all, fields(len = text.len()))]
 // SAFETY: sanitized at ingestion: streaming text from LLM API.
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
-    app.streaming_text.push_str(&clean);
+    app.connection.streaming_text.push_str(&clean);
     // PERF: Markdown re-rendering is deferred to the frame boundary (app.view)
     // so that multiple text deltas arriving between frames are batched into a
     // single markdown::render call. At 100 tokens/sec with 60fps rendering,
     // this reduces markdown parses from ~100/sec to at most 60/sec.
-    if app.auto_scroll {
-        app.scroll_offset = 0;
+    if app.viewport.render.auto_scroll {
+        app.viewport.render.scroll_offset = 0;
     }
 }
 
@@ -41,8 +41,8 @@ pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
 // SAFETY: sanitized at ingestion: thinking text from LLM API.
 pub(crate) fn handle_stream_thinking_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
-    app.streaming_thinking.push_str(&clean);
-    app.ops.push_thinking(&clean);
+    app.connection.streaming_thinking.push_str(&clean);
+    app.layout.ops.push_thinking(&clean);
 }
 
 #[tracing::instrument(skip_all, fields(%tool_name))]
@@ -53,15 +53,17 @@ pub(crate) fn handle_stream_tool_start(
     input: Option<serde_json::Value>,
 ) {
     let clean_name = sanitize_for_display(&tool_name).into_owned();
-    app.streaming_tool_calls.push(ToolCallInfo {
+    app.connection.streaming_tool_calls.push(ToolCallInfo {
         name: clean_name.clone(),
         duration_ms: None,
         is_error: false,
     });
     let input_json = input.map(|v| v.to_string());
-    app.ops.push_tool_start(clean_name.clone(), input_json);
-    if let Some(ref agent_id) = app.focused_agent
-        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    app.layout
+        .ops
+        .push_tool_start(clean_name.clone(), input_json);
+    if let Some(ref agent_id) = app.dashboard.focused_agent
+        && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
         agent.active_tool = Some(ActiveTool {
             name: clean_name,
@@ -79,6 +81,7 @@ pub(crate) fn handle_stream_tool_result(
     result: Option<String>,
 ) {
     if let Some(tc) = app
+        .connection
         .streaming_tool_calls
         .iter_mut()
         .rev()
@@ -87,10 +90,11 @@ pub(crate) fn handle_stream_tool_result(
         tc.duration_ms = Some(duration_ms);
         tc.is_error = is_error;
     }
-    app.ops
+    app.layout
+        .ops
         .complete_tool(&tool_name, is_error, duration_ms, result);
-    if let Some(ref agent_id) = app.focused_agent
-        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    if let Some(ref agent_id) = app.dashboard.focused_agent
+        && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
         agent.active_tool = None;
     }
@@ -107,7 +111,7 @@ pub(crate) fn handle_stream_tool_approval_required(
     risk: String,
     reason: String,
 ) {
-    app.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
+    app.layout.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
         turn_id,
         tool_id,
         tool_name: sanitize_for_display(&tool_name).into_owned(),
@@ -120,13 +124,14 @@ pub(crate) fn handle_stream_tool_approval_required(
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_tool_approval_resolved(app: &mut App) {
     if app.is_tool_approval_overlay() {
-        app.overlay = None;
+        app.layout.overlay = None;
     }
 }
 
 #[tracing::instrument(skip_all, fields(step_id))]
 pub(crate) fn handle_stream_plan_step_start(app: &mut App, step_id: u32) {
-    app.ops
+    app.layout
+        .ops
         .push_tool_start(format!("plan step {step_id}"), None);
 }
 
@@ -134,21 +139,21 @@ pub(crate) fn handle_stream_plan_step_start(app: &mut App, step_id: u32) {
 pub(crate) fn handle_stream_plan_step_complete(app: &mut App, step_id: u32, status: String) {
     let name = format!("plan step {step_id}");
     let is_error = matches!(status.as_str(), "failed" | "error");
-    app.ops.complete_tool(&name, is_error, 0, None);
+    app.layout.ops.complete_tool(&name, is_error, 0, None);
 }
 
 #[tracing::instrument(skip_all, fields(%status))]
 pub(crate) fn handle_stream_plan_complete(app: &mut App, status: String) {
     let is_error = matches!(status.as_str(), "failed" | "error");
     let label = format!("plan: {status}");
-    app.ops.push_tool_start(label.clone(), None);
-    app.ops.complete_tool(&label, is_error, 0, None);
+    app.layout.ops.push_tool_start(label.clone(), None);
+    app.layout.ops.complete_tool(&label, is_error, 0, None);
 }
 
 #[tracing::instrument(skip_all)]
 // SAFETY: sanitized at ingestion: plan step labels and roles from stream API.
 pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
-    app.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
+    app.layout.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
         plan_id: plan.id,
         total_cost_cents: plan.total_estimated_cost_cents,
         cursor: 0,
@@ -169,17 +174,19 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
 // SAFETY: sanitized at ingestion: streaming_text already sanitized via handle_stream_text_delta,
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
-    if !app.streaming_text.is_empty() {
-        let text = app.streaming_text.clone();
+    if !app.connection.streaming_text.is_empty() {
+        let text = app.connection.streaming_text.clone();
         let text_lower = text.to_lowercase();
-        let tool_calls = std::mem::take(&mut app.streaming_tool_calls);
+        let tool_calls = std::mem::take(&mut app.connection.streaming_tool_calls);
         let has_tools = !tool_calls.is_empty();
         let width = app
+            .viewport
+            .render
             .virtual_scroll
             .cached_width()
-            .max(app.terminal_width.saturating_sub(2).max(1));
+            .max(app.viewport.terminal_width.saturating_sub(2).max(1));
         let h = estimate_message_height(text.len(), has_tools, width);
-        app.messages.push(ChatMessage {
+        app.dashboard.messages.push(ChatMessage {
             role: "assistant".to_string(),
             text,
             text_lower,
@@ -188,41 +195,42 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
             is_streaming: false,
             tool_calls,
         });
-        app.virtual_scroll.push_item(h);
+        app.viewport.render.virtual_scroll.push_item(h);
         // WHY: Keep the viewport anchored when scrolled up by compensating the
         // scroll offset for the new content added below the current position.
-        if !app.auto_scroll {
-            app.scroll_offset = app.scroll_offset.saturating_add(h as usize);
+        if !app.viewport.render.auto_scroll {
+            app.viewport.render.scroll_offset =
+                app.viewport.render.scroll_offset.saturating_add(h as usize);
         }
     }
-    app.streaming_text.clear();
-    app.streaming_thinking.clear();
-    app.streaming_tool_calls.clear();
-    app.markdown_cache.clear();
-    app.active_turn_id = None;
-    app.stream_rx = None;
-    if let Some(ref agent_id) = app.focused_agent
-        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    app.connection.streaming_text.clear();
+    app.connection.streaming_thinking.clear();
+    app.connection.streaming_tool_calls.clear();
+    app.viewport.render.markdown_cache.clear();
+    app.connection.active_turn_id = None;
+    app.connection.stream_rx = None;
+    if let Some(ref agent_id) = app.dashboard.focused_agent
+        && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
     }
-    app.ops.auto_hide_if_configured();
+    app.layout.ops.auto_hide_if_configured();
     if let Ok(cents) = app.client.today_cost_cents().await {
-        app.daily_cost_cents = cents;
+        app.dashboard.daily_cost_cents = cents;
     }
 }
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     tracing::info!("turn aborted: {reason}");
-    app.streaming_text.clear();
-    app.streaming_thinking.clear();
-    app.streaming_tool_calls.clear();
-    app.active_turn_id = None;
-    app.stream_rx = None;
-    if let Some(ref agent_id) = app.focused_agent
-        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    app.connection.streaming_text.clear();
+    app.connection.streaming_thinking.clear();
+    app.connection.streaming_tool_calls.clear();
+    app.connection.active_turn_id = None;
+    app.connection.stream_rx = None;
+    if let Some(ref agent_id) = app.dashboard.focused_agent
+        && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
@@ -233,14 +241,14 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
 // SAFETY: sanitized at ingestion: error messages may contain external data.
 pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");
-    app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
-    app.active_turn_id = None;
-    app.stream_rx = None;
+    app.viewport.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
+    app.connection.active_turn_id = None;
+    app.connection.stream_rx = None;
     // WHY: Clear tool calls to remove stale spinners; preserve streaming_text
     // so the user can read any partial response received before the error.
-    app.streaming_tool_calls.clear();
-    if let Some(ref agent_id) = app.focused_agent
-        && let Some(agent) = app.agents.iter_mut().find(|a| a.id == *agent_id)
+    app.connection.streaming_tool_calls.clear();
+    if let Some(ref agent_id) = app.dashboard.focused_agent
+        && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
@@ -257,17 +265,17 @@ mod tests {
     #[test]
     fn turn_start_sets_state() {
         let mut app = test_app();
-        app.agents.push(test_agent("syn", "Syn"));
-        app.focused_agent = Some("syn".into());
-        app.streaming_text = "leftover".to_string();
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
+        app.connection.streaming_text = "leftover".to_string();
 
         handle_stream_turn_start(&mut app, "t1".into(), "syn".into());
 
-        assert!(app.active_turn_id.as_ref().unwrap() == "t1");
-        assert!(app.streaming_text.is_empty());
-        assert!(app.streaming_thinking.is_empty());
-        assert!(app.streaming_tool_calls.is_empty());
-        assert_eq!(app.agents[0].status, AgentStatus::Streaming);
+        assert!(app.connection.active_turn_id.as_ref().unwrap() == "t1");
+        assert!(app.connection.streaming_text.is_empty());
+        assert!(app.connection.streaming_thinking.is_empty());
+        assert!(app.connection.streaming_tool_calls.is_empty());
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Streaming);
     }
 
     #[test]
@@ -275,29 +283,32 @@ mod tests {
         let mut app = test_app();
         handle_stream_text_delta(&mut app, "hello ".to_string());
         handle_stream_text_delta(&mut app, "world".to_string());
-        assert_eq!(app.streaming_text, "hello world");
+        assert_eq!(app.connection.streaming_text, "hello world");
     }
 
     #[test]
     fn thinking_delta_appends() {
         let mut app = test_app();
         handle_stream_thinking_delta(&mut app, "thinking...".to_string());
-        assert_eq!(app.streaming_thinking, "thinking...");
+        assert_eq!(app.connection.streaming_thinking, "thinking...");
     }
 
     #[test]
     fn tool_start_adds_tool_call() {
         let mut app = test_app();
-        app.agents.push(test_agent("syn", "Syn"));
-        app.focused_agent = Some("syn".into());
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
 
         handle_stream_tool_start(&mut app, "read_file".to_string(), None);
 
-        assert_eq!(app.streaming_tool_calls.len(), 1);
-        assert_eq!(app.streaming_tool_calls[0].name, "read_file");
-        assert!(app.streaming_tool_calls[0].duration_ms.is_none());
+        assert_eq!(app.connection.streaming_tool_calls.len(), 1);
+        assert_eq!(app.connection.streaming_tool_calls[0].name, "read_file");
+        assert!(app.connection.streaming_tool_calls[0].duration_ms.is_none());
         assert_eq!(
-            app.agents[0].active_tool.as_ref().map(|t| t.name.as_str()),
+            app.dashboard.agents[0]
+                .active_tool
+                .as_ref()
+                .map(|t| t.name.as_str()),
             Some("read_file")
         );
     }
@@ -305,27 +316,30 @@ mod tests {
     #[test]
     fn tool_result_updates_tool_call() {
         let mut app = test_app();
-        app.agents.push(test_agent("syn", "Syn"));
-        app.focused_agent = Some("syn".into());
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
 
         handle_stream_tool_start(&mut app, "read_file".to_string(), None);
         handle_stream_tool_result(&mut app, "read_file".to_string(), false, 150, None);
 
-        assert_eq!(app.streaming_tool_calls[0].duration_ms, Some(150));
-        assert!(!app.streaming_tool_calls[0].is_error);
-        assert!(app.agents[0].active_tool.is_none());
+        assert_eq!(
+            app.connection.streaming_tool_calls[0].duration_ms,
+            Some(150)
+        );
+        assert!(!app.connection.streaming_tool_calls[0].is_error);
+        assert!(app.dashboard.agents[0].active_tool.is_none());
     }
 
     #[test]
     fn tool_result_error_flag() {
         let mut app = test_app();
-        app.agents.push(test_agent("syn", "Syn"));
-        app.focused_agent = Some("syn".into());
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
 
         handle_stream_tool_start(&mut app, "write_file".to_string(), None);
         handle_stream_tool_result(&mut app, "write_file".to_string(), true, 50, None);
 
-        assert!(app.streaming_tool_calls[0].is_error);
+        assert!(app.connection.streaming_tool_calls[0].is_error);
     }
 
     #[test]
@@ -342,8 +356,8 @@ mod tests {
             "writes to system files".to_string(),
         );
 
-        assert!(matches!(app.overlay, Some(Overlay::ToolApproval(_))));
-        if let Some(Overlay::ToolApproval(ref approval)) = app.overlay {
+        assert!(matches!(app.layout.overlay, Some(Overlay::ToolApproval(_))));
+        if let Some(Overlay::ToolApproval(ref approval)) = app.layout.overlay {
             assert_eq!(approval.tool_name, "dangerous_tool");
             assert_eq!(approval.risk, "high");
         }
@@ -352,7 +366,7 @@ mod tests {
     #[test]
     fn tool_approval_resolved_closes_overlay() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
+        app.layout.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
             turn_id: "t1".into(),
             tool_id: "tool1".into(),
             tool_name: "test".to_string(),
@@ -362,16 +376,16 @@ mod tests {
         }));
 
         handle_stream_tool_approval_resolved(&mut app);
-        assert!(app.overlay.is_none());
+        assert!(app.layout.overlay.is_none());
     }
 
     #[test]
     fn tool_approval_resolved_ignores_non_approval_overlay() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help);
 
         handle_stream_tool_approval_resolved(&mut app);
-        assert!(matches!(app.overlay, Some(Overlay::Help)));
+        assert!(matches!(app.layout.overlay, Some(Overlay::Help)));
     }
 
     #[test]
@@ -395,8 +409,8 @@ mod tests {
 
         handle_stream_plan_proposed(&mut app, plan);
 
-        assert!(matches!(app.overlay, Some(Overlay::PlanApproval(_))));
-        if let Some(Overlay::PlanApproval(ref plan_overlay)) = app.overlay {
+        assert!(matches!(app.layout.overlay, Some(Overlay::PlanApproval(_))));
+        if let Some(Overlay::PlanApproval(ref plan_overlay)) = app.layout.overlay {
             assert_eq!(plan_overlay.steps.len(), 1);
             assert!(plan_overlay.steps[0].checked);
             assert_eq!(plan_overlay.total_cost_cents, 50);
@@ -407,10 +421,10 @@ mod tests {
     fn plan_step_start_adds_ops_entry() {
         let mut app = test_app();
         handle_stream_plan_step_start(&mut app, 1);
-        assert_eq!(app.ops.tool_calls.len(), 1);
-        assert_eq!(app.ops.tool_calls[0].name, "plan step 1");
+        assert_eq!(app.layout.ops.tool_calls.len(), 1);
+        assert_eq!(app.layout.ops.tool_calls[0].name, "plan step 1");
         assert_eq!(
-            app.ops.tool_calls[0].status,
+            app.layout.ops.tool_calls[0].status,
             crate::state::ops::OpsToolStatus::Running
         );
     }
@@ -421,7 +435,7 @@ mod tests {
         handle_stream_plan_step_start(&mut app, 2);
         handle_stream_plan_step_complete(&mut app, 2, "done".to_string());
         assert_eq!(
-            app.ops.tool_calls[0].status,
+            app.layout.ops.tool_calls[0].status,
             crate::state::ops::OpsToolStatus::Complete
         );
     }
@@ -432,7 +446,7 @@ mod tests {
         handle_stream_plan_step_start(&mut app, 3);
         handle_stream_plan_step_complete(&mut app, 3, "failed".to_string());
         assert_eq!(
-            app.ops.tool_calls[0].status,
+            app.layout.ops.tool_calls[0].status,
             crate::state::ops::OpsToolStatus::Failed
         );
     }
@@ -441,10 +455,10 @@ mod tests {
     fn plan_complete_adds_completed_ops_entry() {
         let mut app = test_app();
         handle_stream_plan_complete(&mut app, "done".to_string());
-        assert_eq!(app.ops.tool_calls.len(), 1);
-        assert_eq!(app.ops.tool_calls[0].name, "plan: done");
+        assert_eq!(app.layout.ops.tool_calls.len(), 1);
+        assert_eq!(app.layout.ops.tool_calls[0].name, "plan: done");
         assert_eq!(
-            app.ops.tool_calls[0].status,
+            app.layout.ops.tool_calls[0].status,
             crate::state::ops::OpsToolStatus::Complete
         );
     }
@@ -452,52 +466,55 @@ mod tests {
     #[test]
     fn turn_abort_clears_state() {
         let mut app = test_app();
-        app.agents.push(test_agent("syn", "Syn"));
-        app.focused_agent = Some("syn".into());
-        app.active_turn_id = Some("t1".into());
-        app.streaming_text = "partial".to_string();
-        app.streaming_tool_calls.push(ToolCallInfo {
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
+        app.connection.active_turn_id = Some("t1".into());
+        app.connection.streaming_text = "partial".to_string();
+        app.connection.streaming_tool_calls.push(ToolCallInfo {
             name: "read_file".to_string(),
             duration_ms: None,
             is_error: false,
         });
-        app.agents[0].status = AgentStatus::Working;
+        app.dashboard.agents[0].status = AgentStatus::Working;
 
         handle_stream_turn_abort(&mut app, "user cancelled".to_string());
 
-        assert!(app.active_turn_id.is_none());
-        assert!(app.streaming_text.is_empty());
-        assert!(app.streaming_tool_calls.is_empty());
-        assert!(app.stream_rx.is_none());
-        assert_eq!(app.agents[0].status, AgentStatus::Idle);
+        assert!(app.connection.active_turn_id.is_none());
+        assert!(app.connection.streaming_text.is_empty());
+        assert!(app.connection.streaming_tool_calls.is_empty());
+        assert!(app.connection.stream_rx.is_none());
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
     }
 
     #[test]
     fn stream_error_shows_toast() {
         let mut app = test_app();
-        app.active_turn_id = Some("t1".into());
+        app.connection.active_turn_id = Some("t1".into());
 
         handle_stream_error(&mut app, "connection lost".to_string());
 
-        assert!(app.error_toast.is_some());
-        assert_eq!(app.error_toast.as_ref().unwrap().message, "connection lost");
-        assert!(app.active_turn_id.is_none());
+        assert!(app.viewport.error_toast.is_some());
+        assert_eq!(
+            app.viewport.error_toast.as_ref().unwrap().message,
+            "connection lost"
+        );
+        assert!(app.connection.active_turn_id.is_none());
     }
 
     #[test]
     fn stream_error_clears_tool_calls_and_resets_agent() {
         let mut app = test_app();
-        app.agents.push(test_agent("syn", "Syn"));
-        app.focused_agent = Some("syn".into());
-        app.active_turn_id = Some("t1".into());
-        app.streaming_text = "partial response".to_string();
-        app.streaming_tool_calls.push(ToolCallInfo {
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.focused_agent = Some("syn".into());
+        app.connection.active_turn_id = Some("t1".into());
+        app.connection.streaming_text = "partial response".to_string();
+        app.connection.streaming_tool_calls.push(ToolCallInfo {
             name: "grep".to_string(),
             duration_ms: None,
             is_error: false,
         });
-        app.agents[0].status = AgentStatus::Working;
-        app.agents[0].active_tool = Some(ActiveTool {
+        app.dashboard.agents[0].status = AgentStatus::Working;
+        app.dashboard.agents[0].active_tool = Some(ActiveTool {
             name: "grep".to_string(),
             started_at: std::time::Instant::now(),
         });
@@ -505,14 +522,14 @@ mod tests {
         handle_stream_error(&mut app, "connection reset".to_string());
 
         // Partial text preserved for user inspection
-        assert_eq!(app.streaming_text, "partial response");
+        assert_eq!(app.connection.streaming_text, "partial response");
         // Tool calls cleared so no stale spinners
-        assert!(app.streaming_tool_calls.is_empty());
+        assert!(app.connection.streaming_tool_calls.is_empty());
         // Agent back to idle
-        assert_eq!(app.agents[0].status, AgentStatus::Idle);
-        assert!(app.agents[0].active_tool.is_none());
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
+        assert!(app.dashboard.agents[0].active_tool.is_none());
         // Error toast displayed
-        assert!(app.error_toast.is_some());
+        assert!(app.viewport.error_toast.is_some());
     }
 
     #[test]
@@ -522,22 +539,22 @@ mod tests {
         // PERF: markdown cache is no longer updated per-delta; it is refreshed
         // once per frame in App::refresh_streaming_markdown_cache.
         assert!(
-            app.markdown_cache.text.is_empty(),
+            app.viewport.render.markdown_cache.text.is_empty(),
             "cache must not update on delta (deferred to frame boundary)"
         );
-        assert_eq!(app.streaming_text, "hello");
+        assert_eq!(app.connection.streaming_text, "hello");
     }
 
     #[test]
     fn refresh_markdown_cache_updates_after_delta() {
         let mut app = test_app();
-        app.terminal_width = 80;
+        app.viewport.terminal_width = 80;
         handle_stream_text_delta(&mut app, "hello\nworld".to_string());
         app.refresh_streaming_markdown_cache();
-        assert_eq!(app.markdown_cache.text, "hello\nworld");
-        assert!(!app.markdown_cache.lines.is_empty());
+        assert_eq!(app.viewport.render.markdown_cache.text, "hello\nworld");
+        assert!(!app.viewport.render.markdown_cache.lines.is_empty());
         // Width should be terminal_width - 4 (matching the view's inner_width - 2)
-        assert_eq!(app.markdown_cache.width, 76);
+        assert_eq!(app.viewport.render.markdown_cache.width, 76);
     }
 
     fn make_outcome() -> TurnOutcome {
@@ -558,27 +575,27 @@ mod tests {
     #[tokio::test]
     async fn turn_complete_auto_scroll_stays_at_bottom() {
         let mut app = test_app();
-        app.auto_scroll = true;
-        app.scroll_offset = 0;
-        app.streaming_text = "hello world".to_string();
+        app.viewport.render.auto_scroll = true;
+        app.viewport.render.scroll_offset = 0;
+        app.connection.streaming_text = "hello world".to_string();
         handle_stream_turn_complete(&mut app, make_outcome()).await;
-        assert!(app.auto_scroll);
-        assert_eq!(app.scroll_offset, 0);
+        assert!(app.viewport.render.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 0);
     }
 
     #[tokio::test]
     async fn turn_complete_scroll_lock_preserves_offset() {
         let mut app = test_app();
-        app.auto_scroll = false;
-        app.scroll_offset = 30;
+        app.viewport.render.auto_scroll = false;
+        app.viewport.render.scroll_offset = 30;
         app.rebuild_virtual_scroll();
-        app.streaming_text = "a new message with some text".to_string();
-        let offset_before = app.scroll_offset;
+        app.connection.streaming_text = "a new message with some text".to_string();
+        let offset_before = app.viewport.render.scroll_offset;
         handle_stream_turn_complete(&mut app, make_outcome()).await;
         // Offset must increase so the viewport stays anchored while new content lands below.
-        assert!(!app.auto_scroll);
+        assert!(!app.viewport.render.auto_scroll);
         assert!(
-            app.scroll_offset > offset_before,
+            app.viewport.render.scroll_offset > offset_before,
             "scroll_offset should increase when new message arrives while scrolled up"
         );
     }
@@ -586,11 +603,11 @@ mod tests {
     #[tokio::test]
     async fn turn_complete_no_text_does_not_change_scroll() {
         let mut app = test_app();
-        app.auto_scroll = false;
-        app.scroll_offset = 10;
+        app.viewport.render.auto_scroll = false;
+        app.viewport.render.scroll_offset = 10;
         // streaming_text is empty: no message is committed, offset unchanged
         handle_stream_turn_complete(&mut app, make_outcome()).await;
-        assert_eq!(app.scroll_offset, 10);
-        assert!(!app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 10);
+        assert!(!app.viewport.render.auto_scroll);
     }
 }

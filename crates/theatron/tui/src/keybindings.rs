@@ -873,30 +873,30 @@ pub fn current_contexts(app: &App) -> Vec<KeyContext> {
 
     // WHY: Memory inspector views return early to suppress all other context bindings.
     if matches!(
-        app.view_stack.current(),
+        app.layout.view_stack.current(),
         crate::state::view_stack::View::FactDetail { .. }
     ) {
         contexts.push(KeyContext::FactDetail);
         return contexts;
     }
     if matches!(
-        app.view_stack.current(),
+        app.layout.view_stack.current(),
         crate::state::view_stack::View::MemoryInspector
     ) {
         contexts.push(KeyContext::MemoryInspector);
         return contexts;
     }
 
-    match &app.overlay {
+    match &app.layout.overlay {
         Some(Overlay::Help) | None => {
-            if app.command_palette.active {
+            if app.interaction.command_palette.active {
                 contexts.push(KeyContext::CommandPalette);
-            } else if app.filter.active {
+            } else if app.interaction.filter.active {
                 contexts.push(KeyContext::Filter);
-            } else if app.selection != SelectionContext::None {
+            } else if app.interaction.selection != SelectionContext::None {
                 contexts.push(KeyContext::Selection);
-            } else if app.ops.visible
-                && app.ops.focused_pane == crate::state::FocusedPane::Operations
+            } else if app.layout.ops.visible
+                && app.layout.ops.focused_pane == crate::state::FocusedPane::Operations
             {
                 contexts.push(KeyContext::Operations);
             } else {
@@ -925,16 +925,16 @@ pub fn current_contexts(app: &App) -> Vec<KeyContext> {
 
 /// Label for the help overlay title: reflects the source context, not the overlay itself.
 pub fn context_label(app: &App) -> &'static str {
-    match &app.overlay {
+    match &app.layout.overlay {
         Some(Overlay::Help) | None => {
-            if app.command_palette.active {
+            if app.interaction.command_palette.active {
                 "Command Palette"
-            } else if app.filter.active {
+            } else if app.interaction.filter.active {
                 "Filter"
-            } else if app.selection != SelectionContext::None {
+            } else if app.interaction.selection != SelectionContext::None {
                 "Selection"
-            } else if app.ops.visible
-                && app.ops.focused_pane == crate::state::FocusedPane::Operations
+            } else if app.layout.ops.visible
+                && app.layout.ops.focused_pane == crate::state::FocusedPane::Operations
             {
                 "Operations"
             } else {
@@ -1086,7 +1086,7 @@ mod tests {
     #[test]
     fn current_contexts_command_palette() {
         let mut app = test_app();
-        app.command_palette.active = true;
+        app.interaction.command_palette.active = true;
         let contexts = current_contexts(&app);
         assert!(contexts.contains(&KeyContext::CommandPalette));
         assert!(!contexts.contains(&KeyContext::Chat));
@@ -1095,8 +1095,8 @@ mod tests {
     #[test]
     fn current_contexts_filter_mode() {
         let mut app = test_app();
-        app.filter.active = true;
-        app.filter.editing = true;
+        app.interaction.filter.active = true;
+        app.interaction.filter.editing = true;
         let contexts = current_contexts(&app);
         assert!(contexts.contains(&KeyContext::Filter));
         assert!(!contexts.contains(&KeyContext::Chat));
@@ -1105,7 +1105,7 @@ mod tests {
     #[test]
     fn current_contexts_selection_mode() {
         let mut app = test_app();
-        app.selection = SelectionContext::UserMessage { index: 0 };
+        app.interaction.selection = SelectionContext::UserMessage { index: 0 };
         let contexts = current_contexts(&app);
         assert!(contexts.contains(&KeyContext::Selection));
         assert!(!contexts.contains(&KeyContext::Chat));
@@ -1114,7 +1114,7 @@ mod tests {
     #[test]
     fn current_contexts_tool_approval_overlay() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+        app.layout.overlay = Some(Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
             turn_id: "t1".into(),
             tool_id: "tool1".into(),
             tool_name: "test_tool".to_string(),
@@ -1131,7 +1131,7 @@ mod tests {
     fn current_contexts_settings_overlay() {
         let mut app = test_app();
         let settings = crate::state::settings::SettingsOverlay::from_config(&serde_json::json!({}));
-        app.overlay = Some(Overlay::Settings(settings));
+        app.layout.overlay = Some(Overlay::Settings(settings));
         let contexts = current_contexts(&app);
         assert!(contexts.contains(&KeyContext::Settings));
         assert!(!contexts.contains(&KeyContext::Overlay));
@@ -1146,21 +1146,21 @@ mod tests {
     #[test]
     fn context_label_command_palette() {
         let mut app = test_app();
-        app.command_palette.active = true;
+        app.interaction.command_palette.active = true;
         assert_eq!(context_label(&app), "Command Palette");
     }
 
     #[test]
     fn context_label_overlay_variants() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help);
         // Help overlay is transparent: shows underlying context
         assert_eq!(context_label(&app), "Chat");
 
-        app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+        app.layout.overlay = Some(Overlay::AgentPicker { cursor: 0 });
         assert_eq!(context_label(&app), "Agent Picker");
 
-        app.overlay = Some(Overlay::SystemStatus);
+        app.layout.overlay = Some(Overlay::SystemStatus);
         assert_eq!(context_label(&app), "System Status");
     }
 

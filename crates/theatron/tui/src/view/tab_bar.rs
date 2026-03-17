@@ -10,12 +10,12 @@ use crate::app::App;
 use crate::theme::Theme;
 
 pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    if app.tab_bar.tabs.is_empty() || area.width < 4 {
+    if app.layout.tab_bar.tabs.is_empty() || area.width < 4 {
         return;
     }
 
-    let tabs = &app.tab_bar.tabs;
-    let active = app.tab_bar.active;
+    let tabs = &app.layout.tab_bar.tabs;
+    let active = app.layout.tab_bar.active;
     let width = area.width as usize;
 
     let separator = " | ";
@@ -115,7 +115,7 @@ fn truncate_title(title: &str, max_width: usize) -> String {
 
 /// Whether the tab bar should be shown (more than 1 tab or always-on).
 pub(crate) fn should_show(app: &App) -> bool {
-    app.tab_bar.len() > 1
+    app.layout.tab_bar.len() > 1
 }
 
 #[cfg(test)]
@@ -148,9 +148,11 @@ mod tests {
     #[test]
     fn should_show_with_multiple_tabs() {
         let mut app = crate::app::test_helpers::test_app();
-        app.tab_bar
+        app.layout
+            .tab_bar
             .create_tab(crate::id::NousId::from("syn"), "tab1");
-        app.tab_bar
+        app.layout
+            .tab_bar
             .create_tab(crate::id::NousId::from("syn"), "tab2");
         assert!(should_show(&app));
     }
@@ -158,7 +160,8 @@ mod tests {
     #[test]
     fn should_not_show_with_single_tab() {
         let mut app = crate::app::test_helpers::test_app();
-        app.tab_bar
+        app.layout
+            .tab_bar
             .create_tab(crate::id::NousId::from("syn"), "tab1");
         assert!(!should_show(&app));
     }
