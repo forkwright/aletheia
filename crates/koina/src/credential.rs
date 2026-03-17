@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::secret::SecretString;
+
 /// Origin of a resolved credential.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -27,7 +29,7 @@ impl fmt::Display for CredentialSource {
 /// A resolved credential paired with its source.
 pub struct Credential {
     /// The secret value (API key or access token).
-    pub secret: String,
+    pub secret: SecretString,
     /// Where this credential was obtained from.
     pub source: CredentialSource,
 }

@@ -1,3 +1,5 @@
+use aletheia_koina::secret::SecretString;
+
 use crate::api::types::*;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
@@ -364,7 +366,7 @@ impl ErrorToast {
     reason = "auth flow variants constructed by SSE event handler"
 )]
 pub enum AuthOutcome {
-    Success { token: String },
+    Success { token: SecretString },
     NoAuthRequired,
     Failed(String),
 }

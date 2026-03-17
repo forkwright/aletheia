@@ -1,9 +1,11 @@
 #![expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
+use aletheia_koina::secret::SecretString;
+
 use super::*;
 
 #[test]
 fn credential_file_roundtrip() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.json");
 
     let cred = CredentialFile {
@@ -13,123 +15,80 @@ fn credential_file_roundtrip() {
         scopes: Some(vec!["user:inference".to_owned()]),
         subscription_type: Some("max".to_owned()),
     };
-    cred.save(&path).expect("should save credential file");
+    cred.save(&path).unwrap();
 
-    let loaded = CredentialFile::load(&path).expect("should load saved credential file");
-    assert_eq!(loaded.token, "sk-test-123", "token should round-trip");
-    assert_eq!(
-        loaded.refresh_token.as_deref(),
-        Some("rt-test-456"),
-        "refresh_token should round-trip"
-    );
-    assert_eq!(
-        loaded.expires_at,
-        Some(1_700_000_000_000),
-        "expires_at should round-trip"
-    );
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, "sk-test-123");
+    assert_eq!(loaded.refresh_token.as_deref(), Some("rt-test-456"));
+    assert_eq!(loaded.expires_at, Some(1_700_000_000_000));
 }
 
 #[test]
 fn credential_file_missing_returns_none() {
-    assert!(
-        CredentialFile::load(Path::new("/nonexistent/path.json")).is_none(),
-        "missing file should return None"
-    );
+    assert!(CredentialFile::load(Path::new("/nonexistent/path.json")).is_none());
 }
 
 #[test]
 fn credential_file_malformed_returns_none() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("bad.json");
-    std::fs::write(&path, "not json").expect("should write malformed file");
-    assert!(
-        CredentialFile::load(&path).is_none(),
-        "malformed JSON should return None"
-    );
+    std::fs::write(&path, "not json").unwrap();
+    assert!(CredentialFile::load(&path).is_none());
 }
 
 // --- claudeAiOauth wrapper tests ---
 
 #[test]
 fn credential_file_load_claude_code_oauth_wrapper() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     std::fs::write(
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped","expiresAt":9999999999000}}"#,
     )
-    .expect("should write wrapped credential file");
+    .unwrap();
 
-    let loaded = CredentialFile::load(&path).expect("should load wrapped credential file");
-    assert_eq!(
-        loaded.token, "sk-ant-oat-wrapped",
-        "access token should be extracted from wrapper"
-    );
-    assert_eq!(
-        loaded.refresh_token.as_deref(),
-        Some("rt-wrapped"),
-        "refresh token should be extracted from wrapper"
-    );
-    assert_eq!(
-        loaded.expires_at,
-        Some(9_999_999_999_000),
-        "expiry should be extracted from wrapper"
-    );
-    assert!(
-        loaded.has_refresh_token(),
-        "loaded credential should report having a refresh token"
-    );
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, "sk-ant-oat-wrapped");
+    assert_eq!(loaded.refresh_token.as_deref(), Some("rt-wrapped"));
+    assert_eq!(loaded.expires_at, Some(9_999_999_999_000));
+    assert!(loaded.has_refresh_token());
 }
 
 #[test]
 fn credential_file_load_wrapped_no_refresh_token() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     std::fs::write(
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-no-rt"}}"#,
     )
-    .expect("should write wrapped credential file without refresh token");
+    .unwrap();
 
-    let loaded =
-        CredentialFile::load(&path).expect("should load wrapped credential without refresh token");
-    assert_eq!(
-        loaded.token, "sk-ant-oat-no-rt",
-        "access token should be extracted from wrapper"
-    );
-    assert!(
-        !loaded.has_refresh_token(),
-        "credential without refresh token should return false"
-    );
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, "sk-ant-oat-no-rt");
+    assert!(!loaded.has_refresh_token());
 }
 
 #[test]
 fn credential_file_load_flat_takes_precedence_over_wrapper() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     std::fs::write(
         &path,
         r#"{"token":"flat-token","claudeAiOauth":{"accessToken":"wrapped-token"}}"#,
     )
-    .expect("should write credential file with both flat and wrapper format");
-    let loaded =
-        CredentialFile::load(&path).expect("should load credential file with flat and wrapper");
-    assert_eq!(
-        loaded.token, "flat-token",
-        "flat token field should take precedence over wrapper"
-    );
+    .unwrap();
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, "flat-token");
 }
 
 #[test]
 fn credential_file_load_wrapper_missing_key_returns_none() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
-    std::fs::write(&path, r#"{"someOtherKey":{"value":1}}"#)
-        .expect("should write credential file with unknown key");
-    assert!(
-        CredentialFile::load(&path).is_none(),
-        "credential file with unknown wrapper key should return None"
-    );
+    std::fs::write(&path, r#"{"someOtherKey":{"value":1}}"#).unwrap();
+    assert!(CredentialFile::load(&path).is_none());
 }
 
 #[test]
@@ -141,28 +100,19 @@ fn has_refresh_token() {
         scopes: None,
         subscription_type: None,
     };
-    assert!(
-        with.has_refresh_token(),
-        "credential with refresh token should return true"
-    );
+    assert!(with.has_refresh_token());
 
     let without = CredentialFile {
         refresh_token: None,
         ..with.clone()
     };
-    assert!(
-        !without.has_refresh_token(),
-        "credential with None refresh token should return false"
-    );
+    assert!(!without.has_refresh_token());
 
     let empty = CredentialFile {
         refresh_token: Some(String::new()),
         ..without
     };
-    assert!(
-        !empty.has_refresh_token(),
-        "credential with empty refresh token should return false"
-    );
+    assert!(!empty.has_refresh_token());
 }
 
 // NOTE: env tests use a guaranteed-absent var name to avoid depending on CI/dev env vars
@@ -170,20 +120,13 @@ fn has_refresh_token() {
 #[test]
 fn env_provider_missing_returns_none() {
     let provider = EnvCredentialProvider::new("ALETHEIA_TEST_NONEXISTENT_49_XYZ");
-    assert!(
-        provider.get_credential().is_none(),
-        "missing env var should return None"
-    );
+    assert!(provider.get_credential().is_none());
 }
 
 #[test]
 fn env_provider_name() {
     let provider = EnvCredentialProvider::new("MY_VAR");
-    assert_eq!(
-        provider.name(),
-        "MY_VAR",
-        "provider name should match the env var name passed to new()"
-    );
+    assert_eq!(provider.name(), "MY_VAR");
 }
 
 #[test]
@@ -193,14 +136,8 @@ fn env_provider_detects_oauth_by_prefix() {
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, "sk-ant-oat-test-token-value") };
     let provider = EnvCredentialProvider::new(var);
-    let cred = provider
-        .get_credential()
-        .expect("should return credential for OAuth-prefixed token");
-    assert_eq!(
-        cred.source,
-        CredentialSource::OAuth,
-        "OAuth-prefixed token should have OAuth source"
-    );
+    let cred = provider.get_credential().unwrap();
+    assert_eq!(cred.source, CredentialSource::OAuth);
     unsafe { std::env::remove_var(var) };
 }
 
@@ -211,14 +148,8 @@ fn env_provider_api_key_stays_environment() {
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, "sk-ant-api-test-key") };
     let provider = EnvCredentialProvider::new(var);
-    let cred = provider
-        .get_credential()
-        .expect("should return credential for API key token");
-    assert_eq!(
-        cred.source,
-        CredentialSource::Environment,
-        "non-OAuth token should have Environment source"
-    );
+    let cred = provider.get_credential().unwrap();
+    assert_eq!(cred.source, CredentialSource::Environment);
     unsafe { std::env::remove_var(var) };
 }
 
@@ -229,14 +160,8 @@ fn env_provider_with_source_forces_oauth() {
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, "any-token-value") };
     let provider = EnvCredentialProvider::with_source(var, CredentialSource::OAuth);
-    let cred = provider
-        .get_credential()
-        .expect("should return credential when source is forced to OAuth");
-    assert_eq!(
-        cred.source,
-        CredentialSource::OAuth,
-        "forced OAuth source should be OAuth"
-    );
+    let cred = provider.get_credential().unwrap();
+    assert_eq!(cred.source, CredentialSource::OAuth);
     unsafe { std::env::remove_var(var) };
 }
 
@@ -277,11 +202,7 @@ fn make_test_oauth_token(exp_secs: u64) -> String {
 fn decode_jwt_exp_roundtrips_known_value() {
     let token = make_test_oauth_token(42_000);
     let exp = decode_jwt_exp_secs(&token);
-    assert_eq!(
-        exp,
-        Some(42_000),
-        "decoded exp should match the value encoded in the token"
-    );
+    assert_eq!(exp, Some(42_000));
 }
 
 #[test]
@@ -316,8 +237,7 @@ fn env_provider_within_skew_window_accepted() {
     );
     assert_eq!(
         cred.as_ref().map(|c| &c.source),
-        Some(&CredentialSource::OAuth),
-        "token within clock skew leeway should have OAuth source"
+        Some(&CredentialSource::OAuth)
     );
     unsafe { std::env::remove_var(var) };
 }
@@ -348,18 +268,9 @@ fn env_provider_valid_oauth_returns_credential() {
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, &valid_token) };
     let provider = EnvCredentialProvider::new(var);
-    let cred = provider
-        .get_credential()
-        .expect("should return credential for valid future-expiry OAuth token");
-    assert_eq!(
-        cred.secret, valid_token,
-        "secret should match the token set in env var"
-    );
-    assert_eq!(
-        cred.source,
-        CredentialSource::OAuth,
-        "valid OAuth token should have OAuth source"
-    );
+    let cred = provider.get_credential().unwrap();
+    assert_eq!(cred.secret.expose_secret(), valid_token);
+    assert_eq!(cred.source, CredentialSource::OAuth);
     unsafe { std::env::remove_var(var) };
 }
 
@@ -372,18 +283,9 @@ fn env_provider_opaque_oauth_without_exp_is_returned() {
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, opaque) };
     let provider = EnvCredentialProvider::new(var);
-    let cred = provider
-        .get_credential()
-        .expect("should return credential for opaque OAuth token without exp");
-    assert_eq!(
-        cred.secret, opaque,
-        "secret should match the opaque token set in env var"
-    );
-    assert_eq!(
-        cred.source,
-        CredentialSource::OAuth,
-        "opaque OAuth token without exp should have OAuth source"
-    );
+    let cred = provider.get_credential().unwrap();
+    assert_eq!(cred.secret.expose_secret(), opaque);
+    assert_eq!(cred.source, CredentialSource::OAuth);
     unsafe { std::env::remove_var(var) };
 }
 
@@ -395,7 +297,7 @@ fn chain_falls_through_expired_oauth_env_to_file_provider() {
     // SAFETY: test uses unique var name, no concurrent access
     unsafe { std::env::set_var(var, &expired_token) };
 
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     let cred_file = CredentialFile {
         token: "sk-ant-api-file-fallback".to_owned(),
@@ -404,20 +306,17 @@ fn chain_falls_through_expired_oauth_env_to_file_provider() {
         scopes: None,
         subscription_type: None,
     };
-    cred_file
-        .save(&path)
-        .expect("should save fallback credential file");
+    cred_file.save(&path).unwrap();
 
     let chain = CredentialChain::new(vec![
         Box::new(EnvCredentialProvider::new(var)),
         Box::new(FileCredentialProvider::new(path)),
     ]);
 
-    let resolved = chain
-        .get_credential()
-        .expect("chain should resolve to file provider after expired env token");
+    let resolved = chain.get_credential().unwrap();
     assert_eq!(
-        resolved.secret, "sk-ant-api-file-fallback",
+        resolved.secret.expose_secret(),
+        "sk-ant-api-file-fallback",
         "chain should skip expired env token and use file provider"
     );
 
@@ -426,7 +325,7 @@ fn chain_falls_through_expired_oauth_env_to_file_provider() {
 
 #[test]
 fn file_provider_reads_token() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("anthropic.json");
     let cred = CredentialFile {
         token: "sk-file-token".to_owned(),
@@ -435,35 +334,23 @@ fn file_provider_reads_token() {
         scopes: None,
         subscription_type: None,
     };
-    cred.save(&path).expect("should save credential file");
+    cred.save(&path).unwrap();
 
     let provider = FileCredentialProvider::new(path);
-    let result = provider
-        .get_credential()
-        .expect("should return credential from file");
-    assert_eq!(
-        result.secret, "sk-file-token",
-        "secret should match token in file"
-    );
-    assert_eq!(
-        result.source,
-        CredentialSource::File,
-        "file provider should report File source"
-    );
+    let result = provider.get_credential().unwrap();
+    assert_eq!(result.secret.expose_secret(), "sk-file-token");
+    assert_eq!(result.source, CredentialSource::File);
 }
 
 #[test]
 fn file_provider_missing_file_returns_none() {
     let provider = FileCredentialProvider::new(PathBuf::from("/nonexistent/cred.json"));
-    assert!(
-        provider.get_credential().is_none(),
-        "file provider for missing file should return None"
-    );
+    assert!(provider.get_credential().is_none());
 }
 
 #[test]
 fn file_provider_detects_file_change() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("anthropic.json");
 
     let cred1 = CredentialFile {
@@ -473,15 +360,11 @@ fn file_provider_detects_file_change() {
         scopes: None,
         subscription_type: None,
     };
-    cred1
-        .save(&path)
-        .expect("should save initial credential file");
+    cred1.save(&path).unwrap();
 
     let provider = FileCredentialProvider::new(path.clone());
-    let r1 = provider
-        .get_credential()
-        .expect("should return initial credential");
-    assert_eq!(r1.secret, "token-v1", "initial read should return token-v1");
+    let r1 = provider.get_credential().unwrap();
+    assert_eq!(r1.secret.expose_secret(), "token-v1");
 
     if let Ok(mut guard) = provider.cached.write()
         && let Some(ref mut c) = *guard
@@ -496,17 +379,10 @@ fn file_provider_detects_file_change() {
         token: "token-v2".to_owned(),
         ..cred1
     };
-    cred2
-        .save(&path)
-        .expect("should save updated credential file");
+    cred2.save(&path).unwrap();
 
-    let r2 = provider
-        .get_credential()
-        .expect("should return updated credential after file change");
-    assert_eq!(
-        r2.secret, "token-v2",
-        "second read should detect file change and return token-v2"
-    );
+    let r2 = provider.get_credential().unwrap();
+    assert_eq!(r2.secret.expose_secret(), "token-v2");
 }
 
 struct StaticProvider {
@@ -517,7 +393,7 @@ struct StaticProvider {
 impl CredentialProvider for StaticProvider {
     fn get_credential(&self) -> Option<Credential> {
         self.token.as_ref().map(|t| Credential {
-            secret: t.clone(),
+            secret: SecretString::from(t.as_str()),
             source: CredentialSource::Environment,
         })
     }
@@ -538,10 +414,8 @@ fn chain_first_wins() {
             name: "b",
         }),
     ]);
-    let cred = chain
-        .get_credential()
-        .expect("chain should return credential from first provider");
-    assert_eq!(cred.secret, "first", "first provider in chain should win");
+    let cred = chain.get_credential().unwrap();
+    assert_eq!(cred.secret.expose_secret(), "first");
 }
 
 #[test]
@@ -556,13 +430,8 @@ fn chain_skips_empty() {
             name: "fb",
         }),
     ]);
-    let cred = chain
-        .get_credential()
-        .expect("chain should fall through to second provider");
-    assert_eq!(
-        cred.secret, "fallback",
-        "chain should skip empty provider and use fallback"
-    );
+    let cred = chain.get_credential().unwrap();
+    assert_eq!(cred.secret.expose_secret(), "fallback");
 }
 
 #[test]
@@ -577,44 +446,32 @@ fn chain_all_empty_returns_none() {
             name: "b",
         }),
     ]);
-    assert!(
-        chain.get_credential().is_none(),
-        "chain with all empty providers should return None"
-    );
+    assert!(chain.get_credential().is_none());
 }
 
 #[test]
 fn chain_empty_providers_returns_none() {
     let chain = CredentialChain::new(vec![]);
-    assert!(
-        chain.get_credential().is_none(),
-        "chain with no providers should return None"
-    );
+    assert!(chain.get_credential().is_none());
 }
 
 #[test]
 fn claude_code_default_path_uses_home() {
     // NOTE: depends on $HOME being set: typical in CI and dev
     if let Some(path) = claude_code_default_path() {
-        assert!(
-            path.ends_with(".claude/.credentials.json"),
-            "default path should end with .claude/.credentials.json"
-        );
+        assert!(path.ends_with(".claude/.credentials.json"));
     }
 }
 
 #[test]
 fn claude_code_provider_missing_file_returns_none() {
     let result = claude_code_provider(Path::new("/nonexistent/.credentials.json"));
-    assert!(
-        result.is_none(),
-        "claude_code_provider for missing file should return None"
-    );
+    assert!(result.is_none());
 }
 
 #[test]
 fn claude_code_provider_static_token() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
         token: "sk-ant-api-static".to_owned(),
@@ -623,83 +480,52 @@ fn claude_code_provider_static_token() {
         scopes: None,
         subscription_type: None,
     };
-    cred.save(&path)
-        .expect("should save static credential file");
+    cred.save(&path).unwrap();
 
     let provider = claude_code_provider(&path).expect("should return provider");
-    let resolved = provider
-        .get_credential()
-        .expect("should resolve static file credential");
-    assert_eq!(
-        resolved.secret, "sk-ant-api-static",
-        "resolved secret should match static token"
-    );
-    assert_eq!(
-        resolved.source,
-        CredentialSource::File,
-        "static token should have File source"
-    );
+    let resolved = provider.get_credential().unwrap();
+    assert_eq!(resolved.secret.expose_secret(), "sk-ant-api-static");
+    assert_eq!(resolved.source, CredentialSource::File);
 }
 
 #[tokio::test]
 async fn claude_code_provider_with_access_token_alias() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     std::fs::write(
         &path,
         r#"{"accessToken": "sk-ant-oat-cc-token", "refreshToken": "rt-cc"}"#,
     )
-    .expect("should write credential file with accessToken alias");
+    .unwrap();
 
     let provider = claude_code_provider(&path).expect("should return provider");
-    let resolved = provider
-        .get_credential()
-        .expect("should resolve accessToken alias credential");
-    assert_eq!(
-        resolved.secret, "sk-ant-oat-cc-token",
-        "resolved secret should match accessToken value"
-    );
-    assert_eq!(
-        resolved.source,
-        CredentialSource::OAuth,
-        "OAuth-prefixed accessToken should have OAuth source"
-    );
+    let resolved = provider.get_credential().unwrap();
+    assert_eq!(resolved.secret.expose_secret(), "sk-ant-oat-cc-token");
+    assert_eq!(resolved.source, CredentialSource::OAuth);
 }
 
 #[tokio::test]
 async fn claude_code_provider_with_claude_code_oauth_wrapper() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     std::fs::write(
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped"}}"#,
     )
-    .expect("should write credential file in claudeAiOauth wrapper format");
+    .unwrap();
 
     let provider = claude_code_provider(&path).expect("should return provider for wrapped format");
-    let resolved = provider
-        .get_credential()
-        .expect("should resolve wrapped OAuth credential");
-    assert_eq!(
-        resolved.secret, "sk-ant-oat-wrapped",
-        "resolved secret should match wrapped accessToken"
-    );
-    assert_eq!(
-        resolved.source,
-        CredentialSource::OAuth,
-        "wrapped OAuth token should have OAuth source"
-    );
+    let resolved = provider.get_credential().unwrap();
+    assert_eq!(resolved.secret.expose_secret(), "sk-ant-oat-wrapped");
+    assert_eq!(resolved.source, CredentialSource::OAuth);
 }
 
 #[test]
 fn claude_code_provider_malformed_returns_none() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
-    std::fs::write(&path, "not valid json").expect("should write malformed credential file");
-    assert!(
-        claude_code_provider(&path).is_none(),
-        "malformed credential file should return None provider"
-    );
+    std::fs::write(&path, "not valid json").unwrap();
+    assert!(claude_code_provider(&path).is_none());
 }
 
 #[test]
@@ -720,10 +546,7 @@ fn seconds_remaining_none_when_no_expiry() {
         scopes: None,
         subscription_type: None,
     };
-    assert!(
-        cred.seconds_remaining().is_none(),
-        "credential without expiry should return None for seconds_remaining"
-    );
+    assert!(cred.seconds_remaining().is_none());
 }
 
 #[test]
@@ -735,9 +558,7 @@ fn seconds_remaining_negative_when_expired() {
         scopes: None,
         subscription_type: None,
     };
-    let remaining = cred
-        .seconds_remaining()
-        .expect("expired credential should still return Some for seconds_remaining");
+    let remaining = cred.seconds_remaining().unwrap();
     assert!(
         remaining < 0,
         "expected negative remaining, got {remaining}"
@@ -754,9 +575,7 @@ fn seconds_remaining_positive_for_future_expiry() {
         scopes: None,
         subscription_type: None,
     };
-    let remaining = cred
-        .seconds_remaining()
-        .expect("future-expiry credential should return Some for seconds_remaining");
+    let remaining = cred.seconds_remaining().unwrap();
     assert!(
         remaining > 0 && remaining <= 3600,
         "expected ~3600s remaining, got {remaining}"
@@ -767,7 +586,7 @@ fn seconds_remaining_positive_for_future_expiry() {
 
 #[tokio::test]
 async fn refreshing_provider_reads_credential_file_and_provides_token() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     let far_future_ms = unix_epoch_ms() + 7_200_000;
     let cred = CredentialFile {
@@ -777,22 +596,12 @@ async fn refreshing_provider_reads_credential_file_and_provides_token() {
         scopes: Some(vec!["user:inference".to_owned()]),
         subscription_type: Some("max".to_owned()),
     };
-    cred.save(&path)
-        .expect("should save credential file for refreshing provider");
+    cred.save(&path).unwrap();
 
     let provider = RefreshingCredentialProvider::new(path.clone()).expect("should create provider");
-    let resolved = provider
-        .get_credential()
-        .expect("should resolve initial credential from refreshing provider");
-    assert_eq!(
-        resolved.secret, "sk-ant-oat-initial-token",
-        "resolved secret should match initial token"
-    );
-    assert_eq!(
-        resolved.source,
-        CredentialSource::OAuth,
-        "OAuth token should have OAuth source"
-    );
+    let resolved = provider.get_credential().unwrap();
+    assert_eq!(resolved.secret.expose_secret(), "sk-ant-oat-initial-token");
+    assert_eq!(resolved.source, CredentialSource::OAuth);
 
     // Shut down background task to avoid leaking
     provider.shutdown();
@@ -800,7 +609,7 @@ async fn refreshing_provider_reads_credential_file_and_provides_token() {
 
 #[tokio::test]
 async fn refresh_write_back_preserves_subscription_type() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
         token: "sk-ant-oat-original".to_owned(),
@@ -809,13 +618,12 @@ async fn refresh_write_back_preserves_subscription_type() {
         scopes: Some(vec!["user:inference".to_owned()]),
         subscription_type: Some("max".to_owned()),
     };
-    cred.save(&path)
-        .expect("should save original credential file");
+    cred.save(&path).unwrap();
 
     // Simulate what refresh_loop does after a successful OAuth response:
     // read the original file, build a new CredentialFile with refreshed tokens,
     // and verify subscription_type is preserved in the write-back.
-    let original = CredentialFile::load(&path).expect("should load original credential file");
+    let original = CredentialFile::load(&path).unwrap();
     let refreshed = CredentialFile {
         token: "sk-ant-oat-refreshed".to_owned(),
         refresh_token: Some("rt-new".to_owned()),
@@ -823,20 +631,11 @@ async fn refresh_write_back_preserves_subscription_type() {
         scopes: original.scopes.clone(),
         subscription_type: original.subscription_type.clone(),
     };
-    refreshed
-        .save(&path)
-        .expect("should save refreshed credential file");
+    refreshed.save(&path).unwrap();
 
-    let reloaded = CredentialFile::load(&path).expect("should load refreshed credential file");
-    assert_eq!(
-        reloaded.token, "sk-ant-oat-refreshed",
-        "reloaded token should be the refreshed token"
-    );
-    assert_eq!(
-        reloaded.refresh_token.as_deref(),
-        Some("rt-new"),
-        "reloaded refresh_token should be the new one"
-    );
+    let reloaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(reloaded.token, "sk-ant-oat-refreshed");
+    assert_eq!(reloaded.refresh_token.as_deref(), Some("rt-new"));
     assert_eq!(
         reloaded.subscription_type.as_deref(),
         Some("max"),
@@ -846,7 +645,7 @@ async fn refresh_write_back_preserves_subscription_type() {
 
 #[tokio::test]
 async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
 
     // Write in Claude Code claudeAiOauth wrapper format (with subscriptionType)
@@ -854,15 +653,10 @@ async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type
         &path,
         r#"{"claudeAiOauth":{"accessToken":"sk-ant-oat-wrapped","refreshToken":"rt-wrapped","expiresAt":9999999999000,"subscriptionType":"pro_plus"}}"#,
     )
-    .expect("should write credential file in claudeAiOauth wrapper format with subscriptionType");
+    .unwrap();
 
-    let original =
-        CredentialFile::load(&path).expect("should load credential from claudeAiOauth wrapper");
-    assert_eq!(
-        original.subscription_type.as_deref(),
-        Some("pro_plus"),
-        "subscription_type should be parsed from wrapper"
-    );
+    let original = CredentialFile::load(&path).unwrap();
+    assert_eq!(original.subscription_type.as_deref(), Some("pro_plus"));
 
     // Simulate refresh write-back preserving subscription_type
     let refreshed = CredentialFile {
@@ -872,12 +666,9 @@ async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type
         scopes: None,
         subscription_type: original.subscription_type,
     };
-    refreshed
-        .save(&path)
-        .expect("should save refreshed credential with preserved subscription_type");
+    refreshed.save(&path).unwrap();
 
-    let reloaded =
-        CredentialFile::load(&path).expect("should reload credential after refresh write-back");
+    let reloaded = CredentialFile::load(&path).unwrap();
     assert_eq!(
         reloaded.subscription_type.as_deref(),
         Some("pro_plus"),
@@ -887,7 +678,7 @@ async fn refresh_write_back_from_claude_code_wrapper_preserves_subscription_type
 
 #[tokio::test]
 async fn refreshing_provider_shuts_down_cleanly() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(".credentials.json");
     let cred = CredentialFile {
         token: "sk-ant-oat-token".to_owned(),
@@ -896,8 +687,7 @@ async fn refreshing_provider_shuts_down_cleanly() {
         scopes: None,
         subscription_type: None,
     };
-    cred.save(&path)
-        .expect("should save credential file for shutdown test");
+    cred.save(&path).unwrap();
 
     let provider = RefreshingCredentialProvider::new(path).expect("should create provider");
     provider.shutdown();
@@ -907,7 +697,7 @@ async fn refreshing_provider_shuts_down_cleanly() {
 
 #[tokio::test]
 async fn credential_file_roundtrip_preserves_all_fields() {
-    let dir = tempfile::tempdir().expect("should create temp dir");
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("full.json");
 
     let original = CredentialFile {
@@ -917,29 +707,12 @@ async fn credential_file_roundtrip_preserves_all_fields() {
         scopes: Some(vec!["user:inference".to_owned(), "org:admin".to_owned()]),
         subscription_type: Some("enterprise".to_owned()),
     };
-    original
-        .save(&path)
-        .expect("should save credential file with all fields");
+    original.save(&path).unwrap();
 
-    let loaded = CredentialFile::load(&path).expect("should load credential file with all fields");
-    assert_eq!(
-        loaded.token, original.token,
-        "token should survive round-trip"
-    );
-    assert_eq!(
-        loaded.refresh_token, original.refresh_token,
-        "refresh_token should survive round-trip"
-    );
-    assert_eq!(
-        loaded.expires_at, original.expires_at,
-        "expires_at should survive round-trip"
-    );
-    assert_eq!(
-        loaded.scopes, original.scopes,
-        "scopes should survive round-trip"
-    );
-    assert_eq!(
-        loaded.subscription_type, original.subscription_type,
-        "subscription_type should survive round-trip"
-    );
+    let loaded = CredentialFile::load(&path).unwrap();
+    assert_eq!(loaded.token, original.token);
+    assert_eq!(loaded.refresh_token, original.refresh_token);
+    assert_eq!(loaded.expires_at, original.expires_at);
+    assert_eq!(loaded.scopes, original.scopes);
+    assert_eq!(loaded.subscription_type, original.subscription_type);
 }

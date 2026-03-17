@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use aletheia_koina::secret::SecretString;
+
 /// Role in the RBAC model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -84,8 +86,8 @@ pub struct Claims {
     expect(dead_code, reason = "auth facade internal; exercised by crate tests")
 )]
 pub(crate) struct TokenPair {
-    pub access_token: String,
-    pub refresh_token: String,
+    pub access_token: SecretString,
+    pub refresh_token: SecretString,
 }
 
 /// Actions that can be authorized via RBAC.

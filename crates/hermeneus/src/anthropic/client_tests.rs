@@ -4,6 +4,8 @@ use std::time::Duration;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use aletheia_koina::secret::SecretString;
+
 use super::*;
 use crate::error::Error;
 use crate::provider::{LlmProvider, ProviderConfig};
@@ -12,7 +14,7 @@ use crate::types::{CompletionRequest, Content, Message, Role};
 fn test_config_with(base_url: &str) -> ProviderConfig {
     ProviderConfig {
         provider_type: "anthropic".to_owned(),
-        api_key: Some("test-key".to_owned()),
+        api_key: Some(SecretString::from("test-key")),
         base_url: Some(base_url.to_owned()),
         default_model: None,
         max_retries: Some(0),
@@ -65,7 +67,7 @@ fn from_config_missing_api_key() {
 #[test]
 fn from_config_empty_api_key() {
     let config = ProviderConfig {
-        api_key: Some(String::new()),
+        api_key: Some(SecretString::from("")),
         ..ProviderConfig::default()
     };
     let err = AnthropicProvider::from_config(&config).expect_err("should fail with empty key");
@@ -78,7 +80,7 @@ fn from_config_empty_api_key() {
 #[test]
 fn from_config_valid() {
     let config = ProviderConfig {
-        api_key: Some("sk-test-123".to_owned()),
+        api_key: Some(SecretString::from("sk-test-123")),
         base_url: Some("https://custom.api.example.com".to_owned()),
         ..ProviderConfig::default()
     };
@@ -365,7 +367,7 @@ fn model_family_strips_last_segment() {
 #[test]
 fn merge_pricing_fills_defaults_for_unconfigured_models() {
     let config = ProviderConfig {
-        api_key: Some("sk-test".to_owned()),
+        api_key: Some(SecretString::from("sk-test")),
         pricing: HashMap::from([(
             "claude-sonnet-4-6".to_owned(),
             ModelPricing {
@@ -403,7 +405,7 @@ fn merge_pricing_fills_defaults_for_unconfigured_models() {
 #[test]
 fn merge_pricing_empty_operator_uses_all_defaults() {
     let config = ProviderConfig {
-        api_key: Some("sk-test".to_owned()),
+        api_key: Some(SecretString::from("sk-test")),
         pricing: HashMap::new(),
         ..ProviderConfig::default()
     };

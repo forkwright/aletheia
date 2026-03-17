@@ -31,7 +31,6 @@ jiff = { workspace = true }
 axum = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
-secrecy = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }

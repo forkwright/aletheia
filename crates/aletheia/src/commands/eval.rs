@@ -32,7 +32,7 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     } = args;
     let config = aletheia_dokimion::runner::RunConfig {
         base_url: url.clone(),
-        token,
+        token: token.map(aletheia_koina::secret::SecretString::from),
         filter: scenario,
         fail_fast: false,
         timeout_secs: timeout,

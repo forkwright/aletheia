@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use aletheia_koina::secret::SecretString;
 use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -63,7 +64,7 @@ pub(crate) struct RunArgs {
     pub yes: bool,
     /// Strict non-interactive: skip prompts, require --instance-path explicitly.
     pub non_interactive: bool,
-    pub api_key: Option<String>,
+    pub api_key: Option<SecretString>,
     pub auth_mode: Option<String>,
     pub api_provider: Option<String>,
     pub model: Option<String>,
@@ -72,7 +73,7 @@ pub(crate) struct RunArgs {
 /// User choices collected during the interactive (or non-interactive) flow.
 struct Answers {
     root: PathBuf,
-    api_key: Option<String>,
+    api_key: Option<SecretString>,
     api_provider: String,
     model: String,
     agent_id: String,
@@ -268,7 +269,7 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
     Ok(answers)
 }
 
-fn collect_credential() -> Result<Option<String>, InitError> {
+fn collect_credential() -> Result<Option<SecretString>, InitError> {
     let cred_choice: &str = cliclack::select("Anthropic API credential")
         .item("paste", "Paste API key", "")
         .item("env", "Use ANTHROPIC_API_KEY env var", "")
@@ -289,11 +290,11 @@ fn collect_credential() -> Result<Option<String>, InitError> {
                 })
                 .interact()
                 .context(PromptSnafu)?;
-            Ok(Some(key))
+            Ok(Some(SecretString::from(key)))
         }
         "env" => {
             let key = std::env::var("ANTHROPIC_API_KEY").context(MissingApiKeySnafu)?;
-            Ok(Some(key))
+            Ok(Some(SecretString::from(key)))
         }
         _ => Ok(None),
     }
@@ -321,7 +322,7 @@ fn scaffold(answers: &Answers) -> Result<(), InitError> {
 
     if let Some(ref key) = answers.api_key {
         let cred_path = root.join(format!("config/credentials/{}.json", answers.api_provider));
-        let cred_json = serde_json::json!({ "token": key });
+        let cred_json = serde_json::json!({ "token": key.expose_secret() });
         let json_str = serde_json::to_string_pretty(&cred_json).context(SerializeJsonSnafu)?;
         std::fs::write(&cred_path, json_str).context(WriteFileSnafu {
             path: cred_path.clone(),
@@ -549,7 +550,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let answers = Answers {
             root: dir.path().to_path_buf(),
-            api_key: Some("sk-ant-test-key".to_owned()),
+            api_key: Some(SecretString::from("sk-ant-test-key")),
             ..Answers::default()
         };
         scaffold(&answers).expect("scaffold should succeed");
@@ -608,7 +609,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let answers = Answers {
             root: dir.path().to_path_buf(),
-            api_key: Some("sk-ant-test".to_owned()),
+            api_key: Some(SecretString::from("sk-ant-test")),
             ..Answers::default()
         };
         scaffold(&answers).unwrap();
@@ -660,7 +661,7 @@ mod tests {
             root: Some(dir.path().to_path_buf()),
             yes: false,
             non_interactive: true,
-            api_key: Some("sk-ant-test-key".to_owned()),
+            api_key: Some(SecretString::from("sk-ant-test-key")),
             auth_mode: Some("token".to_owned()),
             api_provider: Some("anthropic".to_owned()),
             model: Some("claude-opus-4-6".to_owned()),

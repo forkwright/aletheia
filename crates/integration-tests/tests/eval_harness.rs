@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex as TokioMutex;
 use tracing::Instrument;
 
-use secrecy::SecretString;
+use aletheia_koina::secret::SecretString;
 use tokio::net::TcpListener;
 
 use aletheia_dokimion::runner::{RunConfig, ScenarioRunner};
@@ -173,7 +173,7 @@ async fn eval_nous_scenarios_pass() {
 
     let config = RunConfig {
         base_url,
-        token: Some(token),
+        token: Some(SecretString::from(token)),
         filter: Some("nous".to_owned()),
         fail_fast: false,
         timeout_secs: 10,
@@ -193,7 +193,7 @@ async fn eval_session_scenarios_pass() {
 
     let config = RunConfig {
         base_url,
-        token: Some(token),
+        token: Some(SecretString::from(token)),
         filter: Some("session".to_owned()),
         fail_fast: false,
         timeout_secs: 10,
@@ -216,7 +216,7 @@ async fn eval_conversation_scenarios_pass() {
 
     let config = RunConfig {
         base_url,
-        token: Some(token),
+        token: Some(SecretString::from(token)),
         filter: Some("conversation".to_owned()),
         fail_fast: false,
         timeout_secs: 15,
@@ -239,7 +239,7 @@ async fn eval_full_run_with_json_output() {
 
     let config = RunConfig {
         base_url,
-        token: Some(token),
+        token: Some(SecretString::from(token)),
         filter: None,
         fail_fast: false,
         timeout_secs: 15,

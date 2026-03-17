@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
 
@@ -38,7 +39,7 @@ impl std::fmt::Debug for ConfigFile {
 #[derive(Clone)]
 pub struct Config {
     pub url: String,
-    pub token: Option<String>,
+    pub token: Option<SecretString>,
     pub default_agent: Option<String>,
     pub default_session: Option<String>,
     /// Workspace root for agent operations. Resolved from `ALETHEIA_ROOT` env var, then config file.
@@ -55,7 +56,7 @@ impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
             .field("url", &self.url)
-            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("token", &self.token)
             .field("default_agent", &self.default_agent)
             .field("default_session", &self.default_session)
             .field("workspace_root", &self.workspace_root)
@@ -94,7 +95,7 @@ impl Config {
             url: cli_url
                 .or(file_config.url)
                 .unwrap_or_else(|| DEFAULT_URL.to_string()),
-            token: cli_token.or(file_config.token),
+            token: cli_token.or(file_config.token).map(SecretString::from),
             default_agent: cli_agent.or(file_config.default_agent),
             default_session: cli_session.or(file_config.default_session),
             workspace_root,
@@ -165,7 +166,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.url, "http://custom:9999");
-        assert_eq!(config.token.as_deref(), Some("tok"));
+        assert_eq!(
+            config.token.as_ref().map(SecretString::expose_secret),
+            Some("tok")
+        );
     }
 
     #[test]

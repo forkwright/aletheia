@@ -2,6 +2,7 @@
 
 use std::time::{Duration, Instant};
 
+use aletheia_koina::secret::SecretString;
 use tracing::{info, warn};
 
 use crate::client::EvalClient;
@@ -13,7 +14,7 @@ pub struct RunConfig {
     /// Base URL of the target instance.
     pub base_url: String,
     /// Bearer token for authenticated endpoints.
-    pub token: Option<String>,
+    pub token: Option<SecretString>,
     /// Substring filter on scenario IDs.
     pub filter: Option<String>,
     /// Stop on first failure.
@@ -41,7 +42,10 @@ pub struct ScenarioRunner {
 
 impl ScenarioRunner {
     pub fn new(config: RunConfig) -> Self {
-        let client = EvalClient::new(&config.base_url, config.token.clone());
+        let client = EvalClient::new(
+            &config.base_url,
+            config.token.as_ref().map(|t| t.expose_secret().to_owned()),
+        );
         Self { config, client }
     }
 

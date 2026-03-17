@@ -146,7 +146,10 @@ impl App {
     /// unreachable, or the server requires authentication and no token is configured.
     #[tracing::instrument(skip_all, fields(url = %config.url))]
     pub async fn init(config: Config) -> Result<Self> {
-        let client = ApiClient::new(&config.url, config.token.clone())?;
+        let client = ApiClient::new(
+            &config.url,
+            config.token.as_ref().map(|t| t.expose_secret().to_owned()),
+        )?;
 
         let theme = Theme::for_mode(config.theme);
         tracing::info!(depth = ?theme.depth, mode = ?theme.mode, "theme initialized");
@@ -681,7 +684,11 @@ pub(crate) mod test_helpers {
             keybindings: HashMap::new(),
             theme: None,
         };
-        let client = ApiClient::new(&config.url, config.token.clone()).unwrap();
+        let client = ApiClient::new(
+            &config.url,
+            config.token.as_ref().map(|t| t.expose_secret().to_owned()),
+        )
+        .unwrap();
         let theme = THEME.clone();
 
         App {

@@ -1,3 +1,4 @@
+use aletheia_koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 
 use crate::id::{NousId, PlanId, SessionId, TurnId};
@@ -192,6 +193,19 @@ pub struct ActiveTurn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthMode {
     pub mode: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct LoginResponse {
+    pub token: SecretString,
+}
+
+impl std::fmt::Debug for LoginResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoginResponse")
+            .field("token", &self.token)
+            .finish()
+    }
 }
 
 #[expect(dead_code, reason = "deserialization target for /api/v1/costs")]
@@ -404,6 +418,16 @@ mod tests {
         let json_agents = r#"{"agents": [{"id": "a1"}]}"#;
         let resp: AgentsResponse = serde_json::from_str(json_agents).unwrap();
         assert_eq!(resp.nous.len(), 1);
+    }
+
+    #[test]
+    fn login_response_debug_redacts_token() {
+        let lr = LoginResponse {
+            token: SecretString::from("secret-token-value"),
+        };
+        let debug = format!("{:?}", lr);
+        assert!(!debug.contains("secret-token-value"));
+        assert!(debug.contains("REDACTED"));
     }
 
     #[test]

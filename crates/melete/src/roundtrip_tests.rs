@@ -1,4 +1,8 @@
 //! Roundtrip and comprehensive tests for melete distillation pipeline.
+#![expect(
+    clippy::expect_used,
+    reason = "test assertions use .expect() for descriptive panic messages"
+)]
 
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role, ToolResultContent};
