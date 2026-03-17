@@ -760,6 +760,8 @@ pub struct CredentialConfig {
     /// Override path to the Claude Code credentials file.
     /// Defaults to `~/.claude/.credentials.json`.
     pub claude_code_credentials: Option<String>,
+    /// Circuit breaker settings for OAuth token refresh.
+    pub circuit_breaker: CircuitBreakerSettings,
 }
 
 impl Default for CredentialConfig {
@@ -767,6 +769,36 @@ impl Default for CredentialConfig {
         Self {
             source: "auto".to_owned(),
             claude_code_credentials: None,
+            circuit_breaker: CircuitBreakerSettings::default(),
+        }
+    }
+}
+
+/// Circuit breaker settings for OAuth token refresh.
+///
+/// Controls the three-state circuit breaker (Closed → Open → `HalfOpen`)
+/// that protects the OAuth refresh endpoint from repeated failed requests.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct CircuitBreakerSettings {
+    /// Number of failures within the window to trip the circuit.
+    pub failure_threshold: u32,
+    /// Sliding window (seconds) for failure counting.
+    pub failure_window_secs: u64,
+    /// Base cooldown (seconds) before probing recovery.
+    pub cooldown_secs: u64,
+    /// Maximum cooldown (seconds) after exponential backoff.
+    pub max_cooldown_secs: u64,
+}
+
+impl Default for CircuitBreakerSettings {
+    fn default() -> Self {
+        Self {
+            failure_threshold: 5,
+            failure_window_secs: 60,
+            cooldown_secs: 30,
+            max_cooldown_secs: 300,
         }
     }
 }

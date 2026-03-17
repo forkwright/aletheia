@@ -29,9 +29,10 @@ use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::ToolServices;
 use aletheia_pylon::router::build_router;
 use aletheia_pylon::state::AppState;
+use aletheia_symbolon::circuit_breaker::CircuitBreakerConfig;
 use aletheia_symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
-    RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
+    RefreshingCredentialProvider, claude_code_default_path, claude_code_provider_with_config,
 };
 use aletheia_symbolon::jwt::{JwtConfig, JwtManager};
 use aletheia_taxis::config::resolve_nous;
@@ -520,6 +521,14 @@ fn build_provider_registry(
     let cred_file = oikos.credentials().join("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
+    let cb_settings = &config.credential.circuit_breaker;
+    let cb_config = CircuitBreakerConfig {
+        failure_threshold: cb_settings.failure_threshold,
+        failure_window: std::time::Duration::from_secs(cb_settings.failure_window_secs),
+        cooldown: std::time::Duration::from_secs(cb_settings.cooldown_secs),
+        max_cooldown: std::time::Duration::from_secs(cb_settings.max_cooldown_secs),
+    };
+
     let claude_code_path = config
         .credential
         .claude_code_credentials
@@ -530,7 +539,7 @@ fn build_provider_registry(
     // When source is "claude-code", prioritize Claude Code credentials
     if cred_source == "claude-code" {
         if let Some(ref cc_path) = claude_code_path {
-            if let Some(provider) = claude_code_provider(cc_path) {
+            if let Some(provider) = claude_code_provider_with_config(cc_path, cb_config.clone()) {
                 chain.push(provider);
             }
         }
@@ -539,7 +548,9 @@ fn build_provider_registry(
     if cred_file.exists() {
         if let Some(cred) = CredentialFile::load(&cred_file) {
             if cred.has_refresh_token() {
-                if let Some(refreshing) = RefreshingCredentialProvider::new(cred_file.clone()) {
+                if let Some(refreshing) =
+                    RefreshingCredentialProvider::with_circuit_breaker(cred_file.clone(), cb_config.clone())
+                {
                     info!(path = %cred_file.display(), "credential file found (OAuth auto-refresh)");
                     chain.push(Box::new(refreshing));
                 } else {
@@ -564,7 +575,7 @@ fn build_provider_registry(
     // When source is "auto", add Claude Code credentials as lowest-priority fallback
     if cred_source == "auto" {
         if let Some(ref cc_path) = claude_code_path {
-            if let Some(provider) = claude_code_provider(cc_path) {
+            if let Some(provider) = claude_code_provider_with_config(cc_path, cb_config) {
                 chain.push(provider);
             }
         }

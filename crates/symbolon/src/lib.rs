@@ -7,6 +7,8 @@
 pub mod api_key;
 /// Unified auth facade composing JWT, API keys, passwords, and RBAC.
 pub(crate) mod auth;
+/// Three-state circuit breaker for OAuth token refresh.
+pub mod circuit_breaker;
 /// Credential provider implementations for LLM API key resolution.
 pub mod credential;
 /// Symbolon-specific error types and result alias.
