@@ -72,7 +72,7 @@ pub mod store;
 pub(crate) mod succession;
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types;
-/// Controlled relationship type vocabulary for knowledge graph validation.
+/// Relationship type normalization and validation for knowledge graph extraction.
 pub mod vocab;
 
 #[cfg(test)]

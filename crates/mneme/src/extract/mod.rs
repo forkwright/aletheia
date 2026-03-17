@@ -440,7 +440,17 @@ Rules:
 
         for rel in relationships {
             let relation_type = match crate::vocab::normalize_relation(&rel.relation) {
-                crate::vocab::RelationType::Valid(canonical) => canonical.to_owned(),
+                crate::vocab::RelationType::Known(canonical) => canonical.to_owned(),
+                crate::vocab::RelationType::Novel(normalized) => {
+                    tracing::info!(
+                        raw = %rel.relation,
+                        normalized = %normalized,
+                        source = %rel.source,
+                        target = %rel.target,
+                        "accepting novel relationship type from LLM"
+                    );
+                    normalized
+                }
                 crate::vocab::RelationType::Rejected => {
                     tracing::warn!(
                         relation = %rel.relation,
@@ -451,12 +461,12 @@ Rules:
                     result.relationships_skipped += 1;
                     continue;
                 }
-                crate::vocab::RelationType::Unknown(normalized) => {
-                    tracing::debug!(
-                        relation = %normalized,
+                crate::vocab::RelationType::Malformed => {
+                    tracing::warn!(
+                        relation = %rel.relation,
                         source = %rel.source,
                         target = %rel.target,
-                        "skipping relationship with unknown type"
+                        "rejected relationship with malformed type"
                     );
                     result.relationships_skipped += 1;
                     continue;
@@ -1166,7 +1176,7 @@ mod tests {
 
     #[cfg(feature = "mneme-engine")]
     #[test]
-    fn persist_skips_unknown_type() {
+    fn persist_accepts_novel_type() {
         let store = crate::knowledge_store::KnowledgeStore::open_mem()
             .expect("in-memory knowledge store should open successfully");
         let engine = ExtractionEngine::new(ExtractionConfig::default());
@@ -1195,9 +1205,61 @@ mod tests {
 
         let result = engine
             .persist(&extraction, &store, "session:test", "syn")
-            .expect("persist should succeed even when relationship type is unknown");
-        // Unknown types are now rejected: not persisted: to keep the vocab clean.
-        assert_eq!(result.relationships_inserted, 0);
+            .expect("persist should succeed with novel relationship type");
+        assert_eq!(
+            result.relationships_inserted, 1,
+            "novel LLM-generated types should be persisted"
+        );
+        assert_eq!(result.relationships_skipped, 0);
+
+        let neighborhood = store
+            .entity_neighborhood(&crate::id::EntityId::new_unchecked("nyx"))
+            .expect("entity neighborhood query for nyx should succeed");
+        assert!(
+            neighborhood
+                .rows
+                .iter()
+                .any(|row| row.iter().any(|v| v.get_str() == Some("MENTORS"))),
+            "novel relationship MENTORS should be stored as-is"
+        );
+    }
+
+    #[cfg(feature = "mneme-engine")]
+    #[test]
+    fn persist_rejects_malformed_type() {
+        let store = crate::knowledge_store::KnowledgeStore::open_mem()
+            .expect("in-memory knowledge store should open successfully");
+        let engine = ExtractionEngine::new(ExtractionConfig::default());
+
+        let extraction = Extraction {
+            entities: vec![
+                ExtractedEntity {
+                    name: "Nyx".to_owned(),
+                    entity_type: "person".to_owned(),
+                    description: String::new(),
+                },
+                ExtractedEntity {
+                    name: "Sol".to_owned(),
+                    entity_type: "person".to_owned(),
+                    description: String::new(),
+                },
+            ],
+            relationships: vec![ExtractedRelationship {
+                source: "Nyx".to_owned(),
+                relation: String::new(),
+                target: "Sol".to_owned(),
+                confidence: 0.7,
+            }],
+            facts: vec![],
+        };
+
+        let result = engine
+            .persist(&extraction, &store, "session:test", "syn")
+            .expect("persist should succeed even when relationship type is malformed");
+        assert_eq!(
+            result.relationships_inserted, 0,
+            "malformed types must not be persisted"
+        );
         assert_eq!(result.relationships_skipped, 1);
     }
 

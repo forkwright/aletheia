@@ -5,11 +5,13 @@
 #[non_exhaustive]
 pub enum RelationType {
     /// Matched a known vocabulary type (canonical uppercase form).
-    Valid(&'static str),
+    Known(&'static str),
+    /// Novel LLM-generated type not in the vocabulary, normalized to `UPPER_SNAKE_CASE`.
+    Novel(String),
     /// Matched a rejected type: must not be persisted.
     Rejected,
-    /// No match in vocabulary or rejected list: caller decides whether to persist.
-    Unknown(String),
+    /// Empty, whitespace-only, or invalid format after normalization.
+    Malformed,
 }
 
 /// Relationship types that must never enter the knowledge graph.
@@ -50,11 +52,12 @@ const CONTROLLED_VOCAB: &[&str] = &[
 
 /// Normalize a raw relationship string and classify it.
 ///
-/// 1. Trim, uppercase, replace spaces/hyphens with underscores.
-/// 2. Check rejected list → `Rejected`.
-/// 3. Check controlled vocabulary → `Valid`.
-/// 4. Check alias map → `Valid` (mapped canonical form).
-/// 5. Otherwise → `Unknown` (uppercased form returned for caller to decide).
+/// 1. Trim, uppercase, replace spaces/hyphens with underscores, strip non-alphanumeric/underscore.
+/// 2. Reject empty/malformed → `Malformed`.
+/// 3. Check rejected list → `Rejected`.
+/// 4. Check controlled vocabulary → `Known`.
+/// 5. Check alias map → `Known` (mapped canonical form).
+/// 6. Validate `UPPER_SNAKE_CASE` format → `Novel` if valid, `Malformed` if not.
 #[expect(
     clippy::expect_used,
     reason = "find() after contains() is guaranteed to succeed — both operate on the same CONTROLLED_VOCAB static"
@@ -65,14 +68,19 @@ pub fn normalize_relation(raw: &str) -> RelationType {
         .to_uppercase()
         .chars()
         .map(|c| if c == ' ' || c == '-' { '_' } else { c })
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
         .collect();
+
+    if normalized.is_empty() {
+        return RelationType::Malformed;
+    }
 
     if REJECTED_TYPES.contains(&normalized.as_str()) {
         return RelationType::Rejected;
     }
 
     if CONTROLLED_VOCAB.contains(&normalized.as_str()) {
-        return RelationType::Valid(
+        return RelationType::Known(
             CONTROLLED_VOCAB
                 .iter()
                 .find(|&&v| v == normalized)
@@ -81,16 +89,58 @@ pub fn normalize_relation(raw: &str) -> RelationType {
     }
 
     if let Some(mapped) = lookup_alias(&normalized) {
-        return RelationType::Valid(mapped);
+        return RelationType::Known(mapped);
     }
 
     // Also try the lowercase form against the alias map (handles "works on" → "works_on")
     let lower = normalized.to_lowercase();
     if let Some(mapped) = lookup_alias(&lower) {
-        return RelationType::Valid(mapped);
+        return RelationType::Known(mapped);
     }
 
-    RelationType::Unknown(normalized)
+    if is_valid_upper_snake_case(&normalized) {
+        RelationType::Novel(normalized)
+    } else {
+        RelationType::Malformed
+    }
+}
+
+/// Check that a string is valid `UPPER_SNAKE_CASE`: starts with an ASCII uppercase letter,
+/// contains only uppercase ASCII letters, digits, and underscores, with no leading/trailing
+/// or consecutive underscores.
+fn is_valid_upper_snake_case(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+
+    let bytes = s.as_bytes();
+
+    // Must start with an uppercase letter
+    if !bytes[0].is_ascii_uppercase() {
+        return false;
+    }
+
+    // Must end with a letter or digit, not underscore
+    if bytes[bytes.len() - 1] == b'_' {
+        return false;
+    }
+
+    // No consecutive underscores, only A-Z, 0-9, _
+    let mut prev_underscore = false;
+    for &b in bytes {
+        if b == b'_' {
+            if prev_underscore {
+                return false;
+            }
+            prev_underscore = true;
+        } else if b.is_ascii_uppercase() || b.is_ascii_digit() {
+            prev_underscore = false;
+        } else {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Alias map mirroring Python `vocab.py` `TYPE_MAP`.
@@ -177,15 +227,15 @@ mod tests {
     }
 
     #[test]
-    fn knows_valid() {
-        assert_eq!(normalize_relation("KNOWS"), RelationType::Valid("KNOWS"));
+    fn knows_known() {
+        assert_eq!(normalize_relation("KNOWS"), RelationType::Known("KNOWS"));
     }
 
     #[test]
-    fn works_at_valid() {
+    fn works_at_known() {
         assert_eq!(
             normalize_relation("WORKS_AT"),
-            RelationType::Valid("WORKS_AT")
+            RelationType::Known("WORKS_AT")
         );
     }
 
@@ -193,28 +243,60 @@ mod tests {
     fn works_on_alias() {
         assert_eq!(
             normalize_relation("works on"),
-            RelationType::Valid("WORKS_AT")
+            RelationType::Known("WORKS_AT")
         );
     }
 
     #[test]
     fn has_maps_to_owns() {
-        assert_eq!(normalize_relation("has"), RelationType::Valid("OWNS"));
+        assert_eq!(normalize_relation("has"), RelationType::Known("OWNS"));
     }
 
     #[test]
-    fn connected_to_valid() {
+    fn connected_to_known() {
         assert_eq!(
             normalize_relation("CONNECTED_TO"),
-            RelationType::Valid("CONNECTED_TO")
+            RelationType::Known("CONNECTED_TO")
         );
     }
 
     #[test]
-    fn unknown_type() {
+    fn novel_type_accepted() {
         assert_eq!(
             normalize_relation("SOME_NEW_TYPE"),
-            RelationType::Unknown("SOME_NEW_TYPE".to_owned())
+            RelationType::Novel("SOME_NEW_TYPE".to_owned())
+        );
+    }
+
+    #[test]
+    fn novel_type_mentors() {
+        assert_eq!(
+            normalize_relation("MENTORS"),
+            RelationType::Novel("MENTORS".to_owned())
+        );
+    }
+
+    #[test]
+    fn novel_type_authored_by() {
+        assert_eq!(
+            normalize_relation("AUTHORED_BY"),
+            RelationType::Novel("AUTHORED_BY".to_owned())
+        );
+    }
+
+    #[test]
+    fn novel_type_from_lowercase() {
+        assert_eq!(
+            normalize_relation("supervises"),
+            RelationType::Novel("SUPERVISES".to_owned())
+        );
+    }
+
+    #[test]
+    fn novel_type_from_mixed_case_with_spaces() {
+        assert_eq!(
+            normalize_relation("Reported By"),
+            RelationType::Novel("REPORTED_BY".to_owned())
         );
     }
 
@@ -222,7 +304,7 @@ mod tests {
     fn member_of_alias() {
         assert_eq!(
             normalize_relation("member of"),
-            RelationType::Valid("MEMBER_OF")
+            RelationType::Known("MEMBER_OF")
         );
     }
 
@@ -230,20 +312,20 @@ mod tests {
     fn hyphenated_alias() {
         assert_eq!(
             normalize_relation("works-at"),
-            RelationType::Valid("WORKS_AT")
+            RelationType::Known("WORKS_AT")
         );
     }
 
     #[test]
     fn case_insensitive() {
-        assert_eq!(normalize_relation("knows"), RelationType::Valid("KNOWS"));
+        assert_eq!(normalize_relation("knows"), RelationType::Known("KNOWS"));
     }
 
     #[test]
     fn whitespace_trimmed() {
         assert_eq!(
             normalize_relation("  KNOWS  "),
-            RelationType::Valid("KNOWS")
+            RelationType::Known("KNOWS")
         );
     }
 
@@ -263,7 +345,7 @@ mod tests {
     fn created_by_alias() {
         assert_eq!(
             normalize_relation("created by"),
-            RelationType::Valid("CREATED")
+            RelationType::Known("CREATED")
         );
     }
 
@@ -271,21 +353,38 @@ mod tests {
     fn depends_on_alias() {
         assert_eq!(
             normalize_relation("depends on"),
-            RelationType::Valid("DEPENDS_ON")
+            RelationType::Known("DEPENDS_ON")
         );
     }
 
     #[test]
-    fn normalize_empty_string() {
-        assert_eq!(normalize_relation(""), RelationType::Unknown(String::new()));
+    fn empty_string_malformed() {
+        assert_eq!(normalize_relation(""), RelationType::Malformed);
     }
 
     #[test]
-    fn normalize_whitespace_only() {
-        assert_eq!(
-            normalize_relation("   "),
-            RelationType::Unknown(String::new())
-        );
+    fn whitespace_only_malformed() {
+        assert_eq!(normalize_relation("   "), RelationType::Malformed);
+    }
+
+    #[test]
+    fn special_chars_only_malformed() {
+        assert_eq!(normalize_relation("@#$%"), RelationType::Malformed);
+    }
+
+    #[test]
+    fn starts_with_digit_malformed() {
+        assert_eq!(normalize_relation("123TYPE"), RelationType::Malformed);
+    }
+
+    #[test]
+    fn trailing_underscore_malformed() {
+        assert_eq!(normalize_relation("WORKS_AT_"), RelationType::Malformed);
+    }
+
+    #[test]
+    fn consecutive_underscores_malformed() {
+        assert_eq!(normalize_relation("WORKS__AT"), RelationType::Malformed);
     }
 
     #[test]
@@ -294,23 +393,23 @@ mod tests {
             let result = normalize_relation(entry);
             assert_eq!(
                 result,
-                RelationType::Valid(entry),
-                "{entry} should normalize to Valid"
+                RelationType::Known(entry),
+                "{entry} should normalize to Known"
             );
         }
     }
 
     #[test]
     fn normalize_case_variations() {
-        assert_eq!(normalize_relation("Knows"), RelationType::Valid("KNOWS"));
+        assert_eq!(normalize_relation("Knows"), RelationType::Known("KNOWS"));
         assert_eq!(
             normalize_relation("dEpEnDs_On"),
-            RelationType::Valid("DEPENDS_ON")
+            RelationType::Known("DEPENDS_ON")
         );
-        assert_eq!(normalize_relation("uses"), RelationType::Valid("USES"));
+        assert_eq!(normalize_relation("uses"), RelationType::Known("USES"));
         assert_eq!(
             normalize_relation("Lives In"),
-            RelationType::Valid("LIVES_IN")
+            RelationType::Known("LIVES_IN")
         );
     }
 
@@ -318,7 +417,7 @@ mod tests {
     fn normalize_owns_alias() {
         assert_eq!(
             normalize_relation("has_a"),
-            RelationType::Valid("OWNS"),
+            RelationType::Known("OWNS"),
             "'has_a' should normalize to OWNS"
         );
     }
@@ -327,7 +426,7 @@ mod tests {
     fn normalize_works_at_alias() {
         assert_eq!(
             normalize_relation("WORKS_ON"),
-            RelationType::Valid("WORKS_AT"),
+            RelationType::Known("WORKS_AT"),
             "'WORKS_ON' should normalize to WORKS_AT"
         );
     }
@@ -336,8 +435,26 @@ mod tests {
     fn normalize_created_alias() {
         assert_eq!(
             normalize_relation("built"),
-            RelationType::Valid("CREATED"),
+            RelationType::Known("CREATED"),
             "'built' should normalize to CREATED"
         );
+    }
+
+    #[test]
+    fn valid_upper_snake_case_formats() {
+        assert!(is_valid_upper_snake_case("MENTORS"));
+        assert!(is_valid_upper_snake_case("AUTHORED_BY"));
+        assert!(is_valid_upper_snake_case("DEPENDS_ON"));
+        assert!(is_valid_upper_snake_case("V2_COMPATIBLE"));
+    }
+
+    #[test]
+    fn invalid_upper_snake_case_formats() {
+        assert!(!is_valid_upper_snake_case(""));
+        assert!(!is_valid_upper_snake_case("_LEADING"));
+        assert!(!is_valid_upper_snake_case("TRAILING_"));
+        assert!(!is_valid_upper_snake_case("DOUBLE__UNDER"));
+        assert!(!is_valid_upper_snake_case("123"));
+        assert!(!is_valid_upper_snake_case("lower_case"));
     }
 }
