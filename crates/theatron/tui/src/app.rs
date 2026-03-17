@@ -580,10 +580,30 @@ impl App {
             }
             // Cache miss (terminal resized or first frame): fall through to full render.
         }
+        // PERF: Refresh the streaming markdown cache once per frame instead of on
+        // every text delta. Multiple deltas arriving between frames are batched
+        // into a single markdown::render call, reducing CPU from O(tokens) to O(frames).
+        self.refresh_streaming_markdown_cache();
         let links = view::render(self, frame);
         self.frame_cache = Some(frame.buffer_mut().clone());
         self.dirty = false;
         links
+    }
+
+    /// Rebuild the streaming markdown cache if the text has changed since the
+    /// last render. Called once per frame, not per token delta.
+    pub(crate) fn refresh_streaming_markdown_cache(&mut self) {
+        if self.streaming_text.is_empty() {
+            return;
+        }
+        let width = self.terminal_width.saturating_sub(4).max(1) as usize;
+        if self.markdown_cache.text == self.streaming_text && self.markdown_cache.width == width {
+            return;
+        }
+        self.markdown_cache.lines =
+            crate::markdown::render(&self.streaming_text, width, &self.theme, &self.highlighter).0;
+        self.markdown_cache.text = self.streaming_text.clone();
+        self.markdown_cache.width = width;
     }
 }
 

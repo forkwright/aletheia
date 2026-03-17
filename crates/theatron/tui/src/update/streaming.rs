@@ -28,14 +28,10 @@ pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: 
 pub(crate) fn handle_stream_text_delta(app: &mut App, text: String) {
     let clean = sanitize_for_display(&text);
     app.streaming_text.push_str(&clean);
-    // PERF: Update the markdown cache on every delta so the view can use the
-    // cached lines (cheap clone) instead of calling markdown::render per frame.
-    // The width subtracts 4 to match the view's inner_width.saturating_sub(2).
-    let width = app.terminal_width.saturating_sub(4).max(1) as usize;
-    app.markdown_cache.lines =
-        crate::markdown::render(&app.streaming_text, width, &app.theme, &app.highlighter).0;
-    app.markdown_cache.text = app.streaming_text.clone();
-    app.markdown_cache.width = width;
+    // PERF: Markdown re-rendering is deferred to the frame boundary (app.view)
+    // so that multiple text deltas arriving between frames are batched into a
+    // single markdown::render call. At 100 tokens/sec with 60fps rendering,
+    // this reduces markdown parses from ~100/sec to at most 60/sec.
     if app.auto_scroll {
         app.scroll_offset = 0;
     }
@@ -520,19 +516,26 @@ mod tests {
     }
 
     #[test]
-    fn text_delta_always_updates_markdown_cache() {
+    fn text_delta_defers_markdown_cache() {
         let mut app = test_app();
         handle_stream_text_delta(&mut app, "hello".to_string());
-        assert_eq!(app.markdown_cache.text, "hello");
-        assert!(!app.markdown_cache.lines.is_empty());
+        // PERF: markdown cache is no longer updated per-delta; it is refreshed
+        // once per frame in App::refresh_streaming_markdown_cache.
+        assert!(
+            app.markdown_cache.text.is_empty(),
+            "cache must not update on delta (deferred to frame boundary)"
+        );
+        assert_eq!(app.streaming_text, "hello");
     }
 
     #[test]
-    fn text_delta_cache_tracks_width() {
+    fn refresh_markdown_cache_updates_after_delta() {
         let mut app = test_app();
         app.terminal_width = 80;
         handle_stream_text_delta(&mut app, "hello\nworld".to_string());
+        app.refresh_streaming_markdown_cache();
         assert_eq!(app.markdown_cache.text, "hello\nworld");
+        assert!(!app.markdown_cache.lines.is_empty());
         // Width should be terminal_width - 4 (matching the view's inner_width - 2)
         assert_eq!(app.markdown_cache.width, 76);
     }
