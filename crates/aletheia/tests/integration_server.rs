@@ -58,14 +58,13 @@ enabled = false
     tmp
 }
 
-/// Send a raw HTTP GET request and return (status_code, body).
+/// Send a raw HTTP GET request and return (`status_code`, body).
 fn http_get(port: u16, path: &str) -> Option<(u16, String)> {
     let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).ok()?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .ok()?;
+    stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
 
-    let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    let request =
+        format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
     stream.write_all(request.as_bytes()).ok()?;
 
     let mut reader = BufReader::new(stream);
@@ -120,12 +119,11 @@ fn server_starts_serves_health_and_shuts_down() {
     let mut ready = false;
     for _ in 0..30 {
         std::thread::sleep(Duration::from_millis(500));
-        if let Some((code, _)) = http_get(port, "/api/health") {
-            if code == 200 {
+        if let Some((code, _)) = http_get(port, "/api/health")
+            && code == 200 {
                 ready = true;
                 break;
             }
-        }
     }
 
     if !ready {
@@ -157,7 +155,10 @@ fn server_starts_serves_health_and_shuts_down() {
     // Verify metrics endpoint
     let (code, body) = http_get(port, "/metrics").expect("metrics request");
     assert_eq!(code, 200);
-    assert!(body.contains("aletheia_uptime_seconds"), "metrics body missing uptime");
+    assert!(
+        body.contains("aletheia_uptime_seconds"),
+        "metrics body missing uptime"
+    );
 
     // Clean shutdown
     child.kill().expect("kill server");

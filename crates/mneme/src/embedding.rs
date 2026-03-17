@@ -365,32 +365,6 @@ mod candle_provider {
         }
     }
 
-    #[cfg(test)]
-    #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
-    mod tests {
-        use super::*;
-        use candle_core::{DType, Device, Tensor};
-
-        /// Zero-norm input must not produce NaN after L2 normalisation.
-        ///
-        /// When mean-pooling over an all-zero hidden-state tensor the resulting
-        /// pooled vector has norm 0.  Without the clamp this becomes 0/0 = NaN.
-        #[test]
-        fn pool_and_normalize_zero_input_no_nan() {
-            let device = Device::Cpu;
-            let embeddings =
-                Tensor::zeros(&[1usize, 2usize, 4usize], DType::F32, &device).expect("zero tensor");
-            let attention_mask =
-                Tensor::ones(&[1usize, 2usize], DType::F32, &device).expect("ones mask");
-            let result = CandelProvider::pool_and_normalize(&embeddings, &attention_mask, 1)
-                .expect("pool_and_normalize on zero input must not fail");
-            assert_eq!(result.len(), 1, "batch size must be preserved");
-            for v in &result[0] {
-                assert!(!v.is_nan(), "zero-norm input must not produce NaN, got {v}");
-            }
-        }
-    }
-
     impl EmbeddingProvider for CandelProvider {
         #[instrument(skip(self, text))]
         fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {
@@ -416,6 +390,32 @@ mod candle_provider {
         #[instrument(skip(self))]
         fn model_name(&self) -> &str {
             &self.model_name
+        }
+    }
+
+    #[cfg(test)]
+    #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+    mod tests {
+        use super::*;
+        use candle_core::{DType, Device, Tensor};
+
+        /// Zero-norm input must not produce NaN after L2 normalisation.
+        ///
+        /// When mean-pooling over an all-zero hidden-state tensor the resulting
+        /// pooled vector has norm 0.  Without the clamp this becomes 0/0 = NaN.
+        #[test]
+        fn pool_and_normalize_zero_input_no_nan() {
+            let device = Device::Cpu;
+            let embeddings =
+                Tensor::zeros(&[1usize, 2usize, 4usize], DType::F32, &device).expect("zero tensor");
+            let attention_mask =
+                Tensor::ones(&[1usize, 2usize], DType::F32, &device).expect("ones mask");
+            let result = CandelProvider::pool_and_normalize(&embeddings, &attention_mask, 1)
+                .expect("pool_and_normalize on zero input must not fail");
+            assert_eq!(result.len(), 1, "batch size must be preserved");
+            for v in &result[0] {
+                assert!(!v.is_nan(), "zero-norm input must not produce NaN, got {v}");
+            }
         }
     }
 }
