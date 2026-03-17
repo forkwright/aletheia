@@ -106,18 +106,18 @@ pub async fn run(
         total_deduped += deduped;
     }
 
-    println!(
-        "\nTotal: {} imported, {} deduplicated, {} flagged{}",
-        total_imported,
-        total_deduped,
-        flagged.len(),
-        if dry_run { " (DRY RUN)" } else { "" }
+    info!(
+        imported = total_imported,
+        deduplicated = total_deduped,
+        flagged = flagged.len(),
+        dry_run,
+        "migration complete"
     );
 
     if let Some(path) = review_file {
         if !flagged.is_empty() {
             write_review_file(path, &flagged)?;
-            println!("Review file written to {}", path.display());
+            info!(path = %path.display(), "review file written");
         }
     }
 
@@ -225,15 +225,16 @@ fn process_agent(
         }
     }
 
-    println!(
-        "agent: {agent_id} -- {} fetched, {} duplicates removed, {} imported, {} flagged",
-        records.len(),
-        agent_deduped,
-        unique.len(),
-        flagged
+    info!(
+        agent_id,
+        fetched = records.len(),
+        duplicates_removed = agent_deduped,
+        imported = unique.len(),
+        flagged = flagged
             .iter()
             .filter(|f| f.starts_with(&format!("[{agent_id}]")))
-            .count()
+            .count(),
+        "agent migration stats"
     );
 
     Ok((unique.len(), agent_deduped))

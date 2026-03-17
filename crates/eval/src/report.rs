@@ -2,6 +2,7 @@
 
 use owo_colors::OwoColorize;
 use serde::Serialize;
+use tracing::info;
 
 use crate::runner::RunReport;
 use crate::scenario::ScenarioOutcome;
@@ -12,12 +13,12 @@ pub fn print_report(report: &RunReport, base_url: &str) {
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
 
     if use_color {
-        println!("{} — {}", "Behavioral Eval".bold(), base_url.dimmed());
+        info!("{} — {}", "Behavioral Eval".bold(), base_url.dimmed());
     } else {
-        println!("Behavioral Eval — {base_url}");
+        info!("Behavioral Eval — {base_url}");
     }
-    println!("{}", "\u{2501}".repeat(39));
-    println!();
+    info!("{}", "\u{2501}".repeat(39));
+    info!("");
 
     let mut current_category = "";
 
@@ -25,9 +26,9 @@ pub fn print_report(report: &RunReport, base_url: &str) {
         if result.meta.category != current_category {
             current_category = result.meta.category;
             if use_color {
-                println!("  {}:", current_category.bold());
+                info!("  {}:", current_category.bold());
             } else {
-                println!("  {current_category}:");
+                info!("  {current_category}:");
             }
         }
 
@@ -35,45 +36,45 @@ pub fn print_report(report: &RunReport, base_url: &str) {
             ScenarioOutcome::Passed { duration } => {
                 let ms = duration.as_millis();
                 if use_color {
-                    println!(
+                    info!(
                         "    {}  {:<40} {}",
                         "PASS".green(),
                         result.meta.id,
                         format!("{ms}ms").dimmed()
                     );
                 } else {
-                    println!("    PASS  {:<40} {ms}ms", result.meta.id);
+                    info!("    PASS  {:<40} {ms}ms", result.meta.id);
                 }
             }
             ScenarioOutcome::Failed { duration, error } => {
                 let ms = duration.as_millis();
                 if use_color {
-                    println!(
+                    info!(
                         "    {}  {:<40} {}",
                         "FAIL".red(),
                         result.meta.id,
                         format!("{ms}ms").dimmed()
                     );
-                    println!("          {}", error.to_string().red());
+                    info!("          {}", error.to_string().red());
                 } else {
-                    println!("    FAIL  {:<40} {ms}ms", result.meta.id);
-                    println!("          {error}");
+                    info!("    FAIL  {:<40} {ms}ms", result.meta.id);
+                    info!("          {error}");
                 }
             }
             ScenarioOutcome::Skipped { reason } => {
                 if use_color {
-                    println!("    {}  {}", "SKIP".yellow(), result.meta.id,);
-                    println!("          {}", reason.dimmed());
+                    info!("    {}  {}", "SKIP".yellow(), result.meta.id,);
+                    info!("          {}", reason.dimmed());
                 } else {
-                    println!("    SKIP  {}", result.meta.id);
-                    println!("          {reason}");
+                    info!("    SKIP  {}", result.meta.id);
+                    info!("          {reason}");
                 }
             }
         }
     }
 
-    println!();
-    println!("{}", "\u{2501}".repeat(39));
+    info!("");
+    info!("{}", "\u{2501}".repeat(39));
 
     let total_secs = report.total_duration.as_secs_f64();
     let summary = format!(
@@ -83,12 +84,12 @@ pub fn print_report(report: &RunReport, base_url: &str) {
 
     if use_color {
         if report.failed > 0 {
-            println!("{}", summary.red().bold());
+            info!("{}", summary.red().bold());
         } else {
-            println!("{}", summary.green().bold());
+            info!("{}", summary.green().bold());
         }
     } else {
-        println!("{summary}");
+        info!("{summary}");
     }
 }
 
@@ -131,7 +132,7 @@ pub fn print_report_json(report: &RunReport) {
     };
 
     match serde_json::to_string_pretty(&json_report) {
-        Ok(json) => println!("{json}"),
+        Ok(json) => info!("{json}"),
         Err(e) => tracing::error!(error = %e, "failed to serialize eval report as JSON"),
     }
 }

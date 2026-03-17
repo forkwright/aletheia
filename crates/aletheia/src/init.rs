@@ -121,8 +121,9 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
         })?;
 
         if api_key.is_none() {
-            eprintln!("Warning: no API key provided. Set --api-key or ANTHROPIC_API_KEY.");
-            eprintln!("         The server will start in degraded mode without credentials.");
+            tracing::warn!(
+                "no API key provided — set --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
+            );
         }
 
         Answers {
@@ -138,8 +139,9 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
 
         if api_key.is_none() {
-            eprintln!("Warning: no API key provided. Set --api-key or ANTHROPIC_API_KEY.");
-            eprintln!("         The server will start in degraded mode without credentials.");
+            tracing::warn!(
+                "no API key provided — set --api-key or ANTHROPIC_API_KEY; server will start in degraded mode"
+            );
         }
 
         Answers {
@@ -162,9 +164,9 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
     let config_path = answers.root.join("config/aletheia.toml");
     if config_path.exists() {
         if is_non_interactive {
-            println!(
-                "Instance already exists at {}. Skipping (delete config/aletheia.toml to re-initialize).",
-                answers.root.display()
+            tracing::info!(
+                path = %answers.root.display(),
+                "instance already exists — skipping (delete config/aletheia.toml to re-initialize)"
             );
             return Ok(());
         }
@@ -181,7 +183,7 @@ pub(crate) fn run(args: RunArgs) -> Result<(), InitError> {
     scaffold(&answers)?;
 
     if is_non_interactive {
-        println!("Instance created at {}", answers.root.display());
+        tracing::info!(path = %answers.root.display(), "instance created");
     } else {
         cliclack::outro(format!(
             "Done! Start the server:\n\

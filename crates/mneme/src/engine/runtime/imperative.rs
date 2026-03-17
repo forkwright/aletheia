@@ -24,6 +24,8 @@ use crate::engine::runtime::db::{
 };
 use crate::engine::runtime::relation::InputRelationHandle;
 use crate::engine::runtime::transact::SessionTx;
+use tracing::debug;
+
 use crate::engine::{DataValue, DbCore as Db, NamedRows, Poison, Storage, ValidityTs};
 
 enum ControlCode {
@@ -278,7 +280,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 }
                 ImperativeStmt::TempDebug { temp, .. } => {
                     let relation = tx.get_relation(temp, false)?;
-                    println!("{}: {:?}", temp, relation.as_named_rows(tx)?);
+                    debug!(relation = %temp, rows = ?relation.as_named_rows(tx)?, "temp debug");
                     ret = NamedRows::default();
                 }
                 ImperativeStmt::SysOp { sysop, .. } => {
