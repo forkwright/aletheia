@@ -74,7 +74,7 @@ impl SseEventRouter {
             } => self.on_tool_failed(nous_id, tool_name, error),
             SseEvent::StatusUpdate { nous_id, status } => self.on_status_update(nous_id, status),
             SseEvent::SessionCreated { .. } | SseEvent::SessionArchived { .. } => {
-                // Session lifecycle events are noted but don't update EventState
+                // NOTE: Session lifecycle events are noted but don't update EventState
                 // directly: session list refresh is handled by the session service.
                 tracing::debug!(?event, "session lifecycle event (no state change)");
                 false
@@ -117,7 +117,7 @@ impl SseEventRouter {
         session_id: &crate::api::types::SessionId,
         turn_id: &crate::api::types::TurnId,
     ) -> bool {
-        // Only add if not already tracked (idempotent).
+        // NOTE: Only add if not already tracked (idempotent).
         let already = self
             .state
             .active_turns
@@ -149,7 +149,7 @@ impl SseEventRouter {
     // -- Tool events ---------------------------------------------------------
 
     fn on_tool_called(&mut self, nous_id: &NousId, tool_name: &str) -> bool {
-        // Update agent status to reflect tool activity.
+        // NOTE: Update agent status to reflect tool activity.
         self.state
             .agent_statuses
             .insert(nous_id.clone(), format!("tool:{tool_name}"));
