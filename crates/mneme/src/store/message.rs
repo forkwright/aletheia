@@ -184,17 +184,36 @@ impl SessionStore {
     }
 
     /// Get message history within a token budget (most recent first, working backward).
+    ///
+    /// Iterates messages newest-first at the SQL level and stops once the
+    /// budget is exhausted, so only the necessary rows are loaded into memory.
+    /// At least one message is always returned (even if it alone exceeds the budget).
+    ///
+    /// # Errors
+    ///
+    /// Returns `Database` if the query fails.
     #[instrument(skip(self), level = "debug")]
     pub fn get_history_with_budget(
         &self,
         session_id: &str,
         max_tokens: i64,
     ) -> Result<Vec<Message>> {
-        let all = self.get_history(session_id, None)?;
-        let mut total: i64 = 0;
-        let mut result = Vec::new();
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT * FROM messages \
+                 WHERE session_id = ?1 AND is_distilled = 0 \
+                 ORDER BY seq DESC",
+            )
+            .context(error::DatabaseSnafu)?;
 
-        for msg in all.into_iter().rev() {
+        let mut rows = stmt.query([session_id]).context(error::DatabaseSnafu)?;
+
+        let mut result = Vec::new();
+        let mut total: i64 = 0;
+
+        while let Some(row) = rows.next().context(error::DatabaseSnafu)? {
+            let msg = map_message(row).context(error::DatabaseSnafu)?;
             if total + msg.token_estimate > max_tokens && !result.is_empty() {
                 break;
             }

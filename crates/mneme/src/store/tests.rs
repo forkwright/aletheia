@@ -409,6 +409,52 @@ fn budget_always_includes_at_least_one() {
     assert_eq!(history.len(), 1);
 }
 
+#[test]
+fn budget_loads_only_fitting_messages() {
+    let store = test_store();
+    store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create session");
+
+    // Insert 50 messages, each with 100 token estimate (total = 5000 tokens).
+    for i in 1..=50 {
+        store
+            .append_message(
+                "ses-1",
+                Role::User,
+                &format!("message {i}"),
+                None,
+                None,
+                100,
+            )
+            .expect("append message");
+    }
+
+    // Budget of 500 fits exactly 5 messages.
+    let history = store
+        .get_history_with_budget("ses-1", 500)
+        .expect("get history with budget");
+    assert_eq!(
+        history.len(),
+        5,
+        "budget of 500 should fit 5 messages at 100 tokens each"
+    );
+    assert_eq!(history[0].content, "message 46");
+    assert_eq!(history[4].content, "message 50");
+
+    // Budget that fits all messages returns everything.
+    let all = store
+        .get_history_with_budget("ses-1", 10_000)
+        .expect("get history with budget");
+    assert_eq!(
+        all.len(),
+        50,
+        "budget exceeding total should return all messages"
+    );
+    assert_eq!(all[0].content, "message 1");
+    assert_eq!(all[49].content, "message 50");
+}
+
 // --- Blackboard ---
 
 #[test]
