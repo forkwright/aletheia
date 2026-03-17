@@ -1,4 +1,3 @@
-#![allow(clippy::unwrap_used)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use super::*;

@@ -302,17 +302,17 @@ pub enum MessageActionKind {
     Inspect,
     #[allow(
         dead_code,
-        reason = "constructed in context action overlay; creation pending keybinding wiring"
+        reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]
     QuoteInReply,
     #[allow(
         dead_code,
-        reason = "constructed in context action overlay; creation pending keybinding wiring"
+        reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]
     RateResponse,
     #[allow(
         dead_code,
-        reason = "constructed in context action overlay; creation pending keybinding wiring"
+        reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]
     FlagForReview,
 }

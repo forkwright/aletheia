@@ -5,11 +5,11 @@
 //! graph intelligence (F.4), and succession chains.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![allow(
+#![expect(
     clippy::float_cmp,
     reason = "test assertions compare exact float constants"
 )]
-#![allow(
+#![expect(
     clippy::items_after_statements,
     reason = "scoped use imports in test functions"
 )]

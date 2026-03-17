@@ -1,4 +1,7 @@
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "pipeline stages not yet wired into main ingestion loop; lint fires in lib but not test target"
+)]
 //! Entity deduplication pipeline for merging semantically identical entities.
 //!
 //! Runs as a background maintenance task after ingestion batches. Without dedup,

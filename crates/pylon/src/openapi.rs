@@ -1,9 +1,9 @@
 //! `OpenAPI` specification generation.
-#![allow(clippy::needless_for_each)]
 #![expect(
     clippy::expect_used,
     reason = "OpenAPI JSON serialization is infallible"
 )]
+#![allow(clippy::needless_for_each)] // triggered by utoipa OpenApi derive macro
 
 use axum::http::header;
 use axum::response::IntoResponse;

@@ -1,5 +1,5 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
-#![allow(
+#![expect(
     clippy::cast_possible_truncation,
     reason = "proptest range 5..=30 is safe to cast to u32"
 )]
