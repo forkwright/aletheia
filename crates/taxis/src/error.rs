@@ -3,8 +3,9 @@
 //! Covers instance root discovery, configuration file reading, and
 //! TOML/JSON/Figment parsing failures during the configuration cascade.
 
-use snafu::Snafu;
 use std::path::PathBuf;
+
+use snafu::Snafu;
 
 /// Errors from configuration and path resolution.
 #[derive(Debug, Snafu)]

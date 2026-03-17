@@ -3,8 +3,9 @@
 //! These types prevent accidental mixing of ID kinds at compile time.
 //! Cross-crate identifiers (`NousId`, `SessionId`) live in `koina::id`.
 
-use serde::{Deserialize, Serialize};
 use std::fmt;
+
+use serde::{Deserialize, Serialize};
 
 /// Maximum byte length for mneme-local IDs.
 const MAX_ID_LEN: usize = 256;

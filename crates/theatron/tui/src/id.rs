@@ -1,8 +1,9 @@
 //! Newtype wrappers for domain identifiers in the TUI layer.
 
+use std::fmt;
+
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

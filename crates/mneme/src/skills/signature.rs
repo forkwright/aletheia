@@ -9,9 +9,10 @@
 //! 2. Collapse consecutive duplicates (`Read, Read, Read` → `Read`).
 //! 3. Produce a stable u64 hash for fast pre-filter.
 
-use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+use serde::{Deserialize, Serialize};
 
 use crate::skills::ToolCallRecord;
 

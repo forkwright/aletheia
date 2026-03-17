@@ -3,6 +3,13 @@
     clippy::expect_used,
     reason = "engine invariant — internal CozoDB algorithm correctness guarantee"
 )]
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+
+use compact_str::CompactString;
+use sha2::digest::FixedOutput;
+use sha2::{Digest, Sha256};
+
 use crate::engine::data::memcmp::MemCmpEncoder;
 use crate::engine::data::value::DataValue;
 use crate::engine::error::InternalResult as Result;
@@ -12,11 +19,6 @@ use crate::engine::fts::tokenizer::{
     RawTokenizer, RemoveLongFilter, SimpleTokenizer, SplitCompoundWords, Stemmer, StopWordFilter,
     TextAnalyzer, Tokenizer, WhitespaceTokenizer,
 };
-use compact_str::CompactString;
-use sha2::digest::FixedOutput;
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 
 pub(crate) mod ast;
 pub(crate) mod error;

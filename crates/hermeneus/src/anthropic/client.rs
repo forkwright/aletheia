@@ -1,10 +1,12 @@
 //! Anthropic Messages API provider.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 use rand::Rng as _;
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -12,13 +14,10 @@ use secrecy::SecretString;
 use snafu::ResultExt;
 use tracing::{Instrument as _, info, info_span};
 
-use std::collections::HashMap;
-
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
 use crate::types::{CompletionRequest, CompletionResponse};
-use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
 use super::wire::WireRequest;
