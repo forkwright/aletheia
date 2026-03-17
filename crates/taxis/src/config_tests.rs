@@ -87,9 +87,9 @@ fn resolve_uses_defaults_for_unknown_agent() {
     let config = AletheiaConfig::default();
     let resolved = resolve_nous(&config, "unknown-agent");
     assert_eq!(resolved.id, "unknown-agent");
-    assert_eq!(resolved.model, "claude-sonnet-4-6");
-    assert_eq!(resolved.context_tokens, 200_000);
-    assert!(!resolved.thinking_enabled);
+    assert_eq!(resolved.model.primary, "claude-sonnet-4-6");
+    assert_eq!(resolved.limits.context_tokens, 200_000);
+    assert!(!resolved.capabilities.thinking_enabled);
     assert_eq!(resolved.workspace, "instance/nous/unknown-agent");
     assert!(resolved.domains.is_empty());
 }
@@ -115,13 +115,13 @@ fn resolve_merges_agent_overrides() {
     });
 
     let resolved = resolve_nous(&config, "syn");
-    assert_eq!(resolved.model, "claude-opus-4-6");
-    assert_eq!(resolved.fallbacks, vec!["claude-sonnet-4-6"]);
+    assert_eq!(resolved.model.primary, "claude-opus-4-6");
+    assert_eq!(resolved.model.fallbacks, vec!["claude-sonnet-4-6"]);
     assert_eq!(resolved.name, Some("Synthetic".to_owned()));
     assert_eq!(resolved.workspace, "/home/user/nous/syn");
     assert_eq!(resolved.domains, vec!["code"]);
-    assert!(!resolved.thinking_enabled);
-    assert_eq!(resolved.agency, AgencyLevel::Standard);
+    assert!(!resolved.capabilities.thinking_enabled);
+    assert_eq!(resolved.capabilities.agency, AgencyLevel::Standard);
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn resolve_thinking_override() {
     });
 
     let resolved = resolve_nous(&config, "thinker");
-    assert!(resolved.thinking_enabled);
+    assert!(resolved.capabilities.thinking_enabled);
 }
 
 #[test]
@@ -262,8 +262,8 @@ fn agency_serde_roundtrip() {
 fn resolve_agency_inherits_global_default() {
     let config = AletheiaConfig::default();
     let resolved = resolve_nous(&config, "any");
-    assert_eq!(resolved.agency, AgencyLevel::Standard);
-    assert_eq!(resolved.max_tool_iterations, 200);
+    assert_eq!(resolved.capabilities.agency, AgencyLevel::Standard);
+    assert_eq!(resolved.capabilities.max_tool_iterations, 200);
 }
 
 #[test]
@@ -283,8 +283,8 @@ fn resolve_agency_unrestricted_sets_high_iterations() {
     });
 
     let resolved = resolve_nous(&config, "free");
-    assert_eq!(resolved.agency, AgencyLevel::Unrestricted);
-    assert_eq!(resolved.max_tool_iterations, 10_000);
+    assert_eq!(resolved.capabilities.agency, AgencyLevel::Unrestricted);
+    assert_eq!(resolved.capabilities.max_tool_iterations, 10_000);
 }
 
 #[test]
@@ -304,8 +304,8 @@ fn resolve_agency_restricted_uses_old_defaults() {
     });
 
     let resolved = resolve_nous(&config, "safe");
-    assert_eq!(resolved.agency, AgencyLevel::Restricted);
-    assert_eq!(resolved.max_tool_iterations, 50);
+    assert_eq!(resolved.capabilities.agency, AgencyLevel::Restricted);
+    assert_eq!(resolved.capabilities.max_tool_iterations, 50);
 }
 
 #[test]
@@ -326,13 +326,13 @@ fn resolve_agency_per_agent_overrides_global() {
     });
 
     let resolved = resolve_nous(&config, "override");
-    assert_eq!(resolved.agency, AgencyLevel::Unrestricted);
-    assert_eq!(resolved.max_tool_iterations, 10_000);
+    assert_eq!(resolved.capabilities.agency, AgencyLevel::Unrestricted);
+    assert_eq!(resolved.capabilities.max_tool_iterations, 10_000);
 
     // Agent without override should use global
     let other = resolve_nous(&config, "other");
-    assert_eq!(other.agency, AgencyLevel::Restricted);
-    assert_eq!(other.max_tool_iterations, 50);
+    assert_eq!(other.capabilities.agency, AgencyLevel::Restricted);
+    assert_eq!(other.capabilities.max_tool_iterations, 50);
 }
 
 #[test]

@@ -26,6 +26,8 @@ use aletheia_hermeneus::types::{Content, Message as HermeneusMessage, Role as He
 use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillResult};
 use aletheia_mneme::store::SessionStore;
 use aletheia_mneme::types::{Role as MnemeRole, Session, SessionType};
+#[cfg(test)]
+use aletheia_mneme::types::{SessionMetrics, SessionOrigin};
 
 use crate::error;
 
@@ -58,7 +60,7 @@ pub fn should_trigger_distillation(
     config: &DistillTriggerConfig,
 ) -> Option<String> {
     // WHY: never distill on the first turn: no history to summarize
-    if session.message_count <= 0 {
+    if session.metrics.message_count <= 0 {
         return None;
     }
 
@@ -74,10 +76,10 @@ pub fn should_trigger_distillation(
     }
 
     // NOTE: prefer actual context from last input; fall back to estimate
-    let actual_context = if session.last_input_tokens > 0 {
-        session.last_input_tokens
+    let actual_context = if session.metrics.last_input_tokens > 0 {
+        session.metrics.last_input_tokens
     } else {
-        session.token_count_estimate
+        session.metrics.token_count_estimate
     };
 
     #[expect(
@@ -90,25 +92,34 @@ pub fn should_trigger_distillation(
         return Some(format!("context={actual_context} >= 120K"));
     }
 
-    if session.message_count >= MESSAGE_COUNT_TRIGGER {
+    if session.metrics.message_count >= MESSAGE_COUNT_TRIGGER {
         return Some(format!(
             "message_count={} >= {MESSAGE_COUNT_TRIGGER}",
-            session.message_count
+            session.metrics.message_count
         ));
     }
 
-    if let Some(ref last) = session.last_distilled_at
+    if let Some(ref last) = session.metrics.last_distilled_at
         && let Ok(last_ts) = last.parse::<jiff::Timestamp>()
     {
         let age = jiff::Timestamp::now().duration_since(last_ts);
         let days = age.as_secs() / 86_400;
-        if days >= STALE_SESSION_DAYS && session.message_count >= STALE_SESSION_MIN_MESSAGES {
-            return Some(format!("stale ({days}d) + {} msgs", session.message_count));
+        if days >= STALE_SESSION_DAYS && session.metrics.message_count >= STALE_SESSION_MIN_MESSAGES
+        {
+            return Some(format!(
+                "stale ({days}d) + {} msgs",
+                session.metrics.message_count
+            ));
         }
     }
 
-    if session.distillation_count == 0 && session.message_count >= NEVER_DISTILLED_MESSAGE_TRIGGER {
-        return Some(format!("never distilled + {} msgs", session.message_count));
+    if session.metrics.distillation_count == 0
+        && session.metrics.message_count >= NEVER_DISTILLED_MESSAGE_TRIGGER
+    {
+        return Some(format!(
+            "never distilled + {} msgs",
+            session.metrics.message_count
+        ));
     }
 
     #[expect(
@@ -118,7 +129,9 @@ pub fn should_trigger_distillation(
         reason = "context_window * ratio is a rough threshold; precision/truncation acceptable"
     )]
     let threshold = (context_window as f64 * config.max_history_share) as u64;
-    if actual_context_u64 >= threshold && session.message_count >= LEGACY_THRESHOLD_MIN_MESSAGES {
+    if actual_context_u64 >= threshold
+        && session.metrics.message_count >= LEGACY_THRESHOLD_MIN_MESSAGES
+    {
         return Some(format!(
             "legacy threshold ({actual_context} >= {threshold})"
         ));
@@ -151,7 +164,7 @@ pub async fn maybe_distill(
     };
 
     // INVARIANT: idempotency guard: skip if distillation applied recently (< 60s) to protect against concurrent background tasks
-    if let Some(ref last) = session.last_distilled_at
+    if let Some(ref last) = session.metrics.last_distilled_at
         && let Ok(last_ts) = last.parse::<jiff::Timestamp>()
     {
         let age_secs = jiff::Timestamp::now().duration_since(last_ts).as_secs();
@@ -187,7 +200,7 @@ pub async fn maybe_distill(
         clippy::cast_possible_truncation,
         reason = "distillation_count is small non-negative"
     )]
-    let distill_count = session.distillation_count as u32;
+    let distill_count = session.metrics.distillation_count as u32;
     let result = engine
         .distill(&messages, nous_id, provider, distill_count + 1)
         .await
@@ -274,22 +287,26 @@ mod tests {
             id: "ses-1".to_owned(),
             nous_id: "test-nous".to_owned(),
             session_key: "main".to_owned(),
-            parent_session_id: None,
             status: aletheia_mneme::types::SessionStatus::Active,
             model: Some("test-model".to_owned()),
-            token_count_estimate: 1000,
-            message_count: 10,
-            last_input_tokens: 0,
-            bootstrap_hash: None,
-            distillation_count: 0,
             session_type: aletheia_mneme::types::SessionType::Primary,
-            last_distilled_at: None,
-            computed_context_tokens: 0,
-            thread_id: None,
-            transport: None,
-            display_name: None,
             created_at: String::new(),
             updated_at: String::new(),
+            metrics: SessionMetrics {
+                token_count_estimate: 1000,
+                message_count: 10,
+                last_input_tokens: 0,
+                bootstrap_hash: None,
+                distillation_count: 0,
+                last_distilled_at: None,
+                computed_context_tokens: 0,
+            },
+            origin: SessionOrigin {
+                parent_session_id: None,
+                thread_id: None,
+                transport: None,
+                display_name: None,
+            },
         };
         overrides(&mut session);
         session
@@ -298,7 +315,7 @@ mod tests {
     #[test]
     fn trigger_on_high_context() {
         let session = test_session(|s| {
-            s.last_input_tokens = 130_000;
+            s.metrics.last_input_tokens = 130_000;
         });
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
@@ -309,7 +326,7 @@ mod tests {
     #[test]
     fn trigger_on_message_count() {
         let session = test_session(|s| {
-            s.message_count = 160;
+            s.metrics.message_count = 160;
         });
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
@@ -320,8 +337,8 @@ mod tests {
     #[test]
     fn trigger_on_never_distilled() {
         let session = test_session(|s| {
-            s.message_count = 35;
-            s.distillation_count = 0;
+            s.metrics.message_count = 35;
+            s.metrics.distillation_count = 0;
         });
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
@@ -335,9 +352,9 @@ mod tests {
             .checked_sub(jiff::SignedDuration::from_hours(8 * 24))
             .expect("valid timestamp");
         let session = test_session(|s| {
-            s.message_count = 25;
-            s.distillation_count = 1;
-            s.last_distilled_at = Some(eight_days_ago.to_string());
+            s.metrics.message_count = 25;
+            s.metrics.distillation_count = 1;
+            s.metrics.last_distilled_at = Some(eight_days_ago.to_string());
         });
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
@@ -350,8 +367,8 @@ mod tests {
         let session = test_session(|s| {
             s.session_type = aletheia_mneme::types::SessionType::Ephemeral;
             s.session_key = "ask:demiurge".to_owned();
-            s.last_input_tokens = 130_000;
-            s.message_count = 200;
+            s.metrics.last_input_tokens = 130_000;
+            s.metrics.message_count = 200;
         });
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
@@ -365,8 +382,8 @@ mod tests {
     fn trigger_on_non_ephemeral_session_with_same_thresholds() {
         let session = test_session(|s| {
             s.session_type = aletheia_mneme::types::SessionType::Primary;
-            s.last_input_tokens = 130_000;
-            s.message_count = 200;
+            s.metrics.last_input_tokens = 130_000;
+            s.metrics.message_count = 200;
         });
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
@@ -379,9 +396,9 @@ mod tests {
     #[test]
     fn no_trigger_below_thresholds() {
         let session = test_session(|s| {
-            s.message_count = 5;
-            s.token_count_estimate = 1000;
-            s.distillation_count = 0;
+            s.metrics.message_count = 5;
+            s.metrics.token_count_estimate = 1000;
+            s.metrics.distillation_count = 0;
         });
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
@@ -391,9 +408,9 @@ mod tests {
     #[test]
     fn no_trigger_first_turn() {
         let session = test_session(|s| {
-            s.message_count = 0;
-            s.token_count_estimate = 200_000;
-            s.last_input_tokens = 200_000;
+            s.metrics.message_count = 0;
+            s.metrics.token_count_estimate = 200_000;
+            s.metrics.last_input_tokens = 200_000;
         });
         let config = DistillTriggerConfig::default();
         let result = should_trigger_distillation(&session, 200_000, &config);
@@ -403,9 +420,9 @@ mod tests {
     #[test]
     fn trigger_on_legacy_threshold() {
         let session = test_session(|s| {
-            s.message_count = 15;
-            s.token_count_estimate = 100_000;
-            s.distillation_count = 1;
+            s.metrics.message_count = 15;
+            s.metrics.token_count_estimate = 100_000;
+            s.metrics.distillation_count = 1;
         });
         let config = DistillTriggerConfig {
             max_history_share: 0.7,
@@ -479,7 +496,7 @@ mod tests {
             .expect("find session")
             .expect("session exists");
         assert_eq!(
-            session.distillation_count, 1,
+            session.metrics.distillation_count, 1,
             "distillation_count should be incremented"
         );
     }

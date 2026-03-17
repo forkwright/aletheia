@@ -21,7 +21,9 @@ use tracing::{info, instrument};
 
 use crate::error::{self, Result};
 use crate::migration;
-use crate::types::{Message, Role, Session, SessionStatus, SessionType};
+use crate::types::{
+    Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
+};
 
 /// The session store: wraps a `SQLite` connection.
 pub struct SessionStore {
@@ -93,30 +95,34 @@ pub(super) fn map_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> 
         id: row.get("id")?,
         nous_id: row.get("nous_id")?,
         session_key: row.get("session_key")?,
-        parent_session_id: row.get("parent_session_id")?,
         status: match status_str.as_str() {
             "archived" => SessionStatus::Archived,
             "distilled" => SessionStatus::Distilled,
             _ => SessionStatus::Active,
         },
         model: row.get("model")?,
-        token_count_estimate: row.get("token_count_estimate")?,
-        message_count: row.get("message_count")?,
-        last_input_tokens: row.get("last_input_tokens")?,
-        bootstrap_hash: row.get("bootstrap_hash")?,
-        distillation_count: row.get("distillation_count")?,
         session_type: match type_str.as_str() {
             "background" => SessionType::Background,
             "ephemeral" => SessionType::Ephemeral,
             _ => SessionType::Primary,
         },
-        last_distilled_at: row.get("last_distilled_at")?,
-        computed_context_tokens: row.get("computed_context_tokens")?,
-        thread_id: row.get("thread_id")?,
-        transport: row.get("transport")?,
-        display_name: row.get("display_name")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        metrics: SessionMetrics {
+            token_count_estimate: row.get("token_count_estimate")?,
+            message_count: row.get("message_count")?,
+            last_input_tokens: row.get("last_input_tokens")?,
+            bootstrap_hash: row.get("bootstrap_hash")?,
+            distillation_count: row.get("distillation_count")?,
+            last_distilled_at: row.get("last_distilled_at")?,
+            computed_context_tokens: row.get("computed_context_tokens")?,
+        },
+        origin: SessionOrigin {
+            parent_session_id: row.get("parent_session_id")?,
+            thread_id: row.get("thread_id")?,
+            transport: row.get("transport")?,
+            display_name: row.get("display_name")?,
+        },
     })
 }
 

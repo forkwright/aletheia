@@ -15,12 +15,16 @@ use crate::theme::Theme;
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let width = area.width as usize;
 
-    let cursor_char = if app.tick_count % BLINK_PERIOD_TICKS < BLINK_ON_TICKS {
+    let cursor_char = if app.viewport.tick_count % BLINK_PERIOD_TICKS < BLINK_ON_TICKS {
         "█"
     } else {
         " "
     };
-    let (before_cursor, after_cursor) = app.filter.text.split_at(app.filter.cursor);
+    let (before_cursor, after_cursor) = app
+        .interaction
+        .filter
+        .text
+        .split_at(app.interaction.filter.cursor);
 
     let mut left_spans = vec![
         Span::styled("/", theme.style_accent()),
@@ -29,12 +33,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         Span::styled(after_cursor, theme.style_fg()),
     ];
 
-    let right_text = if app.filter.text.is_empty() {
+    let right_text = if app.interaction.filter.text.is_empty() {
         String::new()
     } else {
         format!(
             "{}/{} matches",
-            app.filter.match_count, app.filter.total_count
+            app.interaction.filter.match_count, app.interaction.filter.total_count
         )
     };
 

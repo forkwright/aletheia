@@ -50,7 +50,7 @@ fn session_token_estimate_accumulates() {
         .unwrap();
 
     let session = store.find_session_by_id("ses-1").unwrap().unwrap();
-    assert_eq!(session.token_count_estimate, 450);
+    assert_eq!(session.metrics.token_count_estimate, 450);
 }
 
 #[test]

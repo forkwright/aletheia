@@ -114,8 +114,8 @@ fn message_updates_session_counts() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert_eq!(session.message_count, 2);
-    assert_eq!(session.token_count_estimate, 300);
+    assert_eq!(session.metrics.message_count, 2);
+    assert_eq!(session.metrics.token_count_estimate, 300);
 }
 
 #[test]
@@ -194,8 +194,8 @@ fn distillation_marks_and_recalculates() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert_eq!(session.message_count, 1);
-    assert_eq!(session.token_count_estimate, 50);
+    assert_eq!(session.metrics.message_count, 1);
+    assert_eq!(session.metrics.token_count_estimate, 50);
 }
 
 #[test]
@@ -563,8 +563,8 @@ fn record_distillation_increments_count() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert_eq!(session.distillation_count, 0);
-    assert!(session.last_distilled_at.is_none());
+    assert_eq!(session.metrics.distillation_count, 0);
+    assert!(session.metrics.last_distilled_at.is_none());
 
     store
         .record_distillation("ses-1", 20, 5, 50000, 2000, Some("sonnet"))
@@ -574,8 +574,8 @@ fn record_distillation_increments_count() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert_eq!(session.distillation_count, 1);
-    assert!(session.last_distilled_at.is_some());
+    assert_eq!(session.metrics.distillation_count, 1);
+    assert!(session.metrics.last_distilled_at.is_some());
 
     store
         .record_distillation("ses-1", 15, 3, 30000, 1500, None)
@@ -585,7 +585,7 @@ fn record_distillation_increments_count() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert_eq!(session.distillation_count, 2);
+    assert_eq!(session.metrics.distillation_count, 2);
 }
 
 #[test]
@@ -796,7 +796,7 @@ fn insert_distillation_summary_and_cleanup() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert_eq!(session.message_count, 2);
+    assert_eq!(session.metrics.message_count, 2);
 }
 
 /// Regression test for Bug #1245: the former implementation shifted undistilled
@@ -1147,7 +1147,7 @@ fn update_display_name_sets_name() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert!(session.display_name.is_none());
+    assert!(session.origin.display_name.is_none());
 
     store
         .update_display_name("ses-1", "My Chat")
@@ -1157,7 +1157,7 @@ fn update_display_name_sets_name() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert_eq!(session.display_name.as_deref(), Some("My Chat"));
+    assert_eq!(session.origin.display_name.as_deref(), Some("My Chat"));
 }
 
 #[test]
@@ -1174,7 +1174,7 @@ fn display_name_round_trip_via_list() {
     let sessions = store.list_sessions(Some("syn")).expect("list sessions");
     assert_eq!(sessions.len(), 1);
     assert_eq!(
-        sessions[0].display_name.as_deref(),
+        sessions[0].origin.display_name.as_deref(),
         Some("Research Chat"),
         "display_name should be returned by list_sessions after update"
     );
@@ -1198,5 +1198,5 @@ fn update_display_name_overwrites_previous() {
         .find_session_by_id("ses-1")
         .expect("query succeeds")
         .expect("entry must exist");
-    assert_eq!(session.display_name.as_deref(), Some("Second"));
+    assert_eq!(session.origin.display_name.as_deref(), Some("Second"));
 }
