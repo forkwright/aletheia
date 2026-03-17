@@ -1,6 +1,8 @@
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
+use aletheia_koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
+
 use super::error::{ApiError, AuthSnafu, HttpSnafu, Result, ServerSnafu};
 use super::types::*;
 
@@ -36,7 +38,7 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
     let mut headers = header::HeaderMap::new();
 
     if let Some(t) = token {
-        let auth_value = header::HeaderValue::from_str(&format!("Bearer {t}"))
+        let auth_value = header::HeaderValue::from_str(&format!("{BEARER_PREFIX}{t}"))
             .map_err(|_invalid| ApiError::InvalidToken)?;
         headers.insert(header::AUTHORIZATION, auth_value);
     }
@@ -47,11 +49,11 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
     );
     headers.insert(
         header::CONTENT_TYPE,
-        header::HeaderValue::from_static("application/json"),
+        header::HeaderValue::from_static(CONTENT_TYPE_JSON),
     );
     headers.insert(
         header::ACCEPT,
-        header::HeaderValue::from_static("application/json"),
+        header::HeaderValue::from_static(CONTENT_TYPE_JSON),
     );
 
     Client::builder()

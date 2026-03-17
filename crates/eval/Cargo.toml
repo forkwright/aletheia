@@ -12,6 +12,7 @@ publish = false
 workspace = true
 
 [dependencies]
+aletheia-koina = { path = "../koina" }
 reqwest = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
