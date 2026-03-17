@@ -3,7 +3,10 @@
 use super::*;
 
 #[test]
-#[expect(clippy::too_many_lines, reason = "comprehensive config default assertions")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "comprehensive config default assertions"
+)]
 fn defaults_are_sensible() {
     let config = AletheiaConfig::default();
     assert_eq!(
