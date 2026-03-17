@@ -495,6 +495,7 @@ fn apply_stored_relation(
     returning_mutation: ReturnMutation,
 ) -> Result<()> {
     match stored_relation {
+        // NOTE: no stored relation specified, query returns results directly
         None => {}
         Some(Left((name, span, op))) => {
             let head = prog.get_entry_out_head()?;

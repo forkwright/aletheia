@@ -28,6 +28,7 @@ impl<'a> SessionTx<'a> {
         all_data.sort_by(|a, b| {
             for (idx, dir) in &idx_sorters {
                 match a[*idx].cmp(&b[*idx]) {
+                    // NOTE: equal on this key, continue to next sort key
                     Ordering::Equal => {}
                     o => {
                         return match dir {

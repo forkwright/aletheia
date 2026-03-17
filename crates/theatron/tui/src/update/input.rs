@@ -110,6 +110,7 @@ pub(crate) fn handle_history_down(app: &mut App) {
             app.input.text = app.input.history[app.input.history.len() - 1 - idx].clone();
             app.input.cursor = app.input.text.len();
         }
+        // NOTE: already at latest input, no history to navigate
         None => {}
     }
 }

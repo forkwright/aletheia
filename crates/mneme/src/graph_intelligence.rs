@@ -302,7 +302,7 @@ impl crate::knowledge_store::KnowledgeStore {
                 "cluster" => {
                     ctx.clusters.insert(entity_id.to_owned(), cluster_id);
                 }
-                // pagerank_max meta entry: normalization already done in Datalog
+                // NOTE: pagerank_max meta entry, normalization already done in Datalog
                 _ => {}
             }
         }

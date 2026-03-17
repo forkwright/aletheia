@@ -50,6 +50,7 @@ pub fn stream_message(
 
             while let Some(event) = es.next().await {
                 match event {
+                    // NOTE: SSE connection opened, no action needed
                     Ok(EsEvent::Open) => {}
                     Ok(EsEvent::Message(msg)) => {
                         if let Some(parsed) = parse_stream_event(&msg.event, &msg.data) {

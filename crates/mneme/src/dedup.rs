@@ -254,7 +254,8 @@ pub(crate) fn classify_candidates(
         match MergeDecision::from_score(c.merge_score) {
             MergeDecision::AutoMerge => auto_merge.push(c),
             MergeDecision::Review => review.push(c),
-            MergeDecision::Skip => {} // discard
+            // NOTE: score below threshold, candidate discarded
+            MergeDecision::Skip => {}
         }
     }
 

@@ -81,6 +81,7 @@ pub fn handle_enter(app: &mut App) {
                     cursor,
                 });
             }
+            // NOTE: read-only fields cannot be edited
             FieldType::ReadOnly => {}
         }
     }
@@ -99,6 +100,7 @@ fn confirm_edit(s: &mut SettingsOverlay) {
             FieldType::Text => {
                 field.value = serde_json::Value::String(edit.buffer);
             }
+            // NOTE: ReadOnly and Boolean fields don't need text confirmation
             _ => {}
         }
     }

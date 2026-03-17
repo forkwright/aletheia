@@ -197,6 +197,7 @@ impl StreamAccumulator {
                                 | BlockBuilder::ServerToolUse { input_json, .. } => {
                                     input_json.push_str(&partial_json);
                                 }
+                                // NOTE: InputJsonDelta for non-tool blocks is ignored
                                 _ => {}
                             }
                             on_event(StreamEvent::InputJsonDelta { partial_json });

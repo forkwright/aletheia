@@ -91,6 +91,7 @@ pub fn discover(
 
             if let Some(required_ext) = ext {
                 match path.extension().and_then(OsStr::to_str) {
+                    // NOTE: extension matches, fall through to insertion
                     Some(e) if e == required_ext => {}
                     _ => continue,
                 }

@@ -145,6 +145,7 @@ impl ImperativeStmt {
                     prog.needs_write_locks(collector);
                 }
             }
+            // NOTE: these statements don't acquire relation locks
             ImperativeStmt::TempDebug { .. }
             | ImperativeStmt::Break { .. }
             | ImperativeStmt::Continue { .. }
@@ -189,6 +190,7 @@ impl ImperativeStmt {
                 SysOp::RemoveIndex(rel, idx) => {
                     collector.insert(CompactString::from(format!("{}:{}", rel.name, idx.name)));
                 }
+                // NOTE: other system operations don't require relation locks
                 _ => {}
             },
         }

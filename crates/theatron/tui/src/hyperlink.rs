@@ -66,6 +66,7 @@ fn probe_hyperlink_support() -> bool {
     if let Ok(prog) = std::env::var("TERM_PROGRAM") {
         match prog.as_str() {
             "iTerm.app" | "WezTerm" | "ghostty" | "Ghostty" | "kitty" => return true,
+            // NOTE: unrecognized TERM_PROGRAM, continue probing other signals
             _ => {}
         }
     }

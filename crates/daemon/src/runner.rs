@@ -307,6 +307,7 @@ impl TaskRunner {
                     );
                     task.next_run = Some(jiff::Timestamp::now());
                 }
+                // NOTE: no missed cron window, no catch-up needed
                 Ok(false) => {}
                 Err(e) => {
                     tracing::warn!(

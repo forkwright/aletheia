@@ -670,6 +670,7 @@ async fn streaming_tool_events_emitted() {
         match event {
             TurnStreamEvent::ToolStart { .. } => tool_start_count += 1,
             TurnStreamEvent::ToolResult { .. } => tool_result_count += 1,
+            // NOTE: counting only ToolStart/ToolResult events
             _ => {}
         }
     }

@@ -89,6 +89,7 @@ impl SseConnection {
                             tokio::select! {
                                 biased;
                                 _ = child.cancelled() => return,
+                                // NOTE: backoff elapsed, retry connection
                                 _ = tokio::time::sleep(backoff) => {}
                             }
                             backoff = advance_backoff(backoff);
@@ -163,6 +164,7 @@ impl SseConnection {
                     tokio::select! {
                         biased;
                         _ = child.cancelled() => return,
+                        // NOTE: backoff elapsed, retry connection
                         _ = tokio::time::sleep(backoff) => {}
                     }
                 }

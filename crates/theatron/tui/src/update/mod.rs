@@ -116,6 +116,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
                     match c {
                         's' | 'S' => settings::handle_save(app).await,
                         'r' | 'R' => settings::handle_reset(app),
+                        // NOTE: other keys ignored in settings non-edit mode
                         _ => {}
                     }
                 }
@@ -205,6 +206,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         }
         Msg::HistoryLoaded { messages, .. } => api::handle_history_loaded(app, messages),
         Msg::CostLoaded { daily_total_cents } => api::handle_cost_loaded(app, daily_total_cents),
+        // NOTE: auth/API errors handled upstream, no local state update needed
         Msg::AuthResult(_) | Msg::ApiError(_) => {}
         Msg::NewSession => api::handle_new_session(app).await,
         Msg::SessionPickerNewSession => api::handle_session_picker_new(app).await,
@@ -243,6 +245,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemoryPageUp => memory::handle_page_up(app),
         Msg::MemoryFactsLoaded { facts, total } => memory::handle_facts_loaded(app, facts, total),
         Msg::MemoryDetailLoaded(detail) => memory::handle_detail_loaded(app, *detail),
+        // NOTE: memory data variants handled in memory inspector view
         Msg::MemoryEntitiesLoaded(_)
         | Msg::MemoryRelationshipsLoaded(_)
         | Msg::MemoryTimelineLoaded(_) => {}
@@ -255,6 +258,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::SessionSearchClose => search::handle_close(app),
         Msg::SessionSearchInput(c) => search::handle_input(app, c),
         Msg::SessionSearchBackspace => search::handle_backspace(app),
+        // NOTE: submit triggers search via SessionSearchSelect
         Msg::SessionSearchSubmit => {}
         Msg::SessionSearchUp => search::handle_up(app),
         Msg::SessionSearchDown => search::handle_down(app),

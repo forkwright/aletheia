@@ -282,6 +282,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                                     .expect("obtain_relation_locks returns one lock per input");
                                 e.insert(lock);
                             }
+                            // NOTE: write lock already acquired for this relation
                             Entry::Occupied(_) => {}
                         }
                     }

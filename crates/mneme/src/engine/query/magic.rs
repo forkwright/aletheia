@@ -42,6 +42,7 @@ impl NormalFormProgram {
                         }
                     }
                 }
+                // NOTE: fixed rules have no user-defined aggregations to exempt
                 NormalFormRulesOrFixed::Fixed { fixed: _ } => {}
             }
         }
@@ -278,6 +279,7 @@ impl NormalFormProgram {
                                         downstream_rules.insert(r_app.name.clone());
                                     }
                                 }
+                                // NOTE: non-rule atoms don't contribute downstream rules
                                 _ => {}
                             }
                         }

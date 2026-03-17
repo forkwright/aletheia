@@ -104,6 +104,7 @@ pub fn load_history(
         match msg.role {
             Role::System => continue,
             Role::ToolResult if !config.include_tool_messages => continue,
+            // NOTE: User and Assistant roles pass through for inclusion
             _ => {}
         }
 

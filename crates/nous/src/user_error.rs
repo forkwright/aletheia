@@ -192,6 +192,7 @@ mod tests {
         };
         let uf = to_user_facing(&err).expect("should convert");
         match uf {
+            // NOTE: expected variant matched, assertion passes
             UserFacingError::RateLimited {
                 retry_after_secs: Some(5),
             } => {}

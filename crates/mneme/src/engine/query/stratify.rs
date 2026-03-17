@@ -134,6 +134,7 @@ fn convert_normal_form_program_to_graph(
                         FixedRuleArg::InMem { name, .. } => {
                             ret.insert(name, true);
                         }
+                        // NOTE: stored relations are not in-memory, skip for stratification
                         FixedRuleArg::Stored { .. } | FixedRuleArg::NamedStored { .. } => {}
                     }
                 }

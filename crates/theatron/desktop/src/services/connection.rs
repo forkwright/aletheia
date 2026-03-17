@@ -239,6 +239,7 @@ impl ConnectionService {
                     tokio::select! {
                         biased;
                         _ = self.cancel.cancelled() => return,
+                        // NOTE: backoff elapsed, retry connection
                         _ = tokio::time::sleep(delay) => {}
                     }
                 }
@@ -259,6 +260,7 @@ impl ConnectionService {
             tokio::select! {
                 biased;
                 _ = self.cancel.cancelled() => return,
+                // NOTE: interval elapsed, proceed to health check
                 _ = tokio::time::sleep(HEALTH_CHECK_INTERVAL) => {}
             }
 
@@ -310,6 +312,7 @@ impl ConnectionService {
             tokio::select! {
                 biased;
                 _ = self.cancel.cancelled() => return false,
+                // NOTE: backoff elapsed, retry connection
                 _ = tokio::time::sleep(delay) => {}
             }
 

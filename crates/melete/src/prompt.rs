@@ -117,6 +117,7 @@ pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String
                         ContentBlock::Thinking { thinking, .. } => {
                             let _ = writeln!(block_text, "[Thinking: {thinking}]");
                         }
+                        // NOTE: other content block types not rendered in prompt summary
                         _ => {}
                     }
                 }

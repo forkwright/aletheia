@@ -251,6 +251,7 @@ impl SandboxPolicy {
             .map_err(|e| std::io::Error::other(format!("Landlock restrict_self failed: {e}")))?;
 
         match status.ruleset {
+            // NOTE: sandbox enforcement active, no action needed
             RulesetStatus::FullyEnforced | RulesetStatus::PartiallyEnforced => {}
             RulesetStatus::NotEnforced => {
                 if self.enforcement == SandboxEnforcement::Enforcing {
@@ -436,6 +437,7 @@ pub fn apply_sandbox(
                  Set enforcement=permissive to run without sandboxing.",
             ));
         }
+        // NOTE: Landlock ABI available, proceed with sandbox setup
         (Some(_), _) => {}
     }
 
