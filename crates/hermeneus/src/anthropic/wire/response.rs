@@ -1,8 +1,7 @@
 use serde::Deserialize;
 
-use crate::types::{CompletionResponse, ContentBlock, Usage};
-
 use super::parse_stop_reason;
+use crate::types::{CompletionResponse, ContentBlock, Usage};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct WireResponse {

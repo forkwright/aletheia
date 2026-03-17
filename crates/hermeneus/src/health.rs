@@ -167,7 +167,7 @@ impl ProviderHealthTracker {
             // NOTE: already healthy, no state transition needed
             ProviderHealth::Up => {}
             ProviderHealth::Down { .. } => {
-                // Success while Down means a probe succeeded: transition to Up
+                // NOTE: Success while Down means a probe succeeded: transition to Up.
                 inner.health = ProviderHealth::Up;
             }
         }
@@ -227,7 +227,7 @@ impl ProviderHealthTracker {
                         }
                     }
                     ProviderHealth::Down { .. } => {
-                        // Already down, no further transition
+                        // NOTE: Already down, no further transition.
                     }
                 }
             }

@@ -57,7 +57,7 @@ impl SessionStore {
         info!("Opening session store at {}", path.display());
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
 
-        // Performance pragmas
+        // PERF: WAL mode + NORMAL synchronous for write throughput without sacrificing crash safety.
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
@@ -65,7 +65,7 @@ impl SessionStore {
         )
         .context(error::DatabaseSnafu)?;
 
-        // Integrity check on open (if configured and file exists).
+        // SAFETY: Integrity check detects corruption before any reads occur.
         if recovery_config.enabled && recovery_config.integrity_check_on_open && path.exists() {
             match recovery::check_integrity(&conn) {
                 Ok(true) => { /* healthy */ }
@@ -204,7 +204,7 @@ impl SessionStore {
     }
 }
 
-// --- Row Mappers ---
+// NOTE: Row mappers are `pub(super)` so sub-modules (session, message, peripherals) can reuse them.
 
 /// Map a `SQLite` row to a [`Session`].
 pub(super) fn map_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {

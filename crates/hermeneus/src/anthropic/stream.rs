@@ -7,10 +7,9 @@
 use reqwest::Response;
 use tracing::warn;
 
+use super::wire::{WireContentBlockStart, WireDelta, WireStreamEvent, WireUsage};
 use crate::error::{self, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
-
-use super::wire::{WireContentBlockStart, WireDelta, WireStreamEvent, WireUsage};
 
 /// Event emitted during streaming completion.
 #[derive(Debug, Clone)]
@@ -174,6 +173,7 @@ impl StreamAccumulator {
                         }
                     }
                 };
+                // INVARIANT: blocks vec must be at least index+1 long before assignment.
                 let idx = index as usize;
                 while self.blocks.len() <= idx {
                     self.blocks.push(BlockBuilder::Text(String::new()));
@@ -227,7 +227,7 @@ impl StreamAccumulator {
             }
             WireStreamEvent::MessageDelta { delta, usage } => {
                 self.output_tokens = usage.output_tokens;
-                // NOTE: Accumulate cache token deltas reported in the streaming message_delta event.
+                // NOTE: Cache token deltas are reported in message_delta, not message_start.
                 self.cache_write_tokens += usage.cache_creation_input_tokens;
                 self.cache_read_tokens += usage.cache_read_input_tokens;
                 let stop_reason = delta
@@ -246,7 +246,7 @@ impl StreamAccumulator {
                 });
             }
             WireStreamEvent::MessageStop {} | WireStreamEvent::Ping {} => {
-                // NOTE: Final event or keepalive: nothing to accumulate.
+                // NOTE: Final event or keepalive — nothing to accumulate.
             }
             WireStreamEvent::Error { error } => {
                 return Err(super::error::map_sse_error(error));
@@ -271,7 +271,7 @@ impl StreamAccumulator {
                     input_json,
                 } => {
                     // WHY: An empty string means no input_json_delta events were sent: the
-                    // tool takes no arguments.  Skip parsing to avoid a spurious WARN.
+                    // tool takes no arguments. Skip parsing to avoid a spurious WARN.
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
                     } else {
@@ -295,7 +295,7 @@ impl StreamAccumulator {
                     name,
                     input_json,
                 } => {
-                    // NOTE: Same empty-input guard as ToolUse above.
+                    // WHY: Same empty-input guard as ToolUse above.
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
                     } else {
@@ -370,13 +370,13 @@ pub(crate) fn parse_sse_stream(
             break; // NOTE: EOF
         }
 
-        // NOTE: Lossy UTF-8: non-UTF8 bytes (e.g. from a misconfigured proxy) are
+        // WHY: Lossy UTF-8 so non-UTF8 bytes (e.g. from a misconfigured proxy) are
         // replaced with U+FFFD rather than aborting the stream.
         let line_cow = String::from_utf8_lossy(&raw_line);
         let line = line_cow.trim_end_matches(['\n', '\r']);
 
         if line.is_empty() {
-            // NOTE: Empty line = end of event. Dispatch if we have data.
+            // NOTE: Empty line = end of SSE event per the spec.
             if !current_data.is_empty() && current_event_type != "ping" {
                 let event: WireStreamEvent = serde_json::from_str(&current_data).map_err(|e| {
                     error::ApiRequestSnafu {
@@ -396,7 +396,7 @@ pub(crate) fn parse_sse_stream(
         } else if let Some(data) = line.strip_prefix("data: ") {
             data.clone_into(&mut current_data);
         }
-        // NOTE: Ignore other lines (comments, etc.)
+        // NOTE: Ignore other SSE lines (comments, etc.).
     }
 
     Ok(())

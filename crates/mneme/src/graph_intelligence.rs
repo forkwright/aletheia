@@ -499,13 +499,11 @@ impl crate::knowledge_store::KnowledgeStore {
     ) -> crate::error::Result<crate::succession::KnowledgeProfile> {
         use crate::engine::DataValue;
 
-        // Get top entities
         let mut params = std::collections::BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
 
         let result = self.run_query(crate::succession::NOUS_KNOWLEDGE_PROFILE, params)?;
 
-        // Load volatility scores for enrichment
         let volatility_scores = self.load_volatility_scores().unwrap_or_default();
 
         let mut top_entities = Vec::new();
@@ -530,7 +528,6 @@ impl crate::knowledge_store::KnowledgeStore {
             });
         }
 
-        // Get overall stats
         let mut params2 = std::collections::BTreeMap::new();
         params2.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
 
@@ -572,20 +569,17 @@ impl crate::knowledge_store::KnowledgeStore {
 
         let mut ctx = self.load_graph_context()?;
 
-        // Populate context_clusters from seed entities
         for seed_id in seed_entity_ids {
             if let Some(cluster_id) = ctx.clusters.get(seed_id) {
                 ctx.context_clusters.insert(*cluster_id);
             }
         }
 
-        // Compute BFS proximity
         let bfs_hops = self.compute_bfs_proximity(seed_entity_ids)?;
         for (entity_id, hops) in bfs_hops {
             ctx.proximity.insert(entity_id, Some(hops));
         }
 
-        // Compute supersession chain lengths
         ctx.chain_lengths = self.compute_chain_lengths()?;
 
         Ok(ctx)

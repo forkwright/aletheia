@@ -1,8 +1,7 @@
 use serde::Serialize;
 
-use crate::types::{CacheControl, CompletionRequest, Content, Role, ThinkingConfig, ToolChoice};
-
 use super::{compute_turn_cache_indices, content_with_cache_control};
+use crate::types::{CacheControl, CompletionRequest, Content, Role, ThinkingConfig, ToolChoice};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct WireRequest<'a> {
@@ -97,7 +96,7 @@ impl<'a> WireRequest<'a> {
         reason = "request construction with caching logic"
     )]
     pub(crate) fn from_request(req: &'a CompletionRequest, stream: Option<bool>) -> Self {
-        // Extract system prompt from messages (Anthropic wants it as a top-level field).
+        // WHY: Anthropic API requires system prompt as a top-level field, not in messages.
         let system_text = req.system.clone().or_else(|| {
             let system_texts: Vec<&str> = req
                 .messages
@@ -116,7 +115,7 @@ impl<'a> WireRequest<'a> {
             }
         });
 
-        // When caching, serialize system as array with cache_control on last block.
+        // WHY: Anthropic caching requires system as an array with cache_control on the last block.
         let system = system_text.map(|text| {
             if req.cache_system {
                 serde_json::json!([{

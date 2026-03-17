@@ -6,7 +6,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 use rand::Rng as _;
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -14,18 +13,18 @@ use secrecy::SecretString;
 use snafu::ResultExt;
 use tracing::{Instrument as _, info, info_span};
 
-use crate::error::{self, Result};
-use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
-use crate::types::{CompletionRequest, CompletionResponse};
+use aletheia_koina::credential::{CredentialProvider, CredentialSource};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
 use super::wire::WireRequest;
-
+use crate::error::{self, Result};
+use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::models::{
     BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_MS, DEFAULT_API_VERSION, DEFAULT_BASE_URL,
     DEFAULT_MAX_RETRIES, SUPPORTED_MODELS,
 };
+use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
+use crate::types::{CompletionRequest, CompletionResponse};
 
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {
@@ -325,7 +324,7 @@ impl AnthropicProvider {
                     return Ok(resp);
                 }
                 Err(e) => {
-                    // WHY: If content was already streamed, we can't retry: it would
+                    // WARNING: If content was already streamed, we can't retry: it would
                     // produce duplicates. Propagate immediately.
                     if content_started {
                         tracing::error!("SSE error after content started streaming — cannot retry");
