@@ -27,13 +27,13 @@ use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 ///        ]));
 ///
 /// let mut stream = tokenizer.token_stream("dampfschifffahrt");
-/// assert_eq!(stream.next().unwrap().text, "dampf");
-/// assert_eq!(stream.next().unwrap().text, "schiff");
-/// assert_eq!(stream.next().unwrap().text, "fahrt");
+/// assert_eq!(stream.next()?.text, "dampf");
+/// assert_eq!(stream.next()?.text, "schiff");
+/// assert_eq!(stream.next()?.text, "fahrt");
 /// assert_eq!(stream.next(), None);
 ///
 /// let mut stream = tokenizer.token_stream("brotbackautomat");
-/// assert_eq!(stream.next().unwrap().text, "brotbackautomat");
+/// assert_eq!(stream.next()?.text, "brotbackautomat");
 /// assert_eq!(stream.next(), None);
 /// ```
 ///
