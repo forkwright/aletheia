@@ -428,7 +428,6 @@ impl App {
                                     .created_at
                                     .map(|t| sanitize_for_display(&t).into_owned()),
                                 model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
-                                is_streaming: false,
                                 tool_calls: Vec::new(),
                             })
                         })
@@ -766,7 +765,6 @@ pub(crate) mod test_helpers {
                 text_lower,
                 timestamp: None,
                 model: None,
-                is_streaming: false,
                 tool_calls: Vec::new(),
             });
         }
@@ -877,7 +875,6 @@ mod tests {
             text_lower: "hello from tab0".to_string(),
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         }]
         .into();
@@ -899,7 +896,6 @@ mod tests {
             text_lower: "hello from tab1".to_string(),
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         }]
         .into();
@@ -961,7 +957,6 @@ mod tests {
             text_lower: "new".to_string(),
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         });
 

@@ -157,8 +157,8 @@ mod tests {
     }
 
     #[test]
-    #[expect(deprecated)]
-    fn deprecated_constant_still_exists() {
+    fn build_system_prompt_contains_all_standard_sections() {
+        let prompt = build_system_prompt(&DistillSection::all_standard());
         let sections = [
             "## Summary",
             "## Task Context",
@@ -169,10 +169,7 @@ mod tests {
             "## Corrections",
         ];
         for section in sections {
-            assert!(
-                DISTILLATION_SYSTEM_PROMPT.contains(section),
-                "missing section: {section}"
-            );
+            assert!(prompt.contains(section), "missing section: {section}");
         }
     }
 

@@ -121,27 +121,6 @@ impl Config {
         Ok(())
     }
 
-    #[expect(dead_code, reason = "called from login flow")]
-    #[expect(
-        clippy::unused_self,
-        reason = "consistent instance-method API; &self kept for tracing::instrument skip"
-    )]
-    #[tracing::instrument(skip(self, token))]
-    pub fn save_token(&self, token: &str) -> Result<()> {
-        let path = Self::config_path()?;
-        let mut file_config = Self::load_file().unwrap_or_default();
-        file_config.token = Some(token.to_string());
-        let toml_str = toml::to_string(&file_config).context(TomlSnafu)?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).context(IoSnafu {
-                context: "create config directory",
-            })?;
-        }
-        write_config(&path, &toml_str)?;
-        tracing::info!("saved token to {}", path.display());
-        Ok(())
-    }
-
     fn config_path() -> Result<PathBuf> {
         dirs::config_dir()
             .map(|d| d.join("aletheia").join("tui.toml"))

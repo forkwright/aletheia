@@ -820,7 +820,6 @@ mod tests {
             text_lower: "hi".to_string(),
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         });
         let event = Event::Terminal(key(KeyCode::Up));

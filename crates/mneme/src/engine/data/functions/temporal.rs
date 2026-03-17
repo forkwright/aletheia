@@ -38,11 +38,10 @@ pub(crate) const TERMINAL_VALIDITY: Validity = Validity {
     is_assert: Reverse(false),
 };
 
-#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn str2vld(s: &str) -> Result<ValidityTs> {
-    let ts: jiff::Timestamp = s.parse().map_err(|_| {
+    let ts: jiff::Timestamp = s.parse().map_err(|e| {
         BadTimeSnafu {
-            message: format!("bad datetime: {s}"),
+            message: format!("bad datetime: {s}: {e}"),
         }
         .build()
     })?;
@@ -65,7 +64,6 @@ pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
-#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let millis = match arg(args, 0)? {
         DataValue::Validity(vld) => vld.timestamp.0.0 / 1000,
@@ -81,9 +79,9 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
         }
     };
     let raw_arg = arg(args, 0)?;
-    let ts = jiff::Timestamp::from_millisecond(millis).map_err(|_| {
+    let ts = jiff::Timestamp::from_millisecond(millis).map_err(|e| {
         BadTimeSnafu {
-            message: format!("bad time: {raw_arg}"),
+            message: format!("bad time: {raw_arg}: {e}"),
         }
         .build()
     })?;
@@ -96,9 +94,9 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
                 }
                 .build()
             })?;
-            let tz = jiff::tz::TimeZone::get(tz_s).map_err(|_| {
+            let tz = jiff::tz::TimeZone::get(tz_s).map_err(|e| {
                 BadTimeSnafu {
-                    message: format!("bad timezone specification: {tz_s}"),
+                    message: format!("bad timezone specification: {tz_s}: {e}"),
                 }
                 .build()
             })?;
@@ -113,7 +111,6 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let s = arg(args, 0)?.get_str().ok_or_else(|| {
         TypeMismatchSnafu {
@@ -122,9 +119,9 @@ pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
         }
         .build()
     })?;
-    let ts: jiff::Timestamp = s.parse().map_err(|_| {
+    let ts: jiff::Timestamp = s.parse().map_err(|e| {
         BadTimeSnafu {
-            message: format!("bad datetime: {s}"),
+            message: format!("bad datetime: {s}: {e}"),
         }
         .build()
     })?;

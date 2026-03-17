@@ -44,8 +44,6 @@ pub(crate) struct Tab {
     pub(crate) session_id: Option<SessionId>,
     pub(crate) title: String,
     pub(crate) unread_count: u32,
-    #[expect(dead_code, reason = "reserved for unsaved-state indicator in tab bar")]
-    pub(crate) modified: bool,
     pub(crate) state: TabState,
 }
 
@@ -86,7 +84,6 @@ impl Tab {
             session_id: None,
             title: title.into(),
             unread_count: 0,
-            modified: false,
             state: TabState::new(),
         }
     }
@@ -447,7 +444,6 @@ mod tests {
             text_lower: "hello".to_string(),
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         });
         bar.tabs[0].state.scroll.scroll_offset = 42;

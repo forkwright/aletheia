@@ -323,10 +323,16 @@ pub enum OverlayKind {
     Help,
     AgentPicker,
     SessionPicker,
-    #[expect(dead_code, reason = "opened via command palette :sessions! command")]
+    #[expect(
+        dead_code,
+        reason = "matched in update/overlay.rs; no keybinding constructor yet"
+    )]
     SessionPickerAll,
     SystemStatus,
-    #[expect(dead_code, reason = "opened via command palette")]
+    #[expect(
+        dead_code,
+        reason = "matched in update/overlay.rs; no keybinding constructor yet"
+    )]
     Settings,
 }
 

@@ -236,26 +236,13 @@ async fn complete_malformed_body() {
 }
 
 #[test]
-#[expect(clippy::float_cmp, reason = "exact zero comparison in pricing test")]
 fn estimate_cost_no_pricing_returns_zero() {
     // Without configured pricing, cost is always 0.0 regardless of model.
     let pricing = HashMap::new();
-    assert_eq!(
-        estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100),
-        0.0
-    );
-    assert_eq!(
-        estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100),
-        0.0
-    );
-    assert_eq!(
-        estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1000, 100),
-        0.0
-    );
-    assert_eq!(
-        estimate_cost(&pricing, "some-unknown-model", 1000, 100),
-        0.0
-    );
+    assert!(estimate_cost(&pricing, "claude-opus-4-20250514", 1000, 100).abs() < f64::EPSILON);
+    assert!(estimate_cost(&pricing, "claude-sonnet-4-20250514", 1000, 100).abs() < f64::EPSILON);
+    assert!(estimate_cost(&pricing, "claude-haiku-4-5-20251001", 1000, 100).abs() < f64::EPSILON);
+    assert!(estimate_cost(&pricing, "some-unknown-model", 1000, 100).abs() < f64::EPSILON);
 }
 
 #[test]

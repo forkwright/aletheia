@@ -361,8 +361,7 @@ pub fn compute_effective_stability(
 ) -> f64 {
     let s_base = fact_type.base_stability_hours();
     let tier_mult = tier.stability_multiplier();
-    #[expect(clippy::cast_lossless, reason = "u32 to f64 is always lossless")]
-    let access_mult = 1.0 + 0.1 * (1.0 + access_count as f64).ln();
+    let access_mult = 1.0 + 0.1 * (1.0 + f64::from(access_count)).ln();
     s_base * tier_mult * access_mult
 }
 
