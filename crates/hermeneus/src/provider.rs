@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
+use aletheia_koina::secret::SecretString;
+
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
@@ -80,7 +82,7 @@ pub struct ProviderConfig {
     /// Provider type: `anthropic`, `openai`, `ollama`.
     pub provider_type: String,
     /// API key or credential reference.
-    pub api_key: Option<String>,
+    pub api_key: Option<SecretString>,
     /// Base URL override (for proxies or self-hosted).
     pub base_url: Option<String>,
     /// Default model to use.

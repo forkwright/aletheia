@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use aletheia_koina::secret::SecretString;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use secrecy::SecretString;
 use tokio::sync::Mutex;
 use tower::ServiceExt;
 

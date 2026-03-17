@@ -18,6 +18,8 @@ pub mod id;
 pub mod redact;
 /// Tracing layer that redacts sensitive field values before output.
 pub mod redacting_layer;
+/// Secret string newtype that prevents accidental leakage of sensitive values.
+pub mod secret;
 /// Tracing subscriber initialization for human-readable and JSON log output.
 pub mod tracing_init;
 

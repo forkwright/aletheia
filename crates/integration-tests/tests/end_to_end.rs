@@ -7,9 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as TokioMutex;
 
+use aletheia_koina::secret::SecretString;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use secrecy::SecretString;
 use tower::ServiceExt;
 
 use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};

@@ -12,9 +12,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use aletheia_koina::secret::SecretString;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use secrecy::SecretString;
 use tokio::sync::Mutex as TokioMutex;
 use tower::ServiceExt;
 
