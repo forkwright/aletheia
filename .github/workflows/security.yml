@@ -64,6 +64,10 @@ jobs:
           fetch-depth: 0
       - name: Gitleaks scan
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-        env:
+        # WHY: Principle of least privilege for CI workflows
+permissions:
+  contents: read
+
+env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
