@@ -220,6 +220,45 @@ fn env_provider_expired_oauth_falls_through() {
 
 #[test]
 #[expect(unsafe_code, reason = "test-only env var manipulation")]
+fn env_provider_within_skew_window_accepted() {
+    let var = "ALETHEIA_TEST_SKEW_OAUTH_505";
+    // Set exp to 10 seconds in the past: within the 30-second leeway window
+    let now_secs = unix_epoch_ms() / 1000;
+    let within_skew_token = make_test_oauth_token(now_secs - 10);
+    // SAFETY: test uses unique var name, no concurrent access
+    unsafe { std::env::set_var(var, &within_skew_token) };
+    let provider = EnvCredentialProvider::new(var);
+    let cred = provider.get_credential();
+    assert!(
+        cred.is_some(),
+        "token within clock skew leeway should be accepted"
+    );
+    assert_eq!(
+        cred.as_ref().map(|c| &c.source),
+        Some(&CredentialSource::OAuth)
+    );
+    unsafe { std::env::remove_var(var) };
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test-only env var manipulation")]
+fn env_provider_beyond_skew_window_rejected() {
+    let var = "ALETHEIA_TEST_BEYOND_SKEW_OAUTH_505";
+    // Set exp to 60 seconds in the past: beyond the 30-second leeway
+    let now_secs = unix_epoch_ms() / 1000;
+    let beyond_skew_token = make_test_oauth_token(now_secs - 60);
+    // SAFETY: test uses unique var name, no concurrent access
+    unsafe { std::env::set_var(var, &beyond_skew_token) };
+    let provider = EnvCredentialProvider::new(var);
+    assert!(
+        provider.get_credential().is_none(),
+        "token beyond clock skew leeway should be rejected"
+    );
+    unsafe { std::env::remove_var(var) };
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test-only env var manipulation")]
 fn env_provider_valid_oauth_returns_credential() {
     let var = "ALETHEIA_TEST_VALID_OAUTH_505";
     let future_secs = unix_epoch_ms() / 1000 + 7200;
