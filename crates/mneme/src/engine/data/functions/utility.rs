@@ -8,6 +8,7 @@ use std::str::FromStr;
 use serde_json::{Value, json};
 use snafu::ResultExt;
 
+use super::arg;
 use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::engine::data::json::JsonValue;
@@ -149,32 +150,32 @@ fn json2val_local(res: Value) -> DataValue {
 }
 
 pub(crate) fn op_is_null(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(matches!(args[0], DataValue::Null)))
+    Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Null)))
 }
 
 pub(crate) fn op_is_int(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
-        args[0],
+        arg(args, 0)?,
         DataValue::Num(Num::Int(_))
     )))
 }
 
 pub(crate) fn op_is_float(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
-        args[0],
+        arg(args, 0)?,
         DataValue::Num(Num::Float(_))
     )))
 }
 
 pub(crate) fn op_is_num(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
-        args[0],
+        arg(args, 0)?,
         DataValue::Num(Num::Int(_)) | DataValue::Num(Num::Float(_))
     )))
 }
 
 pub(crate) fn op_is_finite(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match &args[0] {
+    Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Num(Num::Int(_)) => true,
         DataValue::Num(Num::Float(f)) => f.is_finite(),
         _ => false,
@@ -182,48 +183,51 @@ pub(crate) fn op_is_finite(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_is_infinite(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match &args[0] {
+    Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Num(Num::Float(f)) => f.is_infinite(),
         _ => false,
     }))
 }
 
 pub(crate) fn op_is_nan(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match &args[0] {
+    Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Num(Num::Float(f)) => f.is_nan(),
         _ => false,
     }))
 }
 
 pub(crate) fn op_is_string(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(matches!(args[0], DataValue::Str(_))))
+    Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Str(_))))
 }
 
 pub(crate) fn op_is_list(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::from(matches!(
-        args[0],
+        arg(args, 0)?,
         DataValue::List(_) | DataValue::Set(_)
     )))
 }
 
 pub(crate) fn op_is_vec(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(matches!(args[0], DataValue::Vec(_))))
+    Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Vec(_))))
 }
 
 pub(crate) fn op_is_bytes(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(matches!(args[0], DataValue::Bytes(_))))
+    Ok(DataValue::from(matches!(
+        arg(args, 0)?,
+        DataValue::Bytes(_)
+    )))
 }
 
 pub(crate) fn op_is_uuid(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(matches!(args[0], DataValue::Uuid(_))))
+    Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Uuid(_))))
 }
 
 pub(crate) fn op_is_json(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(matches!(args[0], DataValue::Json(_))))
+    Ok(DataValue::from(matches!(arg(args, 0)?, DataValue::Json(_))))
 }
 
 pub(crate) fn op_to_bool(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match &args[0] {
+    Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Null => false,
         DataValue::Bool(b) => *b,
         DataValue::Num(n) => n.get_int() != Some(0),
@@ -248,7 +252,7 @@ pub(crate) fn op_to_bool(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_to_unity(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match &args[0] {
+    Ok(DataValue::from(match arg(args, 0)? {
         DataValue::Null => 0,
         DataValue::Bool(b) => *b as i64,
         DataValue::Num(n) => (n.get_float() != 0.) as i64,
@@ -274,7 +278,7 @@ pub(crate) fn op_to_unity(args: &[DataValue]) -> Result<DataValue> {
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Num(n) => match n.get_int() {
             None => {
                 let f = n.get_float();
@@ -303,7 +307,7 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Num(n) => n.get_float().into(),
         DataValue::Null => DataValue::from(0.0),
         DataValue::Bool(b) => DataValue::from(if *b { 1.0 } else { 0.0 }),
@@ -328,12 +332,12 @@ pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_to_string(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::Str(val2str(&args[0]).into()))
+    Ok(DataValue::Str(val2str(arg(args, 0)?).into()))
 }
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         d @ DataValue::Uuid(_u) => Ok(d.clone()),
         DataValue::Str(s) => {
             let id = uuid::Uuid::try_parse(s)
@@ -349,14 +353,14 @@ pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_json_to_scalar(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Json(JsonData(j)) => json2val_local(j.clone()),
         d => d.clone(),
     })
 }
 
 pub(crate) fn op_json(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::Json(JsonData(to_json(&args[0]))))
+    Ok(DataValue::Json(JsonData(to_json(arg(args, 0)?))))
 }
 
 pub(crate) fn op_json_object(args: &[DataValue]) -> Result<DataValue> {
@@ -376,7 +380,7 @@ pub(crate) fn op_json_object(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_parse_json(args: &[DataValue]) -> Result<DataValue> {
-    match args[0].get_str() {
+    match arg(args, 0)?.get_str() {
         Some(s) => {
             let value: serde_json::Value = serde_json::from_str(s).context(JsonSnafu)?;
             Ok(DataValue::Json(JsonData(value)))
@@ -390,7 +394,7 @@ pub(crate) fn op_parse_json(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_dump_json(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Json(j) => Ok(DataValue::Str(j.0.to_string().into())),
         _ => TypeMismatchSnafu {
             op: "dump_json",
@@ -401,22 +405,22 @@ pub(crate) fn op_dump_json(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_set_json_path(args: &[DataValue]) -> Result<DataValue> {
-    let mut result = to_json(&args[0]);
-    let path = args[1].get_slice().ok_or_else(|| {
+    let mut result = to_json(arg(args, 0)?);
+    let path = arg(args, 1)?.get_slice().ok_or_else(|| {
         JsonPathSnafu {
             message: "json path must be a string",
         }
         .build()
     })?;
     let pointer = get_json_path(&mut result, path)?;
-    let new_val = to_json(&args[2]);
+    let new_val = to_json(arg(args, 2)?);
     *pointer = new_val;
     Ok(DataValue::Json(JsonData(result)))
 }
 
 pub(crate) fn op_remove_json_path(args: &[DataValue]) -> Result<DataValue> {
-    let mut result = to_json(&args[0]);
-    let path = args[1].get_slice().ok_or_else(|| {
+    let mut result = to_json(arg(args, 0)?);
+    let path = arg(args, 1)?.get_slice().ok_or_else(|| {
         JsonPathSnafu {
             message: "json path must be a string",
         }
