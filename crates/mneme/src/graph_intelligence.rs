@@ -555,10 +555,21 @@ impl crate::knowledge_store::KnowledgeStore {
     ///
     /// Loads cached graph scores, computes BFS proximity from seed entities,
     /// populates context clusters, and computes supersession chain lengths.
+    ///
+    /// Pass the `relationship_proximity_weight` from [`RecallWeights`](crate::recall::RecallWeights)
+    /// so the pipeline can skip all graph traversal when the weight is zero.
+    /// Use [`RecallWeights::graph_recall_active`](crate::recall::RecallWeights::graph_recall_active)
+    /// to pre-check.
     pub fn build_graph_context(
         &self,
         seed_entity_ids: &[String],
+        relationship_proximity_weight: f64,
     ) -> crate::error::Result<GraphContext> {
+        // PERF: skip all graph traversal when the weight is effectively zero.
+        if relationship_proximity_weight < f64::EPSILON {
+            return Ok(GraphContext::default());
+        }
+
         let mut ctx = self.load_graph_context()?;
 
         // Populate context_clusters from seed entities

@@ -61,6 +61,17 @@ impl RecallWeights {
             + self.relationship_proximity
             + self.access_frequency
     }
+
+    /// Whether the graph intelligence recall pipeline should run.
+    ///
+    /// Returns `false` when the relationship proximity weight is effectively
+    /// zero, meaning graph traversal results would be multiplied by zero and
+    /// discarded. Callers should skip expensive graph operations (BFS,
+    /// `PageRank`, Louvain) when this returns `false`.
+    #[must_use]
+    pub fn graph_recall_active(&self) -> bool {
+        self.relationship_proximity >= f64::EPSILON
+    }
 }
 
 /// Raw factor scores for a single recall candidate.
@@ -278,10 +289,16 @@ impl RecallEngine {
     ///
     /// Superset of [`score_epistemic_tier`](Self::score_epistemic_tier): calling with `importance=0.0`
     /// produces the same result as the base scorer.
+    ///
+    /// Returns the base tier score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_epistemic_tier_with_importance(&self, tier: &str, importance: f64) -> f64 {
         let base = self.score_epistemic_tier(tier);
+        // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
+        if !self.weights.graph_recall_active() {
+            return base;
+        }
         crate::graph_intelligence::score_epistemic_tier_with_importance(base, importance)
     }
 
@@ -289,6 +306,8 @@ impl RecallEngine {
     ///
     /// Superset of [`score_relationship_proximity`](Self::score_relationship_proximity): calling with `same_cluster=false`
     /// produces the same result as the base scorer.
+    ///
+    /// Returns the base hop score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_relationship_proximity_with_cluster(
@@ -297,6 +316,10 @@ impl RecallEngine {
         same_cluster: bool,
     ) -> f64 {
         let base = self.score_relationship_proximity(hops);
+        // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
+        if !self.weights.graph_recall_active() {
+            return base;
+        }
         crate::graph_intelligence::score_relationship_proximity_with_cluster(base, same_cluster)
     }
 
@@ -304,10 +327,16 @@ impl RecallEngine {
     ///
     /// Superset of [`score_access_frequency`](Self::score_access_frequency): calling with `chain_length=0`
     /// produces the same result as the base scorer.
+    ///
+    /// Returns the base access score directly when graph recall weight is zero.
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_access_with_evolution(&self, access_count: u64, chain_length: u32) -> f64 {
         let base = self.score_access_frequency(access_count);
+        // PERF: skip graph-enhanced scoring when relationship proximity weight is zero.
+        if !self.weights.graph_recall_active() {
+            return base;
+        }
         crate::graph_intelligence::score_access_with_evolution(base, chain_length)
     }
 }
