@@ -66,6 +66,7 @@ impl FilteredRA {
                             match eval_bytecode_pred(p, &t, &mut stack, *span) {
                                 Ok(false) => return None,
                                 Err(e) => return Some(Err(e)),
+                                // NOTE: filter passed, continue to next
                                 Ok(true) => {}
                             }
                         }

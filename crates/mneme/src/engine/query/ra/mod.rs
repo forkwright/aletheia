@@ -103,6 +103,7 @@ pub(crate) fn filter_iter(
                         debug!("{:?}", t);
                         return Some(Err(e));
                     }
+                    // NOTE: filter passed, continue to next
                     Ok(true) => {}
                 }
             }
@@ -265,6 +266,7 @@ impl Debug for RelAlgebra {
 impl RelAlgebra {
     pub(crate) fn fill_binding_indices_and_compile(&mut self) -> Result<()> {
         match self {
+            // NOTE: fixed relations have no binding indices to fill
             RelAlgebra::Fixed(_) => {}
             RelAlgebra::TempStore(d) => {
                 d.fill_binding_indices_and_compile()?;

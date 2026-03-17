@@ -346,6 +346,7 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('c'))
             | (KeyModifiers::CONTROL, KeyCode::Char('q')) => return Some(Msg::Quit),
             (KeyModifiers::CONTROL, KeyCode::Char('f')) => return Some(Msg::ToggleSidebar),
+            // NOTE: unhandled key combinations produce no action
             _ => {}
         }
 

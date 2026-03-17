@@ -552,6 +552,7 @@ fn collect_flush_section(
         "Task Context" => {
             *task_state = Some(content.join("\n"));
         }
+        // NOTE: unrecognized sections are not extracted
         _ => {}
     }
 }

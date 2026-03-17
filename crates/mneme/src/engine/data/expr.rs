@@ -343,6 +343,7 @@ impl Expr {
                 })?;
                 *tuple_pos = Some(found_idx)
             }
+            // NOTE: constants have no variable bindings to process
             Expr::Const { .. } => {}
             Expr::Apply { args, .. } => {
                 for arg in args.iter_mut() {
@@ -373,6 +374,7 @@ impl Expr {
                     coll.insert(*idx);
                 }
             }
+            // NOTE: constants have no variable bindings to process
             Expr::Const { .. } => {}
             Expr::Apply { args, .. } => {
                 for arg in args.iter() {
@@ -445,6 +447,7 @@ impl Expr {
             Expr::Binding { var, .. } => {
                 coll.insert(var.clone());
             }
+            // NOTE: constants have no variable bindings to process
             Expr::Const { .. } => {}
             Expr::Apply { args, .. } => {
                 for arg in args.iter() {
@@ -604,6 +607,7 @@ impl Expr {
             Expr::Binding { var, .. } => {
                 coll.insert(var.to_string());
             }
+            // NOTE: constants have no variable bindings to process
             Expr::Const { .. } => {}
             Expr::Apply { args, .. } => {
                 for arg in args.iter() {

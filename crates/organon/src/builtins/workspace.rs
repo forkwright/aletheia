@@ -126,6 +126,7 @@ pub(crate) fn normalize(path: &Path) -> PathBuf {
             Component::ParentDir => {
                 result.pop();
             }
+            // NOTE: current-dir component (`.`) is a no-op in normalization
             Component::CurDir => {}
             other => result.push(other),
         }
@@ -218,6 +219,7 @@ impl ToolExecutor for ReadExecutor {
                 Err(e) => {
                     return Ok(err_result(format!("read failed: {e}")));
                 }
+                // NOTE: metadata check passed, proceed to read content
                 Ok(_) => {}
             }
 

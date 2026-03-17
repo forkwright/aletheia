@@ -393,6 +393,7 @@ mod tests {
                         received += 1;
                     }
                     NousMessage::Shutdown => break,
+                    // NOTE: test actor ignores non-Turn/non-Shutdown messages
                     _ => {}
                 }
             }

@@ -83,6 +83,7 @@ pub(crate) fn handle_overlay_up(app: &mut App) {
         Some(Overlay::Settings(_)) => {
             super::settings::handle_up(app);
         }
+        // NOTE: no overlay or non-navigable overlay, nothing to do
         _ => {}
     }
 }
@@ -113,6 +114,7 @@ pub(crate) fn handle_overlay_down(app: &mut App) {
         Some(Overlay::Settings(_)) => {
             super::settings::handle_down(app);
         }
+        // NOTE: no overlay or non-navigable overlay, nothing to do
         _ => {}
     }
 }

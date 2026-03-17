@@ -78,6 +78,7 @@ pub(crate) fn handle_drill_in(app: &mut App) {
                 app.auto_scroll = true;
             }
         }
+        // NOTE: already at detail level, no further drill-in
         View::MessageDetail { .. } | View::MemoryInspector | View::FactDetail { .. } => {}
     }
 }

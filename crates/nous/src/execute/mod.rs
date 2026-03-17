@@ -127,6 +127,7 @@ fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtract {
                     return_code, "server code execution result received"
                 );
             }
+            // NOTE: other content block types (images, etc.) are not tracked in extraction
             _ => {}
         }
     }

@@ -98,6 +98,7 @@ pub fn handle_down(app: &mut App) {
                 app.command_palette.cursor = app.command_palette.input.len();
                 refresh_suggestions(app);
             }
+            // NOTE: already at latest input, no history to navigate
             None => {}
         }
     } else {

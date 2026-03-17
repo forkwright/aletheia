@@ -25,6 +25,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "channels" => validate_channels(value, &mut errors),
         "bindings" => validate_bindings(value, &mut errors),
         "credential" => validate_credential(value, &mut errors),
+        // NOTE: these sections are pass-through with no validation rules
         "packs" | "pricing" | "sandbox" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
@@ -216,6 +217,7 @@ fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
                 None | Some("") => {
                     errors.push(format!("bindings[{i}].{field} must not be empty"));
                 }
+                // NOTE: non-empty field value passes validation
                 _ => {}
             }
         }

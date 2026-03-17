@@ -466,6 +466,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     // Step 2–3: daemon runners have already observed token cancel via child tokens.
     // Await system daemon handle to confirm it has exited.
     match tokio::time::timeout(shutdown_timeout, daemon_handle).await {
+        // NOTE: daemon exited cleanly, nothing to do
         Ok(Ok(())) => {}
         Ok(Err(e)) => warn!(error = %e, "system daemon panicked during shutdown"),
         Err(_) => warn!(

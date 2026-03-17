@@ -119,6 +119,7 @@ pub fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &
                 theme.style_error(),
             )));
         }
+        // NOTE: idle state has no status line to render
         SaveStatus::Idle => {}
     }
 

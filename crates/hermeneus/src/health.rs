@@ -164,6 +164,7 @@ impl ProviderHealthTracker {
             ProviderHealth::Degraded { .. } => {
                 inner.health = ProviderHealth::Up;
             }
+            // NOTE: already healthy, no state transition needed
             ProviderHealth::Up => {}
             ProviderHealth::Down { .. } => {
                 // Success while Down means a probe succeeded: transition to Up
@@ -230,7 +231,7 @@ impl ProviderHealthTracker {
                     }
                 }
             }
-            // ParseResponse, UnsupportedModel, ProviderInit: not availability issues
+            // NOTE: non-availability errors (parse, unsupported model) do not affect health
             _ => {}
         }
     }

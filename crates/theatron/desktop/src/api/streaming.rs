@@ -102,6 +102,7 @@ pub fn stream_turn(
                 let Some(event) = maybe_event else { break };
 
                 match event {
+                    // NOTE: SSE connection opened, no action needed
                     Ok(EsEvent::Open) => {}
                     Ok(EsEvent::Message(msg)) => {
                         if let Some(parsed) = parse_stream_event(&msg.event, &msg.data) {

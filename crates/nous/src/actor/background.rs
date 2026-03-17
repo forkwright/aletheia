@@ -18,6 +18,7 @@ impl NousActor {
     pub(super) fn reap_background_tasks(&mut self) {
         while let Some(result) = self.background_tasks.try_join_next() {
             match result {
+                // NOTE: task completed successfully, no action needed
                 Ok(()) => {}
                 Err(e) => {
                     if e.is_panic() {
@@ -373,6 +374,7 @@ async fn run_skill_extraction(
                         );
                         return;
                     }
+                    // NOTE: no duplicate found, proceed with storage
                     Ok(None) => {}
                     Err(e) => {
                         warn!(error = %e, "failed to check skill duplicates, proceeding with storage");

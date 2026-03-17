@@ -230,6 +230,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         loop {
             ctx.poison.check()?;
             match self.execute_imperative_stmts(body, tx, cur_vld, ctx)? {
+                // NOTE: body completed normally, continue loop iteration
                 Left(_) => {}
                 Right(ctrl) => match ctrl {
                     ControlCode::Termination(ret_val) => {

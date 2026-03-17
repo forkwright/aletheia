@@ -563,6 +563,7 @@ pub async fn run(args: Args) -> Result<()> {
     // Step 2–3: daemon runners have already observed token cancel via child tokens.
     // Await system daemon handle to confirm it has exited.
     match tokio::time::timeout(shutdown_timeout, daemon_handle).await {
+        // NOTE: daemon exited cleanly, nothing to do
         Ok(Ok(())) => {}
         Ok(Err(e)) => warn!(error = %e, "system daemon panicked during shutdown"),
         Err(_) => warn!(
@@ -831,6 +832,7 @@ fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: Cancellatio
                             "log retention: removed old log files"
                         );
                     }
+                    // NOTE: no files pruned, nothing to report
                     Ok(Ok(_)) => {}
                     Ok(Err(e)) => {
                         tracing::warn!(error = %e, "log retention cleanup failed");
@@ -843,6 +845,7 @@ fn spawn_log_retention(log_dir: PathBuf, retention_days: u32, token: Cancellatio
                 tokio::select! {
                     biased;
                     () = token.cancelled() => break,
+                    // NOTE: 24h interval elapsed, run next retention cycle
                     () = tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)) => {}
                 }
             }

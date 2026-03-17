@@ -543,6 +543,7 @@ fn detect_color_depth() -> ColorDepth {
     if let Ok(ct) = std::env::var("COLORTERM") {
         match ct.as_str() {
             "truecolor" | "24bit" => return ColorDepth::TrueColor,
+            // NOTE: unrecognized COLORTERM value, check other env vars
             _ => {}
         }
     }
@@ -550,6 +551,7 @@ fn detect_color_depth() -> ColorDepth {
     if let Ok(tp) = std::env::var("TERM_PROGRAM") {
         match tp.as_str() {
             "iTerm.app" | "WezTerm" | "Alacritty" | "kitty" => return ColorDepth::TrueColor,
+            // NOTE: unrecognized terminal program, continue probing
             _ => {}
         }
     }

@@ -317,6 +317,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
                         .collect_vec();
                     if let Some((cond, _)) = clauses.last() {
                         match cond {
+                            // NOTE: last clause already has true default, no null fallback needed
                             Expr::Const {
                                 val: DataValue::Bool(true),
                                 ..

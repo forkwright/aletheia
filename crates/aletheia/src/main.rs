@@ -191,6 +191,7 @@ async fn main() -> Result<()> {
         Some(Command::AddNous(a)) => {
             return commands::add_nous::run(instance_root, &a).await;
         }
+        // NOTE: no subcommand, fall through to default server startup
         None => {}
     }
 
