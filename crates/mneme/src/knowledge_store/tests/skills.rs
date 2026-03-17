@@ -237,7 +237,12 @@ fn skill_decay_retires_stale_skills() {
     stale.confidence = 0.5;
     stale.access_count = 0;
     store.insert_fact(&stale).expect("insert stale skill");
-    let fresh = make_skill_fact("sk-fresh", "alice", "fresh-skill", &["test"]);
+    let mut fresh = make_skill_fact("sk-fresh", "alice", "fresh-skill", &["test"]);
+    // WHY: Override defaults so the skill is clearly fresh (valid_from=now, high confidence).
+    // make_skill_fact defaults to valid_from=2026-01-01 which can look stale to decay logic.
+    fresh.valid_from = jiff::Timestamp::now();
+    fresh.confidence = 0.9;
+    fresh.access_count = 5;
     store.insert_fact(&fresh).expect("insert fresh skill");
     let (active, _needs_review, retired) = store.run_skill_decay("alice").expect("run skill decay");
     assert!(
