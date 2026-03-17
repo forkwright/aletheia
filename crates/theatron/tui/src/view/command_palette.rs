@@ -12,11 +12,11 @@ use crate::command::CommandCategory;
 use crate::theme::Theme;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    if !app.command_palette.active || area.height < 2 {
+    if !app.interaction.command_palette.active || area.height < 2 {
         return;
     }
 
-    let palette = &app.command_palette;
+    let palette = &app.interaction.command_palette;
     let mut lines: Vec<Line> = Vec::new();
 
     lines.push(Line::from(vec![

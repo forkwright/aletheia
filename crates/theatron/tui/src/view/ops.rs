@@ -19,7 +19,7 @@ const MIN_CHAT_PANE_WIDTH: u16 = 40;
 const MIN_OPS_PANE_WIDTH: u16 = 20;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let ops = &app.ops;
+    let ops = &app.layout.ops;
     let focused = ops.focused_pane == FocusedPane::Operations;
 
     let border_style = if focused {
@@ -59,7 +59,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             inner_width,
             theme,
             is_selected,
-            app.tick_count,
+            app.viewport.tick_count,
         );
         item_idx += 1;
     }
@@ -72,7 +72,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             inner_width,
             theme,
             is_selected,
-            app.tick_count,
+            app.viewport.tick_count,
         );
         item_idx += 1;
     }
@@ -94,7 +94,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             Span::raw(" "),
             Span::styled("no operations", theme.style_dim()),
         ]));
-        if !app.ops.visible {
+        if !app.layout.ops.visible {
             return;
         }
     }

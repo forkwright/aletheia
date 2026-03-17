@@ -47,45 +47,42 @@ const DEGRADED_PANIC_THRESHOLD: u32 = 5;
 /// Time window for panic counting (10 minutes).
 const DEGRADED_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
 
-/// A single nous agent running as a Tokio actor.
-///
-/// Each actor owns its mutable state and processes messages sequentially
-/// from a bounded inbox. External code interacts via [`NousHandle`](crate::handle::NousHandle).
-pub struct NousActor {
-    id: String,
-    config: NousConfig,
-    pipeline_config: PipelineConfig,
+/// Messaging and lifecycle channels for the actor.
+pub(crate) struct ActorChannel {
     inbox: mpsc::Receiver<NousMessage>,
     cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
     /// Token signalling a graceful shutdown request from the manager.
     cancel: CancellationToken,
-    lifecycle: NousLifecycle,
-    sessions: HashMap<String, SessionState>,
-    active_session: Option<String>,
+    status: NousLifecycle,
+}
+
+/// External service dependencies injected at actor creation.
+pub(crate) struct ActorServices {
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,
     oikos: Arc<Oikos>,
+    tool_services: Option<Arc<ToolServices>>,
     embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Candidate tracker for skill auto-capture pipeline.
+    candidate_tracker: Arc<aletheia_mneme::skills::CandidateTracker>,
+}
+
+/// Data stores for sessions, knowledge, and search.
+pub(crate) struct ActorStores {
+    session_store: Option<Arc<Mutex<SessionStore>>>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<KnowledgeStore>>,
     vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     /// BM25 text search: used as recall fallback when embedding provider is mock.
     #[cfg(feature = "knowledge-store")]
     text_search: Option<Arc<dyn crate::recall::TextSearch>>,
-    session_store: Option<Arc<Mutex<SessionStore>>>,
-    #[cfg(feature = "knowledge-store")]
-    knowledge_store: Option<Arc<KnowledgeStore>>,
-    tool_services: Option<Arc<ToolServices>>,
-    extra_bootstrap: Vec<BootstrapSection>,
     /// Skill loader for per-turn skill injection. None when knowledge-store is disabled.
     #[cfg(feature = "knowledge-store")]
     skill_loader: Option<crate::skills::SkillLoader>,
-    /// Candidate tracker for skill auto-capture pipeline.
-    candidate_tracker: Arc<aletheia_mneme::skills::CandidateTracker>,
-    /// Number of panics caught by the panic boundary since start.
-    panic_count: u32,
-    /// Timestamps of recent panics for degraded-mode window calculation.
-    panic_timestamps: Vec<Instant>,
-    /// When the actor started running.
-    started_at: Instant,
+}
+
+/// Runtime state: background tasks, panic tracking, timing.
+pub(crate) struct ActorRuntime {
     /// Background tasks (extraction, distillation, skill analysis).
     background_tasks: JoinSet<()>,
     /// Set to `true` while processing a turn; `false` when idle.
@@ -97,6 +94,29 @@ pub struct NousActor {
     /// WHY: Background distillation is async; a second turn can finish while the
     /// first turn's distillation task is still running, triggering a duplicate.
     distillation_in_progress: Arc<AtomicBool>,
+    /// Number of panics caught by the panic boundary since start.
+    panic_count: u32,
+    /// Timestamps of recent panics for degraded-mode window calculation.
+    panic_timestamps: Vec<Instant>,
+    /// When the actor started running.
+    started_at: Instant,
+}
+
+/// A single nous agent running as a Tokio actor.
+///
+/// Each actor owns its mutable state and processes messages sequentially
+/// from a bounded inbox. External code interacts via [`NousHandle`](crate::handle::NousHandle).
+pub struct NousActor {
+    id: String,
+    config: NousConfig,
+    pipeline_config: PipelineConfig,
+    extra_bootstrap: Vec<BootstrapSection>,
+    channel: ActorChannel,
+    sessions: HashMap<String, SessionState>,
+    active_session: Option<String>,
+    services: ActorServices,
+    stores: ActorStores,
+    runtime: ActorRuntime,
 }
 
 impl NousActor {
@@ -141,33 +161,41 @@ impl NousActor {
             id,
             config,
             pipeline_config,
-            inbox,
-            cross_rx,
-            cancel,
-            lifecycle: NousLifecycle::Idle,
+            extra_bootstrap,
+            channel: ActorChannel {
+                inbox,
+                cross_rx,
+                cancel,
+                status: NousLifecycle::Idle,
+            },
             sessions: HashMap::new(),
             active_session: None,
-            providers,
-            tools,
-            oikos,
-            embedding_provider,
-            vector_search,
-            #[cfg(feature = "knowledge-store")]
-            text_search,
-            session_store,
-            #[cfg(feature = "knowledge-store")]
-            knowledge_store,
-            tool_services,
-            extra_bootstrap,
-            #[cfg(feature = "knowledge-store")]
-            skill_loader,
-            candidate_tracker: Arc::new(aletheia_mneme::skills::CandidateTracker::new()),
-            panic_count: 0,
-            panic_timestamps: Vec::new(),
-            started_at: Instant::now(),
-            background_tasks: JoinSet::new(),
-            active_turn,
-            distillation_in_progress: Arc::new(AtomicBool::new(false)),
+            services: ActorServices {
+                providers,
+                tools,
+                oikos,
+                tool_services,
+                embedding_provider,
+                candidate_tracker: Arc::new(aletheia_mneme::skills::CandidateTracker::new()),
+            },
+            stores: ActorStores {
+                session_store,
+                #[cfg(feature = "knowledge-store")]
+                knowledge_store,
+                vector_search,
+                #[cfg(feature = "knowledge-store")]
+                text_search,
+                #[cfg(feature = "knowledge-store")]
+                skill_loader,
+            },
+            runtime: ActorRuntime {
+                background_tasks: JoinSet::new(),
+                active_turn,
+                distillation_in_progress: Arc::new(AtomicBool::new(false)),
+                panic_count: 0,
+                panic_timestamps: Vec::new(),
+                started_at: Instant::now(),
+            },
         }
     }
 
@@ -183,19 +211,19 @@ impl NousActor {
     /// inconsistent state.
     #[instrument(skip(self), fields(nous.id = %self.id))]
     pub async fn run(mut self) {
-        if let Err(e) = spawn::validate_workspace(&self.oikos, &self.id).await {
+        if let Err(e) = spawn::validate_workspace(&self.services.oikos, &self.id).await {
             error!(error = %e, "workspace validation failed, shutting down");
             return;
         }
 
-        self.started_at = Instant::now();
-        info!(lifecycle = %self.lifecycle, "actor started");
+        self.runtime.started_at = Instant::now();
+        info!(lifecycle = %self.channel.status, "actor started");
 
         loop {
             self.reap_background_tasks();
 
             tokio::select! {
-                msg = self.inbox.recv() => {
+                msg = self.channel.inbox.recv() => {
                     let Some(msg) = msg else { break };
                     match msg {
                         NousMessage::Turn {
@@ -205,10 +233,10 @@ impl NousActor {
                             span,
                             reply,
                         } => {
-                            if self.lifecycle == NousLifecycle::Degraded {
+                            if self.channel.status == NousLifecycle::Degraded {
                                 let _ = reply.send(Err(crate::error::ServiceDegradedSnafu {
                                     nous_id: self.id.clone(),
-                                    panic_count: self.panic_count,
+                                    panic_count: self.runtime.panic_count,
                                 }.build()));
                             } else {
                                 self.handle_turn(session_key, session_id, content, span, reply).await;
@@ -222,10 +250,10 @@ impl NousActor {
                             span,
                             reply,
                         } => {
-                            if self.lifecycle == NousLifecycle::Degraded {
+                            if self.channel.status == NousLifecycle::Degraded {
                                 let _ = reply.send(Err(crate::error::ServiceDegradedSnafu {
                                     nous_id: self.id.clone(),
-                                    panic_count: self.panic_count,
+                                    panic_count: self.runtime.panic_count,
                                 }.build()));
                                 drop(stream_tx);
                             } else {
@@ -251,7 +279,7 @@ impl NousActor {
                     }
                 }
                 envelope = async {
-                    match self.cross_rx.as_mut() {
+                    match self.channel.cross_rx.as_mut() {
                         Some(rx) => rx.recv().await,
                         None => std::future::pending().await,
                     }
@@ -263,16 +291,16 @@ impl NousActor {
                         }
                     }
                 }
-                () = self.cancel.cancelled() => {
+                () = self.channel.cancel.cancelled() => {
                     info!("cancellation token fired, draining and stopping");
                     break;
                 }
             }
         }
 
-        while self.background_tasks.join_next().await.is_some() {}
+        while self.runtime.background_tasks.join_next().await.is_some() {}
 
-        info!(lifecycle = %self.lifecycle, panic_count = self.panic_count, "actor stopped");
+        info!(lifecycle = %self.channel.status, panic_count = self.runtime.panic_count, "actor stopped");
     }
 
     /// # Cancel safety
@@ -302,20 +330,20 @@ impl NousActor {
     fn handle_status(&self, reply: tokio::sync::oneshot::Sender<NousStatus>) {
         let status = NousStatus {
             id: self.id.clone(),
-            lifecycle: self.lifecycle,
+            lifecycle: self.channel.status,
             session_count: self.sessions.len(),
             active_session: self.active_session.clone(),
-            panic_count: self.panic_count,
-            uptime: self.started_at.elapsed(),
+            panic_count: self.runtime.panic_count,
+            uptime: self.runtime.started_at.elapsed(),
         };
         let _ = reply.send(status);
     }
 
     fn handle_sleep(&mut self) {
-        match self.lifecycle {
+        match self.channel.status {
             NousLifecycle::Idle => {
                 debug!("transitioning to dormant");
-                self.lifecycle = NousLifecycle::Dormant;
+                self.channel.status = NousLifecycle::Dormant;
             }
             NousLifecycle::Active => {
                 warn!("cannot sleep while active, ignoring");
@@ -330,13 +358,13 @@ impl NousActor {
     }
 
     fn handle_wake(&mut self) {
-        match self.lifecycle {
+        match self.channel.status {
             NousLifecycle::Dormant => {
                 debug!("waking from dormant");
-                self.lifecycle = NousLifecycle::Idle;
+                self.channel.status = NousLifecycle::Idle;
             }
             NousLifecycle::Idle | NousLifecycle::Active => {
-                debug!(lifecycle = %self.lifecycle, "already awake");
+                debug!(lifecycle = %self.channel.status, "already awake");
             }
             NousLifecycle::Degraded => {
                 debug!("cannot wake from degraded — requires restart");
@@ -367,7 +395,7 @@ impl NousActor {
     async fn resolve_skill_sections(&self, content: &str) -> Vec<BootstrapSection> {
         #[cfg(feature = "knowledge-store")]
         {
-            if let Some(ref loader) = self.skill_loader {
+            if let Some(ref loader) = self.stores.skill_loader {
                 let task_context = crate::skills::extract_task_context(content);
                 return loader
                     .resolve_skills(&self.id, &task_context, crate::skills::DEFAULT_MAX_SKILLS)

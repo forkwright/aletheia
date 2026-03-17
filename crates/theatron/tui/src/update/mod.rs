@@ -22,7 +22,7 @@ pub(crate) use api::extract_text_content;
 #[tracing::instrument(skip_all)]
 pub(crate) async fn update(app: &mut App, msg: Msg) {
     if !matches!(msg, Msg::GPrefix | Msg::Tick) {
-        app.pending_g = false;
+        app.layout.pending_g = false;
     }
 
     match msg {
@@ -41,7 +41,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MessageAction(action) => selection::handle_message_action(app, action),
 
         Msg::CharInput(c) => {
-            if app.selected_message.is_some() {
+            if app.interaction.selected_message.is_some() {
                 selection::handle_deselect(app);
             }
             input::handle_char_input(app, c);
@@ -94,11 +94,11 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::ToggleThinking => navigation::handle_toggle_thinking(app),
         Msg::ToggleOpsPane => navigation::handle_toggle_ops_pane(app),
         Msg::OpsFocusSwitch => navigation::handle_ops_focus_switch(app),
-        Msg::OpsScrollUp => app.ops.scroll_up(),
-        Msg::OpsScrollDown => app.ops.scroll_down(),
-        Msg::OpsSelectPrev => app.ops.select_prev(),
-        Msg::OpsSelectNext => app.ops.select_next(),
-        Msg::OpsToggleExpand => app.ops.toggle_selected(),
+        Msg::OpsScrollUp => app.layout.ops.scroll_up(),
+        Msg::OpsScrollDown => app.layout.ops.scroll_down(),
+        Msg::OpsSelectPrev => app.layout.ops.select_prev(),
+        Msg::OpsSelectNext => app.layout.ops.select_next(),
+        Msg::OpsToggleExpand => app.layout.ops.toggle_selected(),
         Msg::Resize(w, h) => navigation::handle_resize(app, w, h),
         Msg::ViewDrillIn => view_nav::handle_drill_in(app),
         Msg::ViewPopBack => view_nav::handle_pop_back(app),
@@ -109,7 +109,10 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::OverlayDown => overlay::handle_overlay_down(app),
         Msg::OverlaySelect => overlay::handle_overlay_select(app).await,
         Msg::OverlayFilter(c) => {
-            if matches!(&app.overlay, Some(crate::state::Overlay::Settings(_))) {
+            if matches!(
+                &app.layout.overlay,
+                Some(crate::state::Overlay::Settings(_))
+            ) {
                 if settings::is_editing(app) {
                     settings::handle_edit_char(app, c);
                 } else {
@@ -123,7 +126,10 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             }
         }
         Msg::OverlayFilterBackspace => {
-            if matches!(&app.overlay, Some(crate::state::Overlay::Settings(_))) {
+            if matches!(
+                &app.layout.overlay,
+                Some(crate::state::Overlay::Settings(_))
+            ) {
                 settings::handle_edit_backspace(app);
             }
         }
@@ -307,9 +313,9 @@ mod tests {
     #[tokio::test]
     async fn char_input_with_selection_deselects_first() {
         let mut app = test_app();
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         update(&mut app, Msg::CharInput('a')).await;
-        assert!(app.selected_message.is_none());
+        assert!(app.interaction.selected_message.is_none());
     }
 
     #[tokio::test]
@@ -321,30 +327,33 @@ mod tests {
     #[tokio::test]
     async fn dismiss_error_clears_toast() {
         let mut app = test_app();
-        app.error_toast = Some(crate::msg::ErrorToast::new("oops".to_string()));
+        app.viewport.error_toast = Some(crate::msg::ErrorToast::new("oops".to_string()));
         update(&mut app, Msg::DismissError).await;
-        assert!(app.error_toast.is_none());
+        assert!(app.viewport.error_toast.is_none());
     }
 
     #[tokio::test]
     async fn show_error_sets_toast() {
         let mut app = test_app();
         update(&mut app, Msg::ShowError("bad".to_string())).await;
-        assert!(app.error_toast.is_some());
+        assert!(app.viewport.error_toast.is_some());
     }
 
     #[tokio::test]
     async fn show_success_sets_success_toast_not_error_toast() {
         let mut app = test_app();
         update(&mut app, Msg::ShowSuccess("done".to_string())).await;
-        assert!(app.success_toast.is_some());
-        assert!(app.error_toast.is_none());
+        assert!(app.viewport.success_toast.is_some());
+        assert!(app.viewport.error_toast.is_none());
     }
 
     #[tokio::test]
     async fn show_success_message_stored() {
         let mut app = test_app();
         update(&mut app, Msg::ShowSuccess("saved".to_string())).await;
-        assert_eq!(app.success_toast.as_ref().unwrap().message, "saved");
+        assert_eq!(
+            app.viewport.success_toast.as_ref().unwrap().message,
+            "saved"
+        );
     }
 }

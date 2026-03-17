@@ -200,7 +200,7 @@ pub fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Resul
     let agent_file = aletheia_mneme::export::export_agent(
         nous_id,
         resolved.name.as_deref(),
-        Some(&resolved.model),
+        Some(&resolved.model.primary),
         agent_config,
         &store,
         &workspace_path,

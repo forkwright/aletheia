@@ -8,7 +8,7 @@ use crate::state::{AgentState, AgentStatus, ChatMessage};
 #[tracing::instrument(skip_all, fields(count = agents.len()))]
 // SAFETY: sanitized at ingestion: all Agent fields from API are sanitized here.
 pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
-    app.agents = agents
+    app.dashboard.agents = agents
         .into_iter()
         .map(|a| {
             let name = sanitize_for_display(a.display_name()).into_owned();
@@ -33,7 +33,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
 #[tracing::instrument(skip_all, fields(%nous_id, count = sessions.len()))]
 // SAFETY: sanitized at ingestion: session keys and fields from API are sanitized here.
 pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: Vec<Session>) {
-    if let Some(agent) = app.agents.iter_mut().find(|a| a.id == nous_id) {
+    if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.sessions = sanitize_sessions(sessions);
     }
 }
@@ -41,7 +41,7 @@ pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: V
 #[tracing::instrument(skip_all, fields(count = messages.len()))]
 // SAFETY: sanitized at ingestion: all message content from API is sanitized here.
 pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>) {
-    app.messages = messages
+    app.dashboard.messages = messages
         .into_iter()
         .filter_map(|m| {
             if m.role != "user" && m.role != "assistant" {
@@ -63,21 +63,21 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
         .collect();
     // Stale streaming markdown from the previous session must not bleed through
     // when history is replaced on session switch.
-    app.markdown_cache.clear();
+    app.viewport.render.markdown_cache.clear();
     app.rebuild_virtual_scroll();
     app.scroll_to_bottom();
 }
 
 #[tracing::instrument(skip_all, fields(daily_total_cents))]
 pub(crate) fn handle_cost_loaded(app: &mut App, daily_total_cents: u32) {
-    app.daily_cost_cents = daily_total_cents;
+    app.dashboard.daily_cost_cents = daily_total_cents;
 }
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn handle_new_session(app: &mut App) {
-    if let Some(ref agent_id) = app.focused_agent.clone() {
-        app.messages.clear();
-        app.virtual_scroll.clear();
+    if let Some(ref agent_id) = app.dashboard.focused_agent.clone() {
+        app.dashboard.messages.clear();
+        app.viewport.render.virtual_scroll.clear();
         app.scroll_to_bottom();
 
         let session_key = format!("tui-{}", chrono_compact_now());
@@ -86,14 +86,15 @@ pub(crate) async fn handle_new_session(app: &mut App) {
         let key = session_key.clone();
         match client.create_session(&agent_id, &key).await {
             Ok(session) => {
-                app.focused_session_id = Some(session.id.clone());
-                if let Some(agent) = app.agents.iter_mut().find(|a| a.id == agent_id) {
+                app.dashboard.focused_session_id = Some(session.id.clone());
+                if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == agent_id) {
                     agent.sessions.push(session);
                 }
             }
             Err(e) => {
                 tracing::error!("failed to create session: {e}");
-                app.error_toast = Some(ErrorToast::new(format!("New session failed: {e}")));
+                app.viewport.error_toast =
+                    Some(ErrorToast::new(format!("New session failed: {e}")));
             }
         }
     }
@@ -101,13 +102,13 @@ pub(crate) async fn handle_new_session(app: &mut App) {
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn handle_session_picker_new(app: &mut App) {
-    app.overlay = None;
+    app.layout.overlay = None;
     handle_new_session(app).await;
 }
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn handle_session_picker_archive(app: &mut App) {
-    let (cursor, show_archived) = match &app.overlay {
+    let (cursor, show_archived) = match &app.layout.overlay {
         Some(crate::state::Overlay::SessionPicker(picker)) => (picker.cursor, picker.show_archived),
         _ => return,
     };
@@ -120,52 +121,62 @@ pub(crate) async fn handle_session_picker_archive(app: &mut App) {
     let client = app.client.clone();
     match client.archive_session(&session_id).await {
         Ok(()) => {
-            if let Some(ref agent_id) = app.focused_agent
-                && let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id)
+            if let Some(ref agent_id) = app.dashboard.focused_agent
+                && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| &a.id == agent_id)
                 && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
             {
                 session.status = Some("archived".to_string());
             }
-            if app.focused_session_id.as_ref() == Some(&session_id) {
-                app.messages.clear();
-                app.virtual_scroll.clear();
-                app.focused_session_id = None;
+            if app.dashboard.focused_session_id.as_ref() == Some(&session_id) {
+                app.dashboard.messages.clear();
+                app.viewport.render.virtual_scroll.clear();
+                app.dashboard.focused_session_id = None;
                 app.scroll_to_bottom();
             }
-            app.error_toast = Some(ErrorToast::new("Session archived".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("Session archived".into()));
         }
         Err(e) => {
-            app.error_toast = Some(ErrorToast::new(format!("Archive failed: {e}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Archive failed: {e}")));
         }
     }
 
-    app.overlay = None;
+    app.layout.overlay = None;
 }
 
 #[tracing::instrument(skip_all)]
 // SAFETY: sanitized at ingestion: error messages may contain external data.
 pub(crate) fn handle_show_error(app: &mut App, msg: String) {
-    app.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
+    app.viewport.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
 }
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_show_success(app: &mut App, msg: String) {
-    app.success_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
+    app.viewport.success_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
 }
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_dismiss_error(app: &mut App) {
-    app.error_toast = None;
+    app.viewport.error_toast = None;
 }
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_tick(app: &mut App) {
-    app.tick_count = app.tick_count.wrapping_add(1);
-    if app.error_toast.as_ref().is_some_and(|t| t.is_expired()) {
-        app.error_toast = None;
+    app.viewport.tick_count = app.viewport.tick_count.wrapping_add(1);
+    if app
+        .viewport
+        .error_toast
+        .as_ref()
+        .is_some_and(|t| t.is_expired())
+    {
+        app.viewport.error_toast = None;
     }
-    if app.success_toast.as_ref().is_some_and(|t| t.is_expired()) {
-        app.success_toast = None;
+    if app
+        .viewport
+        .success_toast
+        .as_ref()
+        .is_some_and(|t| t.is_expired())
+    {
+        app.viewport.success_toast = None;
     }
     super::sse::check_sse_reconnect_timeout(app);
 }
@@ -318,16 +329,16 @@ mod tests {
             emoji: Some("\u{1F9E0}".to_string()),
         }];
         handle_agents_loaded(&mut app, agents);
-        assert_eq!(app.agents.len(), 1);
-        assert_eq!(app.agents[0].name, "Syn");
-        assert_eq!(app.agents[0].status, AgentStatus::Idle);
+        assert_eq!(app.dashboard.agents.len(), 1);
+        assert_eq!(app.dashboard.agents[0].name, "Syn");
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
     }
 
     #[test]
     fn handle_sessions_loaded_for_agent() {
         use crate::app::test_helpers::*;
         let mut app = test_app();
-        app.agents.push(test_agent("syn", "Syn"));
+        app.dashboard.agents.push(test_agent("syn", "Syn"));
         let sessions = vec![Session {
             id: "s1".into(),
             nous_id: "syn".into(),
@@ -339,7 +350,7 @@ mod tests {
             display_name: None,
         }];
         handle_sessions_loaded(&mut app, "syn".into(), sessions);
-        assert_eq!(app.agents[0].sessions.len(), 1);
+        assert_eq!(app.dashboard.agents[0].sessions.len(), 1);
     }
 
     #[test]
@@ -365,7 +376,7 @@ mod tests {
         use crate::app::test_helpers::*;
         let mut app = test_app();
         handle_cost_loaded(&mut app, 1234);
-        assert_eq!(app.daily_cost_cents, 1234);
+        assert_eq!(app.dashboard.daily_cost_cents, 1234);
     }
 
     #[test]
@@ -373,8 +384,11 @@ mod tests {
         use crate::app::test_helpers::*;
         let mut app = test_app();
         handle_show_error(&mut app, "test error".to_string());
-        assert!(app.error_toast.is_some());
-        assert_eq!(app.error_toast.as_ref().unwrap().message, "test error");
+        assert!(app.viewport.error_toast.is_some());
+        assert_eq!(
+            app.viewport.error_toast.as_ref().unwrap().message,
+            "test error"
+        );
     }
 
     #[test]
@@ -382,18 +396,21 @@ mod tests {
         use crate::app::test_helpers::*;
         let mut app = test_app();
         handle_show_success(&mut app, "all good".to_string());
-        assert!(app.success_toast.is_some());
-        assert!(app.error_toast.is_none());
-        assert_eq!(app.success_toast.as_ref().unwrap().message, "all good");
+        assert!(app.viewport.success_toast.is_some());
+        assert!(app.viewport.error_toast.is_none());
+        assert_eq!(
+            app.viewport.success_toast.as_ref().unwrap().message,
+            "all good"
+        );
     }
 
     #[test]
     fn handle_dismiss_error_clears_toast() {
         use crate::app::test_helpers::*;
         let mut app = test_app();
-        app.error_toast = Some(ErrorToast::new("error".to_string()));
+        app.viewport.error_toast = Some(ErrorToast::new("error".to_string()));
         handle_dismiss_error(&mut app);
-        assert!(app.error_toast.is_none());
+        assert!(app.viewport.error_toast.is_none());
     }
 
     #[test]
@@ -401,18 +418,18 @@ mod tests {
         use crate::app::test_helpers::*;
         let mut app = test_app();
         handle_tick(&mut app);
-        assert_eq!(app.tick_count, 1);
+        assert_eq!(app.viewport.tick_count, 1);
         handle_tick(&mut app);
-        assert_eq!(app.tick_count, 2);
+        assert_eq!(app.viewport.tick_count, 2);
     }
 
     #[test]
     fn handle_tick_wraps_at_max() {
         use crate::app::test_helpers::*;
         let mut app = test_app();
-        app.tick_count = u64::MAX;
+        app.viewport.tick_count = u64::MAX;
         handle_tick(&mut app);
-        assert_eq!(app.tick_count, 0);
+        assert_eq!(app.viewport.tick_count, 0);
     }
 
     #[test]
@@ -420,17 +437,17 @@ mod tests {
         use crate::app::test_helpers::*;
         let mut app = test_app();
         // Pre-populate stale cache from a previous streaming session.
-        app.markdown_cache.text = "stale from previous session".to_string();
-        app.markdown_cache.lines = vec![ratatui::text::Line::raw("stale")];
+        app.viewport.render.markdown_cache.text = "stale from previous session".to_string();
+        app.viewport.render.markdown_cache.lines = vec![ratatui::text::Line::raw("stale")];
 
         handle_history_loaded(&mut app, vec![]);
 
         assert!(
-            app.markdown_cache.text.is_empty(),
+            app.viewport.render.markdown_cache.text.is_empty(),
             "history load must clear stale markdown text cache"
         );
         assert!(
-            app.markdown_cache.lines.is_empty(),
+            app.viewport.render.markdown_cache.lines.is_empty(),
             "history load must clear stale markdown line cache"
         );
     }
@@ -463,8 +480,8 @@ mod tests {
             },
         ];
         handle_history_loaded(&mut app, messages);
-        assert_eq!(app.messages.len(), 2);
-        assert_eq!(app.messages[0].role, "user");
-        assert_eq!(app.messages[1].role, "assistant");
+        assert_eq!(app.dashboard.messages.len(), 2);
+        assert_eq!(app.dashboard.messages[0].role, "user");
+        assert_eq!(app.dashboard.messages[1].role, "assistant");
     }
 }
