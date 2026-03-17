@@ -281,6 +281,7 @@ impl KnowledgeStore {
 
     /// Open an in-memory knowledge store with default configuration.
     #[instrument]
+    #[must_use]
     pub fn open_mem() -> crate::error::Result<std::sync::Arc<Self>> {
         Self::open_mem_with_config(KnowledgeConfig::default())
     }
@@ -467,6 +468,7 @@ impl KnowledgeStore {
         Ok(())
     }
 
+    #[must_use]
     pub fn schema_version(&self) -> crate::error::Result<i64> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
@@ -567,6 +569,7 @@ impl KnowledgeStore {
     /// Delegates to the inner engine's `backup_db`. Currently returns an error
     /// for in-memory and redb backends (`SQLite` storage support was removed).
     #[instrument(skip(self, out_file))]
+    #[must_use]
     pub fn backup_db(&self, out_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.backup_db(out_file).map_err(|e| {
             crate::error::EngineQuerySnafu {
@@ -581,6 +584,7 @@ impl KnowledgeStore {
     /// Delegates to the inner engine's `restore_backup`. Currently returns an error
     /// for in-memory and redb backends (`SQLite` storage support was removed).
     #[instrument(skip(self, in_file))]
+    #[must_use]
     pub fn restore_backup(&self, in_file: impl AsRef<std::path::Path>) -> crate::error::Result<()> {
         self.db.restore_backup(in_file).map_err(|e| {
             crate::error::EngineQuerySnafu {
@@ -626,6 +630,7 @@ impl KnowledgeStore {
 
     /// Read a single fact by its ID (all temporal records matching).
     /// Returns all fields; does not apply time/validity filters.
+    #[must_use]
     pub fn read_facts_by_id(&self, id: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;

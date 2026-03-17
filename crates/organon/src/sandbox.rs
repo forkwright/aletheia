@@ -174,6 +174,7 @@ impl SandboxPolicy {
     /// Designed to run in a child process via `pre_exec`. Returns `io::Error`
     /// on failure; on unsupported kernels, logs and continues based on
     /// enforcement mode.
+    #[must_use]
     pub fn apply(&self) -> std::io::Result<()> {
         self.apply_landlock()?;
         self.apply_seccomp()?;

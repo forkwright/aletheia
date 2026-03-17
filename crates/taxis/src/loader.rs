@@ -30,6 +30,7 @@ use crate::oikos::Oikos;
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
 )]
+#[must_use]
 pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     let toml_path = oikos.config().join("aletheia.toml");
     let yaml_path = oikos.config().join("aletheia.yaml");
@@ -101,6 +102,7 @@ fn decrypt_toml_content(content: &str) -> String {
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
 )]
+#[must_use]
 pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
     write_config_checked(oikos, config, None)
 }

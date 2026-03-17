@@ -56,6 +56,7 @@ struct HistoryMessage {
     created_at: String,
 }
 
+#[must_use]
 pub async fn run(args: &SessionExportArgs) -> Result<()> {
     let client = build_client(args.token.as_deref())?;
 

@@ -255,6 +255,7 @@ impl KnowledgeStore {
     ///
     /// Returns `(active, needs_review, retired)` counts.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn run_skill_decay(&self, nous_id: &str) -> crate::error::Result<(usize, usize, usize)> {
         let skills = self.find_skills_for_nous(nous_id, 10_000)?;
         let now_secs = jiff::Timestamp::now().as_second();

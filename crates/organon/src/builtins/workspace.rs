@@ -519,6 +519,7 @@ impl ToolExecutor for ExecExecutor {
 }
 
 /// Register workspace tool executors.
+#[must_use]
 pub fn register(registry: &mut ToolRegistry, sandbox: crate::sandbox::SandboxConfig) -> Result<()> {
     registry.register(read_def(), Box::new(ReadExecutor))?;
     registry.register(write_def(), Box::new(WriteExecutor))?;

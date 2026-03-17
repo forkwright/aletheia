@@ -26,6 +26,7 @@ fn i64_as_usize(v: i64) -> usize {
 
 impl KnowledgeStore {
     /// Initialize the `consolidation_audit` relation. Called during schema setup.
+    #[must_use]
     pub fn init_consolidation_audit(&self) -> crate::error::Result<()> {
         self.run_mut_query(CONSOLIDATION_AUDIT_DDL, BTreeMap::new())?;
         Ok(())

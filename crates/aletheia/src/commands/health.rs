@@ -10,6 +10,7 @@ pub struct HealthArgs {
     pub url: String,
 }
 
+#[must_use]
 pub async fn run(args: &HealthArgs) -> Result<()> {
     let url = &args.url;
     let endpoint = format!("{url}/api/health");

@@ -90,6 +90,7 @@ impl DbMonitor {
     }
 
     /// Check all database files and return a size report.
+    #[must_use]
     pub fn check(&self) -> error::Result<DbSizeReport> {
         let mut report = DbSizeReport::default();
 

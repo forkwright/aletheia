@@ -64,6 +64,7 @@ impl JwtConfig {
     ///
     /// Returns [`crate::error::Error::InsecureKey`] if `auth_mode` is not `"none"` and the signing
     /// key is still the built-in insecure placeholder.
+    #[must_use]
     pub fn validate_for_auth_mode(&self, auth_mode: &str) -> Result<()> {
         if auth_mode != "none" && self.has_insecure_key() {
             tracing::error!(
@@ -105,6 +106,7 @@ impl JwtManager {
     ///
     /// Returns an error if the JWT claims cannot be encoded or signed.
     #[instrument(skip(self), fields(kind = "access"))]
+    #[must_use]
     pub fn issue_access(&self, sub: &str, role: Role, nous_id: Option<&str>) -> Result<String> {
         self.issue(
             sub,
@@ -128,6 +130,7 @@ impl JwtManager {
     /// Returns [`crate::error::Error::ExpiredToken`] if the token's expiration time has passed.
     /// Returns [`crate::error::Error::TokenDecode`] if the token is malformed, has an invalid
     /// signature, or fails any other JWT validation check.
+    #[must_use]
     pub fn validate(&self, token: &str) -> Result<Claims> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.set_issuer(&[&self.config.issuer]);

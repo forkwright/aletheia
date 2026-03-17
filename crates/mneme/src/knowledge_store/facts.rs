@@ -6,6 +6,7 @@ use tracing::instrument;
 impl KnowledgeStore {
     /// Insert or update a fact.
     #[instrument(skip(self, fact), fields(fact_id = %fact.id))]
+    #[must_use]
     pub fn insert_fact(&self, fact: &crate::knowledge::Fact) -> crate::error::Result<()> {
         use snafu::ensure;
         ensure!(!fact.content.is_empty(), crate::error::EmptyContentSnafu);
@@ -163,6 +164,7 @@ impl KnowledgeStore {
 
     /// Point-in-time fact query.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn query_facts_at(&self, time: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;
@@ -176,6 +178,7 @@ impl KnowledgeStore {
 
     /// Increment access count and update last-accessed timestamp for the given fact IDs.
     #[instrument(skip(self), fields(count = fact_ids.len()))]
+    #[must_use]
     pub fn increment_access(&self, fact_ids: &[crate::id::FactId]) -> crate::error::Result<()> {
         if fact_ids.is_empty() {
             return Ok(());
@@ -540,6 +543,7 @@ impl KnowledgeStore {
     /// Unlike [`audit_all_facts`](Self::audit_all_facts), this does not require
     /// a `nous_id` filter and returns facts from every agent.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn list_all_facts(&self, limit: i64) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use crate::engine::DataValue;
         use std::collections::BTreeMap;

@@ -360,6 +360,7 @@ impl ToolExecutor for PlanStepFailExecutor {
     }
 }
 
+#[must_use]
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(plan_create_def(), Box::new(PlanCreateExecutor))?;
     registry.register(plan_research_def(), Box::new(PlanResearchExecutor))?;

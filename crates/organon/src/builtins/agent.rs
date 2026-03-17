@@ -174,6 +174,7 @@ impl ToolExecutor for SessionsDispatchExecutor {
 }
 
 /// Register agent coordination tools.
+#[must_use]
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(sessions_spawn_def(), Box::new(SessionsSpawnExecutor))?;
     registry.register(sessions_dispatch_def(), Box::new(SessionsDispatchExecutor))?;

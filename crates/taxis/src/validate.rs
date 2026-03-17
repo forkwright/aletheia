@@ -19,6 +19,7 @@ pub struct ValidationError {
 /// Serializes to JSON and validates each top-level section using
 /// [`validate_section`]. Returns all validation errors collected
 /// across all sections.
+#[must_use]
 pub fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
     let value = serde_json::to_value(config).unwrap_or(Value::Null);
     let Value::Object(ref sections) = value else {
@@ -51,6 +52,7 @@ pub fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
 /// Returns [`ValidationError`] if any field value is out of range, empty when
 /// required, or the section name is unrecognized. The error contains all
 /// collected validation messages.
+#[must_use]
 pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
 

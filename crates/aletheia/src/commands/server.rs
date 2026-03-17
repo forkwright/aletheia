@@ -64,6 +64,7 @@ pub struct Args {
     clippy::too_many_lines,
     reason = "binary entrypoint — sequential init steps"
 )]
+#[must_use]
 pub async fn run(args: Args) -> Result<()> {
     // Oikos is pure path resolution: no IO, safe before tracing is set up.
     let oikos = match &args.instance_root {

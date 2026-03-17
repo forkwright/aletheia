@@ -167,6 +167,7 @@ pub struct PendingMigration {
 /// Migrations are applied in version order. Each migration runs inside a
 /// transaction: the up SQL executes, then the version is recorded. If any
 /// migration fails, the transaction rolls back and the error is returned.
+#[must_use]
 pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
     let was_fresh = !schema_version_table_exists(conn);
 
@@ -235,6 +236,7 @@ pub fn run_migrations(conn: &Connection) -> Result<MigrationResult> {
 }
 
 /// Report pending migrations without applying them.
+#[must_use]
 pub fn check_migrations(conn: &Connection) -> Result<Vec<PendingMigration>> {
     bootstrap_version_table(conn)?;
     let current = get_schema_version(conn);

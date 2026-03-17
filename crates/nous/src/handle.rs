@@ -168,6 +168,7 @@ impl NousHandle {
     /// # Cancel safety
     ///
     /// Cancel-safe. Both sides are cancel-safe and a lost ping has no side effects.
+    #[must_use]
     pub async fn ping(&self, timeout: Duration) -> error::Result<()> {
         let (tx, rx) = oneshot::channel();
         self.send_with_timeout(NousMessage::Ping { reply: tx }, timeout)
@@ -207,6 +208,7 @@ impl NousHandle {
     ///
     /// Cancel-safe. Both `mpsc::send` and `oneshot::recv` are cancel-safe.
     /// A lost status query has no side effects.
+    #[must_use]
     pub async fn status(&self) -> error::Result<NousStatus> {
         let (tx, rx) = oneshot::channel();
         self.sender
@@ -231,6 +233,7 @@ impl NousHandle {
     /// # Cancel safety
     ///
     /// Cancel-safe. Uses a single `mpsc::send` with no follow-up await.
+    #[must_use]
     pub async fn sleep(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Sleep)
@@ -248,6 +251,7 @@ impl NousHandle {
     /// # Cancel safety
     ///
     /// Cancel-safe. Uses a single `mpsc::send` with no follow-up await.
+    #[must_use]
     pub async fn wake(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Wake)
@@ -265,6 +269,7 @@ impl NousHandle {
     /// # Cancel safety
     ///
     /// Cancel-safe. Uses a single `mpsc::send` with no follow-up await.
+    #[must_use]
     pub async fn shutdown(&self) -> error::Result<()> {
         self.sender
             .send(NousMessage::Shutdown)

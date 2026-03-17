@@ -34,6 +34,7 @@ pub struct BackupArgs {
     pub yes: bool,
 }
 
+#[must_use]
 pub fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
     let &BackupArgs {
         list,

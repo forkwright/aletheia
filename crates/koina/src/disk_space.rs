@@ -73,6 +73,7 @@ impl fmt::Display for DiskStatus {
     unsafe_code,
     reason = "single FFI call to libc::statvfs with zeroed struct"
 )]
+#[must_use]
 pub fn available_space(path: &Path) -> std::io::Result<u64> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -156,6 +157,7 @@ impl DiskSpaceMonitor {
     /// # Errors
     ///
     /// Returns an I/O error if `statvfs` fails.
+    #[must_use]
     pub fn refresh(&self, path: &Path) -> std::io::Result<DiskStatus> {
         let avail = available_space(path)?;
         self.cached_available.store(avail, Ordering::Relaxed);

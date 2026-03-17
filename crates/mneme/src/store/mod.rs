@@ -44,6 +44,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path))]
+    #[must_use]
     pub fn open(path: &Path) -> Result<Self> {
         Self::open_with_recovery(path, &RecoveryConfig::default())
     }
@@ -53,6 +54,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path, recovery_config))]
+    #[must_use]
     pub fn open_with_recovery(path: &Path, recovery_config: &RecoveryConfig) -> Result<Self> {
         info!("Opening session store at {}", path.display());
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
@@ -113,6 +115,7 @@ impl SessionStore {
     /// # Errors
     /// Returns an error if initialization fails.
     #[instrument]
+    #[must_use]
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory().context(error::DatabaseSnafu)?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")
@@ -161,6 +164,7 @@ impl SessionStore {
     ///
     /// # Errors
     /// Returns an error if the database connection is broken.
+    #[must_use]
     pub fn ping(&self) -> Result<()> {
         self.conn
             .query_row("SELECT 1", [], |_| Ok(()))

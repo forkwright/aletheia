@@ -123,6 +123,7 @@ impl KnowledgeStore {
     /// Runs a single Datalog query combining all three signals in the engine.
     /// When `seed_entities` is empty, the graph signal contributes zero to RRF.
     #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
+    #[must_use]
     pub fn search_hybrid(&self, q: &HybridQuery) -> crate::error::Result<Vec<HybridResult>> {
         use crate::engine::{Array1, DataValue, Vector};
         use std::collections::BTreeMap;

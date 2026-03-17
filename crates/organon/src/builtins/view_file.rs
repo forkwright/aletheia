@@ -182,6 +182,7 @@ fn execute_by_kind(
 }
 
 /// Register the `view_file` tool.
+#[must_use]
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(view_file_def(), Box::new(ViewFileExecutor))?;
     Ok(())

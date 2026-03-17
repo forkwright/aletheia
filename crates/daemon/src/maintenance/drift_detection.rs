@@ -64,6 +64,7 @@ impl DriftDetector {
     }
 
     /// Run drift detection. Returns a report of discrepancies.
+    #[must_use]
     pub fn check(&self) -> error::Result<DriftReport> {
         if !self.config.example_root.exists() {
             return Ok(DriftReport {

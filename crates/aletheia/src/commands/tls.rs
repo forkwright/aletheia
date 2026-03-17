@@ -24,6 +24,7 @@ pub enum Action {
     },
 }
 
+#[must_use]
 pub fn run(action: &Action) -> Result<()> {
     match action {
         Action::Generate {

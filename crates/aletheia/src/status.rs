@@ -24,6 +24,7 @@ pub(crate) enum StatusError {
 }
 
 /// Run the status command against a running (or stopped) instance.
+#[must_use]
 pub async fn run(url: &str, instance_root: Option<&std::path::PathBuf>) -> Result<(), StatusError> {
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
     let version = env!("CARGO_PKG_VERSION");

@@ -28,6 +28,7 @@ type Result<T> = StorageResult<T>;
 /// Create a database backed by memory.
 /// This is the fastest storage, but non-persistent.
 /// Supports concurrent readers but only a single writer.
+#[must_use]
 pub fn new_mem_db() -> crate::engine::error::InternalResult<crate::engine::DbCore<MemStorage>> {
     let ret = crate::engine::DbCore::new(MemStorage::default())?;
     ret.initialize()?;

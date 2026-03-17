@@ -1,5 +1,6 @@
 /// Copy text to the system clipboard.
 /// Tries arboard (native) first, falls back to OSC52 escape sequence.
+#[must_use]
 pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
     match arboard::Clipboard::new() {
         Ok(mut clipboard) => match clipboard.set_text(text) {

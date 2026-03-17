@@ -36,6 +36,7 @@ impl EvalClient {
 
     /// Check instance health.
     #[instrument(skip(self))]
+    #[must_use]
     pub async fn health(&self) -> Result<HealthResponse> {
         let url = format!("{}/api/health", self.base_url);
         let resp = self.http.get(&url).send().await.context(error::HttpSnafu)?;
@@ -44,6 +45,7 @@ impl EvalClient {
 
     /// List all configured nous agents.
     #[instrument(skip(self))]
+    #[must_use]
     pub async fn list_nous(&self) -> Result<Vec<NousSummary>> {
         let url = format!("{}/api/v1/nous", self.base_url);
         let resp = self.authed_get(&url).await?;
@@ -53,6 +55,7 @@ impl EvalClient {
 
     /// Get status for a specific nous agent.
     #[instrument(skip(self))]
+    #[must_use]
     pub async fn get_nous(&self, id: &str) -> Result<NousStatus> {
         let url = format!("{}/api/v1/nous/{id}", self.base_url);
         let resp = self.authed_get(&url).await?;
@@ -77,6 +80,7 @@ impl EvalClient {
 
     /// Get session details by ID.
     #[instrument(skip(self))]
+    #[must_use]
     pub async fn get_session(&self, id: &str) -> Result<SessionResponse> {
         let url = format!("{}/api/v1/sessions/{id}", self.base_url);
         let resp = self.authed_get(&url).await?;
@@ -85,6 +89,7 @@ impl EvalClient {
 
     /// Close (archive) a session.
     #[instrument(skip(self))]
+    #[must_use]
     pub async fn close_session(&self, id: &str) -> Result<()> {
         let url = format!("{}/api/v1/sessions/{id}", self.base_url);
         let resp = self.authed_delete(&url).await?;
@@ -132,6 +137,7 @@ impl EvalClient {
 
     /// Get conversation history for a session.
     #[instrument(skip(self))]
+    #[must_use]
     pub async fn get_history(&self, session_id: &str) -> Result<HistoryResponse> {
         let url = format!("{}/api/v1/sessions/{session_id}/history", self.base_url);
         let resp = self.authed_get(&url).await?;
@@ -140,6 +146,7 @@ impl EvalClient {
 
     /// Send a GET request without any auth header.
     #[instrument(skip(self))]
+    #[must_use]
     pub async fn raw_get(&self, path: &str) -> Result<reqwest::Response> {
         let url = format!("{}{path}", self.base_url);
         self.http.get(&url).send().await.context(error::HttpSnafu)
@@ -165,6 +172,7 @@ impl EvalClient {
 
     /// Send a GET request with an arbitrary Bearer token.
     #[instrument(skip(self, token))]
+    #[must_use]
     pub async fn raw_get_with_token(&self, path: &str, token: &str) -> Result<reqwest::Response> {
         let url = format!("{}{path}", self.base_url);
         self.http

@@ -21,6 +21,7 @@ pub struct AddNousArgs {
     pub model: String,
 }
 
+#[must_use]
 pub async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> Result<()> {
     validate_name(&args.name)?;
     validate_provider(&args.provider)?;

@@ -16,6 +16,7 @@ pub enum Action {
     Encrypt,
 }
 
+#[must_use]
 pub fn run(action: &Action, instance_root: Option<&PathBuf>) -> Result<()> {
     match action {
         Action::InitKey => run_init_key(),

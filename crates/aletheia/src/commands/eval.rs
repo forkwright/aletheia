@@ -22,6 +22,7 @@ pub struct EvalArgs {
     pub timeout: u64,
 }
 
+#[must_use]
 pub async fn run(args: EvalArgs) -> Result<()> {
     let EvalArgs {
         url,

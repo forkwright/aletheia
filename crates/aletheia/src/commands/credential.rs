@@ -28,6 +28,7 @@ fn token_preview(s: &str) -> String {
     }
 }
 
+#[must_use]
 pub async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),

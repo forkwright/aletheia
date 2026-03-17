@@ -128,6 +128,7 @@ pub struct PackPropertyDef {
 /// - [`error::Error::ManifestNotFound`] if `pack.toml` is missing
 /// - [`error::Error::ReadFile`] if the file cannot be read
 /// - [`error::Error::ParseManifest`] if TOML parsing fails
+#[must_use]
 pub fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
     ensure!(
         pack_root.is_dir(),
@@ -191,6 +192,7 @@ fn is_valid_pack_name(name: &str) -> bool {
 ///
 /// Returns the canonical absolute path, or an error if the file does not
 /// exist or if the resolved path escapes the pack root directory.
+#[must_use]
 pub fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<PathBuf> {
     let resolved = pack_root.join(&entry.path);
     ensure!(

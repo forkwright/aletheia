@@ -163,6 +163,7 @@ mod candle_provider {
         ///
         /// Returns `EmbeddingError::InitFailed` if model download or initialization fails.
         #[instrument]
+        #[must_use]
         pub fn new(model_repo: Option<&str>) -> EmbeddingResult<Self> {
             let repo_id = model_repo.unwrap_or(Self::DEFAULT_REPO);
             let device = Device::Cpu;
@@ -456,6 +457,7 @@ impl Default for EmbeddingConfig {
 /// # Errors
 /// Returns an error if the provider cannot be initialized.
 #[instrument(skip(config), fields(provider = %config.provider))]
+#[must_use]
 pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn EmbeddingProvider>> {
     match config.provider.as_str() {
         "mock" => {

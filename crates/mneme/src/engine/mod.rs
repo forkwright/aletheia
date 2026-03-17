@@ -129,6 +129,7 @@ pub enum Db {
 )]
 impl Db {
     /// Open an in-memory database.
+    #[must_use]
     pub fn open_mem() -> crate::engine::Result<Self> {
         crate::engine::storage::mem::new_mem_db()
             .map(Db::Mem)
@@ -140,6 +141,7 @@ impl Db {
     /// Primary production backend: pure Rust, LSM-tree, LZ4 compression,
     /// native read-your-own-writes.
     #[cfg(feature = "storage-fjall")]
+    #[must_use]
     pub fn open_fjall(path: impl AsRef<Path>) -> crate::engine::Result<Self> {
         crate::engine::storage::fjall_backend::new_cozo_fjall(path)
             .map(Db::Fjall)
@@ -173,6 +175,7 @@ impl Db {
     /// Backup the running database into an `SQLite` file.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use]
     pub fn backup_db(&self, out_file: impl AsRef<Path>) -> crate::engine::Result<()> {
         let path = out_file.as_ref();
         let result = match self {
@@ -186,6 +189,7 @@ impl Db {
     /// Restore from an `SQLite` backup.
     ///
     /// Not currently supported: requires the removed `storage-sqlite` feature.
+    #[must_use]
     pub fn restore_backup(&self, in_file: impl AsRef<Path>) -> crate::engine::Result<()> {
         let path = in_file.as_ref();
         let result = match self {
@@ -231,6 +235,7 @@ impl Db {
     }
 
     /// Import relations from backup.
+    #[must_use]
     pub fn import_relations(&self, data: BTreeMap<String, NamedRows>) -> crate::engine::Result<()> {
         let result = match self {
             Db::Mem(db) => db.import_relations(data),

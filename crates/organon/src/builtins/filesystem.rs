@@ -365,6 +365,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     (y, m, d)
 }
 
+#[must_use]
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(grep_def(), Box::new(GrepExecutor))?;
     registry.register(find_def(), Box::new(FindExecutor))?;

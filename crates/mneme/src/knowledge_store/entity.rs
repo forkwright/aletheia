@@ -8,6 +8,7 @@ use tracing::instrument;
 impl KnowledgeStore {
     /// Insert or update an entity.
     #[instrument(skip(self, entity), fields(entity_id = %entity.id))]
+    #[must_use]
     pub fn insert_entity(&self, entity: &crate::knowledge::Entity) -> crate::error::Result<()> {
         use snafu::ensure;
         ensure!(!entity.name.is_empty(), crate::error::EmptyEntityNameSnafu);
@@ -81,6 +82,7 @@ impl KnowledgeStore {
 
     /// List all entities in the knowledge store.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn list_entities(&self) -> crate::error::Result<Vec<crate::knowledge::Entity>> {
         use std::collections::BTreeMap;
 

@@ -172,6 +172,7 @@ impl CrossNousRouter {
     /// Not cancel-safe. If cancelled after `mpsc::send` succeeds, the message
     /// is delivered but the caller never sees the `Delivered` result.
     #[instrument(skip(self, message), fields(msg_id = %message.id, from = %message.from, to = %message.to))]
+    #[must_use]
     pub async fn send(&self, message: CrossNousMessage) -> error::Result<DeliveryState> {
         let to = message.to.clone();
 
@@ -216,6 +217,7 @@ impl CrossNousRouter {
     /// Not cancel-safe. If cancelled after sending the message, a pending reply
     /// entry is leaked until timeout cleanup. Do not use in `select!` branches.
     #[instrument(skip(self, message), fields(msg_id = %message.id, from = %message.from, to = %message.to))]
+    #[must_use]
     pub async fn ask(&self, mut message: CrossNousMessage) -> error::Result<CrossNousReply> {
         let to = message.to.clone();
         let timeout_dur = message.reply_timeout.unwrap_or(DEFAULT_REPLY_TIMEOUT);
@@ -284,6 +286,7 @@ impl CrossNousRouter {
 
     /// Submit a reply for a pending ask.
     #[instrument(skip(self, reply), fields(in_reply_to = %reply.in_reply_to, from = %reply.from))]
+    #[must_use]
     pub async fn reply(&self, reply: CrossNousReply) -> error::Result<()> {
         let msg_id = reply.in_reply_to;
         let Some(tx) = self.pending_replies.write().await.remove(&msg_id) else {

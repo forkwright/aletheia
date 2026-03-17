@@ -79,6 +79,7 @@ pub enum ServerError {
 /// Returns [`ServerError::Serve`] if the HTTP server encounters a fatal I/O error.
 /// Returns [`ServerError::TlsConfig`] if TLS is enabled but certs cannot be loaded.
 /// Returns [`ServerError::TlsNotCompiled`] if TLS is enabled but the feature is absent.
+#[must_use]
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;

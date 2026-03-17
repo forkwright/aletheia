@@ -120,6 +120,7 @@ impl HnswIndex {
 
     /// Try to load an existing index from disk, or create a new one.
     #[instrument(skip_all, fields(dir = ?config.persist_dir))]
+    #[must_use]
     pub fn open_or_create(config: HnswConfig) -> crate::error::Result<Arc<Self>> {
         if let Some(ref dir) = config.persist_dir {
             let graph_path = dir.join(format!("{}.hnsw.graph", &config.persist_basename));
@@ -182,6 +183,7 @@ impl HnswIndex {
     ///
     /// `ef` controls search width (must be >= `k`). Higher = better recall, slower.
     #[instrument(skip(self, query), fields(k, ef))]
+    #[must_use]
     pub fn search(&self, query: &[f32], k: usize, ef: usize) -> Vec<SearchResult> {
         let guard = self.inner.read().expect("hnsw lock poisoned");
         match *guard {
@@ -203,6 +205,7 @@ impl HnswIndex {
     ///
     /// Writes two files: `{basename}.hnsw.graph` and `{basename}.hnsw.data`.
     #[instrument(skip(self))]
+    #[must_use]
     pub fn dump(&self) -> crate::error::Result<()> {
         let dir = self.config.persist_dir.as_ref().context(HnswIndexSnafu {
             message: "no persist_dir configured for HNSW dump",

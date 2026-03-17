@@ -19,6 +19,7 @@ pub(super) fn require_services(
         .ok_or_else(|| ToolResult::error("memory services not configured"))
 }
 
+#[must_use]
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     knowledge_ops::register(registry)?;
     note::register(registry)?;

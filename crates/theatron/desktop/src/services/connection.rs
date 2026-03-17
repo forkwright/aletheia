@@ -80,6 +80,7 @@ impl PylonClient {
     ///
     /// Returns `InvalidToken` if the auth token contains non-ASCII characters.
     /// Returns `ClientBuild` if the reqwest client cannot be constructed.
+    #[must_use]
     pub fn new(config: &ConnectionConfig) -> Result<Self, ConnectionError> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -112,6 +113,7 @@ impl PylonClient {
     /// Check server reachability via `GET /api/health`.
     ///
     /// Returns `Ok(())` if the server responds with a 2xx status.
+    #[must_use]
     pub async fn health(&self) -> Result<(), ConnectionError> {
         let url = format!("{}/api/health", self.base_url);
         let resp = self

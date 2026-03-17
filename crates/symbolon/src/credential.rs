@@ -665,6 +665,7 @@ async fn do_refresh(client: &reqwest::Client, refresh_token: &str) -> Option<OAu
 /// Returns an error if the credential file cannot be read, contains no refresh
 /// token, the OAuth refresh request fails, or the updated credentials cannot
 /// be saved.
+#[must_use]
 pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
     let cred = CredentialFile::load(path)
         .ok_or_else(|| format!("cannot read credential file: {}", path.display()))?;

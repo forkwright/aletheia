@@ -84,6 +84,7 @@ impl TraceRotator {
         clippy::expect_used,
         reason = "file_name() is None only for paths ending in '..', which trace files never are"
     )]
+    #[must_use]
     pub fn rotate(&self) -> error::Result<RotationReport> {
         if let Some(ref monitor) = self.disk_monitor
             && !monitor.allow_non_essential_write()

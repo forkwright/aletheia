@@ -264,6 +264,7 @@ impl RecallEngine {
     /// Score and rank a batch of candidates. Returns sorted by score descending.
     #[must_use]
     #[instrument(skip(self, candidates), fields(count = candidates.len()))]
+    #[must_use]
     pub fn rank(&self, mut candidates: Vec<ScoredResult>) -> Vec<ScoredResult> {
         for candidate in &mut candidates {
             candidate.score = self.compute_score(&candidate.factors);

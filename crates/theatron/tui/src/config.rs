@@ -109,6 +109,7 @@ impl Config {
         reason = "consistent instance-method API; &self kept for tracing::instrument skip"
     )]
     #[tracing::instrument(skip(self))]
+    #[must_use]
     pub fn clear_credentials(&self) -> Result<()> {
         let path = Self::config_path()?;
         if path.exists() {
@@ -127,6 +128,7 @@ impl Config {
         reason = "consistent instance-method API; &self kept for tracing::instrument skip"
     )]
     #[tracing::instrument(skip(self, token))]
+    #[must_use]
     pub fn save_token(&self, token: &str) -> Result<()> {
         let path = Self::config_path()?;
         let mut file_config = Self::load_file().unwrap_or_default();

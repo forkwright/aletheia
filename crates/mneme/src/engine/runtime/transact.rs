@@ -137,6 +137,7 @@ impl<'a> SessionTx<'a> {
         Ok(ret)
     }
 
+    #[must_use]
     pub fn commit_tx(&mut self) -> Result<()> {
         self.store_tx.commit()?;
         Ok(())
@@ -308,6 +309,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Export relations to JSON data.
     ///
     /// `relations` contains names of the stored relations to export.
+    #[must_use]
     pub fn export_relations<I, T>(&'s self, relations: I) -> Result<BTreeMap<String, NamedRows>>
     where
         T: AsRef<str>,
@@ -362,6 +364,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     ///
     /// Note that triggers and callbacks are _not_ run for the relations, if any exists.
     /// If you need to activate triggers or callbacks, use queries with parameters.
+    #[must_use]
     pub fn import_relations(&'s self, data: BTreeMap<String, NamedRows>) -> Result<()> {
         let rel_names = data.keys().map(CompactString::from).collect_vec();
         let locks = self.obtain_relation_locks(rel_names.iter());
