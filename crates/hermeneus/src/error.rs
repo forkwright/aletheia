@@ -69,5 +69,22 @@ pub enum Error {
     },
 }
 
+impl Error {
+    /// Whether this error indicates a transient failure worth retrying
+    /// with a different model (429, 503, 529, timeout).
+    #[must_use]
+    pub fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Error::RateLimited { .. }
+                | Error::ApiRequest { .. }
+                | Error::ApiError {
+                    status: 500..=599,
+                    ..
+                }
+        )
+    }
+}
+
 /// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
