@@ -291,6 +291,10 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
                 server_tools: Vec::new(),
                 cache_enabled: resolved.capabilities.cache_enabled,
                 prosoche_model: resolved.prosoche_model,
+                session_token_cap: 500_000,
+                recall: resolved.recall.into(),
+                chars_per_token: resolved.limits.chars_per_token,
+                max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
             };
             nous_manager
                 .spawn(

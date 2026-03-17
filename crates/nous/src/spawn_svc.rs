@@ -87,6 +87,7 @@ impl SpawnService for SpawnServiceImpl {
             recall: crate::recall::RecallConfig::default(),
             chars_per_token: 4,
             prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+            max_tool_result_bytes: 32_768,
         };
 
         let pipeline_config = PipelineConfig {

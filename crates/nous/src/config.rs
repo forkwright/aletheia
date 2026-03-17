@@ -63,6 +63,13 @@ pub struct NousConfig {
     /// advanced reasoning. Defaults to Haiku-tier to reduce cost.
     #[serde(default = "default_prosoche_model")]
     pub prosoche_model: String,
+    /// Maximum size in bytes for a single tool result before truncation.
+    ///
+    /// Results exceeding this limit are truncated with an indicator showing
+    /// the original and truncated sizes. Set to `0` to disable. Default:
+    /// 32 768 bytes (32 KB). Wired from `agents.defaults.maxToolResultBytes`.
+    #[serde(default = "default_max_tool_result_bytes")]
+    pub max_tool_result_bytes: u32,
 }
 
 fn default_cache_enabled() -> bool {
@@ -85,6 +92,11 @@ fn default_prosoche_model() -> String {
     "claude-haiku-4-5-20251001".to_owned()
 }
 
+fn default_max_tool_result_bytes() -> u32 {
+    // WHY: must match AgentDefaults::max_tool_result_bytes default in taxis.
+    32_768
+}
+
 impl Default for NousConfig {
     fn default() -> Self {
         Self {
@@ -105,6 +117,7 @@ impl Default for NousConfig {
             recall: RecallConfig::default(),
             chars_per_token: default_chars_per_token(),
             prosoche_model: default_prosoche_model(),
+            max_tool_result_bytes: default_max_tool_result_bytes(),
         }
     }
 }
@@ -237,6 +250,7 @@ mod tests {
             recall: RecallConfig::default(),
             chars_per_token: 4,
             prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+            max_tool_result_bytes: 32_768,
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.thinking_enabled);
