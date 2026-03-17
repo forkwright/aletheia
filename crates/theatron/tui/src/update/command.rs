@@ -445,7 +445,7 @@ fn safe_truncate(s: &str, max_bytes: usize) -> &str {
     while end > 0 && !s.is_char_boundary(end) {
         end -= 1;
     }
-    &s[..end]
+    s.get(..end).unwrap_or(s)
 }
 
 pub(crate) fn execute_export_from_msg(app: &mut App) {

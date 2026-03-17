@@ -141,7 +141,7 @@ fn truncate_tool_result(content: &str) -> &str {
         while end > 0 && !content.is_char_boundary(end) {
             end -= 1;
         }
-        &content[..end]
+        content.get(..end).unwrap_or(content)
     }
 }
 
