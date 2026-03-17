@@ -152,6 +152,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Cycle detected in ask chain (would deadlock).
+    #[snafu(display("ask cycle detected: {chain}"))]
+    AskCycleDetected {
+        chain: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Distillation failed.
     #[snafu(display("distillation failed: {source}"))]
     Distillation {
@@ -392,6 +400,17 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("degraded"));
         assert!(msg.contains("5 panics"));
+    }
+
+    #[test]
+    fn error_display_ask_cycle_detected() {
+        let err = AskCycleDetectedSnafu {
+            chain: "a -> b -> a",
+        }
+        .build();
+        let msg = err.to_string();
+        assert!(msg.contains("cycle detected"));
+        assert!(msg.contains("a -> b -> a"));
     }
 
     #[test]

@@ -47,6 +47,20 @@ pub enum SandboxEnforcementMode {
     Permissive,
 }
 
+/// Network egress policy for child processes spawned by the exec tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum EgressPolicy {
+    /// Block all outbound network from child processes.
+    Deny,
+    /// No egress filtering; child processes have full network access.
+    #[default]
+    Allow,
+    /// Permit only connections to listed destinations.
+    Allowlist,
+}
+
 /// Agent autonomy level controlling default tool iteration limits and
 /// execution permissions.
 ///
@@ -854,6 +868,10 @@ pub struct SandboxSettings {
     /// Values may begin with `~` which is expanded to the HOME environment
     /// variable at policy-build time.
     pub extra_exec_paths: Vec<PathBuf>,
+    /// Network egress policy for child processes spawned by the exec tool.
+    pub egress: EgressPolicy,
+    /// CIDR ranges or addresses permitted when `egress = "allowlist"`.
+    pub egress_allowlist: Vec<String>,
 }
 
 impl Default for SandboxSettings {
@@ -864,6 +882,8 @@ impl Default for SandboxSettings {
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
             extra_exec_paths: Vec::new(),
+            egress: EgressPolicy::default(),
+            egress_allowlist: Vec::new(),
         }
     }
 }
