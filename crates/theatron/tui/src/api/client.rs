@@ -1,7 +1,6 @@
+use aletheia_koina::secret::SecretString;
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
-
-use aletheia_koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 
 use super::error::{ApiError, AuthSnafu, HttpSnafu, Result, ServerSnafu};
 use super::types::*;
@@ -38,7 +37,7 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
     let mut headers = header::HeaderMap::new();
 
     if let Some(t) = token {
-        let auth_value = header::HeaderValue::from_str(&format!("{BEARER_PREFIX}{t}"))
+        let auth_value = header::HeaderValue::from_str(&format!("Bearer {t}"))
             .map_err(|_invalid| ApiError::InvalidToken)?;
         headers.insert(header::AUTHORIZATION, auth_value);
     }
@@ -49,11 +48,11 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
     );
     headers.insert(
         header::CONTENT_TYPE,
-        header::HeaderValue::from_static(CONTENT_TYPE_JSON),
+        header::HeaderValue::from_static("application/json"),
     );
     headers.insert(
         header::ACCEPT,
-        header::HeaderValue::from_static(CONTENT_TYPE_JSON),
+        header::HeaderValue::from_static("application/json"),
     );
 
     Client::builder()
@@ -71,7 +70,7 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
 pub struct ApiClient {
     client: Client,
     base_url: String,
-    token: Option<String>,
+    token: Option<SecretString>,
 }
 
 impl std::fmt::Debug for ApiClient {
@@ -96,12 +95,22 @@ impl ApiClient {
         Ok(Self {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
-            token,
+            token: token.map(SecretString::from),
         })
     }
 
+    #[expect(dead_code, reason = "reserved for future login flow")]
+    pub fn set_token(&mut self, token: String) {
+        self.token = Some(SecretString::from(token));
+    }
+
+    #[expect(dead_code, reason = "reserved for future diagnostics / display")]
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     pub fn token(&self) -> Option<&str> {
-        self.token.as_deref()
+        self.token.as_ref().map(SecretString::expose_secret)
     }
 
     fn url(&self, path: &str) -> String {
@@ -132,6 +141,27 @@ impl ApiClient {
             })?;
         resp.json().await.context(HttpSnafu {
             operation: "auth mode response",
+        })
+    }
+
+    #[expect(dead_code, reason = "reserved for future interactive login flow")]
+    #[tracing::instrument(skip(self, password))]
+    pub async fn login(&self, username: &str, password: &str) -> Result<LoginResponse> {
+        let resp = self
+            .client
+            .post(self.url("/api/auth/login"))
+            .json(&serde_json::json!({ "username": username, "password": password }))
+            .send()
+            .await
+            .context(HttpSnafu { operation: "login" })?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            return AuthSnafu.fail();
+        }
+
+        let resp = Self::check_status(resp, "login request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "login response",
         })
     }
 
@@ -277,6 +307,24 @@ impl ApiClient {
                 operation: "rename session",
             })?;
         Self::check_status(resp, "rename request").await?;
+        Ok(())
+    }
+
+    #[expect(dead_code, reason = "reserved for turn abort keybinding")]
+    #[tracing::instrument(skip(self))]
+    pub async fn abort_turn(&self, turn_id: &str) -> Result<()> {
+        let encoded = encode_path(turn_id);
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/v1/turns/{encoded}/abort"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "abort turn",
+            })?;
+        Self::check_status(resp, "abort request").await?;
         Ok(())
     }
 

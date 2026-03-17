@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{Instrument, debug, info, warn};
 
 use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
+use aletheia_koina::secret::SecretString;
 
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
@@ -310,7 +311,10 @@ impl CredentialProvider for EnvCredentialProvider {
                     CredentialSource::Environment
                 }
             });
-            Some(Credential { secret: v, source })
+            Some(Credential {
+                secret: SecretString::from(v),
+                source,
+            })
         })
     }
 
@@ -320,7 +324,7 @@ impl CredentialProvider for EnvCredentialProvider {
 }
 
 struct CachedFile {
-    token: String,
+    token: SecretString,
     mtime: SystemTime,
     checked_at: Instant,
 }
@@ -344,17 +348,17 @@ impl FileCredentialProvider {
         std::fs::metadata(&self.path).ok()?.modified().ok()
     }
 
-    fn reload(&self) -> Option<String> {
+    fn reload(&self) -> Option<SecretString> {
         let cred = CredentialFile::load(&self.path)?;
         let mtime = self.current_mtime().unwrap_or_else(|| {
             tracing::debug!(path = %self.path.display(), "could not read file mtime, using epoch");
             SystemTime::UNIX_EPOCH
         });
 
-        let token = cred.token.clone();
+        let token = SecretString::from(cred.token);
         if let Ok(mut guard) = self.cached.write() {
             *guard = Some(CachedFile {
-                token: cred.token,
+                token: token.clone(),
                 mtime,
                 checked_at: Instant::now(),
             });
@@ -394,8 +398,8 @@ impl CredentialProvider for FileCredentialProvider {
             }
         }
 
-        self.reload().map(|token| Credential {
-            secret: token,
+        self.reload().map(|secret| Credential {
+            secret,
             source: CredentialSource::File,
         })
     }
@@ -410,8 +414,8 @@ impl CredentialProvider for FileCredentialProvider {
 }
 
 struct RefreshState {
-    current_token: String,
-    refresh_token: String,
+    current_token: SecretString,
+    refresh_token: SecretString,
     expires_at_ms: u64,
     subscription_type: Option<String>,
 }
@@ -442,8 +446,8 @@ impl RefreshingCredentialProvider {
         let refresh_token = cred.refresh_token.clone().filter(|t| !t.is_empty())?;
 
         let state = Arc::new(RwLock::new(Some(RefreshState {
-            current_token: cred.token.clone(),
-            refresh_token,
+            current_token: SecretString::from(cred.token.clone()),
+            refresh_token: SecretString::from(refresh_token),
             expires_at_ms: cred.expires_at.unwrap_or_else(|| {
                 warn!(
                     "credential has no expiry, treating as immediately expired to trigger refresh"
@@ -493,7 +497,7 @@ impl CredentialProvider for RefreshingCredentialProvider {
     fn get_credential(&self) -> Option<Credential> {
         if let Ok(guard) = self.state.read()
             && let Some(ref s) = *guard
-            && !s.current_token.is_empty()
+            && !s.current_token.expose_secret().is_empty()
         {
             return Some(Credential {
                 secret: s.current_token.clone(),
@@ -541,7 +545,7 @@ async fn refresh_loop(
             break;
         }
 
-        let (refresh_token, subscription_type, expires_at_ms, needs_refresh) = {
+        let (refresh_token_value, subscription_type, expires_at_ms, needs_refresh) = {
             let Ok(guard) = state.read() else {
                 continue;
             };
@@ -554,7 +558,7 @@ async fn refresh_loop(
             #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
             let needs = remaining_secs < REFRESH_THRESHOLD_SECS as i64;
             (
-                s.refresh_token.clone(),
+                s.refresh_token.expose_secret().to_owned(),
                 s.subscription_type.clone(),
                 s.expires_at_ms,
                 needs,
@@ -579,7 +583,7 @@ async fn refresh_loop(
             "credential refresh needed, refreshing OAuth token"
         );
 
-        if let Some(resp) = do_refresh(&client, &refresh_token).await {
+        if let Some(resp) = do_refresh(&client, &refresh_token_value).await {
             circuit_breaker.record_success();
 
             let now_ms = unix_epoch_ms();
@@ -587,8 +591,8 @@ async fn refresh_loop(
 
             if let Ok(mut guard) = state.write() {
                 *guard = Some(RefreshState {
-                    current_token: resp.access_token.clone(),
-                    refresh_token: resp.refresh_token.clone(),
+                    current_token: SecretString::from(resp.access_token.clone()),
+                    refresh_token: SecretString::from(resp.refresh_token.clone()),
                     expires_at_ms,
                     subscription_type: subscription_type.clone(),
                 });

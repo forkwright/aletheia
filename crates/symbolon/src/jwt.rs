@@ -227,8 +227,8 @@ impl JwtManager {
         let refresh = self.issue_refresh(&claims.sub, claims.role)?;
 
         Ok(TokenPair {
-            access_token: access,
-            refresh_token: refresh,
+            access_token: access.into(),
+            refresh_token: refresh.into(),
         })
     }
 

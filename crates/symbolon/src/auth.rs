@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use secrecy::SecretString;
+use aletheia_koina::secret::SecretString;
 use tracing::instrument;
 
 use crate::api_key;
@@ -82,8 +82,8 @@ impl AuthService {
         let refresh = self.jwt.issue_refresh(&user.id, user.role)?;
 
         Ok(TokenPair {
-            access_token: access,
-            refresh_token: refresh,
+            access_token: SecretString::from(access),
+            refresh_token: SecretString::from(refresh),
         })
     }
 
@@ -131,8 +131,8 @@ impl AuthService {
         let refresh = self.jwt.issue_refresh(&claims.sub, claims.role)?;
 
         Ok(TokenPair {
-            access_token: access,
-            refresh_token: refresh,
+            access_token: SecretString::from(access),
+            refresh_token: SecretString::from(refresh),
         })
     }
 
@@ -257,7 +257,9 @@ mod tests {
             .unwrap();
 
         let pair = svc.login("alice", &secret("hunter2")).unwrap();
-        let claims = svc.validate_token(&pair.access_token).unwrap();
+        let claims = svc
+            .validate_token(pair.access_token.expose_secret())
+            .unwrap();
         assert_eq!(claims.role, Role::Operator);
         assert_eq!(claims.kind, TokenKind::Access);
     }
@@ -286,11 +288,14 @@ mod tests {
             .unwrap();
         let pair = svc.login("alice", &secret("pw")).unwrap();
 
-        assert!(svc.validate_token(&pair.access_token).is_ok());
+        assert!(
+            svc.validate_token(pair.access_token.expose_secret())
+                .is_ok()
+        );
 
-        svc.logout(&pair.access_token).unwrap();
+        svc.logout(pair.access_token.expose_secret()).unwrap();
 
-        let result = svc.validate_token(&pair.access_token);
+        let result = svc.validate_token(pair.access_token.expose_secret());
         assert!(result.is_err());
     }
 
@@ -301,8 +306,12 @@ mod tests {
             .unwrap();
         let pair = svc.login("alice", &secret("pw")).unwrap();
 
-        let new_pair = svc.refresh_token(&pair.refresh_token).unwrap();
-        let claims = svc.validate_token(&new_pair.access_token).unwrap();
+        let new_pair = svc
+            .refresh_token(pair.refresh_token.expose_secret())
+            .unwrap();
+        let claims = svc
+            .validate_token(new_pair.access_token.expose_secret())
+            .unwrap();
         assert_eq!(claims.role, Role::Operator);
     }
 
@@ -313,7 +322,7 @@ mod tests {
             .unwrap();
         let pair = svc.login("alice", &secret("pw")).unwrap();
 
-        let result = svc.refresh_token(&pair.access_token);
+        let result = svc.refresh_token(pair.access_token.expose_secret());
         assert!(result.is_err());
     }
 

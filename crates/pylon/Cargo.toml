@@ -61,7 +61,7 @@ aletheia-hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 http-body-util = "0.1"
 jiff = { workspace = true }
 reqwest = { workspace = true }
-secrecy = { workspace = true }
+aletheia-koina = { path = "../koina" }
 static_assertions = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }

@@ -6,25 +6,26 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use aletheia_koina::credential::{CredentialProvider, CredentialSource};
+use aletheia_koina::secret::SecretString;
 use rand::Rng as _;
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
-use secrecy::SecretString;
 use snafu::ResultExt;
 use tracing::{Instrument as _, info, info_span};
 
-use aletheia_koina::credential::{CredentialProvider, CredentialSource};
+use crate::error::{self, Result};
+use crate::health::{HealthConfig, ProviderHealthTracker};
+use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
+use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
 use super::wire::WireRequest;
-use crate::error::{self, Result};
-use crate::health::{HealthConfig, ProviderHealthTracker};
+
 use crate::models::{
     BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_MS, DEFAULT_API_VERSION, DEFAULT_BASE_URL,
     DEFAULT_MAX_RETRIES, SUPPORTED_MODELS,
 };
-use crate::provider::{LlmProvider, ModelPricing, ProviderConfig};
-use crate::types::{CompletionRequest, CompletionResponse};
 
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {
@@ -44,9 +45,8 @@ struct StaticCredentialProvider {
 
 impl CredentialProvider for StaticCredentialProvider {
     fn get_credential(&self) -> Option<aletheia_koina::credential::Credential> {
-        use secrecy::ExposeSecret;
         Some(aletheia_koina::credential::Credential {
-            secret: self.key.expose_secret().to_owned(),
+            secret: self.key.clone(),
             source: CredentialSource::Environment,
         })
     }
@@ -61,7 +61,7 @@ impl CredentialProvider for StaticCredentialProvider {
 }
 
 fn build_http_client() -> Result<Client> {
-    // WHY: reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
+    // reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
     // install_default() is idempotent: subsequent calls return Err and are ignored.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
@@ -98,7 +98,7 @@ impl AnthropicProvider {
         let api_key = config
             .api_key
             .as_ref()
-            .filter(|k| !k.is_empty())
+            .filter(|k| !k.expose_secret().is_empty())
             .ok_or_else(|| {
                 error::ProviderInitSnafu {
                     message: "api_key is required for Anthropic provider".to_owned(),
@@ -109,7 +109,7 @@ impl AnthropicProvider {
         Ok(Self {
             client: build_http_client()?,
             credential_provider: Arc::new(StaticCredentialProvider {
-                key: SecretString::from(api_key.clone()),
+                key: api_key.clone(),
             }),
             base_url: config
                 .base_url
@@ -232,7 +232,7 @@ impl AnthropicProvider {
                 let status = response.status().as_u16();
                 let err = super::error::map_error_response(response).await;
                 self.health.record_error(&err);
-                // NOTE: Non-retryable HTTP status: 401, 400-level (except 429)
+                // Non-retryable HTTP status: 401, 400-level (except 429)
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
                         clippy::cast_possible_truncation,
@@ -324,7 +324,7 @@ impl AnthropicProvider {
                     return Ok(resp);
                 }
                 Err(e) => {
-                    // WARNING: If content was already streamed, we can't retry: it would
+                    // If content was already streamed, we can't retry: it would
                     // produce duplicates. Propagate immediately.
                     if content_started {
                         tracing::error!("SSE error after content started streaming — cannot retry");
@@ -346,7 +346,7 @@ impl AnthropicProvider {
                         );
                         return Err(e);
                     }
-                    // NOTE: Only retry RateLimited (overloaded/429); other errors are terminal.
+                    // Only retry RateLimited (overloaded/429); other errors are terminal.
                     if matches!(e, error::Error::RateLimited { .. }) {
                         tracing::warn!("SSE stream returned retryable error before content");
                         self.health.record_error(&e);
@@ -398,30 +398,29 @@ impl AnthropicProvider {
             .build()
         })?;
 
-        if credential.secret.is_empty() {
+        let secret_value = credential.secret.expose_secret();
+        if secret_value.is_empty() {
             return Err(error::AuthFailedSnafu {
-                message: "credential secret is empty — cannot build Authorization header"
-                    .to_owned(),
+                message: "credential secret is empty, cannot build Authorization header".to_owned(),
             }
             .build());
         }
 
         let mut headers = HeaderMap::new();
         if credential.source == CredentialSource::OAuth {
-            let value =
-                HeaderValue::from_str(&format!("Bearer {}", credential.secret)).map_err(|_e| {
-                    error::AuthFailedSnafu {
-                        message: "credential contains invalid header characters".to_owned(),
-                    }
-                    .build()
-                })?;
+            let value = HeaderValue::from_str(&format!("Bearer {secret_value}")).map_err(|_e| {
+                error::AuthFailedSnafu {
+                    message: "credential contains invalid header characters".to_owned(),
+                }
+                .build()
+            })?;
             headers.insert(reqwest::header::AUTHORIZATION, value);
             headers.insert(
                 "anthropic-beta",
                 HeaderValue::from_static("oauth-2025-04-20"),
             );
         } else {
-            let value = HeaderValue::from_str(&credential.secret).map_err(|_e| {
+            let value = HeaderValue::from_str(secret_value).map_err(|_e| {
                 error::AuthFailedSnafu {
                     message: "API key contains invalid header characters".to_owned(),
                 }
@@ -716,7 +715,7 @@ pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> 
     let base = BACKOFF_BASE_MS * BACKOFF_FACTOR.pow(attempt.saturating_sub(1));
     let capped = base.min(BACKOFF_MAX_MS);
 
-    // WHY: ±25% random jitter prevents thundering herd under concurrent load
+    // ±25% random jitter: prevents thundering herd under concurrent load
     let jitter_range = capped / 4;
     let delay = if jitter_range > 0 {
         let offset = rand::rng().random_range(0..jitter_range * 2);

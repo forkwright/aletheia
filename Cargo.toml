@@ -96,6 +96,7 @@ axum-server = { version = "0.8", features = ["tls-rustls"] }
 
 # Secrets
 secrecy = { version = "0.10", features = ["serde"] }
+zeroize = "1"
 
 # Tracing
 tracing = "0.1"
