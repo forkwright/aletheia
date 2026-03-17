@@ -238,14 +238,14 @@ impl<T: TokenFilter> From<T> for BoxTokenFilter {
 ///        .filter(LowerCaser);
 /// let mut token_stream = tokenizer.token_stream("Hello, happy tax payer");
 /// {
-///     let token = token_stream.next().unwrap();
+///     let token = token_stream.next()?;
 ///     assert_eq!(&token.text, "hello");
 ///     assert_eq!(token.offset_from, 0);
 ///     assert_eq!(token.offset_to, 5);
 ///     assert_eq!(token.position, 0);
 /// }
 /// {
-///     let token = token_stream.next().unwrap();
+///     let token = token_stream.next()?;
 ///     assert_eq!(&token.text, "happy");
 ///     assert_eq!(token.offset_from, 7);
 ///     assert_eq!(token.offset_to, 12);
