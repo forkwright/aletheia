@@ -672,6 +672,7 @@ fn get_stored_entities(state: &AppState) -> Vec<aletheia_mneme::knowledge::Entit
     Vec::new()
 }
 
+#[cfg(feature = "knowledge-store")]
 fn get_fact_relationships(
     _state: &AppState,
     _fact: &aletheia_mneme::knowledge::Fact,
@@ -686,6 +687,7 @@ fn get_entity_relationships(
     Vec::new()
 }
 
+#[cfg(feature = "knowledge-store")]
 fn get_similar_facts(
     _state: &AppState,
     _fact: &aletheia_mneme::knowledge::Fact,
