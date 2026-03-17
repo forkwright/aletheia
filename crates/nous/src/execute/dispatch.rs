@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 
 use tracing::debug;
 
-use aletheia_hermeneus::types::{ContentBlock, ToolResultContent};
+use aletheia_hermeneus::types::{ContentBlock, ToolResultBlock, ToolResultContent};
 use aletheia_koina::id::ToolName;
 use aletheia_organon::registry::ToolRegistry;
 use aletheia_organon::types::{ToolContext, ToolInput};
@@ -14,6 +14,104 @@ use tokio::sync::mpsc;
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, ToolCall};
 use crate::stream::TurnStreamEvent;
+
+/// Truncate a tool result if it exceeds `max_bytes`.
+///
+/// Only text content is truncated; image and document blocks are left
+/// intact because they are binary data that cannot be meaningfully
+/// split at arbitrary byte boundaries. When truncation occurs, the
+/// text is cut at the last char boundary within the limit and a
+/// `[truncated: {original} -> {truncated} bytes]` indicator is appended.
+///
+/// A `max_bytes` of `0` disables truncation entirely.
+pub(crate) fn truncate_tool_result(
+    content: ToolResultContent,
+    max_bytes: u32,
+) -> ToolResultContent {
+    if max_bytes == 0 {
+        return content;
+    }
+    let limit = max_bytes as usize;
+
+    match content {
+        ToolResultContent::Text(text) => {
+            if text.len() <= limit {
+                return ToolResultContent::Text(text);
+            }
+            let original_len = text.len();
+            // WHY: truncate at a char boundary to avoid producing invalid UTF-8.
+            let truncated = truncate_at_char_boundary(&text, limit);
+            let indicator = format!(
+                "\n[truncated: {} -> {} bytes]",
+                original_len,
+                truncated.len()
+            );
+            debug!(
+                original_bytes = original_len,
+                truncated_bytes = truncated.len(),
+                "tool result truncated"
+            );
+            ToolResultContent::Text(format!("{truncated}{indicator}"))
+        }
+        ToolResultContent::Blocks(blocks) => {
+            let total: usize = blocks
+                .iter()
+                .map(|b| match b {
+                    ToolResultBlock::Text { text } => text.len(),
+                    _ => 0,
+                })
+                .sum();
+
+            if total <= limit {
+                return ToolResultContent::Blocks(blocks);
+            }
+
+            debug!(
+                original_bytes = total,
+                limit_bytes = limit,
+                "tool result blocks truncated"
+            );
+
+            let mut remaining = limit;
+            let mut out = Vec::with_capacity(blocks.len());
+            for block in blocks {
+                match block {
+                    ToolResultBlock::Text { text } => {
+                        if remaining == 0 {
+                            continue;
+                        }
+                        if text.len() <= remaining {
+                            remaining -= text.len();
+                            out.push(ToolResultBlock::Text { text });
+                        } else {
+                            let truncated = truncate_at_char_boundary(&text, remaining);
+                            remaining = 0;
+                            out.push(ToolResultBlock::Text {
+                                text: truncated.to_owned(),
+                            });
+                        }
+                    }
+                    other => out.push(other),
+                }
+            }
+            let indicator = format!("\n[truncated: {total} -> {limit} bytes]");
+            out.push(ToolResultBlock::Text { text: indicator });
+            ToolResultContent::Blocks(out)
+        }
+    }
+}
+
+/// Find the largest prefix of `s` that is at most `max_bytes` bytes and
+/// ends on a UTF-8 char boundary.
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    // WHY: floor_char_boundary rounds down to the nearest char boundary,
+    // avoiding a panic or invalid slice from splitting mid-codepoint.
+    let end = s.floor_char_boundary(max_bytes);
+    &s[..end]
+}
 
 /// Hash a JSON value for loop detection using the standard library hasher.
 pub(super) fn simple_hash(value: &serde_json::Value) -> String {
@@ -91,6 +189,7 @@ pub(super) async fn dispatch_tools(
     loop_detector: &mut LoopDetector,
     all_tool_calls: &mut Vec<ToolCall>,
     iterations: u32,
+    max_tool_result_bytes: u32,
 ) -> error::Result<Vec<ContentBlock>> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
@@ -135,6 +234,8 @@ pub(super) async fn dispatch_tools(
             Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
         };
 
+        let content = truncate_tool_result(content, max_tool_result_bytes);
+
         debug!(
             tool = tool_name.as_str(),
             duration_ms, is_error, "tool executed"
@@ -168,6 +269,7 @@ pub(super) async fn dispatch_tools_streaming(
     all_tool_calls: &mut Vec<ToolCall>,
     iterations: u32,
     stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    max_tool_result_bytes: u32,
 ) -> error::Result<Vec<ContentBlock>> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
@@ -218,6 +320,7 @@ pub(super) async fn dispatch_tools_streaming(
             Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
         };
 
+        let content = truncate_tool_result(content, max_tool_result_bytes);
         let result_summary = content.text_summary();
 
         debug!(
@@ -250,4 +353,145 @@ pub(super) async fn dispatch_tools_streaming(
     }
 
     Ok(tool_results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_within_limit_passes_through() {
+        let content = ToolResultContent::text("hello world");
+        let result = truncate_tool_result(content, 100);
+        match result {
+            ToolResultContent::Text(s) => assert_eq!(s, "hello world"),
+            _ => panic!("expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn text_at_exact_limit_passes_through() {
+        let text = "a".repeat(50);
+        let content = ToolResultContent::text(text.clone());
+        let result = truncate_tool_result(content, 50);
+        match result {
+            ToolResultContent::Text(s) => assert_eq!(s, text),
+            _ => panic!("expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn text_over_limit_is_truncated_with_indicator() {
+        let text = "a".repeat(100);
+        let result = truncate_tool_result(ToolResultContent::text(text), 50);
+        match result {
+            ToolResultContent::Text(s) => {
+                assert!(
+                    s.contains("[truncated: 100 -> 50 bytes]"),
+                    "missing truncation indicator in: {s}"
+                );
+                assert!(
+                    s.starts_with("aaaa"),
+                    "truncated content should preserve prefix"
+                );
+            }
+            _ => panic!("expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn zero_limit_disables_truncation() {
+        let text = "a".repeat(100_000);
+        let content = ToolResultContent::text(text.clone());
+        let result = truncate_tool_result(content, 0);
+        match result {
+            ToolResultContent::Text(s) => assert_eq!(s.len(), 100_000),
+            _ => panic!("expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn multibyte_chars_truncated_at_char_boundary() {
+        // Each emoji is 4 bytes. 3 emojis = 12 bytes.
+        let text = "\u{1F600}\u{1F601}\u{1F602}";
+        assert_eq!(text.len(), 12, "test setup: 3 emojis = 12 bytes");
+
+        // Limit of 5 bytes: can fit 1 emoji (4 bytes), not 2 (8 bytes).
+        let result = truncate_tool_result(ToolResultContent::text(text), 5);
+        match result {
+            ToolResultContent::Text(s) => {
+                assert!(
+                    s.starts_with('\u{1F600}'),
+                    "should keep first complete emoji"
+                );
+                assert!(
+                    s.contains("[truncated: 12 -> 4 bytes]"),
+                    "indicator should show char-boundary size: {s}"
+                );
+            }
+            _ => panic!("expected Text variant"),
+        }
+    }
+
+    #[test]
+    fn blocks_within_limit_pass_through() {
+        let blocks = vec![
+            ToolResultBlock::Text {
+                text: "hello".to_owned(),
+            },
+            ToolResultBlock::Text {
+                text: "world".to_owned(),
+            },
+        ];
+        let content = ToolResultContent::Blocks(blocks);
+        let result = truncate_tool_result(content, 100);
+        match result {
+            ToolResultContent::Blocks(bs) => {
+                assert_eq!(bs.len(), 2, "both blocks should pass through");
+            }
+            _ => panic!("expected Blocks variant"),
+        }
+    }
+
+    #[test]
+    fn blocks_over_limit_truncates_text_preserves_images() {
+        let blocks = vec![
+            ToolResultBlock::Text {
+                text: "a".repeat(80),
+            },
+            ToolResultBlock::Image {
+                source: aletheia_hermeneus::types::ImageSource {
+                    media_type: "image/png".to_owned(),
+                    data: "base64data".to_owned(),
+                },
+            },
+            ToolResultBlock::Text {
+                text: "b".repeat(40),
+            },
+        ];
+        let content = ToolResultContent::Blocks(blocks);
+        let result = truncate_tool_result(content, 50);
+        match result {
+            ToolResultContent::Blocks(bs) => {
+                // First text block truncated to 50 bytes, image preserved,
+                // second text block skipped, indicator appended.
+                let has_image = bs
+                    .iter()
+                    .any(|b| matches!(b, ToolResultBlock::Image { .. }));
+                assert!(has_image, "image blocks should be preserved");
+
+                let indicator_block = bs.last().expect("should have indicator block");
+                match indicator_block {
+                    ToolResultBlock::Text { text } => {
+                        assert!(
+                            text.contains("[truncated: 120 -> 50 bytes]"),
+                            "indicator should show total text sizes: {text}"
+                        );
+                    }
+                    _ => panic!("last block should be text indicator"),
+                }
+            }
+            _ => panic!("expected Blocks variant"),
+        }
+    }
 }

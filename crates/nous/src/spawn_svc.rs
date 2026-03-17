@@ -86,6 +86,7 @@ impl SpawnService for SpawnServiceImpl {
             session_token_cap: 500_000,
             recall: crate::recall::RecallConfig::default(),
             chars_per_token: 4,
+            max_tool_result_bytes: 32_768,
         };
 
         let pipeline_config = PipelineConfig {

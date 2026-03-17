@@ -350,6 +350,7 @@ pub async fn run(args: Args) -> Result<()> {
                 session_token_cap: 500_000,
                 recall: resolved.recall.into(),
                 chars_per_token: resolved.chars_per_token,
+                max_tool_result_bytes: resolved.max_tool_result_bytes,
             };
             nous_manager
                 .spawn(

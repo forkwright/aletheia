@@ -236,6 +236,7 @@ pub async fn execute(
             &mut loop_detector,
             &mut all_tool_calls,
             iterations,
+            config.max_tool_result_bytes,
         )
         .await?;
 
@@ -384,6 +385,7 @@ pub async fn execute_streaming(
             &mut all_tool_calls,
             iterations,
             stream_tx,
+            config.max_tool_result_bytes,
         )
         .await?;
 

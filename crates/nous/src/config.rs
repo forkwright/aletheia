@@ -57,6 +57,13 @@ pub struct NousConfig {
     /// heuristic. Wired from `agents.defaults.chars_per_token` at startup.
     #[serde(default = "default_chars_per_token")]
     pub chars_per_token: u32,
+    /// Maximum size in bytes for a single tool result before truncation.
+    ///
+    /// Results exceeding this limit are truncated with an indicator showing
+    /// the original and truncated sizes. Set to `0` to disable. Default:
+    /// 32 768 bytes (32 KB). Wired from `agents.defaults.maxToolResultBytes`.
+    #[serde(default = "default_max_tool_result_bytes")]
+    pub max_tool_result_bytes: u32,
 }
 
 fn default_cache_enabled() -> bool {
@@ -72,6 +79,11 @@ fn default_chars_per_token() -> u32 {
     //      the serde default (used when deserialising NousConfig directly)
     //      is identical to the value wired at startup via ResolvedNousConfig.
     4
+}
+
+fn default_max_tool_result_bytes() -> u32 {
+    // WHY: must match AgentDefaults::max_tool_result_bytes default in taxis.
+    32_768
 }
 
 impl Default for NousConfig {
@@ -93,6 +105,7 @@ impl Default for NousConfig {
             session_token_cap: default_session_token_cap(),
             recall: RecallConfig::default(),
             chars_per_token: default_chars_per_token(),
+            max_tool_result_bytes: default_max_tool_result_bytes(),
         }
     }
 }
@@ -224,6 +237,7 @@ mod tests {
             session_token_cap: 250_000,
             recall: RecallConfig::default(),
             chars_per_token: 4,
+            max_tool_result_bytes: 32_768,
         };
         assert_eq!(config.name.as_deref(), Some("Chiron"));
         assert!(config.thinking_enabled);

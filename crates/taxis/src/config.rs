@@ -260,6 +260,12 @@ pub struct AgentDefaults {
     /// `bootstrap` (the remainder, capped at `bootstrap_max_tokens`).
     /// Default: 0.6 (60 % of the context window).
     pub history_budget_ratio: f64,
+    /// Maximum size in bytes for a single tool result before truncation.
+    ///
+    /// Tool results exceeding this limit are truncated to fit, with a
+    /// `[truncated: {original} -> {truncated} bytes]` indicator appended.
+    /// Set to `0` to disable truncation. Default: 32 768 (32 KB).
+    pub max_tool_result_bytes: u32,
 }
 
 impl Default for AgentDefaults {
@@ -278,6 +284,7 @@ impl Default for AgentDefaults {
             recall: RecallSettings::default(),
             chars_per_token: 4,
             history_budget_ratio: 0.6,
+            max_tool_result_bytes: 32_768,
         }
     }
 }
@@ -937,6 +944,8 @@ pub struct ResolvedNousConfig {
     pub chars_per_token: u32,
     /// Fraction of the context window reserved for conversation history.
     pub history_budget_ratio: f64,
+    /// Maximum tool result size in bytes before truncation (0 = disabled).
+    pub max_tool_result_bytes: u32,
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -1015,6 +1024,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         recall,
         chars_per_token: defaults.chars_per_token,
         history_budget_ratio: defaults.history_budget_ratio,
+        max_tool_result_bytes: defaults.max_tool_result_bytes,
     }
 }
 
