@@ -42,6 +42,7 @@ macro_rules! define_id {
             /// Create without validation: for internal row parsing where
             /// the ID was already validated on insert.
             #[must_use]
+            #[allow(dead_code, reason = "macro expands for all ID types; not all have callers yet")]
             pub(crate) fn new_unchecked(id: impl Into<String>) -> Self {
                 Self(id.into())
             }
