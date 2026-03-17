@@ -105,7 +105,7 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
     let request_id = request
         .extensions()
         .get::<RequestId>()
-        .map(|r| r.to_string());
+        .map(std::string::ToString::to_string);
 
     let response = next.run(request).await;
 
