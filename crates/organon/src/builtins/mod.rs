@@ -24,6 +24,11 @@ use crate::registry::ToolRegistry;
 use crate::sandbox::SandboxConfig;
 
 /// Register all built-in tool executors with default sandbox config.
+///
+/// # Errors
+///
+/// Returns [`Error::DuplicateTool`] if any built-in tool name collides with an
+/// already-registered tool.
 pub fn register_all(registry: &mut ToolRegistry) -> Result<()> {
     register_all_with_sandbox(registry, SandboxConfig::default())
 }

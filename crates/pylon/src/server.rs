@@ -70,6 +70,15 @@ pub enum ServerError {
 }
 
 /// Start the HTTP gateway and block until shutdown.
+///
+/// # Errors
+///
+/// Returns [`ServerError::Validation`] if the instance directory layout is invalid.
+/// Returns [`ServerError::SessionStore`] if the session database cannot be opened.
+/// Returns [`ServerError::Bind`] if the server cannot bind to the configured address.
+/// Returns [`ServerError::Serve`] if the HTTP server encounters a fatal I/O error.
+/// Returns [`ServerError::TlsConfig`] if TLS is enabled but certs cannot be loaded.
+/// Returns [`ServerError::TlsNotCompiled`] if TLS is enabled but the feature is absent.
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;

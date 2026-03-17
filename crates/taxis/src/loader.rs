@@ -20,6 +20,11 @@ use crate::oikos::Oikos;
 /// Encrypted values (`enc:` prefix) are transparently decrypted using the
 /// master key from `~/.config/aletheia/master.key`. If the key is missing,
 /// encrypted values pass through unchanged with a warning.
+///
+/// # Errors
+///
+/// Returns [`Error::Figment`] if the configuration cascade produces an invalid or
+/// unextractable result.
 #[expect(
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
@@ -85,6 +90,12 @@ fn decrypt_toml_content(content: &str) -> String {
 ///
 /// Uses atomic write: writes to a `.tmp` file, then renames. This prevents
 /// corruption if the process is killed during write.
+///
+/// # Errors
+///
+/// Returns [`Error::SerializeToml`] if the config cannot be serialized to TOML.
+/// Returns [`Error::WriteConfig`] if the config directory cannot be created or the
+/// file cannot be written.
 #[expect(
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
