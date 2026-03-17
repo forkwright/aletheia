@@ -13,28 +13,43 @@ mod session;
 #[cfg(test)]
 mod tests;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 use snafu::ResultExt;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument, warn};
 
 use crate::error::{self, Result};
 use crate::migration;
+use crate::recovery::{self, RecoveryConfig, StoreMode};
 use crate::types::{Message, Role, Session, SessionStatus, SessionType};
 
-/// The session store: wraps a `SQLite` connection.
+/// The session store: wraps a `SQLite` connection with optional degraded mode.
 pub struct SessionStore {
     conn: Connection,
+    mode: StoreMode,
+    path: Option<PathBuf>,
 }
 
 impl SessionStore {
     /// Open (or create) a session store at the given path.
     ///
+    /// When recovery is enabled, runs `PRAGMA integrity_check` on open and
+    /// handles corruption automatically (backup, repair, read-only fallback).
+    ///
     /// # Errors
     /// Returns an error if the database cannot be opened or initialized.
     #[instrument(skip(path))]
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_with_recovery(path, &RecoveryConfig::default())
+    }
+
+    /// Open a session store with explicit recovery configuration.
+    ///
+    /// # Errors
+    /// Returns an error if the database cannot be opened or initialized.
+    #[instrument(skip(path, recovery_config))]
+    pub fn open_with_recovery(path: &Path, recovery_config: &RecoveryConfig) -> Result<Self> {
         info!("Opening session store at {}", path.display());
         let conn = Connection::open(path).context(error::DatabaseSnafu)?;
 
@@ -46,9 +61,45 @@ impl SessionStore {
         )
         .context(error::DatabaseSnafu)?;
 
+        // Integrity check on open (if configured and file exists).
+        if recovery_config.enabled && recovery_config.integrity_check_on_open && path.exists() {
+            match recovery::check_integrity(&conn) {
+                Ok(true) => { /* healthy */ }
+                Ok(false) => {
+                    error!(
+                        path = %path.display(),
+                        "integrity check failed, starting recovery"
+                    );
+                    drop(conn);
+                    let (recovered_conn, mode) = recovery::recover_database(path, recovery_config)?;
+
+                    if mode == StoreMode::ReadOnly {
+                        warn!(path = %path.display(), "database opened in read-only (degraded) mode");
+                    }
+
+                    return Ok(Self {
+                        conn: recovered_conn,
+                        mode,
+                        path: Some(path.to_path_buf()),
+                    });
+                }
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        path = %path.display(),
+                        "integrity check query failed, proceeding optimistically"
+                    );
+                }
+            }
+        }
+
         migration::run_migrations(&conn)?;
 
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            mode: StoreMode::Normal,
+            path: Some(path.to_path_buf()),
+        })
     }
 
     /// Open an in-memory session store (for testing).
@@ -61,7 +112,11 @@ impl SessionStore {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .context(error::DatabaseSnafu)?;
         migration::run_migrations(&conn)?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            mode: StoreMode::Normal,
+            path: None,
+        })
     }
 
     /// Lightweight liveness check: executes `SELECT 1` against the connection.
@@ -79,6 +134,35 @@ impl SessionStore {
     #[must_use]
     pub fn conn(&self) -> &Connection {
         &self.conn
+    }
+
+    /// Current operating mode of the store.
+    #[must_use]
+    pub fn mode(&self) -> StoreMode {
+        self.mode
+    }
+
+    /// Whether the store is in degraded (read-only) mode.
+    #[must_use]
+    pub fn is_degraded(&self) -> bool {
+        self.mode == StoreMode::ReadOnly
+    }
+
+    /// Guard that rejects write operations when the store is degraded.
+    ///
+    /// # Errors
+    /// Returns [`error::Error::DatabaseDegraded`] when in read-only mode.
+    pub(crate) fn require_writable(&self) -> Result<()> {
+        if self.mode == StoreMode::ReadOnly {
+            return Err(error::DatabaseDegradedSnafu {
+                path: self
+                    .path
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from("<in-memory>")),
+            }
+            .build());
+        }
+        Ok(())
     }
 }
 

@@ -54,6 +54,7 @@ impl SessionStore {
         parent_session_id: Option<&str>,
         model: Option<&str>,
     ) -> Result<Session> {
+        self.require_writable()?;
         let session_type = SessionType::from_key(session_key);
 
         self.conn
@@ -84,6 +85,7 @@ impl SessionStore {
         model: Option<&str>,
         parent_session_id: Option<&str>,
     ) -> Result<Session> {
+        self.require_writable()?;
         let session_type = SessionType::from_key(session_key);
 
         // WHY: Atomic conditional insert. ON CONFLICT(nous_id, session_key) DO NOTHING
@@ -178,6 +180,7 @@ impl SessionStore {
     /// Update session status.
     #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
+        self.require_writable()?;
         self.conn
             .execute(
                 "UPDATE sessions SET status = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?2",
@@ -190,6 +193,7 @@ impl SessionStore {
     /// Update session display name.
     #[instrument(skip(self))]
     pub fn update_display_name(&self, id: &str, display_name: &str) -> Result<()> {
+        self.require_writable()?;
         self.conn
             .execute(
                 "UPDATE sessions SET display_name = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?2",

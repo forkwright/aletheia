@@ -21,6 +21,7 @@ impl SessionStore {
         tool_name: Option<&str>,
         token_estimate: i64,
     ) -> Result<i64> {
+        self.require_writable()?;
         let tx = self
             .conn
             .unchecked_transaction()
@@ -230,6 +231,7 @@ impl SessionStore {
     /// Mark messages as distilled and recalculate session token count.
     #[instrument(skip(self, seqs), fields(count = seqs.len()))]
     pub fn mark_messages_distilled(&self, session_id: &str, seqs: &[i64]) -> Result<()> {
+        self.require_writable()?;
         if seqs.is_empty() {
             return Ok(());
         }
@@ -293,6 +295,7 @@ impl SessionStore {
     /// Deleting the old summary first makes seq 0 available without any renumbering.
     #[instrument(skip(self, content))]
     pub fn insert_distillation_summary(&self, session_id: &str, content: &str) -> Result<()> {
+        self.require_writable()?;
         let tx = self
             .conn
             .unchecked_transaction()
@@ -361,6 +364,7 @@ impl SessionStore {
         tokens_after: i64,
         model: Option<&str>,
     ) -> Result<()> {
+        self.require_writable()?;
         let tx = self
             .conn
             .unchecked_transaction()
@@ -407,6 +411,7 @@ impl SessionStore {
     /// Record token usage for a turn.
     #[instrument(skip(self, record), level = "debug")]
     pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {
+        self.require_writable()?;
         self.conn
             .execute(
                 "INSERT INTO usage (session_id, turn_seq, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, model)
