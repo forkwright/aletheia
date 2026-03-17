@@ -8,9 +8,10 @@
 //! The extracted skill is stored with `status: "pending_review"`: it is NOT
 //! automatically activated. A human or orchestrator must approve it first.
 
+use std::fmt::Write as _;
+
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use std::fmt::Write as _;
 
 use crate::skill::SkillContent;
 use crate::skills::{SkillCandidate, ToolCallRecord};
