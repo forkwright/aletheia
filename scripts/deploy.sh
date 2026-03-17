@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Deploy aletheia binary to the local instance.
 # Usage: scripts/deploy.sh [--build] [--restart]
 #   --build    Build release binary before deploying (default: use existing)
 #   --restart  Restart systemd service after deploy (default: just copy)
 #   No flags:  build + copy + restart (full deploy)
-
-set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTANCE_ROOT="${ALETHEIA_INSTANCE:-$HOME/ergon/instance}"
