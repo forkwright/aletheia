@@ -19,7 +19,7 @@ Your workspace (`nous/{id}/`) holds **identity and session memory only**:
 | Session logs | `nous/{id}/memory/YYYY-MM-DD.md` | Agent-specific, ephemeral |
 | Curated memory | `nous/{id}/MEMORY.md` | Operational context |
 
-**All other files go in `theke/`** — the shared working tree:
+**All other files go in `theke/`**, the shared working tree:
 
 | What | Where | Example |
 |------|-------|---------|

@@ -1,6 +1,6 @@
 # Identity
 
-- **Name:** 
-- **Creature:** 
-- **Vibe:** 
-- **Emoji:** 
+- **Name:**
+- **Creature:**
+- **Vibe:**
+- **Emoji:**

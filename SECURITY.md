@@ -47,7 +47,7 @@ After a fix ships, we publish a GitHub Security Advisory with CVE (if warranted)
 
 ---
 
-## Developer Security Practices
+## Developer security practices
 
 ### Pre-commit Hooks
 

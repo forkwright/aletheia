@@ -57,7 +57,7 @@ instance/
 │   ├── templates/              # Shared prompt/doc templates
 │   └── tools/                  # Shared tool definitions
 │
-├── theke/                      # ALL working files — single shared tree
+├── theke/                      # ALL working files (single shared tree)
 │   ├── projects/               # Project-scoped work
 │   │   ├── {project-name}/     # e.g. aletheia/, my-project/, mba/, homelab/
 │   │   └── ...
@@ -73,13 +73,13 @@ instance/
 ## Three-Tier Cascade
 
 Resolution order (most specific wins):
-1. `instance/nous/{id}/` — agent-specific overrides
-2. `instance/shared/` — shared across all agents
-3. `instance/theke/` — human + agent collaborative space
+1. `instance/nous/{id}/`: agent-specific overrides
+2. `instance/shared/`: shared across all agents
+3. `instance/theke/`: human + agent collaborative space
 
 Tools, templates, hooks, and config all resolve through this cascade.
 
-## What Goes Where
+## What goes where
 
 | Content | Location | Why |
 |---------|----------|-----|
@@ -102,7 +102,7 @@ Tools, templates, hooks, and config all resolve through this cascade.
 2. **`nous/{id}/` is identity + memory only.** No docs/, drafts/, plans/, research/, or archive/ directories in agent workspaces. If it's not a bootstrap file or session log, it belongs in theke/.
 3. **`theke/` is the single working filesystem.** Shared by default. The operator and all agents read/write here. Organized by what the work IS, not who's doing it.
 4. **`shared/` is runtime infrastructure.** Scripts, coordination, and tools for the runtime, not browsable content.
-5. **If it doesn't ship to a GitHub clone, it's instance-only.** Skills, credentials, agent workspaces, traces — all instance.
+5. **If it doesn't ship to a GitHub clone, it's instance-only.** Skills, credentials, agent workspaces, and traces are all instance-only.
 6. **Coordination state is ephemeral.** Traces and status files can be rotated/purged without data loss.
 7. **Archived agents can be removed.** If an agent is retired, remove its `nous/{id}/` directory. No cascade dependencies.
 

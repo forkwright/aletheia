@@ -49,7 +49,7 @@ Every research session must produce:
 
 Format (append to `memory/research-log.md`):
 ```markdown
-## [Date] — [Topic]
+## [Date]: [Topic]
 Queries: [list]
 Sources found: N | Included: N | Excluded: N (reasons)
 Findings: [inline-cited claims]

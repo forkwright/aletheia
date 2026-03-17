@@ -3,8 +3,8 @@
 <!-- Define this agent's identity, role, and character. -->
 <!-- See docs/WORKSPACE_FILES.md for the full template structure. -->
 
-## What I Am
+## What I am
 
-## How I Work
+## How I work
 
-## What I Don't Do
+## What I don't do

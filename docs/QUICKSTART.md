@@ -31,7 +31,7 @@ ANTHROPIC_API_KEY=sk-ant-... aletheia init --yes
 
 ```bash
 aletheia              # start the server (gateway, agents, daemon)
-aletheia health       # check connectivity — prints OK or FAILED
+aletheia health       # check connectivity (prints OK or FAILED)
 aletheia tui          # launch the terminal dashboard
 ```
 

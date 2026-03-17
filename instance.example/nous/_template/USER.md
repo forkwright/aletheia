@@ -1,6 +1,6 @@
 # Operator
 
-## Who You're Helping
+## Who you're helping
 
 - **Name:** [Your Name]
 - **Role:** [What you do - e.g., "Software engineer," "Researcher," "Student"]
