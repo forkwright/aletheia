@@ -25,7 +25,7 @@ use aletheia_hermeneus::provider::LlmProvider;
 use aletheia_hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
 use aletheia_melete::distill::{DistillConfig, DistillEngine, DistillResult};
 use aletheia_mneme::store::SessionStore;
-use aletheia_mneme::types::{Role as MnemeRole, Session};
+use aletheia_mneme::types::{Role as MnemeRole, Session, SessionType};
 
 use crate::error;
 
@@ -59,6 +59,17 @@ pub fn should_trigger_distillation(
 ) -> Option<String> {
     // WHY: never distill on the first turn: no history to summarize
     if session.message_count <= 0 {
+        return None;
+    }
+
+    // WHY: ephemeral sessions (ask:, spawn:, dispatch:) are short-lived and discarded;
+    // distilling them wastes LLM calls on context that will never be resumed.
+    if session.session_type == SessionType::Ephemeral {
+        tracing::debug!(
+            session_id = %session.id,
+            session_key = %session.session_key,
+            "skipping distillation for ephemeral session"
+        );
         return None;
     }
 
@@ -332,6 +343,37 @@ mod tests {
         let result = should_trigger_distillation(&session, 200_000, &config);
         assert!(result.is_some());
         assert!(result.unwrap().contains("stale"));
+    }
+
+    #[test]
+    fn no_trigger_ephemeral_session() {
+        let session = test_session(|s| {
+            s.session_type = aletheia_mneme::types::SessionType::Ephemeral;
+            s.session_key = "ask:demiurge".to_owned();
+            s.last_input_tokens = 130_000;
+            s.message_count = 200;
+        });
+        let config = DistillTriggerConfig::default();
+        let result = should_trigger_distillation(&session, 200_000, &config);
+        assert!(
+            result.is_none(),
+            "ephemeral sessions must never trigger distillation"
+        );
+    }
+
+    #[test]
+    fn trigger_on_non_ephemeral_session_with_same_thresholds() {
+        let session = test_session(|s| {
+            s.session_type = aletheia_mneme::types::SessionType::Primary;
+            s.last_input_tokens = 130_000;
+            s.message_count = 200;
+        });
+        let config = DistillTriggerConfig::default();
+        let result = should_trigger_distillation(&session, 200_000, &config);
+        assert!(
+            result.is_some(),
+            "non-ephemeral sessions must still trigger distillation"
+        );
     }
 
     #[test]
