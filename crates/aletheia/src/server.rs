@@ -1,4 +1,8 @@
 //! Server startup, actor wiring, and HTTP gateway initialization.
+#![expect(
+    clippy::expect_used,
+    reason = "signal handlers and channel registration are infallible at startup"
+)]
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -51,21 +55,20 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
 
     info!("aletheia starting");
 
-    // Root cancellation token: cancelled on SIGTERM/SIGINT.
+    // WHY: Root cancellation token: cancelled on SIGTERM/SIGINT.
     // Child tokens are propagated to every actor and daemon task.
     let shutdown_token = CancellationToken::new();
 
-    // Oikos: instance directory resolution
     let oikos = match &cli.instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
     };
     info!(root = %oikos.root().display(), "instance discovered");
 
-    // Startup validation: fail fast before any actors or stores initialise
+    // WHY: Startup validation: fail fast before any actors or stores initialise
     oikos.validate().context("instance layout invalid")?;
 
-    // Config cascade: defaults → TOML → env
+    // NOTE: Config cascade: defaults → TOML → env
     let config = load_config(&oikos).context("failed to load config")?;
     info!(
         port = config.gateway.port,
@@ -73,8 +76,6 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         "config loaded"
     );
 
-    // Warn about a contradictory auth configuration: a signing key is set but
-    // the mode is "none", so the key will never be consulted (#1236).
     if config.gateway.auth.signing_key.is_some() && config.gateway.auth.mode == "none" {
         warn!(
             "gateway.auth.signing_key is set but auth mode is \"none\" — \
@@ -83,7 +84,6 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         );
     }
 
-    // Validate per-agent workspace paths declared in config
     for agent in &config.agents.list {
         if let Err(e) = oikos.validate_workspace_path(&agent.workspace) {
             tracing::warn!(
@@ -95,11 +95,9 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         }
     }
 
-    // Domain packs: load external knowledge packs declared in config
     let loaded_packs = aletheia_thesauros::loader::load_packs(&config.packs);
     let packs = Arc::new(loaded_packs);
 
-    // Session store
     let db_path = oikos.sessions_db();
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
@@ -111,14 +109,13 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     ));
     info!(path = %db_path.display(), "session store opened");
 
-    // JWT manager
     let jwt_manager = JwtManager::new(JwtConfig::default());
 
-    // Build shared registries: single instances used by both NousManager and AppState
+    // NOTE: Build shared registries: single instances used by both NousManager and AppState
     let provider_registry = Arc::new(build_provider_registry(&config, &oikos));
     let mut tool_registry = build_tool_registry()?;
 
-    // Register domain pack tools alongside builtins
+    // NOTE: Register domain pack tools alongside builtins
     let tool_errors = aletheia_thesauros::tools::register_pack_tools(&packs, &mut tool_registry);
     for err in &tool_errors {
         warn!(error = %err, "failed to register pack tool");
@@ -127,7 +124,6 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     let tool_registry = Arc::new(tool_registry);
     let oikos_arc = Arc::new(oikos);
 
-    // Embedding provider: drives recall query embedding
     let embedding_config = EmbeddingConfig {
         provider: config.embedding.provider.clone(),
         model: config.embedding.model.clone(),
@@ -143,13 +139,11 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         "embedding provider created"
     );
 
-    // Cross-nous router for inter-agent messaging
     let cross_router = Arc::new(CrossNousRouter::default());
 
-    // Build signal provider early so it can be shared with tool services
+    // WHY: Build signal provider early so it can be shared with tool services
     let signal_provider = build_signal_provider(&config.channels.signal);
 
-    // Build tool services for communication + memory executors
     let (cross_nous, messenger, note_store, blackboard_store, spawn, planning) = {
         let cross_nous: Arc<dyn aletheia_organon::types::CrossNousService> =
             Arc::new(tool_adapters::CrossNousAdapter(Arc::clone(&cross_router)));
@@ -186,7 +180,6 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         )
     };
 
-    // Knowledge store for vector search and extraction persistence
     #[cfg(feature = "recall")]
     let knowledge_store = {
         let kb_path = oikos_arc.knowledge_db();
@@ -206,7 +199,6 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         std::sync::Arc<aletheia_mneme::knowledge_store::KnowledgeStore>,
     > = None;
 
-    // Wire vector search from KnowledgeStore
     #[cfg(feature = "recall")]
     let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> =
         knowledge_store.as_ref().map(|ks| {
@@ -217,7 +209,6 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     #[cfg(not(feature = "recall"))]
     let vector_search: Option<Arc<dyn aletheia_nous::recall::VectorSearch>> = None;
 
-    // Knowledge search adapter for tool layer
     #[cfg(feature = "recall")]
     let knowledge_search: Option<Arc<dyn aletheia_organon::types::KnowledgeSearchService>> =
         knowledge_store.as_ref().map(|ks| {
@@ -242,8 +233,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         server_tool_config: aletheia_organon::types::ServerToolConfig::default(),
     });
 
-    // Spawn nous actors
-    // Clone knowledge_store Arc before moving into NousManager: needed for daemon executor.
+    // WHY: Clone knowledge_store Arc before moving into NousManager: needed for daemon executor.
     #[cfg(feature = "recall")]
     let knowledge_store_for_daemon = knowledge_store.clone();
 
@@ -267,7 +257,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         for agent_def in &config.agents.list {
             let resolved = resolve_nous(&config, &agent_def.id);
 
-            // Merge domains from static config and pack overlays
+            // NOTE: Merge domains from static config and pack overlays
             let mut domains = resolved.domains.clone();
             for pack in packs.iter() {
                 for d in pack.domains_for_agent(&agent_def.id) {
@@ -310,14 +300,13 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         info!(count = nous_manager.count(), "nous actors spawned");
     }
 
-    // Daemon: background maintenance tasks
     let maintenance_config = build_maintenance_config(&oikos_arc, &config.maintenance);
     let daemon_token = shutdown_token.child_token();
     let mut daemon_runner =
         aletheia_oikonomos::runner::TaskRunner::new("system", daemon_token)
             .with_maintenance(maintenance_config);
 
-    // Wire knowledge maintenance executor when recall feature is enabled
+    // NOTE: Wire knowledge maintenance executor when recall feature is enabled
     #[cfg(feature = "recall")]
     if let Some(ks) = knowledge_store_for_daemon.as_ref() {
         let km_executor = Arc::new(
@@ -335,18 +324,17 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     );
     info!("daemon started");
 
-    // Wrap in Arc: shared between dispatcher and AppState
+    // WHY: Wrap in Arc: shared between dispatcher and AppState
     let nous_manager = Arc::new(nous_manager);
 
-    // Signal ready: all actors spawned, safe to accept inbound messages
+    // NOTE: Signal ready: all actors spawned, safe to accept inbound messages
     nous_manager.ready();
 
-    // Channel registry + inbound dispatch (gated on ready signal)
+    // NOTE: Channel registry + inbound dispatch (gated on ready signal)
     let ready_rx = nous_manager.ready_rx();
     let (_channel_registry, _dispatch_handle) =
         start_inbound_dispatch(&config, &nous_manager, ready_rx, signal_provider.as_ref());
 
-    // Daemon runners: per-agent background task scheduling
     let daemon_bridge = Arc::new(crate::daemon_bridge::NousDaemonBridge::new(Arc::clone(
         &nous_manager,
     )));
@@ -384,7 +372,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         info!(count = config.agents.list.len(), "daemon runners spawned");
     }
 
-    // Pylon HTTP gateway: shares registries with NousManager
+    // NOTE: Pylon HTTP gateway: shares registries with NousManager
     let aletheia_config = aletheia_taxis::loader::load_config(&oikos_arc).unwrap_or_else(|e| {
         tracing::warn!("failed to load config, using defaults: {e}");
         aletheia_taxis::config::AletheiaConfig::default()
@@ -413,7 +401,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     let security = aletheia_pylon::security::SecurityConfig::from_gateway(&config.gateway);
     let app = build_router(state.clone(), &security);
 
-    // /health → /api/health permanent redirect for backward compatibility with
+    // NOTE: /health → /api/health permanent redirect for backward compatibility with
     // monitoring configs that predate the /api prefix (#1233).
     let app = app.route(
         "/health",
@@ -421,7 +409,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     );
 
     let port = cli.port.unwrap_or(config.gateway.port);
-    // Resolve bind address: CLI flag > config gateway.bind > default 127.0.0.1.
+    // NOTE: Resolve bind address: CLI flag > config gateway.bind > default 127.0.0.1.
     // "lan" is a semantic alias for "0.0.0.0" (listen on all interfaces).
     // "localhost" is normalised to "127.0.0.1" to avoid IPv6 resolution on dual-stack hosts.
     let bind_host = cli.bind.as_deref().unwrap_or(&config.gateway.bind);
@@ -446,7 +434,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
 
     info!(addr = %bind_addr, "pylon listening");
 
-    // Axum graceful shutdown: wait for OS signal, then cancel root token so
+    // NOTE: Axum graceful shutdown: wait for OS signal, then cancel root token so
     // all subsystems observe shutdown simultaneously.
     let token_for_signal = shutdown_token.clone();
     axum::serve(listener, app)
@@ -458,20 +446,19 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         .await
         .context("server error")?;
 
-    // ── Drain ordering ──────────────────────────────────────────────────────
+    // NOTE: Drain ordering:
     // 1. HTTP server has stopped accepting new requests (axum graceful_shutdown).
     // 2. Root token is cancelled: daemon tasks observe it and exit their loops.
     // 3. Wait for system daemon to finish in-flight maintenance work.
     // 4. Drain nous actors with a timeout, flushing fjall WAL and other state.
     //    Awaiting join handles ensures Arc<Database> drops, checkpointing the WAL.
     // 5. Drop AppState (session store, registries).
-    // ────────────────────────────────────────────────────────────────────────
 
     info!("shutting down");
 
     let shutdown_timeout = std::time::Duration::from_secs(10);
 
-    // Step 2–3: daemon runners have already observed token cancel via child tokens.
+    // NOTE: Step 2–3: daemon runners have already observed token cancel via child tokens.
     // Await system daemon handle to confirm it has exited.
     match tokio::time::timeout(shutdown_timeout, daemon_handle).await {
         // NOTE: daemon exited cleanly, nothing to do
@@ -483,10 +470,10 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         ),
     }
 
-    // Step 4: drain nous actors: cancel tokens fire, messages drain, WAL flushed.
+    // NOTE: Step 4: drain nous actors: cancel tokens fire, messages drain, WAL flushed.
     state.nous_manager.drain(shutdown_timeout).await;
 
-    // Step 5: AppState and session store drop here as `state` goes out of scope.
+    // NOTE: Step 5: AppState and session store drop here as `state` goes out of scope.
     drop(state);
 
     info!("shutdown complete");
@@ -518,7 +505,7 @@ fn build_provider_registry(
             })
             .collect();
 
-    // Build credential chain based on config.credential.source:
+    // NOTE: Build credential chain based on config.credential.source:
     //   "auto"       -> instance file -> env vars -> Claude Code credentials
     //   "api-key"    -> instance file -> env vars only
     //   "claude-code" -> Claude Code credentials -> instance file -> env vars
@@ -541,7 +528,7 @@ fn build_provider_registry(
         .map(PathBuf::from)
         .or_else(claude_code_default_path);
 
-    // When source is "claude-code", prioritize Claude Code credentials
+    // NOTE: When source is "claude-code", prioritize Claude Code credentials
     if cred_source == "claude-code" {
         if let Some(ref cc_path) = claude_code_path {
             if let Some(provider) = claude_code_provider_with_config(cc_path, cb_config.clone()) {
@@ -569,15 +556,15 @@ fn build_provider_registry(
         }
     }
 
-    // ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention; always treat as OAuth
+    // NOTE: ANTHROPIC_AUTH_TOKEN is the Claude Code OAuth convention; always treat as OAuth
     chain.push(Box::new(EnvCredentialProvider::with_source(
         "ANTHROPIC_AUTH_TOKEN",
         CredentialSource::OAuth,
     )));
-    // ANTHROPIC_API_KEY: auto-detects OAuth tokens by sk-ant-oat prefix
+    // NOTE: ANTHROPIC_API_KEY: auto-detects OAuth tokens by sk-ant-oat prefix
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
 
-    // When source is "auto", add Claude Code credentials as lowest-priority fallback
+    // NOTE: When source is "auto", add Claude Code credentials as lowest-priority fallback
     if cred_source == "auto" {
         if let Some(ref cc_path) = claude_code_path {
             if let Some(provider) = claude_code_provider_with_config(cc_path, cb_config) {
@@ -588,7 +575,7 @@ fn build_provider_registry(
 
     let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
 
-    // Resolve once at startup for logging
+    // NOTE: Resolve once at startup for logging
     if let Some(cred) = credential_chain.get_credential() {
         info!(source = %cred.source, "credential resolved");
     } else {

@@ -50,7 +50,7 @@ pub(crate) struct NousIdParam {
 
 /// Parameters for knowledge search.
 #[derive(Debug, Deserialize, JsonSchema)]
-#[allow(
+#[expect(
     dead_code,
     reason = "fields read by JsonSchema derive; lint fires in lib but not test target"
 )]
