@@ -40,41 +40,72 @@ When you need company intelligence.
 #[test]
 fn parse_basic_skill_md() {
     let skill = parse_skill_md(SAMPLE_SKILL, "web-research").expect("valid skill md");
-    assert_eq!(skill.name, "web-research");
-    assert!(skill.description.contains("Systematically research"));
-    assert_eq!(skill.steps.len(), 3);
-    assert_eq!(skill.steps[0], "Enable web_fetch tool");
-    assert_eq!(skill.tools_used, vec!["web_fetch", "web_search"]);
-    assert_eq!(skill.origin, "seeded");
+    assert_eq!(
+        skill.name, "web-research",
+        "parsed skill name should match slug"
+    );
+    assert!(
+        skill.description.contains("Systematically research"),
+        "description should contain opening sentence"
+    );
+    assert_eq!(skill.steps.len(), 3, "skill should have three steps");
+    assert_eq!(
+        skill.steps[0], "Enable web_fetch tool",
+        "first step should match"
+    );
+    assert_eq!(
+        skill.tools_used,
+        vec!["web_fetch", "web_search"],
+        "tools_used should match tools section"
+    );
+    assert_eq!(skill.origin, "seeded", "origin should default to seeded");
 }
 
 #[test]
 fn parse_skill_with_frontmatter() {
     let skill =
         parse_skill_md(SAMPLE_WITH_FRONTMATTER, "web-intel").expect("valid frontmatter skill md");
-    assert_eq!(skill.tools_used, vec!["web_fetch", "web_search"]);
-    assert_eq!(skill.domain_tags, vec!["research", "writing"]);
-    assert_eq!(skill.steps.len(), 2);
+    assert_eq!(
+        skill.tools_used,
+        vec!["web_fetch", "web_search"],
+        "frontmatter tools should be parsed"
+    );
+    assert_eq!(
+        skill.domain_tags,
+        vec!["research", "writing"],
+        "frontmatter domains should be parsed"
+    );
+    assert_eq!(skill.steps.len(), 2, "skill should have two steps");
 }
 
 #[test]
 fn parse_skill_derives_domain_tags_from_slug() {
     let skill = parse_skill_md(SAMPLE_SKILL, "docker-network-diagnostics")
         .expect("valid skill md for domain tag derivation");
-    assert_eq!(skill.domain_tags, vec!["docker", "network", "diagnostics"]);
+    assert_eq!(
+        skill.domain_tags,
+        vec!["docker", "network", "diagnostics"],
+        "domain tags should be derived from slug tokens"
+    );
 }
 
 #[test]
 fn parse_skill_missing_heading_fails() {
     let bad = "No heading here\n\n## Steps\n1. Do stuff";
     let err = parse_skill_md(bad, "bad-skill").expect_err("bad skill md must fail");
-    assert!(err.reason.contains("missing top-level heading"));
+    assert!(
+        err.reason.contains("missing top-level heading"),
+        "error reason should mention missing heading"
+    );
 }
 
 #[test]
 fn parse_skill_empty_doc_fails() {
     let err = parse_skill_md("", "empty").expect_err("empty skill md must fail");
-    assert!(err.reason.contains("empty document"));
+    assert!(
+        err.reason.contains("empty document"),
+        "error reason should mention empty document"
+    );
 }
 
 #[test]
@@ -82,7 +113,10 @@ fn parse_skill_no_description_uses_when_to_use() {
     let md = "# Skill\n\n## When to Use\nWhen you need to do things.\n\n## Steps\n1. Do it\n";
     let skill = parse_skill_md(md, "fallback")
         .expect("skill with when-to-use fallback description should parse");
-    assert!(skill.description.contains("When you need to do things"));
+    assert!(
+        skill.description.contains("When you need to do things"),
+        "description should fall back to when-to-use content"
+    );
 }
 
 #[test]
@@ -90,7 +124,10 @@ fn parse_skill_no_description_at_all_fails() {
     let md = "# Skill\n\n## Steps\n1. Do it\n";
     let err = parse_skill_md(md, "no-desc")
         .expect_err("skill without any description must fail to parse");
-    assert!(err.reason.contains("no description"));
+    assert!(
+        err.reason.contains("no description"),
+        "error reason should mention missing description"
+    );
 }
 
 #[test]
@@ -106,29 +143,53 @@ fn skill_content_serde_roundtrip() {
     let json = serde_json::to_string(&skill).expect("SkillContent serializes to JSON");
     let back: SkillContent =
         serde_json::from_str(&json).expect("SkillContent deserializes from JSON");
-    assert_eq!(skill, back);
+    assert_eq!(
+        skill, back,
+        "SkillContent should round-trip through JSON unchanged"
+    );
 }
 
 #[test]
 fn parse_yaml_array_formats() {
-    assert_eq!(parse_yaml_array("[a, b, c]"), vec!["a", "b", "c"]);
-    assert_eq!(parse_yaml_array("[\"a\", 'b']"), vec!["a", "b"]);
-    assert_eq!(parse_yaml_array("[]"), Vec::<String>::new());
+    assert_eq!(
+        parse_yaml_array("[a, b, c]"),
+        vec!["a", "b", "c"],
+        "unquoted yaml array should parse to three elements"
+    );
+    assert_eq!(
+        parse_yaml_array("[\"a\", 'b']"),
+        vec!["a", "b"],
+        "mixed-quote yaml array should parse correctly"
+    );
+    assert_eq!(
+        parse_yaml_array("[]"),
+        Vec::<String>::new(),
+        "empty yaml array should produce empty vec"
+    );
 }
 
 #[test]
 fn split_frontmatter_present() {
     let (fm, body) = split_frontmatter("---\ntools: [a]\n---\n# Title\n");
-    assert!(fm.is_some());
-    assert!(fm.expect("frontmatter present").contains("tools:"));
-    assert!(body.contains("# Title"));
+    assert!(fm.is_some(), "frontmatter should be detected");
+    assert!(
+        fm.expect("frontmatter present").contains("tools:"),
+        "frontmatter should contain tools key"
+    );
+    assert!(body.contains("# Title"), "body should contain the heading");
 }
 
 #[test]
 fn split_frontmatter_absent() {
     let (fm, body) = split_frontmatter("# Title\nBody text");
-    assert!(fm.is_none());
-    assert!(body.contains("# Title"));
+    assert!(
+        fm.is_none(),
+        "frontmatter should be absent when not present"
+    );
+    assert!(
+        body.contains("# Title"),
+        "body should contain the full content"
+    );
 }
 
 #[test]
@@ -143,15 +204,18 @@ fn scan_skill_dir_with_tempdir() {
     .expect("write SKILL.md");
 
     let skills = scan_skill_dir(dir.path()).expect("scan skill dir");
-    assert_eq!(skills.len(), 1);
-    assert_eq!(skills[0].0, "my-skill");
+    assert_eq!(skills.len(), 1, "should find exactly one skill");
+    assert_eq!(
+        skills[0].0, "my-skill",
+        "skill slug should match directory name"
+    );
 }
 
 #[test]
 fn scan_skill_dir_empty() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let skills = scan_skill_dir(dir.path()).expect("scan empty skill dir");
-    assert!(skills.is_empty());
+    assert!(skills.is_empty(), "empty directory should yield no skills");
 }
 
 #[test]
@@ -162,7 +226,7 @@ fn scan_skill_dir_ignores_non_skill_dirs() {
     std::fs::write(sub.join("README.md"), "not a skill").expect("write README.md");
 
     let skills = scan_skill_dir(dir.path()).expect("scan dir with non-skill subdirs");
-    assert!(skills.is_empty());
+    assert!(skills.is_empty(), "dirs without SKILL.md should be ignored");
 }
 
 #[test]
@@ -173,7 +237,11 @@ fn extract_steps_mixed_format() {
         "- Third step".to_owned(),
     ];
     let steps = extract_steps(&lines);
-    assert_eq!(steps, vec!["First step", "Second step", "Third step"]);
+    assert_eq!(
+        steps,
+        vec!["First step", "Second step", "Third step"],
+        "numbered and bullet steps should both be extracted"
+    );
 }
 
 #[test]
@@ -184,7 +252,8 @@ fn skill_parse_error_display() {
     };
     assert_eq!(
         err.to_string(),
-        "failed to parse test-skill: missing heading"
+        "failed to parse test-skill: missing heading",
+        "display format should include path and reason"
     );
 }
 
@@ -192,35 +261,52 @@ fn skill_parse_error_display() {
 
 #[test]
 fn slugify_simple_name() {
-    assert_eq!(slugify("rust-error-handling"), "rust-error-handling");
+    assert_eq!(
+        slugify("rust-error-handling"),
+        "rust-error-handling",
+        "already-slugified string should be unchanged"
+    );
 }
 
 #[test]
 fn slugify_spaces_to_dashes() {
     assert_eq!(
         slugify("Docker Network Diagnostics"),
-        "docker-network-diagnostics"
+        "docker-network-diagnostics",
+        "spaces should be converted to dashes and lowercased"
     );
 }
 
 #[test]
 fn slugify_special_chars() {
-    assert_eq!(slugify("C++ Template (Meta)"), "c-template-meta");
+    assert_eq!(
+        slugify("C++ Template (Meta)"),
+        "c-template-meta",
+        "special characters should be replaced with dashes and collapsed"
+    );
 }
 
 #[test]
 fn slugify_consecutive_specials_collapsed() {
-    assert_eq!(slugify("test---skill___name"), "test-skill-name");
+    assert_eq!(
+        slugify("test---skill___name"),
+        "test-skill-name",
+        "consecutive special chars should be collapsed to single dash"
+    );
 }
 
 #[test]
 fn slugify_empty_string() {
-    assert_eq!(slugify(""), "");
+    assert_eq!(slugify(""), "", "empty string should produce empty slug");
 }
 
 #[test]
 fn slugify_all_special() {
-    assert_eq!(slugify("---"), "");
+    assert_eq!(
+        slugify("---"),
+        "",
+        "all-special string should produce empty slug"
+    );
 }
 
 // ── format_skill_md ──────────────────────────────────────────────────────
@@ -255,50 +341,80 @@ fn format_skill_md_has_yaml_frontmatter() {
 #[test]
 fn format_skill_md_frontmatter_has_name() {
     let md = format_skill_md(&export_skill());
-    assert!(md.contains("name: rust-error-handling"));
+    assert!(
+        md.contains("name: rust-error-handling"),
+        "frontmatter should include the skill name"
+    );
 }
 
 #[test]
 fn format_skill_md_frontmatter_has_description() {
     let md = format_skill_md(&export_skill());
-    assert!(md.contains("description: Pattern for converting error types"));
+    assert!(
+        md.contains("description: Pattern for converting error types"),
+        "frontmatter should include the skill description"
+    );
 }
 
 #[test]
 fn format_skill_md_frontmatter_has_allowed_tools() {
     let md = format_skill_md(&export_skill());
-    assert!(md.contains("allowed-tools: Read, Edit, Bash"));
+    assert!(
+        md.contains("allowed-tools: Read, Edit, Bash"),
+        "frontmatter should list allowed tools"
+    );
 }
 
 #[test]
 fn format_skill_md_has_when_to_use_section() {
     let md = format_skill_md(&export_skill());
-    assert!(md.contains("## When to Use"));
+    assert!(
+        md.contains("## When to Use"),
+        "output should include when-to-use section"
+    );
 }
 
 #[test]
 fn format_skill_md_has_steps_section() {
     let md = format_skill_md(&export_skill());
-    assert!(md.contains("## Steps"));
-    assert!(md.contains("1. Identify the source error type"));
-    assert!(md.contains("2. Create a snafu variant"));
-    assert!(md.contains("3. Add .context() at the call site"));
+    assert!(
+        md.contains("## Steps"),
+        "output should include steps section"
+    );
+    assert!(
+        md.contains("1. Identify the source error type"),
+        "first step should be numbered correctly"
+    );
+    assert!(
+        md.contains("2. Create a snafu variant"),
+        "second step should be numbered correctly"
+    );
+    assert!(
+        md.contains("3. Add .context() at the call site"),
+        "third step should be numbered correctly"
+    );
 }
 
 #[test]
 fn format_skill_md_has_tools_section() {
     let md = format_skill_md(&export_skill());
-    assert!(md.contains("## Tools Used"));
-    assert!(md.contains("- Read"));
-    assert!(md.contains("- Edit"));
-    assert!(md.contains("- Bash"));
+    assert!(
+        md.contains("## Tools Used"),
+        "output should include tools-used section"
+    );
+    assert!(md.contains("- Read"), "tools section should list Read");
+    assert!(md.contains("- Edit"), "tools section should list Edit");
+    assert!(md.contains("- Bash"), "tools section should list Bash");
 }
 
 #[test]
 fn format_skill_md_has_tags_section() {
     let md = format_skill_md(&export_skill());
-    assert!(md.contains("## Tags"));
-    assert!(md.contains("rust, errors"));
+    assert!(md.contains("## Tags"), "output should include tags section");
+    assert!(
+        md.contains("rust, errors"),
+        "tags section should list domain tags"
+    );
 }
 
 #[test]
@@ -306,8 +422,14 @@ fn format_skill_md_no_tools_omits_allowed_tools() {
     let mut skill = export_skill();
     skill.tools_used.clear();
     let md = format_skill_md(&skill);
-    assert!(!md.contains("allowed-tools:"));
-    assert!(!md.contains("## Tools Used"));
+    assert!(
+        !md.contains("allowed-tools:"),
+        "no tools should mean no allowed-tools in frontmatter"
+    );
+    assert!(
+        !md.contains("## Tools Used"),
+        "no tools should mean no tools-used section"
+    );
 }
 
 #[test]
@@ -315,7 +437,10 @@ fn format_skill_md_no_steps_omits_steps_section() {
     let mut skill = export_skill();
     skill.steps.clear();
     let md = format_skill_md(&skill);
-    assert!(!md.contains("## Steps"));
+    assert!(
+        !md.contains("## Steps"),
+        "no steps should mean no steps section"
+    );
 }
 
 #[test]
@@ -323,7 +448,10 @@ fn format_skill_md_description_with_colon_is_quoted() {
     let mut skill = export_skill();
     skill.description = "Error handling: a deep dive".to_owned();
     let md = format_skill_md(&skill);
-    assert!(md.contains(r#"description: "Error handling: a deep dive""#));
+    assert!(
+        md.contains(r#"description: "Error handling: a deep dive""#),
+        "description containing colon should be yaml-quoted"
+    );
 }
 
 // ── export_skills_to_cc ──────────────────────────────────────────────────
@@ -334,8 +462,11 @@ fn export_creates_correct_directory_structure() {
     let skills = vec![export_skill()];
     let exported = export_skills_to_cc(&skills, dir.path(), None).expect("export skills to cc");
 
-    assert_eq!(exported.len(), 1);
-    assert_eq!(exported[0].slug, "rust-error-handling");
+    assert_eq!(exported.len(), 1, "should export exactly one skill");
+    assert_eq!(
+        exported[0].slug, "rust-error-handling",
+        "exported slug should match skill name"
+    );
 
     let skill_md = dir.path().join("rust-error-handling").join("SKILL.md");
     assert!(
@@ -353,10 +484,22 @@ fn export_skill_md_contains_valid_frontmatter() {
 
     let content = std::fs::read_to_string(dir.path().join("rust-error-handling").join("SKILL.md"))
         .expect("read exported SKILL.md");
-    assert!(content.starts_with("---\n"));
-    assert!(content.contains("name: rust-error-handling"));
-    assert!(content.contains("description:"));
-    assert!(content.contains("allowed-tools:"));
+    assert!(
+        content.starts_with("---\n"),
+        "exported file should start with frontmatter delimiter"
+    );
+    assert!(
+        content.contains("name: rust-error-handling"),
+        "exported frontmatter should include skill name"
+    );
+    assert!(
+        content.contains("description:"),
+        "exported frontmatter should include description"
+    );
+    assert!(
+        content.contains("allowed-tools:"),
+        "exported frontmatter should include allowed-tools"
+    );
 }
 
 #[test]
@@ -371,15 +514,25 @@ fn export_domain_filtering_excludes_non_matching() {
     let exported = export_skills_to_cc(&skills, dir.path(), Some(&["rust"]))
         .expect("export with domain filter");
 
-    assert_eq!(exported.len(), 1);
-    assert_eq!(exported[0].slug, "rust-error-handling");
+    assert_eq!(
+        exported.len(),
+        1,
+        "domain filter should match exactly one skill"
+    );
+    assert_eq!(
+        exported[0].slug, "rust-error-handling",
+        "filtered export should contain the rust skill"
+    );
 }
 
 #[test]
 fn export_no_skills_produces_empty_result() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let exported = export_skills_to_cc(&[], dir.path(), None).expect("export empty skills list");
-    assert!(exported.is_empty());
+    assert!(
+        exported.is_empty(),
+        "empty skills list should produce no exports"
+    );
 }
 
 #[test]
@@ -392,18 +545,20 @@ fn export_multiple_skills_creates_separate_directories() {
     let skills = vec![export_skill(), docker_skill];
     let exported = export_skills_to_cc(&skills, dir.path(), None).expect("export multiple skills");
 
-    assert_eq!(exported.len(), 2);
+    assert_eq!(exported.len(), 2, "should export exactly two skills");
     assert!(
         dir.path()
             .join("rust-error-handling")
             .join("SKILL.md")
-            .exists()
+            .exists(),
+        "SKILL.md should exist for rust-error-handling"
     );
     assert!(
         dir.path()
             .join("docker-diagnostics")
             .join("SKILL.md")
-            .exists()
+            .exists(),
+        "SKILL.md should exist for docker-diagnostics"
     );
 }
 
@@ -421,10 +576,22 @@ fn export_roundtrip_content_preserved() {
     let parsed =
         parse_skill_md(&exported_md, "rust-error-handling").expect("re-parse exported skill md");
 
-    assert_eq!(parsed.name, original.name);
-    assert_eq!(parsed.description, original.description);
-    assert_eq!(parsed.steps, original.steps);
-    assert_eq!(parsed.tools_used, original.tools_used);
+    assert_eq!(
+        parsed.name, original.name,
+        "name should survive export-parse roundtrip"
+    );
+    assert_eq!(
+        parsed.description, original.description,
+        "description should survive export-parse roundtrip"
+    );
+    assert_eq!(
+        parsed.steps, original.steps,
+        "steps should survive export-parse roundtrip"
+    );
+    assert_eq!(
+        parsed.tools_used, original.tools_used,
+        "tools_used should survive export-parse roundtrip"
+    );
 }
 
 #[test]
@@ -435,8 +602,14 @@ fn export_special_chars_in_name_slugified() {
     let exported = export_skills_to_cc(&[skill], dir.path(), None)
         .expect("export skill with special chars in name");
 
-    assert_eq!(exported[0].slug, "c-template-meta");
-    assert!(dir.path().join("c-template-meta").join("SKILL.md").exists());
+    assert_eq!(
+        exported[0].slug, "c-template-meta",
+        "special chars in skill name should be slugified"
+    );
+    assert!(
+        dir.path().join("c-template-meta").join("SKILL.md").exists(),
+        "SKILL.md should exist at slugified path"
+    );
 }
 
 #[test]
@@ -455,7 +628,10 @@ fn export_overwrites_existing_file() {
         content.contains("## When to Use"),
         "should have new content"
     );
-    assert!(!content.contains("old content"));
+    assert!(
+        !content.contains("old content"),
+        "old content should be replaced on overwrite"
+    );
 }
 
 #[test]
@@ -464,7 +640,10 @@ fn export_domain_filter_with_no_matches_returns_empty() {
     let skills = vec![export_skill()]; // domain_tags: ["rust", "errors"]
     let exported = export_skills_to_cc(&skills, dir.path(), Some(&["python"]))
         .expect("export with non-matching domain filter");
-    assert!(exported.is_empty());
+    assert!(
+        exported.is_empty(),
+        "non-matching domain filter should produce no exports"
+    );
 }
 
 // ── skill_decay_score ───────────────────────────────────────────────────
@@ -545,9 +724,12 @@ fn skill_decay_zero_confidence_is_zero() {
 #[test]
 fn skill_health_metrics_default() {
     let m = SkillHealthMetrics::default();
-    assert_eq!(m.total_active, 0);
-    assert_eq!(m.total_retired, 0);
-    assert_eq!(m.total_needs_review, 0);
+    assert_eq!(m.total_active, 0, "default total_active should be zero");
+    assert_eq!(m.total_retired, 0, "default total_retired should be zero");
+    assert_eq!(
+        m.total_needs_review, 0,
+        "default total_needs_review should be zero"
+    );
 }
 
 #[test]
@@ -565,6 +747,13 @@ fn skill_health_metrics_serde_roundtrip() {
     };
     let json = serde_json::to_string(&m).expect("serialize");
     let back: SkillHealthMetrics = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(back.total_active, 10);
-    assert_eq!(back.top_skills.len(), 1);
+    assert_eq!(
+        back.total_active, 10,
+        "total_active should round-trip unchanged"
+    );
+    assert_eq!(
+        back.top_skills.len(),
+        1,
+        "top_skills should have one entry after roundtrip"
+    );
 }

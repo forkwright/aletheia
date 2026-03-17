@@ -6,12 +6,21 @@ use super::*;
 #[test]
 fn config_default() {
     let cfg = ExtractionConfig::default();
-    assert_eq!(cfg.model, "claude-haiku-4-5-20251001");
-    assert_eq!(cfg.min_message_length, 50);
-    assert_eq!(cfg.max_entities, 20);
-    assert_eq!(cfg.max_relationships, 30);
-    assert_eq!(cfg.max_facts, 50);
-    assert!(cfg.enabled);
+    assert_eq!(
+        cfg.model, "claude-haiku-4-5-20251001",
+        "default model should be claude-haiku-4-5-20251001"
+    );
+    assert_eq!(
+        cfg.min_message_length, 50,
+        "default min_message_length should be 50"
+    );
+    assert_eq!(cfg.max_entities, 20, "default max_entities should be 20");
+    assert_eq!(
+        cfg.max_relationships, 30,
+        "default max_relationships should be 30"
+    );
+    assert_eq!(cfg.max_facts, 50, "default max_facts should be 50");
+    assert!(cfg.enabled, "extraction should be enabled by default");
 }
 
 #[test]
@@ -29,13 +38,34 @@ fn build_prompt_contains_instructions() {
     ];
 
     let prompt = engine.build_prompt(&messages);
-    assert!(prompt.system.contains("JSON"));
-    assert!(prompt.system.contains("entities"));
-    assert!(prompt.system.contains("relationships"));
-    assert!(prompt.system.contains("facts"));
-    assert!(prompt.system.contains("confidence"));
-    assert!(prompt.user_message.contains("Aletheia"));
-    assert!(prompt.user_message.contains("memory system"));
+    assert!(
+        prompt.system.contains("JSON"),
+        "system prompt should mention JSON output format"
+    );
+    assert!(
+        prompt.system.contains("entities"),
+        "system prompt should mention entities"
+    );
+    assert!(
+        prompt.system.contains("relationships"),
+        "system prompt should mention relationships"
+    );
+    assert!(
+        prompt.system.contains("facts"),
+        "system prompt should mention facts"
+    );
+    assert!(
+        prompt.system.contains("confidence"),
+        "system prompt should mention confidence"
+    );
+    assert!(
+        prompt.user_message.contains("Aletheia"),
+        "user message should contain the project name"
+    );
+    assert!(
+        prompt.user_message.contains("memory system"),
+        "user message should contain conversation content"
+    );
 }
 
 #[test]
@@ -57,14 +87,33 @@ fn parse_valid_response() {
     let extraction = engine
         .parse_response(json)
         .expect("valid extraction JSON should parse");
-    assert_eq!(extraction.entities.len(), 2);
-    assert_eq!(extraction.entities[0].name, "Dr. Chen");
-    assert_eq!(extraction.entities[1].entity_type, "project");
-    assert_eq!(extraction.relationships.len(), 1);
-    assert_eq!(extraction.relationships[0].relation, "works on");
-    assert!((extraction.relationships[0].confidence - 0.95).abs() < f64::EPSILON);
-    assert_eq!(extraction.facts.len(), 1);
-    assert_eq!(extraction.facts[0].subject, "Aletheia");
+    assert_eq!(extraction.entities.len(), 2, "should parse 2 entities");
+    assert_eq!(
+        extraction.entities[0].name, "Dr. Chen",
+        "first entity should be Dr. Chen"
+    );
+    assert_eq!(
+        extraction.entities[1].entity_type, "project",
+        "second entity type should be project"
+    );
+    assert_eq!(
+        extraction.relationships.len(),
+        1,
+        "should parse 1 relationship"
+    );
+    assert_eq!(
+        extraction.relationships[0].relation, "works on",
+        "relationship should be 'works on'"
+    );
+    assert!(
+        (extraction.relationships[0].confidence - 0.95).abs() < f64::EPSILON,
+        "relationship confidence should be 0.95"
+    );
+    assert_eq!(extraction.facts.len(), 1, "should parse 1 fact");
+    assert_eq!(
+        extraction.facts[0].subject, "Aletheia",
+        "fact subject should be Aletheia"
+    );
 }
 
 #[test]
@@ -83,17 +132,27 @@ fn parse_response_with_code_fences() {
     let extraction = engine
         .parse_response(json)
         .expect("JSON with code fences should parse after stripping");
-    assert_eq!(extraction.entities.len(), 1);
-    assert_eq!(extraction.entities[0].name, "Rust");
+    assert_eq!(
+        extraction.entities.len(),
+        1,
+        "should parse 1 entity from fenced JSON"
+    );
+    assert_eq!(
+        extraction.entities[0].name, "Rust",
+        "entity name should be Rust"
+    );
 }
 
 #[test]
 fn parse_invalid_response() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());
     let result = engine.parse_response("this is not json at all");
-    assert!(result.is_err());
+    assert!(result.is_err(), "non-JSON input should return an error");
     let err = result.expect_err("non-JSON input should produce parse error");
-    assert!(matches!(err, ExtractionError::ParseResponse { .. }));
+    assert!(
+        matches!(err, ExtractionError::ParseResponse { .. }),
+        "error should be ParseResponse variant"
+    );
 }
 
 #[tokio::test]
@@ -121,7 +180,10 @@ async fn extract_skips_short_messages() {
         .extract(&messages, &NeverCallProvider)
         .await
         .expect("short message should return empty extraction without error");
-    assert!(result.entities.is_empty());
+    assert!(
+        result.entities.is_empty(),
+        "short message should produce no entities"
+    );
 }
 
 #[tokio::test]
@@ -152,16 +214,39 @@ async fn extract_calls_provider() {
         .extract(&messages, &MockProvider)
         .await
         .expect("mock provider returns valid JSON, extraction should succeed");
-    assert_eq!(result.facts.len(), 1);
-    assert_eq!(result.facts[0].subject, "Dr. Chen");
+    assert_eq!(
+        result.facts.len(),
+        1,
+        "should extract 1 fact from provider response"
+    );
+    assert_eq!(
+        result.facts[0].subject, "Dr. Chen",
+        "fact subject should be Dr. Chen"
+    );
 }
 
 #[test]
 fn slugify_works() {
-    assert_eq!(utils::slugify("Data Processor"), "data-processor");
-    assert_eq!(utils::slugify("AI Memory System"), "ai-memory-system");
-    assert_eq!(utils::slugify("  hello  world  "), "hello-world");
-    assert_eq!(utils::slugify("C++/Rust"), "c-rust");
+    assert_eq!(
+        utils::slugify("Data Processor"),
+        "data-processor",
+        "spaces should become hyphens and letters lowercased"
+    );
+    assert_eq!(
+        utils::slugify("AI Memory System"),
+        "ai-memory-system",
+        "multiple words should be joined with hyphens"
+    );
+    assert_eq!(
+        utils::slugify("  hello  world  "),
+        "hello-world",
+        "leading/trailing and multiple spaces should be collapsed"
+    );
+    assert_eq!(
+        utils::slugify("C++/Rust"),
+        "c-rust",
+        "special characters should be replaced with hyphens"
+    );
 }
 
 #[test]
@@ -172,7 +257,8 @@ fn strip_code_fences_works() {
 {"a":1}
 ```"#
         ),
-        r#"{"a":1}"#
+        r#"{"a":1}"#,
+        "json-tagged code fence should be stripped"
     );
     assert_eq!(
         utils::strip_code_fences(
@@ -180,9 +266,14 @@ fn strip_code_fences_works() {
 {"a":1}
 ```"#
         ),
-        r#"{"a":1}"#
+        r#"{"a":1}"#,
+        "untagged code fence should be stripped"
     );
-    assert_eq!(utils::strip_code_fences(r#"{"a":1}"#), r#"{"a":1}"#);
+    assert_eq!(
+        utils::strip_code_fences(r#"{"a":1}"#),
+        r#"{"a":1}"#,
+        "plain JSON without fences should pass through unchanged"
+    );
 }
 
 // --- Acceptance criteria tests (prompt 99) ---
@@ -194,9 +285,12 @@ fn parse_empty_extraction() {
     let extraction = engine
         .parse_response(json)
         .expect("empty arrays JSON should parse to empty extraction");
-    assert!(extraction.entities.is_empty());
-    assert!(extraction.relationships.is_empty());
-    assert!(extraction.facts.is_empty());
+    assert!(extraction.entities.is_empty(), "entities should be empty");
+    assert!(
+        extraction.relationships.is_empty(),
+        "relationships should be empty"
+    );
+    assert!(extraction.facts.is_empty(), "facts should be empty");
 }
 
 #[test]
@@ -267,9 +361,16 @@ fn parse_handles_all_entity_types() {
     let extraction = engine
         .parse_response(json)
         .expect("all entity types including unknown should parse");
-    assert_eq!(extraction.entities.len(), 6);
+    assert_eq!(
+        extraction.entities.len(),
+        6,
+        "should parse all 6 entities including unknown type"
+    );
     // entity_type is a free-form string: no validation at parse time
-    assert_eq!(extraction.entities[5].entity_type, "unknown_type");
+    assert_eq!(
+        extraction.entities[5].entity_type, "unknown_type",
+        "unknown entity type should pass through unchanged"
+    );
 }
 
 #[test]
@@ -289,7 +390,7 @@ fn parse_handles_multiple_facts() {
     let extraction = engine
         .parse_response(json)
         .expect("multiple facts should parse successfully");
-    assert_eq!(extraction.facts.len(), 5);
+    assert_eq!(extraction.facts.len(), 5, "should parse all 5 facts");
 }
 
 #[test]
@@ -318,7 +419,11 @@ fn parse_does_not_deduplicate_entities() {
 #[test]
 fn strip_code_fences_with_leading_whitespace() {
     let input = "  \n```json\n{\"a\":1}\n```\n  ";
-    assert_eq!(utils::strip_code_fences(input), r#"{"a":1}"#);
+    assert_eq!(
+        utils::strip_code_fences(input),
+        r#"{"a":1}"#,
+        "leading whitespace before code fence should be ignored"
+    );
 }
 
 #[test]
@@ -327,7 +432,10 @@ fn strip_code_fences_no_closing_fence() {
     let input = "```json\n{\"a\":1}";
     let result = utils::strip_code_fences(input);
     // Should still produce parseable JSON (strips prefix, returns rest)
-    assert!(result.contains(r#"{"a":1}"#));
+    assert!(
+        result.contains(r#"{"a":1}"#),
+        "JSON body should be recoverable even without closing fence"
+    );
 }
 
 #[test]
@@ -384,8 +492,14 @@ fn build_prompt_concatenates_messages_in_order() {
         .user_message
         .find("third message")
         .expect("third message should appear in user_message");
-    assert!(first_pos < second_pos);
-    assert!(second_pos < third_pos);
+    assert!(
+        first_pos < second_pos,
+        "first message should appear before second in prompt"
+    );
+    assert!(
+        second_pos < third_pos,
+        "second message should appear before third in prompt"
+    );
 }
 
 #[tokio::test]
@@ -416,11 +530,14 @@ async fn extract_provider_error_propagates() {
     }];
 
     let result = engine.extract(&messages, &FailingProvider).await;
-    assert!(result.is_err());
-    assert!(matches!(
-        result.expect_err("failing provider should return LlmCall error"),
-        ExtractionError::LlmCall { .. }
-    ));
+    assert!(result.is_err(), "failing provider should return an error");
+    assert!(
+        matches!(
+            result.expect_err("failing provider should return LlmCall error"),
+            ExtractionError::LlmCall { .. }
+        ),
+        "error should be LlmCall variant"
+    );
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -462,10 +579,16 @@ fn persist_round_trip() {
     let result = engine
         .persist(&extraction, &store, "session:test:main:2026-03-02", "syn")
         .expect("persist should succeed with valid entities, relationships, and facts");
-    assert_eq!(result.entities_inserted, 2);
-    assert_eq!(result.relationships_inserted, 1);
-    assert_eq!(result.relationships_skipped, 0);
-    assert_eq!(result.facts_inserted, 1);
+    assert_eq!(result.entities_inserted, 2, "should insert 2 entities");
+    assert_eq!(
+        result.relationships_inserted, 1,
+        "should insert 1 relationship"
+    );
+    assert_eq!(
+        result.relationships_skipped, 0,
+        "no relationships should be skipped"
+    );
+    assert_eq!(result.facts_inserted, 1, "should insert 1 fact");
 
     // Verify entities are queryable via entity_neighborhood.
     let neighborhood = store
@@ -520,8 +643,14 @@ fn persist_skips_relates_to() {
     let result = engine
         .persist(&extraction, &store, "session:test", "syn")
         .expect("persist should succeed even when all relationships are skipped");
-    assert_eq!(result.relationships_inserted, 0);
-    assert_eq!(result.relationships_skipped, 1);
+    assert_eq!(
+        result.relationships_inserted, 0,
+        "RELATES_TO relationship should not be inserted"
+    );
+    assert_eq!(
+        result.relationships_skipped, 1,
+        "RELATES_TO relationship should be counted as skipped"
+    );
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -556,8 +685,14 @@ fn persist_normalizes_relation_type() {
     let result = engine
         .persist(&extraction, &store, "session:test", "syn")
         .expect("persist should succeed with normalized relation type");
-    assert_eq!(result.relationships_inserted, 1);
-    assert_eq!(result.relationships_skipped, 0);
+    assert_eq!(
+        result.relationships_inserted, 1,
+        "normalized relationship should be inserted"
+    );
+    assert_eq!(
+        result.relationships_skipped, 0,
+        "no relationships should be skipped after normalization"
+    );
 
     let neighborhood = store
         .entity_neighborhood(&crate::id::EntityId::new_unchecked("nyx"))
@@ -607,7 +742,10 @@ fn persist_accepts_novel_type() {
         result.relationships_inserted, 1,
         "novel LLM-generated types should be persisted"
     );
-    assert_eq!(result.relationships_skipped, 0);
+    assert_eq!(
+        result.relationships_skipped, 0,
+        "no relationships should be skipped for novel types"
+    );
 
     let neighborhood = store
         .entity_neighborhood(&crate::id::EntityId::new_unchecked("nyx"))
@@ -657,7 +795,10 @@ fn persist_rejects_malformed_type() {
         result.relationships_inserted, 0,
         "malformed types must not be persisted"
     );
-    assert_eq!(result.relationships_skipped, 1);
+    assert_eq!(
+        result.relationships_skipped, 1,
+        "malformed relationship should be counted as skipped"
+    );
 }
 
 #[test]
@@ -672,11 +813,23 @@ fn config_returns_same_config() {
     };
     let engine = ExtractionEngine::new(config);
     let got = engine.config();
-    assert_eq!(got.model, "test-model");
-    assert_eq!(got.min_message_length, 99);
-    assert_eq!(got.max_entities, 42);
-    assert_eq!(got.max_relationships, 7);
-    assert!(!got.enabled);
+    assert_eq!(
+        got.model, "test-model",
+        "config model should match what was provided"
+    );
+    assert_eq!(
+        got.min_message_length, 99,
+        "config min_message_length should match what was provided"
+    );
+    assert_eq!(
+        got.max_entities, 42,
+        "config max_entities should match what was provided"
+    );
+    assert_eq!(
+        got.max_relationships, 7,
+        "config max_relationships should match what was provided"
+    );
+    assert!(!got.enabled, "config enabled should be false as provided");
 }
 
 #[test]
@@ -687,7 +840,10 @@ fn build_prompt_empty_messages() {
         !prompt.system.is_empty(),
         "system prompt should be non-empty even with no messages"
     );
-    assert!(prompt.system.contains("entities"));
+    assert!(
+        prompt.system.contains("entities"),
+        "system prompt should always mention entities"
+    );
     assert!(
         prompt.user_message.is_empty(),
         "no messages means empty user text"
@@ -705,9 +861,13 @@ fn build_prompt_single_message() {
     assert!(
         prompt
             .user_message
-            .contains("Alice builds Aletheia in Rust.")
+            .contains("Alice builds Aletheia in Rust."),
+        "user message should contain the conversation content"
     );
-    assert!(prompt.user_message.contains("user:"));
+    assert!(
+        prompt.user_message.contains("user:"),
+        "user message should include role prefix"
+    );
 }
 
 #[test]
@@ -716,10 +876,13 @@ fn parse_response_truncated_json() {
     let truncated = r#"{"entities": [{"name": "Alice""#;
     let result = engine.parse_response(truncated);
     assert!(result.is_err(), "truncated JSON must return error");
-    assert!(matches!(
-        result.expect_err("truncated JSON should produce parse error"),
-        ExtractionError::ParseResponse { .. }
-    ));
+    assert!(
+        matches!(
+            result.expect_err("truncated JSON should produce parse error"),
+            ExtractionError::ParseResponse { .. }
+        ),
+        "truncated JSON should yield ParseResponse error variant"
+    );
 }
 
 #[test]
@@ -753,8 +916,15 @@ fn parse_response_extra_fields_ignored() {
     let extraction = engine
         .parse_response(json)
         .expect("extra fields should be ignored during deserialization");
-    assert_eq!(extraction.entities.len(), 1);
-    assert_eq!(extraction.entities[0].name, "Alice");
+    assert_eq!(
+        extraction.entities.len(),
+        1,
+        "should parse 1 entity when extra fields are present"
+    );
+    assert_eq!(
+        extraction.entities[0].name, "Alice",
+        "entity name should be preserved despite extra fields"
+    );
 }
 
 #[test]
@@ -772,10 +942,23 @@ fn parse_response_unicode_entities() {
     let extraction = engine
         .parse_response(json)
         .expect("unicode entity names should parse successfully");
-    assert_eq!(extraction.entities.len(), 3);
-    assert_eq!(extraction.entities[0].name, "東京");
-    assert_eq!(extraction.entities[1].name, "München");
-    assert_eq!(extraction.entities[2].name, "Москва");
+    assert_eq!(
+        extraction.entities.len(),
+        3,
+        "should parse 3 unicode-named entities"
+    );
+    assert_eq!(
+        extraction.entities[0].name, "東京",
+        "first entity should be 東京"
+    );
+    assert_eq!(
+        extraction.entities[1].name, "München",
+        "second entity should be München"
+    );
+    assert_eq!(
+        extraction.entities[2].name, "Москва",
+        "third entity should be Москва"
+    );
 }
 
 #[test]
@@ -785,9 +968,18 @@ fn parse_response_empty_entities_array() {
     let extraction = engine
         .parse_response(json)
         .expect("compact empty arrays JSON should parse");
-    assert!(extraction.entities.is_empty());
-    assert!(extraction.relationships.is_empty());
-    assert!(extraction.facts.is_empty());
+    assert!(
+        extraction.entities.is_empty(),
+        "entities should be empty for compact empty JSON"
+    );
+    assert!(
+        extraction.relationships.is_empty(),
+        "relationships should be empty for compact empty JSON"
+    );
+    assert!(
+        extraction.facts.is_empty(),
+        "facts should be empty for compact empty JSON"
+    );
 }
 
 #[tokio::test]
@@ -871,9 +1063,18 @@ async fn extract_empty_messages() {
         .extract(&[], &PanicProvider)
         .await
         .expect("empty messages should return empty extraction without calling provider");
-    assert!(result.entities.is_empty());
-    assert!(result.relationships.is_empty());
-    assert!(result.facts.is_empty());
+    assert!(
+        result.entities.is_empty(),
+        "empty messages should produce no entities"
+    );
+    assert!(
+        result.relationships.is_empty(),
+        "empty messages should produce no relationships"
+    );
+    assert!(
+        result.facts.is_empty(),
+        "empty messages should produce no facts"
+    );
 }
 
 #[test]
@@ -896,13 +1097,23 @@ Some text
 fn strip_code_fences_nested() {
     let input = "```json\n```inner```\n```";
     let result = utils::strip_code_fences(input);
-    assert!(!result.is_empty());
-    assert!(!result.starts_with("```json"));
+    assert!(
+        !result.is_empty(),
+        "result should not be empty for nested fence input"
+    );
+    assert!(
+        !result.starts_with("```json"),
+        "opening json code fence should be stripped"
+    );
 }
 
 #[test]
 fn slugify_empty_string() {
-    assert_eq!(utils::slugify(""), "");
+    assert_eq!(
+        utils::slugify(""),
+        "",
+        "empty string should slugify to empty string"
+    );
 }
 
 #[test]
@@ -917,8 +1128,14 @@ fn slugify_all_special_chars() {
 #[test]
 fn slugify_unicode_mixed() {
     let result = utils::slugify("Hello 世界 Rust");
-    assert!(result.contains("hello"));
-    assert!(result.contains("rust"));
+    assert!(
+        result.contains("hello"),
+        "ASCII letters should be lowercased in slug"
+    );
+    assert!(
+        result.contains("rust"),
+        "ASCII letters should be preserved in slug"
+    );
     assert!(
         result.chars().all(|c| c.is_alphanumeric() || c == '-'),
         "slugify output should only contain alphanumeric or hyphens"
@@ -941,8 +1158,16 @@ fn slugify_nfc_normalization_composed_vs_decomposed() {
 #[test]
 fn slugify_nfc_normalization_preserves_ascii() {
     // NFC normalization must not alter plain ASCII
-    assert_eq!(utils::slugify("hello-world"), "hello-world");
-    assert_eq!(utils::slugify("Data Processor"), "data-processor");
+    assert_eq!(
+        utils::slugify("hello-world"),
+        "hello-world",
+        "plain ASCII with hyphens should be preserved"
+    );
+    assert_eq!(
+        utils::slugify("Data Processor"),
+        "data-processor",
+        "plain ASCII should not be altered by NFC normalization"
+    );
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -977,8 +1202,14 @@ fn persist_skips_is_type() {
     let result = engine
         .persist(&extraction, &store, "session:test", "syn")
         .expect("persist should succeed even when 'is' relationship is skipped");
-    assert_eq!(result.relationships_inserted, 0);
-    assert_eq!(result.relationships_skipped, 1);
+    assert_eq!(
+        result.relationships_inserted, 0,
+        "'is' relationship should not be inserted"
+    );
+    assert_eq!(
+        result.relationships_skipped, 1,
+        "'is' relationship should be counted as skipped"
+    );
 }
 
 #[expect(clippy::expect_used, reason = "test assertions")]
@@ -1019,8 +1250,8 @@ mod proptests {
             assert!(result.is_ok(), "valid JSON with arbitrary strings should parse: {result:?}");
             let extraction =
                 result.expect("valid JSON with arbitrary strings should parse successfully");
-            assert_eq!(extraction.entities.len(), 1);
-            assert_eq!(extraction.entities[0].name, name);
+            assert_eq!(extraction.entities.len(), 1, "should parse exactly 1 entity");
+            assert_eq!(extraction.entities[0].name, name, "entity name should match input");
         }
 
         #[test]
