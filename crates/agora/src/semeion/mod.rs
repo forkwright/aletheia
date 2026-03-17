@@ -423,6 +423,7 @@ async fn poll_loop(
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use tracing::Instrument;
 
     fn install_crypto_provider() {
         let _ = rustls::crypto::ring::default_provider().install_default();
@@ -547,12 +548,10 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(16);
         let account_state = Arc::new(Mutex::new(AccountState::new(100)));
 
-        let handle = tokio::spawn(super::poll_loop(
-            signal_client,
-            tx,
-            Duration::from_millis(50),
-            account_state,
-        ));
+        let handle = tokio::spawn(
+            super::poll_loop(signal_client, tx, Duration::from_millis(50), account_state)
+                .instrument(tracing::info_span!("test_poll_loop")),
+        );
 
         let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
             .await

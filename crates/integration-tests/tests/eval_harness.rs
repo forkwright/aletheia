@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as TokioMutex;
+use tracing::Instrument;
 
 use secrecy::SecretString;
 use tokio::net::TcpListener;
@@ -115,9 +116,12 @@ async fn start_test_server() -> (String, String, tempfile::TempDir) {
     let addr = listener.local_addr().expect("local_addr");
     let base_url = format!("http://{addr}");
 
-    tokio::spawn(async move {
-        axum::serve(listener, router).await.expect("serve");
-    });
+    tokio::spawn(
+        async move {
+            axum::serve(listener, router).await.expect("serve");
+        }
+        .instrument(tracing::info_span!("test_server")),
+    );
 
     (base_url, token, dir)
 }
