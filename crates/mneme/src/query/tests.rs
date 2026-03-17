@@ -31,9 +31,18 @@ fn test_put_generates_valid_datalog() {
         .done()
         .build_script();
 
-    assert!(script.contains("?[id, valid_from, content, nous_id]"));
-    assert!(script.contains("[$id, $valid_from, $content, $nous_id]"));
-    assert!(script.contains(":put facts {id, valid_from => content, nous_id}"));
+    assert!(
+        script.contains("?[id, valid_from, content, nous_id]"),
+        "put script should have output head with all fields"
+    );
+    assert!(
+        script.contains("[$id, $valid_from, $content, $nous_id]"),
+        "put script should bind params for each field"
+    );
+    assert!(
+        script.contains(":put facts {id, valid_from => content, nous_id}"),
+        "put script should have key => value separation"
+    );
 }
 
 #[test]
@@ -48,8 +57,14 @@ fn test_put_multi_row() {
         .done()
         .build_script();
 
-    assert!(script.contains("[$a, $b, $c], [$x, $y, $z]"));
-    assert!(script.contains(":put facts {id, valid_from => content}"));
+    assert!(
+        script.contains("[$a, $b, $c], [$x, $y, $z]"),
+        "multi-row put should include both rows"
+    );
+    assert!(
+        script.contains(":put facts {id, valid_from => content}"),
+        "multi-row put should have correct relation directive"
+    );
 }
 
 #[test]
@@ -68,11 +83,26 @@ fn test_scan_generates_valid_datalog() {
         .done()
         .build_script();
 
-    assert!(script.contains("?[id, content, confidence]"));
-    assert!(script.contains("*facts{id, nous_id: $nous_id, content, confidence}"));
-    assert!(script.contains("confidence > 0.5"));
-    assert!(script.contains(":order -confidence"));
-    assert!(script.contains(":limit $limit"));
+    assert!(
+        script.contains("?[id, content, confidence]"),
+        "scan script should have output head with selected fields"
+    );
+    assert!(
+        script.contains("*facts{id, nous_id: $nous_id, content, confidence}"),
+        "scan script should bind nous_id to named param"
+    );
+    assert!(
+        script.contains("confidence > 0.5"),
+        "scan script should include filter expression"
+    );
+    assert!(
+        script.contains(":order -confidence"),
+        "scan script should include order directive"
+    );
+    assert!(
+        script.contains(":limit $limit"),
+        "scan script should include limit directive"
+    );
 }
 
 #[test]
@@ -87,7 +117,10 @@ fn test_params_are_bound_not_interpolated() {
         !script.contains("42"),
         "script must not contain literal value"
     );
-    assert!(params.contains_key("val"));
+    assert!(
+        params.contains_key("val"),
+        "param map should contain the bound value"
+    );
 }
 
 #[test]
@@ -102,7 +135,10 @@ fn test_injection_attempt() {
         !script.contains("evil}"),
         "injection payload must not appear in script"
     );
-    assert!(params.contains_key("id"));
+    assert!(
+        params.contains_key("id"),
+        "param map should contain the injected id"
+    );
 }
 
 #[test]
@@ -174,7 +210,11 @@ fn test_field_names_match_schema() {
     .iter()
     .map(|f| f.name())
     .collect();
-    assert_eq!(facts_ddl_fields.as_slice(), facts_enum_fields.as_slice());
+    assert_eq!(
+        facts_ddl_fields.as_slice(),
+        facts_enum_fields.as_slice(),
+        "FactsField enum names should match DDL field names in order"
+    );
 
     // Entities DDL fields
     let entities_ddl = [
@@ -196,7 +236,11 @@ fn test_field_names_match_schema() {
     .iter()
     .map(|f| f.name())
     .collect();
-    assert_eq!(entities_ddl.as_slice(), entities_enum.as_slice());
+    assert_eq!(
+        entities_ddl.as_slice(),
+        entities_enum.as_slice(),
+        "EntitiesField enum names should match DDL field names in order"
+    );
 
     // Relationships DDL fields
     let rels_ddl = ["src", "dst", "relation", "weight", "created_at"];
@@ -210,7 +254,11 @@ fn test_field_names_match_schema() {
     .iter()
     .map(|f| f.name())
     .collect();
-    assert_eq!(rels_ddl.as_slice(), rels_enum.as_slice());
+    assert_eq!(
+        rels_ddl.as_slice(),
+        rels_enum.as_slice(),
+        "RelationshipsField enum names should match DDL field names in order"
+    );
 
     // Embeddings DDL fields
     let emb_ddl = [
@@ -234,7 +282,11 @@ fn test_field_names_match_schema() {
     .iter()
     .map(|f| f.name())
     .collect();
-    assert_eq!(emb_ddl.as_slice(), emb_enum.as_slice());
+    assert_eq!(
+        emb_ddl.as_slice(),
+        emb_enum.as_slice(),
+        "EmbeddingsField enum names should match DDL field names in order"
+    );
 }
 
 #[test]
@@ -244,8 +296,14 @@ fn test_raw_escape_hatch() {
         .raw("?[dst, rel] := hop1[dst, rel]")
         .build_script();
 
-    assert!(script.contains("hop1[dst, rel]"));
-    assert!(script.contains("*relationships{src: $id"));
+    assert!(
+        script.contains("hop1[dst, rel]"),
+        "raw script should include derived rule head"
+    );
+    assert!(
+        script.contains("*relationships{src: $id"),
+        "raw script should include relation scan with param"
+    );
 }
 
 // -- Regression: builder output matches original constants --
@@ -267,7 +325,11 @@ fn test_builder_matches_upsert_fact() {
                 is_forgotten, forgotten_at, forget_reason}
 ";
     let built = queries::upsert_fact();
-    assert_eq!(normalize(&built), normalize(original));
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match upsert_fact constant"
+    );
 }
 
 #[test]
@@ -287,7 +349,11 @@ fn test_builder_matches_current_facts() {
     :limit $limit
 ";
     let built = queries::current_facts();
-    assert_eq!(normalize(&built), normalize(original));
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match current_facts constant"
+    );
 }
 
 #[test]
@@ -300,7 +366,11 @@ fn test_builder_matches_facts_at_time() {
         is_forgotten == false
 ";
     let built = queries::facts_at_time();
-    assert_eq!(normalize(&built), normalize(original));
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match facts_at_time constant"
+    );
 }
 
 #[test]
@@ -325,7 +395,11 @@ fn test_builder_matches_supersede_fact() {
                 is_forgotten, forgotten_at, forget_reason}
 "#;
     let built = queries::supersede_fact();
-    assert_eq!(normalize(&built), normalize(original));
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match supersede_fact constant"
+    );
 }
 
 #[test]
@@ -337,7 +411,11 @@ fn test_builder_matches_upsert_entity() {
     :put entities {id => name, entity_type, aliases, created_at, updated_at}
 ";
     let built = queries::upsert_entity();
-    assert_eq!(normalize(&built), normalize(original));
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match upsert_entity constant"
+    );
 }
 
 #[test]
@@ -349,7 +427,11 @@ fn test_builder_matches_upsert_relationship() {
     :put relationships {src, dst => relation, weight, created_at}
 ";
     let built = queries::upsert_relationship();
-    assert_eq!(normalize(&built), normalize(original));
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match upsert_relationship constant"
+    );
 }
 
 #[test]
@@ -359,7 +441,11 @@ fn test_builder_matches_upsert_embedding() {
           ]
           :put embeddings { id => content, source_type, source_id, nous_id, embedding, created_at }";
     let built = queries::upsert_embedding();
-    assert_eq!(normalize(&built), normalize(original));
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match upsert_embedding constant"
+    );
 }
 
 #[test]
@@ -381,7 +467,11 @@ fn test_builder_matches_full_current_facts() {
 :limit $limit
 ";
     let built = queries::full_current_facts();
-    assert_eq!(normalize(&built), normalize(original));
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match full_current_facts constant"
+    );
 }
 
 #[test]
@@ -417,12 +507,31 @@ fn query_builder_all_field_types() {
         .param("null_val", DataValue::Null)
         .build();
 
-    assert!(params.contains_key("str_val"));
-    assert!(params.contains_key("int_val"));
-    assert!(params.contains_key("float_val"));
-    assert!(params.contains_key("bool_val"));
-    assert!(params.contains_key("null_val"));
-    assert_eq!(params.len(), 5);
+    assert!(
+        params.contains_key("str_val"),
+        "param map should contain str_val"
+    );
+    assert!(
+        params.contains_key("int_val"),
+        "param map should contain int_val"
+    );
+    assert!(
+        params.contains_key("float_val"),
+        "param map should contain float_val"
+    );
+    assert!(
+        params.contains_key("bool_val"),
+        "param map should contain bool_val"
+    );
+    assert!(
+        params.contains_key("null_val"),
+        "param map should contain null_val"
+    );
+    assert_eq!(
+        params.len(),
+        5,
+        "param map should have exactly five entries"
+    );
 
     assert!(
         !script.contains("hello"),
@@ -489,8 +598,14 @@ fn query_builder_empty_returns_valid_datalog() {
     assert!(script.is_empty(), "empty builder produces empty script");
 
     let (script, params) = QueryBuilder::new().build();
-    assert!(script.is_empty());
-    assert!(params.is_empty());
+    assert!(
+        script.is_empty(),
+        "empty builder script should be empty string"
+    );
+    assert!(
+        params.is_empty(),
+        "empty builder params should be empty map"
+    );
 }
 
 #[test]
@@ -500,11 +615,18 @@ fn query_builder_string_field() {
         .param("name", DataValue::from("alice"))
         .build();
 
-    assert!(script.contains("$name"));
-    assert!(!script.contains("alice"));
+    assert!(
+        script.contains("$name"),
+        "script should reference $name parameter"
+    );
+    assert!(
+        !script.contains("alice"),
+        "string value must not appear in script body"
+    );
     assert_eq!(
         params.get("name").expect("name param must exist"),
-        &DataValue::from("alice")
+        &DataValue::from("alice"),
+        "name param should have the correct value"
     );
 }
 
@@ -515,11 +637,18 @@ fn query_builder_int_field() {
         .param("threshold", DataValue::from(100_i64))
         .build();
 
-    assert!(script.contains("$threshold"));
-    assert!(!script.contains("100"));
+    assert!(
+        script.contains("$threshold"),
+        "script should reference $threshold parameter"
+    );
+    assert!(
+        !script.contains("100"),
+        "int value must not appear in script body"
+    );
     assert_eq!(
         params.get("threshold").expect("threshold param must exist"),
-        &DataValue::from(100_i64)
+        &DataValue::from(100_i64),
+        "threshold param should have the correct value"
     );
 }
 
@@ -530,11 +659,18 @@ fn query_builder_float_field() {
         .param("min_conf", DataValue::from(0.75_f64))
         .build();
 
-    assert!(script.contains("$min_conf"));
-    assert!(params.contains_key("min_conf"));
+    assert!(
+        script.contains("$min_conf"),
+        "script should reference $min_conf parameter"
+    );
+    assert!(
+        params.contains_key("min_conf"),
+        "param map should contain min_conf"
+    );
     assert_eq!(
         params.get("min_conf").expect("min_conf param must exist"),
-        &DataValue::from(0.75_f64)
+        &DataValue::from(0.75_f64),
+        "min_conf param should have the correct value"
     );
 }
 
@@ -545,11 +681,18 @@ fn query_builder_bool_field() {
         .param("forgotten", DataValue::from(false))
         .build();
 
-    assert!(script.contains("$forgotten"));
-    assert!(params.contains_key("forgotten"));
+    assert!(
+        script.contains("$forgotten"),
+        "script should reference $forgotten parameter"
+    );
+    assert!(
+        params.contains_key("forgotten"),
+        "param map should contain forgotten"
+    );
     assert_eq!(
         params.get("forgotten").expect("forgotten param must exist"),
-        &DataValue::from(false)
+        &DataValue::from(false),
+        "forgotten param should have the correct value"
     );
 }
 
@@ -561,11 +704,18 @@ fn query_builder_timestamp_field() {
         .param("ts", DataValue::from(ts))
         .build();
 
-    assert!(script.contains("$ts"));
-    assert!(!script.contains(ts));
+    assert!(
+        script.contains("$ts"),
+        "script should reference $ts parameter"
+    );
+    assert!(
+        !script.contains(ts),
+        "timestamp string must not appear in script body"
+    );
     assert_eq!(
         params.get("ts").expect("ts param must exist"),
-        &DataValue::from(ts)
+        &DataValue::from(ts),
+        "ts param should have the correct value"
     );
 }
 
@@ -586,9 +736,18 @@ fn query_builder_multiple_conditions() {
         .done()
         .build_script();
 
-    assert!(script.contains("nous_id = $nous_id"));
-    assert!(script.contains("confidence >= 0.5"));
-    assert!(script.contains("is_forgotten == false"));
+    assert!(
+        script.contains("nous_id = $nous_id"),
+        "nous_id filter should be present"
+    );
+    assert!(
+        script.contains("confidence >= 0.5"),
+        "confidence filter should be present"
+    );
+    assert!(
+        script.contains("is_forgotten == false"),
+        "is_forgotten filter should be present"
+    );
     let comma_newline_count = script.matches(",\n").count();
     assert!(
         comma_newline_count >= 3,
@@ -608,10 +767,14 @@ fn query_builder_special_chars_escaped() {
         !script.contains(dangerous),
         "special characters must not appear in script body"
     );
-    assert!(script.contains("$input"));
+    assert!(
+        script.contains("$input"),
+        "script should reference $input parameter"
+    );
     assert_eq!(
         params.get("input").expect("input param must exist"),
-        &DataValue::from(dangerous)
+        &DataValue::from(dangerous),
+        "input param should have the correct value"
     );
 }
 
@@ -734,8 +897,14 @@ fn query_builder_injection_semicolon() {
         !script.contains("; :rm facts"),
         "semicolon injection must not appear in script"
     );
-    assert!(script.contains("$user_input"));
-    assert!(params.contains_key("user_input"));
+    assert!(
+        script.contains("$user_input"),
+        "script should reference $user_input parameter"
+    );
+    assert!(
+        params.contains_key("user_input"),
+        "param map should contain user_input"
+    );
 }
 
 #[test]
@@ -749,12 +918,16 @@ fn query_builder_injection_colon_put() {
         !script.contains(":put evil"),
         ":put injection must not appear in script"
     );
-    assert!(script.contains("$user_input"));
+    assert!(
+        script.contains("$user_input"),
+        "script should reference $user_input parameter"
+    );
     assert_eq!(
         params
             .get("user_input")
             .expect("user_input param must exist"),
-        &DataValue::from(":put evil {x => y}")
+        &DataValue::from(":put evil {x => y}"),
+        "user_input param should have the correct value"
     );
 }
 

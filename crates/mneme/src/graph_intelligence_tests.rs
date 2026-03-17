@@ -155,7 +155,7 @@ fn supersession_bonus_clamped_to_one() {
 fn backward_compat_empty_context() {
     // With empty GraphContext, enhanced scores should equal base scores
     let ctx = GraphContext::default();
-    assert!(ctx.is_empty());
+    assert!(ctx.is_empty(), "default graph context should be empty");
 
     let base_tier = 0.6;
     let enhanced_tier =
@@ -189,25 +189,37 @@ fn graph_context_same_cluster_populated() {
     ctx.clusters.insert("charlie".to_owned(), 2);
     ctx.context_clusters.insert(1);
 
-    assert!(ctx.same_cluster("alice"));
-    assert!(ctx.same_cluster("bob"));
-    assert!(!ctx.same_cluster("charlie"));
-    assert!(!ctx.same_cluster("unknown"));
+    assert!(ctx.same_cluster("alice"), "alice is in context cluster 1");
+    assert!(ctx.same_cluster("bob"), "bob is in context cluster 1");
+    assert!(
+        !ctx.same_cluster("charlie"),
+        "charlie is in cluster 2, not context cluster"
+    );
+    assert!(
+        !ctx.same_cluster("unknown"),
+        "unknown entity is not in any cluster"
+    );
 }
 
 #[test]
 fn graph_dirty_flag_lifecycle() {
     let flag = GraphDirtyFlag::new();
-    assert!(!flag.is_dirty());
-    assert!(!flag.take_dirty());
+    assert!(!flag.is_dirty(), "new flag should start clean");
+    assert!(!flag.take_dirty(), "taking clean flag should return false");
 
     flag.mark_dirty();
-    assert!(flag.is_dirty());
-    assert!(flag.take_dirty());
+    assert!(flag.is_dirty(), "flag should be dirty after mark_dirty");
+    assert!(
+        flag.take_dirty(),
+        "take_dirty should return true when dirty"
+    );
 
     // After take, should be clean
-    assert!(!flag.is_dirty());
-    assert!(!flag.take_dirty());
+    assert!(!flag.is_dirty(), "flag should be clean after take_dirty");
+    assert!(
+        !flag.take_dirty(),
+        "subsequent take_dirty should return false when already clean"
+    );
 }
 
 #[test]
@@ -217,8 +229,14 @@ fn graph_dirty_flag_multiple_marks() {
     flag.mark_dirty();
     flag.mark_dirty();
     // Single take should clear
-    assert!(flag.take_dirty());
-    assert!(!flag.is_dirty());
+    assert!(
+        flag.take_dirty(),
+        "take_dirty should return true after multiple mark_dirty calls"
+    );
+    assert!(
+        !flag.is_dirty(),
+        "flag should be clean after single take_dirty"
+    );
 }
 
 // --- Graph algorithm correctness tests ---
@@ -518,7 +536,10 @@ mod engine_tests {
         let store = test_store();
         // graph_scores created during init_schema: query should succeed
         let ctx = store.load_graph_context().expect("load_graph_context");
-        assert!(ctx.is_empty());
+        assert!(
+            ctx.is_empty(),
+            "freshly created store should have empty graph context"
+        );
     }
 
     #[test]
@@ -554,7 +575,10 @@ mod engine_tests {
 
         // Load context
         let ctx = store.load_graph_context().expect("load_graph_context");
-        assert!(!ctx.is_empty());
+        assert!(
+            !ctx.is_empty(),
+            "graph context should be populated after recompute"
+        );
 
         // Alice should have highest pagerank (hub)
         let alice_pr = ctx.importance("alice");
@@ -569,8 +593,8 @@ mod engine_tests {
             "alice ({alice_pr}) should have higher PR than charlie ({charlie_pr})"
         );
         // All pageranks should be in [0, 1]
-        assert!(alice_pr <= 1.0);
-        assert!(bob_pr >= 0.0);
+        assert!(alice_pr <= 1.0, "alice pagerank should be at most 1.0");
+        assert!(bob_pr >= 0.0, "bob pagerank should be non-negative");
     }
 
     #[test]
@@ -592,18 +616,41 @@ mod engine_tests {
         let proximity = store.compute_bfs_proximity(&["a".to_owned()]).expect("bfs");
 
         // a=0, b=1, c=2, d=3, e=4
-        assert_eq!(proximity.get("a").copied(), Some(0));
-        assert_eq!(proximity.get("b").copied(), Some(1));
-        assert_eq!(proximity.get("c").copied(), Some(2));
-        assert_eq!(proximity.get("d").copied(), Some(3));
-        assert_eq!(proximity.get("e").copied(), Some(4));
+        assert_eq!(
+            proximity.get("a").copied(),
+            Some(0),
+            "seed a should be at hop 0"
+        );
+        assert_eq!(
+            proximity.get("b").copied(),
+            Some(1),
+            "node b should be at hop 1"
+        );
+        assert_eq!(
+            proximity.get("c").copied(),
+            Some(2),
+            "node c should be at hop 2"
+        );
+        assert_eq!(
+            proximity.get("d").copied(),
+            Some(3),
+            "node d should be at hop 3"
+        );
+        assert_eq!(
+            proximity.get("e").copied(),
+            Some(4),
+            "node e should be at hop 4"
+        );
     }
 
     #[test]
     fn bfs_proximity_empty_seeds() {
         let store = test_store();
         let proximity = store.compute_bfs_proximity(&[]).expect("bfs empty");
-        assert!(proximity.is_empty());
+        assert!(
+            proximity.is_empty(),
+            "empty seed set should produce empty proximity map"
+        );
     }
 
     #[test]
@@ -616,8 +663,16 @@ mod engine_tests {
             .compute_bfs_proximity(&["lonely".to_owned()])
             .expect("bfs");
         // Only the seed itself at hop 0
-        assert_eq!(proximity.get("lonely").copied(), Some(0));
-        assert_eq!(proximity.len(), 1);
+        assert_eq!(
+            proximity.get("lonely").copied(),
+            Some(0),
+            "isolated seed should be at hop 0"
+        );
+        assert_eq!(
+            proximity.len(),
+            1,
+            "isolated entity should produce proximity map of size 1"
+        );
     }
 
     #[test]
@@ -657,7 +712,10 @@ mod engine_tests {
             .expect("build_graph_context");
 
         // a1 should be a seed → its cluster is in context_clusters
-        assert!(!ctx.context_clusters.is_empty());
+        assert!(
+            !ctx.context_clusters.is_empty(),
+            "context clusters should be populated when seed entity has a cluster"
+        );
         // a2 should be in same cluster as a1
         assert!(
             ctx.same_cluster("a2"),
@@ -714,7 +772,10 @@ mod engine_tests {
             .recompute_graph_scores()
             .expect("recompute empty graph");
         let ctx = store.load_graph_context().expect("load");
-        assert!(ctx.is_empty());
+        assert!(
+            ctx.is_empty(),
+            "recomputing empty graph should produce empty context"
+        );
     }
 
     #[test]
@@ -784,9 +845,21 @@ mod engine_tests {
             .expect("bfs with cycle terminates");
 
         // Seed at hop 0; back-edge to alice (cycle) does not re-enqueue it
-        assert_eq!(proximity.get("alice").copied(), Some(0));
-        assert_eq!(proximity.get("bob").copied(), Some(1));
-        assert_eq!(proximity.get("charlie").copied(), Some(2));
+        assert_eq!(
+            proximity.get("alice").copied(),
+            Some(0),
+            "seed alice should be at hop 0 even in cycle"
+        );
+        assert_eq!(
+            proximity.get("bob").copied(),
+            Some(1),
+            "bob should be at hop 1 in cycle"
+        );
+        assert_eq!(
+            proximity.get("charlie").copied(),
+            Some(2),
+            "charlie should be at hop 2 in cycle"
+        );
     }
 
     #[test]
@@ -815,9 +888,17 @@ mod engine_tests {
         let proximity = store.compute_bfs_proximity(&["a".to_owned()]).expect("bfs");
 
         // Nodes within the 4-hop radius are present
-        assert_eq!(proximity.get("a").copied(), Some(0));
-        assert_eq!(proximity.get("b").copied(), Some(1));
-        assert_eq!(proximity.get("e").copied(), Some(4));
+        assert_eq!(
+            proximity.get("a").copied(),
+            Some(0),
+            "seed a should be at hop 0"
+        );
+        assert_eq!(proximity.get("b").copied(), Some(1), "b should be at hop 1");
+        assert_eq!(
+            proximity.get("e").copied(),
+            Some(4),
+            "e should be at hop 4 (boundary)"
+        );
         // f is at hop 5: beyond the 4-hop boundary, must be absent
         assert_eq!(
             proximity.get("f").copied(),
@@ -909,7 +990,10 @@ fn louvain_empty_graph_produces_empty_cluster_map() {
         ctx.clusters.is_empty(),
         "empty graph must have no cluster assignments"
     );
-    assert!(ctx.is_empty());
+    assert!(
+        ctx.is_empty(),
+        "empty graph should have no cluster assignments or other data"
+    );
 }
 
 // ---------------------------------------------------------------------------
