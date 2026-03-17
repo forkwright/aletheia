@@ -31,12 +31,12 @@ const BACKOFF_FACTOR: u64 = 2;
 const BACKOFF_MAX_MS: u64 = 30_000;
 
 static SUPPORTED_MODELS: &[&str] = &[
-    "claude-opus-4-6",
-    "claude-opus-4-20250514",
-    "claude-sonnet-4-6",
-    "claude-sonnet-4-20250514",
-    "claude-haiku-4-5",
-    "claude-haiku-4-5-20251001",
+    crate::models::CLAUDE_OPUS_4,
+    crate::models::CLAUDE_OPUS_4_20250514,
+    crate::models::CLAUDE_SONNET_4,
+    crate::models::CLAUDE_SONNET_4_20250514,
+    crate::models::CLAUDE_HAIKU_4_5,
+    crate::models::CLAUDE_HAIKU_4_5_20251001,
 ];
 
 /// Anthropic Messages API provider.

@@ -79,7 +79,7 @@ impl Default for NousConfig {
         Self {
             id: "default".to_owned(),
             name: None,
-            model: "claude-opus-4-20250514".to_owned(),
+            model: aletheia_hermeneus::models::CLAUDE_OPUS_4_20250514.to_owned(),
             context_window: 200_000,
             max_output_tokens: 16_384,
             bootstrap_max_tokens: 40_000,

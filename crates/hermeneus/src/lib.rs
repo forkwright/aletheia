@@ -15,6 +15,8 @@ pub mod fallback;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
 pub mod metrics;
+/// Canonical model identifiers, context window sizes, and pricing rates.
+pub mod models;
 /// [`LlmProvider`](provider::LlmProvider), [`ProviderConfig`](provider::ProviderConfig), and [`ProviderRegistry`](provider::ProviderRegistry).
 pub mod provider;
 /// Shared mock provider for tests across the workspace.

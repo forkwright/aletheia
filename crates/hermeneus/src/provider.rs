@@ -97,47 +97,48 @@ impl Default for ProviderConfig {
         // Built-in pricing for all first-party Anthropic models (USD per million tokens).
         // Operator configs are merged on top, so these act as sensible fallbacks.
         // Prices last verified against https://www.anthropic.com/pricing (2025-10-01).
+        use crate::models;
         let pricing = HashMap::from([
             (
-                "claude-opus-4-6".to_owned(),
+                models::CLAUDE_OPUS_4.to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 15.0,
-                    output_cost_per_mtok: 75.0,
+                    input_cost_per_mtok: models::OPUS_INPUT_COST_PER_MTOK,
+                    output_cost_per_mtok: models::OPUS_OUTPUT_COST_PER_MTOK,
                 },
             ),
             (
-                "claude-opus-4-20250514".to_owned(),
+                models::CLAUDE_OPUS_4_20250514.to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 15.0,
-                    output_cost_per_mtok: 75.0,
+                    input_cost_per_mtok: models::OPUS_INPUT_COST_PER_MTOK,
+                    output_cost_per_mtok: models::OPUS_OUTPUT_COST_PER_MTOK,
                 },
             ),
             (
-                "claude-sonnet-4-6".to_owned(),
+                models::CLAUDE_SONNET_4.to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 3.0,
-                    output_cost_per_mtok: 15.0,
+                    input_cost_per_mtok: models::SONNET_INPUT_COST_PER_MTOK,
+                    output_cost_per_mtok: models::SONNET_OUTPUT_COST_PER_MTOK,
                 },
             ),
             (
-                "claude-sonnet-4-20250514".to_owned(),
+                models::CLAUDE_SONNET_4_20250514.to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 3.0,
-                    output_cost_per_mtok: 15.0,
+                    input_cost_per_mtok: models::SONNET_INPUT_COST_PER_MTOK,
+                    output_cost_per_mtok: models::SONNET_OUTPUT_COST_PER_MTOK,
                 },
             ),
             (
-                "claude-haiku-4-5".to_owned(),
+                models::CLAUDE_HAIKU_4_5.to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 0.8,
-                    output_cost_per_mtok: 4.0,
+                    input_cost_per_mtok: models::HAIKU_INPUT_COST_PER_MTOK,
+                    output_cost_per_mtok: models::HAIKU_OUTPUT_COST_PER_MTOK,
                 },
             ),
             (
-                "claude-haiku-4-5-20251001".to_owned(),
+                models::CLAUDE_HAIKU_4_5_20251001.to_owned(),
                 ModelPricing {
-                    input_cost_per_mtok: 0.8,
-                    output_cost_per_mtok: 4.0,
+                    input_cost_per_mtok: models::HAIKU_INPUT_COST_PER_MTOK,
+                    output_cost_per_mtok: models::HAIKU_OUTPUT_COST_PER_MTOK,
                 },
             ),
         ]);
@@ -145,7 +146,7 @@ impl Default for ProviderConfig {
             provider_type: "anthropic".to_owned(),
             api_key: None,
             base_url: None,
-            default_model: Some("claude-opus-4-20250514".to_owned()),
+            default_model: Some(models::CLAUDE_OPUS_4_20250514.to_owned()),
             max_retries: Some(3),
             pricing,
         }

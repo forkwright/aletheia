@@ -44,7 +44,7 @@ impl Default for DistillTriggerConfig {
     fn default() -> Self {
         Self {
             max_history_share: 0.7,
-            model: "claude-sonnet-4-20250514".to_owned(),
+            model: aletheia_hermeneus::models::CLAUDE_SONNET_4_20250514.to_owned(),
             verbatim_tail: 3,
         }
     }
