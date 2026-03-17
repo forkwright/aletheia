@@ -11,7 +11,7 @@ use aletheia_taxis::validate::validate_section;
 /// Run `aletheia check-config`: load config, validate all sections, report and exit.
 ///
 /// Exits 0 on success, 1 if any check fails.
-pub fn run(instance_root: Option<&PathBuf>) -> Result<()> {
+pub(crate) fn run(instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),

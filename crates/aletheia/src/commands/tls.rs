@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum Action {
+pub(crate) enum Action {
     /// Generate self-signed certificates for development/LAN use
     Generate {
         /// Output directory for cert and key files
@@ -24,7 +24,7 @@ pub enum Action {
     },
 }
 
-pub fn run(action: &Action) -> Result<()> {
+pub(crate) fn run(action: &Action) -> Result<()> {
     match action {
         Action::Generate {
             output_dir,

@@ -29,12 +29,12 @@ impl<T, E: std::error::Error + Send + Sync + 'static> BoxErr<T> for Result<T, E>
     }
 }
 
-pub struct FilesystemPlanningService {
+pub(crate) struct FilesystemPlanningService {
     projects_root: PathBuf,
 }
 
 impl FilesystemPlanningService {
-    pub fn new(projects_root: PathBuf) -> Self {
+    pub(crate) fn new(projects_root: PathBuf) -> Self {
         Self { projects_root }
     }
 }

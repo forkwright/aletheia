@@ -26,13 +26,13 @@ impl<T, E: std::error::Error + Send + Sync + 'static> BoxErr<T> for Result<T, E>
     }
 }
 
-pub struct KnowledgeSearchAdapter {
+pub(crate) struct KnowledgeSearchAdapter {
     store: Arc<KnowledgeStore>,
     embedder: Arc<dyn EmbeddingProvider>,
 }
 
 impl KnowledgeSearchAdapter {
-    pub fn new(store: Arc<KnowledgeStore>, embedder: Arc<dyn EmbeddingProvider>) -> Self {
+    pub(crate) fn new(store: Arc<KnowledgeStore>, embedder: Arc<dyn EmbeddingProvider>) -> Self {
         Self { store, embedder }
     }
 }

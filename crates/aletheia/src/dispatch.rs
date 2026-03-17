@@ -14,7 +14,7 @@ use aletheia_nous::manager::NousManager;
 /// Spawn a background task that dispatches inbound messages to nous actors.
 ///
 /// Runs until the receiver channel closes (all senders dropped).
-pub fn spawn_dispatcher(
+pub(crate) fn spawn_dispatcher(
     mut rx: mpsc::Receiver<InboundMessage>,
     router: Arc<MessageRouter>,
     nous_manager: Arc<NousManager>,

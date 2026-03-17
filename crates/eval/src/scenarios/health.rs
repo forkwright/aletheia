@@ -6,7 +6,7 @@ use crate::client::{EvalClient, InstanceStatus};
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eval};
 
 #[tracing::instrument(skip_all)]
-pub fn scenarios() -> Vec<Box<dyn Scenario>> {
+pub(crate) fn scenarios() -> Vec<Box<dyn Scenario>> {
     vec![
         Box::new(HealthReturnsOk),
         Box::new(HealthContainsVersion),

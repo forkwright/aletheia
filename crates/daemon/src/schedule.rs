@@ -113,7 +113,7 @@ impl Schedule {
         clippy::expect_used,
         reason = "timestamp conversions are within valid ranges; interval durations fit in i64 nanos for any reasonable schedule"
     )]
-    pub fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
+    pub(crate) fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {
                 let schedule = cron::Schedule::from_str(expr).context(error::InvalidCronSnafu {
@@ -154,7 +154,7 @@ impl Schedule {
         clippy::expect_used,
         reason = "timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow"
     )]
-    pub fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
+    pub(crate) fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
             return Ok(false);
         };
@@ -193,7 +193,7 @@ impl Schedule {
         clippy::expect_used,
         reason = "hour() returns 0-23 which always fits in u8"
     )]
-    pub fn in_window(window: Option<(u8, u8)>) -> bool {
+    pub(crate) fn in_window(window: Option<(u8, u8)>) -> bool {
         let Some((start, end)) = window else {
             return true;
         };
@@ -215,7 +215,7 @@ impl Schedule {
 /// - 1st failure: 1 minute
 /// - 2nd failure: 5 minutes
 /// - 3rd+ failure: 15 minutes (but task will be auto-disabled at 3)
-pub fn backoff_delay(consecutive_failures: u32) -> Duration {
+pub(crate) fn backoff_delay(consecutive_failures: u32) -> Duration {
     match consecutive_failures {
         0 => Duration::ZERO,
         1 => Duration::from_secs(60),

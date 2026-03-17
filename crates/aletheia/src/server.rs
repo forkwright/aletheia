@@ -756,7 +756,7 @@ pub(crate) mod tool_adapters {
     use aletheia_nous::cross::{CrossNousMessage, CrossNousRouter};
     use aletheia_organon::types::{CrossNousService, MessageService};
 
-    pub struct CrossNousAdapter(pub Arc<CrossNousRouter>);
+    pub(crate) struct CrossNousAdapter(pub Arc<CrossNousRouter>);
 
     impl CrossNousService for CrossNousAdapter {
         fn send(
@@ -799,7 +799,7 @@ pub(crate) mod tool_adapters {
         }
     }
 
-    pub struct SignalAdapter(pub Arc<dyn ChannelProvider>);
+    pub(crate) struct SignalAdapter(pub Arc<dyn ChannelProvider>);
 
     impl MessageService for SignalAdapter {
         fn send_message(

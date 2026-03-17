@@ -9,14 +9,14 @@ use aletheia_taxis::encrypt;
 use aletheia_taxis::oikos::Oikos;
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum Action {
+pub(crate) enum Action {
     /// Generate a new master encryption key
     InitKey,
     /// Encrypt sensitive plaintext values in aletheia.toml
     Encrypt,
 }
 
-pub fn run(action: &Action, instance_root: Option<&PathBuf>) -> Result<()> {
+pub(crate) fn run(action: &Action, instance_root: Option<&PathBuf>) -> Result<()> {
     match action {
         Action::InitKey => run_init_key(),
         Action::Encrypt => run_encrypt(instance_root),

@@ -6,13 +6,13 @@ use clap::Args;
 use aletheia_koina::http::API_HEALTH;
 
 #[derive(Debug, Clone, Args)]
-pub struct HealthArgs {
+pub(crate) struct HealthArgs {
     /// Server URL to check
     #[arg(long, default_value = "http://127.0.0.1:18789")]
     pub url: String,
 }
 
-pub async fn run(args: &HealthArgs) -> Result<()> {
+pub(crate) async fn run(args: &HealthArgs) -> Result<()> {
     let url = &args.url;
     let endpoint = format!("{url}{API_HEALTH}");
     let resp = reqwest::get(&endpoint).await.map_err(|e| {

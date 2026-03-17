@@ -9,7 +9,7 @@ use aletheia_symbolon::credential::CredentialFile;
 use aletheia_taxis::oikos::Oikos;
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum Action {
+pub(crate) enum Action {
     /// Show current credential source, expiry, and token prefix
     Status,
     /// Force-refresh OAuth token now
@@ -28,7 +28,7 @@ fn token_preview(s: &str) -> String {
     }
 }
 
-pub async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
+pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),

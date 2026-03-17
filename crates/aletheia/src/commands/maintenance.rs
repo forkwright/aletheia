@@ -15,7 +15,7 @@ use aletheia_taxis::oikos::Oikos;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum Action {
+pub(crate) enum Action {
     /// Show status of all maintenance tasks
     Status {
         /// Output as JSON instead of human-readable table
@@ -32,7 +32,7 @@ pub enum Action {
     },
 }
 
-pub fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
+pub(crate) fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
         None => Oikos::discover(),
@@ -124,7 +124,7 @@ pub fn run(action: Action, instance_root: Option<&PathBuf>) -> Result<()> {
 /// Build a `MaintenanceConfig` from the oikos layout and config settings.
 ///
 /// Called from both the maintenance subcommand and the server startup path.
-pub fn build_config(
+pub(crate) fn build_config(
     oikos: &Oikos,
     settings: &aletheia_taxis::config::MaintenanceSettings,
 ) -> MaintenanceConfig {
