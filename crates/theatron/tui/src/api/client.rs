@@ -82,6 +82,12 @@ impl std::fmt::Debug for ApiClient {
 }
 
 impl ApiClient {
+    /// Create a new API client for the given gateway URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::InvalidToken`] if `token` contains characters invalid in HTTP headers.
+    /// Returns [`ApiError::Http`] if the HTTP client cannot be constructed.
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
         let client = build_http_client(token.as_deref())?;
 
@@ -175,6 +181,13 @@ impl ApiClient {
         Ok(wrapper.nous)
     }
 
+    /// Fetch all sessions for an agent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[tracing::instrument(skip(self))]
     pub async fn sessions(&self, nous_id: &str) -> Result<Vec<Session>> {
         let encoded = encode_path(nous_id);
@@ -196,6 +209,13 @@ impl ApiClient {
         Ok(wrapper.sessions)
     }
 
+    /// Fetch message history for a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[tracing::instrument(skip(self))]
     pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
         let encoded = encode_path(session_id);
@@ -411,6 +431,13 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Fetch registered tools for an agent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[tracing::instrument(skip(self))]
     pub async fn tools(&self, nous_id: &str) -> Result<Vec<NousTool>> {
         let encoded = encode_path(nous_id);
@@ -452,6 +479,13 @@ impl ApiClient {
         })
     }
 
+    /// Fetch the server configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[tracing::instrument(skip(self))]
     pub async fn config(&self) -> Result<serde_json::Value> {
         let resp = self

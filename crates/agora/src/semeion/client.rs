@@ -50,6 +50,10 @@ impl SignalClient {
     /// Create a new client targeting the given base URL.
     ///
     /// Normalizes the URL: strips trailing slashes, prepends `http://` if missing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`super::error::Error::Http`] if the HTTP client cannot be constructed.
     pub fn new(base_url: &str) -> Result<Self> {
         let base = normalize_url(base_url);
 

@@ -160,6 +160,12 @@ pub struct App {
 }
 
 impl App {
+    /// Connect to the gateway and initialize the TUI application.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API client cannot be constructed, the gateway is
+    /// unreachable, or the server requires authentication and no token is configured.
     #[tracing::instrument(skip_all, fields(url = %config.url))]
     pub async fn init(config: Config) -> Result<Self> {
         let client = ApiClient::new(&config.url, config.token.clone())?;
