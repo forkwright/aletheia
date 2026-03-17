@@ -9,7 +9,8 @@ use tracing::{instrument, warn};
 use ulid::Ulid;
 
 use crate::error::{
-    self, AskTimeoutSnafu, DeliveryFailedSnafu, NousNotFoundSnafu, ReplyNotFoundSnafu,
+    self, AskCycleDetectedSnafu, AskTimeoutSnafu, DeliveryFailedSnafu, NousNotFoundSnafu,
+    ReplyNotFoundSnafu,
 };
 
 const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -110,11 +111,86 @@ pub struct CrossNousEnvelope {
     pub(crate) reply_tx: Option<oneshot::Sender<CrossNousReply>>,
 }
 
+/// Tracks in-flight ask edges for cycle detection.
+///
+/// Each entry maps `from_nous -> to_nous` for a pending ask. Before adding
+/// a new edge, [`AskGraph::check_cycle`] walks the graph to detect whether
+/// the new edge would close a cycle (direct or indirect).
+pub(crate) struct AskGraph {
+    /// Adjacency list: `from -> set of to`.
+    edges: HashMap<String, Vec<String>>,
+}
+
+impl AskGraph {
+    fn new() -> Self {
+        Self {
+            edges: HashMap::new(),
+        }
+    }
+
+    /// Add an ask edge. Returns `Ok(())` if no cycle, or `Err(chain)` with
+    /// the full cycle path if adding this edge would create a cycle.
+    fn add_edge(&mut self, from: &str, to: &str) -> std::result::Result<(), Vec<String>> {
+        // WHY: Walk the graph from `to` to see if we can reach `from`.
+        // If so, adding `from -> to` closes a cycle.
+        let mut chain = vec![from.to_owned(), to.to_owned()];
+        let mut current = to;
+
+        loop {
+            let Some(targets) = self.edges.get(current) else {
+                break;
+            };
+
+            for next in targets {
+                if next == from {
+                    chain.push(next.clone());
+                    return Err(chain);
+                }
+            }
+
+            // NOTE: For simplicity, follow the first outgoing edge. In practice,
+            // an actor has at most one outstanding ask at a time (single-threaded
+            // actor loop), so each node has at most one outgoing edge.
+            if let Some(next) = targets.first() {
+                chain.push(next.clone());
+                current = next;
+            } else {
+                break;
+            }
+        }
+
+        self.edges
+            .entry(from.to_owned())
+            .or_default()
+            .push(to.to_owned());
+        Ok(())
+    }
+
+    /// Remove a previously added ask edge.
+    fn remove_edge(&mut self, from: &str, to: &str) {
+        if let Some(targets) = self.edges.get_mut(from) {
+            if let Some(pos) = targets.iter().position(|t| t == to) {
+                targets.swap_remove(pos);
+            }
+            if targets.is_empty() {
+                self.edges.remove(from);
+            }
+        }
+    }
+
+    /// Number of edges currently tracked.
+    #[cfg(test)]
+    fn edge_count(&self) -> usize {
+        self.edges.values().map(Vec::len).sum()
+    }
+}
+
 /// Routes cross-nous messages between registered actors.
 pub struct CrossNousRouter {
     routes: Arc<RwLock<HashMap<String, mpsc::Sender<CrossNousEnvelope>>>>,
     pending_replies: Arc<RwLock<HashMap<Ulid, oneshot::Sender<CrossNousReply>>>>,
     delivery_log: Arc<RwLock<DeliveryLog>>,
+    ask_graph: Arc<RwLock<AskGraph>>,
 }
 
 impl Clone for CrossNousRouter {
@@ -123,6 +199,7 @@ impl Clone for CrossNousRouter {
             routes: Arc::clone(&self.routes),
             pending_replies: Arc::clone(&self.pending_replies),
             delivery_log: Arc::clone(&self.delivery_log),
+            ask_graph: Arc::clone(&self.ask_graph),
         }
     }
 }
@@ -141,6 +218,7 @@ impl CrossNousRouter {
             routes: Arc::new(RwLock::new(HashMap::new())),
             pending_replies: Arc::new(RwLock::new(HashMap::new())),
             delivery_log: Arc::new(RwLock::new(DeliveryLog::new(max_log_entries))),
+            ask_graph: Arc::new(RwLock::new(AskGraph::new())),
         }
     }
 
@@ -211,27 +289,68 @@ impl CrossNousRouter {
 
     /// Send and wait for reply. Returns the reply or a timeout error.
     ///
+    /// Checks for cycles in the ask dependency graph before dispatching.
+    /// If Actor A is already waiting on Actor B and B tries to ask A, the
+    /// cycle is detected and an error is returned immediately.
+    ///
     /// # Cancel safety
     ///
     /// Not cancel-safe. If cancelled after sending the message, a pending reply
     /// entry is leaked until timeout cleanup. Do not use in `select!` branches.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`error::Error::AskCycleDetected`] if the ask would create a cycle.
+    /// Returns [`error::Error::NousNotFound`] if the target is not registered.
+    /// Returns [`error::Error::DeliveryFailed`] if the target inbox is closed.
+    /// Returns [`error::Error::AskTimeout`] if no reply arrives within the timeout.
     #[instrument(skip(self, message), fields(msg_id = %message.id, from = %message.from, to = %message.to))]
     pub async fn ask(&self, mut message: CrossNousMessage) -> error::Result<CrossNousReply> {
+        let from = message.from.clone();
         let to = message.to.clone();
         let timeout_dur = message.reply_timeout.unwrap_or(DEFAULT_REPLY_TIMEOUT);
         message.expects_reply = true;
 
+        // Cycle detection: check before we block.
+        {
+            let mut graph = self.ask_graph.write().await;
+            if let Err(chain) = graph.add_edge(&from, &to) {
+                let chain_str = chain.join(" -> ");
+                warn!(chain = %chain_str, "ask cycle detected, returning error to prevent deadlock");
+                return AskCycleDetectedSnafu { chain: chain_str }.fail();
+            }
+        }
+
+        // INVARIANT: from this point, the edge is in the graph and must be
+        // removed on every exit path (success, failure, timeout).
+        let result = self.ask_inner(&mut message, &to, timeout_dur).await;
+
+        self.ask_graph.write().await.remove_edge(&from, &to);
+
+        result
+    }
+
+    /// Inner ask logic, factored out so the caller can guarantee edge cleanup.
+    async fn ask_inner(
+        &self,
+        message: &mut CrossNousMessage,
+        to: &str,
+        timeout_dur: Duration,
+    ) -> error::Result<CrossNousReply> {
         let routes = self.routes.read().await;
-        let Some(sender) = routes.get(&to).cloned() else {
+        let Some(sender) = routes.get(to).cloned() else {
             drop(routes);
             self.log_delivery(
-                &message,
+                message,
                 &DeliveryState::Failed {
                     reason: format!("nous '{to}' not registered"),
                 },
             )
             .await;
-            return NousNotFoundSnafu { nous_id: to }.fail();
+            return NousNotFoundSnafu {
+                nous_id: to.to_owned(),
+            }
+            .fail();
         };
         drop(routes);
 
@@ -248,34 +367,37 @@ impl CrossNousRouter {
         if sender.send(envelope).await.is_err() {
             self.pending_replies.write().await.remove(&msg_id);
             self.log_delivery(
-                &message,
+                message,
                 &DeliveryState::Failed {
                     reason: "inbox closed".to_owned(),
                 },
             )
             .await;
-            return DeliveryFailedSnafu { nous_id: to }.fail();
+            return DeliveryFailedSnafu {
+                nous_id: to.to_owned(),
+            }
+            .fail();
         }
 
-        self.log_delivery(&message, &DeliveryState::Delivered).await;
+        self.log_delivery(message, &DeliveryState::Delivered).await;
 
         tokio::select! {
             result = reply_rx => {
                 if let Ok(reply) = result {
-                    self.log_delivery(&message, &DeliveryState::Replied).await;
+                    self.log_delivery(message, &DeliveryState::Replied).await;
                     Ok(reply)
                 } else {
-                    self.log_delivery(&message, &DeliveryState::Failed {
+                    self.log_delivery(message, &DeliveryState::Failed {
                         reason: "reply channel dropped".to_owned(),
                     }).await;
-                    DeliveryFailedSnafu { nous_id: to }.fail()
+                    DeliveryFailedSnafu { nous_id: to.to_owned() }.fail()
                 }
             }
             () = tokio::time::sleep(timeout_dur) => {
                 self.pending_replies.write().await.remove(&msg_id);
-                self.log_delivery(&message, &DeliveryState::TimedOut).await;
+                self.log_delivery(message, &DeliveryState::TimedOut).await;
                 AskTimeoutSnafu {
-                    nous_id: to,
+                    nous_id: to.to_owned(),
                     timeout_secs: timeout_dur.as_secs(),
                 }.fail()
             }
@@ -693,5 +815,172 @@ mod tests {
         let router = CrossNousRouter::default();
         // Just verify it doesn't panic
         assert!(router.routes.try_read().is_ok());
+    }
+
+    // --- Cycle detection tests ---
+
+    #[test]
+    fn ask_graph_direct_cycle_detected() {
+        let mut graph = AskGraph::new();
+        graph.add_edge("a", "b").unwrap();
+        let err = graph.add_edge("b", "a").unwrap_err();
+        assert_eq!(err, vec!["b", "a", "b"]);
+    }
+
+    #[test]
+    fn ask_graph_indirect_cycle_detected() {
+        let mut graph = AskGraph::new();
+        graph.add_edge("a", "b").unwrap();
+        graph.add_edge("b", "c").unwrap();
+        let err = graph.add_edge("c", "a").unwrap_err();
+        assert_eq!(err, vec!["c", "a", "b", "c"]);
+    }
+
+    #[test]
+    fn ask_graph_no_false_positive_on_shared_target() {
+        let mut graph = AskGraph::new();
+        graph.add_edge("a", "b").unwrap();
+        // c asking b is fine: no cycle.
+        graph.add_edge("c", "b").unwrap();
+        assert_eq!(graph.edge_count(), 2);
+    }
+
+    #[test]
+    fn ask_graph_edge_removed_after_completion() {
+        let mut graph = AskGraph::new();
+        graph.add_edge("a", "b").unwrap();
+        assert_eq!(graph.edge_count(), 1);
+        graph.remove_edge("a", "b");
+        assert_eq!(graph.edge_count(), 0);
+        // Now b -> a should succeed since a -> b was removed.
+        graph.add_edge("b", "a").unwrap();
+        assert_eq!(graph.edge_count(), 1);
+    }
+
+    #[test]
+    fn ask_graph_remove_nonexistent_edge_is_noop() {
+        let mut graph = AskGraph::new();
+        graph.remove_edge("x", "y");
+        assert_eq!(graph.edge_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn ask_detects_direct_cycle() {
+        let router = CrossNousRouter::default();
+        let (tx_a, _rx_a) = mpsc::channel(32);
+        let (tx_b, _rx_b) = mpsc::channel(32);
+        router.register("a", tx_a).await;
+        router.register("b", tx_b).await;
+
+        // Simulate a -> b already in flight by adding the edge directly.
+        router.ask_graph.write().await.add_edge("a", "b").unwrap();
+
+        // Now b tries to ask a: should detect cycle.
+        let msg = CrossNousMessage::new("b", "a", "question").with_reply(Duration::from_secs(1));
+        let err = router.ask(msg).await.unwrap_err();
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("cycle detected"),
+            "expected cycle error, got: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("b -> a -> b"),
+            "expected chain in error, got: {err_msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ask_detects_indirect_cycle() {
+        let router = CrossNousRouter::default();
+        let (tx_a, _rx_a) = mpsc::channel(32);
+        let (tx_b, _rx_b) = mpsc::channel(32);
+        let (tx_c, _rx_c) = mpsc::channel(32);
+        router.register("a", tx_a).await;
+        router.register("b", tx_b).await;
+        router.register("c", tx_c).await;
+
+        // a -> b and b -> c already in flight.
+        {
+            let mut graph = router.ask_graph.write().await;
+            graph.add_edge("a", "b").unwrap();
+            graph.add_edge("b", "c").unwrap();
+        }
+
+        // c tries to ask a: should detect indirect cycle.
+        let msg = CrossNousMessage::new("c", "a", "question").with_reply(Duration::from_secs(1));
+        let err = router.ask(msg).await.unwrap_err();
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("cycle detected"),
+            "expected cycle error, got: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("c -> a -> b -> c"),
+            "expected full chain, got: {err_msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ask_no_false_positive_concurrent_asks() {
+        let (router, mut rx) = setup_router().await;
+        let (tx_c, _rx_c) = mpsc::channel(32);
+        router.register("sender_c", tx_c).await;
+        let router_reply = router.clone();
+
+        // Two independent actors ask the same target: no cycle.
+        let msg =
+            CrossNousMessage::new("sender_c", "target", "hello").with_reply(Duration::from_secs(5));
+
+        let ask_handle = tokio::spawn({
+            let r = router.clone();
+            async move { r.ask(msg).await }
+        });
+
+        let envelope = rx.recv().await.unwrap();
+        let reply = CrossNousReply {
+            in_reply_to: envelope.message.id,
+            from: "target".to_owned(),
+            content: "ok".to_owned(),
+            created_at: jiff::Timestamp::now(),
+        };
+        router_reply.reply(reply).await.unwrap();
+
+        let result = ask_handle.await.unwrap();
+        assert!(result.is_ok(), "expected success, got: {result:?}");
+
+        // Graph should be clean after ask completes.
+        assert_eq!(router.ask_graph.read().await.edge_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn ask_graph_cleaned_up_on_timeout() {
+        let (router, _rx) = setup_router().await;
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_millis(10));
+
+        let router_check = router.clone();
+
+        let err = router.ask(msg).await.unwrap_err();
+        let err_msg = err.to_string();
+        assert!(err_msg.contains("timed out"), "expected timeout, got: {err_msg}");
+
+        // Graph must be clean after timeout.
+        assert_eq!(router_check.ask_graph.read().await.edge_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn ask_graph_cleaned_up_on_delivery_failure() {
+        let router = CrossNousRouter::default();
+        let (tx, rx) = mpsc::channel(1);
+        router.register("target", tx).await;
+        drop(rx);
+
+        let msg =
+            CrossNousMessage::new("sender", "target", "hello").with_reply(Duration::from_secs(1));
+        let err = router.ask(msg).await;
+        assert!(err.is_err());
+
+        // Graph must be clean after delivery failure.
+        assert_eq!(router.ask_graph.read().await.edge_count(), 0);
     }
 }
