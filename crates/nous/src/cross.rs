@@ -962,7 +962,10 @@ mod tests {
 
         let err = router.ask(msg).await.unwrap_err();
         let err_msg = err.to_string();
-        assert!(err_msg.contains("timed out"), "expected timeout, got: {err_msg}");
+        assert!(
+            err_msg.contains("timed out"),
+            "expected timeout, got: {err_msg}"
+        );
 
         // Graph must be clean after timeout.
         assert_eq!(router_check.ask_graph.read().await.edge_count(), 0);

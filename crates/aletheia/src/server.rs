@@ -609,6 +609,10 @@ fn build_tool_registry() -> Result<ToolRegistry> {
     Ok(registry)
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "channel registration is infallible for unique providers"
+)]
 /// Build channel registry, start inbound listener, and spawn dispatch loop.
 fn start_inbound_dispatch(
     config: &aletheia_taxis::config::AletheiaConfig,
@@ -707,6 +711,10 @@ pub(crate) fn init_tracing(log_level: &str, json: bool) {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "signal handler installation is infallible on supported platforms"
+)]
 pub(crate) async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
