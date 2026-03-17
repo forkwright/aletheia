@@ -3,6 +3,8 @@
 use serde_json::Value;
 use snafu::Snafu;
 
+use crate::config::AletheiaConfig;
+
 /// Validation error with collected messages.
 #[derive(Debug, Snafu)]
 #[snafu(display("config validation failed:\n  - {}", errors.join("\n  - ")))]
@@ -10,6 +12,36 @@ pub struct ValidationError {
     pub errors: Vec<String>,
     #[snafu(implicit)]
     pub location: snafu::Location,
+}
+
+/// Validate an entire [`AletheiaConfig`] by checking each section.
+///
+/// Serializes to JSON and validates each top-level section using
+/// [`validate_section`]. Returns all validation errors collected
+/// across all sections.
+pub fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
+    let value = serde_json::to_value(config).unwrap_or(Value::Null);
+    let Value::Object(ref sections) = value else {
+        return ValidationSnafu {
+            errors: vec!["config did not serialize to a JSON object".to_owned()],
+        }
+        .fail();
+    };
+
+    let mut all_errors = Vec::new();
+    for (section, val) in sections {
+        if let Err(err) = validate_section(section, val) {
+            for e in err.errors {
+                all_errors.push(format!("{section}: {e}"));
+            }
+        }
+    }
+
+    if all_errors.is_empty() {
+        Ok(())
+    } else {
+        ValidationSnafu { errors: all_errors }.fail()
+    }
 }
 
 /// Validate a config section update.
@@ -32,7 +64,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "bindings" => validate_bindings(value, &mut errors),
         "credential" => validate_credential(value, &mut errors),
         // NOTE: these sections are pass-through with no validation rules
-        "packs" | "pricing" | "sandbox" => {}
+        "packs" | "pricing" | "sandbox" | "logging" | "mcp" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 
@@ -536,5 +568,28 @@ mod tests {
     fn accepts_token_budget_at_maximum() {
         let section = json!({ "defaults": { "contextTokens": 1_000_000_u64 } });
         assert!(validate_section("agents", &section).is_ok());
+    }
+
+    #[test]
+    fn validate_config_accepts_defaults() {
+        let config = AletheiaConfig::default();
+        assert!(
+            validate_config(&config).is_ok(),
+            "default config should be valid"
+        );
+    }
+
+    #[test]
+    fn validate_config_rejects_invalid_tool_iterations() {
+        let mut config = AletheiaConfig::default();
+        config.agents.defaults.max_tool_iterations = 0;
+
+        let result = validate_config(&config);
+        assert!(result.is_err(), "zero maxToolIterations should be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            err.errors.iter().any(|e| e.contains("maxToolIterations")),
+            "error should mention maxToolIterations, got: {err:?}"
+        );
     }
 }

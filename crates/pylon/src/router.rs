@@ -54,6 +54,7 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         .route("/nous/{id}", get(nous::get_status))
         .route("/nous/{id}/tools", get(nous::tools))
         .route("/config", get(config::get_config))
+        .route("/config/reload", post(config::reload_config))
         .route(
             "/config/{section}",
             get(config::get_section).put(config::update_section),

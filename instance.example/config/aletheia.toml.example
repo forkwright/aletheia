@@ -4,6 +4,11 @@
 #
 # Config cascade: compiled defaults -> this file -> ALETHEIA_* env vars
 # Most settings have sensible defaults. Only override what you need.
+#
+# Hot reload: send SIGHUP or POST /api/v1/config/reload to apply changes
+# without restart. The following require a full restart:
+#   gateway.port, gateway.bind, gateway.tls, gateway.auth.mode,
+#   gateway.csrf, gateway.bodyLimit, channels
 
 # --- Gateway ---
 [gateway]
