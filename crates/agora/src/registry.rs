@@ -35,7 +35,7 @@ impl ChannelRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DuplicateChannel`] if a provider with the same ID is already registered.
+    /// Returns [`crate::error::Error::DuplicateChannel`] if a provider with the same ID is already registered.
     pub fn register(&mut self, provider: Arc<dyn ChannelProvider>) -> Result<()> {
         let id = provider.id().to_owned();
         ensure!(
@@ -58,7 +58,7 @@ impl ChannelRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnknownChannel`] if the channel is not registered.
+    /// Returns [`crate::error::Error::UnknownChannel`] if the channel is not registered.
     pub async fn send(&self, channel_id: &str, params: &SendParams) -> Result<SendResult> {
         let provider = self.providers.get(channel_id).ok_or_else(|| {
             error::UnknownChannelSnafu {

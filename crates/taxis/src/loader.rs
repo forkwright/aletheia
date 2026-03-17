@@ -23,7 +23,7 @@ use crate::oikos::Oikos;
 ///
 /// # Errors
 ///
-/// Returns [`Error::Figment`] if the configuration cascade produces an invalid or
+/// Returns [`crate::error::Error::Figment`] if the configuration cascade produces an invalid or
 /// unextractable result.
 #[expect(
     clippy::result_large_err,
@@ -93,8 +93,8 @@ fn decrypt_toml_content(content: &str) -> String {
 ///
 /// # Errors
 ///
-/// Returns [`Error::SerializeToml`] if the config cannot be serialized to TOML.
-/// Returns [`Error::WriteConfig`] if the config directory cannot be created or the
+/// Returns [`crate::error::Error::SerializeToml`] if the config cannot be serialized to TOML.
+/// Returns [`crate::error::Error::WriteConfig`] if the config directory cannot be created or the
 /// file cannot be written.
 #[expect(
     clippy::result_large_err,

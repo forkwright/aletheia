@@ -53,7 +53,7 @@ impl SignalClient {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Http`] if the HTTP client cannot be constructed.
+    /// Returns [`super::error::Error::Http`] if the HTTP client cannot be constructed.
     pub fn new(base_url: &str) -> Result<Self> {
         let base = normalize_url(base_url);
 

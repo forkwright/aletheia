@@ -57,7 +57,7 @@ impl ToolRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DuplicateTool`] if a tool with the same name is already registered.
+    /// Returns [`crate::error::Error::DuplicateTool`] if a tool with the same name is already registered.
     pub fn register(&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()> {
         ensure!(
             !self.tools.contains_key(&def.name),
@@ -80,7 +80,7 @@ impl ToolRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ToolNotFound`] if no tool with the given name is registered.
+    /// Returns [`crate::error::Error::ToolNotFound`] if no tool with the given name is registered.
     /// Returns the tool executor's error if execution fails.
     pub async fn execute(&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> {
         let tool = self.tools.get(&input.name).ok_or_else(|| {
