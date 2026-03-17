@@ -20,8 +20,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     // NOTE: ASCII-only prompt: bytes equal display columns
     let prompt_width = prompt_str.len();
-    let content_width = area.width.max(1) as usize;
-    let visible_rows = area.height.saturating_sub(1) as usize;
+    let content_width = usize::from(area.width.max(1));
+    let visible_rows = usize::from(area.height.saturating_sub(1));
 
     let text = app.input.text.as_str();
     let cursor_byte = app.input.cursor;
@@ -33,7 +33,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         cursor_visual_position(&line_ranges, text, cursor_byte, prompt_width);
 
     let scroll = if visible_rows > 0 {
-        (cursor_row as usize).saturating_sub(visible_rows - 1)
+        usize::from(cursor_row).saturating_sub(visible_rows - 1)
     } else {
         0
     };
@@ -73,11 +73,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let paragraph = Paragraph::new(Text::from(ratatui_lines))
         .block(block)
-        .scroll((scroll as u16, 0));
+        .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0));
     frame.render_widget(paragraph, area);
 
-    let visible_row = (cursor_row as usize).saturating_sub(scroll);
-    let cursor_y = area.y + 1 + visible_row as u16;
+    let visible_row = usize::from(cursor_row).saturating_sub(scroll);
+    let cursor_y = area.y + 1 + u16::try_from(visible_row).unwrap_or(u16::MAX);
     let cursor_x = area.x + cursor_col;
     frame.set_cursor_position((cursor_x, cursor_y));
 }
@@ -177,7 +177,10 @@ pub(crate) fn cursor_visual_position(
             } else {
                 col_display
             };
-            return (row as u16, col as u16);
+            return (
+                u16::try_from(row).unwrap_or(u16::MAX),
+                u16::try_from(col).unwrap_or(u16::MAX),
+            );
         }
     }
 
@@ -191,10 +194,13 @@ pub(crate) fn cursor_visual_position(
         } else {
             col_display
         };
-        return (last_row as u16, col as u16);
+        return (
+            u16::try_from(last_row).unwrap_or(u16::MAX),
+            u16::try_from(col).unwrap_or(u16::MAX),
+        );
     }
 
-    (0, prompt_width as u16)
+    (0, u16::try_from(prompt_width).unwrap_or(u16::MAX))
 }
 
 #[cfg(test)]
