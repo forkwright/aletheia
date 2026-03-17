@@ -7,6 +7,7 @@
 use dioxus::prelude::*;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 
 use crate::services::config;
 use crate::services::connection::ConnectionService;
@@ -158,7 +159,7 @@ pub fn ConnectView(
         let svc = ConnectionService::new(new_config, cancel, tx);
 
         // Spawn the connection service on the tokio runtime.
-        tokio::spawn(svc.run());
+        tokio::spawn(svc.run().instrument(tracing::info_span!("connection_service")));
 
         // Spawn a Dioxus-side task to read state updates from the channel
         // and write them to the signal on the UI thread.

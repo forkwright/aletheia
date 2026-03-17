@@ -384,6 +384,7 @@ impl DeliveryLog {
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
+    use tracing::Instrument;
 
     async fn setup_router() -> (CrossNousRouter, mpsc::Receiver<CrossNousEnvelope>) {
         let router = CrossNousRouter::default();
@@ -452,7 +453,10 @@ mod tests {
         let msg = CrossNousMessage::new("sender", "target", "question")
             .with_reply(Duration::from_secs(5));
 
-        let ask_handle = tokio::spawn(async move { router_for_reply.ask(msg).await });
+        let ask_handle = tokio::spawn(
+            async move { router_for_reply.ask(msg).await }
+                .instrument(tracing::info_span!("test_ask")),
+        );
 
         let envelope = rx.recv().await.unwrap();
         let reply = CrossNousReply {
@@ -556,11 +560,14 @@ mod tests {
         let mut handles = Vec::new();
         for i in 0..10 {
             let r = router.clone();
-            handles.push(tokio::spawn(async move {
-                let msg =
-                    CrossNousMessage::new(format!("sender-{i}"), "target", format!("msg-{i}"));
-                r.send(msg).await
-            }));
+            handles.push(tokio::spawn(
+                async move {
+                    let msg =
+                        CrossNousMessage::new(format!("sender-{i}"), "target", format!("msg-{i}"));
+                    r.send(msg).await
+                }
+                .instrument(tracing::info_span!("test_send", index = i)),
+            ));
         }
 
         let mut successes = 0;
