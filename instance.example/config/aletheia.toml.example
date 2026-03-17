@@ -43,6 +43,7 @@ contextTokens = 200000
 # thinkingBudget = 10000
 # maxToolIterations = 50
 # prosocheModel = "claude-haiku-4-5-20251001"  # model for prosoche heartbeat checks
+# maxToolResultBytes = 32768    # truncate tool results exceeding this size (0 = disabled)
 
 [[agents.list]]
 id = "main"

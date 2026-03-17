@@ -351,6 +351,7 @@ pub async fn run(args: Args) -> Result<()> {
                 recall: resolved.recall.into(),
                 chars_per_token: resolved.limits.chars_per_token,
                 prosoche_model: resolved.prosoche_model,
+                max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
             };
             nous_manager
                 .spawn(

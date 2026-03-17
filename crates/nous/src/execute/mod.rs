@@ -143,6 +143,10 @@ fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtract {
 /// 3. Processes `tool_use` blocks by dispatching to the `ToolRegistry`
 /// 4. Feeds tool results back and re-calls the LLM
 /// 5. Repeats until `EndTurn`, `MaxTokens`, or iteration limit
+#[expect(
+    clippy::too_many_lines,
+    reason = "execution loop is inherently sequential, splitting would obscure control flow"
+)]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub async fn execute(
     ctx: &PipelineContext,
@@ -236,6 +240,7 @@ pub async fn execute(
             &mut loop_detector,
             &mut all_tool_calls,
             iterations,
+            config.max_tool_result_bytes,
         )
         .await?;
 
@@ -384,6 +389,7 @@ pub async fn execute_streaming(
             &mut all_tool_calls,
             iterations,
             stream_tx,
+            config.max_tool_result_bytes,
         )
         .await?;
 
