@@ -10,6 +10,8 @@
 pub mod anthropic;
 /// Hermeneus-specific error types for provider, API, and authentication failures.
 pub mod error;
+/// Model fallback chain: retries alternative models on transient failures.
+pub mod fallback;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
 pub mod metrics;

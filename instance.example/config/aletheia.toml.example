@@ -35,6 +35,8 @@ enabled = true            # Require X-Requested-With: aletheia on state-changing
 [agents.defaults]
 [agents.defaults.model]
 primary = "claude-sonnet-4-6"
+# fallbacks = ["claude-haiku-4-5"]   # tried in order on 429/503/timeout
+# retriesBeforeFallback = 2           # retry primary N times before fallback
 
 contextTokens = 200000
 # thinkingEnabled = false

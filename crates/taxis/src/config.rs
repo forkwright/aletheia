@@ -291,6 +291,8 @@ pub struct ModelSpec {
     pub primary: String,
     /// Ordered fallback models tried when the primary is unavailable.
     pub fallbacks: Vec<String>,
+    /// How many times to retry the primary model before trying the next fallback.
+    pub retries_before_fallback: u32,
 }
 
 impl Default for ModelSpec {
@@ -298,6 +300,7 @@ impl Default for ModelSpec {
         Self {
             primary: "claude-sonnet-4-6".to_owned(),
             fallbacks: Vec::new(),
+            retries_before_fallback: 2,
         }
     }
 }
@@ -904,6 +907,8 @@ pub struct ResolvedNousConfig {
     pub model: String,
     /// Ordered fallback models.
     pub fallbacks: Vec<String>,
+    /// How many times to retry the current model before trying the next fallback.
+    pub retries_before_fallback: u32,
     /// Maximum input context window in tokens.
     pub context_tokens: u32,
     /// Maximum output tokens per response.
@@ -943,11 +948,16 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     let defaults = &config.agents.defaults;
     let agent = config.agents.list.iter().find(|a| a.id == nous_id);
 
-    let (model, fallbacks) = match agent.and_then(|a| a.model.as_ref()) {
-        Some(spec) => (spec.primary.clone(), spec.fallbacks.clone()),
+    let (model, fallbacks, retries_before_fallback) = match agent.and_then(|a| a.model.as_ref()) {
+        Some(spec) => (
+            spec.primary.clone(),
+            spec.fallbacks.clone(),
+            spec.retries_before_fallback,
+        ),
         None => (
             defaults.model.primary.clone(),
             defaults.model.fallbacks.clone(),
+            defaults.model.retries_before_fallback,
         ),
     };
 
@@ -990,6 +1000,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         name,
         model,
         fallbacks,
+        retries_before_fallback,
         context_tokens: defaults.context_tokens,
         max_output_tokens: defaults.max_output_tokens,
         bootstrap_max_tokens: defaults.bootstrap_max_tokens,

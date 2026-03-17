@@ -103,6 +103,7 @@ fn resolve_merges_agent_overrides() {
         model: Some(ModelSpec {
             primary: "claude-opus-4-6".to_owned(),
             fallbacks: vec!["claude-sonnet-4-6".to_owned()],
+            retries_before_fallback: 2,
         }),
         workspace: "/home/user/nous/syn".to_owned(),
         thinking_enabled: None,
