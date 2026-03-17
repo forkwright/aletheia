@@ -25,7 +25,7 @@
 
 use futures_util::StreamExt;
 use reqwest::Client;
-use reqwest_eventsource::{Event as EsEvent, EventSource};
+use theatron_core::sse::SseStream;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -80,16 +80,21 @@ impl SseConnection {
                         return;
                     }
 
-                    let req = client.get(&url).header("Accept", "text/event-stream");
-                    let mut es = match EventSource::new(req) {
-                        Ok(es) => es,
+                    let resp = match tokio::select! {
+                        biased;
+                        _ = child.cancelled() => return,
+                        result = client
+                            .get(&url)
+                            .header("Accept", "text/event-stream")
+                            .send() => result,
+                    } {
+                        Ok(resp) => resp,
                         Err(e) => {
-                            tracing::error!("failed to create SSE EventSource: {e}");
+                            tracing::error!("SSE connection failed: {e}");
                             let _ = tx.send(SseEvent::Disconnected).await;
                             tokio::select! {
                                 biased;
                                 _ = child.cancelled() => return,
-                                // NOTE: backoff elapsed, retry connection
                                 _ = tokio::time::sleep(backoff) => {}
                             }
                             backoff = advance_backoff(backoff);
@@ -97,16 +102,31 @@ impl SseConnection {
                         }
                     };
 
+                    if !resp.status().is_success() {
+                        let status = resp.status();
+                        let reason = status.canonical_reason().unwrap_or("Unknown");
+                        let body = resp.text().await.unwrap_or_default();
+                        let message = extract_error_message(&body, status.as_u16(), reason);
+                        tracing::warn!("SSE error: {message}");
+                        let _ = tx.send(SseEvent::Disconnected).await;
+                        backoff = advance_backoff(backoff);
+                        tokio::select! {
+                            biased;
+                            _ = child.cancelled() => return,
+                            _ = tokio::time::sleep(backoff) => {}
+                        }
+                        continue;
+                    }
+
                     let _ = tx.send(SseEvent::Connected).await;
-                    let mut connected = false;
+                    tracing::info!("SSE connected");
+                    backoff = INITIAL_BACKOFF;
+                    let mut es = SseStream::new(resp.bytes_stream());
 
                     loop {
                         let maybe_event = tokio::select! {
                             biased;
-                            _ = child.cancelled() => {
-                                es.close();
-                                return;
-                            }
+                            _ = child.cancelled() => return,
                             result = tokio::time::timeout(HEARTBEAT_TIMEOUT, es.next()) => result,
                         };
 
@@ -114,52 +134,23 @@ impl SseConnection {
                             Ok(Some(event)) => event,
                             Ok(None) => break,
                             Err(_elapsed) => {
-                                // WHY: No event within HEARTBEAT_TIMEOUT. A healthy server
-                                // sends pings more frequently, so silence means the
-                                // connection is stale.
                                 tracing::warn!(
                                     timeout_secs = HEARTBEAT_TIMEOUT.as_secs(),
                                     "SSE heartbeat timeout — treating as disconnect"
                                 );
-                                es.close();
                                 break;
                             }
                         };
 
-                        match event {
-                            Ok(EsEvent::Open) => {
-                                tracing::info!("SSE connected");
-                                connected = true;
-                                backoff = INITIAL_BACKOFF;
-                            }
-                            Ok(EsEvent::Message(msg)) => {
-                                if let Some(parsed) = parse_sse_event(&msg.event, &msg.data)
-                                    && tx.send(parsed).await.is_err()
-                                {
-                                    // WHY: Receiver dropped: shut down.
-                                    return;
-                                }
-                            }
-                            Err(reqwest_eventsource::Error::InvalidStatusCode(status, resp)) => {
-                                let reason = status.canonical_reason().unwrap_or("Unknown");
-                                let body = resp.text().await.unwrap_or_default();
-                                let message = extract_error_message(&body, status.as_u16(), reason);
-                                tracing::warn!("SSE error: {message}");
-                                es.close();
-                                break;
-                            }
-                            Err(e) => {
-                                tracing::warn!("SSE error: {e}");
-                                es.close();
-                                break;
-                            }
+                        if let Some(parsed) = parse_sse_event(&event.event, &event.data)
+                            && tx.send(parsed).await.is_err()
+                        {
+                            // Receiver dropped: shut down.
+                            return;
                         }
                     }
 
                     let _ = tx.send(SseEvent::Disconnected).await;
-                    if !connected {
-                        backoff = advance_backoff(backoff);
-                    }
                     tracing::info!(backoff_secs = backoff.as_secs(), "SSE reconnecting");
                     tokio::select! {
                         biased;

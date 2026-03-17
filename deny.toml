@@ -88,6 +88,3 @@ skip = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = [
-    "https://github.com/romnn/reqwest-eventsource",  # pending upstream merge of reqwest 0.13 support (PR #35)
-]

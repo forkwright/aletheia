@@ -24,7 +24,6 @@ tokio = { workspace = true }
 
 # HTTP + SSE
 reqwest = { workspace = true, features = ["stream", "cookies"] }
-reqwest-eventsource = { git = "https://github.com/romnn/reqwest-eventsource", branch = "feat/reqwest-0.13" }
 rustls = { workspace = true }
 
 # Serialization

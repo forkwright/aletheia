@@ -1,10 +1,8 @@
 use futures_util::StreamExt;
 use reqwest::Client;
-use reqwest_eventsource::{Event as EsEvent, EventSource};
+use theatron_core::sse::SseStream;
 use tokio::sync::mpsc;
 use tracing::Instrument;
-
-use aletheia_koina::http::CONTENT_TYPE_EVENT_STREAM;
 
 use crate::id::{NousId, SessionId, TurnId};
 
@@ -37,11 +35,15 @@ impl SseConnection {
                 let mut backoff_secs: u64 = 1;
 
                 loop {
-                    let req = client.get(&url).header("Accept", CONTENT_TYPE_EVENT_STREAM);
-                    let mut es = match EventSource::new(req) {
-                        Ok(es) => es,
+                    let resp = match client
+                        .get(&url)
+                        .header("Accept", "text/event-stream")
+                        .send()
+                        .await
+                    {
+                        Ok(resp) => resp,
                         Err(e) => {
-                            tracing::error!("failed to create SSE EventSource: {e}");
+                            tracing::error!("SSE connection failed: {e}");
                             let _ = tx.send(SseEvent::Disconnected).await;
                             tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
                             backoff_secs = (backoff_secs * 2).min(30);
@@ -49,8 +51,31 @@ impl SseConnection {
                         }
                     };
 
+                    if !resp.status().is_success() {
+                        let status = resp.status();
+                        let reason = status.canonical_reason().unwrap_or("Unknown");
+                        let body = resp.text().await.unwrap_or_default();
+                        let message =
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                                json.get("message")
+                                    .or_else(|| json.get("error"))
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| format!("{} {}", status.as_u16(), reason))
+                            } else {
+                                format!("{} {}", status.as_u16(), reason)
+                            };
+                        tracing::warn!("SSE error: {message}");
+                        let _ = tx.send(SseEvent::Disconnected).await;
+                        backoff_secs = (backoff_secs * 2).min(30);
+                        tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
+                        continue;
+                    }
+
                     let _ = tx.send(SseEvent::Connected).await;
-                    let mut connected = false;
+                    tracing::info!("SSE connected");
+                    backoff_secs = 1;
+                    let mut es = SseStream::new(resp.bytes_stream());
 
                     loop {
                         let maybe_event = tokio::time::timeout(READ_TIMEOUT, es.next()).await;
@@ -65,57 +90,19 @@ impl SseConnection {
                                     timeout_secs = READ_TIMEOUT.as_secs(),
                                     "SSE read timeout — treating as disconnect"
                                 );
-                                es.close();
                                 break;
                             }
                         };
 
-                        match event {
-                            Ok(EsEvent::Open) => {
-                                tracing::info!("SSE connected");
-                                connected = true;
-                                backoff_secs = 1;
-                            }
-                            Ok(EsEvent::Message(msg)) => {
-                                if let Some(parsed) = parse_sse_event(&msg.event, &msg.data)
-                                    && tx.send(parsed).await.is_err()
-                                {
-                                    // WHY: receiver dropped: shut down the SSE loop
-                                    return;
-                                }
-                            }
-                            Err(reqwest_eventsource::Error::InvalidStatusCode(status, resp)) => {
-                                let reason = status.canonical_reason().unwrap_or("Unknown");
-                                let body = resp.text().await.unwrap_or_default();
-                                let message = if let Ok(json) =
-                                    serde_json::from_str::<serde_json::Value>(&body)
-                                {
-                                    json.get("message")
-                                        .or_else(|| json.get("error"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string())
-                                        .unwrap_or_else(|| {
-                                            format!("{} {}", status.as_u16(), reason)
-                                        })
-                                } else {
-                                    format!("{} {}", status.as_u16(), reason)
-                                };
-                                tracing::warn!("SSE error: {message}");
-                                es.close();
-                                break;
-                            }
-                            Err(e) => {
-                                tracing::warn!("SSE error: {e}");
-                                es.close();
-                                break;
-                            }
+                        if let Some(parsed) = parse_sse_event(&event.event, &event.data)
+                            && tx.send(parsed).await.is_err()
+                        {
+                            // WHY: receiver dropped: shut down the SSE loop
+                            return;
                         }
                     }
 
                     let _ = tx.send(SseEvent::Disconnected).await;
-                    if !connected {
-                        backoff_secs = (backoff_secs * 2).min(30);
-                    }
                     tracing::info!("SSE reconnecting in {backoff_secs}s");
                     tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
                 }
