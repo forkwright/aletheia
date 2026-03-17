@@ -1,109 +1,72 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
-#![expect(clippy::expect_used, reason = "test assertions")]
+use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{
     CompletionResponse, ContentBlock, StopReason, ToolResultContent, Usage,
 };
 
 use super::*;
 
-struct MockProvider {
-    response: std::sync::Mutex<Option<aletheia_hermeneus::error::Result<CompletionResponse>>>,
-}
-
-impl MockProvider {
-    fn success(summary: &str) -> Self {
-        Self {
-            response: std::sync::Mutex::new(Some(Ok(CompletionResponse {
-                id: "msg_distill_1".to_owned(),
-                model: "claude-sonnet-4-20250514".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![ContentBlock::Text {
-                    text: summary.to_owned(),
-                    citations: None,
-                }],
-                usage: Usage {
-                    input_tokens: 5000,
-                    output_tokens: 200,
-                    cache_read_tokens: 0,
-                    cache_write_tokens: 0,
-                },
-            }))),
-        }
-    }
-
-    fn empty_response() -> Self {
-        Self {
-            response: std::sync::Mutex::new(Some(Ok(CompletionResponse {
-                id: "msg_empty".to_owned(),
-                model: "claude-sonnet-4-20250514".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![],
-                usage: Usage::default(),
-            }))),
-        }
-    }
-
-    fn empty_text_blocks() -> Self {
-        Self {
-            response: std::sync::Mutex::new(Some(Ok(CompletionResponse {
-                id: "msg_empty_text".to_owned(),
-                model: "claude-sonnet-4-20250514".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![
-                    ContentBlock::Text {
-                        text: String::new(),
-                        citations: None,
-                    },
-                    ContentBlock::Text {
-                        text: "   ".to_owned(),
-                        citations: None,
-                    },
-                ],
-                usage: Usage::default(),
-            }))),
-        }
-    }
-
-    fn failure() -> Self {
-        Self {
-            response: std::sync::Mutex::new(Some(Err(
-                aletheia_hermeneus::error::ApiRequestSnafu {
-                    message: "network timeout".to_owned(),
-                }
-                .build(),
-            ))),
-        }
+fn distill_response(text: &str) -> CompletionResponse {
+    CompletionResponse {
+        id: "msg_distill_1".to_owned(),
+        model: "claude-sonnet-4-20250514".to_owned(),
+        stop_reason: StopReason::EndTurn,
+        content: vec![ContentBlock::Text {
+            text: text.to_owned(),
+            citations: None,
+        }],
+        usage: Usage {
+            input_tokens: 5000,
+            output_tokens: 200,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+        },
     }
 }
 
-impl LlmProvider for MockProvider {
-    fn complete<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
-                + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async {
-            self.response
-                .lock()
-                .expect("lock poisoned") // INVARIANT: test mock, panic = test bug
-                .take()
-                .expect("mock provider called more than once")
-        })
-    }
+fn success_provider(summary: &str) -> MockProvider {
+    MockProvider::with_responses(vec![distill_response(summary)])
+        .models(&["claude-sonnet-4-20250514"])
+        .named("mock-distill")
+}
 
-    fn supported_models(&self) -> &[&str] {
-        &["claude-sonnet-4-20250514"]
-    }
+fn empty_response_provider() -> MockProvider {
+    MockProvider::with_responses(vec![CompletionResponse {
+        id: "msg_empty".to_owned(),
+        model: "claude-sonnet-4-20250514".to_owned(),
+        stop_reason: StopReason::EndTurn,
+        content: vec![],
+        usage: Usage::default(),
+    }])
+    .models(&["claude-sonnet-4-20250514"])
+    .named("mock-distill")
+}
 
-    #[expect(clippy::unnecessary_literal_bound)]
-    fn name(&self) -> &str {
-        "mock-distill"
-    }
+fn empty_text_provider() -> MockProvider {
+    MockProvider::with_responses(vec![CompletionResponse {
+        id: "msg_empty_text".to_owned(),
+        model: "claude-sonnet-4-20250514".to_owned(),
+        stop_reason: StopReason::EndTurn,
+        content: vec![
+            ContentBlock::Text {
+                text: String::new(),
+                citations: None,
+            },
+            ContentBlock::Text {
+                text: "   ".to_owned(),
+                citations: None,
+            },
+        ],
+        usage: Usage::default(),
+    }])
+    .models(&["claude-sonnet-4-20250514"])
+    .named("mock-distill")
+}
+
+fn failure_provider() -> MockProvider {
+    MockProvider::error("network timeout")
+        .models(&["claude-sonnet-4-20250514"])
+        .named("mock-distill")
 }
 
 fn text_msg(role: Role, text: &str) -> Message {
@@ -267,7 +230,7 @@ fn build_prompt_no_tools() {
 async fn distill_success_returns_result() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::success(MOCK_SUMMARY);
+    let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine.distill(&messages, "test-nous", &provider, 1).await;
     assert!(result.is_ok());
@@ -284,7 +247,7 @@ async fn distill_success_returns_result() {
 async fn distill_token_estimates_populated() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::success(MOCK_SUMMARY);
+    let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
@@ -299,7 +262,7 @@ async fn distill_token_estimates_populated() {
 async fn distill_distillation_number_passed_through() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::success(MOCK_SUMMARY);
+    let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine
         .distill(&messages, "test-nous", &provider, 42)
@@ -312,7 +275,7 @@ async fn distill_distillation_number_passed_through() {
 async fn distill_timestamp_is_valid() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::success(MOCK_SUMMARY);
+    let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
@@ -330,7 +293,7 @@ async fn distill_timestamp_is_valid() {
 #[tokio::test]
 async fn distill_empty_messages_returns_no_messages_error() {
     let engine = default_engine();
-    let provider = MockProvider::success(MOCK_SUMMARY);
+    let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine.distill(&[], "test-nous", &provider, 1).await;
     assert!(result.is_err());
@@ -342,7 +305,7 @@ async fn distill_empty_messages_returns_no_messages_error() {
 async fn distill_llm_failure_returns_llm_call_error() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::failure();
+    let provider = failure_provider();
 
     let result = engine.distill(&messages, "test-nous", &provider, 1).await;
     assert!(result.is_err());
@@ -354,7 +317,7 @@ async fn distill_llm_failure_returns_llm_call_error() {
 async fn distill_empty_response_returns_empty_summary_error() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::empty_response();
+    let provider = empty_response_provider();
 
     let result = engine.distill(&messages, "test-nous", &provider, 1).await;
     assert!(result.is_err());
@@ -366,7 +329,7 @@ async fn distill_empty_response_returns_empty_summary_error() {
 async fn distill_whitespace_only_response_returns_empty_summary_error() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::empty_text_blocks();
+    let provider = empty_text_provider();
 
     let result = engine.distill(&messages, "test-nous", &provider, 1).await;
     assert!(result.is_err());
@@ -518,7 +481,7 @@ async fn distill_preserves_verbatim_messages() {
     };
     let engine = DistillEngine::new(config);
     let messages = sample_conversation(); // 6 messages
-    let provider = MockProvider::success(MOCK_SUMMARY);
+    let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
@@ -615,7 +578,7 @@ fn backoff_schedule_is_exponential() {
 async fn distill_records_failure_on_llm_error() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::failure();
+    let provider = failure_provider();
 
     let _ = engine.distill(&messages, "test", &provider, 1).await;
 
@@ -632,7 +595,7 @@ async fn distill_records_success_and_clears_backoff() {
     assert!(engine.in_backoff());
 
     let messages = sample_conversation();
-    let provider = MockProvider::success(MOCK_SUMMARY);
+    let provider = success_provider(MOCK_SUMMARY);
     engine
         .distill(&messages, "test", &provider, 1)
         .await
@@ -800,7 +763,7 @@ fn estimate_tokens_includes_tool_result_content() {
 async fn distill_result_contains_memory_flush_field() {
     let engine = default_engine();
     let messages = sample_conversation();
-    let provider = MockProvider::success(MOCK_SUMMARY);
+    let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine
         .distill(&messages, "test", &provider, 1)

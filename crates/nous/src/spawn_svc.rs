@@ -187,51 +187,14 @@ impl SpawnService for SpawnServiceImpl {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::sync::Mutex;
-
     use aletheia_hermeneus::provider::LlmProvider;
+    use aletheia_hermeneus::test_utils::MockProvider;
     use aletheia_hermeneus::types::{
         CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
     };
     use aletheia_taxis::oikos::Oikos;
 
     use super::*;
-
-    struct MockProvider {
-        // std::sync::Mutex is intentional: test mock, never crosses .await
-        response: Mutex<CompletionResponse>,
-    }
-
-    impl LlmProvider for MockProvider {
-        fn complete<'a>(
-            &'a self,
-            _request: &'a CompletionRequest,
-        ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<
-                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
-                    > + Send
-                    + 'a,
-            >,
-        > {
-            Box::pin(async {
-                #[expect(
-                    clippy::expect_used,
-                    reason = "test mock: poisoned lock means a test bug"
-                )]
-                Ok(self.response.lock().expect("lock poisoned").clone())
-            })
-        }
-
-        fn supported_models(&self) -> &[&str] {
-            &["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"]
-        }
-
-        #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
-        fn name(&self) -> &str {
-            "mock"
-        }
-    }
 
     fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
         let dir = tempfile::TempDir::new().expect("tmpdir");
@@ -243,23 +206,25 @@ mod tests {
     }
 
     fn test_providers() -> Arc<ProviderRegistry> {
+        let response = CompletionResponse {
+            id: "msg_mock".to_owned(),
+            model: "mock-model".to_owned(),
+            stop_reason: StopReason::EndTurn,
+            content: vec![ContentBlock::Text {
+                text: "Sub-agent result".to_owned(),
+                citations: None,
+            }],
+            usage: Usage {
+                input_tokens: 200,
+                output_tokens: 80,
+                ..Usage::default()
+            },
+        };
         let mut providers = ProviderRegistry::new();
-        providers.register(Box::new(MockProvider {
-            response: Mutex::new(CompletionResponse {
-                id: "resp-1".to_owned(),
-                model: "claude-sonnet-4-20250514".to_owned(),
-                stop_reason: StopReason::EndTurn,
-                content: vec![ContentBlock::Text {
-                    text: "Sub-agent result".to_owned(),
-                    citations: None,
-                }],
-                usage: Usage {
-                    input_tokens: 200,
-                    output_tokens: 80,
-                    ..Usage::default()
-                },
-            }),
-        }));
+        providers.register(Box::new(
+            MockProvider::with_responses(vec![response])
+                .models(&["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"]),
+        ));
         Arc::new(providers)
     }
 

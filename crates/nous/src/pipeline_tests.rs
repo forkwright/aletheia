@@ -247,59 +247,18 @@ async fn assemble_context_populates_pipeline() {
 // --- run_pipeline ---
 
 #[tokio::test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "integration test with full pipeline setup"
-)]
 async fn run_pipeline_simple() {
     use std::collections::HashSet;
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::{Arc, Mutex, RwLock};
+    use std::sync::{Arc, RwLock};
 
-    use aletheia_hermeneus::provider::{LlmProvider, ProviderRegistry};
-    use aletheia_hermeneus::types::{
-        CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
-    };
+    use aletheia_hermeneus::provider::ProviderRegistry;
+    use aletheia_hermeneus::test_utils::MockProvider;
     use aletheia_koina::id::{NousId, SessionId};
     use aletheia_organon::registry::ToolRegistry;
     use aletheia_organon::types::ToolContext;
     use tempfile::TempDir;
-
-    struct MockProvider {
-        response: Mutex<CompletionResponse>,
-    }
-    impl LlmProvider for MockProvider {
-        fn complete<'a>(
-            &'a self,
-            _request: &'a CompletionRequest,
-        ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<
-                        Output = aletheia_hermeneus::error::Result<CompletionResponse>,
-                    > + Send
-                    + 'a,
-            >,
-        > {
-            Box::pin(async {
-                #[expect(
-                    clippy::expect_used,
-                    reason = "test mock: poisoned lock means a test bug"
-                )]
-                Ok(self.response.lock().expect("lock poisoned").clone())
-            })
-        }
-        fn supported_models(&self) -> &[&str] {
-            &["test-model"]
-        }
-        #[expect(
-            clippy::unnecessary_literal_bound,
-            reason = "trait requires &str return"
-        )]
-        fn name(&self) -> &str {
-            "mock"
-        }
-    }
 
     let dir = TempDir::new().unwrap();
     let root = dir.path();
@@ -317,22 +276,9 @@ async fn run_pipeline_simple() {
     let pipeline_config = PipelineConfig::default();
 
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider {
-        response: Mutex::new(CompletionResponse {
-            id: "resp-1".to_owned(),
-            model: "test-model".to_owned(),
-            stop_reason: StopReason::EndTurn,
-            content: vec![ContentBlock::Text {
-                text: "Hello from pipeline!".to_owned(),
-                citations: None,
-            }],
-            usage: Usage {
-                input_tokens: 100,
-                output_tokens: 50,
-                ..Usage::default()
-            },
-        }),
-    }));
+    providers.register(Box::new(
+        MockProvider::new("Hello from pipeline!").models(&["test-model"]),
+    ));
 
     let tools = ToolRegistry::new();
     let tool_ctx = ToolContext {

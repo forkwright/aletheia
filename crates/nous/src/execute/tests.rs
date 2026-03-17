@@ -5,12 +5,11 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use aletheia_hermeneus::provider::ProviderRegistry;
-use aletheia_hermeneus::types::{
-    CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage,
-};
+use aletheia_hermeneus::test_utils::MockProvider;
+use aletheia_hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 use aletheia_koina::id::{NousId, SessionId, ToolName};
 use aletheia_organon::registry::{ToolExecutor, ToolRegistry};
 use aletheia_organon::types::{
@@ -23,57 +22,6 @@ use crate::pipeline::{InteractionSignal, PipelineContext, PipelineMessage};
 use crate::session::SessionState;
 
 // --- Test Infrastructure ---
-
-struct MockProvider {
-    // std::sync::Mutex is intentional: test mock, never crosses .await
-    responses: Mutex<Vec<CompletionResponse>>,
-}
-
-impl MockProvider {
-    fn with_responses(responses: Vec<CompletionResponse>) -> Self {
-        Self {
-            responses: Mutex::new(responses),
-        }
-    }
-}
-
-impl aletheia_hermeneus::provider::LlmProvider for MockProvider {
-    fn complete<'a>(
-        &'a self,
-        _request: &'a CompletionRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = aletheia_hermeneus::error::Result<CompletionResponse>>
-                + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async {
-            #[expect(
-                clippy::expect_used,
-                reason = "test mock: poisoned lock means a test bug"
-            )]
-            let mut responses = self.responses.lock().expect("lock poisoned");
-            if responses.len() > 1 {
-                Ok(responses.remove(0))
-            } else {
-                Ok(responses[0].clone())
-            }
-        })
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
-    }
-
-    #[expect(
-        clippy::unnecessary_literal_bound,
-        reason = "trait requires &str return"
-    )]
-    fn name(&self) -> &str {
-        "mock"
-    }
-}
 
 struct EchoExecutor;
 
@@ -208,9 +156,10 @@ fn make_registry_with(name: &str, executor: Box<dyn ToolExecutor>) -> ToolRegist
 #[tokio::test]
 async fn simple_text_response() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_text_response("Hello there!"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_text_response("Hello there!")])
+            .models(&["test-model"]),
+    ));
 
     let tools = ToolRegistry::new();
     let result = execute(
@@ -236,10 +185,13 @@ async fn simple_text_response() {
 #[tokio::test]
 async fn single_tool_iteration() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
-        make_text_response("Done!"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
 
@@ -269,11 +221,14 @@ async fn single_tool_iteration() {
 #[tokio::test]
 async fn multi_tool_iteration() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_tool_response("exec", "toolu_1", serde_json::json!({"input": "first"})),
-        make_tool_response("exec", "toolu_2", serde_json::json!({"input": "second"})),
-        make_text_response("All done!"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "first"})),
+            make_tool_response("exec", "toolu_2", serde_json::json!({"input": "second"})),
+            make_text_response("All done!"),
+        ])
+        .models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
 
@@ -297,11 +252,10 @@ async fn multi_tool_iteration() {
 async fn loop_detection_triggers() {
     let mut providers = ProviderRegistry::new();
     let response = make_tool_response("exec", "toolu_1", serde_json::json!({"input": "same"}));
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        response.clone(),
-        response.clone(),
-        response,
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![response.clone(), response.clone(), response])
+            .models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
     let mut config = test_config();
@@ -327,7 +281,9 @@ async fn max_iterations_respected() {
     let responses: Vec<CompletionResponse> = (0..10)
         .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
         .collect();
-    providers.register(Box::new(MockProvider::with_responses(responses)));
+    providers.register(Box::new(
+        MockProvider::with_responses(responses).models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
     let mut config = test_config();
@@ -351,10 +307,13 @@ async fn max_iterations_respected() {
 #[tokio::test]
 async fn tool_error_captured() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
-        make_text_response("Recovered"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+            make_text_response("Recovered"),
+        ])
+        .models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("exec", Box::new(ErrorExecutor));
 
@@ -429,10 +388,13 @@ fn signal_classification_error_recovery() {
 #[tokio::test]
 async fn usage_accumulates_across_iterations() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_tool_response("exec", "toolu_1", serde_json::json!({"input": "first"})),
-        make_text_response("Done"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "first"})),
+            make_text_response("Done"),
+        ])
+        .models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
 
@@ -457,10 +419,13 @@ async fn usage_accumulates_across_iterations() {
 #[tokio::test]
 async fn tool_error_captured_not_propagated() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_tool_response("fail_tool", "tu_1", serde_json::json!({})),
-        make_text_response("recovered"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("fail_tool", "tu_1", serde_json::json!({})),
+            make_text_response("recovered"),
+        ])
+        .models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("fail_tool", Box::new(ErrorExecutor));
     let result = execute(
@@ -488,7 +453,9 @@ async fn max_iterations_stops_loop() {
     let responses: Vec<_> = (0..10)
         .map(|i| make_tool_response("echo", &format!("tu_{i}"), serde_json::json!({"i": i})))
         .collect();
-    providers.register(Box::new(MockProvider::with_responses(responses)));
+    providers.register(Box::new(
+        MockProvider::with_responses(responses).models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("echo", Box::new(EchoExecutor));
     let mut config = test_config();
@@ -515,9 +482,9 @@ async fn max_iterations_stops_loop() {
 #[tokio::test]
 async fn text_response_no_tools() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_text_response("just text"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_text_response("just text")]).models(&["test-model"]),
+    ));
 
     let tools = ToolRegistry::new();
     let result = execute(
@@ -606,9 +573,10 @@ fn classify_signals_both_server_tools() {
 #[tokio::test]
 async fn streaming_falls_back_to_non_streaming_for_mock() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_text_response("Hello streaming!"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_text_response("Hello streaming!")])
+            .models(&["test-model"]),
+    ));
 
     let tools = ToolRegistry::new();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
@@ -639,10 +607,13 @@ async fn streaming_falls_back_to_non_streaming_for_mock() {
 #[tokio::test]
 async fn streaming_tool_events_emitted() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
-        make_text_response("Done!"),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
     let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
@@ -685,9 +656,9 @@ async fn streaming_tool_events_emitted() {
 #[tokio::test]
 async fn empty_text_response() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_text_response(""),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_text_response("")]).models(&["test-model"]),
+    ));
 
     let tools = ToolRegistry::new();
     let result = execute(
@@ -729,7 +700,9 @@ async fn thinking_only_response() {
             ..Usage::default()
         },
     };
-    providers.register(Box::new(MockProvider::with_responses(vec![response])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![response]).models(&["test-model"]),
+    ));
 
     let tools = ToolRegistry::new();
     let mut config = test_config();
@@ -844,9 +817,14 @@ fn classify_signals_multiple_flags() {
 #[tokio::test]
 async fn max_iterations_one_exits_immediately() {
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(MockProvider::with_responses(vec![
-        make_tool_response("exec", "toolu_1", serde_json::json!({})),
-    ])));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_tool_response(
+            "exec",
+            "toolu_1",
+            serde_json::json!({}),
+        )])
+        .models(&["test-model"]),
+    ));
 
     let tools = make_registry_with("exec", Box::new(EchoExecutor));
     let mut config = test_config();
