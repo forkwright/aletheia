@@ -63,7 +63,10 @@ reach[a, c] := reach[a, b], edge[b, c]
         msg.contains("timed out"),
         "error should mention timeout, got: {msg}"
     );
-    assert!(matches!(err, crate::error::Error::QueryTimeout { .. }));
+    assert!(
+        matches!(err, crate::error::Error::QueryTimeout { .. }),
+        "value should match expected pattern"
+    );
 }
 
 #[test]
@@ -74,7 +77,11 @@ fn query_without_timeout_succeeds() {
 
     assert!(result.is_ok(), "query without timeout should succeed");
     let rows = result.expect("query without timeout must succeed");
-    assert_eq!(rows.rows.len(), 1);
+    assert_eq!(
+        rows.rows.len(),
+        1,
+        "rows length should equal expected value"
+    );
 }
 
 #[test]
@@ -86,10 +93,24 @@ fn insert_fact_and_retrieve() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query facts");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].id.as_str(), "f1");
-    assert_eq!(results[0].content, "Rust is a systems programming language");
-    assert!((results[0].confidence - 0.9).abs() < f64::EPSILON);
+    assert_eq!(
+        results.len(),
+        1,
+        "results length should equal expected value"
+    );
+    assert_eq!(
+        results[0].id.as_str(),
+        "f1",
+        "results[0].id should equal expected value"
+    );
+    assert_eq!(
+        results[0].content, "Rust is a systems programming language",
+        "content should equal expected value"
+    );
+    assert!(
+        (results[0].confidence - 0.9).abs() < f64::EPSILON,
+        "assertion failed in insert fact and retrieve"
+    );
 }
 
 #[test]
@@ -103,7 +124,11 @@ fn insert_multiple_facts_and_retrieve() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 100)
         .expect("query facts");
-    assert_eq!(results.len(), 5);
+    assert_eq!(
+        results.len(),
+        5,
+        "results length should equal expected value"
+    );
 }
 
 #[test]
@@ -119,9 +144,19 @@ fn upsert_fact_overwrites() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query facts");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].content, "Updated content");
-    assert!((results[0].confidence - 0.95).abs() < f64::EPSILON);
+    assert_eq!(
+        results.len(),
+        1,
+        "results length should equal expected value"
+    );
+    assert_eq!(
+        results[0].content, "Updated content",
+        "content should equal expected value"
+    );
+    assert!(
+        (results[0].confidence - 0.95).abs() < f64::EPSILON,
+        "assertion failed in upsert fact overwrites"
+    );
 }
 
 #[test]
@@ -136,9 +171,19 @@ fn forget_fact_excludes_from_query() {
             ForgetReason::UserRequested,
         )
         .expect("forget fact");
-    assert!(forgotten.is_forgotten);
-    assert_eq!(forgotten.forget_reason, Some(ForgetReason::UserRequested));
-    assert!(forgotten.forgotten_at.is_some());
+    assert!(
+        forgotten.is_forgotten,
+        "assertion failed in forget fact excludes from query"
+    );
+    assert_eq!(
+        forgotten.forget_reason,
+        Some(ForgetReason::UserRequested),
+        "forget_reason should match result"
+    );
+    assert!(
+        forgotten.forgotten_at.is_some(),
+        "forgotten_at should be some"
+    );
 
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
@@ -170,15 +215,25 @@ fn forget_fact_then_unforget_restores_recall() {
     let restored = store
         .unforget_fact(&crate::id::FactId::new_unchecked("f1"))
         .expect("unforget");
-    assert!(!restored.is_forgotten);
-    assert!(restored.forgotten_at.is_none());
-    assert!(restored.forget_reason.is_none());
+    assert!(!restored.is_forgotten, "is_forgotten should be false");
+    assert!(
+        restored.forgotten_at.is_none(),
+        "forgotten_at should be none"
+    );
+    assert!(
+        restored.forget_reason.is_none(),
+        "forget_reason should be none"
+    );
 
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query after unforget");
     assert_eq!(results.len(), 1, "unforget must restore recall visibility");
-    assert_eq!(results[0].id.as_str(), "f1");
+    assert_eq!(
+        results[0].id.as_str(),
+        "f1",
+        "results[0].id should equal expected value"
+    );
 }
 
 #[test]
@@ -198,8 +253,15 @@ fn forget_preserves_in_audit() {
     let found = all.iter().find(|f| f.id.as_str() == "f1");
     assert!(found.is_some(), "audit must return forgotten facts");
     let found = found.expect("f1 must appear in audit after forget");
-    assert!(found.is_forgotten);
-    assert_eq!(found.forget_reason, Some(ForgetReason::Privacy));
+    assert!(
+        found.is_forgotten,
+        "assertion failed in forget preserves in audit"
+    );
+    assert_eq!(
+        found.forget_reason,
+        Some(ForgetReason::Privacy),
+        "forget_reason should match Some(ForgetReason::Privacy)"
+    );
 }
 
 #[test]
@@ -230,13 +292,21 @@ fn forget_reason_roundtrips() {
     let forgotten_list = store
         .list_forgotten("agent-a", 100)
         .expect("list_forgotten");
-    assert_eq!(forgotten_list.len(), reasons.len());
+    assert_eq!(
+        forgotten_list.len(),
+        reasons.len(),
+        "forgotten_list length should match reasons length"
+    );
     for (id, reason) in reasons {
         let found = forgotten_list
             .iter()
             .find(|f| f.id.as_str() == id)
             .unwrap_or_else(|| panic!("missing {id} in list_forgotten"));
-        assert_eq!(found.forget_reason, Some(reason));
+        assert_eq!(
+            found.forget_reason,
+            Some(reason),
+            "forget_reason should match Some(reason)"
+        );
     }
 }
 
@@ -297,7 +367,10 @@ fn increment_access_updates_count() {
         .iter()
         .find(|f| f.id.as_str() == "f1")
         .expect("found");
-    assert_eq!(found.access_count, 2);
+    assert_eq!(
+        found.access_count, 2,
+        "access_count should equal expected value"
+    );
 }
 
 #[test]
@@ -322,10 +395,13 @@ fn insert_fact_empty_content_rejected() {
     let fact = make_fact("f-empty", "agent-a", "");
     let result = store.insert_fact(&fact);
     assert!(result.is_err(), "empty content must be rejected");
-    assert!(matches!(
-        result.expect_err("empty content must fail"),
-        crate::error::Error::EmptyContent { .. }
-    ));
+    assert!(
+        matches!(
+            result.expect_err("empty content must fail"),
+            crate::error::Error::EmptyContent { .. }
+        ),
+        "value should match expected pattern",
+    );
 }
 
 #[test]
@@ -336,26 +412,36 @@ fn insert_fact_confidence_out_of_range_rejected() {
     high.confidence = 1.5;
     let result = store.insert_fact(&high);
     assert!(result.is_err(), "confidence > 1.0 must be rejected");
-    assert!(matches!(
-        result.expect_err("confidence > 1.0 must fail"),
-        crate::error::Error::InvalidConfidence { .. }
-    ));
+    assert!(
+        matches!(
+            result.expect_err("confidence > 1.0 must fail"),
+            crate::error::Error::InvalidConfidence { .. }
+        ),
+        "expect_err(\"confidence should be greater than 1",
+    );
 
     let mut negative = make_fact("f-neg", "agent-a", "Negative confidence");
     negative.confidence = -0.5;
     let result = store.insert_fact(&negative);
     assert!(result.is_err(), "confidence < 0.0 must be rejected");
-    assert!(matches!(
-        result.expect_err("confidence < 0.0 must fail"),
-        crate::error::Error::InvalidConfidence { .. }
-    ));
+    assert!(
+        matches!(
+            result.expect_err("confidence < 0.0 must fail"),
+            crate::error::Error::InvalidConfidence { .. }
+        ),
+        "expect_err(\"confidence should be less than 0",
+    );
 }
 
 #[test]
 fn schema_version_returns_current() {
     let store = make_store();
     let version = store.schema_version().expect("schema version");
-    assert_eq!(version, KnowledgeStore::SCHEMA_VERSION);
+    assert_eq!(
+        version,
+        KnowledgeStore::SCHEMA_VERSION,
+        "version should equal expected value"
+    );
 }
 
 #[test]
@@ -374,14 +460,29 @@ fn query_facts_filters_by_nous_id() {
     let results_a = store
         .query_facts("agent-a", "2026-06-01", 100)
         .expect("query agent-a");
-    assert_eq!(results_a.len(), 2);
-    assert!(results_a.iter().all(|f| f.nous_id == "agent-a"));
+    assert_eq!(
+        results_a.len(),
+        2,
+        "results_a length should equal expected value"
+    );
+    assert!(
+        results_a.iter().all(|f| f.nous_id == "agent-a"),
+        "assertion failed in query facts filters by nous id"
+    );
 
     let results_b = store
         .query_facts("agent-b", "2026-06-01", 100)
         .expect("query agent-b");
-    assert_eq!(results_b.len(), 1);
-    assert_eq!(results_b[0].id.as_str(), "f2");
+    assert_eq!(
+        results_b.len(),
+        1,
+        "results_b length should equal expected value"
+    );
+    assert_eq!(
+        results_b[0].id.as_str(),
+        "f2",
+        "results_b[0].id should equal expected value"
+    );
 }
 
 #[test]
@@ -400,7 +501,11 @@ fn query_facts_respects_limit() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 5)
         .expect("query with limit");
-    assert_eq!(results.len(), 5);
+    assert_eq!(
+        results.len(),
+        5,
+        "results length should equal expected value"
+    );
 }
 
 #[test]
@@ -422,8 +527,16 @@ fn query_facts_excludes_expired() {
         .query_facts("agent-a", "2026-06-01", 100)
         .expect("query");
 
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].id.as_str(), "f-active");
+    assert_eq!(
+        results.len(),
+        1,
+        "results length should equal expected value"
+    );
+    assert_eq!(
+        results[0].id.as_str(),
+        "f-active",
+        "results[0].id should equal expected value"
+    );
 }
 
 #[test]
@@ -432,7 +545,7 @@ fn query_facts_empty_store_returns_empty() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 100)
         .expect("query empty store");
-    assert!(results.is_empty());
+    assert!(results.is_empty(), "results should be empty");
 }
 
 #[test]
@@ -445,7 +558,7 @@ fn query_facts_nonexistent_nous_id_returns_empty() {
     let results = store
         .query_facts("nonexistent-agent", "2026-06-01", 100)
         .expect("query nonexistent nous");
-    assert!(results.is_empty());
+    assert!(results.is_empty(), "results should be empty");
 }
 
 #[test]
@@ -464,14 +577,22 @@ fn query_facts_at_returns_snapshot() {
     let results = store
         .query_facts_at("2026-03-15")
         .expect("query at mid-range");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].id.as_str(), "f1");
+    assert_eq!(
+        results.len(),
+        1,
+        "results length should equal expected value"
+    );
+    assert_eq!(
+        results[0].id.as_str(),
+        "f1",
+        "results[0].id should equal expected value"
+    );
 
     // Query at a time after the validity window
     let results = store
         .query_facts_at("2026-07-01")
         .expect("query at post-range");
-    assert!(results.is_empty());
+    assert!(results.is_empty(), "results should be empty");
 }
 
 #[test]
@@ -528,7 +649,11 @@ fn query_result_from_run_script_read_only() {
     let result: QueryResult = store
         .run_script_read_only("?[x] := x = 42", BTreeMap::new())
         .expect("read-only query should succeed");
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "rows length should equal expected value"
+    );
 }
 
 #[test]
@@ -537,7 +662,11 @@ fn run_script_read_only_basic() {
     let result = store
         .run_script_read_only("?[x] := x = 42", BTreeMap::new())
         .expect("read-only query should succeed");
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "rows length should equal expected value"
+    );
 }
 
 #[test]
@@ -564,16 +693,19 @@ fn audit_all_facts_returns_forgotten() {
         )
         .expect("forget f2");
     let all = store.audit_all_facts("agent-a", 100).expect("audit");
-    assert_eq!(all.len(), 2);
+    assert_eq!(all.len(), 2, "all length should equal expected value");
     let forgotten_count = all.iter().filter(|f| f.is_forgotten).count();
-    assert_eq!(forgotten_count, 1);
+    assert_eq!(
+        forgotten_count, 1,
+        "forgotten_count should equal expected value"
+    );
 }
 
 #[test]
 fn audit_all_facts_empty_store() {
     let store = make_store();
     let all = store.audit_all_facts("agent-a", 100).expect("audit empty");
-    assert!(all.is_empty());
+    assert!(all.is_empty(), "all should be empty");
 }
 
 #[test]
@@ -594,8 +726,11 @@ fn forget_already_forgotten_is_idempotent() {
         )
         .expect("second forget should not panic");
     let all = store.audit_all_facts("agent-a", 100).expect("audit");
-    assert_eq!(all.len(), 1);
-    assert!(all[0].is_forgotten);
+    assert_eq!(all.len(), 1, "all length should equal expected value");
+    assert!(
+        all[0].is_forgotten,
+        "assertion failed in forget already forgotten is idempotent"
+    );
 }
 
 #[test]
@@ -609,8 +744,15 @@ fn unforget_never_forgotten_is_noop() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].content, "never forgotten");
+    assert_eq!(
+        results.len(),
+        1,
+        "results length should equal expected value"
+    );
+    assert_eq!(
+        results[0].content, "never forgotten",
+        "content should equal expected value"
+    );
 }
 
 #[test]
@@ -620,7 +762,7 @@ fn forget_nonexistent_fact_is_err() {
         &crate::id::FactId::new_unchecked("nonexistent"),
         ForgetReason::UserRequested,
     );
-    assert!(result.is_err());
+    assert!(result.is_err(), "result should be err");
 }
 
 #[test]
@@ -642,16 +784,31 @@ fn forget_with_all_reasons() {
             .expect("forget");
     }
     let all = store.audit_all_facts("agent-a", 100).expect("audit");
-    assert_eq!(all.len(), 4);
+    assert_eq!(all.len(), 4, "all length should equal expected value");
     for fact in &all {
-        assert!(fact.is_forgotten);
-        assert!(fact.forget_reason.is_some());
+        assert!(
+            fact.is_forgotten,
+            "assertion failed in forget with all reasons"
+        );
+        assert!(fact.forget_reason.is_some(), "forget_reason should be some");
     }
     let reasons: Vec<ForgetReason> = all.iter().filter_map(|f| f.forget_reason).collect();
-    assert!(reasons.contains(&ForgetReason::UserRequested));
-    assert!(reasons.contains(&ForgetReason::Outdated));
-    assert!(reasons.contains(&ForgetReason::Incorrect));
-    assert!(reasons.contains(&ForgetReason::Privacy));
+    assert!(
+        reasons.contains(&ForgetReason::UserRequested),
+        "reasons should contain ForgetReason::UserRequested"
+    );
+    assert!(
+        reasons.contains(&ForgetReason::Outdated),
+        "reasons should contain ForgetReason::Outdated"
+    );
+    assert!(
+        reasons.contains(&ForgetReason::Incorrect),
+        "reasons should contain ForgetReason::Incorrect"
+    );
+    assert!(
+        reasons.contains(&ForgetReason::Privacy),
+        "reasons should contain ForgetReason::Privacy"
+    );
 }
 
 #[test]
@@ -663,8 +820,15 @@ fn insert_fact_unicode_content() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].content, "日本語のファクト 🦀");
+    assert_eq!(
+        results.len(),
+        1,
+        "results length should equal expected value"
+    );
+    assert_eq!(
+        results[0].content, "日本語のファクト 🦀",
+        "content should equal expected value"
+    );
 }
 
 #[test]
@@ -677,8 +841,16 @@ fn insert_fact_very_long_content() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].content.len(), 10240);
+    assert_eq!(
+        results.len(),
+        1,
+        "results length should equal expected value"
+    );
+    assert_eq!(
+        results[0].content.len(),
+        10240,
+        "content length should equal expected value"
+    );
 }
 
 #[test]
@@ -701,7 +873,10 @@ fn insert_fact_confidence_zero() {
         .iter()
         .find(|f| f.id.as_str() == "fc0")
         .expect("find fact");
-    assert!((found.confidence - 0.0).abs() < f64::EPSILON);
+    assert!(
+        (found.confidence - 0.0).abs() < f64::EPSILON,
+        "assertion failed in insert fact confidence zero"
+    );
 }
 
 #[test]
@@ -717,7 +892,10 @@ fn insert_fact_confidence_one() {
         .iter()
         .find(|f| f.id.as_str() == "fc1")
         .expect("find fact");
-    assert!((found.confidence - 1.0).abs() < f64::EPSILON);
+    assert!(
+        (found.confidence - 1.0).abs() < f64::EPSILON,
+        "assertion failed in insert fact confidence one"
+    );
 }
 
 #[test]
@@ -729,7 +907,7 @@ fn query_facts_limit_zero() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 0)
         .expect("query with limit 0");
-    assert!(results.is_empty());
+    assert!(results.is_empty(), "results should be empty");
 }
 
 #[test]
@@ -747,7 +925,11 @@ fn query_facts_large_limit() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 1000)
         .expect("query large limit");
-    assert_eq!(results.len(), 3);
+    assert_eq!(
+        results.len(),
+        3,
+        "results length should equal expected value"
+    );
 }
 
 #[test]
@@ -756,7 +938,7 @@ fn retrieve_nonexistent_fact() {
     let results = store
         .query_facts("nonexistent-agent", "2026-06-01", 10)
         .expect("query should succeed, returning empty");
-    assert!(results.is_empty());
+    assert!(results.is_empty(), "results should be empty");
 }
 
 #[test]
@@ -809,7 +991,11 @@ fn concurrent_inserts() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 100)
         .expect("query after concurrent inserts");
-    assert_eq!(results.len(), 10);
+    assert_eq!(
+        results.len(),
+        10,
+        "results length should equal expected value"
+    );
 }
 
 #[test]
@@ -818,7 +1004,11 @@ fn run_query_returns_results() {
     let rows = store
         .run_query("?[x] := x = 42", std::collections::BTreeMap::new())
         .expect("run_query");
-    assert_eq!(rows.rows.len(), 1);
+    assert_eq!(
+        rows.rows.len(),
+        1,
+        "rows length should equal expected value"
+    );
 }
 
 #[test]
@@ -840,7 +1030,7 @@ fn run_mut_query_creates_and_reads() {
     let results = store
         .query_facts("agent-a", "2026-06-01", 10)
         .expect("query after delete");
-    assert!(results.is_empty());
+    assert!(results.is_empty(), "results should be empty");
 }
 
 #[test]
@@ -856,15 +1046,17 @@ fn list_all_facts_returns_facts_across_agents() {
     let all = store.list_all_facts(100).expect("list_all_facts");
     assert_eq!(all.len(), 2, "both agents' facts must be returned");
     let ids: Vec<&str> = all.iter().map(|f| f.id.as_str()).collect();
-    assert!(ids.contains(&"f1"));
-    assert!(ids.contains(&"f2"));
+    assert!(ids.contains(&"f1"), "ids should contain \"f1");
+    assert!(ids.contains(&"f2"), "ids should contain \"f2");
     assert_eq!(
         all.iter().find(|f| f.id.as_str() == "f1").unwrap().nous_id,
-        "agent-a"
+        "agent-a",
+        "all.iter().find(|f| f.id should equal expected value",
     );
     assert_eq!(
         all.iter().find(|f| f.id.as_str() == "f2").unwrap().nous_id,
-        "agent-b"
+        "agent-b",
+        "all.iter().find(|f| f.id should equal expected value",
     );
 }
 
@@ -872,7 +1064,7 @@ fn list_all_facts_returns_facts_across_agents() {
 fn list_all_facts_empty_store_returns_empty() {
     let store = make_store();
     let all = store.list_all_facts(100).expect("list_all_facts empty");
-    assert!(all.is_empty());
+    assert!(all.is_empty(), "all should be empty");
 }
 
 #[tokio::test]
@@ -885,8 +1077,16 @@ async fn insert_fact_async_works() {
         .query_facts_async("agent-a".to_owned(), "2026-06-01".to_owned(), 10)
         .await
         .expect("async query");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].id.as_str(), "f-async");
+    assert_eq!(
+        results.len(),
+        1,
+        "results length should equal expected value"
+    );
+    assert_eq!(
+        results[0].id.as_str(),
+        "f-async",
+        "results[0].id should equal expected value"
+    );
 }
 
 #[tokio::test]
@@ -902,7 +1102,11 @@ async fn query_facts_async_works() {
         .query_facts_async("agent-a".to_owned(), "2026-06-01".to_owned(), 10)
         .await
         .expect("async query");
-    assert_eq!(results.len(), 2);
+    assert_eq!(
+        results.len(),
+        2,
+        "results length should equal expected value"
+    );
 }
 
 #[tokio::test]
@@ -924,9 +1128,12 @@ async fn audit_all_facts_async_works() {
         .audit_all_facts_async("agent-a".to_owned(), 100)
         .await
         .expect("async audit");
-    assert_eq!(all.len(), 2);
+    assert_eq!(all.len(), 2, "all length should equal expected value");
     let forgotten_count = all.iter().filter(|f| f.is_forgotten).count();
-    assert_eq!(forgotten_count, 1);
+    assert_eq!(
+        forgotten_count, 1,
+        "forgotten_count should equal expected value"
+    );
 }
 
 #[tokio::test]
@@ -942,8 +1149,15 @@ async fn forget_fact_async_works() {
         )
         .await
         .expect("async forget");
-    assert!(forgotten.is_forgotten);
-    assert_eq!(forgotten.forget_reason, Some(ForgetReason::Incorrect));
+    assert!(
+        forgotten.is_forgotten,
+        "assertion failed in forget fact async works"
+    );
+    assert_eq!(
+        forgotten.forget_reason,
+        Some(ForgetReason::Incorrect),
+        "forget_reason should match Some(ForgetReason::Incorrect)"
+    );
 
     let all = store
         .audit_all_facts_async("agent-a".to_owned(), 100)
@@ -953,7 +1167,10 @@ async fn forget_fact_async_works() {
         .iter()
         .find(|f| f.id.as_str() == "f-forget-async")
         .expect("found");
-    assert!(found.is_forgotten);
+    assert!(
+        found.is_forgotten,
+        "assertion failed in forget fact async works"
+    );
 }
 
 #[tokio::test]
@@ -982,7 +1199,7 @@ async fn unforget_fact_async_works() {
         .iter()
         .find(|f| f.id.as_str() == "f-unforget-async")
         .expect("found");
-    assert!(!found.is_forgotten);
+    assert!(!found.is_forgotten, "is_forgotten should be false");
 }
 
 #[tokio::test]
@@ -1004,5 +1221,8 @@ async fn increment_access_async_works() {
         .iter()
         .find(|f| f.id.as_str() == "f-access-async")
         .expect("found");
-    assert_eq!(found.access_count, 1);
+    assert_eq!(
+        found.access_count, 1,
+        "access_count should equal expected value"
+    );
 }

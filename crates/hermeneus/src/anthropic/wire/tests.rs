@@ -16,10 +16,19 @@ fn wire_response_deserializes() {
         "usage": {"input_tokens": 10, "output_tokens": 5}
     }"#;
     let resp: WireResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(resp.id, "msg_123");
-    assert_eq!(resp.stop_reason, "end_turn");
-    assert_eq!(resp.usage.input_tokens, 10);
-    assert_eq!(resp.usage.cache_creation_input_tokens, 0);
+    assert_eq!(resp.id, "msg_123", "id should equal expected value");
+    assert_eq!(
+        resp.stop_reason, "end_turn",
+        "stop_reason should equal expected value"
+    );
+    assert_eq!(
+        resp.usage.input_tokens, 10,
+        "input_tokens should equal expected value"
+    );
+    assert_eq!(
+        resp.usage.cache_creation_input_tokens, 0,
+        "cache_creation_input_tokens should equal expected value"
+    );
 }
 
 #[test]
@@ -40,8 +49,14 @@ fn wire_response_with_cache_tokens() {
     }"#;
     let resp: WireResponse = serde_json::from_str(json).unwrap();
     let converted = resp.into_response().unwrap();
-    assert_eq!(converted.usage.cache_write_tokens, 200);
-    assert_eq!(converted.usage.cache_read_tokens, 80);
+    assert_eq!(
+        converted.usage.cache_write_tokens, 200,
+        "cache_write_tokens should equal expected value"
+    );
+    assert_eq!(
+        converted.usage.cache_read_tokens, 80,
+        "cache_read_tokens should equal expected value"
+    );
 }
 
 #[test]
@@ -51,8 +66,8 @@ fn wire_content_block_tool_use() {
     let converted = block.into_content_block();
     match converted {
         ContentBlock::ToolUse { id, name, .. } => {
-            assert_eq!(id, "toolu_1");
-            assert_eq!(name, "exec");
+            assert_eq!(id, "toolu_1", "id should equal expected value");
+            assert_eq!(name, "exec", "name should equal expected value");
         }
         _ => panic!("expected ToolUse"),
     }
@@ -65,7 +80,10 @@ fn wire_content_block_thinking() {
     let converted = block.into_content_block();
     match converted {
         ContentBlock::Thinking { thinking, .. } => {
-            assert_eq!(thinking, "let me think");
+            assert_eq!(
+                thinking, "let me think",
+                "thinking should equal expected value"
+            );
         }
         _ => panic!("expected Thinking"),
     }
@@ -78,7 +96,10 @@ fn wire_error_response_deserializes() {
         "error": {"type": "invalid_request_error", "message": "bad input"}
     }"#;
     let err: WireErrorResponse = serde_json::from_str(json).unwrap();
-    assert_eq!(err.error.message, "bad input");
+    assert_eq!(
+        err.error.message, "bad input",
+        "message should equal expected value"
+    );
 }
 
 #[test]
@@ -100,10 +121,18 @@ fn wire_request_extracts_system_prompt() {
     let wire = WireRequest::from_request(&req, None);
     assert_eq!(
         wire.system,
-        Some(serde_json::Value::String("You are helpful.".to_owned()))
+        Some(serde_json::Value::String("You are helpful.".to_owned())),
+        "system should match to_owned(",
     );
-    assert_eq!(wire.messages.len(), 1);
-    assert_eq!(wire.messages[0].role, "user");
+    assert_eq!(
+        wire.messages.len(),
+        1,
+        "messages length should equal expected value"
+    );
+    assert_eq!(
+        wire.messages[0].role, "user",
+        "role should equal expected value"
+    );
 }
 
 #[test]
@@ -131,10 +160,15 @@ fn wire_request_extracts_system_from_messages() {
     let wire = WireRequest::from_request(&req, None);
     assert_eq!(
         wire.system,
-        Some(serde_json::Value::String("Be concise.".to_owned()))
+        Some(serde_json::Value::String("Be concise.".to_owned())),
+        "system should match to_owned(",
     );
     // System messages must not appear in the messages array
-    assert_eq!(wire.messages.len(), 1);
+    assert_eq!(
+        wire.messages.len(),
+        1,
+        "messages length should equal expected value"
+    );
 }
 
 #[test]
@@ -159,8 +193,14 @@ fn wire_request_serializes_thinking_config() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let thinking = json.get("thinking").unwrap();
-    assert_eq!(thinking["type"], "enabled");
-    assert_eq!(thinking["budget_tokens"], 8192);
+    assert_eq!(
+        thinking["type"], "enabled",
+        "thinking[\"type\"] should equal expected value"
+    );
+    assert_eq!(
+        thinking["budget_tokens"], 8192,
+        "thinking[\"budget_tokens\"] should equal expected value"
+    );
 }
 
 #[test]
@@ -193,8 +233,11 @@ fn wire_request_serializes_tools() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0]["name"], "exec");
+    assert_eq!(tools.len(), 1, "tools length should equal expected value");
+    assert_eq!(
+        tools[0]["name"], "exec",
+        "tools[0][\"name\"] should equal expected value"
+    );
 }
 
 #[test]
@@ -203,7 +246,7 @@ fn wire_stream_event_deserializes() {
     let event: WireStreamEvent = serde_json::from_str(json).unwrap();
     match event {
         WireStreamEvent::MessageStart { message } => {
-            assert_eq!(message.id, "msg_1");
+            assert_eq!(message.id, "msg_1", "id should equal expected value");
         }
         _ => panic!("expected MessageStart"),
     }
@@ -216,9 +259,11 @@ fn wire_stream_delta_deserializes() {
     let event: WireStreamEvent = serde_json::from_str(json).unwrap();
     match event {
         WireStreamEvent::ContentBlockDelta { index, delta } => {
-            assert_eq!(index, 0);
+            assert_eq!(index, 0, "index should equal expected value");
             match delta {
-                WireDelta::TextDelta { text } => assert_eq!(text, "Hello"),
+                WireDelta::TextDelta { text } => {
+                    assert_eq!(text, "Hello", "text should equal expected value");
+                }
                 _ => panic!("expected TextDelta"),
             }
         }
@@ -228,17 +273,30 @@ fn wire_stream_delta_deserializes() {
 
 #[test]
 fn parse_stop_reason_all_variants() {
-    assert_eq!(parse_stop_reason("end_turn").unwrap(), StopReason::EndTurn);
-    assert_eq!(parse_stop_reason("tool_use").unwrap(), StopReason::ToolUse);
+    assert_eq!(
+        parse_stop_reason("end_turn").unwrap(),
+        StopReason::EndTurn,
+        "unwrap( should equal expected value"
+    );
+    assert_eq!(
+        parse_stop_reason("tool_use").unwrap(),
+        StopReason::ToolUse,
+        "unwrap( should equal expected value"
+    );
     assert_eq!(
         parse_stop_reason("max_tokens").unwrap(),
-        StopReason::MaxTokens
+        StopReason::MaxTokens,
+        "unwrap( should equal expected value",
     );
     assert_eq!(
         parse_stop_reason("stop_sequence").unwrap(),
-        StopReason::StopSequence
+        StopReason::StopSequence,
+        "unwrap( should equal expected value",
     );
-    assert!(parse_stop_reason("unknown").is_err());
+    assert!(
+        parse_stop_reason("unknown").is_err(),
+        "parse_stop_reason(\"unknown\") should be err"
+    );
 }
 
 #[test]
@@ -257,10 +315,19 @@ fn wire_request_cache_system_serializes_as_array() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let system = json["system"].as_array().unwrap();
-    assert_eq!(system.len(), 1);
-    assert_eq!(system[0]["type"], "text");
-    assert_eq!(system[0]["text"], "You are helpful.");
-    assert_eq!(system[0]["cache_control"]["type"], "ephemeral");
+    assert_eq!(system.len(), 1, "system length should equal expected value");
+    assert_eq!(
+        system[0]["type"], "text",
+        "system[0][\"type\"] should equal expected value"
+    );
+    assert_eq!(
+        system[0]["text"], "You are helpful.",
+        "system[0][\"text\"] should equal expected value"
+    );
+    assert_eq!(
+        system[0]["cache_control"]["type"], "ephemeral",
+        "result should equal expected value"
+    );
 }
 
 #[test]
@@ -292,8 +359,14 @@ fn wire_request_cache_tools_on_last_tool() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
-    assert!(tools[0].get("cache_control").is_none());
-    assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    assert!(
+        tools[0].get("cache_control").is_none(),
+        "get(\"cache_control\" should be none"
+    );
+    assert_eq!(
+        tools[1]["cache_control"]["type"], "ephemeral",
+        "result should equal expected value"
+    );
 }
 
 #[test]
@@ -310,7 +383,10 @@ fn wire_request_tool_choice_auto() {
     };
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
-    assert_eq!(json["tool_choice"]["type"], "auto");
+    assert_eq!(
+        json["tool_choice"]["type"], "auto",
+        "json[\"tool_choice\"][\"type\"] should equal expected value"
+    );
 }
 
 #[test]
@@ -329,8 +405,14 @@ fn wire_request_tool_choice_specific_tool() {
     };
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
-    assert_eq!(json["tool_choice"]["type"], "tool");
-    assert_eq!(json["tool_choice"]["name"], "exec");
+    assert_eq!(
+        json["tool_choice"]["type"], "tool",
+        "json[\"tool_choice\"][\"type\"] should equal expected value"
+    );
+    assert_eq!(
+        json["tool_choice"]["name"], "exec",
+        "json[\"tool_choice\"][\"name\"] should equal expected value"
+    );
 }
 
 #[test]
@@ -346,7 +428,10 @@ fn wire_request_tool_choice_none_omitted() {
     };
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
-    assert!(json.get("tool_choice").is_none());
+    assert!(
+        json.get("tool_choice").is_none(),
+        "get(\"tool_choice\" should be none"
+    );
 }
 
 #[test]
@@ -365,7 +450,10 @@ fn wire_request_metadata_serialized() {
     };
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
-    assert_eq!(json["metadata"]["user_id"], "nous:syn:main");
+    assert_eq!(
+        json["metadata"]["user_id"], "nous:syn:main",
+        "json[\"metadata\"][\"user_id\"] should equal expected value"
+    );
 }
 
 #[test]
@@ -382,7 +470,10 @@ fn wire_request_citations_serialized() {
     };
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
-    assert_eq!(json["citations"]["enabled"], true);
+    assert_eq!(
+        json["citations"]["enabled"], true,
+        "json[\"citations\"][\"enabled\"] should equal expected value"
+    );
 }
 
 #[test]
@@ -411,7 +502,7 @@ fn wire_response_text_with_citations() {
     match &converted.content[0] {
         ContentBlock::Text { citations, .. } => {
             let cits = citations.as_ref().unwrap();
-            assert_eq!(cits.len(), 1);
+            assert_eq!(cits.len(), 1, "cits length should equal expected value");
         }
         _ => panic!("expected Text block"),
     }
@@ -427,8 +518,15 @@ fn wire_thinking_signature_passes_through() {
             thinking,
             signature,
         } => {
-            assert_eq!(thinking, "let me think");
-            assert_eq!(signature.as_deref(), Some("sig_abc"));
+            assert_eq!(
+                thinking, "let me think",
+                "thinking should equal expected value"
+            );
+            assert_eq!(
+                signature.as_deref(),
+                Some("sig_abc"),
+                "as_deref( should match Some(\"sig_abc\")"
+            );
         }
         _ => panic!("expected Thinking"),
     }
@@ -462,16 +560,37 @@ fn wire_request_mixed_user_and_server_tools() {
     let wire = WireRequest::from_request(&req, None);
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 2);
+    assert_eq!(tools.len(), 2, "tools length should equal expected value");
     // First: user-defined tool (has input_schema)
-    assert_eq!(tools[0]["name"], "read");
-    assert!(tools[0].get("input_schema").is_some());
-    assert!(tools[0].get("type").is_none());
+    assert_eq!(
+        tools[0]["name"], "read",
+        "tools[0][\"name\"] should equal expected value"
+    );
+    assert!(
+        tools[0].get("input_schema").is_some(),
+        "get(\"input_schema\" should be some"
+    );
+    assert!(
+        tools[0].get("type").is_none(),
+        "get(\"type\" should be none"
+    );
     // Second: server-side tool (has type, no input_schema)
-    assert_eq!(tools[1]["type"], "web_search_20250305");
-    assert_eq!(tools[1]["name"], "web_search");
-    assert_eq!(tools[1]["max_uses"], 5);
-    assert!(tools[1].get("input_schema").is_none());
+    assert_eq!(
+        tools[1]["type"], "web_search_20250305",
+        "tools[1][\"type\"] should equal expected value"
+    );
+    assert_eq!(
+        tools[1]["name"], "web_search",
+        "tools[1][\"name\"] should equal expected value"
+    );
+    assert_eq!(
+        tools[1]["max_uses"], 5,
+        "tools[1][\"max_uses\"] should equal expected value"
+    );
+    assert!(
+        tools[1].get("input_schema").is_none(),
+        "get(\"input_schema\" should be none"
+    );
 }
 
 #[test]
@@ -481,9 +600,12 @@ fn wire_content_block_server_tool_use() {
     let converted = block.into_content_block();
     match converted {
         ContentBlock::ServerToolUse { id, name, input } => {
-            assert_eq!(id, "srvtoolu_123");
-            assert_eq!(name, "web_search");
-            assert_eq!(input["query"], "rust async");
+            assert_eq!(id, "srvtoolu_123", "id should equal expected value");
+            assert_eq!(name, "web_search", "name should equal expected value");
+            assert_eq!(
+                input["query"], "rust async",
+                "input[\"query\"] should equal expected value"
+            );
         }
         _ => panic!("expected ServerToolUse"),
     }
@@ -499,8 +621,11 @@ fn wire_content_block_web_search_tool_result() {
             tool_use_id,
             content,
         } => {
-            assert_eq!(tool_use_id, "srvtoolu_123");
-            assert!(content.is_array());
+            assert_eq!(
+                tool_use_id, "srvtoolu_123",
+                "tool_use_id should equal expected value"
+            );
+            assert!(content.is_array(), "content should be array");
         }
         _ => panic!("expected WebSearchToolResult"),
     }
@@ -523,16 +648,26 @@ fn wire_response_with_server_tool_blocks() {
     }"#;
     let resp: WireResponse = serde_json::from_str(json).unwrap();
     let converted = resp.into_response().unwrap();
-    assert_eq!(converted.content.len(), 3);
-    assert!(matches!(
-        &converted.content[0],
-        ContentBlock::ServerToolUse { .. }
-    ));
-    assert!(matches!(
-        &converted.content[1],
-        ContentBlock::WebSearchToolResult { .. }
-    ));
-    assert!(matches!(&converted.content[2], ContentBlock::Text { .. }));
+    assert_eq!(
+        converted.content.len(),
+        3,
+        "content length should equal expected value"
+    );
+    assert!(
+        matches!(&converted.content[0], ContentBlock::ServerToolUse { .. }),
+        "value should match expected pattern",
+    );
+    assert!(
+        matches!(
+            &converted.content[1],
+            ContentBlock::WebSearchToolResult { .. }
+        ),
+        "value should match expected pattern",
+    );
+    assert!(
+        matches!(&converted.content[2], ContentBlock::Text { .. }),
+        "value should match expected pattern"
+    );
 }
 
 #[test]
@@ -565,9 +700,15 @@ fn wire_request_cache_tools_only_on_user_tools() {
     let json = serde_json::to_value(&wire).unwrap();
     let tools = json["tools"].as_array().unwrap();
     // cache_control on last user-defined tool
-    assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+    assert_eq!(
+        tools[0]["cache_control"]["type"], "ephemeral",
+        "result should equal expected value"
+    );
     // server tool has no cache_control
-    assert!(tools[1].get("cache_control").is_none());
+    assert!(
+        tools[1].get("cache_control").is_none(),
+        "get(\"cache_control\" should be none"
+    );
 }
 
 #[test]
@@ -581,10 +722,22 @@ fn wire_server_tool_serializes_type_field() {
         user_location: None,
     };
     let json = serde_json::to_value(&tool).unwrap();
-    assert_eq!(json["type"], "web_search_20250305");
-    assert_eq!(json["name"], "web_search");
-    assert_eq!(json["max_uses"], 5);
-    assert!(json.get("allowed_domains").is_none());
+    assert_eq!(
+        json["type"], "web_search_20250305",
+        "json[\"type\"] should equal expected value"
+    );
+    assert_eq!(
+        json["name"], "web_search",
+        "json[\"name\"] should equal expected value"
+    );
+    assert_eq!(
+        json["max_uses"], 5,
+        "json[\"max_uses\"] should equal expected value"
+    );
+    assert!(
+        json.get("allowed_domains").is_none(),
+        "get(\"allowed_domains\" should be none"
+    );
 }
 
 #[test]
@@ -600,9 +753,18 @@ fn wire_server_tool_with_domain_filters() {
         user_location: None,
     };
     let json = serde_json::to_value(&tool).unwrap();
-    assert_eq!(json["allowed_domains"][0], "example.com");
-    assert_eq!(json["blocked_domains"][0], "evil.com");
-    assert!(json.get("max_uses").is_none());
+    assert_eq!(
+        json["allowed_domains"][0], "example.com",
+        "json[\"allowed_domains\"][0] should equal expected value"
+    );
+    assert_eq!(
+        json["blocked_domains"][0], "evil.com",
+        "json[\"blocked_domains\"][0] should equal expected value"
+    );
+    assert!(
+        json.get("max_uses").is_none(),
+        "get(\"max_uses\" should be none"
+    );
 }
 
 #[test]
@@ -624,10 +786,22 @@ fn wire_tool_entry_untagged_serialization() {
     });
 
     let user_json = serde_json::to_value(&user_tool).unwrap();
-    assert!(user_json.get("type").is_none());
-    assert!(user_json.get("input_schema").is_some());
+    assert!(
+        user_json.get("type").is_none(),
+        "get(\"type\" should be none"
+    );
+    assert!(
+        user_json.get("input_schema").is_some(),
+        "get(\"input_schema\" should be some"
+    );
 
     let server_json = serde_json::to_value(&server_tool).unwrap();
-    assert_eq!(server_json["type"], "web_search_20250305");
-    assert!(server_json.get("input_schema").is_none());
+    assert_eq!(
+        server_json["type"], "web_search_20250305",
+        "server_json[\"type\"] should equal expected value"
+    );
+    assert!(
+        server_json.get("input_schema").is_none(),
+        "get(\"input_schema\" should be none"
+    );
 }

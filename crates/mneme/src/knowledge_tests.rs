@@ -11,14 +11,18 @@ fn test_timestamp(s: &str) -> jiff::Timestamp {
 #[test]
 fn entity_id_from_str() {
     let id = EntityId::from("alice");
-    assert_eq!(id.as_str(), "alice");
-    assert_eq!(id.to_string(), "alice");
+    assert_eq!(id.as_str(), "alice", "id should equal expected value");
+    assert_eq!(
+        id.to_string(),
+        "alice",
+        "to_string( should equal expected value"
+    );
 }
 
 #[test]
 fn entity_id_from_string() {
     let id = EntityId::from("bob".to_owned());
-    assert_eq!(id.as_str(), "bob");
+    assert_eq!(id.as_str(), "bob", "id should equal expected value");
 }
 
 #[test]
@@ -32,7 +36,7 @@ fn entity_id_serde_transparent() {
     );
     let back: EntityId =
         serde_json::from_str(&json).expect("EntityId should deserialize from its own JSON");
-    assert_eq!(id, back);
+    assert_eq!(id, back, "id should match back");
 }
 
 #[test]
@@ -41,13 +45,17 @@ fn entity_id_prevents_mixing_with_plain_string() {
     // Runtime: confirm they compare correctly via as_str.
     let eid = EntityId::from("nous-1");
     let plain: String = "nous-1".to_owned();
-    assert_eq!(eid.as_str(), plain.as_str());
+    assert_eq!(eid.as_str(), plain.as_str(), "eid should match plain");
 }
 
 #[test]
 fn entity_id_display_matches_inner_string() {
     let id = EntityId::from("project-aletheia");
-    assert_eq!(format!("{id}"), "project-aletheia");
+    assert_eq!(
+        format!("{id}"),
+        "project-aletheia",
+        "format!(\"{{id}}\") should equal expected value"
+    );
 }
 
 #[test]
@@ -55,7 +63,7 @@ fn entity_id_clone_equality() {
     let a = EntityId::from("e-42");
     let b = a.clone();
     assert_eq!(a, b, "cloned EntityId must equal original");
-    assert_eq!(a.as_str(), b.as_str());
+    assert_eq!(a.as_str(), b.as_str(), "a should match b");
 }
 
 #[test]
@@ -68,7 +76,7 @@ fn epistemic_tier_serde_roundtrip() {
         let json = serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
         let back: EpistemicTier = serde_json::from_str(&json)
             .expect("EpistemicTier should deserialize from its own JSON");
-        assert_eq!(tier, back);
+        assert_eq!(tier, back, "tier should match back");
     }
 }
 
@@ -96,8 +104,8 @@ fn fact_serde_roundtrip() {
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     let back: Fact =
         serde_json::from_str(&json).expect("Fact should deserialize from its own JSON");
-    assert_eq!(fact.content, back.content);
-    assert_eq!(fact.tier, back.tier);
+    assert_eq!(fact.content, back.content, "content should match content");
+    assert_eq!(fact.tier, back.tier, "tier should match tier");
 }
 
 #[test]
@@ -113,8 +121,8 @@ fn entity_serde_roundtrip() {
     let json = serde_json::to_string(&entity).expect("Entity serialization is infallible");
     let back: Entity =
         serde_json::from_str(&json).expect("Entity should deserialize from its own JSON");
-    assert_eq!(entity.name, back.name);
-    assert_eq!(entity.aliases, back.aliases);
+    assert_eq!(entity.name, back.name, "name should match name");
+    assert_eq!(entity.aliases, back.aliases, "aliases should match aliases");
 }
 
 #[test]
@@ -129,9 +137,12 @@ fn relationship_serde_roundtrip() {
     let json = serde_json::to_string(&rel).expect("Relationship serialization is infallible");
     let back: Relationship =
         serde_json::from_str(&json).expect("Relationship should deserialize from its own JSON");
-    assert_eq!(rel.src, back.src);
-    assert_eq!(rel.dst, back.dst);
-    assert_eq!(rel.relation, back.relation);
+    assert_eq!(rel.src, back.src, "src should match src");
+    assert_eq!(rel.dst, back.dst, "dst should match dst");
+    assert_eq!(
+        rel.relation, back.relation,
+        "relation should match relation"
+    );
 }
 
 #[test]
@@ -148,8 +159,12 @@ fn embedded_chunk_serde_roundtrip() {
     let json = serde_json::to_string(&chunk).expect("EmbeddedChunk serialization is infallible");
     let back: EmbeddedChunk =
         serde_json::from_str(&json).expect("EmbeddedChunk should deserialize from its own JSON");
-    assert_eq!(chunk.content, back.content);
-    assert_eq!(chunk.embedding.len(), back.embedding.len());
+    assert_eq!(chunk.content, back.content, "content should match content");
+    assert_eq!(
+        chunk.embedding.len(),
+        back.embedding.len(),
+        "embedding length should match embedding length"
+    );
 }
 
 #[test]
@@ -163,8 +178,11 @@ fn recall_result_serde_roundtrip() {
     let json = serde_json::to_string(&result).expect("RecallResult serialization is infallible");
     let back: RecallResult =
         serde_json::from_str(&json).expect("RecallResult should deserialize from its own JSON");
-    assert_eq!(result.content, back.content);
-    assert!((result.distance - back.distance).abs() < f64::EPSILON);
+    assert_eq!(result.content, back.content, "content should match content");
+    assert!(
+        (result.distance - back.distance).abs() < f64::EPSILON,
+        "assertion failed in recall result serde roundtrip"
+    );
 }
 
 #[test]
@@ -192,7 +210,7 @@ fn fact_with_empty_content() {
         serde_json::to_string(&fact).expect("Fact with empty content serializes successfully");
     let back: Fact = serde_json::from_str(&json)
         .expect("Fact with empty content should deserialize from its own JSON");
-    assert!(back.content.is_empty());
+    assert!(back.content.is_empty(), "content should be empty");
 }
 
 #[test]
@@ -220,7 +238,7 @@ fn fact_with_unicode_content() {
         serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");
     let back: Fact = serde_json::from_str(&json)
         .expect("Fact with unicode content should deserialize from its own JSON");
-    assert_eq!(fact.content, back.content);
+    assert_eq!(fact.content, back.content, "content should match content");
 }
 
 #[test]
@@ -237,29 +255,71 @@ fn entity_empty_aliases() {
         serde_json::to_string(&entity).expect("Entity with empty aliases serializes successfully");
     let back: Entity = serde_json::from_str(&json)
         .expect("Entity with empty aliases should deserialize from its own JSON");
-    assert!(back.aliases.is_empty());
+    assert!(back.aliases.is_empty(), "aliases should be empty");
 }
 
 #[test]
 fn epistemic_tier_display() {
-    assert_eq!(EpistemicTier::Verified.to_string(), "verified");
-    assert_eq!(EpistemicTier::Inferred.to_string(), "inferred");
-    assert_eq!(EpistemicTier::Assumed.to_string(), "assumed");
+    assert_eq!(
+        EpistemicTier::Verified.to_string(),
+        "verified",
+        "to_string( should equal expected value"
+    );
+    assert_eq!(
+        EpistemicTier::Inferred.to_string(),
+        "inferred",
+        "to_string( should equal expected value"
+    );
+    assert_eq!(
+        EpistemicTier::Assumed.to_string(),
+        "assumed",
+        "to_string( should equal expected value"
+    );
 }
 
 #[test]
 fn default_stability_by_fact_type() {
-    assert!((default_stability_hours("identity") - 17520.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("preference") - 8760.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("skill") - 4380.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("relationship") - 2190.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("event") - 720.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("task") - 168.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("observation") - 72.0).abs() < f64::EPSILON);
+    assert!(
+        (default_stability_hours("identity") - 17520.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
+    assert!(
+        (default_stability_hours("preference") - 8760.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
+    assert!(
+        (default_stability_hours("skill") - 4380.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
+    assert!(
+        (default_stability_hours("relationship") - 2190.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
+    assert!(
+        (default_stability_hours("event") - 720.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
+    assert!(
+        (default_stability_hours("task") - 168.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
+    assert!(
+        (default_stability_hours("observation") - 72.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
     // Unknown types fall back to Observation (72h)
-    assert!((default_stability_hours("inference") - 72.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("unknown") - 72.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("") - 72.0).abs() < f64::EPSILON);
+    assert!(
+        (default_stability_hours("inference") - 72.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
+    assert!(
+        (default_stability_hours("unknown") - 72.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
+    assert!(
+        (default_stability_hours("") - 72.0).abs() < f64::EPSILON,
+        "assertion failed in default stability by fact type"
+    );
 }
 
 #[test]
@@ -271,7 +331,7 @@ fn epistemic_tier_as_str_matches_serde() {
     ] {
         let json = serde_json::to_string(&tier).expect("EpistemicTier serialization is infallible");
         let expected = format!("\"{}\"", tier.as_str());
-        assert_eq!(json, expected);
+        assert_eq!(json, expected, "json should match expected");
     }
 }
 
@@ -289,7 +349,7 @@ fn forget_reason_serde_roundtrip() {
             serde_json::to_string(&reason).expect("ForgetReason serialization is infallible");
         let back: ForgetReason =
             serde_json::from_str(&json).expect("ForgetReason should deserialize from its own JSON");
-        assert_eq!(reason, back);
+        assert_eq!(reason, back, "reason should match back");
     }
 }
 
@@ -306,7 +366,7 @@ fn forget_reason_as_str_matches_serde() {
         let json =
             serde_json::to_string(&reason).expect("ForgetReason serialization is infallible");
         let expected = format!("\"{}\"", reason.as_str());
-        assert_eq!(json, expected);
+        assert_eq!(json, expected, "json should match expected");
     }
 }
 
@@ -324,21 +384,40 @@ fn forget_reason_from_str_roundtrip() {
             .as_str()
             .parse()
             .expect("ForgetReason as_str() should round-trip through FromStr");
-        assert_eq!(reason, parsed);
+        assert_eq!(reason, parsed, "reason should match parsed");
     }
 }
 
 #[test]
 fn forget_reason_from_str_unknown() {
-    assert!("bogus".parse::<ForgetReason>().is_err());
+    assert!(
+        "bogus".parse::<ForgetReason>().is_err(),
+        "parse::<ForgetReason>( should be err"
+    );
 }
 
 #[test]
 fn forget_reason_display() {
-    assert_eq!(ForgetReason::UserRequested.to_string(), "user_requested");
-    assert_eq!(ForgetReason::Outdated.to_string(), "outdated");
-    assert_eq!(ForgetReason::Incorrect.to_string(), "incorrect");
-    assert_eq!(ForgetReason::Privacy.to_string(), "privacy");
+    assert_eq!(
+        ForgetReason::UserRequested.to_string(),
+        "user_requested",
+        "to_string( should equal expected value"
+    );
+    assert_eq!(
+        ForgetReason::Outdated.to_string(),
+        "outdated",
+        "to_string( should equal expected value"
+    );
+    assert_eq!(
+        ForgetReason::Incorrect.to_string(),
+        "incorrect",
+        "to_string( should equal expected value"
+    );
+    assert_eq!(
+        ForgetReason::Privacy.to_string(),
+        "privacy",
+        "to_string( should equal expected value"
+    );
 }
 
 #[test]
@@ -358,11 +437,26 @@ fn epistemic_tier_display_roundtrip() {
 
 #[test]
 fn fact_default_stability_hours_known_types() {
-    assert!((default_stability_hours("identity") - 17520.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("preference") - 8760.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("skill") - 4380.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("relationship") - 2190.0).abs() < f64::EPSILON);
-    assert!((default_stability_hours("task") - 168.0).abs() < f64::EPSILON);
+    assert!(
+        (default_stability_hours("identity") - 17520.0).abs() < f64::EPSILON,
+        "assertion failed in fact default stability hours known types"
+    );
+    assert!(
+        (default_stability_hours("preference") - 8760.0).abs() < f64::EPSILON,
+        "assertion failed in fact default stability hours known types"
+    );
+    assert!(
+        (default_stability_hours("skill") - 4380.0).abs() < f64::EPSILON,
+        "assertion failed in fact default stability hours known types"
+    );
+    assert!(
+        (default_stability_hours("relationship") - 2190.0).abs() < f64::EPSILON,
+        "assertion failed in fact default stability hours known types"
+    );
+    assert!(
+        (default_stability_hours("task") - 168.0).abs() < f64::EPSILON,
+        "assertion failed in fact default stability hours known types"
+    );
     assert!(
         (default_stability_hours("completely_unknown_type") - 72.0).abs() < f64::EPSILON,
         "fallback for unknown fact types should be 72 hours (Observation)"
@@ -390,15 +484,15 @@ fn fact_diff_empty() {
         modified: vec![],
         removed: vec![],
     };
-    assert!(diff.added.is_empty());
-    assert!(diff.modified.is_empty());
-    assert!(diff.removed.is_empty());
+    assert!(diff.added.is_empty(), "added should be empty");
+    assert!(diff.modified.is_empty(), "modified should be empty");
+    assert!(diff.removed.is_empty(), "removed should be empty");
     let json = serde_json::to_string(&diff).expect("FactDiff serialization is infallible");
     let back: FactDiff =
         serde_json::from_str(&json).expect("FactDiff should deserialize from its own JSON");
-    assert!(back.added.is_empty());
-    assert!(back.modified.is_empty());
-    assert!(back.removed.is_empty());
+    assert!(back.added.is_empty(), "added should be empty");
+    assert!(back.modified.is_empty(), "modified should be empty");
+    assert!(back.removed.is_empty(), "removed should be empty");
 }
 
 #[test]
@@ -412,12 +506,29 @@ fn embedded_chunk_fields() {
         embedding: vec![1.0, 2.0, 3.0, 4.0],
         created_at: test_timestamp("2026-03-01T00:00:00Z"),
     };
-    assert_eq!(chunk.id.as_str(), "emb-42");
-    assert_eq!(chunk.content, "test content");
-    assert_eq!(chunk.source_type, "note");
-    assert_eq!(chunk.source_id, "note-7");
-    assert_eq!(chunk.nous_id, "syn");
-    assert_eq!(chunk.embedding.len(), 4);
+    assert_eq!(
+        chunk.id.as_str(),
+        "emb-42",
+        "chunk.id should equal expected value"
+    );
+    assert_eq!(
+        chunk.content, "test content",
+        "content should equal expected value"
+    );
+    assert_eq!(
+        chunk.source_type, "note",
+        "source_type should equal expected value"
+    );
+    assert_eq!(
+        chunk.source_id, "note-7",
+        "source_id should equal expected value"
+    );
+    assert_eq!(chunk.nous_id, "syn", "nous_id should equal expected value");
+    assert_eq!(
+        chunk.embedding.len(),
+        4,
+        "embedding length should equal expected value"
+    );
 }
 
 #[test]
@@ -470,7 +581,8 @@ fn fact_with_supersession() {
     };
     assert_eq!(
         fact.superseded_by.as_ref().map(FactId::as_str),
-        Some("f-new")
+        Some("f-new"),
+        "map(FactId::as_str should match Some(\"f-new\")",
     );
     let json = serde_json::to_string(&fact)
         .expect("Fact with superseded_by field serializes successfully");
@@ -478,7 +590,8 @@ fn fact_with_supersession() {
         .expect("Fact with superseded_by should deserialize from its own JSON");
     assert_eq!(
         back.superseded_by.as_ref().map(FactId::as_str),
-        Some("f-new")
+        Some("f-new"),
+        "map(FactId::as_str should match Some(\"f-new\")",
     );
 }
 
@@ -503,34 +616,48 @@ fn fact_with_session_source() {
         forgotten_at: None,
         forget_reason: None,
     };
-    assert_eq!(fact.source_session_id.as_deref(), Some("ses-abc-123"));
+    assert_eq!(
+        fact.source_session_id.as_deref(),
+        Some("ses-abc-123"),
+        "as_deref( should match Some(\"ses-abc-123\")"
+    );
     let json =
         serde_json::to_string(&fact).expect("Fact with source_session_id serializes successfully");
     let back: Fact = serde_json::from_str(&json)
         .expect("Fact with source_session_id should deserialize from its own JSON");
-    assert_eq!(back.source_session_id.as_deref(), Some("ses-abc-123"));
+    assert_eq!(
+        back.source_session_id.as_deref(),
+        Some("ses-abc-123"),
+        "as_deref( should match Some(\"ses-abc-123\")"
+    );
 }
 
 #[test]
 fn parse_timestamp_full() {
     let ts = parse_timestamp("2026-03-01T12:30:00Z");
-    assert!(ts.is_some());
+    assert!(ts.is_some(), "ts should be some");
 }
 
 #[test]
 fn parse_timestamp_date_only() {
     let ts = parse_timestamp("2026-03-01");
-    assert!(ts.is_some());
+    assert!(ts.is_some(), "ts should be some");
 }
 
 #[test]
 fn parse_timestamp_empty() {
-    assert!(parse_timestamp("").is_none());
+    assert!(
+        parse_timestamp("").is_none(),
+        "parse_timestamp(\"\") should be none"
+    );
 }
 
 #[test]
 fn parse_timestamp_invalid() {
-    assert!(parse_timestamp("not-a-date").is_none());
+    assert!(
+        parse_timestamp("not-a-date").is_none(),
+        "parse_timestamp(\"not-a-date\") should be none"
+    );
 }
 
 #[test]
@@ -538,15 +665,21 @@ fn format_timestamp_roundtrip() {
     let ts =
         parse_timestamp("2026-03-01T12:30:00Z").expect("valid ISO 8601 timestamp should parse");
     let s = format_timestamp(&ts);
-    assert_eq!(s, "2026-03-01T12:30:00Z");
+    assert_eq!(s, "2026-03-01T12:30:00Z", "s should equal expected value");
     let back = parse_timestamp(&s).expect("formatted timestamp should parse back");
-    assert_eq!(ts, back);
+    assert_eq!(ts, back, "ts should match back");
 }
 
 #[test]
 fn far_future_is_year_9999() {
     let ts = far_future();
     let s = format_timestamp(&ts);
-    assert!(s.starts_with("9999-01-01"));
-    assert!(is_far_future(&ts));
+    assert!(
+        s.starts_with("9999-01-01"),
+        "s should start with expected prefix"
+    );
+    assert!(
+        is_far_future(&ts),
+        "assertion failed in far future is year 9999"
+    );
 }

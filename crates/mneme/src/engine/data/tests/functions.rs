@@ -10,22 +10,30 @@ use crate::engine::data::value::{DataValue, RegexWrapper};
 
 #[test]
 fn op_add_sums_integers_and_floats() {
-    assert_eq!(op_add(&[]).expect("test assertion"), DataValue::from(0));
+    assert_eq!(
+        op_add(&[]).expect("test assertion"),
+        DataValue::from(0),
+        "expect(\"test assertion\" should match DataValue::from(0)"
+    );
     assert_eq!(
         op_add(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_add(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
-        DataValue::from(3)
+        DataValue::from(3),
+        "expect(\"test assertion\" should match DataValue::from(3)",
     );
     assert_eq!(
         op_add(&[DataValue::from(1), DataValue::from(2.5)]).expect("test assertion"),
-        DataValue::from(3.5)
+        DataValue::from(3.5),
+        "expect(\"test assertion\" should match DataValue::from(3.5)",
     );
     assert_eq!(
         op_add(&[DataValue::from(1.5), DataValue::from(2.5)]).expect("test assertion"),
-        DataValue::from(4.0)
+        DataValue::from(4.0),
+        "expect(\"test assertion\" should match DataValue::from(4.0)",
     );
 }
 
@@ -33,32 +41,42 @@ fn op_add_sums_integers_and_floats() {
 fn test_sub() {
     assert_eq!(
         op_sub(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
-        DataValue::from(-1)
+        DataValue::from(-1),
+        "expect(\"test assertion\" should match DataValue::from(-1)",
     );
     assert_eq!(
         op_sub(&[DataValue::from(1), DataValue::from(2.5)]).expect("test assertion"),
-        DataValue::from(-1.5)
+        DataValue::from(-1.5),
+        "expect(\"test assertion\" should match DataValue::from(-1.5)",
     );
     assert_eq!(
         op_sub(&[DataValue::from(1.5), DataValue::from(2.5)]).expect("test assertion"),
-        DataValue::from(-1.0)
+        DataValue::from(-1.0),
+        "expect(\"test assertion\" should match DataValue::from(-1.0)",
     );
 }
 
 #[test]
 fn test_mul() {
-    assert_eq!(op_mul(&[]).expect("test assertion"), DataValue::from(1));
+    assert_eq!(
+        op_mul(&[]).expect("test assertion"),
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)"
+    );
     assert_eq!(
         op_mul(&[DataValue::from(2), DataValue::from(3)]).expect("test assertion"),
-        DataValue::from(6)
+        DataValue::from(6),
+        "expect(\"test assertion\" should match DataValue::from(6)",
     );
     assert_eq!(
         op_mul(&[DataValue::from(0.5), DataValue::from(0.25)]).expect("test assertion"),
-        DataValue::from(0.125)
+        DataValue::from(0.125),
+        "expect(\"test assertion\" should match 125",
     );
     assert_eq!(
         op_mul(&[DataValue::from(0.5), DataValue::from(3)]).expect("test assertion"),
-        DataValue::from(1.5)
+        DataValue::from(1.5),
+        "expect(\"test assertion\" should match DataValue::from(1.5)",
     );
 }
 
@@ -66,40 +84,51 @@ fn test_mul() {
 fn test_div() {
     assert_eq!(
         op_div(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
     assert_eq!(
         op_div(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
-        DataValue::from(0.5)
+        DataValue::from(0.5),
+        "expect(\"test assertion\" should match DataValue::from(0.5)",
     );
     assert_eq!(
         op_div(&[DataValue::from(7.0), DataValue::from(0.5)]).expect("test assertion"),
-        DataValue::from(14.0)
+        DataValue::from(14.0),
+        "expect(\"test assertion\" should match DataValue::from(14.0)",
     );
-    assert!(op_div(&[DataValue::from(1), DataValue::from(0)]).is_ok());
+    assert!(
+        op_div(&[DataValue::from(1), DataValue::from(0)]).is_ok(),
+        "result should be ok"
+    );
 }
 
 #[test]
 fn test_eq_neq() {
     assert_eq!(
         op_eq(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_eq(&[DataValue::from(123), DataValue::from(123)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_neq(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_neq(&[DataValue::from(123), DataValue::from(123.0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_eq(&[DataValue::from(123), DataValue::from(123.1)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
 }
 
@@ -107,15 +136,18 @@ fn test_eq_neq() {
 fn test_list() {
     assert_eq!(
         op_list(&[]).expect("test assertion"),
-        DataValue::List(vec![])
+        DataValue::List(vec![]),
+        "expect(\"test assertion\" should match DataValue::List(vec![])",
     );
     assert_eq!(
         op_list(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::List(vec![DataValue::from(1)])
+        DataValue::List(vec![DataValue::from(1)]),
+        "expect(\"test assertion\" should match result",
     );
     assert_eq!(
         op_list(&[DataValue::from(1), DataValue::List(vec![])]).expect("test assertion"),
-        DataValue::List(vec![DataValue::from(1), DataValue::List(vec![])])
+        DataValue::List(vec![DataValue::from(1), DataValue::List(vec![])]),
+        "expect(\"test assertion\" should match result",
     );
 }
 
@@ -127,7 +159,8 @@ fn test_is_in() {
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)])
         ])
         .expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_in(&[
@@ -135,11 +168,13 @@ fn test_is_in() {
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)])
         ])
         .expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_in(&[DataValue::from(3), DataValue::List(vec![])]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
 }
 
@@ -147,112 +182,149 @@ fn test_is_in() {
 fn test_comparators() {
     assert_eq!(
         op_ge(&[DataValue::from(2), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_ge(&[DataValue::from(2.), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_ge(&[DataValue::from(2), DataValue::from(1.)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
 
     assert_eq!(
         op_ge(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_ge(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_ge(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
-    assert!(op_ge(&[DataValue::Null, DataValue::from(true)]).is_err());
+    assert!(
+        op_ge(&[DataValue::Null, DataValue::from(true)]).is_err(),
+        "result should be err"
+    );
     assert_eq!(
         op_gt(&[DataValue::from(2), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_gt(&[DataValue::from(2.), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_gt(&[DataValue::from(2), DataValue::from(1.)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_gt(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_gt(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_gt(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
-    assert!(op_gt(&[DataValue::Null, DataValue::from(true)]).is_err());
+    assert!(
+        op_gt(&[DataValue::Null, DataValue::from(true)]).is_err(),
+        "result should be err"
+    );
     assert_eq!(
         op_le(&[DataValue::from(2), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_le(&[DataValue::from(2.), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_le(&[DataValue::from(2), DataValue::from(1.)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_le(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_le(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_le(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
-    assert!(op_le(&[DataValue::Null, DataValue::from(true)]).is_err());
+    assert!(
+        op_le(&[DataValue::Null, DataValue::from(true)]).is_err(),
+        "result should be err"
+    );
     assert_eq!(
         op_lt(&[DataValue::from(2), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_lt(&[DataValue::from(2.), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_lt(&[DataValue::from(2), DataValue::from(1.)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_lt(&[DataValue::from(1), DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_lt(&[DataValue::from(1), DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_lt(&[DataValue::from(1), DataValue::from(2)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
-    assert!(op_lt(&[DataValue::Null, DataValue::from(true)]).is_err());
+    assert!(
+        op_lt(&[DataValue::Null, DataValue::from(true)]).is_err(),
+        "result should be err"
+    );
 }
 
 #[test]
 fn test_max_min() {
     assert_eq!(
         op_max(&[DataValue::from(1),]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_max(&[
@@ -262,7 +334,8 @@ fn test_max_min() {
             DataValue::from(4)
         ])
         .expect("test assertion"),
-        DataValue::from(4)
+        DataValue::from(4),
+        "expect(\"test assertion\" should match DataValue::from(4)",
     );
     assert_eq!(
         op_max(&[
@@ -272,7 +345,8 @@ fn test_max_min() {
             DataValue::from(4)
         ])
         .expect("test assertion"),
-        DataValue::from(4)
+        DataValue::from(4),
+        "expect(\"test assertion\" should match DataValue::from(4)",
     );
     assert_eq!(
         op_max(&[
@@ -282,13 +356,18 @@ fn test_max_min() {
             DataValue::from(4.0)
         ])
         .expect("test assertion"),
-        DataValue::from(4.0)
+        DataValue::from(4.0),
+        "expect(\"test assertion\" should match DataValue::from(4.0)",
     );
-    assert!(op_max(&[DataValue::from(true)]).is_err());
+    assert!(
+        op_max(&[DataValue::from(true)]).is_err(),
+        "op_max(&[DataValue::from(true)]) should be err"
+    );
 
     assert_eq!(
         op_min(&[DataValue::from(1),]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_min(&[
@@ -298,7 +377,8 @@ fn test_max_min() {
             DataValue::from(4)
         ])
         .expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_min(&[
@@ -308,7 +388,8 @@ fn test_max_min() {
             DataValue::from(4)
         ])
         .expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
     assert_eq!(
         op_min(&[
@@ -318,28 +399,36 @@ fn test_max_min() {
             DataValue::from(4.0)
         ])
         .expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
-    assert!(op_max(&[DataValue::from(true)]).is_err());
+    assert!(
+        op_max(&[DataValue::from(true)]).is_err(),
+        "op_max(&[DataValue::from(true)]) should be err"
+    );
 }
 
 #[test]
 fn test_minus() {
     assert_eq!(
         op_minus(&[DataValue::from(-1)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_minus(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(-1)
+        DataValue::from(-1),
+        "expect(\"test assertion\" should match DataValue::from(-1)",
     );
     assert_eq!(
         op_minus(&[DataValue::from(f64::INFINITY)]).expect("test assertion"),
-        DataValue::from(f64::NEG_INFINITY)
+        DataValue::from(f64::NEG_INFINITY),
+        "expect(\"test assertion\" should match result",
     );
     assert_eq!(
         op_minus(&[DataValue::from(f64::NEG_INFINITY)]).expect("test assertion"),
-        DataValue::from(f64::INFINITY)
+        DataValue::from(f64::INFINITY),
+        "expect(\"test assertion\" should match DataValue::from(f64::INFINITY)",
     );
 }
 
@@ -347,15 +436,18 @@ fn test_minus() {
 fn test_abs() {
     assert_eq!(
         op_abs(&[DataValue::from(-1)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_abs(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_abs(&[DataValue::from(-1.5)]).expect("test assertion"),
-        DataValue::from(1.5)
+        DataValue::from(1.5),
+        "expect(\"test assertion\" should match DataValue::from(1.5)",
     );
 }
 
@@ -363,34 +455,41 @@ fn test_abs() {
 fn test_signum() {
     assert_eq!(
         op_signum(&[DataValue::from(0.1)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_signum(&[DataValue::from(-0.1)]).expect("test assertion"),
-        DataValue::from(-1)
+        DataValue::from(-1),
+        "expect(\"test assertion\" should match DataValue::from(-1)",
     );
     assert_eq!(
         op_signum(&[DataValue::from(0.0)]).expect("test assertion"),
-        DataValue::from(0)
+        DataValue::from(0),
+        "expect(\"test assertion\" should match DataValue::from(0)",
     );
     assert_eq!(
         op_signum(&[DataValue::from(-0.0)]).expect("test assertion"),
-        DataValue::from(-1)
+        DataValue::from(-1),
+        "expect(\"test assertion\" should match DataValue::from(-1)",
     );
     assert_eq!(
         op_signum(&[DataValue::from(-3)]).expect("test assertion"),
-        DataValue::from(-1)
+        DataValue::from(-1),
+        "expect(\"test assertion\" should match DataValue::from(-1)",
     );
     assert_eq!(
         op_signum(&[DataValue::from(f64::NEG_INFINITY)]).expect("test assertion"),
-        DataValue::from(-1)
+        DataValue::from(-1),
+        "expect(\"test assertion\" should match DataValue::from(-1)",
     );
     assert!(
         op_signum(&[DataValue::from(f64::NAN)])
             .expect("test assertion")
             .get_float()
             .expect("test assertion")
-            .is_nan()
+            .is_nan(),
+        "expect(\"test assertion\" should be nan",
     );
 }
 
@@ -398,27 +497,33 @@ fn test_signum() {
 fn test_floor_ceil() {
     assert_eq!(
         op_floor(&[DataValue::from(-1)]).expect("test assertion"),
-        DataValue::from(-1)
+        DataValue::from(-1),
+        "expect(\"test assertion\" should match DataValue::from(-1)",
     );
     assert_eq!(
         op_floor(&[DataValue::from(-1.5)]).expect("test assertion"),
-        DataValue::from(-2.0)
+        DataValue::from(-2.0),
+        "expect(\"test assertion\" should match DataValue::from(-2.0)",
     );
     assert_eq!(
         op_floor(&[DataValue::from(1.5)]).expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
     assert_eq!(
         op_ceil(&[DataValue::from(-1)]).expect("test assertion"),
-        DataValue::from(-1)
+        DataValue::from(-1),
+        "expect(\"test assertion\" should match DataValue::from(-1)",
     );
     assert_eq!(
         op_ceil(&[DataValue::from(-1.5)]).expect("test assertion"),
-        DataValue::from(-1.0)
+        DataValue::from(-1.0),
+        "expect(\"test assertion\" should match DataValue::from(-1.0)",
     );
     assert_eq!(
         op_ceil(&[DataValue::from(1.5)]).expect("test assertion"),
-        DataValue::from(2.0)
+        DataValue::from(2.0),
+        "expect(\"test assertion\" should match DataValue::from(2.0)",
     );
 }
 
@@ -426,27 +531,33 @@ fn test_floor_ceil() {
 fn test_round() {
     assert_eq!(
         op_round(&[DataValue::from(0.6)]).expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
     assert_eq!(
         op_round(&[DataValue::from(0.5)]).expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
     assert_eq!(
         op_round(&[DataValue::from(1.5)]).expect("test assertion"),
-        DataValue::from(2.0)
+        DataValue::from(2.0),
+        "expect(\"test assertion\" should match DataValue::from(2.0)",
     );
     assert_eq!(
         op_round(&[DataValue::from(-0.6)]).expect("test assertion"),
-        DataValue::from(-1.0)
+        DataValue::from(-1.0),
+        "expect(\"test assertion\" should match DataValue::from(-1.0)",
     );
     assert_eq!(
         op_round(&[DataValue::from(-0.5)]).expect("test assertion"),
-        DataValue::from(-1.0)
+        DataValue::from(-1.0),
+        "expect(\"test assertion\" should match DataValue::from(-1.0)",
     );
     assert_eq!(
         op_round(&[DataValue::from(-1.5)]).expect("test assertion"),
-        DataValue::from(-2.0)
+        DataValue::from(-2.0),
+        "expect(\"test assertion\" should match DataValue::from(-2.0)",
     );
 }
 
@@ -456,13 +567,16 @@ fn test_exp() {
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!(((n) - (E)).abs() < 1E-5);
+    assert!(((n) - (E)).abs() < 1E-5, "abs( should be less than 1");
 
     let n = op_exp(&[DataValue::from(50.1)])
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!(((n) - (50.1_f64.exp())).abs() < 1E-5);
+    assert!(
+        ((n) - (50.1_f64.exp())).abs() < 1E-5,
+        "abs( should be less than 1"
+    );
 }
 
 #[test]
@@ -471,14 +585,15 @@ fn test_exp2() {
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert_eq!(n, 1024.);
+    assert_eq!(n, 1024., "n should match 1024.");
 }
 
 #[test]
 fn test_ln() {
     assert_eq!(
         op_ln(&[DataValue::from(E)]).expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
 }
 
@@ -486,7 +601,8 @@ fn test_ln() {
 fn test_log2() {
     assert_eq!(
         op_log2(&[DataValue::from(1024)]).expect("test assertion"),
-        DataValue::from(10.)
+        DataValue::from(10.),
+        "expect(\"test assertion\" should match DataValue::from(10.)",
     );
 }
 
@@ -494,7 +610,8 @@ fn test_log2() {
 fn test_log10() {
     assert_eq!(
         op_log10(&[DataValue::from(1000)]).expect("test assertion"),
-        DataValue::from(3.0)
+        DataValue::from(3.0),
+        "expect(\"test assertion\" should match DataValue::from(3.0)",
     );
 }
 
@@ -504,17 +621,17 @@ fn test_trig() {
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!((v - 1.0).abs() < 1e-5);
+    assert!((v - 1.0).abs() < 1e-5, "abs( should be less than 1");
     let v = op_cos(&[DataValue::from(PI / 2.)])
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!((v - 0.0).abs() < 1e-5);
+    assert!((v - 0.0).abs() < 1e-5, "abs( should be less than 1");
     let v = op_tan(&[DataValue::from(PI / 4.)])
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!((v - 1.0).abs() < 1e-5);
+    assert!((v - 1.0).abs() < 1e-5, "abs( should be less than 1");
 }
 
 #[test]
@@ -523,29 +640,33 @@ fn test_inv_trig() {
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!((v - PI / 2.).abs() < 1e-5);
+    assert!((v - PI / 2.).abs() < 1e-5, "abs( should be less than 1");
     let v = op_acos(&[DataValue::from(0)])
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!((v - PI / 2.).abs() < 1e-5);
+    assert!((v - PI / 2.).abs() < 1e-5, "abs( should be less than 1");
     let v = op_atan(&[DataValue::from(1)])
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!((v - PI / 4.).abs() < 1e-5);
+    assert!((v - PI / 4.).abs() < 1e-5, "abs( should be less than 1");
     let v = op_atan2(&[DataValue::from(-1), DataValue::from(-1)])
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!((v - (-3. * PI / 4.)).abs() < 1e-5);
+    assert!(
+        (v - (-3. * PI / 4.)).abs() < 1e-5,
+        "abs( should be less than 1"
+    );
 }
 
 #[test]
 fn test_pow() {
     assert_eq!(
         op_pow(&[DataValue::from(2), DataValue::from(10)]).expect("test assertion"),
-        DataValue::from(1024.0)
+        DataValue::from(1024.0),
+        "expect(\"test assertion\" should match DataValue::from(1024.0)",
     );
 }
 
@@ -553,29 +674,53 @@ fn test_pow() {
 fn test_mod() {
     assert_eq!(
         op_mod(&[DataValue::from(-10), DataValue::from(7)]).expect("test assertion"),
-        DataValue::from(-3)
+        DataValue::from(-3),
+        "expect(\"test assertion\" should match DataValue::from(-3)",
     );
-    assert!(op_mod(&[DataValue::from(5), DataValue::from(0.)]).is_ok());
-    assert!(op_mod(&[DataValue::from(5.), DataValue::from(0.)]).is_ok());
-    assert!(op_mod(&[DataValue::from(5.), DataValue::from(0)]).is_ok());
-    assert!(op_mod(&[DataValue::from(5), DataValue::from(0)]).is_err());
+    assert!(
+        op_mod(&[DataValue::from(5), DataValue::from(0.)]).is_ok(),
+        ")] should be ok"
+    );
+    assert!(
+        op_mod(&[DataValue::from(5.), DataValue::from(0.)]).is_ok(),
+        ")] should be ok"
+    );
+    assert!(
+        op_mod(&[DataValue::from(5.), DataValue::from(0)]).is_ok(),
+        "), DataValue::from(0)] should be ok"
+    );
+    assert!(
+        op_mod(&[DataValue::from(5), DataValue::from(0)]).is_err(),
+        "result should be err"
+    );
 }
 
 #[test]
 fn test_boolean() {
-    assert_eq!(op_and(&[]).expect("test assertion"), DataValue::from(true));
+    assert_eq!(
+        op_and(&[]).expect("test assertion"),
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)"
+    );
     assert_eq!(
         op_and(&[DataValue::from(true), DataValue::from(false)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
-    assert_eq!(op_or(&[]).expect("test assertion"), DataValue::from(false));
+    assert_eq!(
+        op_or(&[]).expect("test assertion"),
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)"
+    );
     assert_eq!(
         op_or(&[DataValue::from(true), DataValue::from(false)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_negate(&[DataValue::from(false)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
 }
 
@@ -587,7 +732,8 @@ fn test_bits() {
             DataValue::Bytes([0b010101].into())
         ])
         .expect("test assertion"),
-        DataValue::Bytes([0b010000].into())
+        DataValue::Bytes([0b010000].into()),
+        "expect(\"test assertion\" should match into(",
     );
     assert_eq!(
         op_bit_or(&[
@@ -595,11 +741,13 @@ fn test_bits() {
             DataValue::Bytes([0b010101].into())
         ])
         .expect("test assertion"),
-        DataValue::Bytes([0b111101].into())
+        DataValue::Bytes([0b111101].into()),
+        "expect(\"test assertion\" should match into(",
     );
     assert_eq!(
         op_bit_not(&[DataValue::Bytes([0b00111000].into())]).expect("test assertion"),
-        DataValue::Bytes([0b11000111].into())
+        DataValue::Bytes([0b11000111].into()),
+        "expect(\"test assertion\" should match into(",
     );
     assert_eq!(
         op_bit_xor(&[
@@ -607,7 +755,8 @@ fn test_bits() {
             DataValue::Bytes([0b010101].into())
         ])
         .expect("test assertion"),
-        DataValue::Bytes([0b101101].into())
+        DataValue::Bytes([0b101101].into()),
+        "expect(\"test assertion\" should match into(",
     );
 }
 
@@ -615,7 +764,8 @@ fn test_bits() {
 fn test_pack_bits() {
     assert_eq!(
         op_pack_bits(&[DataValue::List(vec![DataValue::from(true)])]).expect("test assertion"),
-        DataValue::Bytes([0b10000000].into())
+        DataValue::Bytes([0b10000000].into()),
+        "expect(\"test assertion\" should match into(",
     )
 }
 
@@ -628,7 +778,8 @@ fn test_unpack_bits() {
                 .into_iter()
                 .map(DataValue::Bool)
                 .collect()
-        )
+        ),
+        "expect(\"test assertion\" should match collect() ",
     )
 }
 
@@ -637,7 +788,8 @@ fn test_concat() {
     assert_eq!(
         op_concat(&[DataValue::Str("abc".into()), DataValue::Str("def".into())])
             .expect("test assertion"),
-        DataValue::Str("abcdef".into())
+        DataValue::Str("abcdef".into()),
+        "expect(\"test assertion\" should match into(",
     );
 
     assert_eq!(
@@ -650,7 +802,8 @@ fn test_concat() {
             DataValue::from(true),
             DataValue::from(false),
             DataValue::from(true),
-        ])
+        ]),
+        "expect(\"test assertion\" should match result",
     );
 }
 
@@ -662,12 +815,14 @@ fn test_str_includes() {
             DataValue::Str("bcd".into())
         ])
         .expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_str_includes(&[DataValue::Str("abcdef".into()), DataValue::Str("bd".into())])
             .expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
 }
 
@@ -675,11 +830,13 @@ fn test_str_includes() {
 fn test_casings() {
     assert_eq!(
         op_lowercase(&[DataValue::Str("NAÏVE".into())]).expect("test assertion"),
-        DataValue::Str("naïve".into())
+        DataValue::Str("naïve".into()),
+        "expect(\"test assertion\" should match into(",
     );
     assert_eq!(
         op_uppercase(&[DataValue::Str("naïve".into())]).expect("test assertion"),
-        DataValue::Str("NAÏVE".into())
+        DataValue::Str("NAÏVE".into()),
+        "expect(\"test assertion\" should match into(",
     );
 }
 
@@ -687,15 +844,18 @@ fn test_casings() {
 fn test_trim() {
     assert_eq!(
         op_trim(&[DataValue::Str(" a ".into())]).expect("test assertion"),
-        DataValue::Str("a".into())
+        DataValue::Str("a".into()),
+        "expect(\"test assertion\" should match into(",
     );
     assert_eq!(
         op_trim_start(&[DataValue::Str(" a ".into())]).expect("test assertion"),
-        DataValue::Str("a ".into())
+        DataValue::Str("a ".into()),
+        "expect(\"test assertion\" should match into(",
     );
     assert_eq!(
         op_trim_end(&[DataValue::Str(" a ".into())]).expect("test assertion"),
-        DataValue::Str(" a".into())
+        DataValue::Str(" a".into()),
+        "expect(\"test assertion\" should match into(",
     );
 }
 
@@ -707,12 +867,14 @@ fn test_starts_ends_with() {
             DataValue::Str("abc".into())
         ])
         .expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_starts_with(&[DataValue::Str("abcdef".into()), DataValue::Str("bc".into())])
             .expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_ends_with(&[
@@ -720,12 +882,14 @@ fn test_starts_ends_with() {
             DataValue::Str("def".into())
         ])
         .expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_ends_with(&[DataValue::Str("abcdef".into()), DataValue::Str("bc".into())])
             .expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
 }
 
@@ -737,7 +901,8 @@ fn test_regex() {
             DataValue::Regex(RegexWrapper(Regex::new("c.e").expect("test assertion")))
         ])
         .expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
 
     assert_eq!(
@@ -746,7 +911,8 @@ fn test_regex() {
             DataValue::Regex(RegexWrapper(Regex::new("c.ef$").expect("test assertion")))
         ])
         .expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
 
     assert_eq!(
@@ -755,7 +921,8 @@ fn test_regex() {
             DataValue::Regex(RegexWrapper(Regex::new("c.e$").expect("test assertion")))
         ])
         .expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
 
     assert_eq!(
@@ -765,7 +932,8 @@ fn test_regex() {
             DataValue::Str("x".into())
         ])
         .expect("test assertion"),
-        DataValue::Str("axcdef".into())
+        DataValue::Str("axcdef".into()),
+        "expect(\"test assertion\" should match into(",
     );
 
     assert_eq!(
@@ -775,7 +943,8 @@ fn test_regex() {
             DataValue::Str("x".into())
         ])
         .expect("test assertion"),
-        DataValue::Str("axcdxf".into())
+        DataValue::Str("axcdxf".into()),
+        "expect(\"test assertion\" should match into(",
     );
     assert_eq!(
         op_regex_extract(&[
@@ -790,7 +959,8 @@ fn test_regex() {
             DataValue::Str("e".into()),
             DataValue::Str("f".into()),
             DataValue::Str("GH".into()),
-        ])
+        ]),
+        "expect(\"test assertion\" should match into()), ]",
     );
     assert_eq!(
         op_regex_extract_first(&[
@@ -808,7 +978,8 @@ fn test_regex() {
             DataValue::Regex(RegexWrapper(Regex::new("xyz").expect("test assertion")))
         ])
         .expect("test assertion"),
-        DataValue::List(vec![])
+        DataValue::List(vec![]),
+        "expect(\"test assertion\" should match DataValue::List(vec![])",
     );
 
     assert_eq!(
@@ -817,7 +988,8 @@ fn test_regex() {
             DataValue::Regex(RegexWrapper(Regex::new("xyz").expect("test assertion")))
         ])
         .expect("test assertion"),
-        DataValue::Null
+        DataValue::Null,
+        "expect(\"test assertion\" should equal expected value",
     );
 }
 
@@ -825,107 +997,133 @@ fn test_regex() {
 fn test_predicates() {
     assert_eq!(
         op_is_null(&[DataValue::Null]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_null(&[DataValue::Bot]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_int(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_int(&[DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_float(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_float(&[DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_num(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_num(&[DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_num(&[DataValue::Null]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_bytes(&[DataValue::Bytes([0b1].into())]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_bytes(&[DataValue::Null]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_list(&[DataValue::List(vec![])]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_list(&[DataValue::Null]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_string(&[DataValue::Str("".into())]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_string(&[DataValue::Null]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_finite(&[DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_finite(&[DataValue::from(f64::INFINITY)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_finite(&[DataValue::from(f64::NAN)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_infinite(&[DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_infinite(&[DataValue::from(f64::INFINITY)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_infinite(&[DataValue::from(f64::NEG_INFINITY)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_is_infinite(&[DataValue::from(f64::NAN)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_nan(&[DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_nan(&[DataValue::from(f64::INFINITY)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_nan(&[DataValue::from(f64::NEG_INFINITY)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_is_nan(&[DataValue::from(f64::NAN)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
 }
 
@@ -961,15 +1159,18 @@ fn test_prepend_append() {
 fn test_length() {
     assert_eq!(
         op_length(&[DataValue::Str("abc".into())]).expect("test assertion"),
-        DataValue::from(3)
+        DataValue::from(3),
+        "expect(\"test assertion\" should match DataValue::from(3)",
     );
     assert_eq!(
         op_length(&[DataValue::List(vec![])]).expect("test assertion"),
-        DataValue::from(0)
+        DataValue::from(0),
+        "expect(\"test assertion\" should match DataValue::from(0)",
     );
     assert_eq!(
         op_length(&[DataValue::Bytes([].into())]).expect("test assertion"),
-        DataValue::from(0)
+        DataValue::from(0),
+        "expect(\"test assertion\" should match DataValue::from(0)",
     );
 }
 
@@ -978,7 +1179,8 @@ fn test_unicode_normalize() {
     assert_eq!(
         op_unicode_normalize(&[DataValue::Str("abc".into()), DataValue::Str("nfc".into())])
             .expect("test assertion"),
-        DataValue::Str("abc".into())
+        DataValue::Str("abc".into()),
+        "expect(\"test assertion\" should match into(",
     )
 }
 
@@ -997,7 +1199,8 @@ fn test_sort_reverse() {
             DataValue::from(1),
             DataValue::from(2),
             DataValue::from(2.0),
-        ])
+        ]),
+        "expect(\"test assertion\" should match 0), ]",
     );
     assert_eq!(
         op_reverse(&[DataValue::List(vec![
@@ -1012,7 +1215,8 @@ fn test_sort_reverse() {
             DataValue::from(2),
             DataValue::from(1),
             DataValue::from(2.0),
-        ])
+        ]),
+        "expect(\"test assertion\" should match 0), ]",
     )
 }
 
@@ -1027,7 +1231,7 @@ fn test_haversine() {
     .expect("test assertion")
     .get_float()
     .expect("test assertion");
-    assert!(((d) - (PI)).abs() < 1e-5);
+    assert!(((d) - (PI)).abs() < 1e-5, "abs( should be less than 1");
 
     let d = op_haversine_deg_input(&[
         DataValue::from(90),
@@ -1038,7 +1242,7 @@ fn test_haversine() {
     .expect("test assertion")
     .get_float()
     .expect("test assertion");
-    assert!(((d) - (PI / 2.)).abs() < 1e-5);
+    assert!(((d) - (PI / 2.)).abs() < 1e-5, "abs( should be less than 1");
 
     let d = op_haversine(&[
         DataValue::from(0),
@@ -1049,18 +1253,20 @@ fn test_haversine() {
     .expect("test assertion")
     .get_float()
     .expect("test assertion");
-    assert!(((d) - (PI)).abs() < 1e-5);
+    assert!(((d) - (PI)).abs() < 1e-5, "abs( should be less than 1");
 }
 
 #[test]
 fn test_deg_rad() {
     assert_eq!(
         op_deg_to_rad(&[DataValue::from(180)]).expect("test assertion"),
-        DataValue::from(PI)
+        DataValue::from(PI),
+        "expect(\"test assertion\" should match DataValue::from(PI)",
     );
     assert_eq!(
         op_rad_to_deg(&[DataValue::from(PI)]).expect("test assertion"),
-        DataValue::from(180.0)
+        DataValue::from(180.0),
+        "expect(\"test assertion\" should match DataValue::from(180.0)",
     );
 }
 
@@ -1110,7 +1316,8 @@ fn test_chunks() {
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)]),
             DataValue::List(vec![DataValue::from(3), DataValue::from(4)]),
             DataValue::List(vec![DataValue::from(5)]),
-        ])
+        ]),
+        "expect(\"test assertion\" should match result",
     );
     assert_eq!(
         op_chunks_exact(&[
@@ -1127,7 +1334,8 @@ fn test_chunks() {
         DataValue::List(vec![
             DataValue::List(vec![DataValue::from(1), DataValue::from(2)]),
             DataValue::List(vec![DataValue::from(3), DataValue::from(4)]),
-        ])
+        ]),
+        "expect(\"test assertion\" should match result",
     );
     assert_eq!(
         op_windows(&[
@@ -1157,13 +1365,17 @@ fn test_chunks() {
                 DataValue::from(4),
                 DataValue::from(5),
             ]),
-        ])
+        ]),
+        "expect(\"test assertion\" should match result",
     )
 }
 
 #[test]
 fn test_get() {
-    assert!(op_get(&[DataValue::List(vec![]), DataValue::from(0)]).is_err());
+    assert!(
+        op_get(&[DataValue::List(vec![]), DataValue::from(0)]).is_err(),
+        "result should be err"
+    );
     assert_eq!(
         op_get(&[
             DataValue::List(vec![
@@ -1174,11 +1386,13 @@ fn test_get() {
             DataValue::from(1)
         ])
         .expect("test assertion"),
-        DataValue::from(2)
+        DataValue::from(2),
+        "expect(\"test assertion\" should match DataValue::from(2)",
     );
     assert_eq!(
         op_maybe_get(&[DataValue::List(vec![]), DataValue::from(0)]).expect("test assertion"),
-        DataValue::Null
+        DataValue::Null,
+        "expect(\"test assertion\" should equal expected value",
     );
     assert_eq!(
         op_maybe_get(&[
@@ -1190,7 +1404,8 @@ fn test_get() {
             DataValue::from(1)
         ])
         .expect("test assertion"),
-        DataValue::from(2)
+        DataValue::from(2),
+        "expect(\"test assertion\" should match DataValue::from(2)",
     );
 }
 
@@ -1206,7 +1421,8 @@ fn test_slice() {
             DataValue::from(1),
             DataValue::from(4)
         ])
-        .is_err()
+        .is_err(),
+        "result should be err",
     );
 
     assert!(
@@ -1219,7 +1435,8 @@ fn test_slice() {
             DataValue::from(1),
             DataValue::from(3)
         ])
-        .is_ok()
+        .is_ok(),
+        "result should be ok",
     );
 
     assert_eq!(
@@ -1233,7 +1450,8 @@ fn test_slice() {
             DataValue::from(-1)
         ])
         .expect("test assertion"),
-        DataValue::List(vec![DataValue::from(2)])
+        DataValue::List(vec![DataValue::from(2)]),
+        "expect(\"test assertion\" should match result",
     );
 }
 
@@ -1242,7 +1460,8 @@ fn test_chars() {
     assert_eq!(
         op_from_substrings(&[op_chars(&[DataValue::Str("abc".into())]).expect("test assertion")])
             .expect("test assertion"),
-        DataValue::Str("abc".into())
+        DataValue::Str("abc".into()),
+        "expect(\"test assertion\" should match into(",
     )
 }
 
@@ -1253,7 +1472,8 @@ fn test_encode_decode() {
             op_encode_base64(&[DataValue::Bytes([1, 2, 3].into())]).expect("test assertion")
         ])
         .expect("test assertion"),
-        DataValue::Bytes([1, 2, 3].into())
+        DataValue::Bytes([1, 2, 3].into()),
+        "expect(\"test assertion\" should match into(",
     )
 }
 
@@ -1261,7 +1481,8 @@ fn test_encode_decode() {
 fn test_to_string() {
     assert_eq!(
         op_to_string(&[DataValue::from(false)]).expect("test assertion"),
-        DataValue::Str("false".into())
+        DataValue::Str("false".into()),
+        "expect(\"test assertion\" should match into(",
     );
 }
 
@@ -1269,43 +1490,53 @@ fn test_to_string() {
 fn test_to_unity() {
     assert_eq!(
         op_to_unity(&[DataValue::Null]).expect("test assertion"),
-        DataValue::from(0)
+        DataValue::from(0),
+        "expect(\"test assertion\" should match DataValue::from(0)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::from(false)]).expect("test assertion"),
-        DataValue::from(0)
+        DataValue::from(0),
+        "expect(\"test assertion\" should match DataValue::from(0)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::from(true)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::from(10)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::from(f64::NAN)]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::Str("0".into())]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::Str("".into())]).expect("test assertion"),
-        DataValue::from(0)
+        DataValue::from(0),
+        "expect(\"test assertion\" should match DataValue::from(0)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::List(vec![])]).expect("test assertion"),
-        DataValue::from(0)
+        DataValue::from(0),
+        "expect(\"test assertion\" should match DataValue::from(0)",
     );
     assert_eq!(
         op_to_unity(&[DataValue::List(vec![DataValue::Null])]).expect("test assertion"),
-        DataValue::from(1)
+        DataValue::from(1),
+        "expect(\"test assertion\" should match DataValue::from(1)",
     );
 }
 
@@ -1313,51 +1544,60 @@ fn test_to_unity() {
 fn test_to_float() {
     assert_eq!(
         op_to_float(&[DataValue::Null]).expect("test assertion"),
-        DataValue::from(0.0)
+        DataValue::from(0.0),
+        "expect(\"test assertion\" should match DataValue::from(0.0)",
     );
     assert_eq!(
         op_to_float(&[DataValue::from(false)]).expect("test assertion"),
-        DataValue::from(0.0)
+        DataValue::from(0.0),
+        "expect(\"test assertion\" should match DataValue::from(0.0)",
     );
     assert_eq!(
         op_to_float(&[DataValue::from(true)]).expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
     assert_eq!(
         op_to_float(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
     assert_eq!(
         op_to_float(&[DataValue::from(1.0)]).expect("test assertion"),
-        DataValue::from(1.0)
+        DataValue::from(1.0),
+        "expect(\"test assertion\" should match DataValue::from(1.0)",
     );
     assert!(
         op_to_float(&[DataValue::Str("NAN".into())])
             .expect("test assertion")
             .get_float()
             .expect("test assertion")
-            .is_nan()
+            .is_nan(),
+        "expect(\"test assertion\" should be nan",
     );
     assert!(
         op_to_float(&[DataValue::Str("INF".into())])
             .expect("test assertion")
             .get_float()
             .expect("test assertion")
-            .is_infinite()
+            .is_infinite(),
+        "expect(\"test assertion\" should be infinite",
     );
     assert!(
         op_to_float(&[DataValue::Str("NEG_INF".into())])
             .expect("test assertion")
             .get_float()
             .expect("test assertion")
-            .is_infinite()
+            .is_infinite(),
+        "expect(\"test assertion\" should be infinite",
     );
     assert_eq!(
         op_to_float(&[DataValue::Str("3".into())])
             .expect("test assertion")
             .get_float()
             .expect("test assertion"),
-        3.
+        3.,
+        "expect(\"test assertion\" should match 3.",
     );
 }
 
@@ -1367,30 +1607,37 @@ fn test_rand() {
         .expect("test assertion")
         .get_float()
         .expect("test assertion");
-    assert!(n >= 0.);
-    assert!(n <= 1.);
+    assert!(n >= 0., "n should be at least 0");
+    assert!(n <= 1., "n should be at most 1");
     assert_eq!(
         op_rand_bernoulli(&[DataValue::from(0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_rand_bernoulli(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
-    assert!(op_rand_bernoulli(&[DataValue::from(2)]).is_err());
+    assert!(
+        op_rand_bernoulli(&[DataValue::from(2)]).is_err(),
+        "op_rand_bernoulli(&[DataValue::from(2)]) should be err"
+    );
     let n = op_rand_int(&[DataValue::from(100), DataValue::from(200)])
         .expect("test assertion")
         .get_int()
         .expect("test assertion");
-    assert!(n >= 100);
-    assert!(n <= 200);
+    assert!(n >= 100, "n should be at least 100");
+    assert!(n <= 200, "n should be at most 200");
     assert_eq!(
         op_rand_choose(&[DataValue::List(vec![])]).expect("test assertion"),
-        DataValue::Null
+        DataValue::Null,
+        "expect(\"test assertion\" should equal expected value",
     );
     assert_eq!(
         op_rand_choose(&[DataValue::List(vec![DataValue::from(123)])]).expect("test assertion"),
-        DataValue::from(123)
+        DataValue::from(123),
+        "expect(\"test assertion\" should match DataValue::from(123)",
     );
 }
 
@@ -1403,7 +1650,8 @@ fn test_set_ops() {
             DataValue::List([3, 4, 5].into_iter().map(DataValue::from).collect())
         ])
         .expect("test assertion"),
-        DataValue::List([1, 2, 3, 4, 5].into_iter().map(DataValue::from).collect())
+        DataValue::List([1, 2, 3, 4, 5].into_iter().map(DataValue::from).collect()),
+        "expect(\"test assertion\" should match collect(",
     );
     assert_eq!(
         op_intersection(&[
@@ -1417,7 +1665,8 @@ fn test_set_ops() {
             DataValue::List([3, 4, 5].into_iter().map(DataValue::from).collect())
         ])
         .expect("test assertion"),
-        DataValue::List([3, 4].into_iter().map(DataValue::from).collect())
+        DataValue::List([3, 4].into_iter().map(DataValue::from).collect()),
+        "expect(\"test assertion\" should match collect(",
     );
     assert_eq!(
         op_difference(&[
@@ -1431,7 +1680,8 @@ fn test_set_ops() {
             DataValue::List([3, 4, 5].into_iter().map(DataValue::from).collect())
         ])
         .expect("test assertion"),
-        DataValue::List([1, 6].into_iter().map(DataValue::from).collect())
+        DataValue::List([1, 6].into_iter().map(DataValue::from).collect()),
+        "expect(\"test assertion\" should match collect(",
     );
 }
 
@@ -1443,22 +1693,33 @@ fn test_uuid() {
         op_is_uuid(&[v4])
             .expect("test assertion")
             .get_bool()
-            .expect("test assertion")
+            .expect("test assertion"),
+        "assertion failed in uuid",
     );
     assert!(
         op_uuid_timestamp(&[v1])
             .expect("test assertion")
             .get_float()
-            .is_some()
+            .is_some(),
+        "get_float( should be some",
     );
-    assert!(op_to_uuid(&[DataValue::from("")]).is_err());
-    assert!(op_to_uuid(&[DataValue::from("f3b4958c-52a1-11e7-802a-010203040506")]).is_ok());
+    assert!(
+        op_to_uuid(&[DataValue::from("")]).is_err(),
+        "op_to_uuid(&[DataValue::from(\"\")]) should be err"
+    );
+    assert!(
+        op_to_uuid(&[DataValue::from("f3b4958c-52a1-11e7-802a-010203040506")]).is_ok(),
+        "result should be ok"
+    );
 }
 
 #[test]
 fn test_now() {
     let now = op_now(&[]).expect("test assertion");
-    assert!(matches!(now, DataValue::Num(_)));
+    assert!(
+        matches!(now, DataValue::Num(_)),
+        "value should match expected pattern"
+    );
     let s = op_format_timestamp(&[now]).expect("test assertion");
     let _dt = op_parse_timestamp(&[s]).expect("test assertion");
 }
@@ -1467,43 +1728,53 @@ fn test_now() {
 fn test_to_bool() {
     assert_eq!(
         op_to_bool(&[DataValue::Null]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::from(true)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::from(false)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::from(0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::from(0.0)]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::from(1)]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::from("")]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::from("a")]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::List(vec![])]).expect("test assertion"),
-        DataValue::from(false)
+        DataValue::from(false),
+        "expect(\"test assertion\" should match DataValue::from(false)",
     );
     assert_eq!(
         op_to_bool(&[DataValue::List(vec![DataValue::from(0)])]).expect("test assertion"),
-        DataValue::from(true)
+        DataValue::from(true),
+        "expect(\"test assertion\" should match DataValue::from(true)",
     );
 }
 
@@ -1514,17 +1785,29 @@ fn test_coalesce() {
         .run_default("?[a] := a = null ~ 1 ~ 2")
         .expect("test assertion")
         .rows;
-    assert_eq!(res[0][0], DataValue::from(1));
+    assert_eq!(
+        res[0][0],
+        DataValue::from(1),
+        "res[0][0] should match DataValue::from(1)"
+    );
     let res = db
         .run_default("?[a] := a = null ~ null ~ null")
         .expect("test assertion")
         .rows;
-    assert_eq!(res[0][0], DataValue::Null);
+    assert_eq!(
+        res[0][0],
+        DataValue::Null,
+        "res[0][0] should equal expected value"
+    );
     let res = db
         .run_default("?[a] := a = 2 ~ null ~ 1")
         .expect("test assertion")
         .rows;
-    assert_eq!(res[0][0], DataValue::from(2));
+    assert_eq!(
+        res[0][0],
+        DataValue::from(2),
+        "res[0][0] should match DataValue::from(2)"
+    );
 }
 
 #[test]
@@ -1534,15 +1817,27 @@ fn test_range() {
         .run_default("?[a] := a = int_range(1, 5)")
         .expect("test assertion")
         .into_json();
-    assert_eq!(res["rows"][0][0], json!([1, 2, 3, 4]));
+    assert_eq!(
+        res["rows"][0][0],
+        json!([1, 2, 3, 4]),
+        "res[\"rows\"][0][0] should match json!([1, 2, 3, 4])"
+    );
     let res = db
         .run_default("?[a] := a = int_range(5)")
         .expect("test assertion")
         .into_json();
-    assert_eq!(res["rows"][0][0], json!([0, 1, 2, 3, 4]));
+    assert_eq!(
+        res["rows"][0][0],
+        json!([0, 1, 2, 3, 4]),
+        "res[\"rows\"][0][0] should match json!([0, 1, 2, 3, 4])"
+    );
     let res = db
         .run_default("?[a] := a = int_range(15, 3, -2)")
         .expect("test assertion")
         .into_json();
-    assert_eq!(res["rows"][0][0], json!([15, 13, 11, 9, 7, 5]));
+    assert_eq!(
+        res["rows"][0][0],
+        json!([15, 13, 11, 9, 7, 5]),
+        "res[\"rows\"][0][0] should match json!([15, 13, 11, 9, 7, 5])"
+    );
 }

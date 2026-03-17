@@ -7,27 +7,55 @@ use super::*;
 #[test]
 fn loop_detector_no_loop() {
     let mut det = LoopDetector::new(3);
-    assert!(det.record("exec", "hash1").is_none());
-    assert!(det.record("read", "hash2").is_none());
-    assert!(det.record("exec", "hash3").is_none());
+    assert!(
+        det.record("exec", "hash1").is_none(),
+        "record(\"exec\", \"hash1\" should be none"
+    );
+    assert!(
+        det.record("read", "hash2").is_none(),
+        "record(\"read\", \"hash2\" should be none"
+    );
+    assert!(
+        det.record("exec", "hash3").is_none(),
+        "record(\"exec\", \"hash3\" should be none"
+    );
 }
 
 #[test]
 fn loop_detector_detects_repeat() {
     let mut det = LoopDetector::new(3);
-    assert!(det.record("exec", "same").is_none());
-    assert!(det.record("exec", "same").is_none());
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
     let result = det.record("exec", "same");
-    assert!(result.is_some());
-    assert_eq!(result.unwrap(), "exec:same");
+    assert!(result.is_some(), "result should be some");
+    assert_eq!(
+        result.unwrap(),
+        "exec:same",
+        "unwrap( should equal expected value"
+    );
 }
 
 #[test]
 fn loop_detector_different_inputs_ok() {
     let mut det = LoopDetector::new(3);
-    assert!(det.record("exec", "hash1").is_none());
-    assert!(det.record("exec", "hash2").is_none());
-    assert!(det.record("exec", "hash3").is_none());
+    assert!(
+        det.record("exec", "hash1").is_none(),
+        "record(\"exec\", \"hash1\" should be none"
+    );
+    assert!(
+        det.record("exec", "hash2").is_none(),
+        "record(\"exec\", \"hash2\" should be none"
+    );
+    assert!(
+        det.record("exec", "hash3").is_none(),
+        "record(\"exec\", \"hash3\" should be none"
+    );
     // Different hashes, no loop
 }
 
@@ -37,31 +65,52 @@ fn loop_detector_reset() {
     det.record("exec", "same");
     det.record("exec", "same");
     det.reset();
-    assert_eq!(det.call_count(), 0);
-    assert!(det.record("exec", "same").is_none()); // Reset cleared history
+    assert_eq!(
+        det.call_count(),
+        0,
+        "call_count( should equal expected value"
+    );
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    ); // Reset cleared history
 }
 
 #[test]
 fn loop_detector_threshold_4() {
     let mut det = LoopDetector::new(4);
-    assert!(det.record("exec", "same").is_none());
-    assert!(det.record("exec", "same").is_none());
-    assert!(det.record("exec", "same").is_none());
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
     // Not yet: threshold is 4
     let result = det.record("exec", "same");
-    assert!(result.is_some());
+    assert!(result.is_some(), "result should be some");
 }
 
 // --- Guard Result ---
 
 #[test]
 fn guard_result_equality() {
-    assert_eq!(GuardResult::Allow, GuardResult::Allow);
+    assert_eq!(
+        GuardResult::Allow,
+        GuardResult::Allow,
+        "GuardResult::Allow should equal expected value"
+    );
     assert_ne!(
         GuardResult::Allow,
         GuardResult::Rejected {
             reason: "test".to_owned()
-        }
+        },
+        "to_owned() }} should not equal GuardResult::Allow",
     );
 }
 
@@ -76,7 +125,11 @@ fn turn_usage_total() {
         cache_write_tokens: 200,
         llm_calls: 3,
     };
-    assert_eq!(usage.total_tokens(), 1500);
+    assert_eq!(
+        usage.total_tokens(),
+        1500,
+        "total_tokens( should equal expected value"
+    );
 }
 
 // --- Interaction Signal ---
@@ -85,9 +138,12 @@ fn turn_usage_total() {
 fn interaction_signal_serde() {
     let signal = InteractionSignal::CodeGeneration;
     let json = serde_json::to_string(&signal).unwrap();
-    assert_eq!(json, "\"code_generation\"");
+    assert_eq!(
+        json, "\"code_generation\"",
+        "json should equal expected value"
+    );
     let back: InteractionSignal = serde_json::from_str(&json).unwrap();
-    assert_eq!(back, signal);
+    assert_eq!(back, signal, "back should match signal");
 }
 
 // --- Pipeline Context ---
@@ -95,10 +151,17 @@ fn interaction_signal_serde() {
 #[test]
 fn pipeline_context_default() {
     let ctx = PipelineContext::default();
-    assert!(ctx.system_prompt.is_none());
-    assert!(ctx.messages.is_empty());
-    assert!(!ctx.needs_distillation);
-    assert_eq!(ctx.guard_result, GuardResult::Allow);
+    assert!(ctx.system_prompt.is_none(), "system_prompt should be none");
+    assert!(ctx.messages.is_empty(), "messages should be empty");
+    assert!(
+        !ctx.needs_distillation,
+        "needs_distillation should be false"
+    );
+    assert_eq!(
+        ctx.guard_result,
+        GuardResult::Allow,
+        "guard_result should equal expected value"
+    );
 }
 
 // --- Guard Result variants ---
@@ -108,9 +171,16 @@ fn guard_result_rate_limited() {
     let g = GuardResult::RateLimited {
         retry_after_ms: 5000,
     };
-    assert_ne!(g, GuardResult::Allow);
+    assert_ne!(
+        g,
+        GuardResult::Allow,
+        "g should not equal GuardResult::Allow"
+    );
     match g {
-        GuardResult::RateLimited { retry_after_ms } => assert_eq!(retry_after_ms, 5000),
+        GuardResult::RateLimited { retry_after_ms } => assert_eq!(
+            retry_after_ms, 5000,
+            "retry_after_ms should equal expected value"
+        ),
         _ => panic!("wrong variant"),
     }
 }
@@ -121,7 +191,9 @@ fn guard_result_loop_detected() {
         pattern: "exec:abc".to_owned(),
     };
     match g {
-        GuardResult::LoopDetected { pattern } => assert_eq!(pattern, "exec:abc"),
+        GuardResult::LoopDetected { pattern } => {
+            assert_eq!(pattern, "exec:abc", "pattern should equal expected value");
+        }
         _ => panic!("wrong variant"),
     }
 }
@@ -132,7 +204,9 @@ fn guard_result_rejected() {
         reason: "unsafe content".to_owned(),
     };
     match g {
-        GuardResult::Rejected { reason } => assert!(reason.contains("unsafe")),
+        GuardResult::Rejected { reason } => {
+            assert!(reason.contains("unsafe"), "reason should contain unsafe");
+        }
         _ => panic!("wrong variant"),
     }
 }
@@ -143,7 +217,7 @@ fn guard_result_rejected() {
 fn loop_detector_threshold_1() {
     let mut det = LoopDetector::new(1);
     let result = det.record("exec", "hash");
-    assert!(result.is_some());
+    assert!(result.is_some(), "result should be some");
 }
 
 #[test]
@@ -152,7 +226,11 @@ fn loop_detector_call_count_tracks() {
     det.record("a", "1");
     det.record("b", "2");
     det.record("c", "3");
-    assert_eq!(det.call_count(), 3);
+    assert_eq!(
+        det.call_count(),
+        3,
+        "call_count( should equal expected value"
+    );
 }
 
 #[test]
@@ -161,9 +239,18 @@ fn loop_detector_many_unique_then_repeat() {
     for i in 0..20 {
         det.record("tool", &format!("hash{i}"));
     }
-    assert!(det.record("exec", "same").is_none());
-    assert!(det.record("exec", "same").is_none());
-    assert!(det.record("exec", "same").is_some());
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
+    assert!(
+        det.record("exec", "same").is_some(),
+        "record(\"exec\", \"same\" should be some"
+    );
 }
 
 // --- Interaction Signal ---
@@ -181,7 +268,7 @@ fn all_interaction_signals_serde_roundtrip() {
     for signal in signals {
         let json = serde_json::to_string(&signal).unwrap();
         let back: InteractionSignal = serde_json::from_str(&json).unwrap();
-        assert_eq!(signal, back);
+        assert_eq!(signal, back, "signal should match back");
     }
 }
 
@@ -190,8 +277,12 @@ fn all_interaction_signals_serde_roundtrip() {
 #[test]
 fn turn_usage_default_is_zero() {
     let usage = TurnUsage::default();
-    assert_eq!(usage.total_tokens(), 0);
-    assert_eq!(usage.llm_calls, 0);
+    assert_eq!(
+        usage.total_tokens(),
+        0,
+        "total_tokens( should equal expected value"
+    );
+    assert_eq!(usage.llm_calls, 0, "llm_calls should equal expected value");
 }
 
 #[test]
@@ -205,7 +296,11 @@ fn turn_usage_serde_roundtrip() {
     };
     let json = serde_json::to_string(&usage).unwrap();
     let back: TurnUsage = serde_json::from_str(&json).unwrap();
-    assert_eq!(usage.total_tokens(), back.total_tokens());
+    assert_eq!(
+        usage.total_tokens(),
+        back.total_tokens(),
+        "total_tokens( should match total_tokens("
+    );
 }
 
 // --- Context assembly ---
@@ -237,11 +332,20 @@ async fn assemble_context_populates_pipeline() {
         .await
         .unwrap();
 
-    assert!(ctx.system_prompt.is_some());
+    assert!(ctx.system_prompt.is_some(), "system_prompt should be some");
     let prompt = ctx.system_prompt.unwrap();
-    assert!(prompt.contains("I am a test agent."));
-    assert!(prompt.contains("Test user."));
-    assert!(ctx.remaining_tokens > 0);
+    assert!(
+        prompt.contains("I am a test agent."),
+        "prompt should contain I am a test agent."
+    );
+    assert!(
+        prompt.contains("Test user."),
+        "prompt should contain Test user."
+    );
+    assert!(
+        ctx.remaining_tokens > 0,
+        "remaining_tokens should be greater than 0"
+    );
 }
 
 // --- run_pipeline ---
@@ -319,10 +423,19 @@ async fn run_pipeline_simple() {
     .await
     .expect("pipeline should succeed");
 
-    assert_eq!(result.content, "Hello from pipeline!");
-    assert!(result.tool_calls.is_empty());
-    assert_eq!(result.usage.llm_calls, 1);
-    assert_eq!(result.stop_reason, "end_turn");
+    assert_eq!(
+        result.content, "Hello from pipeline!",
+        "content should equal expected value"
+    );
+    assert!(result.tool_calls.is_empty(), "tool_calls should be empty");
+    assert_eq!(
+        result.usage.llm_calls, 1,
+        "llm_calls should equal expected value"
+    );
+    assert_eq!(
+        result.stop_reason, "end_turn",
+        "stop_reason should equal expected value"
+    );
 }
 
 // --- Loop Detector window cap ---
@@ -347,13 +460,21 @@ fn loop_detector_pattern_count_tracks_repetitions() {
     det.record("exec", "same");
     det.record("exec", "same");
     det.record("exec", "same");
-    assert_eq!(det.pattern_count(), 3);
+    assert_eq!(
+        det.pattern_count(),
+        3,
+        "pattern_count( should equal expected value"
+    );
 }
 
 #[test]
 fn loop_detector_pattern_count_zero_on_empty() {
     let det = LoopDetector::new(3);
-    assert_eq!(det.pattern_count(), 0);
+    assert_eq!(
+        det.pattern_count(),
+        0,
+        "pattern_count( should equal expected value"
+    );
 }
 
 #[test]
@@ -373,8 +494,14 @@ fn loop_detector_window_still_detects_loops() {
         det.record("tool", &format!("hash{i}"));
     }
     // Now trigger a loop within the window
-    assert!(det.record("exec", "same").is_none());
-    assert!(det.record("exec", "same").is_none());
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
+    assert!(
+        det.record("exec", "same").is_none(),
+        "record(\"exec\", \"same\" should be none"
+    );
     assert!(
         det.record("exec", "same").is_some(),
         "should detect loop even after window eviction"
@@ -387,11 +514,26 @@ fn loop_detector_window_still_detects_loops() {
 fn loop_detector_detects_ab_cycle() {
     // a, b, a, b, a, b: a 2-step cycle repeated 3 times should be detected
     let mut det = LoopDetector::new(3);
-    assert!(det.record("exec", "a").is_none());
-    assert!(det.record("exec", "b").is_none());
-    assert!(det.record("exec", "a").is_none());
-    assert!(det.record("exec", "b").is_none());
-    assert!(det.record("exec", "a").is_none());
+    assert!(
+        det.record("exec", "a").is_none(),
+        "record(\"exec\", \"a\" should be none"
+    );
+    assert!(
+        det.record("exec", "b").is_none(),
+        "record(\"exec\", \"b\" should be none"
+    );
+    assert!(
+        det.record("exec", "a").is_none(),
+        "record(\"exec\", \"a\" should be none"
+    );
+    assert!(
+        det.record("exec", "b").is_none(),
+        "record(\"exec\", \"b\" should be none"
+    );
+    assert!(
+        det.record("exec", "a").is_none(),
+        "record(\"exec\", \"a\" should be none"
+    );
     // Completing the 3rd repetition of the [exec:a, exec:b] cycle triggers detection
     let result = det.record("exec", "b");
     assert!(
@@ -405,7 +547,10 @@ fn loop_detector_non_repeating_interleaved_not_detected() {
     // Different tool signatures each time: no repeating pattern
     let mut det = LoopDetector::new(3);
     for i in 0..6 {
-        assert!(det.record("exec", &format!("hash{i}")).is_none());
+        assert!(
+            det.record("exec", &format!("hash{i}")).is_none(),
+            "record(\"exec\", &format!(\"hash{{i}}\" should be none"
+        );
     }
 }
 
@@ -414,10 +559,22 @@ fn loop_detector_reset_clears_pattern_count() {
     let mut det = LoopDetector::new(100);
     det.record("exec", "same");
     det.record("exec", "same");
-    assert_eq!(det.pattern_count(), 2);
+    assert_eq!(
+        det.pattern_count(),
+        2,
+        "pattern_count( should equal expected value"
+    );
     det.reset();
-    assert_eq!(det.pattern_count(), 0);
-    assert_eq!(det.call_count(), 0);
+    assert_eq!(
+        det.pattern_count(),
+        0,
+        "pattern_count( should equal expected value"
+    );
+    assert_eq!(
+        det.call_count(),
+        0,
+        "call_count( should equal expected value"
+    );
 }
 
 #[test]
@@ -429,9 +586,12 @@ fn pipeline_message_serde_roundtrip() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: PipelineMessage = serde_json::from_str(&json).unwrap();
-    assert_eq!(msg.role, back.role);
-    assert_eq!(msg.content, back.content);
-    assert_eq!(msg.token_estimate, back.token_estimate);
+    assert_eq!(msg.role, back.role, "role should match role");
+    assert_eq!(msg.content, back.content, "content should match content");
+    assert_eq!(
+        msg.token_estimate, back.token_estimate,
+        "token_estimate should match token_estimate"
+    );
 }
 
 #[test]
@@ -446,9 +606,12 @@ fn tool_call_serde_roundtrip() {
     };
     let json = serde_json::to_string(&tc).unwrap();
     let back: ToolCall = serde_json::from_str(&json).unwrap();
-    assert_eq!(tc.id, back.id);
-    assert_eq!(tc.name, back.name);
-    assert_eq!(tc.duration_ms, back.duration_ms);
+    assert_eq!(tc.id, back.id, "id should match id");
+    assert_eq!(tc.name, back.name, "name should match name");
+    assert_eq!(
+        tc.duration_ms, back.duration_ms,
+        "duration_ms should match duration_ms"
+    );
 }
 
 #[test]
@@ -461,15 +624,19 @@ fn tool_call_with_error() {
         is_error: true,
         duration_ms: 0,
     };
-    assert!(tc.is_error);
-    assert!(tc.result.is_none());
+    assert!(tc.is_error, "assertion failed in tool call with error");
+    assert!(tc.result.is_none(), "result should be none");
 }
 
 #[test]
 fn check_guard_always_allows() {
     let config = crate::config::NousConfig::default();
     let session = crate::session::SessionState::new("s-1".to_owned(), "main".to_owned(), &config);
-    assert_eq!(check_guard(&session, &config), GuardResult::Allow);
+    assert_eq!(
+        check_guard(&session, &config),
+        GuardResult::Allow,
+        "check_guard(&session, &config) should equal expected value"
+    );
 }
 
 #[tokio::test]
@@ -493,7 +660,7 @@ async fn assemble_context_missing_soul_returns_error() {
     let mut ctx = PipelineContext::default();
 
     let err = assemble_context(&oikos, &config, &pipeline_config, &mut ctx).await;
-    assert!(err.is_err());
+    assert!(err.is_err(), "err should be err");
     let msg = err.unwrap_err().to_string();
     assert!(msg.contains("SOUL.md"), "got: {msg}");
 }
@@ -507,5 +674,9 @@ fn turn_usage_cache_tokens_not_counted_in_total() {
         cache_write_tokens: 20,
         llm_calls: 1,
     };
-    assert_eq!(usage.total_tokens(), 150);
+    assert_eq!(
+        usage.total_tokens(),
+        150,
+        "total_tokens( should equal expected value"
+    );
 }

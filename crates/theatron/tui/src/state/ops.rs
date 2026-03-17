@@ -359,18 +359,22 @@ mod tests {
     #[test]
     fn default_state_is_hidden() {
         let state = OpsState::default();
-        assert!(!state.visible);
-        assert_eq!(state.width_pct, 40);
-        assert_eq!(state.focused_pane, FocusedPane::Chat);
+        assert!(!state.visible, "visible should be false");
+        assert_eq!(state.width_pct, 40, "width_pct should equal expected value");
+        assert_eq!(
+            state.focused_pane,
+            FocusedPane::Chat,
+            "focused_pane should equal expected value"
+        );
     }
 
     #[test]
     fn toggle_visibility() {
         let mut state = OpsState::default();
         state.toggle();
-        assert!(state.visible);
+        assert!(state.visible, "assertion failed in toggle visibility");
         state.toggle();
-        assert!(!state.visible);
+        assert!(!state.visible, "visible should be false");
     }
 
     #[test]
@@ -381,15 +385,19 @@ mod tests {
             ..OpsState::default()
         };
         state.toggle();
-        assert!(!state.visible);
-        assert_eq!(state.focused_pane, FocusedPane::Chat);
+        assert!(!state.visible, "visible should be false");
+        assert_eq!(
+            state.focused_pane,
+            FocusedPane::Chat,
+            "focused_pane should equal expected value"
+        );
     }
 
     #[test]
     fn auto_show_auto_mode() {
         let mut state = OpsState::default();
         state.auto_show_if_configured();
-        assert!(state.visible);
+        assert!(state.visible, "assertion failed in auto show auto mode");
     }
 
     #[test]
@@ -400,8 +408,12 @@ mod tests {
             ..OpsState::default()
         };
         state.auto_hide_if_configured();
-        assert!(!state.visible);
-        assert_eq!(state.focused_pane, FocusedPane::Chat);
+        assert!(!state.visible, "visible should be false");
+        assert_eq!(
+            state.focused_pane,
+            FocusedPane::Chat,
+            "focused_pane should equal expected value"
+        );
     }
 
     #[test]
@@ -423,10 +435,16 @@ mod tests {
 
         state.clear_turn();
 
-        assert!(state.thinking.text.is_empty());
-        assert!(state.tool_calls.is_empty());
-        assert_eq!(state.scroll_offset, 0);
-        assert!(state.selected_item.is_none());
+        assert!(state.thinking.text.is_empty(), "text should be empty");
+        assert!(state.tool_calls.is_empty(), "tool_calls should be empty");
+        assert_eq!(
+            state.scroll_offset, 0,
+            "scroll_offset should equal expected value"
+        );
+        assert!(
+            state.selected_item.is_none(),
+            "selected_item should be none"
+        );
     }
 
     #[test]
@@ -435,31 +453,55 @@ mod tests {
             visible: true,
             ..OpsState::default()
         };
-        assert_eq!(state.focused_pane, FocusedPane::Chat);
+        assert_eq!(
+            state.focused_pane,
+            FocusedPane::Chat,
+            "focused_pane should equal expected value"
+        );
         state.toggle_focus();
-        assert_eq!(state.focused_pane, FocusedPane::Operations);
+        assert_eq!(
+            state.focused_pane,
+            FocusedPane::Operations,
+            "focused_pane should equal expected value"
+        );
         state.toggle_focus();
-        assert_eq!(state.focused_pane, FocusedPane::Chat);
+        assert_eq!(
+            state.focused_pane,
+            FocusedPane::Chat,
+            "focused_pane should equal expected value"
+        );
     }
 
     #[test]
     fn toggle_focus_noop_when_hidden() {
         let mut state = OpsState::default();
         state.toggle_focus();
-        assert_eq!(state.focused_pane, FocusedPane::Chat);
+        assert_eq!(
+            state.focused_pane,
+            FocusedPane::Chat,
+            "focused_pane should equal expected value"
+        );
     }
 
     #[test]
     fn item_count_empty() {
         let state = OpsState::default();
-        assert_eq!(state.item_count(), 0);
+        assert_eq!(
+            state.item_count(),
+            0,
+            "item_count( should equal expected value"
+        );
     }
 
     #[test]
     fn item_count_thinking_only() {
         let mut state = OpsState::default();
         state.thinking.text = "thinking...".to_string();
-        assert_eq!(state.item_count(), 1);
+        assert_eq!(
+            state.item_count(),
+            1,
+            "item_count( should equal expected value"
+        );
     }
 
     #[test]
@@ -468,7 +510,11 @@ mod tests {
         state.thinking.text = "thinking...".to_string();
         state.push_tool_start("read_file".to_string(), None);
         state.push_tool_start("write_file".to_string(), None);
-        assert_eq!(state.item_count(), 3);
+        assert_eq!(
+            state.item_count(),
+            3,
+            "item_count( should equal expected value"
+        );
     }
 
     #[test]
@@ -477,7 +523,11 @@ mod tests {
         state.push_tool_start("a".to_string(), None);
         state.push_tool_start("b".to_string(), None);
         state.select_prev();
-        assert_eq!(state.selected_item, Some(1));
+        assert_eq!(
+            state.selected_item,
+            Some(1),
+            "selected_item should match Some(1)"
+        );
     }
 
     #[test]
@@ -486,7 +536,11 @@ mod tests {
         state.push_tool_start("a".to_string(), None);
         state.selected_item = Some(0);
         state.select_prev();
-        assert_eq!(state.selected_item, Some(0));
+        assert_eq!(
+            state.selected_item,
+            Some(0),
+            "selected_item should match Some(0)"
+        );
     }
 
     #[test]
@@ -494,7 +548,11 @@ mod tests {
         let mut state = OpsState::default();
         state.push_tool_start("a".to_string(), None);
         state.select_next();
-        assert_eq!(state.selected_item, Some(0));
+        assert_eq!(
+            state.selected_item,
+            Some(0),
+            "selected_item should match Some(0)"
+        );
     }
 
     #[test]
@@ -504,7 +562,11 @@ mod tests {
         state.push_tool_start("b".to_string(), None);
         state.selected_item = Some(1);
         state.select_next();
-        assert_eq!(state.selected_item, Some(1));
+        assert_eq!(
+            state.selected_item,
+            Some(1),
+            "selected_item should match Some(1)"
+        );
     }
 
     #[test]
@@ -512,9 +574,12 @@ mod tests {
         let mut state = OpsState::default();
         state.thinking.text = "some thinking".to_string();
         state.selected_item = Some(0);
-        assert!(!state.thinking.collapsed);
+        assert!(!state.thinking.collapsed, "collapsed should be false");
         state.toggle_selected();
-        assert!(state.thinking.collapsed);
+        assert!(
+            state.thinking.collapsed,
+            "assertion failed in toggle selected thinking"
+        );
     }
 
     #[test]
@@ -522,16 +587,22 @@ mod tests {
         let mut state = OpsState::default();
         state.push_tool_start("read_file".to_string(), None);
         state.selected_item = Some(0);
-        assert!(!state.tool_calls[0].expanded);
+        assert!(!state.tool_calls[0].expanded, "expanded should be false");
         state.toggle_selected();
-        assert!(state.tool_calls[0].expanded);
+        assert!(
+            state.tool_calls[0].expanded,
+            "assertion failed in toggle selected tool call"
+        );
     }
 
     #[test]
     fn scroll_up_increases_offset() {
         let mut state = OpsState::default();
         state.scroll_up();
-        assert_eq!(state.scroll_offset, 3);
+        assert_eq!(
+            state.scroll_offset, 3,
+            "scroll_offset should equal expected value"
+        );
     }
 
     #[test]
@@ -541,7 +612,10 @@ mod tests {
             ..OpsState::default()
         };
         state.scroll_down();
-        assert_eq!(state.scroll_offset, 7);
+        assert_eq!(
+            state.scroll_offset, 7,
+            "scroll_offset should equal expected value"
+        );
     }
 
     #[test]
@@ -551,7 +625,10 @@ mod tests {
             ..OpsState::default()
         };
         state.scroll_down();
-        assert_eq!(state.scroll_offset, 0);
+        assert_eq!(
+            state.scroll_offset, 0,
+            "scroll_offset should equal expected value"
+        );
     }
 
     #[test]
@@ -559,17 +636,34 @@ mod tests {
         let mut state = OpsState::default();
         state.push_thinking("hello ");
         state.push_thinking("world");
-        assert_eq!(state.thinking.text, "hello world");
+        assert_eq!(
+            state.thinking.text, "hello world",
+            "text should equal expected value"
+        );
     }
 
     #[test]
     fn push_tool_start_creates_running_entry() {
         let mut state = OpsState::default();
         state.push_tool_start("grep".to_string(), Some(r#"{"pattern":"foo"}"#.to_string()));
-        assert_eq!(state.tool_calls.len(), 1);
-        assert_eq!(state.tool_calls[0].name, "grep");
-        assert_eq!(state.tool_calls[0].status, OpsToolStatus::Running);
-        assert!(state.tool_calls[0].input_json.is_some());
+        assert_eq!(
+            state.tool_calls.len(),
+            1,
+            "tool_calls length should equal expected value"
+        );
+        assert_eq!(
+            state.tool_calls[0].name, "grep",
+            "name should equal expected value"
+        );
+        assert_eq!(
+            state.tool_calls[0].status,
+            OpsToolStatus::Running,
+            "status should equal expected value"
+        );
+        assert!(
+            state.tool_calls[0].input_json.is_some(),
+            "input_json should be some"
+        );
     }
 
     #[test]
@@ -577,9 +671,21 @@ mod tests {
         let mut state = OpsState::default();
         state.push_tool_start("read_file".to_string(), None);
         state.complete_tool("read_file", false, 150, Some("file contents".to_string()));
-        assert_eq!(state.tool_calls[0].status, OpsToolStatus::Complete);
-        assert_eq!(state.tool_calls[0].duration_ms, Some(150));
-        assert_eq!(state.tool_calls[0].output.as_deref(), Some("file contents"));
+        assert_eq!(
+            state.tool_calls[0].status,
+            OpsToolStatus::Complete,
+            "status should equal expected value"
+        );
+        assert_eq!(
+            state.tool_calls[0].duration_ms,
+            Some(150),
+            "duration_ms should match Some(150)"
+        );
+        assert_eq!(
+            state.tool_calls[0].output.as_deref(),
+            Some("file contents"),
+            "as_deref( should match Some(\"file contents\")"
+        );
     }
 
     #[test]
@@ -587,32 +693,47 @@ mod tests {
         let mut state = OpsState::default();
         state.push_tool_start("write_file".to_string(), None);
         state.complete_tool("write_file", true, 50, None);
-        assert_eq!(state.tool_calls[0].status, OpsToolStatus::Failed);
+        assert_eq!(
+            state.tool_calls[0].status,
+            OpsToolStatus::Failed,
+            "status should equal expected value"
+        );
     }
 
     #[test]
     fn parse_diff_from_edit_tool() {
         let output = "--- a/src/main.rs\n+++ b/src/main.rs\n-old line\n+new line\n";
         let diff = parse_diff_from_output(output, "edit_file");
-        assert!(diff.is_some());
+        assert!(diff.is_some(), "diff should be some");
         let diff = diff.unwrap();
-        assert_eq!(diff.file_path, "a/src/main.rs");
-        assert_eq!(diff.additions.len(), 1);
-        assert_eq!(diff.deletions.len(), 1);
+        assert_eq!(
+            diff.file_path, "a/src/main.rs",
+            "file_path should equal expected value"
+        );
+        assert_eq!(
+            diff.additions.len(),
+            1,
+            "additions length should equal expected value"
+        );
+        assert_eq!(
+            diff.deletions.len(),
+            1,
+            "deletions length should equal expected value"
+        );
     }
 
     #[test]
     fn parse_diff_ignores_non_file_tools() {
         let output = "--- a/src/main.rs\n+new line\n";
         let diff = parse_diff_from_output(output, "grep");
-        assert!(diff.is_none());
+        assert!(diff.is_none(), "diff should be none");
     }
 
     #[test]
     fn parse_diff_no_changes() {
         let output = "no diff content here";
         let diff = parse_diff_from_output(output, "edit_file");
-        assert!(diff.is_none());
+        assert!(diff.is_none(), "diff should be none");
     }
 
     #[test]
@@ -621,17 +742,30 @@ mod tests {
         state.push_tool_start("edit_file".to_string(), None);
         let output = "--- a/lib.rs\n+++ b/lib.rs\n-old\n+new\n";
         state.complete_tool("edit_file", false, 100, Some(output.to_string()));
-        assert_eq!(state.diffs.len(), 1);
-        assert_eq!(state.diffs[0].file_path, "a/lib.rs");
+        assert_eq!(
+            state.diffs.len(),
+            1,
+            "diffs length should equal expected value"
+        );
+        assert_eq!(
+            state.diffs[0].file_path, "a/lib.rs",
+            "file_path should equal expected value"
+        );
     }
 
     #[test]
     fn select_noop_on_empty() {
         let mut state = OpsState::default();
         state.select_next();
-        assert!(state.selected_item.is_none());
+        assert!(
+            state.selected_item.is_none(),
+            "selected_item should be none"
+        );
         state.select_prev();
-        assert!(state.selected_item.is_none());
+        assert!(
+            state.selected_item.is_none(),
+            "selected_item should be none"
+        );
     }
 
     #[test]
@@ -639,32 +773,44 @@ mod tests {
         let mut state = OpsState::default();
         state.push_tool_start("a".to_string(), None);
         state.toggle_selected(); // selected_item is None
-        assert!(!state.tool_calls[0].expanded);
+        assert!(!state.tool_calls[0].expanded, "expanded should be false");
     }
 
     #[test]
     fn width_pct_default() {
         let state = OpsState::default();
-        assert_eq!(state.width_pct, 40);
+        assert_eq!(state.width_pct, 40, "width_pct should equal expected value");
     }
 
     #[test]
     fn ops_auto_show_default_is_auto() {
-        assert_eq!(OpsAutoShow::default(), OpsAutoShow::Auto);
+        assert_eq!(
+            OpsAutoShow::default(),
+            OpsAutoShow::Auto,
+            "OpsAutoShow::default() should equal expected value"
+        );
     }
 
     #[test]
     fn extract_primary_arg_path() {
         let json = r#"{"file_path":"/src/main.rs","content":"fn main() {}"}"#;
         let arg = extract_primary_arg(json, "read_file");
-        assert_eq!(arg.as_deref(), Some("/src/main.rs"));
+        assert_eq!(
+            arg.as_deref(),
+            Some("/src/main.rs"),
+            "as_deref( should match rs\""
+        );
     }
 
     #[test]
     fn extract_primary_arg_command() {
         let json = r#"{"command":"cargo test","timeout":30000}"#;
         let arg = extract_primary_arg(json, "exec");
-        assert_eq!(arg.as_deref(), Some("cargo test"));
+        assert_eq!(
+            arg.as_deref(),
+            Some("cargo test"),
+            "as_deref( should match Some(\"cargo test\")"
+        );
     }
 
     #[test]
@@ -672,14 +818,18 @@ mod tests {
         let json = r#"{"pattern":"fn main","path":"src/"}"#;
         // "path" comes before "pattern" in priority order
         let arg = extract_primary_arg(json, "grep");
-        assert_eq!(arg.as_deref(), Some("src/"));
+        assert_eq!(
+            arg.as_deref(),
+            Some("src/"),
+            "as_deref( should match Some(\"src/\")"
+        );
     }
 
     #[test]
     fn extract_primary_arg_none_for_empty_json() {
         let json = r#"{}"#;
         let arg = extract_primary_arg(json, "some_tool");
-        assert!(arg.is_none());
+        assert!(arg.is_none(), "arg should be none");
     }
 
     #[test]
@@ -688,8 +838,14 @@ mod tests {
         long_path.push_str(&"a".repeat(100));
         let json = format!(r#"{{"file_path":"{long_path}"}}"#);
         let arg = extract_primary_arg(&json, "read_file").unwrap();
-        assert!(arg.chars().count() <= PRIMARY_ARG_MAX_LEN);
-        assert!(arg.ends_with('\u{2026}'));
+        assert!(
+            arg.chars().count() <= PRIMARY_ARG_MAX_LEN,
+            "assertion failed in extract primary arg truncates long values"
+        );
+        assert!(
+            arg.ends_with('\u{2026}'),
+            "arg should end with expected suffix"
+        );
     }
 
     #[test]
@@ -699,7 +855,8 @@ mod tests {
         state.push_tool_start("read_file".to_string(), Some(input));
         assert_eq!(
             state.tool_calls[0].primary_arg.as_deref(),
-            Some("src/lib.rs")
+            Some("src/lib.rs"),
+            "as_deref( should match rs\"",
         );
     }
 
@@ -713,10 +870,15 @@ mod tests {
             200,
             Some("Permission denied: /etc/shadow\ndetailed trace...".to_string()),
         );
-        assert_eq!(state.tool_calls[0].status, OpsToolStatus::Failed);
+        assert_eq!(
+            state.tool_calls[0].status,
+            OpsToolStatus::Failed,
+            "status should equal expected value"
+        );
         assert_eq!(
             state.tool_calls[0].error_message.as_deref(),
-            Some("Permission denied: /etc/shadow")
+            Some("Permission denied: /etc/shadow"),
+            "as_deref( should match result",
         );
     }
 
@@ -725,20 +887,33 @@ mod tests {
         let mut state = OpsState::default();
         state.push_tool_start("read_file".to_string(), None);
         state.complete_tool("read_file", false, 150, Some("file contents".to_string()));
-        assert!(state.tool_calls[0].error_message.is_none());
+        assert!(
+            state.tool_calls[0].error_message.is_none(),
+            "error_message should be none"
+        );
     }
 
     #[test]
     fn truncate_error_takes_first_line() {
         let text = "line one\nline two\nline three";
-        assert_eq!(truncate_error(text), "line one");
+        assert_eq!(
+            truncate_error(text),
+            "line one",
+            "truncate_error(text) should equal expected value"
+        );
     }
 
     #[test]
     fn truncate_error_truncates_long_line() {
         let long = "x".repeat(200);
         let result = truncate_error(&long);
-        assert!(result.chars().count() <= ERROR_MAX_LEN);
-        assert!(result.ends_with('\u{2026}'));
+        assert!(
+            result.chars().count() <= ERROR_MAX_LEN,
+            "assertion failed in truncate error truncates long line"
+        );
+        assert!(
+            result.ends_with('\u{2026}'),
+            "result should end with expected suffix"
+        );
     }
 }
