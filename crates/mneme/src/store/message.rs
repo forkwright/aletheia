@@ -21,6 +21,7 @@ impl SessionStore {
         tool_name: Option<&str>,
         token_estimate: i64,
     ) -> Result<i64> {
+        self.check_disk("append_message");
         let tx = self
             .conn
             .unchecked_transaction()
