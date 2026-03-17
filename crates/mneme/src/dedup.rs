@@ -117,13 +117,108 @@ pub fn compute_merge_score(
         + WEIGHT_ALIAS * alias_val
 }
 
+/// Compute Jaro similarity between two strings.
+///
+/// Reference: Jaro, M.A. (1989). "Advances in Record-Linkage Methodology
+/// as Applied to Matching the 1985 Census of Tampa, Florida."
+#[cfg(any(feature = "mneme-engine", test))]
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "string lengths never approach 2^52"
+)]
+fn jaro(a: &str, b: &str) -> f64 {
+    if a == b {
+        return 1.0;
+    }
+
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
+    let b_len = b_chars.len();
+
+    if a_len == 0 || b_len == 0 {
+        return 0.0;
+    }
+
+    // WHY: match window is half the longer string minus one, per Jaro's
+    // original definition. Characters within this distance may match.
+    let match_distance = (a_len.max(b_len) / 2).saturating_sub(1);
+
+    let mut a_matched = vec![false; a_len];
+    let mut b_matched = vec![false; b_len];
+    let mut matches = 0_usize;
+
+    for i in 0..a_len {
+        let start = i.saturating_sub(match_distance);
+        let end = (i + match_distance + 1).min(b_len);
+        for j in start..end {
+            if !b_matched[j] && a_chars[i] == b_chars[j] {
+                a_matched[i] = true;
+                b_matched[j] = true;
+                matches += 1;
+                break;
+            }
+        }
+    }
+
+    if matches == 0 {
+        return 0.0;
+    }
+
+    let mut transpositions = 0_usize;
+    let mut k = 0;
+    for i in 0..a_len {
+        if !a_matched[i] {
+            continue;
+        }
+        while !b_matched[k] {
+            k += 1;
+        }
+        if a_chars[i] != b_chars[k] {
+            transpositions += 1;
+        }
+        k += 1;
+    }
+
+    let m = matches as f64;
+    (m / a_len as f64 + m / b_len as f64 + (m - transpositions as f64 / 2.0) / m) / 3.0
+}
+
+/// Compute Jaro-Winkler similarity between two strings.
+///
+/// Extends Jaro similarity with a prefix bonus: strings sharing a common
+/// prefix (up to 4 characters) receive a boosted score.
+///
+/// Reference: Winkler, W.E. (1990). "String Comparator Metrics and Enhanced
+/// Decision Rules in the Fellegi-Sunter Model of Record Linkage."
+///
+/// Returns a value in [0.0, 1.0] where 1.0 is an exact match.
+#[cfg(any(feature = "mneme-engine", test))]
+#[must_use]
+#[expect(clippy::cast_precision_loss, reason = "prefix length is at most 4")]
+fn jaro_winkler(a: &str, b: &str) -> f64 {
+    let jaro_score = jaro(a, b);
+
+    // WHY: Winkler prefix bonus uses up to 4 characters and a scaling
+    // factor of 0.1, matching the original paper specification.
+    let prefix_len = a
+        .chars()
+        .zip(b.chars())
+        .take(4)
+        .take_while(|(ca, cb)| ca == cb)
+        .count();
+
+    jaro_score + prefix_len as f64 * 0.1 * (1.0 - jaro_score)
+}
+
 /// Compute Jaro-Winkler similarity between two strings (case-insensitive).
 #[cfg(any(feature = "mneme-engine", test))]
 #[must_use]
 pub(crate) fn jaro_winkler_ci(a: &str, b: &str) -> f64 {
     let a_lower = a.to_lowercase();
     let b_lower = b.to_lowercase();
-    strsim::jaro_winkler(&a_lower, &b_lower)
+    jaro_winkler(&a_lower, &b_lower)
 }
 
 /// Check if two alias lists share any common entry (case-insensitive).
@@ -377,6 +472,70 @@ mod tests {
     fn jw_different_names() {
         let sim = jaro_winkler_ci("John Smith", "Alice Johnson");
         assert!(sim < 0.85, "expected < 0.85, got {sim}");
+    }
+
+    #[test]
+    fn jw_empty_strings_equal() {
+        let sim = jaro_winkler("", "");
+        assert!(
+            (sim - 1.0).abs() < f64::EPSILON,
+            "two empty strings should be 1.0"
+        );
+    }
+
+    #[test]
+    fn jw_one_empty_string() {
+        assert!((jaro_winkler("", "abc") - 0.0).abs() < f64::EPSILON);
+        assert!((jaro_winkler("abc", "") - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn jw_identical_strings() {
+        assert!((jaro_winkler("hello", "hello") - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn jw_completely_different() {
+        let sim = jaro_winkler("abc", "xyz");
+        assert!(
+            (sim - 0.0).abs() < f64::EPSILON,
+            "no matching chars should be 0.0"
+        );
+    }
+
+    #[test]
+    fn jw_known_values() {
+        // WHY: these expected values are from the strsim 0.11 crate,
+        // verified before removing the dependency.
+        let cases: &[(&str, &str, f64)] = &[
+            ("martha", "marhta", 0.961_111_111_111_111_1),
+            ("dwayne", "duane", 0.84),
+            ("dixon", "dicksonx", 0.813_333_333_333_333_3),
+        ];
+        for &(a, b, expected) in cases {
+            let sim = jaro_winkler(a, b);
+            assert!(
+                (sim - expected).abs() < 1e-10,
+                "jaro_winkler({a:?}, {b:?}) = {sim}, expected {expected}",
+            );
+        }
+    }
+
+    #[test]
+    fn jw_prefix_bonus_applied() {
+        // "abc" and "abd" share prefix "ab", so Winkler score > Jaro score
+        let j = jaro("abc", "abd");
+        let jw = jaro_winkler("abc", "abd");
+        assert!(
+            jw > j,
+            "Winkler bonus not applied: jaro={j}, jaro_winkler={jw}"
+        );
+    }
+
+    #[test]
+    fn jw_symmetric() {
+        assert!((jaro_winkler("foo", "bar") - jaro_winkler("bar", "foo")).abs() < f64::EPSILON);
+        assert!((jaro_winkler("abc", "abd") - jaro_winkler("abd", "abc")).abs() < f64::EPSILON);
     }
 
     #[test]
