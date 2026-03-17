@@ -97,5 +97,5 @@ jobs:
           echo 'port = 19999' >> /tmp/test-instance/config/aletheia.toml
           # WHY: check-config exits 1 on incomplete config (expected in smoke test).
           # Exits 101+ on panic/crash. Accept 0 or 1, fail on anything else.
-          rc=0; ./target/release/aletheia check-config -r /tmp/test-instance || rc=$?
+          rc=0; ./target/release/aletheia -r /tmp/test-instance check-config || rc=$?
           if [ "$rc" -gt 1 ]; then echo "check-config crashed with exit code $rc"; exit 1; fi
