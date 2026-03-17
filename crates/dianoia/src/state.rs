@@ -358,18 +358,15 @@ mod tests {
                     .clone()
                     .transition(Transition::StartQuestioning)
                     .is_err(),
-                "StartQuestioning from terminal state {:?} should return an error",
-                terminal
+                "StartQuestioning from terminal state {terminal:?} should return an error"
             );
             assert!(
                 terminal.clone().transition(Transition::Abandon).is_err(),
-                "Abandon from terminal state {:?} should return an error",
-                terminal
+                "Abandon from terminal state {terminal:?} should return an error"
             );
             assert!(
                 terminal.clone().transition(Transition::Pause).is_err(),
-                "Pause from terminal state {:?} should return an error",
-                terminal
+                "Pause from terminal state {terminal:?} should return an error"
             );
         }
     }
