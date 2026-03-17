@@ -113,9 +113,10 @@ pub fn load_history(
         }
 
         let role = match msg.role {
-            Role::User | Role::ToolResult => "user",
             Role::Assistant => "assistant",
             Role::System => unreachable!(),
+            // WHY: non_exhaustive fallback -- unknown roles mapped to user
+            Role::User | Role::ToolResult | _ => "user",
         };
 
         collected.push(PipelineMessage {

@@ -7,6 +7,7 @@ use crate::error::{self, Result};
 
 /// Project lifecycle states.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ProjectState {
     /// Project has been created but work has not started.
     Created,
@@ -34,6 +35,7 @@ pub enum ProjectState {
 
 /// Valid transitions between project states.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Transition {
     /// Move from Created to Questioning.
     StartQuestioning,

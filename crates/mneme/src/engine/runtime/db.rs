@@ -54,6 +54,7 @@ impl Drop for RunningQueryCleanup {
 
 /// Whether a script is mutable or immutable.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ScriptMutability {
     /// The script is mutable.
     Mutable,

@@ -85,6 +85,7 @@ pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String
             Role::System => "SYSTEM",
             Role::User => "USER",
             Role::Assistant => "ASSISTANT",
+            _ => "UNKNOWN",
         };
 
         match &msg.content {
@@ -125,6 +126,8 @@ pub fn format_messages(messages: &[Message], include_tool_calls: bool) -> String
                     let _ = writeln!(output, "[{role_label}]\n{block_text}");
                 }
             }
+            // NOTE: future content variants rendered as empty
+            _ => {}
         }
     }
 

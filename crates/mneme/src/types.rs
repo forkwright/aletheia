@@ -83,6 +83,7 @@ impl std::fmt::Display for SessionType {
 /// Role of a message author within a conversation turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Role {
     /// System-injected context (bootstrap, instructions).
     System,
