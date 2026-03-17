@@ -99,6 +99,7 @@ fn http_get(port: u16, path: &str) -> Option<(u16, String)> {
 }
 
 #[test]
+#[ignore = "requires binary + instance setup, may timeout in CI; run locally with --include-ignored"]
 fn server_starts_serves_health_and_shuts_down() {
     let port = find_free_port();
     let instance = setup_instance(port);
