@@ -114,6 +114,42 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The master key file is invalid (wrong length, bad hex).
+    #[snafu(display("invalid master key at {}: {reason}", path.display()))]
+    InvalidMasterKey {
+        path: PathBuf,
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The master key file already exists.
+    #[snafu(display(
+        "master key already exists at {}\n  help: delete the file first if you want to regenerate",
+        path.display()
+    ))]
+    MasterKeyExists {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Encryption operation failed.
+    #[snafu(display("encryption failed: {reason}"))]
+    Encrypt {
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Decryption operation failed.
+    #[snafu(display("decryption failed: {reason}"))]
+    Decrypt {
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result<T, Error>`.

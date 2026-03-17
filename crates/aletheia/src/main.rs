@@ -24,6 +24,7 @@ use commands::agent_io::{
     SeedSkillsArgs, TuiArgs,
 };
 use commands::backup::BackupArgs;
+use commands::config;
 use commands::credential;
 use commands::eval::EvalArgs;
 use commands::health::HealthArgs;
@@ -112,6 +113,11 @@ enum Command {
     },
     /// Validate configuration without starting any services
     CheckConfig,
+    /// Config encryption management
+    Config {
+        #[command(subcommand)]
+        action: config::Action,
+    },
     /// Scaffold a new nous agent directory
     AddNous(AddNousArgs),
 }
@@ -187,6 +193,9 @@ async fn main() -> Result<()> {
         }
         Some(Command::CheckConfig) => {
             return commands::check_config::run(instance_root);
+        }
+        Some(Command::Config { action }) => {
+            return commands::config::run(&action, instance_root);
         }
         Some(Command::AddNous(a)) => {
             return commands::add_nous::run(instance_root, &a).await;

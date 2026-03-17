@@ -131,6 +131,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 flate2 = "1"
 
 # TLS / Security
+ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
 rcgen = "0.14"
 regex = "1"
