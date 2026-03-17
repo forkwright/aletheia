@@ -38,7 +38,7 @@ fn extract_double(v: &qdrant_client::qdrant::Value) -> Option<f64> {
     }
 }
 
-pub async fn run(
+pub(crate) async fn run(
     instance_root: Option<&PathBuf>,
     qdrant_url: &str,
     collection: &str,

@@ -287,7 +287,7 @@ impl TaskRunner {
     /// Called once at startup. For each task with `catch_up: true` and a cron
     /// schedule, checks if a window was missed within the last 24 hours.
     /// If so, schedules the task for immediate execution.
-    pub fn check_missed_cron_catchup(&mut self) {
+    pub(crate) fn check_missed_cron_catchup(&mut self) {
         for task in &mut self.tasks {
             if !task.def.enabled || !task.def.catch_up {
                 continue;

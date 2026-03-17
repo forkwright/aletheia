@@ -8,7 +8,7 @@ use clap::Args;
 use aletheia_taxis::oikos::Oikos;
 
 #[derive(Debug, Clone, Args)]
-pub struct AddNousArgs {
+pub(crate) struct AddNousArgs {
     /// Agent identifier (alphanumeric and hyphens only).
     pub name: String,
 
@@ -21,7 +21,7 @@ pub struct AddNousArgs {
     pub model: String,
 }
 
-pub async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> Result<()> {
+pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> Result<()> {
     validate_name(&args.name)?;
     validate_provider(&args.provider)?;
 

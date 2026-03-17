@@ -26,7 +26,10 @@ pub(crate) enum StatusError {
 }
 
 /// Run the status command against a running (or stopped) instance.
-pub async fn run(url: &str, instance_root: Option<&std::path::PathBuf>) -> Result<(), StatusError> {
+pub(crate) async fn run(
+    url: &str,
+    instance_root: Option<&std::path::PathBuf>,
+) -> Result<(), StatusError> {
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
     let version = env!("CARGO_PKG_VERSION");
 
@@ -257,7 +260,7 @@ fn print_file_size(label: &str, path: &Path) {
 }
 
 /// Format seconds as human-readable duration.
-pub fn format_uptime(seconds: u64) -> String {
+pub(crate) fn format_uptime(seconds: u64) -> String {
     if seconds < 60 {
         return format!("{seconds}s");
     }
@@ -276,7 +279,7 @@ pub fn format_uptime(seconds: u64) -> String {
 }
 
 /// Format bytes as human-readable size.
-pub fn format_bytes(bytes: u64) -> String {
+pub(crate) fn format_bytes(bytes: u64) -> String {
     if bytes == 0 {
         return "0 B".to_owned();
     }

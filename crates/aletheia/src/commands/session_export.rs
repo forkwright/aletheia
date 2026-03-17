@@ -11,7 +11,7 @@ use serde::Deserialize;
 use aletheia_koina::http::{API_V1, BEARER_PREFIX};
 
 #[derive(Debug, Clone, Args)]
-pub struct SessionExportArgs {
+pub(crate) struct SessionExportArgs {
     /// Session ID to export
     pub session_id: String,
 
@@ -33,7 +33,7 @@ pub struct SessionExportArgs {
 }
 
 #[derive(Debug, Clone, clap::ValueEnum)]
-pub enum ExportFormat {
+pub(crate) enum ExportFormat {
     Md,
     Json,
 }
@@ -58,7 +58,7 @@ struct HistoryMessage {
     created_at: String,
 }
 
-pub async fn run(args: &SessionExportArgs) -> Result<()> {
+pub(crate) async fn run(args: &SessionExportArgs) -> Result<()> {
     let client = build_client(args.token.as_deref())?;
 
     let session = fetch_session(&client, &args.url, &args.session_id).await?;

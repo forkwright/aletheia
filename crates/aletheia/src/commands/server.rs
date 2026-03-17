@@ -52,7 +52,7 @@ use crate::dispatch;
 use crate::planning_adapter;
 
 /// Arguments forwarded from the top-level CLI to the server startup.
-pub struct Args {
+pub(crate) struct Args {
     pub instance_root: Option<PathBuf>,
     pub bind: Option<String>,
     pub port: Option<u16>,
@@ -64,7 +64,7 @@ pub struct Args {
     clippy::too_many_lines,
     reason = "binary entrypoint — sequential init steps"
 )]
-pub async fn run(args: Args) -> Result<()> {
+pub(crate) async fn run(args: Args) -> Result<()> {
     // Oikos is pure path resolution: no IO, safe before tracing is set up.
     let oikos = match &args.instance_root {
         Some(root) => Oikos::from_root(root),
@@ -1015,7 +1015,7 @@ mod tool_adapters {
     use aletheia_nous::cross::{CrossNousMessage, CrossNousRouter};
     use aletheia_organon::types::{CrossNousService, MessageService};
 
-    pub struct CrossNousAdapter(pub Arc<CrossNousRouter>);
+    pub(crate) struct CrossNousAdapter(pub Arc<CrossNousRouter>);
 
     impl CrossNousService for CrossNousAdapter {
         fn send(
@@ -1058,7 +1058,7 @@ mod tool_adapters {
         }
     }
 
-    pub struct SignalAdapter(pub Arc<dyn ChannelProvider>);
+    pub(crate) struct SignalAdapter(pub Arc<dyn ChannelProvider>);
 
     impl MessageService for SignalAdapter {
         fn send_message(

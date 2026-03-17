@@ -1,15 +1,15 @@
 //! Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 
 /// Database size monitoring with configurable warning and alert thresholds.
-pub mod db_monitor;
+pub(crate) mod db_monitor;
 /// Instance drift detection: compare a live instance against the example template.
-pub mod drift_detection;
+pub(crate) mod drift_detection;
 /// Knowledge graph maintenance bridge trait and report types.
-pub mod knowledge;
+pub(crate) mod knowledge;
 /// Data retention policy execution trait and summary types.
-pub mod retention;
+pub(crate) mod retention;
 /// Trace file rotation, gzip compression, and archive pruning.
-pub mod trace_rotation;
+pub(crate) mod trace_rotation;
 
 pub use db_monitor::{DbInfo, DbMonitor, DbMonitoringConfig, DbSizeReport, DbStatus};
 pub use drift_detection::{DriftDetectionConfig, DriftDetector, DriftReport};

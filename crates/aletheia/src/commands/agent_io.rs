@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 
 #[derive(Debug, Clone, Args)]
-pub struct ExportArgs {
+pub(crate) struct ExportArgs {
     /// Agent (nous) ID to export
     pub nous_id: String,
     /// Output file path (default: `{nous-id}-{date}.agent.json`)
@@ -31,7 +31,7 @@ pub struct ExportArgs {
     reason = "CLI flags — each bool is a distinct switch"
 )]
 #[derive(Debug, Clone, Args)]
-pub struct ImportArgs {
+pub(crate) struct ImportArgs {
     /// Path to .agent.json file
     pub file: PathBuf,
     /// Override the target agent ID
@@ -52,7 +52,7 @@ pub struct ImportArgs {
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct SeedSkillsArgs {
+pub(crate) struct SeedSkillsArgs {
     /// Directory containing skill subdirectories (each with SKILL.md)
     #[arg(short, long)]
     pub dir: PathBuf,
@@ -68,7 +68,7 @@ pub struct SeedSkillsArgs {
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct ExportSkillsArgs {
+pub(crate) struct ExportSkillsArgs {
     /// Agent (nous) ID whose skills to export
     #[arg(short, long)]
     pub nous_id: String,
@@ -81,7 +81,7 @@ pub struct ExportSkillsArgs {
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct ReviewSkillsArgs {
+pub(crate) struct ReviewSkillsArgs {
     /// Agent (nous) ID whose pending skills to review
     #[arg(short, long)]
     pub nous_id: String,
@@ -94,7 +94,7 @@ pub struct ReviewSkillsArgs {
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct MigrateMemoryArgs {
+pub(crate) struct MigrateMemoryArgs {
     /// Qdrant server URL
     #[arg(long, default_value = "http://localhost:6333", env = "QDRANT_URL")]
     pub qdrant_url: String,
@@ -113,7 +113,7 @@ pub struct MigrateMemoryArgs {
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct TuiArgs {
+pub(crate) struct TuiArgs {
     /// Gateway URL
     #[arg(short, long, env = "ALETHEIA_URL")]
     pub url: Option<String>,
@@ -132,7 +132,7 @@ pub struct TuiArgs {
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct InitArgs {
+pub(crate) struct InitArgs {
     /// Instance root directory (default in interactive/-y mode: ./instance)
     #[arg(
         short = 'r',
@@ -166,7 +166,7 @@ use aletheia_taxis::config::resolve_nous;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
 
-pub fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
+pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     let nous_id = &args.nous_id;
     let oikos = match instance_root {
         Some(root) => Oikos::from_root(root),
@@ -240,7 +240,7 @@ pub fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Resul
     Ok(())
 }
 
-pub fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
+pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
     let json = std::fs::read_to_string(&args.file)
         .with_context(|| format!("failed to read {}", args.file.display()))?;
     let agent_file: aletheia_mneme::portability::AgentFile =
@@ -316,7 +316,7 @@ pub fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Resul
     clippy::too_many_lines,
     reason = "CLI dispatch is inherently verbose — splitting would hurt readability"
 )]
-pub fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
+pub(crate) fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
     use aletheia_mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
 
     let dir = &args.dir;
@@ -464,7 +464,10 @@ pub fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 ///
 /// Reads skill facts from an in-process `KnowledgeStore`, converts them to
 /// `SkillContent`, and writes `.claude/skills/<slug>/SKILL.md` files.
-pub fn export_skills(instance_root: Option<&PathBuf>, args: &ExportSkillsArgs) -> Result<()> {
+pub(crate) fn export_skills(
+    instance_root: Option<&PathBuf>,
+    args: &ExportSkillsArgs,
+) -> Result<()> {
     #[cfg(feature = "recall")]
     {
         use aletheia_mneme::knowledge_store::KnowledgeStore;
@@ -546,7 +549,10 @@ pub fn export_skills(instance_root: Option<&PathBuf>, args: &ExportSkillsArgs) -
     }
 }
 
-pub fn review_skills(instance_root: Option<&PathBuf>, args: &ReviewSkillsArgs) -> Result<()> {
+pub(crate) fn review_skills(
+    instance_root: Option<&PathBuf>,
+    args: &ReviewSkillsArgs,
+) -> Result<()> {
     #[cfg(feature = "recall")]
     {
         use aletheia_mneme::knowledge_store::KnowledgeStore;
@@ -649,7 +655,7 @@ pub fn review_skills(instance_root: Option<&PathBuf>, args: &ReviewSkillsArgs) -
     clippy::unused_async,
     reason = "async required when migrate-qdrant feature is enabled"
 )]
-pub async fn migrate_memory(
+pub(crate) async fn migrate_memory(
     instance_root: Option<&PathBuf>,
     args: MigrateMemoryArgs,
 ) -> Result<()> {

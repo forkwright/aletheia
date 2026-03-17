@@ -141,7 +141,7 @@ pub fn print_report_json(report: &RunReport) {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum OutcomeKind {
+pub(crate) enum OutcomeKind {
     Passed,
     Failed,
     Skipped,

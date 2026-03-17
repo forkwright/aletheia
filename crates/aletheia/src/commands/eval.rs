@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::Args;
 
 #[derive(Debug, Clone, Args)]
-pub struct EvalArgs {
+pub(crate) struct EvalArgs {
     /// Server URL to evaluate
     #[arg(long, default_value = "http://127.0.0.1:18789")]
     pub url: String,
@@ -22,7 +22,7 @@ pub struct EvalArgs {
     pub timeout: u64,
 }
 
-pub async fn run(args: EvalArgs) -> Result<()> {
+pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     let EvalArgs {
         url,
         token,

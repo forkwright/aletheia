@@ -6,7 +6,7 @@ use crate::client::EvalClient;
 use crate::scenario::{Scenario, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval};
 
 #[tracing::instrument(skip_all)]
-pub fn scenarios() -> Vec<Box<dyn Scenario>> {
+pub(crate) fn scenarios() -> Vec<Box<dyn Scenario>> {
     vec![
         Box::new(NousListReturnsArray),
         Box::new(NousUnknownReturns404),

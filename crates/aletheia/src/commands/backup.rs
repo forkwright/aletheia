@@ -13,7 +13,7 @@ use aletheia_taxis::oikos::Oikos;
     reason = "CLI flags — each bool is a distinct switch"
 )]
 #[derive(Debug, Clone, Args)]
-pub struct BackupArgs {
+pub(crate) struct BackupArgs {
     /// List available backups
     #[arg(long)]
     pub list: bool,
@@ -34,7 +34,7 @@ pub struct BackupArgs {
     pub yes: bool,
 }
 
-pub fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
+pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
     let &BackupArgs {
         list,
         prune,
