@@ -212,6 +212,7 @@ dependencies = [
  "serde_json",
  "snafu",
  "static_assertions",
+ "tracing",
  "tracing-subscriber",
  "ulid",
 ]

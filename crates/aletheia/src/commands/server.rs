@@ -23,6 +23,7 @@ use aletheia_agora::types::ChannelProvider;
 use aletheia_hermeneus::anthropic::AnthropicProvider;
 use aletheia_hermeneus::provider::{ProviderConfig, ProviderRegistry};
 use aletheia_koina::credential::{CredentialProvider, CredentialSource};
+use aletheia_koina::redacting_layer::RedactingLayer;
 use aletheia_mneme::embedding::{EmbeddingConfig, EmbeddingProvider, create_provider};
 use aletheia_mneme::store::SessionStore;
 use aletheia_nous::config::{NousConfig, PipelineConfig};
@@ -86,6 +87,7 @@ pub async fn run(args: Args) -> Result<()> {
         args.json_logs,
         &log_dir,
         &config.logging.level,
+        &config.logging.redaction,
     )
     .context("failed to initialise file logging")?;
 
@@ -868,6 +870,7 @@ fn init_tracing(
     json: bool,
     log_dir: &Path,
     file_level: &str,
+    redaction: &aletheia_taxis::config::RedactionSettings,
 ) -> Result<WorkerGuard> {
     // Console filter: respect RUST_LOG env var, fall back to the CLI level.
     let console_filter = EnvFilter::try_from_default_env()
@@ -884,14 +887,6 @@ fn init_tracing(
     // The non_blocking wrapper offloads writes to a background thread.
     let file_appender = tracing_appender::rolling::daily(log_dir, "aletheia.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-
-    // File layer: always JSON for machine-readable structured output.
-    let file_layer = fmt::layer()
-        .json()
-        .with_ansi(false)
-        .with_target(true)
-        .with_writer(non_blocking)
-        .with_filter(file_filter);
 
     // Console layers: exactly one is Some, the other None.
     // Option<L> implements Layer<S> as a no-op when None, so both arms compose
@@ -912,12 +907,37 @@ fn init_tracing(
             .with_filter(console_filter)
     });
 
-    tracing_subscriber::registry()
-        .with(json_console)
-        .with(text_console)
-        .with(file_layer)
-        .try_init()
-        .context("failed to set global tracing subscriber")?;
+    // File layer: redacting or plain depending on config.
+    if redaction.enabled {
+        let redacting = RedactingLayer::new(
+            non_blocking,
+            redaction.redact_fields.iter().cloned(),
+            redaction.truncate_fields.iter().cloned(),
+            redaction.truncate_length,
+        )
+        .with_filter(file_filter);
+
+        tracing_subscriber::registry()
+            .with(json_console)
+            .with(text_console)
+            .with(redacting)
+            .try_init()
+            .context("failed to set global tracing subscriber")?;
+    } else {
+        let file_layer = fmt::layer()
+            .json()
+            .with_ansi(false)
+            .with_target(true)
+            .with_writer(non_blocking)
+            .with_filter(file_filter);
+
+        tracing_subscriber::registry()
+            .with(json_console)
+            .with(text_console)
+            .with(file_layer)
+            .try_init()
+            .context("failed to set global tracing subscriber")?;
+    }
 
     Ok(guard)
 }
