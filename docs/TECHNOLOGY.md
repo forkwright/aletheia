@@ -82,7 +82,7 @@ Lean dependency count. See `Cargo.toml` workspace members and `[workspace.depend
 | **koina** | snafu, tracing, tracing-subscriber |
 | **taxis** | koina, figment, serde, serde_json, snafu, tracing |
 | **mneme** | koina, snafu, serde, tracing, ulid, rusqlite (sqlite), candle-core/nn/transformers (embed-candle), jiff, hnsw_rs, fjall |
-| **hermeneus** | koina, taxis, reqwest, reqwest-eventsource, serde_json, tokio, secrecy |
+| **hermeneus** | koina, taxis, reqwest, serde_json, tokio, secrecy |
 | **organon** | koina, taxis, hermeneus, tokio, gix, extrasafe, chromiumoxide |
 | **nous** | koina, taxis, mneme, hermeneus, organon, melete, tokio, ulid, compact_str |
 | **dianoia** | koina, taxis, mneme, hermeneus, nous, rusqlite |

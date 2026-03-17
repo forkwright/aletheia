@@ -1,6 +1,5 @@
-use futures_util::StreamExt;
 use reqwest::Client;
-use reqwest_eventsource::{Event as EsEvent, EventSource};
+use theatron_core::sse::{EventSource, SseError};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
@@ -38,9 +37,25 @@ pub fn stream_message(
     let span = tracing::info_span!("stream_message");
     tokio::spawn(
         async move {
-            let mut es = match EventSource::new(builder) {
+            let mut es = match EventSource::connect(builder).await {
                 Ok(es) => es,
-                Err(e) => {
+                Err(SseError::InvalidStatusCode(status, resp)) => {
+                    let reason = status.canonical_reason().unwrap_or("Unknown");
+                    let body = resp.text().await.unwrap_or_default();
+                    let message = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body)
+                    {
+                        json.get("message")
+                            .or_else(|| json.get("error"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| format!("{} {}", status.as_u16(), reason))
+                    } else {
+                        format!("{} {}", status.as_u16(), reason)
+                    };
+                    let _ = tx.send(StreamEvent::Error(message)).await;
+                    return;
+                }
+                Err(SseError::Request(e)) => {
                     let _ = tx
                         .send(StreamEvent::Error(format!("failed to connect: {e}")))
                         .await;
@@ -50,9 +65,7 @@ pub fn stream_message(
 
             while let Some(event) = es.next().await {
                 match event {
-                    // NOTE: SSE connection opened, no action needed
-                    Ok(EsEvent::Open) => {}
-                    Ok(EsEvent::Message(msg)) => {
+                    Ok(msg) => {
                         if let Some(parsed) = parse_stream_event(&msg.event, &msg.data) {
                             let is_terminal = matches!(
                                 &parsed,
@@ -68,23 +81,6 @@ pub fn stream_message(
                                 break;
                             }
                         }
-                    }
-                    Err(reqwest_eventsource::Error::InvalidStatusCode(status, resp)) => {
-                        let reason = status.canonical_reason().unwrap_or("Unknown");
-                        let body = resp.text().await.unwrap_or_default();
-                        let message =
-                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-                                json.get("message")
-                                    .or_else(|| json.get("error"))
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string())
-                                    .unwrap_or_else(|| format!("{} {}", status.as_u16(), reason))
-                            } else {
-                                format!("{} {}", status.as_u16(), reason)
-                            };
-                        let _ = tx.send(StreamEvent::Error(message)).await;
-                        es.close();
-                        break;
                     }
                     Err(e) => {
                         let _ = tx

@@ -8,6 +8,7 @@ description = "Shared presentation types and traits for Aletheia UIs"
 publish = false
 
 [dependencies]
+reqwest = { workspace = true, features = ["stream"] }
 serde = { workspace = true }
 
 [dev-dependencies]

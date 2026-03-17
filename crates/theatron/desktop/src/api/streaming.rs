@@ -7,7 +7,7 @@
 //! # Abort support
 //!
 //! Pass a `CancellationToken` to `stream_turn`. When cancelled, the
-//! background task closes the `EventSource` immediately, freeing the
+//! background task closes the event source immediately, freeing the
 //! HTTP connection. The Dioxus component triggers cancellation via a
 //! stop button bound to the token.
 //!
@@ -32,9 +32,8 @@
 //! cancel.cancel();
 //! ```
 
-use futures_util::StreamExt;
 use reqwest::Client;
-use reqwest_eventsource::{Event as EsEvent, EventSource};
+use theatron_core::sse::{EventSource, SseError};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -75,9 +74,28 @@ pub fn stream_turn(
     let span = tracing::info_span!("stream_turn");
     tokio::spawn(
         async move {
-            let mut es = match EventSource::new(builder) {
+            let connect_result = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    tracing::info!("stream cancelled by user before connect");
+                    let _ = tx.send(StreamEvent::TurnAbort {
+                        reason: "cancelled by user".to_string(),
+                    }).await;
+                    return;
+                }
+                result = EventSource::connect(builder) => result,
+            };
+
+            let mut es = match connect_result {
                 Ok(es) => es,
-                Err(e) => {
+                Err(SseError::InvalidStatusCode(status, resp)) => {
+                    let reason = status.canonical_reason().unwrap_or("Unknown");
+                    let body = resp.text().await.unwrap_or_default();
+                    let message = extract_error_message(&body, status.as_u16(), reason);
+                    let _ = tx.send(StreamEvent::Error(message)).await;
+                    return;
+                }
+                Err(SseError::Request(e)) => {
                     let _ = tx
                         .send(StreamEvent::Error(format!("failed to connect: {e}")))
                         .await;
@@ -102,9 +120,7 @@ pub fn stream_turn(
                 let Some(event) = maybe_event else { break };
 
                 match event {
-                    // NOTE: SSE connection opened, no action needed
-                    Ok(EsEvent::Open) => {}
-                    Ok(EsEvent::Message(msg)) => {
+                    Ok(msg) => {
                         if let Some(parsed) = parse_stream_event(&msg.event, &msg.data) {
                             let is_terminal = matches!(
                                 &parsed,
@@ -120,14 +136,6 @@ pub fn stream_turn(
                                 break;
                             }
                         }
-                    }
-                    Err(reqwest_eventsource::Error::InvalidStatusCode(status, resp)) => {
-                        let reason = status.canonical_reason().unwrap_or("Unknown");
-                        let body = resp.text().await.unwrap_or_default();
-                        let message = extract_error_message(&body, status.as_u16(), reason);
-                        let _ = tx.send(StreamEvent::Error(message)).await;
-                        es.close();
-                        break;
                     }
                     Err(e) => {
                         let _ = tx
