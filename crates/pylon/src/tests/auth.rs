@@ -33,7 +33,6 @@ async fn valid_token_passes() {
 #[tokio::test]
 async fn expired_token_rejected() {
     use aletheia_symbolon::types::{Claims, Role, TokenKind};
-    use jsonwebtoken::{Algorithm, EncodingKey, Header};
 
     let (app, _dir) = app().await;
 
@@ -47,12 +46,7 @@ async fn expired_token_rejected() {
         jti: "expired-jti".to_owned(),
         kind: TokenKind::Access,
     };
-    let token = jsonwebtoken::encode(
-        &Header::new(Algorithm::HS256),
-        &claims,
-        &EncodingKey::from_secret(b"test-secret-key-for-jwt"),
-    )
-    .unwrap();
+    let token = test_jwt_manager().encode_claims(&claims).unwrap();
 
     let req = Request::builder()
         .method("POST")
