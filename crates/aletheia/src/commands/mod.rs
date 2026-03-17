@@ -4,6 +4,7 @@ pub mod add_nous;
 pub mod agent_io;
 pub mod backup;
 pub mod check_config;
+pub mod config;
 pub mod credential;
 pub mod eval;
 pub mod health;

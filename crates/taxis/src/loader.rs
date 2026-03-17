@@ -6,6 +6,7 @@ use snafu::ResultExt;
 use tracing::warn;
 
 use crate::config::AletheiaConfig;
+use crate::encrypt;
 use crate::error::{FigmentSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
 use crate::oikos::Oikos;
 
@@ -13,8 +14,12 @@ use crate::oikos::Oikos;
 ///
 /// Resolution order (later wins):
 /// 1. Compiled defaults ([`AletheiaConfig::default()`])
-/// 2. `{oikos.config()}/aletheia.toml` (if it exists)
+/// 2. `{oikos.config()}/aletheia.toml` (if it exists), with `enc:` values decrypted
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
+///
+/// Encrypted values (`enc:` prefix) are transparently decrypted using the
+/// master key from `~/.config/aletheia/master.key`. If the key is missing,
+/// encrypted values pass through unchanged with a warning.
 #[expect(
     clippy::result_large_err,
     reason = "figment::Error is inherently large"
@@ -26,10 +31,16 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     let mut figment = Figment::new().merge(Serialized::defaults(AletheiaConfig::default()));
 
     if toml_path.exists() {
-        figment = figment.merge(Toml::file(&toml_path));
+        let toml_content =
+            std::fs::read_to_string(&toml_path).context(crate::error::ReadConfigSnafu {
+                path: toml_path.clone(),
+            })?;
+
+        let decrypted_content = decrypt_toml_content(&toml_content);
+        figment = figment.merge(Toml::string(&decrypted_content));
     } else if yaml_path.exists() {
         warn!(
-            "Found aletheia.yaml but not aletheia.toml — run migration or rename. \
+            "Found aletheia.yaml but not aletheia.toml -- run migration or rename. \
              See docs/CONFIGURATION.md."
         );
     } else {
@@ -42,6 +53,32 @@ pub fn load_config(oikos: &Oikos) -> Result<AletheiaConfig> {
     figment = figment.merge(Env::prefixed("ALETHEIA_").split("__"));
 
     figment.extract().context(FigmentSnafu)
+}
+
+/// Parse TOML content, decrypt any `enc:` values, and serialize back.
+///
+/// If the master key is unavailable or the TOML is unparseable, returns the
+/// original content unchanged.
+fn decrypt_toml_content(content: &str) -> String {
+    let mut value: toml::Value = match toml::from_str(content) {
+        Ok(v) => v,
+        Err(_) => return content.to_owned(),
+    };
+
+    let master_key = match encrypt::master_key_path() {
+        Some(path) => match encrypt::load_master_key(&path) {
+            Ok(key) => key,
+            Err(e) => {
+                warn!(error = %e, "failed to load master key, encrypted values will not be decrypted");
+                None
+            }
+        },
+        None => None,
+    };
+
+    encrypt::decrypt_toml_values(&mut value, master_key.as_ref());
+
+    toml::to_string(&value).unwrap_or_else(|_| content.to_owned())
 }
 
 /// Write configuration to the instance TOML file.
