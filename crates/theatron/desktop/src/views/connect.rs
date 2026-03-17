@@ -145,23 +145,24 @@ pub fn ConnectView(
             auto_reconnect: true,
         };
 
-        // Persist config to disk.
+        // WHY: Persist config to disk so settings survive app restarts.
         if let Err(e) = config::save(&new_config) {
             tracing::warn!("failed to save config: {e}");
         }
 
-        // Update the shared config signal.
+        // NOTE: Update the shared config signal so other components see the new values.
         connection_config.write().clone_from(&new_config);
 
-        // Set up channel for background → UI communication.
+        // NOTE: Set up channel for background → UI communication.
         let (tx, mut rx) = mpsc::unbounded_channel::<ConnectionState>();
         let cancel = CancellationToken::new();
         let svc = ConnectionService::new(new_config, cancel, tx);
 
-        // Spawn the connection service on the tokio runtime.
+        // WHY: Spawn the connection service on the tokio runtime so it runs
+        // concurrently without blocking the Dioxus UI thread.
         tokio::spawn(svc.run().instrument(tracing::info_span!("connection_service")));
 
-        // Spawn a Dioxus-side task to read state updates from the channel
+        // WHY: Spawn a Dioxus-side task to read state updates from the channel
         // and write them to the signal on the UI thread.
         let mut state_signal = connection_state;
         spawn(async move {

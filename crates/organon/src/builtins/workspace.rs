@@ -63,7 +63,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
 
     let normalized = normalize(&resolved);
 
-    // First check the normalized path (fast path, catches obvious traversals)
+    // PERF: First check the normalized path (fast path, catches obvious traversals)
     let allowed = ctx
         .allowed_roots
         .iter()
@@ -77,13 +77,13 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
         .build());
     }
 
-    // Resolve symlinks to prevent symlink-based escapes.
+    // NOTE: Resolve symlinks to prevent symlink-based escapes.
     // If the file exists, canonicalize it directly.
     // If not (e.g. write to new file), canonicalize the parent directory.
     let canonical = if normalized.exists() {
         normalized.canonicalize()
     } else if let Some(parent) = normalized.parent() {
-        // For new files: canonicalize parent, then append the filename
+        // NOTE: For new files: canonicalize parent, then append the filename
         if parent.exists() {
             parent.canonicalize().map(|p| {
                 if let Some(name) = normalized.file_name() {
@@ -93,7 +93,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
                 }
             })
         } else {
-            // Parent doesn't exist yet (will be created by write): use normalized
+            // NOTE: Parent doesn't exist yet (will be created by write): use normalized
             Ok(normalized.clone())
         }
     } else {
@@ -102,7 +102,7 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
 
     let canonical = canonical.unwrap_or_else(|_| normalized.clone());
 
-    // Re-check canonical path against allowed roots
+    // NOTE: Re-check canonical path against allowed roots
     let canonical_allowed = ctx.allowed_roots.iter().any(|root| {
         let canon_root = root.canonicalize().unwrap_or_else(|_| root.clone());
         canonical.starts_with(&canon_root)
@@ -204,7 +204,7 @@ impl ToolExecutor for ReadExecutor {
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
             let path = validate_path(path_str, ctx, &input.name)?;
 
-            // File size guard: reject files larger than 50 MB
+            // NOTE: File size guard: reject files larger than 50 MB
             match std::fs::metadata(&path) {
                 Ok(meta) if meta.len() > MAX_READ_BYTES => {
                     return Ok(err_result(format!(
@@ -269,7 +269,7 @@ impl ToolExecutor for WriteExecutor {
             let append = extract_opt_bool(&input.arguments, "append").unwrap_or(false);
             let path = validate_path(path_str, ctx, &input.name)?;
 
-            // Block writes to protected bootstrap files
+            // WHY: Block writes to protected bootstrap files
             if let Some(protected) = is_protected_file(&path, &ctx.workspace) {
                 return Ok(err_result(format!(
                     "cannot overwrite protected file: {protected}"
@@ -459,7 +459,7 @@ impl ToolExecutor for ExecExecutor {
                 }
             }
 
-            // Wrap immediately so the child is killed on any early return
+            // WHY: Wrap immediately so the child is killed on any early return
             // (timeout, wait error, or panic).
             let mut guard = match cmd.spawn() {
                 Ok(c) => ProcessGuard::new(c),
@@ -493,7 +493,7 @@ impl ToolExecutor for ExecExecutor {
                 }
             };
 
-            // Process exited normally (`try_wait` already reaped the zombie).
+            // NOTE: Process exited normally (`try_wait` already reaped the zombie).
             // Read captured stdio via the guard. The guard's Drop will call
             // kill() + wait() on the already-dead process, both of which
             // safely ignore ESRCH / ECHILD errors.
