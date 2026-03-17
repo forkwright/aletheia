@@ -7,9 +7,11 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info, warn};
+use tracing::{Instrument, debug, info, warn};
 
 use aletheia_koina::credential::{Credential, CredentialProvider, CredentialSource};
+
+use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
 /// Return current time as milliseconds since UNIX epoch, warning if the clock
 /// is before epoch rather than silently returning zero.
@@ -430,8 +432,16 @@ impl RefreshingCredentialProvider {
     /// Create a refreshing provider from a credential file path.
     ///
     /// Reads the credential file immediately and spawns a background refresh
-    /// task. Requires a tokio runtime to be active.
+    /// task with a default circuit breaker. Requires a tokio runtime to be active.
     pub fn new(path: PathBuf) -> Option<Self> {
+        Self::with_circuit_breaker(path, CircuitBreakerConfig::default())
+    }
+
+    /// Create a refreshing provider with a custom circuit breaker configuration.
+    ///
+    /// Reads the credential file immediately and spawns a background refresh
+    /// task. Requires a tokio runtime to be active.
+    pub fn with_circuit_breaker(path: PathBuf, cb_config: CircuitBreakerConfig) -> Option<Self> {
         let cred = CredentialFile::load(&path)?;
         let refresh_token = cred.refresh_token.clone().filter(|t| !t.is_empty())?;
 
@@ -448,14 +458,16 @@ impl RefreshingCredentialProvider {
         })));
 
         let shutdown = Arc::new(AtomicBool::new(false));
+        let circuit_breaker = Arc::new(CircuitBreaker::new(cb_config));
 
         let task_state = Arc::clone(&state);
         let task_shutdown = Arc::clone(&shutdown);
         let task_path = path.clone();
+        let task_cb = Arc::clone(&circuit_breaker);
 
         let task = tokio::spawn(
             async move {
-                refresh_loop(task_state, task_shutdown, task_path).await;
+                refresh_loop(task_state, task_shutdown, task_path, task_cb).await;
             }
             .instrument(tracing::info_span!("credential_refresh")),
         );
@@ -517,6 +529,7 @@ async fn refresh_loop(
     state: Arc<RwLock<Option<RefreshState>>>,
     shutdown: Arc<AtomicBool>,
     path: PathBuf,
+    circuit_breaker: Arc<CircuitBreaker>,
 ) {
     let client = reqwest::Client::new();
     let check_interval = Duration::from_secs(REFRESH_CHECK_INTERVAL_SECS);
@@ -556,45 +569,53 @@ async fn refresh_loop(
             continue;
         }
 
+        if !circuit_breaker.check_allowed() {
+            debug!(
+                state = %circuit_breaker.state(),
+                "OAuth refresh circuit breaker is open, skipping refresh attempt"
+            );
+            continue;
+        }
+
         info!(
             expires_at_ms,
             now_ms = unix_epoch_ms(),
             "credential refresh needed, refreshing OAuth token"
         );
 
-        match do_refresh(&client, &refresh_token).await {
-            Some(resp) => {
-                let now_ms = unix_epoch_ms();
-                let expires_at_ms = now_ms + resp.expires_in * 1000;
+        if let Some(resp) = do_refresh(&client, &refresh_token).await {
+            circuit_breaker.record_success();
 
-                if let Ok(mut guard) = state.write() {
-                    *guard = Some(RefreshState {
-                        current_token: resp.access_token.clone(),
-                        refresh_token: resp.refresh_token.clone(),
-                        expires_at_ms,
-                        subscription_type: subscription_type.clone(),
-                    });
-                }
+            let now_ms = unix_epoch_ms();
+            let expires_at_ms = now_ms + resp.expires_in * 1000;
 
-                let scopes = resp
-                    .scope
-                    .map(|s| s.split_whitespace().map(String::from).collect());
-                let cred_file = CredentialFile {
-                    token: resp.access_token,
-                    refresh_token: Some(resp.refresh_token),
-                    expires_at: Some(expires_at_ms),
-                    scopes,
-                    subscription_type,
-                };
-                if let Err(e) = cred_file.save(&path) {
-                    warn!(error = %e, "failed to write refreshed credential file");
-                }
-
-                info!(expires_in_secs = resp.expires_in, "OAuth token refreshed");
+            if let Ok(mut guard) = state.write() {
+                *guard = Some(RefreshState {
+                    current_token: resp.access_token.clone(),
+                    refresh_token: resp.refresh_token.clone(),
+                    expires_at_ms,
+                    subscription_type: subscription_type.clone(),
+                });
             }
-            None => {
-                warn!("OAuth token refresh failed — will retry next cycle");
+
+            let scopes = resp
+                .scope
+                .map(|s| s.split_whitespace().map(String::from).collect());
+            let cred_file = CredentialFile {
+                token: resp.access_token,
+                refresh_token: Some(resp.refresh_token),
+                expires_at: Some(expires_at_ms),
+                scopes,
+                subscription_type,
+            };
+            if let Err(e) = cred_file.save(&path) {
+                warn!(error = %e, "failed to write refreshed credential file");
             }
+
+            info!(expires_in_secs = resp.expires_in, "OAuth token refreshed");
+        } else {
+            circuit_breaker.record_failure();
+            warn!("OAuth token refresh failed — will retry next cycle");
         }
     }
 }
@@ -700,12 +721,23 @@ pub fn claude_code_default_path() -> Option<PathBuf> {
 ///
 /// Returns `None` if the file does not exist or cannot be parsed.
 pub fn claude_code_provider(path: &Path) -> Option<Box<dyn CredentialProvider>> {
+    claude_code_provider_with_config(path, CircuitBreakerConfig::default())
+}
+
+/// Build a credential provider with a custom circuit breaker configuration.
+///
+/// See [`claude_code_provider`] for behavior details.
+pub fn claude_code_provider_with_config(
+    path: &Path,
+    cb_config: CircuitBreakerConfig,
+) -> Option<Box<dyn CredentialProvider>> {
     if !path.exists() {
         return None;
     }
     let cred = CredentialFile::load(path)?;
     if cred.has_refresh_token()
-        && let Some(refreshing) = RefreshingCredentialProvider::new(path.to_path_buf())
+        && let Some(refreshing) =
+            RefreshingCredentialProvider::with_circuit_breaker(path.to_path_buf(), cb_config)
     {
         info!(
             path = %path.display(),
