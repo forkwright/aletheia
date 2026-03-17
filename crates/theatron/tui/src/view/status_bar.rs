@@ -204,14 +204,14 @@ fn truncate_str_to_cols(s: &str, max_cols: usize) -> &str {
     let mut w = 0usize;
     let mut end = 0usize;
     for (idx, ch) in s.char_indices() {
-        let char_w = s[idx..idx + ch.len_utf8()].width();
+        let char_w = s.get(idx..idx + ch.len_utf8()).unwrap_or("").width();
         if w + char_w > max_cols {
             break;
         }
         w += char_w;
         end = idx + ch.len_utf8();
     }
-    &s[..end]
+    s.get(..end).unwrap_or(s)
 }
 
 fn agent_identity_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {

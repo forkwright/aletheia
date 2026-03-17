@@ -25,9 +25,10 @@ pub(crate) fn handle_input(app: &mut App, c: char) {
 pub(crate) fn handle_backspace(app: &mut App) {
     let should_close = if let Some(Overlay::SessionSearch(ref mut search)) = app.overlay {
         if search.cursor > 0 {
-            let prev = search.query[..search.cursor]
-                .char_indices()
-                .next_back()
+            let prev = search
+                .query
+                .get(..search.cursor)
+                .and_then(|s| s.char_indices().next_back())
                 .map(|(i, _)| i)
                 .unwrap_or(0);
             search.query.drain(prev..search.cursor);
@@ -208,13 +209,18 @@ fn excerpt(text: &str, needle: &str, max_len: usize) -> String {
     let context = max_len / 2;
     let start = pos.saturating_sub(context);
     // Align to char boundary
-    let start = text[..start]
-        .char_indices()
-        .next_back()
+    let start = text
+        .get(..start)
+        .and_then(|s| s.char_indices().next_back())
         .map(|(i, _)| i)
         .unwrap_or(0);
 
-    let result: String = text[start..].chars().take(max_len).collect();
+    let result: String = text
+        .get(start..)
+        .unwrap_or("")
+        .chars()
+        .take(max_len)
+        .collect();
     if start > 0 {
         format!("...{result}")
     } else {

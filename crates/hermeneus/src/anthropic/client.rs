@@ -671,7 +671,9 @@ impl LlmProvider for AnthropicProvider {
 /// | `claude-haiku-4-5-20251001`  | `claude-haiku-4-5` |
 /// | `claude-haiku-4-5`           | `claude-haiku-4`   |
 fn model_family(model: &str) -> &str {
-    model.rfind('-').map_or(model, |pos| &model[..pos])
+    model
+        .rfind('-')
+        .map_or(model, |pos| model.get(..pos).unwrap_or(model))
 }
 
 /// Estimate cost using configured pricing.

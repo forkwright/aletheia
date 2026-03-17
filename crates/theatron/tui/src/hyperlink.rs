@@ -127,10 +127,10 @@ pub fn detect_urls(text: &str) -> Vec<(usize, usize, &str)> {
     let mut out = Vec::new();
     for m in URL_RE.find_iter(text) {
         let start = m.start();
-        let trimmed_len = trim_trailing_punct(&text[start..m.end()]);
+        let trimmed_len = trim_trailing_punct(text.get(start..m.end()).unwrap_or(""));
         let end = start + trimmed_len;
         if end > start {
-            out.push((start, end, &text[start..end]));
+            out.push((start, end, text.get(start..end).unwrap_or("")));
         }
     }
     out
@@ -147,7 +147,7 @@ fn trim_trailing_punct(url: &str) -> usize {
         match bytes[end - 1] {
             b'.' | b',' | b';' | b'!' | b'?' | b':' => end -= 1,
             b')' => {
-                let sub = &url[..end];
+                let sub = url.get(..end).unwrap_or("");
                 let opens = sub.bytes().filter(|&b| b == b'(').count();
                 let closes = sub.bytes().filter(|&b| b == b')').count();
                 if closes > opens {
@@ -292,7 +292,10 @@ mod tests {
         let urls = detect_urls(text);
         assert_eq!(urls.len(), 1);
         assert_eq!(urls[0].0, 6);
-        assert_eq!(&text[urls[0].0..urls[0].1], "https://foo.com");
+        assert_eq!(
+            text.get(urls[0].0..urls[0].1).unwrap_or(""),
+            "https://foo.com"
+        );
     }
 
     #[test]

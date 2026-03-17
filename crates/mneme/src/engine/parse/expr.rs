@@ -412,7 +412,7 @@ fn build_term(pair: Pair<'_>, param_pool: &BTreeMap<String, DataValue>) -> Resul
 }
 
 pub(crate) fn parse_int(s: &str, radix: u32) -> i64 {
-    i64::from_str_radix(&s[2..].replace('_', ""), radix)
+    i64::from_str_radix(&s.get(2..).unwrap_or("").replace('_', ""), radix)
         .expect("pest guarantees valid integer literal syntax")
 }
 

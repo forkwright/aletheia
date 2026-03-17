@@ -43,7 +43,9 @@ impl<'a> TokenStream for WhitespaceTokenStream<'a> {
                 let offset_to = self.search_token_end();
                 self.token.offset_from = offset_from;
                 self.token.offset_to = offset_to;
-                self.token.text.push_str(&self.text[offset_from..offset_to]);
+                self.token
+                    .text
+                    .push_str(self.text.get(offset_from..offset_to).unwrap_or(""));
                 return true;
             }
         }

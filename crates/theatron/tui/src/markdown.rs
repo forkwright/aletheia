@@ -396,10 +396,10 @@ fn linkify_text(
     let mut last = 0usize;
     for &(start, end, url) in urls {
         if start > last {
-            let before = &text[last..start];
+            let before = text.get(last..start).unwrap_or("");
             push_span(spans, col, Span::styled(before.to_string(), base_style));
         }
-        let url_text = &text[start..end];
+        let url_text = text.get(start..end).unwrap_or("");
         let link_col = *col;
         push_span(spans, col, Span::styled(url_text.to_string(), link_style));
         md_links.push(MdLink {
@@ -414,7 +414,7 @@ fn linkify_text(
         push_span(
             spans,
             col,
-            Span::styled(text[last..].to_string(), base_style),
+            Span::styled(text.get(last..).unwrap_or("").to_string(), base_style),
         );
     }
 }

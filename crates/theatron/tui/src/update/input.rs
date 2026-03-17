@@ -50,9 +50,11 @@ pub(crate) fn handle_delete_word(app: &mut App) {
     let mut pos = app.input.cursor;
     while pos > 0 {
         let prev = app.prev_char_boundary(pos);
-        let is_ws = app.input.text[prev..pos]
-            .chars()
-            .next()
+        let is_ws = app
+            .input
+            .text
+            .get(prev..pos)
+            .and_then(|s| s.chars().next())
             .is_some_and(|c| c.is_whitespace());
         if is_ws {
             pos = prev;
@@ -62,9 +64,11 @@ pub(crate) fn handle_delete_word(app: &mut App) {
     }
     while pos > 0 {
         let prev = app.prev_char_boundary(pos);
-        let is_ws = app.input.text[prev..pos]
-            .chars()
-            .next()
+        let is_ws = app
+            .input
+            .text
+            .get(prev..pos)
+            .and_then(|s| s.chars().next())
             .is_some_and(|c| c.is_whitespace());
         if is_ws {
             break;

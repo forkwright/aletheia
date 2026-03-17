@@ -34,8 +34,16 @@ pub(crate) fn extract_task_context(content: &str) -> String {
     }
 
     // WHY: prefer breaking at word boundary to avoid cutting mid-word
-    let word_end = trimmed[..end].rfind(' ').unwrap_or(end);
-    trimmed[..word_end].trim_end().to_owned()
+    let word_end = trimmed
+        .get(..end)
+        .unwrap_or(trimmed)
+        .rfind(' ')
+        .unwrap_or(end);
+    trimmed
+        .get(..word_end)
+        .unwrap_or(trimmed)
+        .trim_end()
+        .to_owned()
 }
 
 /// Strip characters that `CozoDB` FTS (tantivy) cannot parse.

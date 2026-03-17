@@ -736,7 +736,7 @@ pub(crate) fn truncate_content(s: &str, max: usize) -> String {
         while end > 0 && !s.is_char_boundary(end) {
             end -= 1;
         }
-        format!("{}...", &s[..end])
+        format!("{}...", s.get(..end).unwrap_or(s))
     }
 }
 

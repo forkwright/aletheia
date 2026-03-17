@@ -101,14 +101,14 @@ fn extract_one_liner(description: &str) -> String {
 
     let end = first_line.find(". ").map_or(first_line.len(), |i| i + 1);
 
-    let sentence = &first_line[..end];
+    let sentence = first_line.get(..end).unwrap_or(first_line);
 
     if sentence.len() <= 80 {
         sentence.to_owned()
     } else {
-        let truncated = &sentence[..80];
+        let truncated = sentence.get(..80).unwrap_or(sentence);
         match truncated.rfind(' ') {
-            Some(i) if i > 40 => format!("{}...", &truncated[..i]),
+            Some(i) if i > 40 => format!("{}...", truncated.get(..i).unwrap_or(truncated)),
             _ => format!("{truncated}..."),
         }
     }
