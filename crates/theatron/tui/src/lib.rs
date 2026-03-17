@@ -171,12 +171,35 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
             app.update(msg).await;
         }
 
+        // PERF: Drain all buffered stream events before the next frame.
+        // At high token rates (50-100 tokens/sec) multiple TextDelta events
+        // queue between frames. Processing them all here batches the text
+        // appends so the next frame renders once with all accumulated deltas.
+        drain_pending_stream_events(app).await;
+
         if app.should_quit {
             break;
         }
     }
 
     Ok(())
+}
+
+/// Drain all currently-buffered stream events without blocking.
+///
+/// This prevents one-event-per-frame bottlenecks during high-rate streaming.
+/// The receiver is temporarily taken from the app and restored after draining.
+async fn drain_pending_stream_events(app: &mut App) {
+    let Some(mut rx) = app.take_stream() else {
+        return;
+    };
+    while let Ok(stream_event) = rx.try_recv() {
+        let event = Event::Stream(stream_event);
+        if let Some(msg) = app.map_event(event) {
+            app.update(msg).await;
+        }
+    }
+    app.restore_stream(Some(rx));
 }
 
 /// Write OSC 8 hyperlink sequences to the terminal **after** ratatui has
