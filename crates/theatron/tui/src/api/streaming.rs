@@ -4,6 +4,8 @@ use reqwest_eventsource::{Event as EsEvent, EventSource};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
+use aletheia_koina::http::CONTENT_TYPE_EVENT_STREAM;
+
 use crate::events::StreamEvent;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
@@ -33,7 +35,7 @@ pub fn stream_message(
     let builder = client
         .post(&url)
         .json(&body)
-        .header("Accept", "text/event-stream");
+        .header("Accept", CONTENT_TYPE_EVENT_STREAM);
 
     let span = tracing::info_span!("stream_message");
     tokio::spawn(

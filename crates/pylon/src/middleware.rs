@@ -11,6 +11,8 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tracing::warn;
 
+use aletheia_koina::http::CONTENT_TYPE_JSON;
+
 use crate::error::{ErrorBody, ErrorResponse};
 
 /// CSRF protection state stored as a router extension.
@@ -121,7 +123,7 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
         .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.contains("application/json"));
+        .is_some_and(|ct| ct.contains(CONTENT_TYPE_JSON));
 
     if !is_json {
         return response;
