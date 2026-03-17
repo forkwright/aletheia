@@ -44,7 +44,12 @@ struct Csr<EV> {
 
 impl<EV> Csr<EV> {
     fn node_count(&self) -> u32 {
-        (self.offsets.len() - 1) as u32
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "graph node count bounded by u32"
+        )]
+        let count = (self.offsets.len() - 1) as u32;
+        count
     }
 
     fn degree(&self, node: u32) -> u32 {
@@ -159,10 +164,20 @@ impl<EV: Copy> CsrBuilder<EV> {
         let mut offsets = Vec::with_capacity(n + 1);
         let mut targets = Vec::new();
         for list in adj {
-            offsets.push(targets.len() as u32);
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "edge count bounded by u32 graph capacity"
+            )]
+            let offset = targets.len() as u32;
+            offsets.push(offset);
             targets.extend(list);
         }
-        offsets.push(targets.len() as u32);
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "edge count bounded by u32 graph capacity"
+        )]
+        let final_offset = targets.len() as u32;
+        offsets.push(final_offset);
 
         Csr {
             offsets: offsets.into_boxed_slice(),

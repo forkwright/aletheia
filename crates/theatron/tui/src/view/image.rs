@@ -10,7 +10,7 @@ const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 
 /// Maximum height for inline image previews (in terminal rows).
 /// Each row uses half-block characters representing two pixel rows.
-const MAX_IMAGE_HEIGHT: usize = 20;
+const MAX_IMAGE_HEIGHT: u32 = 20;
 
 /// Maximum number of cached image renders before eviction.
 const MAX_CACHE_ENTRIES: usize = 32;
@@ -194,15 +194,27 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
     }
 
     // Reserve 2 columns for left margin
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "terminal dimensions fit in u32"
+    )]
     let avail_width = max_width.saturating_sub(2).max(1) as u32;
-    let max_pixel_h = (MAX_IMAGE_HEIGHT as u32) * 2;
+    let max_pixel_h = MAX_IMAGE_HEIGHT * 2;
 
-    let scale_w = avail_width as f64 / orig_w as f64;
-    let scale_h = max_pixel_h as f64 / orig_h as f64;
+    let scale_w = f64::from(avail_width) / f64::from(orig_w);
+    let scale_h = f64::from(max_pixel_h) / f64::from(orig_h);
     let scale = scale_w.min(scale_h).min(1.0);
 
-    let new_w = ((orig_w as f64 * scale) as u32).max(1);
-    let new_h = ((orig_h as f64 * scale) as u32).max(1);
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "scaled dimension bounded by original u32 dimension"
+    )]
+    let new_w = ((f64::from(orig_w) * scale) as u32).max(1);
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "scaled dimension bounded by original u32 dimension"
+    )]
+    let new_h = ((f64::from(orig_h) * scale) as u32).max(1);
 
     let resized =
         image::imageops::resize(&img, new_w, new_h, image::imageops::FilterType::Triangle);
@@ -225,7 +237,7 @@ fn load_and_render_halfblocks(path: &Path, max_width: usize) -> Vec<Line<'static
     // Pixel rows → half-block text rows
     let mut y = 0u32;
     while y < new_h {
-        let mut spans: Vec<Span<'static>> = Vec::with_capacity(new_w as usize + 1);
+        let mut spans: Vec<Span<'static>> = Vec::with_capacity(new_w as usize + 1); // u32→usize: widening on 32/64-bit
         spans.push(Span::raw("  ")); // left margin
 
         for x in 0..new_w {

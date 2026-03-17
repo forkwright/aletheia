@@ -12,6 +12,7 @@ use crate::engine::fts::ast::{FtsExpr, FtsLiteral, FtsNear};
 use crate::engine::fts::error::TokenizationFailedSnafu;
 use crate::engine::fts::tokenizer::TextAnalyzer;
 use crate::engine::parse::fts::parse_fts_query;
+use crate::engine::runtime::error::InvalidOperationSnafu;
 use crate::engine::runtime::relation::RelationHandle;
 use crate::engine::runtime::transact::SessionTx;
 use crate::engine::{DataValue, SourceSpan};
@@ -63,7 +64,16 @@ impl FtsCache {
                                 .build(),
                             )
                         })?;
-                    let total_length = vals[3].get_int().unwrap_or(0) as u32;
+                    let total_length =
+                        u32::try_from(vals[3].get_int().unwrap_or(0)).map_err(|_e| {
+                            crate::engine::error::InternalError::from(
+                                InvalidOperationSnafu {
+                                    op: "fts_avg_dl",
+                                    reason: "document length does not fit in u32",
+                                }
+                                .build(),
+                            )
+                        })?;
                     doc_lengths
                         .entry(doc_key)
                         .and_modify(|_| {})
@@ -73,7 +83,7 @@ impl FtsCache {
                     0.0
                 } else {
                     let sum: u32 = doc_lengths.values().sum();
-                    sum as f64 / doc_lengths.len() as f64
+                    f64::from(sum) / doc_lengths.len() as f64
                 };
                 v.insert(avg);
                 avg
@@ -113,7 +123,7 @@ pub(crate) fn bm25_compute_score(
     let tf = tf as f64;
     let df = df as f64;
     let n = n as f64;
-    let dl = dl as f64;
+    let dl = f64::from(dl);
     let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
     let normalized_tf = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * dl / avgdl.max(1.0)));
     idf * normalized_tf * booster
@@ -165,15 +175,34 @@ impl<'a> SessionTx<'a> {
             let positions = vals[2]
                 .get_slice()
                 .expect("FTS index val[2] (positions) is always a list");
-            let total_length = vals[3].get_int().unwrap_or(0) as u32;
+            let total_length = u32::try_from(vals[3].get_int().unwrap_or(0)).map_err(|_e| {
+                crate::engine::error::InternalError::from(
+                    InvalidOperationSnafu {
+                        op: "fts_search",
+                        reason: "document length does not fit in u32",
+                    }
+                    .build(),
+                )
+            })?;
             let position_info = froms
                 .iter()
                 .zip(tos.iter())
                 .zip(positions.iter())
-                .map(|(_, p)| PositionInfo {
-                    position: p.get_int().expect("FTS position is always an integer") as u32,
+                .map(|(_, p)| {
+                    let position =
+                        u32::try_from(p.get_int().expect("FTS position is always an integer"))
+                            .map_err(|_e| {
+                                crate::engine::error::InternalError::from(
+                                    InvalidOperationSnafu {
+                                        op: "fts_search",
+                                        reason: "token position does not fit in u32",
+                                    }
+                                    .build(),
+                                )
+                            })?;
+                    Ok(PositionInfo { position })
                 })
-                .collect_vec();
+                .collect::<Result<Vec<_>>>()?;
             results.push(LiteralStats {
                 key: key_tuple[1..].to_vec(),
                 position_info,

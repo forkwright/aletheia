@@ -71,6 +71,9 @@ string_add = "warn"
 trait_duplication_in_bounds = "warn"
 unused_self = "warn"
 
+# Safety: numeric cast auditing (incremental)
+cast_possible_truncation = "warn"
+
 [workspace.dependencies]
 base64 = "0.22"
 rayon = "1"
