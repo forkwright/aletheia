@@ -117,6 +117,8 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     #[cfg(feature = "knowledge-store")]
     let knowledge_store = nous_manager.knowledge_store().cloned();
 
+    let (config_tx, _config_rx) = tokio::sync::watch::channel(aletheia_config.clone());
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -127,11 +129,15 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         start_time: Instant::now(),
         auth_mode: aletheia_config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
+        config_tx,
         idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store,
     });
+
+    #[cfg(unix)]
+    spawn_sighup_handler(Arc::clone(&state));
 
     let app = build_router(state.clone(), &config.security);
 
@@ -228,6 +234,64 @@ fn serve_tls(
     _config: &ServerConfig,
 ) -> impl std::future::Future<Output = Result<(), ServerError>> {
     std::future::ready(TlsNotCompiledSnafu.fail())
+}
+
+/// Apply a prepared config reload to the live state.
+///
+/// Acquires the config write lock, swaps the config, logs the diff,
+/// and notifies subscribers via the watch channel.
+pub(crate) async fn apply_reload(state: &AppState, outcome: aletheia_taxis::reload::ReloadOutcome) {
+    aletheia_taxis::reload::log_diff(&outcome.diff);
+
+    let mut config = state.config.write().await;
+    *config = outcome.new_config.clone();
+    drop(config);
+
+    // WHY: send can only fail if all receivers are dropped, which means
+    // no actors are listening. Safe to ignore.
+    let _ = state.config_tx.send(outcome.new_config);
+}
+
+/// Spawn a background task that listens for SIGHUP and triggers config reload.
+///
+/// On each SIGHUP, re-reads config from disk, validates, diffs against the
+/// current config, and applies hot-reloadable values. Invalid configs are
+/// rejected with an error log; the running config is preserved.
+#[cfg(unix)]
+fn spawn_sighup_handler(state: Arc<AppState>) {
+    use tracing::Instrument;
+
+    let span = tracing::info_span!("sighup_reload");
+    tokio::spawn(
+        async move {
+            #[expect(
+                clippy::expect_used,
+                reason = "signal handler installation is infallible on supported platforms"
+            )]
+            let mut sighup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
+                .expect("failed to install SIGHUP handler");
+
+            loop {
+                sighup.recv().await;
+                info!("received SIGHUP, reloading config");
+
+                let current = state.config.read().await.clone();
+                match aletheia_taxis::reload::prepare_reload(&state.oikos, &current) {
+                    Ok(outcome) => {
+                        if outcome.diff.is_empty() {
+                            info!("config reload: no changes detected");
+                        } else {
+                            apply_reload(&state, outcome).await;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "config reload failed, keeping current config");
+                    }
+                }
+            }
+        }
+        .instrument(span),
+    );
 }
 
 #[expect(

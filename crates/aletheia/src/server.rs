@@ -386,6 +386,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     #[cfg(feature = "recall")]
     let knowledge_store = nous_manager.knowledge_store().cloned();
 
+    let (config_tx, _config_rx) = tokio::sync::watch::channel(aletheia_config.clone());
     let state = Arc::new(AppState {
         session_store,
         nous_manager: Arc::clone(&nous_manager),
@@ -396,6 +397,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
         start_time: Instant::now(),
         auth_mode: config.gateway.auth.mode.clone(),
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
+        config_tx,
         idempotency_cache: Arc::new(aletheia_pylon::idempotency::IdempotencyCache::new()),
         shutdown: shutdown_token.clone(),
         #[cfg(feature = "recall")]

@@ -35,6 +35,11 @@ pub struct AppState {
     pub start_time: Instant,
     /// Runtime configuration, updatable via config API.
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+    /// Broadcast channel for config change notifications.
+    ///
+    /// Actors and subsystems subscribe via [`config_rx`](Self::config_rx) to
+    /// receive the latest config after each hot-reload.
+    pub config_tx: tokio::sync::watch::Sender<AletheiaConfig>,
     /// Auth mode from gateway config (`"token"`, `"none"`, etc.).
     pub auth_mode: String,
     /// Root shutdown token. Cancel to initiate graceful shutdown of all subsystems.
@@ -44,6 +49,17 @@ pub struct AppState {
     /// Shared knowledge store for fact/entity/relationship queries.
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
+}
+
+impl AppState {
+    /// Subscribe to config change notifications.
+    ///
+    /// Returns a `watch::Receiver` that yields the latest config after each
+    /// successful reload. Actors should call `changed().await` to be notified.
+    #[must_use]
+    pub fn config_rx(&self) -> tokio::sync::watch::Receiver<AletheiaConfig> {
+        self.config_tx.subscribe()
+    }
 }
 
 #[cfg(test)]

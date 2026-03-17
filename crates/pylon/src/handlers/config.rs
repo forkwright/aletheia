@@ -26,13 +26,25 @@ const VALID_SECTIONS: &[&str] = &[
     "pricing",
 ];
 
-/// Response wrapper for config reload metadata.
+/// Response wrapper for config section update metadata.
 #[derive(serde::Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigUpdateResponse {
     pub section: String,
     pub config: Value,
     pub restart_required: Vec<String>,
+}
+
+/// Response wrapper for full config reload.
+#[derive(serde::Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigReloadResponse {
+    /// Number of hot-reloadable values that were updated.
+    pub hot_reloaded: usize,
+    /// Field paths that changed but require a restart to take effect.
+    pub restart_required: Vec<String>,
+    /// All changed field paths (both hot and cold).
+    pub changed: Vec<String>,
 }
 
 /// GET /api/v1/config: full redacted config.
@@ -89,6 +101,69 @@ pub async fn get_section(
             location: snafu::Location::default(),
         }),
     }
+}
+
+/// POST /api/v1/config/reload: re-read config from disk and apply hot-reloadable values.
+///
+/// Re-reads `aletheia.toml` (and env overrides), validates the result, diffs
+/// against the current in-memory config, applies hot-reloadable changes, and
+/// logs what changed. Cold values (port, bind, TLS, auth mode, channels) are
+/// reported but not applied until restart.
+#[utoipa::path(
+    post,
+    path = "/api/v1/config/reload",
+    responses(
+        (status = 200, description = "Config reloaded", body = ConfigReloadResponse),
+        (status = 422, description = "New config is invalid, old config preserved"),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[instrument(skip(state, _claims))]
+pub async fn reload_config(
+    State(state): State<Arc<AppState>>,
+    _claims: Claims,
+) -> Result<impl IntoResponse, ApiError> {
+    let current = state.config.read().await.clone();
+    let outcome = aletheia_taxis::reload::prepare_reload(&state.oikos, &current).map_err(|e| {
+        tracing::error!(error = %e, "config reload failed");
+        match e {
+            aletheia_taxis::reload::ReloadError::Validation { source, .. } => {
+                ApiError::ValidationFailed {
+                    errors: source.errors,
+                    location: snafu::Location::default(),
+                }
+            }
+            other => ApiError::Internal {
+                message: other.to_string(),
+                location: snafu::Location::default(),
+            },
+        }
+    })?;
+
+    let hot_reloaded = outcome.diff.hot_changes().len();
+    let restart_required: Vec<String> = outcome
+        .diff
+        .cold_changes()
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+    let changed: Vec<String> = outcome
+        .diff
+        .changes
+        .iter()
+        .map(|c| c.path.clone())
+        .collect();
+
+    crate::server::apply_reload(&state, outcome).await;
+
+    Ok((
+        StatusCode::OK,
+        Json(ConfigReloadResponse {
+            hot_reloaded,
+            restart_required,
+            changed,
+        }),
+    ))
 }
 
 /// PUT /api/v1/config/{section}: update and persist a config section.
@@ -163,8 +238,12 @@ pub async fn update_section(
         .map(|p| (*p).to_owned())
         .collect();
 
-    *config = new_config;
+    *config = new_config.clone();
     let redacted = aletheia_taxis::redact::redact(&config);
+    drop(config);
+
+    let _ = state.config_tx.send(new_config);
+
     let section_value = redacted.get(&section).cloned().unwrap_or_else(|| {
         tracing::debug!(section = %section, "config section absent after update, returning null");
         Value::Null
