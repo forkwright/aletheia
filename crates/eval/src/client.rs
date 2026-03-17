@@ -17,6 +17,7 @@ pub struct EvalClient {
 
 impl EvalClient {
     /// Create a new eval client targeting the given base URL.
+    // SAFETY: eval client connects to localhost only. Token sent over cleartext HTTP is intentional.
     pub fn new(base_url: impl Into<String>, token: Option<String>) -> Self {
         Self {
             http: reqwest::Client::new(),
