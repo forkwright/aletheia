@@ -1,4 +1,8 @@
 //! Server startup, actor wiring, and HTTP gateway initialization.
+#![expect(
+    clippy::expect_used,
+    reason = "signal handlers and channel registration are infallible at startup"
+)]
 
 use std::path::PathBuf;
 use std::sync::Arc;
