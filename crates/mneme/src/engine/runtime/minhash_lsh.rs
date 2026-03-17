@@ -141,7 +141,7 @@ impl<'a> SessionTx<'a> {
         let chunks = (0..manifest.n_bands)
             .map(|i| {
                 let mut byte_range = bytes[i * chunk_size..(i + 1) * chunk_size].to_vec();
-                byte_range.extend_from_slice(&(i as u16).to_le_bytes());
+                byte_range.extend_from_slice(&u16::try_from(i).unwrap_or(u16::MAX).to_le_bytes());
                 byte_range
             })
             .collect_vec();
@@ -206,7 +206,7 @@ impl<'a> SessionTx<'a> {
         for (i, chunk) in bytes.chunks_exact(chunk_size).enumerate() {
             key_prefix.clear();
             let mut chunk = chunk.to_vec();
-            chunk.extend_from_slice(&(i as u16).to_le_bytes());
+            chunk.extend_from_slice(&u16::try_from(i).unwrap_or(u16::MAX).to_le_bytes());
             key_prefix.push(DataValue::Bytes(chunk));
             for ks in config.idx_handle.scan_prefix(self, &key_prefix) {
                 let ks = ks?;
@@ -332,11 +332,19 @@ impl LshParams {
     }
 
     fn false_positive_probability(threshold: f64, b: usize, r: usize) -> f64 {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "r is bounded by num_perm which fits in i32 for practical hash sizes"
+        )]
         let probability = |s| -> f64 { 1. - f64::powf(1. - f64::powi(s, r as i32), b as f64) };
         integrate_simpson(probability, 0.0, threshold, 100)
     }
 
     fn false_negative_probability(threshold: f64, b: usize, r: usize) -> f64 {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "r is bounded by num_perm which fits in i32 for practical hash sizes"
+        )]
         let probability =
             |s| -> f64 { 1. - (1. - f64::powf(1. - f64::powi(s, r as i32), b as f64)) };
         integrate_simpson(probability, threshold, 1.0, 100)
@@ -388,6 +396,10 @@ impl HashValues {
             for (i, seed) in perms.0.iter().enumerate() {
                 let mut hasher = XxHash32::with_seed(*seed);
                 v.hash(&mut hasher);
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "intentional hash truncation to u32"
+                )]
                 let hash = hasher.finish() as u32;
                 self.0[i] = min(self.0[i], hash);
             }
@@ -402,7 +414,13 @@ impl HashValues {
             .filter(|(left, right)| left == right)
             .count();
 
-        matches as f32 / self.0.len() as f32
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "minhash vector lengths are small; precision loss is negligible"
+        )]
+        {
+            matches as f32 / self.0.len() as f32
+        }
     }
     pub(crate) fn get_bytes(&self) -> &[u8] {
         bytemuck::cast_slice(&self.0)

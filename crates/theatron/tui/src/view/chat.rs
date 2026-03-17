@@ -22,7 +22,7 @@ struct MessageCtx<'a> {
 }
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<OscLink> {
-    let inner_width = area.width.saturating_sub(2) as usize;
+    let inner_width = usize::from(area.width.saturating_sub(2));
     let wrap_width = area.width.saturating_sub(2).max(1);
     // With Borders::NONE the paragraph has the full area height available.
     let visible_height = area.height;
@@ -109,7 +109,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
     // the bottom by prepending empty lines.  Only applies when not scrolled
     // (content fits in the viewport).
     {
-        let w = wrap_width.max(1) as usize;
+        let w = usize::from(wrap_width.max(1));
         let total_visual: usize = lines
             .iter()
             .map(|line| {
@@ -117,7 +117,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
                 if lw == 0 { 1 } else { lw.div_ceil(w) }
             })
             .sum();
-        let padding = (visible_height as usize).saturating_sub(total_visual);
+        let padding = usize::from(visible_height).saturating_sub(total_visual);
         if padding > 0 {
             let mut padded: Vec<Line<'static>> = vec![Line::raw(""); padding];
             padded.append(&mut lines);
@@ -138,12 +138,12 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
     // Total visual rows of the final rendered lines vector (after padding + streaming).
     // Used for auto-scroll so that streaming content appended after virtual render is
     // always visible when the user is at the bottom.
-    let w = wrap_width.max(1) as usize;
+    let w = usize::from(wrap_width.max(1));
     let total_visual: usize = line_widths
         .iter()
         .map(|&lw| if lw == 0 { 1 } else { lw.div_ceil(w) })
         .sum();
-    let vh = visible_height as usize;
+    let vh = usize::from(visible_height);
 
     let scroll = if app.auto_scroll {
         // Pin to the very bottom of whatever was rendered (committed + streaming).
@@ -159,14 +159,14 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         let slice =
             app.virtual_scroll
                 .visible_slice(app.scroll_offset, app.auto_scroll, visible_height);
-        slice.line_offset as usize
+        usize::from(slice.line_offset)
     };
 
     let block = Block::default().borders(Borders::NONE);
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false })
-        .scroll((scroll as u16, 0));
+        .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0));
 
     frame.render_widget(paragraph, area);
 
@@ -175,8 +175,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         &para_links,
         &line_widths,
         area,
-        scroll as u16,
-        wrap_width as usize,
+        u16::try_from(scroll).unwrap_or(u16::MAX),
+        usize::from(wrap_width),
         theme,
     )
 }
@@ -209,11 +209,15 @@ fn resolve_osc_links(
     let mut cumulative: u32 = 0;
     for &w in line_widths {
         visual_row_start.push(cumulative);
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "terminal dimensions fit in u32"
+        )]
         let rows = if w == 0 { 1 } else { w.div_ceil(wrap_width) } as u32;
         cumulative += rows;
     }
 
-    let visible_height = area.height as i32;
+    let visible_height = i32::from(area.height);
     let mut osc_links = Vec::with_capacity(para_links.len());
 
     for (line_idx, col, text, url) in para_links {
@@ -222,20 +226,25 @@ fn resolve_osc_links(
         };
         // Adjust for which visual row within the wrapped line this col sits on.
         let col_row = if wrap_width > 0 {
-            (*col as usize) / wrap_width
+            usize::from(*col) / wrap_width
         } else {
             0
         };
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "visual row count fits in i32 for terminal"
+        )]
         let vrow = vrow_start as i32 + col_row as i32;
 
         // Apply scroll: positive scroll shifts content upward (scroll=0 means show from top).
-        let screen_row = vrow - scroll as i32;
+        let screen_row = vrow - i32::from(scroll);
         if screen_row < 0 || screen_row >= visible_height {
             continue; // link is outside the visible window
         }
 
-        let screen_x = area.x + (*col as usize % wrap_width.max(1)) as u16;
-        let screen_y = area.y + screen_row as u16;
+        let screen_x =
+            area.x + u16::try_from(usize::from(*col) % wrap_width.max(1)).unwrap_or(u16::MAX);
+        let screen_y = area.y + u16::try_from(screen_row).unwrap_or(0);
 
         osc_links.push(OscLink {
             screen_x,
@@ -399,7 +408,7 @@ fn render_message(
         &app.highlighter,
     );
     let content_prefix = if ctx.selected { "│" } else { " " };
-    let prefix_width: u16 = content_prefix.len() as u16; // always 1 byte for these strings
+    let prefix_width: u16 = u16::try_from(content_prefix.len()).unwrap_or(u16::MAX); // always 1 byte for these strings
     let prefix_style = if ctx.selected {
         Style::default().fg(theme.borders.selected)
     } else {

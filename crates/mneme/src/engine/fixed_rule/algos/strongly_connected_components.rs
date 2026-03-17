@@ -120,7 +120,12 @@ impl TarjanSccG {
 
         let mut low_map: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
         for (idx, grp) in self.low.into_iter().enumerate() {
-            low_map.entry(grp).or_default().push(idx as u32);
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "graph node count bounded by u32"
+            )]
+            let idx_u32 = idx as u32;
+            low_map.entry(grp).or_default().push(idx_u32);
         }
 
         Ok(low_map.into_values().collect_vec())

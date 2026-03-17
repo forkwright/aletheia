@@ -11,7 +11,6 @@ type Result<T> = DataResult<T>;
 use crate::engine::data::relation::VecElementType;
 use crate::engine::data::value::{DataValue, Vector};
 
-#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
     let t = match args.get(1) {
         Some(DataValue::Str(s)) => match s as &str {
@@ -54,7 +53,12 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                             }
                             .build()
                         })?;
-                        row.fill(f as f32);
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                        )]
+                        let f = f as f32;
+                        row.fill(f);
                     }
                     Ok(DataValue::Vec(Vector::F32(res_arr)))
                 }
@@ -85,7 +89,12 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
                         }
                         .build()
                     })?;
-                    row.fill(f as f32);
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let f = f as f32;
+                    row.fill(f);
                 }
                 Ok(DataValue::Vec(Vector::F32(res_arr)))
             }
@@ -108,14 +117,19 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
             (VecElementType::F32, Vector::F32(v)) => Ok(DataValue::Vec(Vector::F32(v.clone()))),
             (VecElementType::F64, Vector::F64(v)) => Ok(DataValue::Vec(Vector::F64(v.clone()))),
             (VecElementType::F32, Vector::F64(v)) => {
-                Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x as f32))))
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                )]
+                let result = v.mapv(|x| x as f32);
+                Ok(DataValue::Vec(Vector::F32(result)))
             }
             (VecElementType::F64, Vector::F32(v)) => {
-                Ok(DataValue::Vec(Vector::F64(v.mapv(|x| x as f64))))
+                Ok(DataValue::Vec(Vector::F64(v.mapv(f64::from))))
             }
         },
         DataValue::Str(s) => {
-            let bytes = STANDARD.decode(s).map_err(|_| {
+            let bytes = STANDARD.decode(s).map_err(|_e| {
                 EncodingFailedSnafu {
                     message: "Data is not base64 encoded",
                 }
@@ -199,13 +213,19 @@ pub(crate) fn op_vec(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
-    let len = arg(args, 0)?.get_int().ok_or_else(|| {
+    let len_i64 = arg(args, 0)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "rand_vec",
             expected: "an integer",
         }
         .build()
-    })? as usize;
+    })?;
+    let len = usize::try_from(len_i64).map_err(|_e| {
+        InvalidValueSnafu {
+            message: format!("rand_vec length must be non-negative, got {len_i64}"),
+        }
+        .build()
+    })?;
     let t = match args.get(1) {
         Some(DataValue::Str(s)) => match s as &str {
             "F32" | "Float" => VecElementType::F32,
@@ -232,7 +252,12 @@ pub(crate) fn op_rand_vec(args: &[DataValue]) -> Result<DataValue> {
         VecElementType::F32 => {
             let mut res_arr = ndarray::Array1::zeros(len);
             for mut row in res_arr.axis_iter_mut(ndarray::Axis(0)) {
-                row.fill(rng.random::<f64>() as f32);
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                )]
+                let val = rng.random::<f64>() as f32;
+                row.fill(val);
             }
             Ok(DataValue::Vec(Vector::F32(res_arr)))
         }
@@ -278,7 +303,7 @@ pub(crate) fn op_l2_dist(args: &[DataValue]) -> Result<DataValue> {
                 .fail();
             }
             let diff = a - b;
-            Ok(DataValue::from(diff.dot(&diff) as f64))
+            Ok(DataValue::from(f64::from(diff.dot(&diff))))
         }
         (DataValue::Vec(Vector::F64(a)), DataValue::Vec(Vector::F64(b))) => {
             if a.len() != b.len() {
@@ -312,7 +337,7 @@ pub(crate) fn op_ip_dist(args: &[DataValue]) -> Result<DataValue> {
                 .fail();
             }
             let dot = a.dot(b);
-            Ok(DataValue::from(1. - dot as f64))
+            Ok(DataValue::from(1. - f64::from(dot)))
         }
         (DataValue::Vec(Vector::F64(a)), DataValue::Vec(Vector::F64(b))) => {
             if a.len() != b.len() {
@@ -345,9 +370,9 @@ pub(crate) fn op_cos_dist(args: &[DataValue]) -> Result<DataValue> {
                 }
                 .fail();
             }
-            let a_norm = a.dot(a) as f64;
-            let b_norm = b.dot(b) as f64;
-            let dot = a.dot(b) as f64;
+            let a_norm = f64::from(a.dot(a));
+            let b_norm = f64::from(b.dot(b));
+            let dot = f64::from(a.dot(b));
             Ok(DataValue::from(1. - dot / (a_norm * b_norm).sqrt()))
         }
         (DataValue::Vec(Vector::F64(a)), DataValue::Vec(Vector::F64(b))) => {

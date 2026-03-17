@@ -36,7 +36,7 @@ impl FixedRule for MinimumSpanningForestKruskal {
             out.put(vec![
                 indices[src as usize].clone(),
                 indices[dst as usize].clone(),
-                DataValue::from(cost as f64),
+                DataValue::from(f64::from(cost)),
             ]);
         }
 

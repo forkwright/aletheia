@@ -52,7 +52,13 @@ impl HnswIndexManifest {
         let uniform_num: f64 = rng.random_range(0.0..1.0);
         let r = -uniform_num.ln() * self.level_multiplier;
         // the level is the largest integer smaller than r
-        -(r.floor() as i64)
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "floor of bounded float fits in i64"
+        )]
+        {
+            -(r.floor() as i64)
+        }
     }
 }
 
@@ -79,12 +85,13 @@ impl VectorCache {
         use ndarray::Zip;
         match self.distance {
             HnswDistance::L2 => match (v1, v2) {
-                (Vector::F32(a), Vector::F32(b)) => {
-                    Ok(Zip::from(a).and(b).fold(0.0f32, |acc, &x, &y| {
+                (Vector::F32(a), Vector::F32(b)) => Ok(f64::from(Zip::from(a).and(b).fold(
+                    0.0f32,
+                    |acc, &x, &y| {
                         let d = x - y;
                         acc + d * d
-                    }) as f64)
-                }
+                    },
+                ))),
                 (Vector::F64(a), Vector::F64(b)) => {
                     Ok(Zip::from(a).and(b).fold(0.0f64, |acc, &x, &y| {
                         let d = x - y;
@@ -107,7 +114,7 @@ impl VectorCache {
                         .fold((0.0f32, 0.0f32, 0.0f32), |(an, bn, d), &x, &y| {
                             (an + x * x, bn + y * y, d + x * y)
                         });
-                    Ok(1.0 - dot as f64 / (a_norm as f64 * b_norm as f64).sqrt())
+                    Ok(1.0 - f64::from(dot) / (f64::from(a_norm) * f64::from(b_norm)).sqrt())
                 }
                 (Vector::F64(a), Vector::F64(b)) => {
                     let (a_norm, b_norm, dot) = Zip::from(a)
@@ -132,7 +139,7 @@ impl VectorCache {
             HnswDistance::InnerProduct => match (v1, v2) {
                 (Vector::F32(a), Vector::F32(b)) => {
                     let dot = a.dot(b);
-                    Ok(1. - dot as f64)
+                    Ok(1. - f64::from(dot))
                 }
                 (Vector::F64(a), Vector::F64(b)) => {
                     let dot = a.dot(b);
@@ -195,7 +202,9 @@ impl VectorCache {
                     if key.2 >= 0 {
                         match field {
                             DataValue::List(l) => {
-                                field = &l[key.2 as usize];
+                                #[expect(clippy::cast_sign_loss, reason = "guarded by >= 0 check")]
+                                let sub = key.2 as usize;
+                                field = &l[sub];
                             }
                             _ => {
                                 return Err(InvalidOperationSnafu {
@@ -258,7 +267,7 @@ impl<'a> SessionTx<'a> {
         for _ in 0..2 {
             canary_tuple.extend_from_slice(tuple_key);
             canary_tuple.push(DataValue::from(idx as i64));
-            canary_tuple.push(DataValue::from(subidx as i64));
+            canary_tuple.push(DataValue::from(i64::from(subidx)));
         }
         if let Some(v) = idx_table.get(self, &canary_tuple)? {
             if let DataValue::Bytes(b) = &v[tuple_key.len() * 2 + 6]
@@ -284,14 +293,30 @@ impl<'a> SessionTx<'a> {
                 .get_int()
                 .expect("HNSW index stores integers at this position");
             let ep_t_key = ep[1..orig_table.metadata.keys.len() + 1].to_vec();
-            let ep_idx = ep[orig_table.metadata.keys.len() + 1]
-                .get_int()
-                .expect("HNSW index stores integers at this position")
-                as usize;
-            let ep_subidx = ep[orig_table.metadata.keys.len() + 2]
-                .get_int()
-                .expect("HNSW index stores integers at this position")
-                as i32;
+            let ep_idx = usize::try_from(
+                ep[orig_table.metadata.keys.len() + 1]
+                    .get_int()
+                    .expect("HNSW index stores integers at this position"),
+            )
+            .map_err(|_e| {
+                InvalidOperationSnafu {
+                    op: "hnsw_read",
+                    reason: "stored index out of range",
+                }
+                .build()
+            })?;
+            let ep_subidx = i32::try_from(
+                ep[orig_table.metadata.keys.len() + 2]
+                    .get_int()
+                    .expect("HNSW index stores integers at this position"),
+            )
+            .map_err(|_e| {
+                InvalidOperationSnafu {
+                    op: "hnsw_read",
+                    reason: "stored subindex out of range",
+                }
+                .build()
+            })?;
             let ep_key = (ep_t_key, ep_idx, ep_subidx);
             vec_cache.ensure_key(&ep_key, orig_table, self)?;
             let ep_distance = vec_cache.v_dist(q, &ep_key)?;
@@ -328,7 +353,7 @@ impl<'a> SessionTx<'a> {
             for _ in 0..2 {
                 self_tuple_key.extend_from_slice(tuple_key);
                 self_tuple_key.push(DataValue::from(idx as i64));
-                self_tuple_key.push(DataValue::from(subidx as i64));
+                self_tuple_key.push(DataValue::from(i64::from(subidx)));
             }
             let mut self_tuple_val = vec![
                 DataValue::from(0.0),
@@ -383,10 +408,10 @@ impl<'a> SessionTx<'a> {
                     out_key.push(DataValue::from(current_level));
                     out_key.extend_from_slice(tuple_key);
                     out_key.push(DataValue::from(idx as i64));
-                    out_key.push(DataValue::from(subidx as i64));
+                    out_key.push(DataValue::from(i64::from(subidx)));
                     out_key.extend_from_slice(&neighbour.0);
                     out_key.push(DataValue::from(neighbour.1 as i64));
-                    out_key.push(DataValue::from(neighbour.2 as i64));
+                    out_key.push(DataValue::from(i64::from(neighbour.2)));
                     let out_key_bytes =
                         idx_table.encode_key_for_store(&out_key, Default::default())?;
                     let out_val_bytes =
@@ -402,10 +427,10 @@ impl<'a> SessionTx<'a> {
                     in_key.push(DataValue::from(current_level));
                     in_key.extend_from_slice(&neighbour.0);
                     in_key.push(DataValue::from(neighbour.1 as i64));
-                    in_key.push(DataValue::from(neighbour.2 as i64));
+                    in_key.push(DataValue::from(i64::from(neighbour.2)));
                     in_key.extend_from_slice(tuple_key);
                     in_key.push(DataValue::from(idx as i64));
-                    in_key.push(DataValue::from(subidx as i64));
+                    in_key.push(DataValue::from(i64::from(subidx)));
 
                     let in_key_bytes =
                         idx_table.encode_key_for_store(&in_key, Default::default())?;
@@ -420,7 +445,7 @@ impl<'a> SessionTx<'a> {
                     for _ in 0..2 {
                         target_self_key.extend_from_slice(&neighbour.0);
                         target_self_key.push(DataValue::from(neighbour.1 as i64));
-                        target_self_key.push(DataValue::from(neighbour.2 as i64));
+                        target_self_key.push(DataValue::from(i64::from(neighbour.2)));
                     }
                     let target_self_key_bytes =
                         idx_table.encode_key_for_store(&target_self_key, Default::default())?;
@@ -443,6 +468,11 @@ impl<'a> SessionTx<'a> {
                                 }
                                 .build(),
                             })?;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        clippy::cast_sign_loss,
+                        reason = "degree is a small non-negative integer stored as f64"
+                    )]
                     let mut target_degree = target_self_val[0]
                         .get_float()
                         .expect("HNSW index stores floats at this position")
@@ -533,10 +563,10 @@ impl<'a> SessionTx<'a> {
                 new_key.push(DataValue::from(level));
                 new_key.extend_from_slice(&target_key.0);
                 new_key.push(DataValue::from(target_key.1 as i64));
-                new_key.push(DataValue::from(target_key.2 as i64));
+                new_key.push(DataValue::from(i64::from(target_key.2)));
                 new_key.extend_from_slice(&new.0);
                 new_key.push(DataValue::from(new.1 as i64));
-                new_key.push(DataValue::from(new.2 as i64));
+                new_key.push(DataValue::from(i64::from(new.2)));
                 let new_key_bytes = idx_table.encode_key_for_store(&new_key, Default::default())?;
                 let new_val_bytes =
                     idx_table.encode_val_only_for_store(&new_val, Default::default())?;
@@ -549,10 +579,10 @@ impl<'a> SessionTx<'a> {
                 old_key.push(DataValue::from(level));
                 old_key.extend_from_slice(&target_key.0);
                 old_key.push(DataValue::from(target_key.1 as i64));
-                old_key.push(DataValue::from(target_key.2 as i64));
+                old_key.push(DataValue::from(i64::from(target_key.2)));
                 old_key.extend_from_slice(&old.0);
                 old_key.push(DataValue::from(old.1 as i64));
-                old_key.push(DataValue::from(old.2 as i64));
+                old_key.push(DataValue::from(i64::from(old.2)));
                 let old_key_bytes = idx_table.encode_key_for_store(&old_key, Default::default())?;
                 let old_existing_val = match self.store_tx.get(&old_key_bytes, false)? {
                     Some(bytes) => bytes,
@@ -718,17 +748,22 @@ impl<'a> SessionTx<'a> {
         start_tuple.push(DataValue::from(level));
         start_tuple.extend_from_slice(&cand_key.0);
         start_tuple.push(DataValue::from(cand_key.1 as i64));
-        start_tuple.push(DataValue::from(cand_key.2 as i64));
+        start_tuple.push(DataValue::from(i64::from(cand_key.2)));
         let key_len = cand_key.0.len();
         Ok(idx_handle
             .scan_prefix(self, &start_tuple)
             .filter_map(move |res| {
                 let tuple = res.ok()?;
 
+                #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
                 let key_idx = tuple[2 * key_len + 3]
                     .get_int()
                     .expect("HNSW index stores integers at this position")
                     as usize;
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "HNSW subindex bounded by m_max (< i32::MAX)"
+                )]
                 let key_subidx = tuple[2 * key_len + 4]
                     .get_int()
                     .expect("HNSW index stores integers at this position")
@@ -780,7 +815,7 @@ impl<'a> SessionTx<'a> {
                 canary_key.push(DataValue::Null);
             }
             target_key.push(DataValue::from(idx as i64));
-            target_key.push(DataValue::from(subidx as i64));
+            target_key.push(DataValue::from(i64::from(subidx)));
             canary_key.push(DataValue::Null);
             canary_key.push(DataValue::Null);
         }
@@ -835,7 +870,12 @@ impl<'a> SessionTx<'a> {
             } else if let DataValue::List(l) = val {
                 for (sidx, v) in l.iter().enumerate() {
                     if let DataValue::Vec(v) = v {
-                        extracted_vectors.push((v, *idx, sidx as i32));
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "HNSW layer indices bounded by m_max (< i32::MAX)"
+                        )]
+                        let sidx_i32 = sidx as i32;
+                        extracted_vectors.push((v, *idx, sidx_i32));
                     }
                 }
             }
@@ -869,19 +909,26 @@ impl<'a> SessionTx<'a> {
         let candidates: FxHashSet<_> = idx_table
             .scan_prefix(self, &prefix)
             .filter_map(|t| match t {
-                Ok(t) => Some({
-                    (
+                Ok(t) => {
+                    #[expect(clippy::cast_sign_loss, reason = "HNSW indices are non-negative")]
+                    let idx = t[orig_table.metadata.keys.len() + 1]
+                        .get_int()
+                        .expect("HNSW index stores integers at this position")
+                        as usize;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "HNSW subindex bounded by m_max (< i32::MAX)"
+                    )]
+                    let subidx = t[orig_table.metadata.keys.len() + 2]
+                        .get_int()
+                        .expect("HNSW index stores integers at this position")
+                        as i32;
+                    Some((
                         t[1..orig_table.metadata.keys.len() + 1].to_vec(),
-                        t[orig_table.metadata.keys.len() + 1]
-                            .get_int()
-                            .expect("HNSW index stores integers at this position")
-                            as usize,
-                        t[orig_table.metadata.keys.len() + 2]
-                            .get_int()
-                            .expect("HNSW index stores integers at this position")
-                            as i32,
-                    )
-                }),
+                        idx,
+                        subidx,
+                    ))
+                }
                 Err(_) => None,
             })
             .collect();
@@ -907,7 +954,7 @@ impl<'a> SessionTx<'a> {
             for _ in 0..2 {
                 self_key.extend_from_slice(tuple_key);
                 self_key.push(DataValue::from(idx as i64));
-                self_key.push(DataValue::from(subidx as i64));
+                self_key.push(DataValue::from(i64::from(subidx)));
             }
             let self_key_bytes = idx_table.encode_key_for_store(&self_key, Default::default())?;
             if self.store_tx.exists(&self_key_bytes, false)? {
@@ -926,26 +973,26 @@ impl<'a> SessionTx<'a> {
                 let mut out_key = vec![DataValue::from(layer)];
                 out_key.extend_from_slice(tuple_key);
                 out_key.push(DataValue::from(idx as i64));
-                out_key.push(DataValue::from(subidx as i64));
+                out_key.push(DataValue::from(i64::from(subidx)));
                 out_key.extend_from_slice(&neighbour_key.0);
                 out_key.push(DataValue::from(neighbour_key.1 as i64));
-                out_key.push(DataValue::from(neighbour_key.2 as i64));
+                out_key.push(DataValue::from(i64::from(neighbour_key.2)));
                 let out_key_bytes = idx_table.encode_key_for_store(&out_key, Default::default())?;
                 self.store_tx.del(&out_key_bytes)?;
                 let mut in_key = vec![DataValue::from(layer)];
                 in_key.extend_from_slice(&neighbour_key.0);
                 in_key.push(DataValue::from(neighbour_key.1 as i64));
-                in_key.push(DataValue::from(neighbour_key.2 as i64));
+                in_key.push(DataValue::from(i64::from(neighbour_key.2)));
                 in_key.extend_from_slice(tuple_key);
                 in_key.push(DataValue::from(idx as i64));
-                in_key.push(DataValue::from(subidx as i64));
+                in_key.push(DataValue::from(i64::from(subidx)));
                 let in_key_bytes = idx_table.encode_key_for_store(&in_key, Default::default())?;
                 self.store_tx.del(&in_key_bytes)?;
                 let mut neighbour_self_key = vec![DataValue::from(layer)];
                 for _ in 0..2 {
                     neighbour_self_key.extend_from_slice(&neighbour_key.0);
                     neighbour_self_key.push(DataValue::from(neighbour_key.1 as i64));
-                    neighbour_self_key.push(DataValue::from(neighbour_key.2 as i64));
+                    neighbour_self_key.push(DataValue::from(i64::from(neighbour_key.2)));
                 }
                 let neighbour_val_bytes = match self
                     .store_tx
@@ -1043,8 +1090,15 @@ impl<'a> SessionTx<'a> {
         let q = match (q, config.manifest.dtype) {
             (v @ Vector::F32(_), VecElementType::F32) => v,
             (v @ Vector::F64(_), VecElementType::F64) => v,
-            (Vector::F32(v), VecElementType::F64) => Vector::F64(v.mapv(|x| x as f64)),
-            (Vector::F64(v), VecElementType::F32) => Vector::F32(v.mapv(|x| x as f32)),
+            (Vector::F32(v), VecElementType::F64) => Vector::F64(v.mapv(f64::from)),
+            (Vector::F64(v), VecElementType::F32) => {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "intentional F64→F32 precision reduction for vector storage"
+                )]
+                let converted = v.mapv(|x| x as f32);
+                Vector::F32(converted)
+            }
         };
 
         let mut vec_cache =
@@ -1065,17 +1119,31 @@ impl<'a> SessionTx<'a> {
                 .get_int()
                 .expect("HNSW index stores integers at this position");
             let ep_idx = match ep[config.base_handle.metadata.keys.len() + 1].get_int() {
-                Some(x) => x as usize,
+                Some(x) => usize::try_from(x).map_err(|_e| {
+                    InvalidOperationSnafu {
+                        op: "hnsw_read",
+                        reason: "stored index out of range",
+                    }
+                    .build()
+                })?,
                 None => {
                     // this occurs if the index is empty
                     return Ok(vec![]);
                 }
             };
             let ep_t_key = ep[1..config.base_handle.metadata.keys.len() + 1].to_vec();
-            let ep_subidx = ep[config.base_handle.metadata.keys.len() + 2]
-                .get_int()
-                .expect("HNSW index stores integers at this position")
-                as i32;
+            let ep_subidx = i32::try_from(
+                ep[config.base_handle.metadata.keys.len() + 2]
+                    .get_int()
+                    .expect("HNSW index stores integers at this position"),
+            )
+            .map_err(|_e| {
+                InvalidOperationSnafu {
+                    op: "hnsw_read",
+                    reason: "stored subindex out of range",
+                }
+                .build()
+            })?;
             let ep_key = (ep_t_key, ep_idx, ep_subidx);
             vec_cache.ensure_key(&ep_key, &config.base_handle, self)?;
             let ep_distance = vec_cache.v_dist(&q, &ep_key)?;
@@ -1147,7 +1215,7 @@ impl<'a> SessionTx<'a> {
                     cand_tuple.push(if cand_key.2 < 0 {
                         DataValue::Null
                     } else {
-                        DataValue::from(cand_key.2 as i64)
+                        DataValue::from(i64::from(cand_key.2))
                     });
                 }
                 if config.bind_distance.is_some() {
@@ -1158,7 +1226,11 @@ impl<'a> SessionTx<'a> {
                         cand_tuple[cand_key.1].clone()
                     } else {
                         match &cand_tuple[cand_key.1] {
-                            DataValue::List(v) => v[cand_key.2 as usize].clone(),
+                            DataValue::List(v) => {
+                                #[expect(clippy::cast_sign_loss, reason = "guarded by >= 0 check")]
+                                let sub = cand_key.2 as usize;
+                                v[sub].clone()
+                            }
                             v => {
                                 return Err(InvalidOperationSnafu {
                                     op: "hnsw_index",
@@ -1191,7 +1263,12 @@ impl<'a> SessionTx<'a> {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::unwrap_used,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    reason = "test assertions and test-only numeric casts"
+)]
 mod tests {
     use rand::Rng;
     use std::collections::BTreeMap;

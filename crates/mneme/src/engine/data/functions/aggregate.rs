@@ -33,7 +33,7 @@ pub(crate) fn get_index(mut i: i64, total: usize, is_upper: bool) -> Result<usiz
         i += total as i64;
     }
     Ok(if i >= 0 {
-        let i = i as usize;
+        let i = usize::try_from(i).map_err(|_e| IndexOutOfBoundsSnafu { index: i }.build())?;
         if i > total || (!is_upper && i == total) {
             return IndexOutOfBoundsSnafu { index: i as i64 }.fail();
         } else {
@@ -87,7 +87,13 @@ fn get_json_path_immutable_local<'a>(
                         message: "json path must be a string or a number",
                     }
                     .build()
-                })? as usize;
+                })?;
+                let key = usize::try_from(key).map_err(|_e| {
+                    JsonPathSnafu {
+                        message: "json array index out of range",
+                    }
+                    .build()
+                })?;
 
                 let val = arr.get(key).ok_or_else(|| {
                     JsonPathSnafu {
@@ -141,7 +147,13 @@ pub(crate) fn get_impl(args: &[DataValue]) -> Result<DataValue> {
                         }
                         .build()
                     })?;
-                    json.get(i as usize)
+                    let idx = usize::try_from(i).map_err(|_e| {
+                        InvalidValueSnafu {
+                            message: format!("index '{i}' out of range for json array"),
+                        }
+                        .build()
+                    })?;
+                    json.get(idx)
                         .ok_or_else(|| {
                             InvalidValueSnafu {
                                 message: format!("index '{i}' not found in json"),
@@ -462,8 +474,14 @@ pub(crate) fn op_chunks(args: &[DataValue]) -> Result<DataValue> {
             message: "second argument to 'chunks' must be positive"
         }
     );
+    let n = usize::try_from(n).map_err(|_e| {
+        InvalidValueSnafu {
+            message: "second argument to 'chunks' out of range",
+        }
+        .build()
+    })?;
     let res = a
-        .chunks(n as usize)
+        .chunks(n)
         .map(|el| DataValue::List(el.to_vec()))
         .collect_vec();
     Ok(DataValue::List(res))
@@ -490,8 +508,14 @@ pub(crate) fn op_chunks_exact(args: &[DataValue]) -> Result<DataValue> {
             message: "second argument to 'chunks_exact' must be positive"
         }
     );
+    let n = usize::try_from(n).map_err(|_e| {
+        InvalidValueSnafu {
+            message: "second argument to 'chunks_exact' out of range",
+        }
+        .build()
+    })?;
     let res = a
-        .chunks_exact(n as usize)
+        .chunks_exact(n)
         .map(|el| DataValue::List(el.to_vec()))
         .collect_vec();
     Ok(DataValue::List(res))
@@ -518,8 +542,14 @@ pub(crate) fn op_windows(args: &[DataValue]) -> Result<DataValue> {
             message: "second argument to 'windows' must be positive"
         }
     );
+    let n = usize::try_from(n).map_err(|_e| {
+        InvalidValueSnafu {
+            message: "second argument to 'windows' out of range",
+        }
+        .build()
+    })?;
     let res = a
-        .windows(n as usize)
+        .windows(n)
         .map(|el| DataValue::List(el.to_vec()))
         .collect_vec();
     Ok(DataValue::List(res))

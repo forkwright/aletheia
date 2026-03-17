@@ -86,7 +86,7 @@ impl FixedRule for ShortestPathDijkstra {
                     let t = vec![
                         indices[start as usize].clone(),
                         indices[target as usize].clone(),
-                        DataValue::from(cost as f64),
+                        DataValue::from(f64::from(cost)),
                         DataValue::List(
                             path.into_iter()
                                 .map(|u| indices[u as usize].clone())
@@ -135,7 +135,7 @@ impl FixedRule for ShortestPathDijkstra {
                     let t = vec![
                         indices[start as usize].clone(),
                         indices[target as usize].clone(),
-                        DataValue::from(cost as f64),
+                        DataValue::from(f64::from(cost)),
                         DataValue::List(
                             path.into_iter()
                                 .map(|u| indices[u as usize].clone())

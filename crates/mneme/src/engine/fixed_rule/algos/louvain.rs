@@ -27,6 +27,10 @@ impl FixedRule for CommunityDetectionLouvain {
         let edges = payload.get_input(0)?;
         let undirected = payload.bool_option("undirected", Some(false))?;
         let max_iter = payload.pos_integer_option("max_iter", Some(10))?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "delta is a unit interval [0,1], fits in f32"
+        )]
         let delta = payload.unit_interval_option("delta", Some(0.0001))? as f32;
         let keep_depth = payload.non_neg_integer_option("keep_depth", None).ok();
 
@@ -34,10 +38,14 @@ impl FixedRule for CommunityDetectionLouvain {
         let result = louvain(&graph, delta, max_iter, poison)?;
         for (idx, node) in indices.into_iter().enumerate() {
             let mut labels = vec![];
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "graph node count bounded by u32"
+            )]
             let mut cur_idx = idx as u32;
             for hierarchy in &result {
                 let nxt_idx = hierarchy[cur_idx as usize];
-                labels.push(DataValue::from(nxt_idx as i64));
+                labels.push(DataValue::from(i64::from(nxt_idx)));
                 cur_idx = nxt_idx;
             }
             labels.reverse();
@@ -251,7 +259,12 @@ fn louvain_step(
         vec![BTreeMap::new(); new_comm_count as usize];
     for (node, comm) in node2comm.iter().enumerate() {
         let target = &mut new_graph_list[*comm as usize];
-        for t in graph.out_neighbors_with_values(node as u32) {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "graph node count bounded by u32"
+        )]
+        let node_u32 = node as u32;
+        for t in graph.out_neighbors_with_values(node_u32) {
             let to_node = t.target;
             let weight = t.value;
             let to_comm = node2comm[to_node as usize];
@@ -266,8 +279,14 @@ fn louvain_step(
                 .into_iter()
                 .enumerate()
                 .flat_map(move |(fr, nds)| {
-                    nds.into_iter()
-                        .map(move |(to, weight)| (fr as u32, to, weight))
+                    nds.into_iter().map(move |(to, weight)| {
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            reason = "graph node count bounded by u32"
+                        )]
+                        let fr_u32 = fr as u32;
+                        (fr_u32, to, weight)
+                    })
                 }),
         )
         .build();
@@ -305,12 +324,16 @@ mod tests {
         ];
         let graph = CsrBuilder::new()
             .sorted()
-            .edges_with_values(
-                graph
-                    .into_iter()
-                    .enumerate()
-                    .flat_map(|(fr, tos)| tos.into_iter().map(move |to| (fr as u32, to, 1.))),
-            )
+            .edges_with_values(graph.into_iter().enumerate().flat_map(|(fr, tos)| {
+                tos.into_iter().map(move |to| {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "test graph index fits in u32"
+                    )]
+                    let fr_u32 = fr as u32;
+                    (fr_u32, to, 1.)
+                })
+            }))
             .build();
         louvain(&graph, 0., 100, Poison::default()).unwrap();
     }

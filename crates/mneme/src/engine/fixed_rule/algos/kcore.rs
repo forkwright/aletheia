@@ -41,7 +41,12 @@ impl FixedRule for KCore {
 
         // Build adjacency as plain degree counts; we need the full neighbour
         // set to recompute effective degrees after removals.
-        let adj: Vec<Vec<u32>> = (0..n as u32)
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "graph node count bounded by u32"
+        )]
+        let n_u32 = n as u32;
+        let adj: Vec<Vec<u32>> = (0..n_u32)
             .map(|node| {
                 let mut nb: Vec<u32> = graph.out_neighbors(node).collect();
                 // Deduplicate: edges may have been mirrored by as_directed_graph.
@@ -52,8 +57,17 @@ impl FixedRule for KCore {
             .collect_vec();
 
         // effective_degree[v] = number of neighbours that are still alive.
-        let mut effective_degree: Vec<u32> =
-            adj.iter().map(|nb: &Vec<u32>| nb.len() as u32).collect();
+        let mut effective_degree: Vec<u32> = adj
+            .iter()
+            .map(|nb: &Vec<u32>| {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "neighbour count bounded by u32 node count"
+                )]
+                let len = nb.len() as u32;
+                len
+            })
+            .collect();
         let mut alive: Vec<bool> = vec![true; n];
         // core[v] = k-core value; starts at 0 and is promoted as we peel.
         let mut core: Vec<u32> = vec![0; n];
@@ -63,7 +77,7 @@ impl FixedRule for KCore {
         let mut k: u32 = 1;
         while k <= max_degree {
             // Collect seeds: alive nodes whose degree has dropped below k.
-            let mut queue: Vec<u32> = (0..n as u32)
+            let mut queue: Vec<u32> = (0..n_u32)
                 .filter(|&v| alive[v as usize] && effective_degree[v as usize] < k)
                 .collect();
 
@@ -96,7 +110,7 @@ impl FixedRule for KCore {
         }
 
         for (v, k_val) in core.into_iter().enumerate() {
-            out.put(vec![indices[v].clone(), DataValue::from(k_val as i64)]);
+            out.put(vec![indices[v].clone(), DataValue::from(i64::from(k_val))]);
         }
 
         Ok(())

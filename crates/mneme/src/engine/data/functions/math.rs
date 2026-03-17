@@ -50,11 +50,11 @@ pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
                 (Vector::F32(a), Vector::F32(b)) => Ok(DataValue::Vec(Vector::F32(a + b))),
                 (Vector::F64(a), Vector::F64(b)) => Ok(DataValue::Vec(Vector::F64(a + b))),
                 (Vector::F32(a), Vector::F64(b)) => {
-                    let a = a.mapv(|x| x as f64);
+                    let a = a.mapv(f64::from);
                     Ok(DataValue::Vec(Vector::F64(a + b)))
                 }
                 (Vector::F64(a), Vector::F32(b)) => {
-                    let b = b.mapv(|x| x as f64);
+                    let b = b.mapv(f64::from);
                     Ok(DataValue::Vec(Vector::F64(a + b)))
                 }
             }
@@ -69,7 +69,12 @@ pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
             })?;
             match a {
                 Vector::F32(mut v) => {
-                    v += f as f32;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let f = f as f32;
+                    v += f;
                     Ok(DataValue::Vec(Vector::F32(v)))
                 }
                 Vector::F64(mut v) => {
@@ -87,7 +92,14 @@ pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
                 .build()
             })?;
             match b {
-                Vector::F32(v) => Ok(DataValue::Vec(Vector::F32(v + f as f32))),
+                Vector::F32(v) => {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let f = f as f32;
+                    Ok(DataValue::Vec(Vector::F32(v + f)))
+                }
                 Vector::F64(v) => Ok(DataValue::Vec(Vector::F64(v + f))),
             }
         }
@@ -116,11 +128,11 @@ pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
                 (Vector::F32(a), Vector::F32(b)) => Ok(DataValue::Vec(Vector::F32(a * b))),
                 (Vector::F64(a), Vector::F64(b)) => Ok(DataValue::Vec(Vector::F64(a * b))),
                 (Vector::F32(a), Vector::F64(b)) => {
-                    let a = a.mapv(|x| x as f64);
+                    let a = a.mapv(f64::from);
                     Ok(DataValue::Vec(Vector::F64(a * b)))
                 }
                 (Vector::F64(a), Vector::F32(b)) => {
-                    let b = b.mapv(|x| x as f64);
+                    let b = b.mapv(f64::from);
                     Ok(DataValue::Vec(Vector::F64(a * b)))
                 }
             }
@@ -135,7 +147,12 @@ pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
             })?;
             match a {
                 Vector::F32(mut v) => {
-                    v *= f as f32;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let f = f as f32;
+                    v *= f;
                     Ok(DataValue::Vec(Vector::F32(v)))
                 }
                 Vector::F64(mut v) => {
@@ -153,7 +170,14 @@ pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
                 .build()
             })?;
             match b {
-                Vector::F32(v) => Ok(DataValue::Vec(Vector::F32(v * f as f32))),
+                Vector::F32(v) => {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let f = f as f32;
+                    Ok(DataValue::Vec(Vector::F32(v * f)))
+                }
                 Vector::F64(v) => Ok(DataValue::Vec(Vector::F64(v * f))),
             }
         }
@@ -295,11 +319,11 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
             (Vector::F32(a), Vector::F32(b)) => DataValue::Vec(Vector::F32(a - b)),
             (Vector::F64(a), Vector::F64(b)) => DataValue::Vec(Vector::F64(a - b)),
             (Vector::F32(a), Vector::F64(b)) => {
-                let a = a.mapv(|x| x as f64);
+                let a = a.mapv(f64::from);
                 DataValue::Vec(Vector::F64(a - b))
             }
             (Vector::F64(a), Vector::F32(b)) => {
-                let b = b.mapv(|x| x as f64);
+                let b = b.mapv(f64::from);
                 DataValue::Vec(Vector::F64(a - b))
             }
         },
@@ -313,7 +337,12 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
             })?;
             match a.clone() {
                 Vector::F32(mut v) => {
-                    v -= b as f32;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let b = b as f32;
+                    v -= b;
                     DataValue::Vec(Vector::F32(v))
                 }
                 Vector::F64(mut v) => {
@@ -332,7 +361,12 @@ pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
             })?;
             match b.clone() {
                 Vector::F32(mut v) => {
-                    v -= a as f32;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let a = a as f32;
+                    v -= a;
                     DataValue::Vec(Vector::F32(-v))
                 }
                 Vector::F64(mut v) => {
@@ -393,11 +427,11 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
             (Vector::F32(a), Vector::F32(b)) => DataValue::Vec(Vector::F32(a / b)),
             (Vector::F64(a), Vector::F64(b)) => DataValue::Vec(Vector::F64(a / b)),
             (Vector::F32(a), Vector::F64(b)) => {
-                let a = a.mapv(|x| x as f64);
+                let a = a.mapv(f64::from);
                 DataValue::Vec(Vector::F64(a / b))
             }
             (Vector::F64(a), Vector::F32(b)) => {
-                let b = b.mapv(|x| x as f64);
+                let b = b.mapv(f64::from);
                 DataValue::Vec(Vector::F64(a / b))
             }
         },
@@ -411,7 +445,12 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
             })?;
             match a.clone() {
                 Vector::F32(mut v) => {
-                    v /= b as f32;
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let b = b as f32;
+                    v /= b;
                     DataValue::Vec(Vector::F32(v))
                 }
                 Vector::F64(mut v) => {
@@ -429,7 +468,14 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
                 .build()
             })?;
             match b {
-                Vector::F32(v) => DataValue::Vec(Vector::F32(a as f32 / v)),
+                Vector::F32(v) => {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+                    )]
+                    let a = a as f32;
+                    DataValue::Vec(Vector::F32(a / v))
+                }
                 Vector::F64(v) => DataValue::Vec(Vector::F64(a / v)),
             }
         }
@@ -679,7 +725,12 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
                 }
                 .build()
             })?;
-            return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.powf(b as f32)))));
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "intentional F64→F32 reduction for mixed-precision vector arithmetic"
+            )]
+            let b = b as f32;
+            return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.powf(b)))));
         }
         DataValue::Vec(Vector::F64(v)) => {
             let b = arg(args, 1)?.get_float().ok_or_else(|| {

@@ -48,6 +48,10 @@ impl FixedRule for BetweennessCentrality {
                 let grouped = res_for_start.into_iter().chunk_by(|(n, _, _)| *n);
                 for (_, grp) in grouped.into_iter() {
                     let grp = grp.collect_vec();
+                    #[expect(
+                        clippy::cast_precision_loss,
+                        reason = "path group count acceptable as approximate float"
+                    )]
                     let l = grp.len() as f32;
                     for (_, _, path) in grp {
                         if path.len() < 3 {
@@ -71,7 +75,7 @@ impl FixedRule for BetweennessCentrality {
 
         for (i, s) in centrality.into_iter().enumerate() {
             let node = indices[i].clone();
-            out.put(vec![node, (s as f64).into()]);
+            out.put(vec![node, f64::from(s).into()]);
         }
 
         Ok(())
@@ -111,14 +115,23 @@ impl FixedRule for ClosenessCentrality {
             .map(|start| -> Result<f32> {
                 let distances = dijkstra_cost_only(&graph, start, poison.clone())?;
                 let total_dist: f32 = distances.iter().filter(|d| d.is_finite()).cloned().sum();
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "reachable node count acceptable as approximate float"
+                )]
                 let nc: f32 = distances.iter().filter(|d| d.is_finite()).count() as f32;
-                Ok(nc * nc / total_dist / (n - 1) as f32)
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "node count minus one acceptable as approximate float"
+                )]
+                let denom = (n - 1) as f32;
+                Ok(nc * nc / total_dist / denom)
             })
             .collect::<Result<_>>()?;
         for (idx, centrality) in res.into_iter().enumerate() {
             out.put(vec![
                 indices[idx].clone(),
-                DataValue::from(centrality as f64),
+                DataValue::from(f64::from(centrality)),
             ]);
             poison.check()?;
         }

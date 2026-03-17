@@ -66,7 +66,7 @@ impl VirtualScroll {
     pub(crate) fn push_item(&mut self, height: u16) {
         let prev_sum = self.prefix_sums.last().copied().unwrap_or(0);
         self.item_heights.push(height);
-        self.prefix_sums.push(prev_sum + height as u64);
+        self.prefix_sums.push(prev_sum + u64::from(height));
     }
 
     /// Clear all cached heights (e.g. on session switch).
@@ -88,7 +88,7 @@ impl VirtualScroll {
         let mut running = 0u64;
         for &h in heights {
             self.item_heights.push(h);
-            running += h as u64;
+            running += u64::from(h);
             self.prefix_sums.push(running);
         }
     }
@@ -105,7 +105,7 @@ impl VirtualScroll {
         viewport_height: u16,
     ) -> ViewportSlice {
         let total = self.total_height();
-        let vh = viewport_height as u64;
+        let vh = u64::from(viewport_height);
 
         if total == 0 || self.item_heights.is_empty() {
             return ViewportSlice {
@@ -129,7 +129,8 @@ impl VirtualScroll {
         let last_item = self.item_at_line(bottom_line.min(total));
 
         let first_item_start = self.prefix_sums[first_item];
-        let line_offset = top_line.saturating_sub(first_item_start) as u16;
+        let line_offset =
+            u16::try_from(top_line.saturating_sub(first_item_start)).unwrap_or(u16::MAX);
 
         let start = first_item.saturating_sub(self.buffer);
         let end = (last_item + 1 + self.buffer).min(self.item_heights.len());
@@ -140,7 +141,9 @@ impl VirtualScroll {
                 // NOTE: Buffer items above are rendered; add their height so the
                 // line_offset is relative to the start of the rendered range, not first_item.
                 let buffer_height: u64 = self.prefix_sums[first_item] - self.prefix_sums[start];
-                (buffer_height as u16).saturating_add(line_offset)
+                u16::try_from(buffer_height)
+                    .unwrap_or(u16::MAX)
+                    .saturating_add(line_offset)
             } else {
                 line_offset
             },
@@ -175,7 +178,7 @@ impl VirtualScroll {
         viewport_height: u16,
     ) -> Option<(f64, f64)> {
         let total = self.total_height();
-        let vh = viewport_height as u64;
+        let vh = u64::from(viewport_height);
 
         if total <= vh {
             return None;
@@ -205,13 +208,13 @@ impl VirtualScroll {
 /// - text content wrapped at `width`
 /// - 1 trailing blank line
 pub(crate) fn estimate_message_height(text_len: usize, has_tools: bool, width: u16) -> u16 {
-    let w = width.max(1) as usize;
+    let w = usize::from(width.max(1));
     let header = 1u16;
     let tools = if has_tools { 1u16 } else { 0 };
     let content = if text_len == 0 {
         0u16
     } else {
-        (text_len / w + 1).min(u16::MAX as usize) as u16
+        u16::try_from(text_len / w + 1).unwrap_or(u16::MAX)
     };
     let blank = 1u16;
 
