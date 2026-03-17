@@ -155,6 +155,7 @@ wiremock = "0.6"
 
 [profile.dev]
 opt-level = 1
+codegen-units = 256
 
 [profile.dev.package."*"]
 opt-level = 2
