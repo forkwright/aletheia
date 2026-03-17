@@ -265,6 +265,12 @@ pub struct AgentDefaults {
     /// Prosoche checks are simple health/attention tasks that don't need
     /// advanced reasoning. Defaults to Haiku-tier to reduce cost.
     pub prosoche_model: String,
+    /// Maximum size in bytes for a single tool result before truncation.
+    ///
+    /// Tool results exceeding this limit are truncated to fit, with a
+    /// `[truncated: {original} -> {truncated} bytes]` indicator appended.
+    /// Set to `0` to disable truncation. Default: 32 768 (32 KB).
+    pub max_tool_result_bytes: u32,
 }
 
 impl Default for AgentDefaults {
@@ -284,6 +290,7 @@ impl Default for AgentDefaults {
             chars_per_token: 4,
             history_budget_ratio: 0.6,
             prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
+            max_tool_result_bytes: 32_768,
         }
     }
 }
@@ -926,6 +933,8 @@ pub struct TokenLimits {
     pub chars_per_token: u32,
     /// Fraction of the context window reserved for conversation history.
     pub history_budget_ratio: f64,
+    /// Maximum tool result size in bytes before truncation (0 = disabled).
+    pub max_tool_result_bytes: u32,
 }
 
 /// Behavioral capabilities for an agent.
@@ -1039,6 +1048,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
             thinking_budget: defaults.thinking_budget,
             chars_per_token: defaults.chars_per_token,
             history_budget_ratio: defaults.history_budget_ratio,
+            max_tool_result_bytes: defaults.max_tool_result_bytes,
         },
         capabilities: AgentCapabilities {
             thinking_enabled,
