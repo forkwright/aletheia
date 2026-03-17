@@ -7,6 +7,8 @@
 
 use axum::http::header;
 use axum::response::IntoResponse;
+
+use aletheia_koina::http::CONTENT_TYPE_JSON;
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
@@ -98,5 +100,5 @@ pub async fn openapi_json() -> impl IntoResponse {
     let spec = ApiDoc::openapi()
         .to_json()
         .expect("OpenAPI spec serialization");
-    ([(header::CONTENT_TYPE, "application/json")], spec)
+    ([(header::CONTENT_TYPE, CONTENT_TYPE_JSON)], spec)
 }
