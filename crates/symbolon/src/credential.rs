@@ -34,6 +34,14 @@ const OAUTH_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
 /// Refresh when token has less than this many seconds remaining.
 const REFRESH_THRESHOLD_SECS: u64 = 3600;
 
+/// Clock skew tolerance for token expiry checks (seconds).
+///
+/// WHY: clock differences between the OAuth provider and local system
+/// cause freshly obtained tokens to appear expired. 30 seconds is
+/// conservative enough to catch genuine expiry while tolerating
+/// typical NTP drift.
+const CLOCK_SKEW_LEEWAY_SECS: u64 = 30;
+
 /// How often the background refresh task checks token expiry.
 const REFRESH_CHECK_INTERVAL_SECS: u64 = 60;
 
@@ -284,11 +292,14 @@ impl CredentialProvider for EnvCredentialProvider {
                 && let Some(exp_secs) = decode_jwt_exp_secs(&v)
             {
                 let now_secs = unix_epoch_ms() / 1000;
-                if exp_secs < now_secs {
+                if exp_secs + CLOCK_SKEW_LEEWAY_SECS < now_secs {
                     warn!(
                         var = %self.var_name,
-                        "OAuth token from environment variable appears expired \
-                         — falling through to next provider"
+                        exp_secs,
+                        now_secs,
+                        leeway_secs = CLOCK_SKEW_LEEWAY_SECS,
+                        "OAuth token from environment variable expired \
+                         (exp + leeway < now), falling through to next provider"
                     );
                     return None;
                 }
@@ -528,7 +539,7 @@ async fn refresh_loop(
             break;
         }
 
-        let (refresh_token, subscription_type, needs_refresh) = {
+        let (refresh_token, subscription_type, expires_at_ms, needs_refresh) = {
             let Ok(guard) = state.read() else {
                 continue;
             };
@@ -540,14 +551,23 @@ async fn refresh_loop(
             let remaining_secs = (s.expires_at_ms as i64 - now_ms as i64) / 1000;
             #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
             let needs = remaining_secs < REFRESH_THRESHOLD_SECS as i64;
-            (s.refresh_token.clone(), s.subscription_type.clone(), needs)
+            (
+                s.refresh_token.clone(),
+                s.subscription_type.clone(),
+                s.expires_at_ms,
+                needs,
+            )
         };
 
         if !needs_refresh {
             continue;
         }
 
-        info!("credential refresh needed -- refreshing OAuth token");
+        info!(
+            expires_at_ms,
+            now_ms = unix_epoch_ms(),
+            "credential refresh needed, refreshing OAuth token"
+        );
 
         match do_refresh(&client, &refresh_token).await {
             Some(resp) => {
