@@ -1,4 +1,7 @@
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "module not yet wired into recall pipeline; lint fires in lib but not test target"
+)]
 //! LLM-powered query rewriting for the recall pipeline.
 //!
 //! Rewrites natural language queries into multiple search variants before

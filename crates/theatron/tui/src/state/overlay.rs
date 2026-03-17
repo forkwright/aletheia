@@ -17,7 +17,7 @@ pub enum Overlay {
     PlanApproval(PlanApprovalOverlay),
     #[allow(
         dead_code,
-        reason = "overlay set by action dispatcher; construction pending keybinding wiring"
+        reason = "overlay set by action dispatcher; lint fires in lib but not test target"
     )]
     ContextActions(ContextActionsOverlay),
     DiffView(crate::diff::DiffViewState),
