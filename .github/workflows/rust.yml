@@ -23,108 +23,37 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
+# WHY: fmt, clippy, and tests are validated by kanon on Verda (180 cores)
+# before PR creation. GitHub CI only validates what can't be checked locally:
+# feature isolation, MSRV compatibility, and binary smoke tests.
+
 jobs:
-  # WHY: deps-cache builds dependencies once. Workspace crates recompile per-PR
-  # but deps (which change rarely) are cached. This saves ~5 min on cache miss.
-  deps-cache:
-    name: Warm dependency cache
+  # WHY: Verify feature-gated code compiles independently.
+  # Agents can't easily test all feature combos locally.
+  feature-isolation:
+    name: Feature isolation
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          # WHY: Cache deps separately from workspace code. Key on Cargo.lock
-          # (deps change) not source hash (code changes every PR).
-          cache-on-failure: true
-      - name: Build deps only
-        run: cargo check --workspace --all-targets 2>&1 | tail -5
-
-  check:
-    name: Format + Clippy
-    needs: [deps-cache]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-  # WHY: Split tests into 3 parallel shards by test count.
-  # mneme (912) + hermeneus (166) ≈ 1078
-  # tui (867) + organon (288) ≈ 1155
-  # nous (345) + pylon (242) + rest ≈ 900
-  # Each shard compiles the full workspace (cached deps) but runs different tests.
-  test-shard-1:
-    name: Test (mneme + hermeneus + koina)
-    needs: [deps-cache]
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: no-default-features
+            args: "--workspace --no-default-features"
+          - name: recall-only
+            args: "-p aletheia --no-default-features --features recall"
+          - name: embed-candle
+            args: "-p aletheia --features embed-candle"
+          - name: migrate-qdrant
+            args: "-p aletheia --features migrate-qdrant"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Test mneme + hermeneus + koina
-        run: |
-          cargo test -p aletheia-mneme
-          cargo test -p aletheia-hermeneus
-          cargo test -p aletheia-koina
-          cargo test -p aletheia-melete
-          cargo test -p aletheia-symbolon
-          cargo test -p aletheia-taxis
+      - name: Check ${{ matrix.name }}
+        run: cargo check ${{ matrix.args }}
 
-  test-shard-2:
-    name: Test (tui + organon + diaporeia)
-    needs: [deps-cache]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install tool dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq fd-find ripgrep
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
-      - name: Test tui + organon + diaporeia
-        run: |
-          cargo test -p theatron-tui
-          cargo test -p aletheia-organon
-          cargo test -p aletheia-diaporeia
-          cargo test -p aletheia-thesauros
-          cargo test -p theatron-core
-
-  test-shard-3:
-    name: Test (nous + pylon + integration)
-    needs: [deps-cache]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install tool dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq fd-find ripgrep
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
-      - name: Test nous + pylon + integration + doc tests
-        run: |
-          cargo test -p aletheia-nous
-          cargo test -p aletheia-pylon
-          cargo test -p aletheia-dianoia
-          cargo test -p aletheia-agora
-          cargo test -p aletheia-oikonomos
-          cargo test -p aletheia-dokimion
-          cargo test -p aletheia
-          cargo test -p aletheia-integration-tests
-
-
+  # WHY: Ensure we don't accidentally use features newer than MSRV.
+  # Can't be tested locally without managing multiple toolchains.
   msrv:
     name: MSRV (1.94)
     runs-on: ubuntu-latest
@@ -135,19 +64,8 @@ jobs:
       - name: Check MSRV
         run: cargo check --workspace
 
-  no-default-features:
-    continue-on-error: true
-    name: No-default-features check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Check workspace with no default features
-        run: cargo check --workspace --no-default-features
-
+  # WHY: Catch broken doc links. Fast (no test execution).
   docs:
-    continue-on-error: true
     name: Rustdoc
     runs-on: ubuntu-latest
     env:
@@ -159,45 +77,10 @@ jobs:
       - name: Build docs
         run: cargo doc --workspace --no-deps
 
-  recall-isolation:
-    name: Recall feature isolation
-    needs: [deps-cache]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Install tool dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq fd-find ripgrep
-          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
-      - name: Test recall feature in isolation
-        run: cargo test -p aletheia --no-default-features --features recall
-
-  migrate-qdrant:
-    name: migrate-qdrant feature
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Check migrate-qdrant feature compiles
-        run: cargo check -p aletheia --features migrate-qdrant
-
-  embed-candle:
-    name: embed-candle feature
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Check embed-candle feature compiles
-        run: cargo check -p aletheia --features embed-candle
-
+  # WHY: Binary builds and runs correctly with default features.
+  # Catches link errors and missing runtime deps.
   smoke:
     name: Binary smoke test
-    needs: [test-shard-1, test-shard-2, test-shard-3]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
