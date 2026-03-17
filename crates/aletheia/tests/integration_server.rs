@@ -52,6 +52,10 @@ enabled = false
 
 [sandbox]
 enabled = false
+
+[embedding]
+provider = "mock"
+dimension = 384
 "#
     );
     std::fs::write(instance.join("config/aletheia.toml"), config).unwrap();
