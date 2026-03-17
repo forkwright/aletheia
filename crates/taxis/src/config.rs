@@ -260,6 +260,11 @@ pub struct AgentDefaults {
     /// `bootstrap` (the remainder, capped at `bootstrap_max_tokens`).
     /// Default: 0.6 (60 % of the context window).
     pub history_budget_ratio: f64,
+    /// Model used for prosoche heartbeat sessions instead of the primary model.
+    ///
+    /// Prosoche checks are simple health/attention tasks that don't need
+    /// advanced reasoning. Defaults to Haiku-tier to reduce cost.
+    pub prosoche_model: String,
 }
 
 impl Default for AgentDefaults {
@@ -278,6 +283,7 @@ impl Default for AgentDefaults {
             recall: RecallSettings::default(),
             chars_per_token: 4,
             history_budget_ratio: 0.6,
+            prosoche_model: "claude-haiku-4-5-20251001".to_owned(),
         }
     }
 }
@@ -937,6 +943,8 @@ pub struct ResolvedNousConfig {
     pub chars_per_token: u32,
     /// Fraction of the context window reserved for conversation history.
     pub history_budget_ratio: f64,
+    /// Model used for prosoche heartbeat sessions.
+    pub prosoche_model: String,
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -1015,6 +1023,7 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         recall,
         chars_per_token: defaults.chars_per_token,
         history_budget_ratio: defaults.history_budget_ratio,
+        prosoche_model: defaults.prosoche_model.clone(),
     }
 }
 
