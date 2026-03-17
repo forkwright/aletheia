@@ -8,6 +8,7 @@ Type=simple
 # %h expands to the user's home directory at runtime.
 # ALETHEIA_ROOT tells the binary where to find the instance directory.
 Environment=ALETHEIA_ROOT=%h/aletheia/instance
+Environment=RUST_BACKTRACE=1
 # Optional: set API key here if not stored in instance/config/credentials/anthropic.json
 # Environment=ANTHROPIC_API_KEY=sk-ant-...
 # Load additional env vars from a file (silently ignored if the file does not exist).
