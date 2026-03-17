@@ -129,7 +129,7 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
                 let request_id = request
                     .extensions()
                     .get::<RequestId>()
-                    .map_or_else(|| ulid::Ulid::new().to_string(), |r| r.0.clone());
+                    .map_or_else(|| ulid::Ulid::new().to_string(), |r| r.to_string());
                 info_span!("http_request",
                     http.method = %request.method(),
                     http.path = %request.uri().path(),

@@ -4,6 +4,7 @@ use std::fmt;
 
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
+use std::borrow::Borrow;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -57,6 +58,18 @@ macro_rules! impl_id {
         impl std::ops::Deref for $ty {
             type Target = str;
             fn deref(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<$ty> for String {
+            fn from(id: $ty) -> Self {
+                id.0.into()
+            }
+        }
+
+        impl Borrow<str> for $ty {
+            fn borrow(&self) -> &str {
                 &self.0
             }
         }
@@ -118,5 +131,48 @@ mod tests {
     fn turn_id_max_value_fits_inline() {
         let max = TurnId::from(u64::MAX.to_string());
         assert_eq!(&*max, "18446744073709551615");
+    }
+
+    #[test]
+    fn nous_id_into_string() {
+        let id = NousId::from("syn");
+        let s: String = id.into();
+        assert_eq!(s, "syn");
+    }
+
+    #[test]
+    fn session_id_into_string() {
+        let id = SessionId::from("sess-1");
+        let s: String = id.into();
+        assert_eq!(s, "sess-1");
+    }
+
+    #[test]
+    fn tool_id_into_string() {
+        let id = ToolId::from("t1");
+        let s: String = id.into();
+        assert_eq!(s, "t1");
+    }
+
+    #[test]
+    fn plan_id_into_string() {
+        let id = PlanId::from("p1");
+        let s: String = id.into();
+        assert_eq!(s, "p1");
+    }
+
+    #[test]
+    fn borrow_hashmap_lookup() {
+        let id = NousId::from("syn");
+        let mut map = std::collections::HashMap::new();
+        map.insert(id, 42);
+        assert_eq!(map.get("syn"), Some(&42));
+    }
+
+    #[test]
+    fn as_ref_returns_inner() {
+        let id = ToolId::from("exec");
+        let s: &str = id.as_ref();
+        assert_eq!(s, "exec");
     }
 }

@@ -159,7 +159,7 @@ pub async fn send_message(
         session.id = %session_id,
         session.key = %session_key,
         nous.id = %session.nous_id,
-        request_id = %request_id.0,
+        request_id = %request_id,
         idempotency_key = idempotency_key.as_deref().unwrap_or(""),
     );
     tokio::spawn(
@@ -314,7 +314,7 @@ pub async fn stream_turn(
         session.id = %sid,
         session.key = %session_key,
         nous.id = %aid,
-        request_id = %request_id.0,
+        request_id = %request_id,
     );
 
     // Bridge nous stream events to webchat events in real-time.

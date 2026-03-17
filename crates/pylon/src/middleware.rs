@@ -67,6 +67,30 @@ pub async fn require_csrf_header(request: Request, next: Next) -> Response {
 #[derive(Debug, Clone)]
 pub struct RequestId(pub String);
 
+impl std::fmt::Display for RequestId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for RequestId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for RequestId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<RequestId> for String {
+    fn from(id: RequestId) -> Self {
+        id.0
+    }
+}
+
 /// Middleware that generates a ULID request ID and stores it in request extensions.
 pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
     let id = ulid::Ulid::new().to_string();
@@ -78,7 +102,10 @@ pub async fn inject_request_id(mut request: Request, next: Next) -> Response {
 ///
 /// Must be placed inside the compression layer so the body is uncompressed.
 pub async fn enrich_error_response(request: Request, next: Next) -> Response {
-    let request_id = request.extensions().get::<RequestId>().map(|r| r.0.clone());
+    let request_id = request
+        .extensions()
+        .get::<RequestId>()
+        .map(|r| r.to_string());
 
     let response = next.run(request).await;
 

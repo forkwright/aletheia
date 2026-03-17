@@ -4,6 +4,7 @@ use std::fmt;
 
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
+use std::borrow::Borrow;
 
 /// A nous (agent) identifier. Lowercase alphanumeric + hyphens, 1-64 chars.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -32,6 +33,18 @@ impl NousId {
 impl fmt::Display for NousId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for NousId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for NousId {
+    fn borrow(&self) -> &str {
+        &self.0
     }
 }
 
@@ -87,6 +100,18 @@ impl SessionId {
     }
 }
 
+impl From<ulid::Ulid> for SessionId {
+    fn from(ulid: ulid::Ulid) -> Self {
+        Self(ulid)
+    }
+}
+
+impl From<SessionId> for ulid::Ulid {
+    fn from(id: SessionId) -> Self {
+        id.0
+    }
+}
+
 impl Default for SessionId {
     fn default() -> Self {
         Self::new()
@@ -120,6 +145,18 @@ impl TurnId {
     #[must_use]
     pub fn next(self) -> Self {
         Self(self.0 + 1)
+    }
+}
+
+impl From<u64> for TurnId {
+    fn from(n: u64) -> Self {
+        Self(n)
+    }
+}
+
+impl From<TurnId> for u64 {
+    fn from(id: TurnId) -> Self {
+        id.0
     }
 }
 
@@ -175,6 +212,18 @@ impl ToolName {
 impl fmt::Display for ToolName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for ToolName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for ToolName {
+    fn borrow(&self) -> &str {
+        &self.0
     }
 }
 
@@ -426,6 +475,69 @@ mod tests {
     fn turn_id_display() {
         assert_eq!(TurnId::new(42).to_string(), "42");
         assert_eq!(TurnId::new(0).to_string(), "0");
+    }
+
+    #[test]
+    fn nous_id_as_ref_and_borrow() {
+        let id = NousId::new("syn").unwrap();
+        let s: &str = id.as_ref();
+        assert_eq!(s, "syn");
+        let b: &str = id.borrow();
+        assert_eq!(b, "syn");
+    }
+
+    #[test]
+    fn nous_id_borrow_hashmap_lookup() {
+        let id = NousId::new("syn").unwrap();
+        let mut map = std::collections::HashMap::new();
+        map.insert(id, 42);
+        assert_eq!(map.get("syn"), Some(&42));
+    }
+
+    #[test]
+    fn session_id_from_ulid_roundtrip() {
+        let ulid = ulid::Ulid::new();
+        let id = SessionId::from(ulid);
+        let back: ulid::Ulid = id.into();
+        assert_eq!(ulid, back);
+    }
+
+    #[test]
+    fn session_id_from_ulid_matches_from_ulid_method() {
+        let ulid = ulid::Ulid::new();
+        let from_trait = SessionId::from(ulid);
+        let from_method = SessionId::from_ulid(ulid);
+        assert_eq!(from_trait, from_method);
+    }
+
+    #[test]
+    fn turn_id_from_u64_roundtrip() {
+        let n: u64 = 42;
+        let id = TurnId::from(n);
+        let back: u64 = id.into();
+        assert_eq!(n, back);
+    }
+
+    #[test]
+    fn turn_id_from_matches_new() {
+        assert_eq!(TurnId::from(7), TurnId::new(7));
+    }
+
+    #[test]
+    fn tool_name_as_ref_and_borrow() {
+        let name = ToolName::new("exec").unwrap();
+        let s: &str = name.as_ref();
+        assert_eq!(s, "exec");
+        let b: &str = name.borrow();
+        assert_eq!(b, "exec");
+    }
+
+    #[test]
+    fn tool_name_borrow_hashmap_lookup() {
+        let name = ToolName::new("exec").unwrap();
+        let mut map = std::collections::HashMap::new();
+        map.insert(name, 99);
+        assert_eq!(map.get("exec"), Some(&99));
     }
 
     #[test]
