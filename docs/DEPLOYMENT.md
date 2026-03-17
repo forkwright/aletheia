@@ -1,9 +1,9 @@
 # Deployment
 
 > This file covers the full production deployment reference. For focused sub-topics see:
-> - [QUICKSTART.md](QUICKSTART.md) — minimal first-time setup
-> - [CONFIGURATION.md](CONFIGURATION.md) — full configuration reference
-> - [troubleshooting.md](troubleshooting.md) — common issues and solutions
+> - [QUICKSTART.md](QUICKSTART.md): minimal first-time setup
+> - [CONFIGURATION.md](CONFIGURATION.md): full configuration reference
+> - [troubleshooting.md](troubleshooting.md): common issues and solutions
 
 Step-by-step guide from bare Linux or macOS to a running Aletheia instance. For configuration details, see [CONFIGURATION.md](CONFIGURATION.md). For upgrading an existing installation, see [UPGRADING.md](UPGRADING.md).
 

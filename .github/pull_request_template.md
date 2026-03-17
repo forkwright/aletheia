@@ -8,7 +8,7 @@ Problem this solves, or spec phase this implements.
 
 ## Changes
 
-- 
+-
 
 ## Spec
 

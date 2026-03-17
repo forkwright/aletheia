@@ -20,7 +20,7 @@ All agents have access to shared scripts at `$ALETHEIA_ROOT/shared/bin/`:
 | KnowledgeStore | mneme (embedded Datalog engine) | Long-term extracted memories, entity relationships, vector search |
 | Blackboard | sessions.db | Cross-agent shared state (TTL-based, SQLite) |
 
-## Built-in Runtime Tools
+## Built-in runtime tools
 
 Essential (always available): read, write, edit, ls, find, grep, exec, memory_search, sessions_send, sessions_spawn, enable_tool, deliberate
 
