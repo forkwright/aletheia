@@ -152,7 +152,10 @@ fn server_starts_serves_health_and_shuts_down() {
     // Verify health response
     let (code, body) = http_get(port, "/api/health").expect("health request");
     assert_eq!(code, 200);
-    assert!(body.contains("\"healthy\""), "health body: {body}");
+    assert!(
+        body.contains("\"healthy\""),
+        "health response did not contain healthy marker"
+    );
 
     // Verify sessions endpoint
     let (code, _) = http_get(port, "/api/v1/sessions").expect("sessions request");
