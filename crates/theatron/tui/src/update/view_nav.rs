@@ -94,7 +94,7 @@ pub(crate) fn handle_pop_back(app: &mut App) {
         return;
     }
 
-    app.view_stack.pop();
+    let _ = app.view_stack.pop();
     restore_view_scroll(app);
 }
 

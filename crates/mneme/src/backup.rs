@@ -89,6 +89,7 @@ impl<'a> BackupManager<'a> {
     /// sequences. Any future changes to path construction MUST go through
     /// `validate_backup_path` (a private helper in this module).
     #[instrument(skip(self))]
+    #[must_use = "this returns a Result that may contain a write error"]
     pub fn create_backup(&self) -> Result<BackupResult> {
         std::fs::create_dir_all(&self.backup_dir).context(error::IoSnafu {
             path: self.backup_dir.clone(),
@@ -135,6 +136,7 @@ impl<'a> BackupManager<'a> {
 
     /// Export all sessions as individual JSON files.
     #[instrument(skip(self))]
+    #[must_use = "this returns a Result that may contain an I/O error"]
     pub fn export_sessions_json(&self, output_dir: &Path) -> Result<ExportResult> {
         std::fs::create_dir_all(output_dir).context(error::IoSnafu {
             path: output_dir.to_path_buf(),
@@ -171,6 +173,7 @@ impl<'a> BackupManager<'a> {
 
     /// List available backup files.
     #[instrument(skip(self))]
+    #[must_use = "this returns a Result that may contain a query error"]
     pub fn list_backups(&self) -> Result<Vec<BackupInfo>> {
         if !self.backup_dir.exists() {
             return Ok(Vec::new());
@@ -208,6 +211,7 @@ impl<'a> BackupManager<'a> {
 
     /// Prune old backups, keeping the N most recent.
     #[instrument(skip(self))]
+    #[must_use = "this returns a Result that may contain a deletion error"]
     pub fn prune_backups(&self, keep: usize) -> Result<u32> {
         let backups = self.list_backups()?;
         let mut removed = 0u32;

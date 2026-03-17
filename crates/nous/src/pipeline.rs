@@ -138,6 +138,7 @@ impl LoopDetector {
     /// 2–`CYCLE_DETECTION_MAX_LEN` repeated at least N times, where
     /// N = threshold. This catches both single-tool hammering and longer
     /// cycles such as A → B → C → A.
+    #[must_use = "this returns None when no recording was produced"]
     pub fn record(&mut self, tool_name: &str, input_hash: &str) -> Option<String> {
         let signature = format!("{tool_name}:{input_hash}");
         self.history.push_back(signature.clone());

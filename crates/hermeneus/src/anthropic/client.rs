@@ -107,6 +107,7 @@ impl AnthropicProvider {
     ///
     /// # Errors
     /// Returns `ProviderInit` if `api_key` is missing.
+    #[must_use = "this returns a Result that may contain a construction error"]
     pub fn from_config(config: &ProviderConfig) -> Result<Self> {
         let api_key = config
             .api_key

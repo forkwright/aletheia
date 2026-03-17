@@ -40,8 +40,8 @@ fn pipeline_context_guard_blocks_flow() {
 fn loop_detector_integrates_with_guard() {
     let mut detector = LoopDetector::new(3);
 
-    detector.record("exec", "hash1");
-    detector.record("exec", "hash1");
+    let _ = detector.record("exec", "hash1");
+    let _ = detector.record("exec", "hash1");
     let loop_result = detector.record("exec", "hash1");
 
     let guard = match loop_result {

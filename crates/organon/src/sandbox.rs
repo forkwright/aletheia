@@ -356,6 +356,7 @@ static LANDLOCK_ABI: std::sync::LazyLock<Option<i32>> = std::sync::LazyLock::new
 /// a `pre_exec` closure. The result is used to detect mismatches early so
 /// errors surface with context rather than as opaque "Permission denied" failures.
 #[cfg(target_os = "linux")]
+#[must_use = "this returns None when the kernel feature is not available"]
 pub fn probe_landlock_abi() -> Option<i32> {
     // WHY: landlock_create_ruleset with LANDLOCK_CREATE_RULESET_VERSION returns
     // the ABI version as a non-negative integer, or -1 with errno set to
@@ -382,6 +383,7 @@ pub fn probe_landlock_abi() -> Option<i32> {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[must_use = "this returns None when the kernel feature is not available"]
 pub fn probe_landlock_abi() -> Option<i32> {
     None
 }

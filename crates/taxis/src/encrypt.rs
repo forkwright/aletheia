@@ -56,6 +56,7 @@ pub fn master_key_path() -> Option<PathBuf> {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
+#[must_use = "this returns a Result that may contain a read error"]
 pub fn load_master_key(path: &Path) -> Result<Option<[u8; KEY_LEN]>> {
     if !path.exists() {
         return Ok(None);
@@ -133,6 +134,7 @@ fn to_hex(bytes: &[u8]) -> String {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
+#[must_use = "this returns a Result that may contain a cryptographic error"]
 pub fn generate_master_key(path: &Path) -> Result<()> {
     if path.exists() {
         return Err(error::MasterKeyExistsSnafu {
@@ -192,6 +194,7 @@ pub fn is_encrypted(value: &str) -> bool {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
+#[must_use = "this returns a Result that may contain a cryptographic error"]
 pub fn encrypt_value(plaintext: &str, master_key: &[u8; KEY_LEN]) -> Result<String> {
     // WHY: ring::error::Unspecified has no useful fields to propagate
     let unbound = UnboundKey::new(&CHACHA20_POLY1305, master_key)
@@ -227,6 +230,7 @@ pub fn encrypt_value(plaintext: &str, master_key: &[u8; KEY_LEN]) -> Result<Stri
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
+#[must_use = "this returns a Result that may contain a cryptographic error"]
 pub fn decrypt_value(encrypted: &str, master_key: &[u8; KEY_LEN]) -> Result<String> {
     let encoded = encrypted
         .strip_prefix(ENCRYPTED_PREFIX)
@@ -288,6 +292,7 @@ fn build_decrypt_error(reason: &str) -> error::Error {
     clippy::result_large_err,
     reason = "taxis Error is inherently large due to PathBuf fields"
 )]
+#[must_use = "this returns a Result that may contain a cryptographic error"]
 pub fn encrypt_config_file(toml_path: &Path, master_key: &[u8; KEY_LEN]) -> Result<usize> {
     let content =
         std::fs::read_to_string(toml_path).context(error::ReadConfigSnafu { path: toml_path })?;

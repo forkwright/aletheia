@@ -21,6 +21,7 @@ pub async fn parse_sse_stream(response: reqwest::Response) -> Result<Vec<ParsedS
 
 /// Parse raw SSE text into events. Exposed for testing.
 #[tracing::instrument(skip(text), fields(text_len = text.len()))]
+#[must_use = "this returns a Result that may contain a parse error"]
 pub fn parse_sse_text(text: &str) -> Result<Vec<ParsedSseEvent>> {
     let mut events = Vec::new();
     let mut current_event_type = String::new();
@@ -131,6 +132,7 @@ pub struct UsageData {
 }
 
 #[tracing::instrument(skip_all, fields(event_count = events.len()))]
+#[must_use = "this returns None when usage data is not present"]
 pub fn extract_usage(events: &[ParsedSseEvent]) -> Option<UsageData> {
     events
         .iter()

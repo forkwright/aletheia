@@ -68,6 +68,7 @@ pub enum Transition {
 impl ProjectState {
     /// Attempt a state transition. Returns the new state or an error
     /// if the transition is invalid from the current state.
+    #[must_use = "this returns a Result that may indicate a state transition failure"]
     pub fn transition(self, t: Transition) -> Result<Self> {
         match (&self, &t) {
             (Self::Created, Transition::StartQuestioning) => Ok(Self::Questioning),

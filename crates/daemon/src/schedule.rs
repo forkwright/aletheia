@@ -113,6 +113,7 @@ impl Schedule {
         clippy::expect_used,
         reason = "timestamp conversions are within valid ranges; interval durations fit in i64 nanos for any reasonable schedule"
     )]
+    #[must_use = "this returns a Result that may contain a scheduling error"]
     pub fn next_run(&self) -> Result<Option<jiff::Timestamp>> {
         match self {
             Self::Cron(expr) => {
@@ -154,6 +155,7 @@ impl Schedule {
         clippy::expect_used,
         reason = "timestamp conversions within valid ranges; 24h subtraction from current time cannot overflow"
     )]
+    #[must_use = "this returns a Result that may contain an error"]
     pub fn missed_since(&self, last_run: jiff::Timestamp) -> Result<bool> {
         let Self::Cron(expr) = self else {
             return Ok(false);

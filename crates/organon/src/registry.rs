@@ -58,6 +58,7 @@ impl ToolRegistry {
     /// # Errors
     ///
     /// Returns [`crate::error::Error::DuplicateTool`] if a tool with the same name is already registered.
+    #[must_use = "this returns a Result that may contain an error"]
     pub fn register(&mut self, def: ToolDef, executor: Box<dyn ToolExecutor>) -> Result<()> {
         ensure!(
             !self.tools.contains_key(&def.name),

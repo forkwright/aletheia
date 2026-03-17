@@ -455,6 +455,7 @@ impl App {
     }
 
     #[tracing::instrument(skip_all)]
+    #[must_use = "this returns None when the value has already been taken"]
     pub fn take_sse(&mut self) -> Option<SseConnection> {
         self.sse.take()
     }
@@ -465,6 +466,7 @@ impl App {
     }
 
     #[tracing::instrument(skip_all)]
+    #[must_use = "this returns None when the value has already been taken"]
     pub fn take_stream(&mut self) -> Option<mpsc::Receiver<StreamEvent>> {
         self.stream_rx.take()
     }

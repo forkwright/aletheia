@@ -148,6 +148,7 @@ impl SessionStore {
 
     /// Get message history for a session.
     #[instrument(skip(self))]
+    #[must_use = "this returns a Result that may contain a query error"]
     pub fn get_history(&self, session_id: &str, limit: Option<i64>) -> Result<Vec<Message>> {
         let mut messages = Vec::new();
 
@@ -229,6 +230,7 @@ impl SessionStore {
 
     /// Mark messages as distilled and recalculate session token count.
     #[instrument(skip(self, seqs), fields(count = seqs.len()))]
+    #[must_use = "this returns a Result that may contain a write error"]
     pub fn mark_messages_distilled(&self, session_id: &str, seqs: &[i64]) -> Result<()> {
         if seqs.is_empty() {
             return Ok(());
@@ -292,6 +294,7 @@ impl SessionStore {
     /// unnecessary because the UNIQUE constraint is only violated if seq 0 already exists.
     /// Deleting the old summary first makes seq 0 available without any renumbering.
     #[instrument(skip(self, content))]
+    #[must_use = "this returns a Result that may contain a write error"]
     pub fn insert_distillation_summary(&self, session_id: &str, content: &str) -> Result<()> {
         let tx = self
             .conn
@@ -392,6 +395,7 @@ impl SessionStore {
 
     /// Check if usage has already been recorded for a given session + turn.
     #[instrument(skip(self), level = "debug")]
+    #[must_use = "this returns a Result that may contain a query error"]
     pub fn usage_exists_for_turn(&self, session_id: &str, turn_seq: i64) -> Result<bool> {
         let exists: bool = self
             .conn
@@ -406,6 +410,7 @@ impl SessionStore {
 
     /// Record token usage for a turn.
     #[instrument(skip(self, record), level = "debug")]
+    #[must_use = "this returns a Result that may contain a write error"]
     pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {
         self.conn
             .execute(

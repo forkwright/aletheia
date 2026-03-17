@@ -166,6 +166,7 @@ use aletheia_taxis::config::resolve_nous;
 use aletheia_taxis::loader::load_config;
 use aletheia_taxis::oikos::Oikos;
 
+#[must_use = "this returns a Result that may contain an I/O error"]
 pub fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     let nous_id = &args.nous_id;
     let oikos = match instance_root {
@@ -240,6 +241,7 @@ pub fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Resul
     Ok(())
 }
 
+#[must_use = "this returns a Result that may contain an I/O error"]
 pub fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
     let json = std::fs::read_to_string(&args.file)
         .with_context(|| format!("failed to read {}", args.file.display()))?;
@@ -316,6 +318,7 @@ pub fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Resul
     clippy::too_many_lines,
     reason = "CLI dispatch is inherently verbose — splitting would hurt readability"
 )]
+#[must_use = "this returns a Result that may contain an error"]
 pub fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
     use aletheia_mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
 
@@ -464,6 +467,7 @@ pub fn seed_skills(args: &SeedSkillsArgs) -> Result<()> {
 ///
 /// Reads skill facts from an in-process `KnowledgeStore`, converts them to
 /// `SkillContent`, and writes `.claude/skills/<slug>/SKILL.md` files.
+#[must_use = "this returns a Result that may contain an I/O error"]
 pub fn export_skills(instance_root: Option<&PathBuf>, args: &ExportSkillsArgs) -> Result<()> {
     #[cfg(feature = "recall")]
     {
@@ -546,6 +550,7 @@ pub fn export_skills(instance_root: Option<&PathBuf>, args: &ExportSkillsArgs) -
     }
 }
 
+#[must_use = "this returns a Result that may contain an error"]
 pub fn review_skills(instance_root: Option<&PathBuf>, args: &ReviewSkillsArgs) -> Result<()> {
     #[cfg(feature = "recall")]
     {

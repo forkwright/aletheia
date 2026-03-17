@@ -10,6 +10,7 @@ use crate::msg::{MessageActionKind, Msg, OverlayKind};
 use crate::state::Overlay;
 
 impl App {
+    #[must_use = "this returns None when the event is not mapped"]
     pub fn map_event(&self, event: Event) -> Option<Msg> {
         match event {
             Event::Terminal(term_event) => self.map_terminal(term_event),

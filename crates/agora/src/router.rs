@@ -57,6 +57,7 @@ impl MessageRouter {
     }
 
     /// Resolve which nous should handle this message.
+    #[must_use = "this returns None when no matching route is found"]
     pub fn resolve(&self, msg: &InboundMessage) -> Option<RouteDecision<'_>> {
         let decision = self.match_route(msg);
         if let Some(ref d) = decision {

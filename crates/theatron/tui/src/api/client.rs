@@ -88,6 +88,7 @@ impl ApiClient {
     ///
     /// Returns [`ApiError::InvalidToken`] if `token` contains characters invalid in HTTP headers.
     /// Returns [`ApiError::Http`] if the HTTP client cannot be constructed.
+    #[must_use = "this returns a Result that may contain a construction error"]
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
         let client = build_http_client(token.as_deref())?;
 
@@ -108,6 +109,7 @@ impl ApiClient {
         &self.base_url
     }
 
+    #[must_use = "this returns None when no token is available"]
     pub fn token(&self) -> Option<&str> {
         self.token.as_deref()
     }

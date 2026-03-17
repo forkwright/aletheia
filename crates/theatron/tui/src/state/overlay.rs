@@ -67,6 +67,7 @@ pub struct ContextActionsOverlay {
 }
 
 impl ContextActionsOverlay {
+    #[must_use = "this returns None when nothing is selected"]
     pub fn selected_action(&self) -> Option<&ContextAction> {
         self.actions.get(self.cursor)
     }

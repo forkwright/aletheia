@@ -416,6 +416,7 @@ impl PendingSkill {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if serialization fails.
+    #[must_use = "this returns a Result that may contain a serialization error"]
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
@@ -425,6 +426,7 @@ impl PendingSkill {
     /// # Errors
     ///
     /// Returns a [`serde_json::Error`] if the JSON is malformed.
+    #[must_use = "this returns a Result that may contain a construction error"]
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }

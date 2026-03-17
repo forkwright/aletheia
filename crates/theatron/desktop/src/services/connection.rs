@@ -80,6 +80,7 @@ impl PylonClient {
     ///
     /// Returns `InvalidToken` if the auth token contains non-ASCII characters.
     /// Returns `ClientBuild` if the reqwest client cannot be constructed.
+    #[must_use = "this returns a Result that may contain a construction error"]
     pub fn new(config: &ConnectionConfig) -> Result<Self, ConnectionError> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));

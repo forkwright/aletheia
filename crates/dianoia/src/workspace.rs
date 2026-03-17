@@ -33,6 +33,7 @@ impl ProjectWorkspace {
     /// # Errors
     ///
     /// Returns [`crate::error::Error::WorkspaceIo`] if the workspace directories cannot be created.
+    #[must_use = "this returns a Result that may contain a write error"]
     pub fn create(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         let layout = Self::build_layout(&root);
@@ -49,6 +50,7 @@ impl ProjectWorkspace {
     }
 
     /// Open an existing workspace.
+    #[must_use = "this returns a Result that may contain a construction error"]
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         if !root.exists() {
@@ -63,6 +65,7 @@ impl ProjectWorkspace {
     ///
     /// Returns [`crate::error::Error::WorkspaceSerialize`] if the project cannot be serialized to JSON.
     /// Returns [`crate::error::Error::WorkspaceIo`] if the project file cannot be written.
+    #[must_use = "this returns a Result that may contain a write error"]
     pub fn save_project(&self, project: &Project) -> Result<()> {
         let layout = self.layout();
         let json = serde_json::to_string_pretty(project).context(error::WorkspaceSerializeSnafu)?;
@@ -73,6 +76,7 @@ impl ProjectWorkspace {
     }
 
     /// Load project state from disk.
+    #[must_use = "this returns a Result that may contain a read error"]
     pub fn load_project(&self) -> Result<Project> {
         let layout = self.layout();
         if !layout.project_file.exists() {
@@ -91,6 +95,7 @@ impl ProjectWorkspace {
     }
 
     /// Write a blocker file for stuck detection integration.
+    #[must_use = "this returns a Result that may contain a write error"]
     pub fn write_blocker(&self, phase_id: &str, blocker: &Blocker) -> Result<()> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);
@@ -109,6 +114,7 @@ impl ProjectWorkspace {
     }
 
     /// Read all blockers for a phase.
+    #[must_use = "this returns a Result that may contain a read error"]
     pub fn read_blockers(&self, phase_id: &str) -> Result<Vec<Blocker>> {
         let layout = self.layout();
         let phase_blockers = layout.blockers_dir.join(phase_id);

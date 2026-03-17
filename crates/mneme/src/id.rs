@@ -23,6 +23,7 @@ macro_rules! define_id {
             /// # Errors
             /// Returns `IdValidationError` if the value is empty or exceeds
             /// the maximum length.
+            #[must_use = "this returns a Result that may contain a construction error"]
             pub fn new(id: impl Into<String>) -> Result<Self, IdValidationError> {
                 let id = id.into();
                 if id.is_empty() {

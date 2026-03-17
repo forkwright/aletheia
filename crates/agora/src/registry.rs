@@ -36,6 +36,7 @@ impl ChannelRegistry {
     /// # Errors
     ///
     /// Returns [`crate::error::Error::DuplicateChannel`] if a provider with the same ID is already registered.
+    #[must_use = "this returns a Result that may contain an error"]
     pub fn register(&mut self, provider: Arc<dyn ChannelProvider>) -> Result<()> {
         let id = provider.id().to_owned();
         ensure!(

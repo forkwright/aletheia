@@ -198,6 +198,7 @@ impl RateLimiter {
     ///
     /// Returns `None` if the request is allowed, or `Some(retry_after_secs)`
     /// if the limit has been exceeded.
+    #[must_use = "this returns None when the check passes"]
     pub fn check(&self, client: &str) -> Option<u64> {
         let now = Instant::now();
         let mut state = self

@@ -72,6 +72,7 @@ pub struct Attachment {
 ///
 /// Returns `None` for sync messages, receipt messages, typing indicators,
 /// data messages with no text, and messages with no identifiable sender.
+#[must_use = "this returns None when the envelope contains no message"]
 pub fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
     let data = envelope.data_message.as_ref()?;
 

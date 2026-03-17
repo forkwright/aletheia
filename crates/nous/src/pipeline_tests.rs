@@ -34,8 +34,8 @@ fn loop_detector_different_inputs_ok() {
 #[test]
 fn loop_detector_reset() {
     let mut det = LoopDetector::new(3);
-    det.record("exec", "same");
-    det.record("exec", "same");
+    let _ = det.record("exec", "same");
+    let _ = det.record("exec", "same");
     det.reset();
     assert_eq!(det.call_count(), 0);
     assert!(det.record("exec", "same").is_none()); // Reset cleared history
@@ -149,9 +149,9 @@ fn loop_detector_threshold_1() {
 #[test]
 fn loop_detector_call_count_tracks() {
     let mut det = LoopDetector::new(10);
-    det.record("a", "1");
-    det.record("b", "2");
-    det.record("c", "3");
+    let _ = det.record("a", "1");
+    let _ = det.record("b", "2");
+    let _ = det.record("c", "3");
     assert_eq!(det.call_count(), 3);
 }
 
@@ -159,7 +159,7 @@ fn loop_detector_call_count_tracks() {
 fn loop_detector_many_unique_then_repeat() {
     let mut det = LoopDetector::new(3);
     for i in 0..20 {
-        det.record("tool", &format!("hash{i}"));
+        let _ = det.record("tool", &format!("hash{i}"));
     }
     assert!(det.record("exec", "same").is_none());
     assert!(det.record("exec", "same").is_none());
@@ -332,7 +332,7 @@ fn loop_detector_window_cap_evicts_old_calls() {
     let mut det = LoopDetector::new(100); // high threshold so no loop triggers
     // Insert more entries than the window to trigger eviction
     for i in 0..55 {
-        det.record("tool", &format!("hash{i}"));
+        let _ = det.record("tool", &format!("hash{i}"));
     }
     assert_eq!(
         det.call_count(),
@@ -344,9 +344,9 @@ fn loop_detector_window_cap_evicts_old_calls() {
 #[test]
 fn loop_detector_pattern_count_tracks_repetitions() {
     let mut det = LoopDetector::new(100);
-    det.record("exec", "same");
-    det.record("exec", "same");
-    det.record("exec", "same");
+    let _ = det.record("exec", "same");
+    let _ = det.record("exec", "same");
+    let _ = det.record("exec", "same");
     assert_eq!(det.pattern_count(), 3);
 }
 
@@ -359,9 +359,9 @@ fn loop_detector_pattern_count_zero_on_empty() {
 #[test]
 fn loop_detector_pattern_count_resets_on_different() {
     let mut det = LoopDetector::new(100);
-    det.record("exec", "hash1");
-    det.record("exec", "hash1");
-    det.record("read", "hash2");
+    let _ = det.record("exec", "hash1");
+    let _ = det.record("exec", "hash1");
+    let _ = det.record("read", "hash2");
     assert_eq!(det.pattern_count(), 1, "different call breaks the streak");
 }
 
@@ -370,7 +370,7 @@ fn loop_detector_window_still_detects_loops() {
     let mut det = LoopDetector::new(3);
     // Fill window with unique calls
     for i in 0..18 {
-        det.record("tool", &format!("hash{i}"));
+        let _ = det.record("tool", &format!("hash{i}"));
     }
     // Now trigger a loop within the window
     assert!(det.record("exec", "same").is_none());
@@ -412,8 +412,8 @@ fn loop_detector_non_repeating_interleaved_not_detected() {
 #[test]
 fn loop_detector_reset_clears_pattern_count() {
     let mut det = LoopDetector::new(100);
-    det.record("exec", "same");
-    det.record("exec", "same");
+    let _ = det.record("exec", "same");
+    let _ = det.record("exec", "same");
     assert_eq!(det.pattern_count(), 2);
     det.reset();
     assert_eq!(det.pattern_count(), 0);

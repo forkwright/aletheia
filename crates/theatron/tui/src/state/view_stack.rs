@@ -58,6 +58,7 @@ impl ViewStack {
     }
 
     /// Pop the current view, returning it. Returns `None` if at Home (cannot pop).
+    #[must_use = "this returns None when the stack is empty"]
     pub fn pop(&mut self) -> Option<View> {
         if self.stack.len() > 1 {
             self.stack.pop()
@@ -161,9 +162,9 @@ mod tests {
     #[test]
     fn cannot_pop_below_home() {
         let mut stack = ViewStack::new();
-        stack.pop();
-        stack.pop();
-        stack.pop();
+        let _ = stack.pop();
+        let _ = stack.pop();
+        let _ = stack.pop();
         assert_eq!(stack.depth(), 1);
         assert_eq!(stack.current(), &View::Home);
     }
@@ -200,7 +201,7 @@ mod tests {
             agent_id: "syn".into(),
             session_id: "abc123".into(),
         });
-        stack.pop();
+        let _ = stack.pop();
         assert_eq!(stack.breadcrumbs(), vec!["Home", "Sessions"]);
     }
 
@@ -222,11 +223,11 @@ mod tests {
         );
 
         // Pop all the way back
-        stack.pop();
+        let _ = stack.pop();
         assert_eq!(stack.depth(), 3);
-        stack.pop();
+        let _ = stack.pop();
         assert_eq!(stack.depth(), 2);
-        stack.pop();
+        let _ = stack.pop();
         assert!(stack.is_home());
     }
 
@@ -284,7 +285,7 @@ mod tests {
         stack.push(View::MessageDetail { message_index: 42 });
         assert_eq!(stack.current(), &View::MessageDetail { message_index: 42 });
         assert_eq!(stack.breadcrumbs(), vec!["Home", "Message"]);
-        stack.pop();
+        let _ = stack.pop();
         assert!(stack.is_home());
     }
 }

@@ -30,6 +30,7 @@ pub struct TaskStateStore {
 
 impl TaskStateStore {
     /// Open (or create) the task state database at `path`.
+    #[must_use = "this returns a Result that may contain a construction error"]
     pub fn open(path: &Path) -> Result<Self> {
         let conn = rusqlite::Connection::open(path).map_err(|e| {
             crate::error::TaskFailedSnafu {
@@ -62,6 +63,7 @@ impl TaskStateStore {
     }
 
     /// Load all persisted task states.
+    #[must_use = "this returns a Result that may contain a read error"]
     pub fn load_all(&self) -> Result<Vec<TaskState>> {
         let mut stmt = self
             .conn
@@ -108,6 +110,7 @@ impl TaskStateStore {
     }
 
     /// Persist (upsert) the state for a task.
+    #[must_use = "this returns a Result that may contain a write error"]
     pub fn save(&self, state: &TaskState) -> Result<()> {
         self.conn
             .execute(

@@ -260,6 +260,7 @@ impl MemoryInspectorState {
     }
 
     /// Returns the currently selected fact, if any.
+    #[must_use = "this returns None when nothing is selected"]
     pub fn selected_fact(&self) -> Option<&MemoryFact> {
         self.facts.get(self.selected)
     }

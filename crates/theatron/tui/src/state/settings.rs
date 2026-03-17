@@ -73,6 +73,7 @@ impl SettingsOverlay {
         self.sections.iter().map(|s| s.fields.len()).sum()
     }
 
+    #[must_use = "this returns None when no field is focused"]
     pub fn current_field(&self) -> Option<&SettingsField> {
         let mut idx = 0;
         for section in &self.sections {
@@ -86,6 +87,7 @@ impl SettingsOverlay {
         None
     }
 
+    #[must_use = "this returns None when no field is focused"]
     pub fn current_field_mut(&mut self) -> Option<&mut SettingsField> {
         let mut idx = 0;
         for section in &mut self.sections {

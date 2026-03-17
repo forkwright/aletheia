@@ -18,7 +18,7 @@ pub fn handle_close(app: &mut App) {
         app.view_stack.current(),
         View::MemoryInspector | View::FactDetail { .. }
     ) {
-        app.view_stack.pop();
+        let _ = app.view_stack.pop();
     }
 }
 
@@ -108,10 +108,10 @@ pub async fn handle_drill_in(app: &mut App) {
 
 pub fn handle_pop_back(app: &mut App) {
     if matches!(app.view_stack.current(), View::FactDetail { .. }) {
-        app.view_stack.pop();
+        let _ = app.view_stack.pop();
         app.memory.detail = None;
     } else {
-        app.view_stack.pop();
+        let _ = app.view_stack.pop();
     }
 }
 

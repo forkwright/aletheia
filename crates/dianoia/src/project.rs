@@ -63,6 +63,7 @@ impl Project {
     }
 
     /// Advance project state via a transition.
+    #[must_use = "this returns a Result that may indicate a state transition failure"]
     pub fn advance(&mut self, transition: Transition) -> Result<()> {
         let current = self.state.clone();
         self.state = current.transition(transition)?;

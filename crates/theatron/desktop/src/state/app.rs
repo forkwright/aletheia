@@ -96,6 +96,7 @@ impl TabBar {
     }
 
     /// Close a tab by index. Returns the removed entry.
+    #[must_use = "this returns None when no view was closed"]
     pub fn close(&mut self, index: usize) -> Option<TabEntry> {
         if index >= self.tabs.len() {
             return None;
