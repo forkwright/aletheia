@@ -12,6 +12,7 @@ mod idempotency;
 mod message;
 mod middleware;
 mod nous;
+mod per_user_rate_limit;
 mod session;
 mod sse_events;
 mod streaming;

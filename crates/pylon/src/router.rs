@@ -19,8 +19,8 @@ use aletheia_koina::http::{API_HEALTH, API_V1};
 use crate::error::ApiError;
 use crate::handlers::{config, health, knowledge, metrics, nous, sessions};
 use crate::middleware::{
-    CsrfState, RateLimiter, RequestId, enrich_error_response, inject_request_id, rate_limit,
-    record_http_metrics, require_csrf_header,
+    CsrfState, RateLimiter, RequestId, UserRateLimiter, enrich_error_response, inject_request_id,
+    per_user_rate_limit, rate_limit, record_http_metrics, require_csrf_header, spawn_stale_cleanup,
 };
 use crate::openapi;
 use crate::security::SecurityConfig;
@@ -87,6 +87,14 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         .route("/metrics", get(metrics::expose));
 
     router = router.fallback(fallback_handler);
+
+    if security.per_user_rate_limit.enabled {
+        let user_limiter = Arc::new(UserRateLimiter::new(security.per_user_rate_limit.clone()));
+        spawn_stale_cleanup(Arc::clone(&user_limiter), state.shutdown.clone());
+        router = router
+            .layer(axum::middleware::from_fn(per_user_rate_limit))
+            .layer(axum::Extension(user_limiter));
+    }
 
     if security.rate_limit_enabled {
         let limiter = Arc::new(
