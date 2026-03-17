@@ -1,5 +1,8 @@
 //! Integration tests for the engine runtime.
-#![expect(clippy::expect_used, reason = "test assertions use .expect() for descriptive panic messages")]
+#![expect(
+    clippy::expect_used,
+    reason = "test assertions use .expect() for descriptive panic messages"
+)]
 use std::collections::BTreeMap;
 use std::time::Duration;
 

@@ -1,4 +1,7 @@
-#![expect(clippy::expect_used, reason = "test assertions use .expect() for descriptive panic messages")]
+#![expect(
+    clippy::expect_used,
+    reason = "test assertions use .expect() for descriptive panic messages"
+)]
 use super::*;
 
 #[test]

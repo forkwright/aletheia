@@ -262,7 +262,7 @@ fn wire_stream_delta_deserializes() {
             assert_eq!(index, 0, "content block index should match");
             match delta {
                 WireDelta::TextDelta { text } => {
-                    assert_eq!(text, "Hello", "text delta content should match")
+                    assert_eq!(text, "Hello", "text delta content should match");
                 }
                 _ => panic!("expected TextDelta"),
             }
