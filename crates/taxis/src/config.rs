@@ -570,7 +570,7 @@ pub struct PerUserRateLimitConfig {
 impl Default for PerUserRateLimitConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             default_rpm: 60,
             default_burst: 10,
             llm_rpm: 20,

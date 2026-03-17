@@ -286,7 +286,7 @@ pub async fn list_facts(
     security(("bearer_auth" = []))
 )]
 pub async fn get_fact(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
     // WHY: The previous implementation called get_all_facts which hardcoded
