@@ -15,9 +15,10 @@ mod tests;
 
 use std::path::Path;
 
+use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
 use rusqlite::Connection;
 use snafu::ResultExt;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument, warn};
 
 use crate::error::{self, Result};
 use crate::migration;
@@ -26,6 +27,7 @@ use crate::types::{Message, Role, Session, SessionStatus, SessionType};
 /// The session store: wraps a `SQLite` connection.
 pub struct SessionStore {
     conn: Connection,
+    disk_monitor: Option<DiskSpaceMonitor>,
 }
 
 impl SessionStore {
@@ -48,7 +50,10 @@ impl SessionStore {
 
         migration::run_migrations(&conn)?;
 
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            disk_monitor: None,
+        })
     }
 
     /// Open an in-memory session store (for testing).
@@ -61,7 +66,41 @@ impl SessionStore {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .context(error::DatabaseSnafu)?;
         migration::run_migrations(&conn)?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            disk_monitor: None,
+        })
+    }
+
+    /// Attach a disk space monitor for pre-write checks.
+    pub fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+        self.disk_monitor = Some(monitor);
+    }
+
+    /// Emit tracing diagnostics based on current disk status.
+    ///
+    /// Database writes are essential and always proceed, but warnings and
+    /// errors are emitted so operators can respond before the disk fills.
+    pub(crate) fn check_disk(&self, operation: &str) {
+        if let Some(ref monitor) = self.disk_monitor {
+            match monitor.status() {
+                DiskStatus::Warning { available_bytes } => {
+                    let mb = available_bytes / (1024 * 1024);
+                    warn!(
+                        available_mb = mb,
+                        operation, "disk space low, database write proceeding"
+                    );
+                }
+                DiskStatus::Critical { available_bytes } => {
+                    let mb = available_bytes / (1024 * 1024);
+                    error!(
+                        available_mb = mb,
+                        operation, "disk space critical, database write proceeding (essential)"
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Lightweight liveness check: executes `SELECT 1` against the connection.

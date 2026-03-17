@@ -35,6 +35,7 @@ storage-fjall = ["dep:fjall", "mneme-engine"]
 hnsw_rs = ["dep:hnsw_rs"]
 
 [dependencies]
+aletheia-koina = { path = "../koina" }
 jiff = { workspace = true, features = ["serde"] }
 ndarray = { version = "0.17", features = ["serde"], optional = true }
 rusqlite = { workspace = true, optional = true }

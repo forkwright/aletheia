@@ -614,6 +614,8 @@ pub struct MaintenanceSettings {
     pub drift_detection: DriftDetectionSettings,
     /// Database size monitoring and alerting.
     pub db_monitoring: DbMonitoringSettings,
+    /// Proactive disk space monitoring and write protection.
+    pub disk_space: DiskSpaceSettings,
     /// Automatic data retention enforcement.
     pub retention: RetentionSettings,
     /// Whether background knowledge graph maintenance tasks are enabled.
@@ -697,6 +699,36 @@ impl Default for DbMonitoringSettings {
             enabled: true,
             warn_threshold_mb: 100,
             alert_threshold_mb: 500,
+        }
+    }
+}
+
+/// Proactive disk space monitoring settings.
+///
+/// A background task periodically checks available disk space and updates a
+/// shared atomic counter. Write paths read the counter to decide whether to
+/// proceed, warn, or reject non-essential writes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct DiskSpaceSettings {
+    /// Whether disk space monitoring is active.
+    pub enabled: bool,
+    /// Emit a warning when available space drops below this value (MB).
+    pub warning_threshold_mb: u64,
+    /// Reject non-essential writes when available space drops below this value (MB).
+    pub critical_threshold_mb: u64,
+    /// Seconds between background disk space checks.
+    pub check_interval_secs: u64,
+}
+
+impl Default for DiskSpaceSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            warning_threshold_mb: 1024,
+            critical_threshold_mb: 100,
+            check_interval_secs: 60,
         }
     }
 }

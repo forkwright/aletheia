@@ -145,6 +145,9 @@ rusqlite = { version = "0.38", features = ["bundled"] }
 # String similarity
 strsim = "0.11"
 
+# FFI
+libc = "0.2"
+
 # Random number generation
 rand = "0.9"
 

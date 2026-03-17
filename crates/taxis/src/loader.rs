@@ -1,9 +1,10 @@
 //! Figment-based configuration loading with TOML cascade.
 
+use aletheia_koina::disk_space::{DiskSpaceMonitor, DiskStatus};
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use snafu::ResultExt;
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::config::AletheiaConfig;
 use crate::encrypt;
@@ -101,6 +102,42 @@ fn decrypt_toml_content(content: &str) -> String {
     reason = "figment::Error is inherently large"
 )]
 pub fn write_config(oikos: &Oikos, config: &AletheiaConfig) -> Result<()> {
+    write_config_checked(oikos, config, None)
+}
+
+/// Write configuration with optional disk space monitoring.
+///
+/// Config writes are essential (state preservation), so they always proceed.
+/// Warning and critical disk states emit tracing diagnostics.
+#[expect(
+    clippy::result_large_err,
+    reason = "figment::Error is inherently large"
+)]
+pub fn write_config_checked(
+    oikos: &Oikos,
+    config: &AletheiaConfig,
+    disk_monitor: Option<&DiskSpaceMonitor>,
+) -> Result<()> {
+    if let Some(monitor) = disk_monitor {
+        match monitor.status() {
+            DiskStatus::Warning { available_bytes } => {
+                let mb = available_bytes / (1024 * 1024);
+                warn!(
+                    available_mb = mb,
+                    "disk space low, config write proceeding (essential)"
+                );
+            }
+            DiskStatus::Critical { available_bytes } => {
+                let mb = available_bytes / (1024 * 1024);
+                error!(
+                    available_mb = mb,
+                    "disk space critical, config write proceeding (essential)"
+                );
+            }
+            _ => {}
+        }
+    }
+
     let toml = toml::to_string(config).map_err(|e| {
         SerializeTomlSnafu {
             reason: e.to_string(),

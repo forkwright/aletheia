@@ -207,6 +207,7 @@ name = "aletheia-koina"
 version = "0.12.0"
 dependencies = [
  "compact_str",
+ "libc",
  "regex",
  "serde",
  "serde_json",
@@ -236,6 +237,7 @@ name = "aletheia-mneme"
 version = "0.12.0"
 dependencies = [
  "aho-corasick",
+ "aletheia-koina",
  "base64 0.22.1",
  "bytemuck",
  "candle-core",
@@ -311,6 +313,7 @@ dependencies = [
 name = "aletheia-oikonomos"
 version = "0.12.0"
 dependencies = [
+ "aletheia-koina",
  "chrono",
  "cron",
  "flate2",
@@ -410,6 +413,7 @@ dependencies = [
 name = "aletheia-taxis"
 version = "0.12.0"
 dependencies = [
+ "aletheia-koina",
  "base64 0.22.1",
  "figment",
  "proptest",
