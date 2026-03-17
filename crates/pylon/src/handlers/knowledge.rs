@@ -286,14 +286,14 @@ pub async fn list_facts(
     security(("bearer_auth" = []))
 )]
 pub async fn get_fact(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
     // WHY: The previous implementation called get_all_facts which hardcoded
     // nous_id: None, causing get_stored_facts to always return an empty Vec
     // (it requires nous_id.is_some() to query the store). Bug #1252.
     #[cfg(feature = "knowledge-store")]
-    if let Some(ref store) = state.knowledge_store {
+    if let Some(ref store) = _state.knowledge_store {
         let facts = store
             .read_facts_by_id(&id)
             .map_err(|e| ApiError::Internal {
@@ -304,8 +304,8 @@ pub async fn get_fact(
             path: format!("fact/{id}"),
             location: snafu::Location::default(),
         })?;
-        let relationships = get_fact_relationships(&state, &fact);
-        let similar = get_similar_facts(&state, &fact);
+        let relationships = get_fact_relationships(&_state, &fact);
+        let similar = get_similar_facts(&_state, &fact);
         return Ok(Json(FactDetailResponse {
             fact,
             relationships,
@@ -673,6 +673,7 @@ fn get_stored_entities(state: &AppState) -> Vec<aletheia_mneme::knowledge::Entit
     Vec::new()
 }
 
+#[cfg(feature = "knowledge-store")]
 fn get_fact_relationships(
     _state: &AppState,
     _fact: &aletheia_mneme::knowledge::Fact,
@@ -687,6 +688,7 @@ fn get_entity_relationships(
     Vec::new()
 }
 
+#[cfg(feature = "knowledge-store")]
 fn get_similar_facts(
     _state: &AppState,
     _fact: &aletheia_mneme::knowledge::Fact,
