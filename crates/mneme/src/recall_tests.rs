@@ -13,19 +13,28 @@ mod tests {
     #[test]
     fn vector_similarity_identical() {
         let e = engine();
-        assert!((e.score_vector_similarity(0.0) - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (e.score_vector_similarity(0.0) - 1.0).abs() < f64::EPSILON,
+            "cosine distance 0.0 (identical vectors) should score 1.0"
+        );
     }
 
     #[test]
     fn vector_similarity_opposite() {
         let e = engine();
-        assert!((e.score_vector_similarity(2.0)).abs() < f64::EPSILON);
+        assert!(
+            (e.score_vector_similarity(2.0)).abs() < f64::EPSILON,
+            "cosine distance 2.0 (opposite vectors) should score 0.0"
+        );
     }
 
     #[test]
     fn vector_similarity_midpoint() {
         let e = engine();
-        assert!((e.score_vector_similarity(1.0) - 0.5).abs() < f64::EPSILON);
+        assert!(
+            (e.score_vector_similarity(1.0) - 0.5).abs() < f64::EPSILON,
+            "cosine distance 1.0 (orthogonal vectors) should score 0.5"
+        );
     }
 
     // --- FSRS Decay ---
@@ -131,7 +140,10 @@ mod tests {
     fn decay_negative_age_returns_one() {
         let e = engine();
         let score = e.score_decay(-10.0, FactType::Event, EpistemicTier::Inferred, 0);
-        assert!((score - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (score - 1.0).abs() < f64::EPSILON,
+            "negative age should clamp to R=1.0, got {score}"
+        );
     }
 
     #[test]
@@ -143,7 +155,10 @@ mod tests {
             EpistemicTier::Assumed,
             0,
         );
-        assert!(score >= 0.0);
+        assert!(
+            score >= 0.0,
+            "decay score must be non-negative, got {score}"
+        );
         assert!(
             score < 0.02,
             "Very old observation should be near zero, got {score}"
@@ -154,7 +169,10 @@ mod tests {
     fn decay_just_created_fact() {
         let e = engine();
         let score = e.score_decay(0.0, FactType::Task, EpistemicTier::Assumed, 0);
-        assert!((score - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (score - 1.0).abs() < f64::EPSILON,
+            "just-created Task/Assumed fact should score R=1.0, got {score}"
+        );
     }
 
     #[test]
@@ -164,8 +182,14 @@ mod tests {
         let score_hour = e.score_decay(1.0, FactType::Event, EpistemicTier::Inferred, 0);
         let score_day = e.score_decay(24.0, FactType::Event, EpistemicTier::Inferred, 0);
         let score_week = e.score_decay(168.0, FactType::Event, EpistemicTier::Inferred, 0);
-        assert!(score_hour > score_day);
-        assert!(score_day > score_week);
+        assert!(
+            score_hour > score_day,
+            "1h score ({score_hour}) should be greater than 1d score ({score_day})"
+        );
+        assert!(
+            score_day > score_week,
+            "1d score ({score_day}) should be greater than 1w score ({score_week})"
+        );
         assert!(
             score_hour > 0.9,
             "1h old Event should still be >0.9, got {score_hour}"
@@ -185,9 +209,18 @@ mod tests {
         let s100 = compute_effective_stability(ft, tier, 100);
         let s1000 = compute_effective_stability(ft, tier, 1000);
         // Strictly increasing with access count
-        assert!(s10 > s0);
-        assert!(s100 > s10);
-        assert!(s1000 > s100);
+        assert!(
+            s10 > s0,
+            "stability with 10 accesses ({s10}) should exceed 0 accesses ({s0})"
+        );
+        assert!(
+            s100 > s10,
+            "stability with 100 accesses ({s100}) should exceed 10 accesses ({s10})"
+        );
+        assert!(
+            s1000 > s100,
+            "stability with 1000 accesses ({s1000}) should exceed 100 accesses ({s100})"
+        );
         // Growth is bounded: even 1000 accesses doesn't double stability
         let growth_ratio = s1000 / s0;
         assert!(
@@ -206,19 +239,28 @@ mod tests {
     #[test]
     fn relevance_same_nous() {
         let e = engine();
-        assert!((e.score_relevance("syn", "syn") - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (e.score_relevance("syn", "syn") - 1.0).abs() < f64::EPSILON,
+            "same nous_id should yield relevance 1.0"
+        );
     }
 
     #[test]
     fn relevance_shared() {
         let e = engine();
-        assert!((e.score_relevance("", "syn") - 0.5).abs() < f64::EPSILON);
+        assert!(
+            (e.score_relevance("", "syn") - 0.5).abs() < f64::EPSILON,
+            "shared (empty) memory nous_id should yield relevance 0.5"
+        );
     }
 
     #[test]
     fn relevance_other_nous() {
         let e = engine();
-        assert!((e.score_relevance("demiurge", "syn") - 0.3).abs() < f64::EPSILON);
+        assert!(
+            (e.score_relevance("demiurge", "syn") - 0.3).abs() < f64::EPSILON,
+            "different nous_id should yield relevance 0.3"
+        );
     }
 
     // --- Epistemic tier ---
@@ -229,8 +271,14 @@ mod tests {
         let v = e.score_epistemic_tier("verified");
         let i = e.score_epistemic_tier("inferred");
         let a = e.score_epistemic_tier("assumed");
-        assert!(v > i);
-        assert!(i > a);
+        assert!(
+            v > i,
+            "verified ({v}) should score higher than inferred ({i})"
+        );
+        assert!(
+            i > a,
+            "inferred ({i}) should score higher than assumed ({a})"
+        );
     }
 
     // --- Relationship proximity ---
@@ -238,19 +286,28 @@ mod tests {
     #[test]
     fn proximity_direct_neighbor() {
         let e = engine();
-        assert!((e.score_relationship_proximity(Some(1)) - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (e.score_relationship_proximity(Some(1)) - 1.0).abs() < f64::EPSILON,
+            "direct neighbor (1 hop) should score proximity 1.0"
+        );
     }
 
     #[test]
     fn proximity_two_hops() {
         let e = engine();
-        assert!((e.score_relationship_proximity(Some(2)) - 0.5).abs() < f64::EPSILON);
+        assert!(
+            (e.score_relationship_proximity(Some(2)) - 0.5).abs() < f64::EPSILON,
+            "two hops should score proximity 0.5"
+        );
     }
 
     #[test]
     fn proximity_no_connection() {
         let e = engine();
-        assert!((e.score_relationship_proximity(None)).abs() < f64::EPSILON);
+        assert!(
+            (e.score_relationship_proximity(None)).abs() < f64::EPSILON,
+            "no connection (None) should score proximity 0.0"
+        );
     }
 
     // --- Access frequency ---
@@ -258,13 +315,19 @@ mod tests {
     #[test]
     fn access_frequency_zero() {
         let e = engine();
-        assert!((e.score_access_frequency(0)).abs() < 0.01);
+        assert!(
+            (e.score_access_frequency(0)).abs() < 0.01,
+            "zero accesses should score near 0.0"
+        );
     }
 
     #[test]
     fn access_frequency_max() {
         let e = engine();
-        assert!((e.score_access_frequency(100) - 1.0).abs() < 0.01);
+        assert!(
+            (e.score_access_frequency(100) - 1.0).abs() < 0.01,
+            "100 accesses (max) should score near 1.0"
+        );
     }
 
     #[test]
@@ -274,9 +337,20 @@ mod tests {
         let s50 = e.score_access_frequency(50);
         let s100 = e.score_access_frequency(100);
         // Logarithmic: each doubling adds less
-        assert!(s50 > s10);
-        assert!(s100 > s50);
-        assert!(s50 - s10 > s100 - s50);
+        assert!(
+            s50 > s10,
+            "score at 50 accesses ({s50}) should exceed score at 10 ({s10})"
+        );
+        assert!(
+            s100 > s50,
+            "score at 100 accesses ({s100}) should exceed score at 50 ({s50})"
+        );
+        assert!(
+            s50 - s10 > s100 - s50,
+            "logarithmic growth: gain from 10→50 ({}) should exceed gain from 50→100 ({})",
+            s50 - s10,
+            s100 - s50
+        );
     }
 
     // --- Composite scoring ---
@@ -292,14 +366,20 @@ mod tests {
             relationship_proximity: 1.0,
             access_frequency: 1.0,
         };
-        assert!((e.compute_score(&factors) - 1.0).abs() < 0.01);
+        assert!(
+            (e.compute_score(&factors) - 1.0).abs() < 0.01,
+            "all factors at 1.0 should produce a composite score of ~1.0"
+        );
     }
 
     #[test]
     fn zero_score() {
         let e = engine();
         let factors = FactorScores::default();
-        assert!((e.compute_score(&factors)).abs() < f64::EPSILON);
+        assert!(
+            (e.compute_score(&factors)).abs() < f64::EPSILON,
+            "all factors at 0.0 (default) should produce a composite score of 0.0"
+        );
     }
 
     #[test]
@@ -313,7 +393,12 @@ mod tests {
             decay: 1.0,
             ..FactorScores::default()
         };
-        assert!(e.compute_score(&high_vec) > e.compute_score(&high_decay));
+        assert!(
+            e.compute_score(&high_vec) > e.compute_score(&high_decay),
+            "vector_similarity weight (0.35) should dominate decay weight (0.20): high_vec={}, high_decay={}",
+            e.compute_score(&high_vec),
+            e.compute_score(&high_decay)
+        );
     }
 
     // --- Ranking ---
@@ -362,11 +447,30 @@ mod tests {
         ];
 
         let ranked = e.rank(candidates);
-        assert_eq!(ranked[0].content, "high");
-        assert_eq!(ranked[1].content, "mid");
-        assert_eq!(ranked[2].content, "low");
-        assert!(ranked[0].score > ranked[1].score);
-        assert!(ranked[1].score > ranked[2].score);
+        assert_eq!(
+            ranked[0].content, "high",
+            "highest-scoring candidate should be ranked first"
+        );
+        assert_eq!(
+            ranked[1].content, "mid",
+            "mid-scoring candidate should be ranked second"
+        );
+        assert_eq!(
+            ranked[2].content, "low",
+            "lowest-scoring candidate should be ranked third"
+        );
+        assert!(
+            ranked[0].score > ranked[1].score,
+            "first rank score ({}) should exceed second ({})",
+            ranked[0].score,
+            ranked[1].score
+        );
+        assert!(
+            ranked[1].score > ranked[2].score,
+            "second rank score ({}) should exceed third ({})",
+            ranked[1].score,
+            ranked[2].score
+        );
     }
 
     // --- Custom weights ---
@@ -394,7 +498,12 @@ mod tests {
             ..FactorScores::default()
         };
 
-        assert!(e.compute_score(&new_dissimilar) > e.compute_score(&old_similar));
+        assert!(
+            e.compute_score(&new_dissimilar) > e.compute_score(&old_similar),
+            "with decay-only weights, high-decay fact should outscore high-similarity fact: new_dissimilar={}, old_similar={}",
+            e.compute_score(&new_dissimilar),
+            e.compute_score(&old_similar)
+        );
     }
 
     // --- Boundary conditions ---
@@ -418,49 +527,79 @@ mod tests {
             relationship_proximity: 1.0,
             access_frequency: 1.0,
         };
-        assert!((e.compute_score(&factors)).abs() < f64::EPSILON);
+        assert!(
+            (e.compute_score(&factors)).abs() < f64::EPSILON,
+            "all-zero weights should produce a composite score of 0.0 even with all factors at 1.0"
+        );
     }
 
     #[test]
     fn vector_similarity_negative_clamps() {
         let e = engine();
-        assert!((e.score_vector_similarity(-0.5)).abs() < 1.01);
-        assert!(e.score_vector_similarity(-0.5) >= 0.0);
+        assert!(
+            (e.score_vector_similarity(-0.5)).abs() < 1.01,
+            "negative cosine distance should produce a score <= 1.0"
+        );
+        assert!(
+            e.score_vector_similarity(-0.5) >= 0.0,
+            "negative cosine distance should clamp to score >= 0.0"
+        );
     }
 
     #[test]
     fn vector_similarity_over_two_clamps() {
         let e = engine();
-        assert!((e.score_vector_similarity(3.0)).abs() < f64::EPSILON);
+        assert!(
+            (e.score_vector_similarity(3.0)).abs() < f64::EPSILON,
+            "cosine distance > 2.0 should clamp to score 0.0"
+        );
     }
 
     #[test]
     fn access_frequency_u64_max_no_panic() {
         let e = engine();
         let score = e.score_access_frequency(u64::MAX);
-        assert!(score.is_finite());
-        assert!(score > 0.0);
+        assert!(
+            score.is_finite(),
+            "u64::MAX access count should produce a finite score, got {score}"
+        );
+        assert!(
+            score > 0.0,
+            "u64::MAX access count should produce a positive score, got {score}"
+        );
     }
 
     #[test]
     fn proximity_high_hops_near_zero() {
         let e = engine();
         let score = e.score_relationship_proximity(Some(100));
-        assert!(score > 0.0);
-        assert!(score < 0.001);
+        assert!(
+            score > 0.0,
+            "100-hop proximity should be positive, got {score}"
+        );
+        assert!(
+            score < 0.001,
+            "100-hop proximity should be near zero, got {score}"
+        );
     }
 
     #[test]
     fn proximity_same_entity() {
         let e = engine();
-        assert!((e.score_relationship_proximity(Some(0)) - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (e.score_relationship_proximity(Some(0)) - 1.0).abs() < f64::EPSILON,
+            "same entity (0 hops) should score proximity 1.0"
+        );
     }
 
     #[test]
     fn rank_empty_vec() {
         let e = engine();
         let ranked = e.rank(vec![]);
-        assert!(ranked.is_empty());
+        assert!(
+            ranked.is_empty(),
+            "ranking an empty candidate list should return an empty vec"
+        );
     }
 
     #[test]
@@ -478,8 +617,15 @@ mod tests {
             score: 0.0,
         }];
         let ranked = e.rank(single);
-        assert_eq!(ranked.len(), 1);
-        assert!(ranked[0].score > 0.0);
+        assert_eq!(
+            ranked.len(),
+            1,
+            "ranking a single candidate should return exactly one result"
+        );
+        assert!(
+            ranked[0].score > 0.0,
+            "single ranked candidate with nonzero vector_similarity should have a positive score"
+        );
     }
 
     #[test]
@@ -487,8 +633,18 @@ mod tests {
         let weights = RecallWeights::default();
         let json = serde_json::to_string(&weights).expect("RecallWeights is serializable");
         let back: RecallWeights = serde_json::from_str(&json).expect("round-trip JSON is valid");
-        assert!((weights.vector_similarity - back.vector_similarity).abs() < f64::EPSILON);
-        assert!((weights.total() - back.total()).abs() < f64::EPSILON);
+        assert!(
+            (weights.vector_similarity - back.vector_similarity).abs() < f64::EPSILON,
+            "vector_similarity weight should survive JSON round-trip: original={}, back={}",
+            weights.vector_similarity,
+            back.vector_similarity
+        );
+        assert!(
+            (weights.total() - back.total()).abs() < f64::EPSILON,
+            "weights total should survive JSON round-trip: original={}, back={}",
+            weights.total(),
+            back.total()
+        );
     }
 
     #[test]
@@ -504,7 +660,10 @@ mod tests {
         let e = engine();
         let score = e.compute_score(&factors);
         let expected = 0.15; // relevance weight
-        assert!((score - expected).abs() < 0.01);
+        assert!(
+            (score - expected).abs() < 0.01,
+            "with only relevance weight active, score should equal relevance weight (0.15), got {score}"
+        );
     }
 
     // --- Acceptance criteria tests ---
@@ -635,8 +794,14 @@ mod tests {
         ];
 
         let ranked = e.rank(candidates);
-        assert_eq!(ranked[0].content, "verified fact");
-        assert_eq!(ranked[1].content, "inferred fact");
+        assert_eq!(
+            ranked[0].content, "verified fact",
+            "verified fact should rank first over inferred fact"
+        );
+        assert_eq!(
+            ranked[1].content, "inferred fact",
+            "inferred fact should rank second"
+        );
     }
 
     #[test]
@@ -722,9 +887,20 @@ mod tests {
         let ranked1 = e.rank(make_candidates());
         let ranked2 = e.rank(make_candidates());
 
-        assert_eq!(ranked1[0].content, ranked2[0].content);
-        assert_eq!(ranked1[1].content, ranked2[1].content);
-        assert!((ranked1[0].score - ranked2[0].score).abs() < f64::EPSILON);
+        assert_eq!(
+            ranked1[0].content, ranked2[0].content,
+            "first-ranked content should be identical across two identical calls"
+        );
+        assert_eq!(
+            ranked1[1].content, ranked2[1].content,
+            "second-ranked content should be identical across two identical calls"
+        );
+        assert!(
+            (ranked1[0].score - ranked2[0].score).abs() < f64::EPSILON,
+            "top score should be identical across two identical calls: {} vs {}",
+            ranked1[0].score,
+            ranked2[0].score
+        );
     }
 
     // --- Graph recall skip when weight is zero ---
@@ -816,12 +992,36 @@ mod tests {
     fn default_weights_match_documented() {
         let e = RecallEngine::new();
         let w = e.weights();
-        assert!((w.vector_similarity - 0.35).abs() < f64::EPSILON);
-        assert!((w.decay - 0.20).abs() < f64::EPSILON);
-        assert!((w.relevance - 0.15).abs() < f64::EPSILON);
-        assert!((w.epistemic_tier - 0.15).abs() < f64::EPSILON);
-        assert!((w.relationship_proximity - 0.10).abs() < f64::EPSILON);
-        assert!((w.access_frequency - 0.05).abs() < f64::EPSILON);
+        assert!(
+            (w.vector_similarity - 0.35).abs() < f64::EPSILON,
+            "default vector_similarity weight should be 0.35, got {}",
+            w.vector_similarity
+        );
+        assert!(
+            (w.decay - 0.20).abs() < f64::EPSILON,
+            "default decay weight should be 0.20, got {}",
+            w.decay
+        );
+        assert!(
+            (w.relevance - 0.15).abs() < f64::EPSILON,
+            "default relevance weight should be 0.15, got {}",
+            w.relevance
+        );
+        assert!(
+            (w.epistemic_tier - 0.15).abs() < f64::EPSILON,
+            "default epistemic_tier weight should be 0.15, got {}",
+            w.epistemic_tier
+        );
+        assert!(
+            (w.relationship_proximity - 0.10).abs() < f64::EPSILON,
+            "default relationship_proximity weight should be 0.10, got {}",
+            w.relationship_proximity
+        );
+        assert!(
+            (w.access_frequency - 0.05).abs() < f64::EPSILON,
+            "default access_frequency weight should be 0.05, got {}",
+            w.access_frequency
+        );
     }
 
     #[test]
@@ -836,19 +1036,46 @@ mod tests {
         };
         let e = RecallEngine::with_weights(custom);
         let w = e.weights();
-        assert!((w.vector_similarity - 0.5).abs() < f64::EPSILON);
-        assert!((w.decay - 0.1).abs() < f64::EPSILON);
-        assert!((w.relevance - 0.1).abs() < f64::EPSILON);
-        assert!((w.epistemic_tier - 0.1).abs() < f64::EPSILON);
-        assert!((w.relationship_proximity - 0.1).abs() < f64::EPSILON);
-        assert!((w.access_frequency - 0.1).abs() < f64::EPSILON);
+        assert!(
+            (w.vector_similarity - 0.5).abs() < f64::EPSILON,
+            "custom vector_similarity weight should be 0.5, got {}",
+            w.vector_similarity
+        );
+        assert!(
+            (w.decay - 0.1).abs() < f64::EPSILON,
+            "custom decay weight should be 0.1, got {}",
+            w.decay
+        );
+        assert!(
+            (w.relevance - 0.1).abs() < f64::EPSILON,
+            "custom relevance weight should be 0.1, got {}",
+            w.relevance
+        );
+        assert!(
+            (w.epistemic_tier - 0.1).abs() < f64::EPSILON,
+            "custom epistemic_tier weight should be 0.1, got {}",
+            w.epistemic_tier
+        );
+        assert!(
+            (w.relationship_proximity - 0.1).abs() < f64::EPSILON,
+            "custom relationship_proximity weight should be 0.1, got {}",
+            w.relationship_proximity
+        );
+        assert!(
+            (w.access_frequency - 0.1).abs() < f64::EPSILON,
+            "custom access_frequency weight should be 0.1, got {}",
+            w.access_frequency
+        );
     }
 
     #[test]
     fn with_max_access_count_changes_scoring() {
         let e = RecallEngine::new().with_max_access_count(10.0);
         let score = e.score_access_frequency(10);
-        assert!((score - 1.0).abs() < 0.01);
+        assert!(
+            (score - 1.0).abs() < 0.01,
+            "with max_access_count=10, 10 accesses should score ~1.0, got {score}"
+        );
     }
 
     #[test]
@@ -863,9 +1090,16 @@ mod tests {
         };
         let e = RecallEngine::with_weights(custom).with_max_access_count(50.0);
 
-        assert!((e.weights().vector_similarity - 0.6).abs() < f64::EPSILON);
+        assert!(
+            (e.weights().vector_similarity - 0.6).abs() < f64::EPSILON,
+            "builder chain should preserve custom vector_similarity weight 0.6, got {}",
+            e.weights().vector_similarity
+        );
         let freq_at_max = e.score_access_frequency(50);
-        assert!((freq_at_max - 1.0).abs() < 0.01);
+        assert!(
+            (freq_at_max - 1.0).abs() < 0.01,
+            "with max_access_count=50, 50 accesses should score ~1.0, got {freq_at_max}"
+        );
     }
 
     // --- Relevance edge cases ---
@@ -874,14 +1108,20 @@ mod tests {
     fn relevance_empty_memory_nous() {
         let e = engine();
         let score = e.score_relevance("", "agent");
-        assert!((score - 0.5).abs() < f64::EPSILON);
+        assert!(
+            (score - 0.5).abs() < f64::EPSILON,
+            "empty memory nous with non-empty query nous should yield relevance 0.5, got {score}"
+        );
     }
 
     #[test]
     fn relevance_both_empty() {
         let e = engine();
         let score = e.score_relevance("", "");
-        assert!((score - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (score - 1.0).abs() < f64::EPSILON,
+            "both empty nous_ids treated as matching should yield relevance 1.0, got {score}"
+        );
     }
 
     // --- Epistemic tier edge cases ---
@@ -892,18 +1132,33 @@ mod tests {
         let lower = e.score_epistemic_tier("verified");
         let title = e.score_epistemic_tier("Verified");
         let upper = e.score_epistemic_tier("VERIFIED");
-        assert!((title - upper).abs() < f64::EPSILON);
-        assert!((lower - title).abs() > f64::EPSILON || (lower - title).abs() < f64::EPSILON);
+        assert!(
+            (title - upper).abs() < f64::EPSILON,
+            "\"Verified\" and \"VERIFIED\" should produce the same score: title={title}, upper={upper}"
+        );
+        assert!(
+            (lower - title).abs() > f64::EPSILON || (lower - title).abs() < f64::EPSILON,
+            "lower and title case scores may or may not match: lower={lower}, title={title}"
+        );
         // "Verified" and "VERIFIED" both fall through to default (0.3) since match is exact lowercase
-        assert!((title - 0.3).abs() < f64::EPSILON);
-        assert!((upper - 0.3).abs() < f64::EPSILON);
+        assert!(
+            (title - 0.3).abs() < f64::EPSILON,
+            "\"Verified\" (title case) should fall through to default score 0.3, got {title}"
+        );
+        assert!(
+            (upper - 0.3).abs() < f64::EPSILON,
+            "\"VERIFIED\" (upper case) should fall through to default score 0.3, got {upper}"
+        );
     }
 
     #[test]
     fn epistemic_tier_unknown_string() {
         let e = engine();
         let score = e.score_epistemic_tier("bogus");
-        assert!((score - 0.3).abs() < f64::EPSILON);
+        assert!(
+            (score - 0.3).abs() < f64::EPSILON,
+            "unknown epistemic tier string should fall through to default score 0.3, got {score}"
+        );
     }
 
     // --- Compute score edge cases ---
@@ -928,7 +1183,10 @@ mod tests {
             access_frequency: 0.4,
         };
         let score = e.compute_score(&factors);
-        assert!((score - 0.8).abs() < 0.01);
+        assert!(
+            (score - 0.8).abs() < 0.01,
+            "with only vector_similarity weight active at 1.0, score should equal vector_similarity factor (0.8), got {score}"
+        );
     }
 
     // --- Ranking edge cases ---
@@ -963,8 +1221,17 @@ mod tests {
             },
         ];
         let ranked = e.rank(candidates);
-        assert_eq!(ranked.len(), 2);
-        assert!((ranked[0].score - ranked[1].score).abs() < f64::EPSILON);
+        assert_eq!(
+            ranked.len(),
+            2,
+            "ranking two candidates should return exactly two results"
+        );
+        assert!(
+            (ranked[0].score - ranked[1].score).abs() < f64::EPSILON,
+            "equal-factor candidates should have equal scores: {} vs {}",
+            ranked[0].score,
+            ranked[1].score
+        );
     }
 
     #[test]
@@ -987,7 +1254,11 @@ mod tests {
             })
             .collect();
         let ranked = e.rank(candidates);
-        assert_eq!(ranked.len(), 100);
+        assert_eq!(
+            ranked.len(),
+            100,
+            "ranking 100 candidates should return exactly 100 results"
+        );
         for pair in ranked.windows(2) {
             assert!(
                 pair[0].score >= pair[1].score,
@@ -1006,20 +1277,29 @@ mod tests {
     fn score_access_frequency_one() {
         let e = engine();
         let score = e.score_access_frequency(1);
-        assert!(score > 0.0);
-        assert!(score < 1.0);
+        assert!(score > 0.0, "1 access should score above 0.0, got {score}");
+        assert!(
+            score < 1.0,
+            "1 access should score below 1.0 (max), got {score}"
+        );
     }
 
     #[test]
     fn score_vector_similarity_exact_one() {
         let e = engine();
-        assert!((e.score_vector_similarity(0.0) - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (e.score_vector_similarity(0.0) - 1.0).abs() < f64::EPSILON,
+            "cosine distance 0.0 should yield similarity score 1.0"
+        );
     }
 
     #[test]
     fn score_vector_similarity_exact_zero() {
         let e = engine();
-        assert!(e.score_vector_similarity(2.0).abs() < f64::EPSILON);
+        assert!(
+            e.score_vector_similarity(2.0).abs() < f64::EPSILON,
+            "cosine distance 2.0 should yield similarity score 0.0"
+        );
     }
 
     // --- FactType classification tests ---
@@ -1030,7 +1310,11 @@ mod tests {
             FactType::classify("I am a software engineer"),
             FactType::Identity
         );
-        assert_eq!(FactType::classify("My name is Alice"), FactType::Identity);
+        assert_eq!(
+            FactType::classify("My name is Alice"),
+            FactType::Identity,
+            "\"My name is Alice\" should classify as Identity"
+        );
     }
 
     #[test]
@@ -1039,7 +1323,11 @@ mod tests {
             FactType::classify("I prefer tabs over spaces"),
             FactType::Preference
         );
-        assert_eq!(FactType::classify("I like Rust"), FactType::Preference);
+        assert_eq!(
+            FactType::classify("I like Rust"),
+            FactType::Preference,
+            "\"I like Rust\" should classify as Preference"
+        );
         assert_eq!(
             FactType::classify("I don't like Java"),
             FactType::Preference
@@ -1052,13 +1340,25 @@ mod tests {
             FactType::classify("I know Rust and Python"),
             FactType::Skill
         );
-        assert_eq!(FactType::classify("I use VS Code"), FactType::Skill);
-        assert_eq!(FactType::classify("I work with databases"), FactType::Skill);
+        assert_eq!(
+            FactType::classify("I use VS Code"),
+            FactType::Skill,
+            "\"I use VS Code\" should classify as Skill"
+        );
+        assert_eq!(
+            FactType::classify("I work with databases"),
+            FactType::Skill,
+            "\"I work with databases\" should classify as Skill"
+        );
     }
 
     #[test]
     fn classify_task() {
-        assert_eq!(FactType::classify("TODO: fix the bug"), FactType::Task);
+        assert_eq!(
+            FactType::classify("TODO: fix the bug"),
+            FactType::Task,
+            "\"TODO: fix the bug\" should classify as Task"
+        );
         assert_eq!(
             FactType::classify("We need to deploy by Friday"),
             FactType::Task
@@ -1124,20 +1424,28 @@ mod tests {
     fn fact_type_stability_ordering() {
         // Identity is most stable, Observation is least
         assert!(
-            FactType::Identity.base_stability_hours() > FactType::Preference.base_stability_hours()
+            FactType::Identity.base_stability_hours() > FactType::Preference.base_stability_hours(),
+            "Identity should be more stable than Preference"
         );
         assert!(
-            FactType::Preference.base_stability_hours() > FactType::Skill.base_stability_hours()
+            FactType::Preference.base_stability_hours() > FactType::Skill.base_stability_hours(),
+            "Preference should be more stable than Skill"
         );
         assert!(
-            FactType::Skill.base_stability_hours() > FactType::Relationship.base_stability_hours()
+            FactType::Skill.base_stability_hours() > FactType::Relationship.base_stability_hours(),
+            "Skill should be more stable than Relationship"
         );
         assert!(
-            FactType::Relationship.base_stability_hours() > FactType::Event.base_stability_hours()
+            FactType::Relationship.base_stability_hours() > FactType::Event.base_stability_hours(),
+            "Relationship should be more stable than Event"
         );
-        assert!(FactType::Event.base_stability_hours() > FactType::Task.base_stability_hours());
         assert!(
-            FactType::Task.base_stability_hours() > FactType::Observation.base_stability_hours()
+            FactType::Event.base_stability_hours() > FactType::Task.base_stability_hours(),
+            "Event should be more stable than Task"
+        );
+        assert!(
+            FactType::Task.base_stability_hours() > FactType::Observation.base_stability_hours(),
+            "Task should be more stable than Observation"
         );
     }
 
@@ -1161,8 +1469,16 @@ mod tests {
 
     #[test]
     fn fact_type_from_str_lossy_known() {
-        assert_eq!(FactType::from_str_lossy("identity"), FactType::Identity);
-        assert_eq!(FactType::from_str_lossy("task"), FactType::Task);
+        assert_eq!(
+            FactType::from_str_lossy("identity"),
+            FactType::Identity,
+            "\"identity\" should parse to FactType::Identity"
+        );
+        assert_eq!(
+            FactType::from_str_lossy("task"),
+            FactType::Task,
+            "\"task\" should parse to FactType::Task"
+        );
         assert_eq!(
             FactType::from_str_lossy("observation"),
             FactType::Observation
@@ -1171,9 +1487,21 @@ mod tests {
 
     #[test]
     fn fact_type_from_str_lossy_unknown_falls_back() {
-        assert_eq!(FactType::from_str_lossy("bogus"), FactType::Observation);
-        assert_eq!(FactType::from_str_lossy(""), FactType::Observation);
-        assert_eq!(FactType::from_str_lossy("inference"), FactType::Observation);
+        assert_eq!(
+            FactType::from_str_lossy("bogus"),
+            FactType::Observation,
+            "unrecognized string \"bogus\" should fall back to FactType::Observation"
+        );
+        assert_eq!(
+            FactType::from_str_lossy(""),
+            FactType::Observation,
+            "empty string should fall back to FactType::Observation"
+        );
+        assert_eq!(
+            FactType::from_str_lossy("inference"),
+            FactType::Observation,
+            "\"inference\" (not a valid variant) should fall back to FactType::Observation"
+        );
     }
 
     // --- Epistemic tier stability multiplier tests ---
@@ -1182,11 +1510,13 @@ mod tests {
     fn tier_multiplier_ordering() {
         assert!(
             EpistemicTier::Verified.stability_multiplier()
-                > EpistemicTier::Inferred.stability_multiplier()
+                > EpistemicTier::Inferred.stability_multiplier(),
+            "Verified stability multiplier should exceed Inferred"
         );
         assert!(
             EpistemicTier::Inferred.stability_multiplier()
-                > EpistemicTier::Assumed.stability_multiplier()
+                > EpistemicTier::Assumed.stability_multiplier(),
+            "Inferred stability multiplier should exceed Assumed"
         );
     }
 
@@ -1194,7 +1524,10 @@ mod tests {
     fn tier_verified_is_2x_inferred() {
         let v = EpistemicTier::Verified.stability_multiplier();
         let i = EpistemicTier::Inferred.stability_multiplier();
-        assert!((v / i - 2.0).abs() < f64::EPSILON);
+        assert!(
+            (v / i - 2.0).abs() < f64::EPSILON,
+            "Verified stability multiplier should be exactly 2x Inferred: v={v}, i={i}"
+        );
     }
 
     // --- refresh_stability_hours tests ---
@@ -1206,7 +1539,10 @@ mod tests {
         let count = 42;
         let from_typed = compute_effective_stability(ft, tier, count);
         let from_strings = refresh_stability_hours("event", "verified", count);
-        assert!((from_typed - from_strings).abs() < f64::EPSILON);
+        assert!(
+            (from_typed - from_strings).abs() < f64::EPSILON,
+            "compute_effective_stability (typed) and refresh_stability_hours (strings) should match: typed={from_typed}, strings={from_strings}"
+        );
     }
 
     // --- Integration: full recall scoring with decay ---
@@ -1253,8 +1589,14 @@ mod tests {
         ];
 
         let ranked = e.rank(candidates);
-        assert_eq!(ranked[0].content, "identity fact");
-        assert_eq!(ranked[1].content, "old observation");
+        assert_eq!(
+            ranked[0].content, "identity fact",
+            "fresh verified identity fact should rank first over old assumed observation"
+        );
+        assert_eq!(
+            ranked[1].content, "old observation",
+            "old assumed observation should rank second"
+        );
     }
 }
 
