@@ -39,6 +39,14 @@ pub struct SecurityConfig {
     pub rate_limit_enabled: bool,
     /// Maximum requests per minute per client IP.
     pub rate_limit_requests_per_minute: u32,
+    /// Per-user requests per minute for general API endpoints.
+    pub user_rate_limit_default_rpm: u32,
+    /// Per-user burst allowance (max tokens in the bucket).
+    pub user_rate_limit_default_burst: u32,
+    /// Per-user requests per minute for LLM/chat endpoints.
+    pub user_rate_limit_llm_rpm: u32,
+    /// Per-user requests per minute for tool execution endpoints.
+    pub user_rate_limit_tool_rpm: u32,
     /// Trust X-Forwarded-For and X-Real-IP headers for client IP resolution.
     ///
     /// Enable only when pylon is behind a trusted reverse proxy that strips
@@ -89,6 +97,10 @@ impl SecurityConfig {
             tls_key_path: gateway.tls.key_path.as_ref().map(PathBuf::from),
             rate_limit_enabled: gateway.rate_limit.enabled,
             rate_limit_requests_per_minute: gateway.rate_limit.requests_per_minute,
+            user_rate_limit_default_rpm: gateway.rate_limit.default_rpm,
+            user_rate_limit_default_burst: gateway.rate_limit.default_burst,
+            user_rate_limit_llm_rpm: gateway.rate_limit.llm_rpm,
+            user_rate_limit_tool_rpm: gateway.rate_limit.tool_rpm,
             trust_proxy: false,
         }
     }
@@ -108,6 +120,10 @@ impl Default for SecurityConfig {
             tls_key_path: None,
             rate_limit_enabled: false,
             rate_limit_requests_per_minute: 60,
+            user_rate_limit_default_rpm: 60,
+            user_rate_limit_default_burst: 10,
+            user_rate_limit_llm_rpm: 20,
+            user_rate_limit_tool_rpm: 30,
             trust_proxy: false,
         }
     }

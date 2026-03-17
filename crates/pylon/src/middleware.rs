@@ -9,7 +9,7 @@ use axum::extract::Request;
 use axum::http::{Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use tracing::warn;
+use tracing::{Instrument, warn};
 
 use crate::error::{ErrorBody, ErrorResponse};
 
@@ -283,24 +283,429 @@ pub async fn rate_limit(request: Request, next: Next) -> Response {
 
     let client = extract_client_key(&request, limiter.trust_proxy);
     if let Some(retry_after_secs) = limiter.check(&client) {
-        let mut response = (
-            StatusCode::TOO_MANY_REQUESTS,
-            axum::Json(ErrorResponse {
-                error: ErrorBody {
-                    code: "rate_limited".to_owned(),
-                    message: format!("rate limited, retry after {retry_after_secs}s"),
-                    details: Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
-                },
-            }),
-        )
-            .into_response();
-        if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after_secs.to_string()) {
-            response
-                .headers_mut()
-                .insert(axum::http::header::RETRY_AFTER, value);
-        }
-        return response;
+        return build_rate_limit_response(retry_after_secs);
     }
 
     next.run(request).await
+}
+
+// ---------------------------------------------------------------------------
+// Per-user token bucket rate limiter
+// ---------------------------------------------------------------------------
+
+/// Endpoint category for per-user rate limiting.
+///
+/// Different endpoint categories have different rate limits to reflect their
+/// cost: LLM calls are expensive, tool execution is moderate, and general
+/// API calls are cheapest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum EndpointCategory {
+    General,
+    Llm,
+    Tool,
+}
+
+/// Token bucket state for a single user+category combination.
+struct TokenBucket {
+    tokens: f64,
+    last_refill: Instant,
+}
+
+/// Per-user rate limiter using the token bucket algorithm.
+///
+/// Each (user, endpoint category) combination gets an independent token
+/// bucket. Tokens refill at a steady rate (rpm / 60 tokens per second) up to
+/// a burst cap. Uses `std::sync::Mutex`: the critical section is a `HashMap`
+/// lookup with arithmetic, no `.await` points.
+pub struct UserRateLimiter {
+    /// WHY: lock held only during `HashMap` lookup + arithmetic, no await
+    state: Mutex<HashMap<(String, EndpointCategory), TokenBucket>>,
+    default_rpm: u32,
+    default_burst: u32,
+    llm_rpm: u32,
+    tool_rpm: u32,
+}
+
+impl UserRateLimiter {
+    pub(crate) fn new(default_rpm: u32, default_burst: u32, llm_rpm: u32, tool_rpm: u32) -> Self {
+        Self {
+            state: Mutex::new(HashMap::new()),
+            default_rpm,
+            default_burst,
+            llm_rpm,
+            tool_rpm,
+        }
+    }
+
+    /// Return (`refill_rate_per_sec`, `max_tokens`) for the given category.
+    fn limits(&self, category: EndpointCategory) -> (f64, f64) {
+        let rpm = match category {
+            EndpointCategory::General => self.default_rpm,
+            EndpointCategory::Llm => self.llm_rpm,
+            EndpointCategory::Tool => self.tool_rpm,
+        };
+        let refill_rate = f64::from(rpm) / 60.0;
+        // WHY: burst for LLM/tool is proportional to their rpm, scaled by
+        // the same ratio as default_burst / default_rpm, floored at 1.
+        let max_tokens = if self.default_rpm == 0 {
+            f64::from(self.default_burst).max(1.0)
+        } else {
+            (f64::from(rpm) * f64::from(self.default_burst) / f64::from(self.default_rpm)).max(1.0)
+        };
+        (refill_rate, max_tokens)
+    }
+
+    /// Check whether a request from `user` to an endpoint of `category` is allowed.
+    ///
+    /// Returns `None` if allowed, `Some(retry_after_secs)` if rate limited.
+    pub(crate) fn check(&self, user: &str, category: EndpointCategory) -> Option<u64> {
+        let now = Instant::now();
+        let (refill_rate, max_tokens) = self.limits(category);
+
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let key = (user.to_owned(), category);
+        let bucket = state.entry(key).or_insert_with(|| TokenBucket {
+            tokens: max_tokens,
+            last_refill: now,
+        });
+
+        // Refill tokens based on elapsed time.
+        let elapsed = now.duration_since(bucket.last_refill).as_secs_f64();
+        bucket.tokens = (bucket.tokens + elapsed * refill_rate).min(max_tokens);
+        bucket.last_refill = now;
+
+        if bucket.tokens >= 1.0 {
+            bucket.tokens -= 1.0;
+            None
+        } else {
+            // Calculate how long until one token is available.
+            let deficit = 1.0 - bucket.tokens;
+            let wait_secs = if refill_rate > 0.0 {
+                deficit / refill_rate
+            } else {
+                60.0
+            };
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "wait_secs is a small positive f64 from ceil(), safe to convert"
+            )]
+            Some(wait_secs.ceil() as u64)
+        }
+    }
+
+    /// Remove entries for users who haven't made requests in the given duration.
+    ///
+    /// Call periodically to prevent unbounded memory growth from departed users.
+    pub(crate) fn cleanup_stale(&self, max_idle: Duration) {
+        let now = Instant::now();
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.retain(|_key, bucket| now.duration_since(bucket.last_refill) < max_idle);
+    }
+
+    /// Number of tracked user+category entries (for testing and metrics).
+    #[cfg(test)]
+    pub(crate) fn entry_count(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    }
+}
+
+/// Classify a request path into an endpoint category for per-user rate limiting.
+pub(crate) fn classify_endpoint(path: &str, method: &Method) -> EndpointCategory {
+    // LLM endpoints: streaming chat turns (the expensive operation).
+    if path.starts_with("/api/v1/sessions") && path.ends_with("/stream") && *method == Method::POST
+    {
+        return EndpointCategory::Llm;
+    }
+
+    // Tool endpoints: sending messages (triggers tool execution pipeline).
+    if path.starts_with("/api/v1/sessions")
+        && path.ends_with("/messages")
+        && *method == Method::POST
+    {
+        return EndpointCategory::Tool;
+    }
+
+    EndpointCategory::General
+}
+
+/// Extract user identity from the JWT Bearer token for rate limiting.
+///
+/// Decodes the JWT payload to read the `sub` claim without full cryptographic
+/// validation. Full auth validation happens in the handler-level `Claims`
+/// extractor; this is only for rate limiting keying. Falls back to
+/// `extract_client_key` when no valid Bearer token is present.
+fn extract_user_key(request: &Request) -> Option<String> {
+    use base64::Engine;
+
+    let header = request.headers().get("authorization")?.to_str().ok()?;
+    let token = header.strip_prefix("Bearer ")?;
+
+    // JWT format: base64url(header).base64url(payload).signature
+    let payload = token.split('.').nth(1)?;
+
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+    json.get("sub")?.as_str().map(str::to_owned)
+}
+
+/// Middleware that enforces per-user rate limiting with endpoint-specific limits.
+///
+/// Reads `Arc<UserRateLimiter>` from request extensions. Identifies the user
+/// from the JWT Bearer token and classifies the endpoint category from the
+/// request path. Returns 429 with `Retry-After` when the user's token bucket
+/// is exhausted.
+pub async fn user_rate_limit(request: Request, next: Next) -> Response {
+    let limiter = request.extensions().get::<Arc<UserRateLimiter>>().cloned();
+    let Some(limiter) = limiter else {
+        return next.run(request).await;
+    };
+
+    let user = extract_user_key(&request).unwrap_or_else(|| extract_client_key(&request, false));
+    let category = classify_endpoint(request.uri().path(), request.method());
+
+    if let Some(retry_after_secs) = limiter.check(&user, category) {
+        tracing::info!(
+            user = %user,
+            category = ?category,
+            retry_after_secs,
+            "per-user rate limit exceeded"
+        );
+        return build_rate_limit_response(retry_after_secs);
+    }
+
+    next.run(request).await
+}
+
+/// Build a 429 Too Many Requests response with `Retry-After` header.
+fn build_rate_limit_response(retry_after_secs: u64) -> Response {
+    let mut response = (
+        StatusCode::TOO_MANY_REQUESTS,
+        axum::Json(ErrorResponse {
+            error: ErrorBody {
+                code: "rate_limited".to_owned(),
+                message: format!("rate limited, retry after {retry_after_secs}s"),
+                details: Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
+            },
+        }),
+    )
+        .into_response();
+    if let Ok(value) = axum::http::HeaderValue::from_str(&retry_after_secs.to_string()) {
+        response
+            .headers_mut()
+            .insert(axum::http::header::RETRY_AFTER, value);
+    }
+    response
+}
+
+/// Spawn a background task that periodically removes stale rate limit entries.
+///
+/// Runs every `interval` and removes entries idle for longer than `max_idle`.
+/// Cancelled via the provided `CancellationToken`.
+pub fn spawn_rate_limit_cleanup(
+    limiter: Arc<UserRateLimiter>,
+    interval: Duration,
+    max_idle: Duration,
+    cancel: tokio_util::sync::CancellationToken,
+) {
+    let span = tracing::info_span!("rate_limit_cleanup");
+    tokio::spawn(
+        async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => break,
+                    () = tokio::time::sleep(interval) => {
+                        limiter.cleanup_stale(max_idle);
+                    }
+                }
+            }
+            tracing::debug!("rate limit cleanup task stopped");
+        }
+        .instrument(span),
+    );
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_bucket_allows_requests_under_limit() {
+        let limiter = UserRateLimiter::new(60, 10, 20, 30);
+        // First request should always succeed (bucket starts full).
+        assert!(
+            limiter.check("alice", EndpointCategory::General).is_none(),
+            "first request must be allowed"
+        );
+    }
+
+    #[test]
+    fn token_bucket_allows_burst() {
+        let limiter = UserRateLimiter::new(60, 10, 20, 30);
+        // Burst of 10 requests should all succeed.
+        for i in 0..10 {
+            assert!(
+                limiter.check("alice", EndpointCategory::General).is_none(),
+                "burst request {i} must be allowed"
+            );
+        }
+        // 11th request should be rate limited.
+        assert!(
+            limiter.check("alice", EndpointCategory::General).is_some(),
+            "request after burst exhaustion must be limited"
+        );
+    }
+
+    #[test]
+    fn token_bucket_returns_retry_after_on_limit() {
+        let limiter = UserRateLimiter::new(60, 1, 20, 30);
+        // Exhaust the single-token bucket.
+        assert!(limiter.check("bob", EndpointCategory::General).is_none());
+        let retry = limiter.check("bob", EndpointCategory::General);
+        assert!(retry.is_some(), "must return retry_after when limited");
+        assert!(
+            retry.expect("checked above") > 0,
+            "retry_after must be positive"
+        );
+    }
+
+    #[test]
+    fn per_user_isolation() {
+        let limiter = UserRateLimiter::new(60, 1, 20, 30);
+        // Exhaust alice's bucket.
+        assert!(limiter.check("alice", EndpointCategory::General).is_none());
+        assert!(limiter.check("alice", EndpointCategory::General).is_some());
+        // bob's bucket is independent.
+        assert!(
+            limiter.check("bob", EndpointCategory::General).is_none(),
+            "bob must not be affected by alice's usage"
+        );
+    }
+
+    #[test]
+    fn different_categories_have_different_limits() {
+        // LLM has lower limit (20 rpm) so burst = 10 * 20/60 ≈ 3.
+        let limiter = UserRateLimiter::new(60, 10, 20, 30);
+        let mut llm_allowed = 0;
+        for _ in 0..20 {
+            if limiter.check("alice", EndpointCategory::Llm).is_none() {
+                llm_allowed += 1;
+            }
+        }
+        let mut general_allowed = 0;
+        for _ in 0..20 {
+            if limiter.check("bob", EndpointCategory::General).is_none() {
+                general_allowed += 1;
+            }
+        }
+        assert!(
+            llm_allowed < general_allowed,
+            "LLM endpoints must have a stricter limit than general: llm={llm_allowed}, general={general_allowed}"
+        );
+    }
+
+    #[test]
+    fn cleanup_stale_removes_old_entries() {
+        let limiter = UserRateLimiter::new(60, 10, 20, 30);
+        let _ = limiter.check("alice", EndpointCategory::General);
+        let _ = limiter.check("bob", EndpointCategory::General);
+        assert_eq!(limiter.entry_count(), 2, "should have 2 entries");
+        // Cleanup with zero max_idle removes everything.
+        limiter.cleanup_stale(Duration::ZERO);
+        assert_eq!(
+            limiter.entry_count(),
+            0,
+            "stale entries must be removed after cleanup"
+        );
+    }
+
+    #[test]
+    fn cleanup_stale_preserves_recent_entries() {
+        let limiter = UserRateLimiter::new(60, 10, 20, 30);
+        let _ = limiter.check("alice", EndpointCategory::General);
+        // 10 minute max_idle should keep recent entries.
+        limiter.cleanup_stale(Duration::from_secs(600));
+        assert_eq!(limiter.entry_count(), 1, "recent entries must be preserved");
+    }
+
+    #[test]
+    fn classify_endpoint_llm() {
+        assert_eq!(
+            classify_endpoint("/api/v1/sessions/stream", &Method::POST),
+            EndpointCategory::Llm,
+        );
+    }
+
+    #[test]
+    fn classify_endpoint_tool() {
+        assert_eq!(
+            classify_endpoint("/api/v1/sessions/abc123/messages", &Method::POST),
+            EndpointCategory::Tool,
+        );
+    }
+
+    #[test]
+    fn classify_endpoint_general_get() {
+        assert_eq!(
+            classify_endpoint("/api/v1/sessions", &Method::GET),
+            EndpointCategory::General,
+        );
+    }
+
+    #[test]
+    fn classify_endpoint_general_other() {
+        assert_eq!(
+            classify_endpoint("/api/health", &Method::GET),
+            EndpointCategory::General,
+        );
+    }
+
+    #[test]
+    fn extract_user_key_from_valid_jwt() {
+        // Build a minimal JWT with sub claim.
+        use base64::Engine;
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256"}"#);
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(br#"{"sub":"alice@example.com","role":"operator"}"#);
+        let token = format!("{header}.{payload}.fakesig");
+
+        let request = Request::builder()
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("test request");
+
+        let user = extract_user_key(&request);
+        assert_eq!(user.as_deref(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn extract_user_key_returns_none_without_auth() {
+        let request = Request::builder()
+            .body(Body::empty())
+            .expect("test request");
+        assert!(extract_user_key(&request).is_none());
+    }
+
+    #[test]
+    fn extract_user_key_returns_none_for_invalid_jwt() {
+        let request = Request::builder()
+            .header("authorization", "Bearer not-a-jwt")
+            .body(Body::empty())
+            .expect("test request");
+        assert!(extract_user_key(&request).is_none());
+    }
 }

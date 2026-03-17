@@ -44,6 +44,9 @@ prometheus = { workspace = true }
 # Types
 ulid = { workspace = true }
 
+# Base64 decoding for JWT payload extraction in rate limiting middleware
+base64 = { workspace = true }
+
 # Cryptographic random number generation (CSRF token generation)
 rand = { workspace = true }
 

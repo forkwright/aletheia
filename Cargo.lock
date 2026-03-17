@@ -361,6 +361,7 @@ dependencies = [
  "aletheia-taxis",
  "axum 0.8.8",
  "axum-server",
+ "base64 0.22.1",
  "http-body-util",
  "jiff",
  "jsonwebtoken",

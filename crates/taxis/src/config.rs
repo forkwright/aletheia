@@ -498,8 +498,16 @@ impl Default for CsrfConfig {
 pub struct RateLimitConfig {
     /// Whether rate limiting is active.
     pub enabled: bool,
-    /// Maximum requests per minute per client IP.
+    /// Maximum requests per minute per client IP (global, pre-auth).
     pub requests_per_minute: u32,
+    /// Per-user requests per minute for general API endpoints.
+    pub default_rpm: u32,
+    /// Per-user burst allowance (max tokens in the bucket).
+    pub default_burst: u32,
+    /// Per-user requests per minute for LLM/chat endpoints.
+    pub llm_rpm: u32,
+    /// Per-user requests per minute for tool execution endpoints.
+    pub tool_rpm: u32,
 }
 
 impl Default for RateLimitConfig {
@@ -507,6 +515,10 @@ impl Default for RateLimitConfig {
         Self {
             enabled: false,
             requests_per_minute: 60,
+            default_rpm: 60,
+            default_burst: 10,
+            llm_rpm: 20,
+            tool_rpm: 30,
         }
     }
 }

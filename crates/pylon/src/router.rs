@@ -17,8 +17,9 @@ use tracing::info_span;
 use crate::error::ApiError;
 use crate::handlers::{config, health, knowledge, metrics, nous, sessions};
 use crate::middleware::{
-    CsrfState, RateLimiter, RequestId, enrich_error_response, inject_request_id, rate_limit,
-    record_http_metrics, require_csrf_header,
+    CsrfState, RateLimiter, RequestId, UserRateLimiter, enrich_error_response, inject_request_id,
+    rate_limit, record_http_metrics, require_csrf_header, spawn_rate_limit_cleanup,
+    user_rate_limit,
 };
 use crate::openapi;
 use crate::security::SecurityConfig;
@@ -88,6 +89,26 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
 
     router = router.fallback(fallback_handler);
 
+    // Per-user rate limiting: token bucket keyed by authenticated identity,
+    // applied before the per-IP limiter so per-user limits are checked first.
+    if security.rate_limit_enabled {
+        let user_limiter = Arc::new(UserRateLimiter::new(
+            security.user_rate_limit_default_rpm,
+            security.user_rate_limit_default_burst,
+            security.user_rate_limit_llm_rpm,
+            security.user_rate_limit_tool_rpm,
+        ));
+        spawn_rate_limit_cleanup(
+            Arc::clone(&user_limiter),
+            Duration::from_secs(60),
+            Duration::from_secs(600),
+            state.shutdown.child_token(),
+        );
+        router = router
+            .layer(axum::middleware::from_fn(user_rate_limit))
+            .layer(axum::Extension(user_limiter));
+    }
+
     // Rate limiting: per-IP sliding window, applied before business logic
     if security.rate_limit_enabled {
         let limiter = Arc::new(
@@ -127,10 +148,10 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
     router = router.layer(
         TraceLayer::new_for_http()
             .make_span_with(|request: &axum::http::Request<_>| {
-                let request_id = request
-                    .extensions()
-                    .get::<RequestId>()
-                    .map_or_else(|| ulid::Ulid::new().to_string(), std::string::ToString::to_string);
+                let request_id = request.extensions().get::<RequestId>().map_or_else(
+                    || ulid::Ulid::new().to_string(),
+                    std::string::ToString::to_string,
+                );
                 info_span!("http_request",
                     http.method = %request.method(),
                     http.path = %request.uri().path(),

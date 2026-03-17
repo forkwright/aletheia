@@ -289,6 +289,7 @@ pub async fn get_fact(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
+    let _ = &state;
     // WHY: The previous implementation called get_all_facts which hardcoded
     // nous_id: None, causing get_stored_facts to always return an empty Vec
     // (it requires nous_id.is_some() to query the store). Bug #1252.
@@ -673,13 +674,6 @@ fn get_stored_entities(state: &AppState) -> Vec<aletheia_mneme::knowledge::Entit
     Vec::new()
 }
 
-fn get_fact_relationships(
-    _state: &AppState,
-    _fact: &aletheia_mneme::knowledge::Fact,
-) -> Vec<aletheia_mneme::knowledge::Relationship> {
-    Vec::new()
-}
-
 fn get_entity_relationships(
     _state: &AppState,
     _entity_id: &str,
@@ -687,6 +681,15 @@ fn get_entity_relationships(
     Vec::new()
 }
 
+#[cfg(feature = "knowledge-store")]
+fn get_fact_relationships(
+    _state: &AppState,
+    _fact: &aletheia_mneme::knowledge::Fact,
+) -> Vec<aletheia_mneme::knowledge::Relationship> {
+    Vec::new()
+}
+
+#[cfg(feature = "knowledge-store")]
 fn get_similar_facts(
     _state: &AppState,
     _fact: &aletheia_mneme::knowledge::Fact,
