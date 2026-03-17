@@ -66,9 +66,9 @@ impl ThemeMode {
     #[must_use]
     pub fn icon(self) -> &'static str {
         match self {
-            Self::Dark => "\u{263E}",   // ☾
-            Self::Light => "\u{2600}",  // ☀
-            Self::System => "\u{25D0}", // ◐
+            Self::Dark => "\u{263E}",
+            Self::Light => "\u{2600}",
+            Self::System => "\u{25D0}",
         }
     }
 }

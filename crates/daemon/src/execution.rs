@@ -170,7 +170,6 @@ pub(crate) async fn execute_builtin(
                 "maintenance: drift detection complete"
             );
 
-            // Emit WARN-level alerts for each drift finding with structured fields.
             for path in &report.missing_files {
                 tracing::warn!(
                     metric = "missing_file",
