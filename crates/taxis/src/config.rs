@@ -796,6 +796,8 @@ pub struct LoggingSettings {
     /// `"aletheia=debug,warn"`). Default: `"warn"`, which captures WARN and
     /// ERROR events from all crates regardless of the console log level.
     pub level: String,
+    /// Redaction settings for tracing spans and events.
+    pub redaction: RedactionSettings,
 }
 
 impl Default for LoggingSettings {
@@ -804,6 +806,51 @@ impl Default for LoggingSettings {
             log_dir: None,
             retention_days: 14,
             level: "warn".to_owned(),
+            redaction: RedactionSettings::default(),
+        }
+    }
+}
+
+/// Controls redaction of sensitive data in tracing output.
+///
+/// When enabled, field values matching sensitive names are replaced with
+/// `[REDACTED]`, API key patterns are scrubbed, and long content fields
+/// are truncated before reaching any subscriber.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct RedactionSettings {
+    /// Master switch for the redaction layer. Default: `true`.
+    pub enabled: bool,
+    /// Field names whose values are replaced with `[REDACTED]`.
+    pub redact_fields: Vec<String>,
+    /// Field names whose values are truncated to `truncate_length` chars.
+    pub truncate_fields: Vec<String>,
+    /// Maximum character length for truncated fields. Default: 200.
+    pub truncate_length: usize,
+}
+
+impl Default for RedactionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            redact_fields: vec![
+                "token".to_owned(),
+                "api_key".to_owned(),
+                "secret".to_owned(),
+                "password".to_owned(),
+                "bearer".to_owned(),
+                "authorization".to_owned(),
+                "credential".to_owned(),
+            ],
+            truncate_fields: vec![
+                "message".to_owned(),
+                "content".to_owned(),
+                "body".to_owned(),
+                "input".to_owned(),
+                "output".to_owned(),
+            ],
+            truncate_length: 200,
         }
     }
 }

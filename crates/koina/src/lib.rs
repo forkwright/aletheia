@@ -12,6 +12,8 @@ pub mod error;
 pub mod id;
 /// Sensitive value redaction for safe log output (API keys, tokens, passwords).
 pub mod redact;
+/// Tracing layer that redacts sensitive field values before output.
+pub mod redacting_layer;
 /// Tracing subscriber initialization for human-readable and JSON log output.
 pub mod tracing_init;
 
