@@ -284,6 +284,31 @@ fn mock_model_name() {
     assert_eq!(provider.model_name(), "mock-embedding");
 }
 
+#[tokio::test]
+async fn concurrent_embed_no_deadlock() {
+    use std::sync::Arc;
+    let provider = Arc::new(MockEmbeddingProvider::new(128));
+    let mut set = tokio::task::JoinSet::new();
+    for i in 0..4u32 {
+        let p = Arc::clone(&provider);
+        set.spawn(async move {
+            let text = format!("concurrent text {i}");
+            let vec = p.embed(&text).expect("concurrent embed must succeed");
+            assert_eq!(
+                vec.len(),
+                128,
+                "concurrent embed must produce correct dimension"
+            );
+            vec
+        });
+    }
+    let mut results = Vec::new();
+    while let Some(result) = set.join_next().await {
+        results.push(result.expect("spawned task must not panic"));
+    }
+    assert_eq!(results.len(), 4, "all 4 concurrent tasks must complete");
+}
+
 mod proptests {
     use super::*;
     use proptest::prelude::*;
@@ -319,24 +344,27 @@ fn candle_not_enabled_returns_error() {
 
 #[test]
 fn lock_poisoned_error_returns_err_not_panic() {
-    use std::sync::Mutex;
+    use std::sync::RwLock;
 
-    // Poison a mutex by panicking inside a thread while holding it.
-    let m: Mutex<u32> = Mutex::new(0);
+    // Poison an RwLock by panicking inside a thread while holding a write lock.
+    let m: RwLock<u32> = RwLock::new(0);
     let _ = std::panic::catch_unwind(|| {
-        let _guard = m.lock().expect("pre-poison lock must succeed");
+        let _guard = m.write().expect("pre-poison write lock must succeed");
         panic!("intentional poison");
     });
-    assert!(m.is_poisoned(), "mutex must be poisoned after thread panic");
+    assert!(
+        m.is_poisoned(),
+        "RwLock must be poisoned after thread panic"
+    );
 
-    // Simulate what embed() does: map_err to LockPoisoned.
+    // Simulate what embed() does: map_err to LockPoisoned on read().
     let result: EmbeddingResult<()> = m
-        .lock()
+        .read()
         .map_err(|_poison| LockPoisonedSnafu.build())
         .map(|_| ());
     assert!(
         matches!(result, Err(EmbeddingError::LockPoisoned { .. })),
-        "poisoned lock must produce EmbeddingError::LockPoisoned"
+        "poisoned RwLock read must produce EmbeddingError::LockPoisoned"
     );
 }
 
@@ -414,5 +442,39 @@ mod candle_tests {
     fn candle_provider_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<CandelProvider>();
+    }
+
+    /// Spawn 4 tasks that embed concurrently via the shared candle provider.
+    /// Verifies no deadlock under concurrent read locks.
+    #[tokio::test]
+    async fn candle_concurrent_embed_no_deadlock() {
+        use std::sync::Arc;
+        let provider: Arc<dyn EmbeddingProvider> =
+            Arc::new(CandelProvider::new(None).expect("candle provider init for concurrent test"));
+        let mut set = tokio::task::JoinSet::new();
+        for i in 0..4u32 {
+            let p = Arc::clone(&provider);
+            set.spawn(async move {
+                let text = format!("concurrent candle text {i}");
+                let vec = p
+                    .embed(&text)
+                    .expect("concurrent candle embed must succeed");
+                assert_eq!(
+                    vec.len(),
+                    384,
+                    "concurrent candle embed must produce correct dimension"
+                );
+                vec
+            });
+        }
+        let mut results = Vec::new();
+        while let Some(result) = set.join_next().await {
+            results.push(result.expect("spawned candle task must not panic"));
+        }
+        assert_eq!(
+            results.len(),
+            4,
+            "all 4 concurrent candle tasks must complete"
+        );
     }
 }
