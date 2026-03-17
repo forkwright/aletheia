@@ -121,12 +121,101 @@ pub fn compute_merge_score(
 }
 
 /// Compute Jaro-Winkler similarity between two strings (case-insensitive).
+///
+/// Inlined implementation (replaces strsim dependency). The algorithm:
+/// 1. Jaro similarity: matching characters within a window + transpositions
+/// 2. Winkler boost: bonus for shared prefix (up to 4 chars, weight 0.1)
 #[cfg(any(feature = "mneme-engine", test))]
 #[must_use]
 pub(crate) fn jaro_winkler_ci(a: &str, b: &str) -> f64 {
     let a_lower = a.to_lowercase();
     let b_lower = b.to_lowercase();
-    strsim::jaro_winkler(&a_lower, &b_lower)
+    jaro_winkler(&a_lower, &b_lower)
+}
+
+/// Jaro-Winkler similarity between two strings. Returns 0.0 (no match) to 1.0 (identical).
+#[cfg(any(feature = "mneme-engine", test))]
+fn jaro_winkler(s1: &str, s2: &str) -> f64 {
+    let jaro = jaro(s1, s2);
+    if jaro == 0.0 {
+        return 0.0;
+    }
+
+    // Winkler prefix bonus: up to 4 shared prefix characters, weight 0.1
+    let prefix_len = s1
+        .chars()
+        .zip(s2.chars())
+        .take(4)
+        .take_while(|(a, b)| a == b)
+        .count();
+
+    let prefix_weight = 0.1;
+    #[expect(clippy::cast_precision_loss, reason = "prefix_len is at most 4")]
+    let prefix_f = prefix_len as f64;
+    jaro + (prefix_f * prefix_weight * (1.0 - jaro))
+}
+
+/// Jaro similarity between two strings.
+#[cfg(any(feature = "mneme-engine", test))]
+fn jaro(s1: &str, s2: &str) -> f64 {
+    if s1.is_empty() && s2.is_empty() {
+        return 1.0;
+    }
+    if s1.is_empty() || s2.is_empty() {
+        return 0.0;
+    }
+
+    let s1_chars: Vec<char> = s1.chars().collect();
+    let s2_chars: Vec<char> = s2.chars().collect();
+    let s1_len = s1_chars.len();
+    let s2_len = s2_chars.len();
+
+    // Matching window: max(len1, len2) / 2 - 1
+    let match_distance = (s1_len.max(s2_len) / 2).saturating_sub(1);
+
+    let mut s1_matched = vec![false; s1_len];
+    let mut s2_matched = vec![false; s2_len];
+    let mut matches: f64 = 0.0;
+
+    // Find matching characters within the window
+    for i in 0..s1_len {
+        let start = i.saturating_sub(match_distance);
+        let end = (i + match_distance + 1).min(s2_len);
+        for j in start..end {
+            if !s2_matched[j] && s1_chars[i] == s2_chars[j] {
+                s1_matched[i] = true;
+                s2_matched[j] = true;
+                matches += 1.0;
+                break;
+            }
+        }
+    }
+
+    if matches == 0.0 {
+        return 0.0;
+    }
+
+    // Count transpositions
+    let mut transpositions = 0.0;
+    let mut k = 0;
+    for i in 0..s1_len {
+        if !s1_matched[i] {
+            continue;
+        }
+        while !s2_matched[k] {
+            k += 1;
+        }
+        if s1_chars[i] != s2_chars[k] {
+            transpositions += 1.0;
+        }
+        k += 1;
+    }
+
+    #[expect(clippy::cast_precision_loss, reason = "string lengths won't exceed 2^52 characters")]
+    let s1_f = s1_len as f64;
+    #[expect(clippy::cast_precision_loss, reason = "string lengths won't exceed 2^52 characters")]
+    let s2_f = s2_len as f64;
+    (matches / s1_f + matches / s2_f + (matches - transpositions / 2.0) / matches) / 3.0
 }
 
 /// Check if two alias lists share any common entry (case-insensitive).

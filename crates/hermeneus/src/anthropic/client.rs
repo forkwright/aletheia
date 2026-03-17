@@ -22,22 +22,10 @@ use crate::types::{CompletionRequest, CompletionResponse};
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
 use super::wire::WireRequest;
 
-const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
-const DEFAULT_API_VERSION: &str = "2023-06-01";
-const DEFAULT_MAX_RETRIES: u32 = 3;
-
-const BACKOFF_BASE_MS: u64 = 1000;
-const BACKOFF_FACTOR: u64 = 2;
-const BACKOFF_MAX_MS: u64 = 30_000;
-
-static SUPPORTED_MODELS: &[&str] = &[
-    "claude-opus-4-6",
-    "claude-opus-4-20250514",
-    "claude-sonnet-4-6",
-    "claude-sonnet-4-20250514",
-    "claude-haiku-4-5",
-    "claude-haiku-4-5-20251001",
-];
+use crate::models::{
+    BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_MS, DEFAULT_API_VERSION, DEFAULT_BASE_URL,
+    DEFAULT_MAX_RETRIES, SUPPORTED_MODELS,
+};
 
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {

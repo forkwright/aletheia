@@ -8,6 +8,8 @@
 
 /// Anthropic Messages API client with streaming, retries, and cost estimation.
 pub mod anthropic;
+/// Model constants and API configuration defaults.
+pub mod models;
 /// Hermeneus-specific error types for provider, API, and authentication failures.
 pub mod error;
 /// Model fallback chain: retries alternative models on transient failures.
