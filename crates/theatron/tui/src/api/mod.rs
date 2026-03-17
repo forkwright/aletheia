@@ -14,8 +14,3 @@ pub use client::ApiClient;
     reason = "re-exported so callers can name the error type via crate::api::ApiError"
 )]
 pub use error::ApiError;
-#[expect(
-    unused_imports,
-    reason = "re-exported for crate-level glob access via crate::api::*"
-)]
-pub use types::*;

@@ -2,10 +2,14 @@
 
 // WHY: pub(crate) so utoipa-generated `__path_*` types are visible to the OpenAPI derive.
 pub(crate) mod streaming;
-mod types;
+pub(crate) mod types;
 
 pub use streaming::{events, send_message, stream_turn};
-pub use types::*;
+
+use types::{
+    CreateSessionRequest, HistoryMessage, HistoryParams, HistoryResponse, ListSessionsParams,
+    ListSessionsResponse, RenameSessionRequest, SessionListItem, SessionResponse,
+};
 
 use std::sync::Arc;
 
