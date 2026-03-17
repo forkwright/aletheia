@@ -20,6 +20,10 @@ concurrency:
   group: rust-${{ github.ref }}
   cancel-in-progress: true
 
+# WHY: Principle of least privilege for CI workflows
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
