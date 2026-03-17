@@ -26,44 +26,78 @@ fn test_limit_offset() {
     let db = DbInstance::default();
     let res = db
         .run_default("?[a] := a in [5,3,1,2,4] :limit 2")
-        .unwrap()
+        .expect("limit query should succeed")
         .into_json();
-    assert_eq!(res["rows"], json!([[3], [5]]));
+    assert_eq!(
+        res["rows"],
+        json!([[3], [5]]),
+        "limit 2 should return first 2 sorted rows"
+    );
     let res = db
         .run_default("?[a] := a in [5,3,1,2,4] :limit 2 :offset 1")
-        .unwrap()
+        .expect("limit+offset query should succeed")
         .into_json();
-    assert_eq!(res["rows"], json!([[1], [3]]));
+    assert_eq!(
+        res["rows"],
+        json!([[1], [3]]),
+        "limit 2 offset 1 should skip first row"
+    );
     let res = db
         .run_default("?[a] := a in [5,3,1,2,4] :limit 2 :offset 4")
-        .unwrap()
+        .expect("limit+offset at end should succeed")
         .into_json();
-    assert_eq!(res["rows"], json!([[4]]));
+    assert_eq!(
+        res["rows"],
+        json!([[4]]),
+        "limit 2 offset 4 should return one remaining row"
+    );
     let res = db
         .run_default("?[a] := a in [5,3,1,2,4] :limit 2 :offset 5")
-        .unwrap()
+        .expect("limit+offset past end should succeed")
         .into_json();
-    assert_eq!(res["rows"], json!([]));
+    assert_eq!(
+        res["rows"],
+        json!([]),
+        "limit 2 offset 5 should return empty result"
+    );
 }
 
 #[test]
 fn test_normal_aggr_empty() {
     let db = DbInstance::default();
-    let res = db.run_default("?[count(a)] := a in []").unwrap().rows;
-    assert_eq!(res, vec![vec![DataValue::from(0)]]);
+    let res = db
+        .run_default("?[count(a)] := a in []")
+        .expect("count over empty set should succeed")
+        .rows;
+    assert_eq!(
+        res,
+        vec![vec![DataValue::from(0)]],
+        "count over empty set should return 0"
+    );
 }
 
 #[test]
 fn test_meet_aggr_empty() {
     let db = DbInstance::default();
-    let res = db.run_default("?[min(a)] := a in []").unwrap().rows;
-    assert_eq!(res, vec![vec![DataValue::Null]]);
+    let res = db
+        .run_default("?[min(a)] := a in []")
+        .expect("min over empty set should succeed")
+        .rows;
+    assert_eq!(
+        res,
+        vec![vec![DataValue::Null]],
+        "min over empty set should return Null"
+    );
 
     let res = db
         .run_default("?[min(a), count(a)] := a in []")
-        .unwrap()
+        .expect("min and count over empty set should succeed")
         .rows;
-    assert_eq!(res, vec![vec![DataValue::Null, DataValue::from(0)]]);
+    assert_eq!(
+        res,
+        vec![vec![DataValue::Null, DataValue::from(0)]],
+        "min should be Null and count should be 0 for empty set"
+    );
 }
 
 #[test]
@@ -80,9 +114,9 @@ fn test_layers() {
         ?[sum(a)] := x[a]
         "#,
         )
-        .unwrap()
+        .expect("layered sum query should succeed")
         .rows;
-    assert_eq!(res[0][0], DataValue::from(21.))
+    assert_eq!(res[0][0], DataValue::from(21.), "sum of 1..=6 should be 21")
 }
 
 #[test]
@@ -101,7 +135,7 @@ fn test_conditions() {
         }
         "#,
     )
-    .unwrap();
+    .expect("test setup of airports and routes should succeed");
     debug!("real test begins");
     let res = db
         .run_default(
@@ -110,9 +144,13 @@ fn test_conditions() {
         ?[dist] := r['a', dist], dist > 0.5, dist <= 1.1;
         "#,
         )
-        .unwrap()
+        .expect("filtered route query should succeed")
         .rows;
-    assert_eq!(res[0][0], DataValue::from(1.1))
+    assert_eq!(
+        res[0][0],
+        DataValue::from(1.1),
+        "only route with dist 1.1 should pass the filter"
+    )
 }
 
 #[test]
@@ -129,10 +167,14 @@ grandparent[gcld, gp] := parent[gcld, p], parent[p, gp]
 ?[who] := grandparent[who, 'abraham']
         "#,
         )
-        .unwrap()
+        .expect("grandparent query should succeed")
         .rows;
     println!("{:?}", res);
-    assert_eq!(res[0][0], DataValue::from("jakob"))
+    assert_eq!(
+        res[0][0],
+        DataValue::from("jakob"),
+        "jakob should be the grandchild of abraham"
+    )
 }
 
 #[test]
@@ -144,7 +186,7 @@ fn default_columns() {
             :create status {uid: String, ts default now() => quitted: Bool, mood: String}
             "#,
     )
-    .unwrap();
+    .expect("creating status relation with default columns should succeed");
 
     db.run_default(
         r#"
@@ -152,26 +194,33 @@ fn default_columns() {
             :put status {uid => quitted, mood}
         "#,
     )
-    .unwrap();
+    .expect("inserting row into status should succeed");
 }
 
 #[test]
 fn rm_does_not_need_all_keys() {
     let db = DbInstance::default();
-    db.run_default(":create status {uid => mood}").unwrap();
+    db.run_default(":create status {uid => mood}")
+        .expect("creating status relation should succeed");
     assert!(
         db.run_default("?[uid, mood] <- [[1, 2]] :put status {uid => mood}",)
-            .is_ok()
+            .is_ok(),
+        "putting a fully-specified row should succeed"
     );
     assert!(
         db.run_default("?[uid, mood] <- [[2]] :put status {uid}",)
-            .is_err()
+            .is_err(),
+        "putting a row with missing value columns should fail"
     );
     assert!(
         db.run_default("?[uid, mood] <- [[3, 2]] :rm status {uid => mood}",)
-            .is_ok()
+            .is_ok(),
+        "removing with all keys specified should succeed"
     );
-    assert!(db.run_default("?[uid] <- [[1]] :rm status {uid}").is_ok());
+    assert!(
+        db.run_default("?[uid] <- [[1]] :rm status {uid}").is_ok(),
+        "removing with only key columns should succeed"
+    );
 }
 
 #[cfg(feature = "graph-algo")]
@@ -185,7 +234,7 @@ fn strict_checks_for_fixed_rules_args() {
         "#,
     );
     println!("{:?}", res);
-    assert!(res.is_ok());
+    assert!(res.is_ok(), "PageRank with wildcard binding should succeed");
 
     let db = DbInstance::default();
     let res = db.run_default(
@@ -194,7 +243,10 @@ fn strict_checks_for_fixed_rules_args() {
             ?[] <~ PageRank(r[a, b])
         "#,
     );
-    assert!(res.is_ok());
+    assert!(
+        res.is_ok(),
+        "PageRank with named distinct bindings should succeed"
+    );
 
     let db = DbInstance::default();
     let res = db.run_default(
@@ -203,7 +255,10 @@ fn strict_checks_for_fixed_rules_args() {
             ?[] <~ PageRank(r[a, a])
         "#,
     );
-    assert!(res.is_err());
+    assert!(
+        res.is_err(),
+        "PageRank with duplicate variable binding should fail"
+    );
 }
 
 #[test]
@@ -218,16 +273,20 @@ fn do_not_unify_underscore() {
         ?[l1, l2] := r1[_ , l1], r2[_ , l2]
         "#,
         )
-        .unwrap()
+        .expect("cross product with underscore binding should succeed")
         .rows;
-    assert_eq!(res.len(), 4);
+    assert_eq!(
+        res.len(),
+        4,
+        "cross product of 2x2 relations should produce 4 rows"
+    );
 
     let res = db.run_default(
         r#"
         ?[_] := _ = 1
         "#,
     );
-    assert!(res.is_err());
+    assert!(res.is_err(), "binding underscore in query head should fail");
 
     let res = db
         .run_default(
@@ -235,10 +294,14 @@ fn do_not_unify_underscore() {
         ?[x] := x = 1, _ = 1, _ = 2
         "#,
         )
-        .unwrap()
+        .expect("using underscore in body (not head) should succeed")
         .rows;
 
-    assert_eq!(res.len(), 1);
+    assert_eq!(
+        res.len(),
+        1,
+        "query with underscore in body should return one row"
+    );
 }
 
 #[test]
@@ -256,23 +319,30 @@ fn returning_relations() {
         {?[a] := *_xxz[b], a = b * 2}
         "#,
         )
-        .unwrap();
-    assert_eq!(res.into_json()["rows"], json!([[2], [6], [10]]));
+        .expect("imperative returning relations script should succeed");
+    assert_eq!(
+        res.into_json()["rows"],
+        json!([[2], [6], [10]]),
+        "doubled odd values 1,3,5 should be 2,6,10"
+    );
     let res = db.run_default(
         r#"
         {?[a] := *_xxz[b], a = b * 2}
         "#,
     );
-    assert!(res.is_err());
+    assert!(
+        res.is_err(),
+        "accessing temp relation _xxz outside its script should fail"
+    );
 }
 
 #[test]
 fn test_trigger() {
     let db = DbInstance::default();
     db.run_default(":create friends {fr: Int, to: Int => data: Any}")
-        .unwrap();
+        .expect("creating friends relation should succeed");
     db.run_default(":create friends.rev {to: Int, fr: Int => data: Any}")
-        .unwrap();
+        .expect("creating friends.rev relation should succeed");
     db.run_default(
         r#"
         ::set_triggers friends
@@ -289,30 +359,41 @@ fn test_trigger() {
         }
         "#,
     )
-    .unwrap();
+    .expect("setting triggers on friends should succeed");
     db.run_default(r"?[fr, to, data] <- [[1,2,3]] :put friends {fr, to => data}")
-        .unwrap();
+        .expect("inserting into friends should succeed");
     let ret = db
         .export_relations(["friends", "friends.rev"].into_iter())
-        .unwrap();
-    let frs = ret.get("friends").unwrap();
+        .expect("exporting friends and friends.rev should succeed");
+    let frs = ret
+        .get("friends")
+        .expect("friends relation should be present in export");
     assert_eq!(
         vec![DataValue::from(1), DataValue::from(2), DataValue::from(3)],
-        frs.rows[0]
+        frs.rows[0],
+        "friends row should contain [1, 2, 3]"
     );
 
-    let frs_rev = ret.get("friends.rev").unwrap();
+    let frs_rev = ret
+        .get("friends.rev")
+        .expect("friends.rev relation should be present in export");
     assert_eq!(
         vec![DataValue::from(2), DataValue::from(1), DataValue::from(3)],
-        frs_rev.rows[0]
+        frs_rev.rows[0],
+        "friends.rev trigger should reverse fr and to"
     );
     db.run_default(r"?[fr, to] <- [[1,2], [2,3]] :rm friends {fr, to}")
-        .unwrap();
+        .expect("removing from friends should succeed");
     let ret = db
         .export_relations(["friends", "friends.rev"].into_iter())
-        .unwrap();
-    let frs = ret.get("friends").unwrap();
-    assert!(frs.rows.is_empty());
+        .expect("re-exporting relations after removal should succeed");
+    let frs = ret
+        .get("friends")
+        .expect("friends relation should still be present after removal");
+    assert!(
+        frs.rows.is_empty(),
+        "friends should be empty after removing all rows"
+    );
 }
 
 #[test]
@@ -321,132 +402,233 @@ fn test_callback() {
     let mut collected = vec![];
     let (_id, receiver) = db.register_callback("friends", None);
     db.run_default(":create friends {fr: Int, to: Int => data: Any}")
-        .unwrap();
+        .expect("creating friends relation should succeed");
     db.run_default(r"?[fr, to, data] <- [[1,2,3],[4,5,6]] :put friends {fr, to => data}")
-        .unwrap();
+        .expect("initial put into friends should succeed");
     db.run_default(r"?[fr, to, data] <- [[1,2,4],[4,7,6]] :put friends {fr, to => data}")
-        .unwrap();
+        .expect("second put into friends should succeed");
     db.run_default(r"?[fr, to] <- [[1,9],[4,5]] :rm friends {fr, to}")
-        .unwrap();
+        .expect("removing from friends should succeed");
     std::thread::sleep(Duration::from_secs_f64(0.01));
     while let Ok(d) = receiver.try_recv() {
         collected.push(d);
     }
     let collected = collected;
-    assert_eq!(collected[0].0, CallbackOp::Put);
-    assert_eq!(collected[0].1.rows.len(), 2);
-    assert_eq!(collected[0].1.rows[0].len(), 3);
-    assert_eq!(collected[0].2.rows.len(), 0);
-    assert_eq!(collected[1].0, CallbackOp::Put);
-    assert_eq!(collected[1].1.rows.len(), 2);
-    assert_eq!(collected[1].1.rows[0].len(), 3);
-    assert_eq!(collected[1].2.rows.len(), 1);
+    assert_eq!(
+        collected[0].0,
+        CallbackOp::Put,
+        "first callback should be a Put operation"
+    );
+    assert_eq!(
+        collected[0].1.rows.len(),
+        2,
+        "first put should have 2 new rows"
+    );
+    assert_eq!(
+        collected[0].1.rows[0].len(),
+        3,
+        "first put new rows should have 3 columns"
+    );
+    assert_eq!(
+        collected[0].2.rows.len(),
+        0,
+        "first put should have no old rows"
+    );
+    assert_eq!(
+        collected[1].0,
+        CallbackOp::Put,
+        "second callback should be a Put operation"
+    );
+    assert_eq!(
+        collected[1].1.rows.len(),
+        2,
+        "second put should have 2 new rows"
+    );
+    assert_eq!(
+        collected[1].1.rows[0].len(),
+        3,
+        "second put new rows should have 3 columns"
+    );
+    assert_eq!(
+        collected[1].2.rows.len(),
+        1,
+        "second put should have 1 replaced old row"
+    );
     assert_eq!(
         collected[1].2.rows[0],
-        vec![DataValue::from(1), DataValue::from(2), DataValue::from(3)]
+        vec![DataValue::from(1), DataValue::from(2), DataValue::from(3)],
+        "replaced row should be [1, 2, 3]"
     );
-    assert_eq!(collected[2].0, CallbackOp::Rm);
-    assert_eq!(collected[2].1.rows.len(), 2);
-    assert_eq!(collected[2].1.rows[0].len(), 2);
-    assert_eq!(collected[2].2.rows.len(), 1);
-    assert_eq!(collected[2].2.rows[0].len(), 3);
+    assert_eq!(
+        collected[2].0,
+        CallbackOp::Rm,
+        "third callback should be a Rm operation"
+    );
+    assert_eq!(
+        collected[2].1.rows.len(),
+        2,
+        "rm should report 2 requested rows"
+    );
+    assert_eq!(
+        collected[2].1.rows[0].len(),
+        2,
+        "rm requested rows should have 2 columns (key only)"
+    );
+    assert_eq!(
+        collected[2].2.rows.len(),
+        1,
+        "rm should have 1 actually deleted row"
+    );
+    assert_eq!(
+        collected[2].2.rows[0].len(),
+        3,
+        "rm deleted row should have 3 columns"
+    );
 }
 
 #[test]
 fn test_update() {
     let db = DbInstance::default();
     db.run_default(":create friends {fr: Int, to: Int => a: Any, b: Any, c: Any}")
-        .unwrap();
+        .expect("creating friends relation should succeed");
     db.run_default("?[fr, to, a, b, c] <- [[1,2,3,4,5]] :put friends {fr, to => a, b, c}")
-        .unwrap();
+        .expect("inserting initial row into friends should succeed");
     let res = db
         .run_default("?[fr, to, a, b, c] := *friends{fr, to, a, b, c}")
-        .unwrap()
+        .expect("querying friends should succeed")
         .into_json();
-    assert_eq!(res["rows"][0], json!([1, 2, 3, 4, 5]));
+    assert_eq!(
+        res["rows"][0],
+        json!([1, 2, 3, 4, 5]),
+        "initial row should be [1, 2, 3, 4, 5]"
+    );
     db.run_default("?[fr, to, b] <- [[1, 2, 100]] :update friends {fr, to => b}")
-        .unwrap();
+        .expect("partial update of friends should succeed");
     let res = db
         .run_default("?[fr, to, a, b, c] := *friends{fr, to, a, b, c}")
-        .unwrap()
+        .expect("querying friends after update should succeed")
         .into_json();
-    assert_eq!(res["rows"][0], json!([1, 2, 3, 100, 5]));
+    assert_eq!(
+        res["rows"][0],
+        json!([1, 2, 3, 100, 5]),
+        "after updating b to 100, row should be [1, 2, 3, 100, 5]"
+    );
 }
 
 #[test]
 fn test_index() {
     let db = DbInstance::default();
     db.run_default(":create friends {fr: Int, to: Int => data: Any}")
-        .unwrap();
+        .expect("creating friends relation should succeed");
 
     db.run_default(r"?[fr, to, data] <- [[1,2,3],[4,5,6]] :put friends {fr, to, data}")
-        .unwrap();
+        .expect("inserting initial rows into friends should succeed");
 
     assert!(
         db.run_default("::index create friends:rev {to, no}")
-            .is_err()
+            .is_err(),
+        "creating index with non-existent column should fail"
     );
     db.run_default("::index create friends:rev {to, data}")
-        .unwrap();
+        .expect("creating index on valid columns should succeed");
 
     db.run_default(r"?[fr, to, data] <- [[1,2,5],[6,5,7]] :put friends {fr, to => data}")
-        .unwrap();
+        .expect("updating rows in friends should succeed");
     db.run_default(r"?[fr, to] <- [[4,5]] :rm friends {fr, to}")
-        .unwrap();
+        .expect("removing row from friends should succeed");
 
     let rels_data = db
         .export_relations(["friends", "friends:rev"].into_iter())
-        .unwrap();
+        .expect("exporting friends and index should succeed");
     assert_eq!(
         rels_data["friends"].clone().into_json()["rows"],
-        json!([[1, 2, 5], [6, 5, 7]])
+        json!([[1, 2, 5], [6, 5, 7]]),
+        "friends should contain updated rows"
     );
     assert_eq!(
         rels_data["friends:rev"].clone().into_json()["rows"],
-        json!([[2, 5, 1], [5, 7, 6]])
+        json!([[2, 5, 1], [5, 7, 6]]),
+        "friends:rev index should reflect updated rows"
     );
 
-    let rels = db.run_default("::relations").unwrap();
-    assert_eq!(rels.rows[1][0], DataValue::from("friends:rev"));
-    assert_eq!(rels.rows[1][1], DataValue::from(3));
-    assert_eq!(rels.rows[1][2], DataValue::from("index"));
+    let rels = db
+        .run_default("::relations")
+        .expect("listing relations should succeed");
+    assert_eq!(
+        rels.rows[1][0],
+        DataValue::from("friends:rev"),
+        "second relation should be friends:rev"
+    );
+    assert_eq!(
+        rels.rows[1][1],
+        DataValue::from(3),
+        "friends:rev should have 3 columns"
+    );
+    assert_eq!(
+        rels.rows[1][2],
+        DataValue::from("index"),
+        "friends:rev should have type 'index'"
+    );
 
-    let cols = db.run_default("::columns friends:rev").unwrap();
-    assert_eq!(cols.rows.len(), 3);
+    let cols = db
+        .run_default("::columns friends:rev")
+        .expect("listing columns of friends:rev should succeed");
+    assert_eq!(
+        cols.rows.len(),
+        3,
+        "friends:rev index should have 3 columns"
+    );
 
     let res = db
         .run_default("?[fr, data] := *friends:rev{to: 2, fr, data}")
-        .unwrap();
-    assert_eq!(res.into_json()["rows"], json!([[1, 5]]));
+        .expect("querying index directly should succeed");
+    assert_eq!(
+        res.into_json()["rows"],
+        json!([[1, 5]]),
+        "index lookup by to=2 should return fr=1, data=5"
+    );
 
     let res = db
         .run_default("?[fr, data] := *friends{to: 2, fr, data}")
-        .unwrap();
-    assert_eq!(res.into_json()["rows"], json!([[1, 5]]));
+        .expect("querying friends by non-key column should succeed");
+    assert_eq!(
+        res.into_json()["rows"],
+        json!([[1, 5]]),
+        "reverse lookup via index should return fr=1, data=5"
+    );
 
     let expl = db
         .run_default("::explain { ?[fr, data] := *friends{to: 2, fr, data} }")
-        .unwrap();
+        .expect("explain query should succeed");
     let joins = expl.into_json()["rows"]
         .as_array()
-        .unwrap()
+        .expect("explain rows should be a JSON array")
         .iter()
-        .map(|row| row.as_array().unwrap()[5].clone())
+        .map(|row| {
+            row.as_array()
+                .expect("each explain row should be a JSON array")[5]
+                .clone()
+        })
         .collect_vec();
-    assert!(joins.contains(&json!(":friends:rev")));
-    db.run_default("::index drop friends:rev").unwrap();
+    assert!(
+        joins.contains(&json!(":friends:rev")),
+        "query plan should use the friends:rev index"
+    );
+    db.run_default("::index drop friends:rev")
+        .expect("dropping friends:rev index should succeed");
 }
 
 #[test]
 fn test_json_objects() {
     let db = DbInstance::default();
-    db.run_default("?[a] := a = {'a': 1}").unwrap();
+    db.run_default("?[a] := a = {'a': 1}")
+        .expect("inline JSON object query should succeed");
     db.run_default(
         r"?[a] := a = {
             'a': 1
         }",
     )
-    .unwrap();
+    .expect("multiline JSON object query should succeed");
 }
 
 #[test]
@@ -487,7 +669,7 @@ fn test_custom_rules() {
     }
 
     db.register_fixed_rule("SumCols".to_string(), Custom)
-        .unwrap();
+        .expect("registering custom SumCols rule should succeed");
     let res = db
         .run_default(
             r#"
@@ -495,128 +677,196 @@ fn test_custom_rules() {
         ?[x] <~ SumCols(rel[], mult: 100)
     "#,
         )
-        .unwrap();
-    assert_eq!(res.into_json()["rows"], json!([[1000], [2600]]));
+        .expect("running custom SumCols rule should succeed");
+    assert_eq!(
+        res.into_json()["rows"],
+        json!([[1000], [2600]]),
+        "SumCols with mult=100 should produce 1000 and 2600"
+    );
 }
 
 #[test]
 fn test_index_short() {
     let db = DbInstance::default();
     db.run_default(":create friends {fr: Int, to: Int => data: Any}")
-        .unwrap();
+        .expect("creating friends relation should succeed");
 
     db.run_default(r"?[fr, to, data] <- [[1,2,3],[4,5,6]] :put friends {fr, to => data}")
-        .unwrap();
+        .expect("inserting initial rows into friends should succeed");
 
-    db.run_default("::index create friends:rev {to}").unwrap();
+    db.run_default("::index create friends:rev {to}")
+        .expect("creating short index on 'to' should succeed");
 
     db.run_default(r"?[fr, to, data] <- [[1,2,5],[6,5,7]] :put friends {fr, to => data}")
-        .unwrap();
+        .expect("updating rows in friends should succeed");
     db.run_default(r"?[fr, to] <- [[4,5]] :rm friends {fr, to}")
-        .unwrap();
+        .expect("removing row from friends should succeed");
 
     let rels_data = db
         .export_relations(["friends", "friends:rev"].into_iter())
-        .unwrap();
+        .expect("exporting friends and short index should succeed");
     assert_eq!(
         rels_data["friends"].clone().into_json()["rows"],
-        json!([[1, 2, 5], [6, 5, 7]])
+        json!([[1, 2, 5], [6, 5, 7]]),
+        "friends should contain updated rows"
     );
     assert_eq!(
         rels_data["friends:rev"].clone().into_json()["rows"],
-        json!([[2, 1], [5, 6]])
+        json!([[2, 1], [5, 6]]),
+        "short index should contain to+fr key pairs only"
     );
 
-    let rels = db.run_default("::relations").unwrap();
-    assert_eq!(rels.rows[1][0], DataValue::from("friends:rev"));
-    assert_eq!(rels.rows[1][1], DataValue::from(2));
-    assert_eq!(rels.rows[1][2], DataValue::from("index"));
+    let rels = db
+        .run_default("::relations")
+        .expect("listing relations should succeed");
+    assert_eq!(
+        rels.rows[1][0],
+        DataValue::from("friends:rev"),
+        "second relation should be friends:rev"
+    );
+    assert_eq!(
+        rels.rows[1][1],
+        DataValue::from(2),
+        "short friends:rev should have 2 columns"
+    );
+    assert_eq!(
+        rels.rows[1][2],
+        DataValue::from("index"),
+        "friends:rev should have type 'index'"
+    );
 
-    let cols = db.run_default("::columns friends:rev").unwrap();
-    assert_eq!(cols.rows.len(), 2);
+    let cols = db
+        .run_default("::columns friends:rev")
+        .expect("listing columns of short index should succeed");
+    assert_eq!(
+        cols.rows.len(),
+        2,
+        "short friends:rev index should have 2 columns"
+    );
 
     let expl = db
         .run_default("::explain { ?[fr, data] := *friends{to: 2, fr, data} }")
-        .unwrap()
+        .expect("explain query should succeed")
         .into_json();
 
-    for row in expl["rows"].as_array().unwrap() {
+    for row in expl["rows"]
+        .as_array()
+        .expect("explain rows should be a JSON array")
+    {
         println!("{}", row);
     }
 
     let joins = expl["rows"]
         .as_array()
-        .unwrap()
+        .expect("explain rows should be a JSON array")
         .iter()
-        .map(|row| row.as_array().unwrap()[5].clone())
+        .map(|row| {
+            row.as_array()
+                .expect("each explain row should be a JSON array")[5]
+                .clone()
+        })
         .collect_vec();
-    assert!(joins.contains(&json!(":friends:rev")));
+    assert!(
+        joins.contains(&json!(":friends:rev")),
+        "query plan should use the friends:rev index"
+    );
 
     let res = db
         .run_default("?[fr, data] := *friends{to: 2, fr, data}")
-        .unwrap();
-    assert_eq!(res.into_json()["rows"], json!([[1, 5]]));
+        .expect("querying friends by non-key column should succeed");
+    assert_eq!(
+        res.into_json()["rows"],
+        json!([[1, 5]]),
+        "reverse lookup should return fr=1, data=5"
+    );
 }
 
 #[test]
 fn test_multi_tx() {
     let db = DbInstance::default();
     let tx = db.multi_transaction_test(true);
-    tx.run_script(":create a {a}", Default::default()).unwrap();
+    tx.run_script(":create a {a}", Default::default())
+        .expect("creating relation in tx should succeed");
     tx.run_script("?[a] <- [[1]] :put a {a}", Default::default())
-        .unwrap();
-    assert!(tx.run_script(":create a {a}", Default::default()).is_err());
+        .expect("inserting row 1 in tx should succeed");
+    assert!(
+        tx.run_script(":create a {a}", Default::default()).is_err(),
+        "re-creating existing relation in tx should fail"
+    );
     tx.run_script("?[a] <- [[2]] :put a {a}", Default::default())
-        .unwrap();
+        .expect("inserting row 2 in tx should succeed");
     tx.run_script("?[a] <- [[3]] :put a {a}", Default::default())
-        .unwrap();
-    tx.commit().unwrap();
+        .expect("inserting row 3 in tx should succeed");
+    tx.commit().expect("committing transaction should succeed");
     assert_eq!(
-        db.run_default("?[a] := *a[a]").unwrap().into_json()["rows"],
-        json!([[1], [2], [3]])
+        db.run_default("?[a] := *a[a]")
+            .expect("querying after commit should succeed")
+            .into_json()["rows"],
+        json!([[1], [2], [3]]),
+        "committed transaction should persist all 3 rows"
     );
 
     let db = DbInstance::default();
     let tx = db.multi_transaction_test(true);
-    tx.run_script(":create a {a}", Default::default()).unwrap();
+    tx.run_script(":create a {a}", Default::default())
+        .expect("creating relation in tx should succeed");
     tx.run_script("?[a] <- [[1]] :put a {a}", Default::default())
-        .unwrap();
-    assert!(tx.run_script(":create a {a}", Default::default()).is_err());
+        .expect("inserting row 1 in tx should succeed");
+    assert!(
+        tx.run_script(":create a {a}", Default::default()).is_err(),
+        "re-creating existing relation in tx should fail"
+    );
     tx.run_script("?[a] <- [[2]] :put a {a}", Default::default())
-        .unwrap();
+        .expect("inserting row 2 in tx should succeed");
     tx.run_script("?[a] <- [[3]] :put a {a}", Default::default())
-        .unwrap();
-    tx.abort().unwrap();
-    assert!(db.run_default("?[a] := *a[a]").is_err());
+        .expect("inserting row 3 in tx should succeed");
+    tx.abort().expect("aborting transaction should succeed");
+    assert!(
+        db.run_default("?[a] := *a[a]").is_err(),
+        "query after aborted tx should fail as relation was not committed"
+    );
 }
 
 #[test]
 fn test_vec_types() {
     let db = DbInstance::default();
     db.run_default(":create a {k: String => v: <F32; 8>}")
-        .unwrap();
+        .expect("creating relation with F32 vector column should succeed");
     db.run_default("?[k, v] <- [['k', [1,2,3,4,5,6,7,8]]] :put a {k => v}")
-        .unwrap();
-    let res = db.run_default("?[k, v] := *a{k, v}").unwrap();
+        .expect("inserting row with vector value should succeed");
+    let res = db
+        .run_default("?[k, v] := *a{k, v}")
+        .expect("querying vector relation should succeed");
     assert_eq!(
         json!([1., 2., 3., 4., 5., 6., 7., 8.]),
-        res.into_json()["rows"][0][1]
+        res.into_json()["rows"][0][1],
+        "stored vector should round-trip as floats"
     );
     let res = db
         .run_default("?[v] <- [[vec([1,2,3,4,5,6,7,8])]]")
-        .unwrap();
+        .expect("vec() constructor query should succeed");
     assert_eq!(
         json!([1., 2., 3., 4., 5., 6., 7., 8.]),
-        res.into_json()["rows"][0][0]
+        res.into_json()["rows"][0][0],
+        "vec() constructor should produce expected float array"
     );
-    let res = db.run_default("?[v] <- [[rand_vec(5)]]").unwrap();
-    assert_eq!(5, res.into_json()["rows"][0][0].as_array().unwrap().len());
+    let res = db
+        .run_default("?[v] <- [[rand_vec(5)]]")
+        .expect("rand_vec query should succeed");
+    assert_eq!(
+        5,
+        res.into_json()["rows"][0][0]
+            .as_array()
+            .expect("rand_vec result should be a JSON array")
+            .len(),
+        "rand_vec(5) should produce a vector of length 5"
+    );
     let res = db
         .run_default(r#"
             val[v] <- [[vec([1,2,3,4,5,6,7,8])]]
             ?[x,y,z] := val[v], x=l2_dist(v, v), y=cos_dist(v, v), nv = l2_normalize(v), z=ip_dist(nv, nv)
         "#)
-        .unwrap();
+        .expect("vector distance and normalize query should succeed");
     println!("{}", res.into_json());
 }
 
@@ -631,7 +881,7 @@ fn test_vec_index_insertion() {
         :create a {k: String => v: <F32; 2>, m: Bool}
     ",
     )
-    .unwrap();
+    .expect("creating vector relation with filter should succeed");
     db.run_default(
         r"
         ::hnsw create a:vec {
@@ -646,18 +896,26 @@ fn test_vec_index_insertion() {
             #keep_pruned_connections: true,
         }",
     )
-    .unwrap();
+    .expect("creating HNSW index with filter should succeed");
     let res = db
         .run_default("?[k] := *a:vec{layer: 0, fr_k, to_k}, k = fr_k or k = to_k")
-        .unwrap();
-    assert_eq!(res.rows.len(), 1);
+        .expect("querying HNSW index should succeed");
+    assert_eq!(
+        res.rows.len(),
+        1,
+        "only 'a' passes the filter m=true so only 1 node should be indexed"
+    );
     println!("update!");
     db.run_default(r#"?[k, m] <- [["a", false]] :update a {}"#)
-        .unwrap();
+        .expect("updating a to m=false should succeed");
     let res = db
         .run_default("?[k] := *a:vec{layer: 0, fr_k, to_k}, k = fr_k or k = to_k")
-        .unwrap();
-    assert_eq!(res.rows.len(), 0);
+        .expect("querying HNSW index after filter-disqualifying update should succeed");
+    assert_eq!(
+        res.rows.len(),
+        0,
+        "after updating a to m=false it should be removed from the index"
+    );
     println!("{}", res.into_json());
 }
 
@@ -677,7 +935,7 @@ fn test_vec_index() {
         :create a {k: String => v: <F32; 2>}
     ",
     )
-    .unwrap();
+    .expect("creating vector relation with initial rows should succeed");
     db.run_default(
         r"
         ::hnsw create a:vec {
@@ -692,7 +950,7 @@ fn test_vec_index() {
             #keep_pruned_connections: true,
         }",
     )
-    .unwrap();
+    .expect("creating HNSW index with string filter should succeed");
     db.run_default(
         r"
         ?[k, v] <- [
@@ -706,10 +964,13 @@ fn test_vec_index() {
         :put a {k => v}
         ",
     )
-    .unwrap();
+    .expect("inserting additional rows into vector relation should succeed");
 
     println!("all links");
-    for (_, nrows) in db.export_relations(["a:vec"].iter()).unwrap() {
+    for (_, nrows) in db
+        .export_relations(["a:vec"].iter())
+        .expect("exporting HNSW index should succeed")
+    {
         let nrows = nrows.rows;
         for row in nrows {
             println!("{} {} -> {} {}", row[0], row[1], row[4], row[7]);
@@ -724,9 +985,12 @@ fn test_vec_index() {
         #}
         ",
         )
-        .unwrap();
+        .expect("HNSW KNN query should succeed");
     println!("results");
-    for row in res.into_json()["rows"].as_array().unwrap() {
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("KNN result rows should be a JSON array")
+    {
         println!("{} {} {}", row[0], row[1], row[2]);
     }
 }
@@ -735,11 +999,11 @@ fn test_vec_index() {
 fn test_fts_indexing() {
     let db = DbInstance::default();
     db.run_default(r":create a {k: String => v: String}")
-        .unwrap();
+        .expect("creating FTS base relation should succeed");
     db.run_default(
         r"?[k, v] <- [['a', 'hello world!'], ['b', 'the world is round']] :put a {k => v}",
     )
-    .unwrap();
+    .expect("inserting initial FTS rows should succeed");
     db.run_default(
         r"::fts create a:fts {
             extractor: v,
@@ -747,7 +1011,7 @@ fn test_fts_indexing() {
             filters: [Lowercase, Stemmer('English'), Stopwords('en')]
         }",
     )
-    .unwrap();
+    .expect("creating FTS index should succeed");
     db.run_default(
         r"?[k, v] <- [
             ['b', 'the world is square!'],
@@ -755,7 +1019,7 @@ fn test_fts_indexing() {
             ['d', 'the world is the world and makes the world go around']
         ] :put a {k => v}",
     )
-    .unwrap();
+    .expect("inserting additional rows for FTS indexing should succeed");
     let res = db
         .run_default(
             r"
@@ -763,15 +1027,21 @@ fn test_fts_indexing() {
             *a:fts{word, src_k, offset_from, offset_to, position, total_length}
         ",
         )
-        .unwrap();
-    for row in res.into_json()["rows"].as_array().unwrap() {
+        .expect("querying FTS index directly should succeed");
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("FTS index rows should be a JSON array")
+    {
         println!("{}", row);
     }
     println!("query");
     let res = db
         .run_default(r"?[k, v, s] := ~a:fts{k, v | query: 'world', k: 2, bind_score: s}")
-        .unwrap();
-    for row in res.into_json()["rows"].as_array().unwrap() {
+        .expect("FTS search query should succeed");
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("FTS search results should be a JSON array")
+    {
         println!("{}", row);
     }
 }
@@ -782,19 +1052,22 @@ fn test_lsh_indexing2() {
         let f = i as f64 / 10.;
         let db = DbInstance::default();
         db.run_default(r":create a {k: String => v: String}")
-            .unwrap();
+            .expect("creating LSH base relation should succeed");
         db.run_script(
             r"::lsh create a:lsh {extractor: v, tokenizer: NGram, n_gram: 3, target_threshold: $t }",
             BTreeMap::from([("t".into(), f.into())]),
             ScriptMutability::Mutable
         )
-            .unwrap();
+            .expect("creating LSH index should succeed");
         db.run_default("?[k, v] <- [['a', 'ewiygfspeoighjsfcfxzdfncalsdf']] :put a {k => v}")
-            .unwrap();
+            .expect("inserting LSH row should succeed");
         let res = db
             .run_default("?[k] := ~a:lsh{k | query: 'ewiygfspeoighjsfcfxzdfncalsdf', k: 1}")
-            .unwrap();
-        assert!(!res.rows.is_empty());
+            .expect("LSH similarity search should succeed");
+        assert!(
+            !res.rows.is_empty(),
+            "exact-match LSH query should return at least one result"
+        );
     }
 }
 
@@ -804,7 +1077,7 @@ fn test_lsh_indexing3() {
         let f = i as f64 / 10.;
         let db = DbInstance::default();
         db.run_default(r":create text {id: String,  => text: String, url: String? default null, dt: Float default now(), dup_for: String? default null }")
-            .unwrap();
+            .expect("creating text relation should succeed");
         db.run_script(
             r"::lsh create text:lsh {
                     extractor: text,
@@ -817,18 +1090,21 @@ fn test_lsh_indexing3() {
             BTreeMap::from([("t".into(), f.into())]),
             ScriptMutability::Mutable,
         )
-        .unwrap();
+        .expect("creating LSH index on text should succeed");
         db.run_default(
             "?[id, text] <- [['a', 'This function first generates 32 random bytes using the os.urandom function. It then base64 encodes these bytes using base64.urlsafe_b64encode, removes the padding, and decodes the result to a string.']] :put text {id, text}",
         )
-        .unwrap();
+        .expect("inserting text row should succeed");
         let res = db
             .run_default(
                 r#"?[id, dup_for] :=
     ~text:lsh{id: id, dup_for: dup_for, | query: "This function first generates 32 random bytes using the os.urandom function. It then base64 encodes these bytes using base64.urlsafe_b64encode, removes the padding, and decodes the result to a string.", }"#,
             )
-            .unwrap();
-        assert!(!res.rows.is_empty());
+            .expect("LSH similarity search on text should succeed");
+        assert!(
+            !res.rows.is_empty(),
+            "exact-match LSH query should return at least one result"
+        );
         println!("{}", res.into_json());
     }
 }
@@ -849,8 +1125,12 @@ fn filtering() {
         }
     ",
         )
-        .unwrap();
-    assert_eq!(0, res.rows.len());
+        .expect("filter script should succeed");
+    assert_eq!(
+        0,
+        res.rows.len(),
+        "conflicting key constraint should yield 0 rows"
+    );
 
     let res = db
         .run_default(
@@ -865,8 +1145,8 @@ fn filtering() {
         }
     ",
         )
-        .unwrap();
-    assert_eq!(0, res.rows.len());
+        .expect("filter script with compound key should succeed");
+    assert_eq!(0, res.rows.len(), "compound key filter should yield 0 rows");
 }
 
 #[test]
@@ -875,20 +1155,24 @@ fn test_lsh_indexing4() {
         let f = i as f64 / 10.;
         let db = DbInstance::default();
         db.run_default(r":create a {k: String => v: String}")
-            .unwrap();
+            .expect("creating LSH base relation should succeed");
         db.run_script(
             r"::lsh create a:lsh {extractor: v, tokenizer: NGram, n_gram: 3, target_threshold: $t }",
             BTreeMap::from([("t".into(), f.into())]),
             ScriptMutability::Mutable
         )
-            .unwrap();
+            .expect("creating LSH index should succeed");
         db.run_default("?[k, v] <- [['a', 'ewiygfspeoighjsfcfxzdfncalsdf']] :put a {k => v}")
-            .unwrap();
-        db.run_default("?[k] <- [['a']] :rm a {k}").unwrap();
+            .expect("inserting LSH row should succeed");
+        db.run_default("?[k] <- [['a']] :rm a {k}")
+            .expect("removing LSH row should succeed");
         let res = db
             .run_default("?[k] := ~a:lsh{k | query: 'ewiygfspeoighjsfcfxzdfncalsdf', k: 1}")
-            .unwrap();
-        assert!(res.rows.is_empty());
+            .expect("LSH search after deletion should succeed");
+        assert!(
+            res.rows.is_empty(),
+            "LSH search after deleting the only row should return empty"
+        );
     }
 }
 
@@ -896,15 +1180,15 @@ fn test_lsh_indexing4() {
 fn test_lsh_indexing() {
     let db = DbInstance::default();
     db.run_default(r":create a {k: String => v: String}")
-        .unwrap();
+        .expect("creating LSH base relation should succeed");
     db.run_default(
         r"?[k, v] <- [['a', 'hello world!'], ['b', 'the world is round']] :put a {k => v}",
     )
-    .unwrap();
+    .expect("inserting initial LSH rows should succeed");
     db.run_default(
         r"::lsh create a:lsh {extractor: v, tokenizer: Simple, n_gram: 3, target_threshold: 0.3 }",
     )
-    .unwrap();
+    .expect("creating LSH index should succeed");
     db.run_default(
         r"?[k, v] <- [
             ['b', 'the world is square!'],
@@ -913,9 +1197,14 @@ fn test_lsh_indexing() {
             ['e', 'the world is the world and makes the world not go around']
         ] :put a {k => v}",
     )
-    .unwrap();
-    let res = db.run_default("::columns a:lsh").unwrap();
-    for row in res.into_json()["rows"].as_array().unwrap() {
+    .expect("inserting additional LSH rows should succeed");
+    let res = db
+        .run_default("::columns a:lsh")
+        .expect("listing LSH index columns should succeed");
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("LSH columns result should be a JSON array")
+    {
         println!("{}", row);
     }
     let _res = db
@@ -925,7 +1214,7 @@ fn test_lsh_indexing() {
             *a:lsh{src_k, hash}
         ",
         )
-        .unwrap();
+        .expect("querying LSH index directly should succeed");
     let _res = db
         .run_default(
             r"
@@ -933,7 +1222,7 @@ fn test_lsh_indexing() {
             *a:lsh:inv{k, minhash}
         ",
         )
-        .unwrap();
+        .expect("querying LSH inverse index should succeed");
     let res = db
         .run_default(
             r"
@@ -942,42 +1231,58 @@ fn test_lsh_indexing() {
             }
             ",
         )
-        .unwrap();
-    for row in res.into_json()["rows"].as_array().unwrap() {
+        .expect("LSH similarity search should succeed");
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("LSH search results should be a JSON array")
+    {
         println!("{}", row);
     }
-    let res = db.run_default("::indices a").unwrap();
-    for row in res.into_json()["rows"].as_array().unwrap() {
+    let res = db
+        .run_default("::indices a")
+        .expect("listing indices should succeed");
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("indices result should be a JSON array")
+    {
         println!("{}", row);
     }
-    db.run_default(r"::lsh drop a:lsh").unwrap();
+    db.run_default(r"::lsh drop a:lsh")
+        .expect("dropping LSH index should succeed");
 }
 
 #[test]
 fn test_insertions() {
     let db = DbInstance::default();
     db.run_default(r":create a {k => v: <F32; 1536> default rand_vec(1536)}")
-        .unwrap();
-    db.run_default(r"?[k] <- [[1]] :put a {k}").unwrap();
-    db.run_default(r"?[k, v] := *a{k, v}").unwrap();
+        .expect("creating relation with default rand_vec column should succeed");
+    db.run_default(r"?[k] <- [[1]] :put a {k}")
+        .expect("inserting row with default vector should succeed");
+    db.run_default(r"?[k, v] := *a{k, v}")
+        .expect("querying relation with vector should succeed");
     db.run_default(
         r"::hnsw create a:i {
             fields: [v], dim: 1536, ef: 16, filter: k % 3 == 0,
             m: 32
         }",
     )
-    .unwrap();
-    db.run_default(r"?[count(fr_k)] := *a:i{fr_k}").unwrap();
-    db.run_default(r"?[k] <- [[1]] :put a {k}").unwrap();
+    .expect("creating HNSW index with numeric filter should succeed");
+    db.run_default(r"?[count(fr_k)] := *a:i{fr_k}")
+        .expect("counting HNSW index entries should succeed");
+    db.run_default(r"?[k] <- [[1]] :put a {k}")
+        .expect("reinserting row should succeed");
     db.run_default(r"?[k] := k in int_range(300) :put a {k}")
-        .unwrap();
+        .expect("bulk inserting 300 rows should succeed");
     let res = db
         .run_default(
             r"?[dist, k] := ~a:i{k | query: v, bind_distance: dist, k:10, ef: 50, filter: k % 2 == 0, radius: 245}, *a{k: 96, v}",
         )
-        .unwrap();
+        .expect("HNSW KNN query with filter and radius should succeed");
     println!("results");
-    for row in res.into_json()["rows"].as_array().unwrap() {
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("KNN results should be a JSON array")
+    {
         println!("{} {}", row[0], row[1]);
     }
 }
@@ -994,7 +1299,7 @@ fn tokenizers() {
             },
             &[],
         )
-        .unwrap();
+        .expect("getting simple tokenizer from cache should succeed");
 
     let mut token_stream = tokenizer.token_stream("It is closer to Apache Lucene than to Elasticsearch or Apache Solr in the sense it is not an off-the-shelf search engine server, but rather a crate that can be used to build such a search engine.");
     while let Some(token) = token_stream.next() {
@@ -1018,7 +1323,7 @@ fn multi_index_vec() {
         }
         "#,
     )
-    .unwrap();
+    .expect("creating product relation with multiple vector columns should succeed");
     db.run_default(
         r#"
         ::hnsw create product:semantic{
@@ -1029,16 +1334,21 @@ fn multi_index_vec() {
         }
         "#,
     )
-    .unwrap();
+    .expect("creating HNSW index over multiple vector fields should succeed");
     db.run_default(
         r#"
         ?[id, name, description, price, name_vec, description_vec] <- [[1, "name", "description", 100, [1], [1]]]
 
         :put product {id => name, description, price, name_vec, description_vec}
         "#,
-    ).unwrap();
-    let res = db.run_default("::indices product").unwrap();
-    for row in res.into_json()["rows"].as_array().unwrap() {
+    ).expect("inserting product row should succeed");
+    let res = db
+        .run_default("::indices product")
+        .expect("listing product indices should succeed");
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("indices result should be a JSON array")
+    {
         println!("{}", row);
     }
 }
@@ -1055,103 +1365,138 @@ fn ensure_not() {
 }
     ",
     )
-    .unwrap();
+    .expect("ensure_not idempotent script should succeed");
 }
 
 #[test]
 fn insertion() {
     let db = DbInstance::default();
-    db.run_default(r":create a {x => y}").unwrap();
+    db.run_default(r":create a {x => y}")
+        .expect("creating relation should succeed");
     assert!(
         db.run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y}",)
-            .is_ok()
+            .is_ok(),
+        "first insert should succeed"
     );
     assert!(
         db.run_default(r"?[x, y] <- [[1, 3]] :insert a {x => y}",)
-            .is_err()
+            .is_err(),
+        "duplicate key insert should fail"
     );
 }
 
 #[test]
 fn deletion() {
     let db = DbInstance::default();
-    db.run_default(r":create a {x => y}").unwrap();
-    assert!(db.run_default(r"?[x] <- [[1]] :delete a {x}").is_err());
+    db.run_default(r":create a {x => y}")
+        .expect("creating relation should succeed");
+    assert!(
+        db.run_default(r"?[x] <- [[1]] :delete a {x}").is_err(),
+        "deleting non-existent row should fail"
+    );
     assert!(
         db.run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y}",)
-            .is_ok()
+            .is_ok(),
+        "inserting row should succeed"
     );
-    db.run_default(r"?[x] <- [[1]] :delete a {x}").unwrap();
+    db.run_default(r"?[x] <- [[1]] :delete a {x}")
+        .expect("deleting existing row should succeed");
 }
 
 #[test]
 fn into_payload() {
     let db = DbInstance::default();
-    db.run_default(r":create a {x => y}").unwrap();
+    db.run_default(r":create a {x => y}")
+        .expect("creating relation a should succeed");
     db.run_default(r"?[x, y] <- [[1, 2], [3, 4]] :insert a {x => y}")
-        .unwrap();
+        .expect("inserting 2 rows should succeed");
 
-    let mut res = db.run_default(r"?[x, y] := *a[x, y]").unwrap();
-    assert_eq!(res.rows.len(), 2);
+    let mut res = db
+        .run_default(r"?[x, y] := *a[x, y]")
+        .expect("querying all rows should succeed");
+    assert_eq!(res.rows.len(), 2, "query should return both inserted rows");
 
     let delete = res.clone().into_payload("a", "rm");
     db.run_script(delete.0.as_str(), delete.1, ScriptMutability::Mutable)
-        .unwrap();
+        .expect("running delete payload should succeed");
     assert_eq!(
-        db.run_default(r"?[x, y] := *a[x, y]").unwrap().rows.len(),
-        0
+        db.run_default(r"?[x, y] := *a[x, y]")
+            .expect("querying after delete should succeed")
+            .rows
+            .len(),
+        0,
+        "all rows should be deleted"
     );
 
-    db.run_default(r":create b {m => n}").unwrap();
+    db.run_default(r":create b {m => n}")
+        .expect("creating relation b should succeed");
     res.headers = vec!["m".into(), "n".into()];
     let put = res.into_payload("b", "put");
     db.run_script(put.0.as_str(), put.1, ScriptMutability::Mutable)
-        .unwrap();
+        .expect("running put payload should succeed");
     assert_eq!(
-        db.run_default(r"?[m, n] := *b[m, n]").unwrap().rows.len(),
-        2
+        db.run_default(r"?[m, n] := *b[m, n]")
+            .expect("querying relation b should succeed")
+            .rows
+            .len(),
+        2,
+        "both rows should be present in b after put"
     );
 }
 
 #[test]
 fn returning() {
     let db = DbInstance::default();
-    db.run_default(":create a {x => y}").unwrap();
+    db.run_default(":create a {x => y}")
+        .expect("creating relation should succeed");
     let res = db
         .run_default(r"?[x, y] <- [[1, 2]] :insert a {x => y} ")
-        .unwrap();
-    assert_eq!(res.into_json()["rows"], json!([["OK"]]));
+        .expect("insert should succeed");
+    assert_eq!(
+        res.into_json()["rows"],
+        json!([["OK"]]),
+        "insert without :returning should return OK"
+    );
 
     let res = db
         .run_default(r"?[x, y] <- [[1, 3], [2, 4]] :returning :put a {x => y} ")
-        .unwrap();
+        .expect("put with :returning should succeed");
     assert_eq!(
         res.into_json()["rows"],
-        json!([["inserted", 1, 3], ["inserted", 2, 4], ["replaced", 1, 2]])
+        json!([["inserted", 1, 3], ["inserted", 2, 4], ["replaced", 1, 2]]),
+        ":returning should show inserted and replaced rows"
     );
 
     let res = db
         .run_default(r"?[x] <- [[1], [4]] :returning :rm a {x} ")
-        .unwrap();
+        .expect("rm with :returning should succeed");
     assert_eq!(
         res.into_json()["rows"],
         json!([
             ["requested", 1, null],
             ["requested", 4, null],
             ["deleted", 1, 3]
-        ])
+        ]),
+        ":returning on rm should show requested and actually deleted rows"
     );
     db.run_default(r":create todo{id:Uuid default rand_uuid_v1() => label: String, done: Bool}")
-        .unwrap();
+        .expect("creating todo relation with UUID default should succeed");
     let res = db
         .run_default(r"?[label,done] <- [['milk',false]] :put todo{label,done} :returning")
-        .unwrap();
-    assert_eq!(res.rows[0].len(), 4);
+        .expect("put into todo with :returning should succeed");
+    assert_eq!(
+        res.rows[0].len(),
+        4,
+        "todo returning row should have 4 columns including generated id"
+    );
     for title in res.headers.iter() {
         print!("{} ", title);
     }
     println!();
-    for row in res.into_json()["rows"].as_array().unwrap() {
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("returning rows should be a JSON array")
+    {
         println!("{}", row);
     }
 }
@@ -1159,13 +1504,16 @@ fn returning() {
 #[test]
 fn parser_corner_case() {
     let db = DbInstance::default();
-    db.run_default(r#"?[x] := x = 1 or x = 2"#).unwrap();
-    db.run_default(r#"?[C] := C = 1  orx[C] := C = 1"#).unwrap();
+    db.run_default(r#"?[x] := x = 1 or x = 2"#)
+        .expect("'or' keyword query should parse correctly");
+    db.run_default(r#"?[C] := C = 1  orx[C] := C = 1"#)
+        .expect("'orx' relation name adjacent to 'or' should parse correctly");
     db.run_default(r#"?[C] := C = true, C  inx[C] := C = 1"#)
-        .unwrap();
-    db.run_default(r#"?[k] := k in int_range(300)"#).unwrap();
+        .expect("'inx' relation name adjacent to 'in' should parse correctly");
+    db.run_default(r#"?[k] := k in int_range(300)"#)
+        .expect("'in' with int_range should parse correctly");
     db.run_default(r#"ywcc[a] <- [[1]] noto[A] := ywcc[A] ?[A] := noto[A]"#)
-        .unwrap();
+        .expect("'noto' relation name adjacent to 'not' should parse correctly");
 }
 
 #[test]
@@ -1178,8 +1526,12 @@ fn as_store_in_imperative_script() {
     { ?[x, y, z] := *_store{x, y, z} }
     "#,
         )
-        .unwrap();
-    assert_eq!(res.into_json()["rows"], json!([[1, 2, 3], [4, 5, 6]]));
+        .expect("as-store in imperative script should succeed");
+    assert_eq!(
+        res.into_json()["rows"],
+        json!([[1, 2, 3], [4, 5, 6]]),
+        "stored result should contain both rows"
+    );
     let res = db
         .run_default(
             r#"
@@ -1193,9 +1545,16 @@ fn as_store_in_imperative_script() {
     }
     "#,
         )
-        .unwrap();
-    assert_eq!(3, res.rows.len());
-    for row in res.into_json()["rows"].as_array().unwrap() {
+        .expect("as-store with :returning and UUID default should succeed");
+    assert_eq!(
+        3,
+        res.rows.len(),
+        "3 inserted rows should be captured in _last"
+    );
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("as-store result rows should be a JSON array")
+    {
         println!("{}", row);
     }
     assert!(
@@ -1206,7 +1565,8 @@ fn as_store_in_imperative_script() {
     } as _last
     "#
         )
-        .is_err()
+        .is_err(),
+        "duplicate variable in query head should fail"
     );
 
     let res = db
@@ -1221,9 +1581,16 @@ fn as_store_in_imperative_script() {
     }
     "#,
         )
-        .unwrap();
-    assert_eq!(1, res.rows.len());
-    for row in res.into_json()["rows"].as_array().unwrap() {
+        .expect("as-store with aggregate should succeed");
+    assert_eq!(
+        1,
+        res.rows.len(),
+        "sum aggregation should produce exactly 1 row"
+    );
+    for row in res.into_json()["rows"]
+        .as_array()
+        .expect("as-store aggregate result should be a JSON array")
+    {
         println!("{}", row);
     }
 }
@@ -1232,25 +1599,50 @@ fn as_store_in_imperative_script() {
 fn update_shall_not_destroy_values() {
     let db = DbInstance::default();
     db.run_default(r"?[x, y] <- [[1, 2]] :create z {x => y default 0}")
-        .unwrap();
-    let r = db.run_default(r"?[x, y] := *z {x, y}").unwrap();
-    assert_eq!(r.into_json()["rows"], json!([[1, 2]]));
-    db.run_default(r"?[x] <- [[1]] :update z {x}").unwrap();
-    let r = db.run_default(r"?[x, y] := *z {x, y}").unwrap();
-    assert_eq!(r.into_json()["rows"], json!([[1, 2]]));
+        .expect("creating relation with initial data and default should succeed");
+    let r = db
+        .run_default(r"?[x, y] := *z {x, y}")
+        .expect("querying z should succeed");
+    assert_eq!(
+        r.into_json()["rows"],
+        json!([[1, 2]]),
+        "initial row should be [1, 2]"
+    );
+    db.run_default(r"?[x] <- [[1]] :update z {x}")
+        .expect("update with only key should succeed");
+    let r = db
+        .run_default(r"?[x, y] := *z {x, y}")
+        .expect("querying z after key-only update should succeed");
+    assert_eq!(
+        r.into_json()["rows"],
+        json!([[1, 2]]),
+        "key-only update should not change value y"
+    );
 }
 
 #[test]
 fn update_shall_work() {
     let db = DbInstance::default();
     db.run_default(r"?[x, y, z] <- [[1, 2, 3]] :create z {x => y, z}")
-        .unwrap();
-    let r = db.run_default(r"?[x, y, z] := *z {x, y, z}").unwrap();
-    assert_eq!(r.into_json()["rows"], json!([[1, 2, 3]]));
+        .expect("creating relation z with initial data should succeed");
+    let r = db
+        .run_default(r"?[x, y, z] := *z {x, y, z}")
+        .expect("querying z should succeed");
+    assert_eq!(
+        r.into_json()["rows"],
+        json!([[1, 2, 3]]),
+        "initial row should be [1, 2, 3]"
+    );
     db.run_default(r"?[x, y] <- [[1, 4]] :update z {x, y}")
-        .unwrap();
-    let r = db.run_default(r"?[x, y, z] := *z {x, y, z}").unwrap();
-    assert_eq!(r.into_json()["rows"], json!([[1, 4, 3]]));
+        .expect("partial update of y should succeed");
+    let r = db
+        .run_default(r"?[x, y, z] := *z {x, y, z}")
+        .expect("querying z after partial update should succeed");
+    assert_eq!(
+        r.into_json()["rows"],
+        json!([[1, 4, 3]]),
+        "after updating y to 4, z should remain 3"
+    );
 }
 
 #[test]
@@ -1313,7 +1705,8 @@ fn sysop_in_imperatives() {
         {::relations}
     "#;
     let db = DbInstance::default();
-    db.run_default(script).unwrap();
+    db.run_default(script)
+        .expect("complex sysop-in-imperatives script should succeed");
 }
 
 #[test]
@@ -1327,7 +1720,7 @@ fn bad_parse() {
         when: Int
     }",
     )
-    .unwrap();
+    .expect("creating named_hero_history relation should succeed");
     db.run_default(r"
         last_named_hero[first, first, max(hist)] := *named_hero_history[first, first, value, hist], hist <= 1;
 
@@ -1359,7 +1752,7 @@ fn puts() {
             }
     ",
     )
-    .unwrap();
+    .expect("creating cm_txt relation should succeed");
     db.run_default(
         r"
         ?[tid, aid, tag, text, info_amount, dup_for, seg_vecs, seg_pos] := dup_for = null,
@@ -1369,17 +1762,24 @@ fn puts() {
         :put cm_txt {tid, aid, tag, text, info_amount, seg_vecs, seg_pos, dup_for}
     ",
     )
-    .unwrap();
+    .expect("inserting into cm_txt should succeed");
 }
 
 #[test]
 fn short_hand() {
     let db = DbInstance::default();
-    db.run_default(r":create x {x => y, z}").unwrap();
+    db.run_default(r":create x {x => y, z}")
+        .expect("creating relation x should succeed");
     db.run_default(r"?[x, y, z] <- [[1, 2, 3]] :put x {}")
-        .unwrap();
-    let r = db.run_default(r"?[x, y, z] := *x {x, y, z}").unwrap();
-    assert_eq!(r.into_json()["rows"], json!([[1, 2, 3]]));
+        .expect("shorthand put with empty braces should succeed");
+    let r = db
+        .run_default(r"?[x, y, z] := *x {x, y, z}")
+        .expect("querying relation x should succeed");
+    assert_eq!(
+        r.into_json()["rows"],
+        json!([[1, 2, 3]]),
+        "shorthand put should store all columns"
+    );
 }
 
 #[test]
@@ -1397,9 +1797,14 @@ fn param_shorthand() {
         ]),
         ScriptMutability::Mutable,
     )
-    .unwrap();
+    .expect("param shorthand create should succeed");
     let res = db.run_default(r"?[x, y, z] := *x {x, y, z}");
-    assert_eq!(res.unwrap().into_json()["rows"], json!([[1, 2, 3]]));
+    assert_eq!(
+        res.expect("querying after param shorthand should succeed")
+            .into_json()["rows"],
+        json!([[1, 2, 3]]),
+        "param shorthand should store all columns correctly"
+    );
 }
 
 #[test]
@@ -1417,7 +1822,7 @@ fn crashy_imperative() {
         %end
         ",
     )
-    .unwrap();
+    .expect("imperative loop accumulating 10 rows should succeed");
 }
 
 #[test]
@@ -1440,7 +1845,7 @@ fn hnsw_index() {
         }
         "#,
     )
-    .unwrap();
+    .expect("creating beliefs relation should succeed");
     db.run_default(
         r#"
         ::hnsw create beliefs:embedding_space {
@@ -1455,11 +1860,11 @@ fn hnsw_index() {
         }
     "#,
     )
-    .unwrap();
+    .expect("creating HNSW index on beliefs should succeed");
     db.run_default(r#"
         ?[belief_id, character_id, belief, belief_embedding, details_embedding] <- [[rand_uuid_v1(), rand_uuid_v1(), "test", rand_vec(768), rand_vec(768)]]
         :put beliefs {}
-    "#).unwrap();
+    "#).expect("inserting belief row should succeed");
     let res = db.run_default(r#"
             ?[belief, valence, dist, character_id, vector] := ~beliefs:embedding_space{ belief, valence, character_id |
                 query: rand_vec(768),
@@ -1472,7 +1877,7 @@ fn hnsw_index() {
 
             :order -valence
             :order dist
-    "#).unwrap();
+    "#).expect("HNSW KNN query on beliefs should succeed");
     println!("{}", res.into_json()["rows"][0][4]);
 }
 
@@ -1484,7 +1889,7 @@ fn fts_drop() {
             :create entity {name}
         "#,
     )
-    .unwrap();
+    .expect("creating entity relation should succeed");
     db.run_default(
         r#"
         ::fts create entity:fts_index { extractor: name,
@@ -1492,11 +1897,11 @@ fn fts_drop() {
         }
     "#,
     )
-    .unwrap();
+    .expect("creating FTS index on entity should succeed");
     db.run_default(
         r#"
         ::fts drop entity:fts_index
     "#,
     )
-    .unwrap();
+    .expect("dropping FTS index should succeed");
 }
