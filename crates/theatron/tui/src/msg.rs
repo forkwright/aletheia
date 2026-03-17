@@ -300,17 +300,17 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]
     QuoteInReply,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]
     RateResponse,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; lint fires in lib but not test target"
     )]

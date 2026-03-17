@@ -62,7 +62,7 @@ impl CredentialProvider for StaticCredentialProvider {
 }
 
 fn build_http_client() -> Result<Client> {
-    // reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
+    // WHY: reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
     // install_default() is idempotent: subsequent calls return Err and are ignored.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
@@ -233,7 +233,7 @@ impl AnthropicProvider {
                 let status = response.status().as_u16();
                 let err = super::error::map_error_response(response).await;
                 self.health.record_error(&err);
-                // Non-retryable HTTP status: 401, 400-level (except 429)
+                // NOTE: Non-retryable HTTP status: 401, 400-level (except 429)
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
                         clippy::cast_possible_truncation,
@@ -325,7 +325,7 @@ impl AnthropicProvider {
                     return Ok(resp);
                 }
                 Err(e) => {
-                    // If content was already streamed, we can't retry: it would
+                    // WHY: If content was already streamed, we can't retry: it would
                     // produce duplicates. Propagate immediately.
                     if content_started {
                         tracing::error!("SSE error after content started streaming — cannot retry");
@@ -347,7 +347,7 @@ impl AnthropicProvider {
                         );
                         return Err(e);
                     }
-                    // Only retry RateLimited (overloaded/429); other errors are terminal.
+                    // NOTE: Only retry RateLimited (overloaded/429); other errors are terminal.
                     if matches!(e, error::Error::RateLimited { .. }) {
                         tracing::warn!("SSE stream returned retryable error before content");
                         self.health.record_error(&e);
@@ -717,7 +717,7 @@ pub(crate) fn backoff_delay(attempt: u32, last_error: Option<&error::Error>) -> 
     let base = BACKOFF_BASE_MS * BACKOFF_FACTOR.pow(attempt.saturating_sub(1));
     let capped = base.min(BACKOFF_MAX_MS);
 
-    // ±25% random jitter: prevents thundering herd under concurrent load
+    // WHY: ±25% random jitter prevents thundering herd under concurrent load
     let jitter_range = capped / 4;
     let delay = if jitter_range > 0 {
         let offset = rand::rng().random_range(0..jitter_range * 2);

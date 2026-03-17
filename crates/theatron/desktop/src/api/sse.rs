@@ -114,7 +114,7 @@ impl SseConnection {
                             Ok(Some(event)) => event,
                             Ok(None) => break,
                             Err(_elapsed) => {
-                                // No event within HEARTBEAT_TIMEOUT. A healthy server
+                                // WHY: No event within HEARTBEAT_TIMEOUT. A healthy server
                                 // sends pings more frequently, so silence means the
                                 // connection is stale.
                                 tracing::warn!(
@@ -136,7 +136,7 @@ impl SseConnection {
                                 if let Some(parsed) = parse_sse_event(&msg.event, &msg.data)
                                     && tx.send(parsed).await.is_err()
                                 {
-                                    // Receiver dropped: shut down.
+                                    // WHY: Receiver dropped: shut down.
                                     return;
                                 }
                             }

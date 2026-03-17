@@ -48,8 +48,8 @@ impl SpawnServiceImpl {
 }
 
 impl SpawnService for SpawnServiceImpl {
-    // NOTE(#940): 130 lines: sequential ephemeral-actor lifecycle: build config, spawn
-    // actor, run single turn, teardown. Splitting would fragment a cohesive lifecycle.
+    // NOTE: sequential ephemeral-actor lifecycle: build config, spawn actor, run single turn,
+    // teardown. Splitting would fragment a cohesive lifecycle.
     #[expect(clippy::too_many_lines, reason = "spawn setup requires many steps")]
     fn spawn_and_run(
         &self,
@@ -151,7 +151,6 @@ impl SpawnService for SpawnServiceImpl {
                 let _ = handle.shutdown().await;
                 let _ = join_handle.await;
 
-                // Clean up ephemeral workspace
                 let _ = tokio::fs::remove_dir_all(&nous_dir).await;
 
                 match result {

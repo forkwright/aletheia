@@ -97,14 +97,11 @@ impl DbMonitor {
             return Ok(report);
         }
 
-        // Check known databases.
         self.check_file("sessions.db", &mut report)?;
         self.check_file("planning.db", &mut report)?;
 
-        // Scan for any other .db files.
         self.scan_db_files(&mut report)?;
 
-        // Check cozo/ directory total size.
         let cozo_dir = self.config.data_dir.join("cozo");
         if cozo_dir.exists() {
             let size = dir_size(&cozo_dir)?;
