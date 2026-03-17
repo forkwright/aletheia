@@ -417,7 +417,7 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
     // monitoring configs that predate the /api prefix (#1233).
     let app = app.route(
         "/health",
-        axum::routing::get(|| async { axum::response::Redirect::permanent("/api/health") }),
+        axum::routing::get(|| async { axum::response::Redirect::permanent(aletheia_koina::http::API_HEALTH) }),
     );
 
     let port = cli.port.unwrap_or(config.gateway.port);

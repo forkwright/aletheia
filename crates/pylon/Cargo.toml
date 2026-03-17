@@ -48,6 +48,7 @@ ulid = { workspace = true }
 rand = { workspace = true }
 
 # Internal crates
+aletheia-koina = { path = "../koina" }
 aletheia-taxis = { path = "../taxis" }
 aletheia-hermeneus = { path = "../hermeneus" }
 aletheia-organon = { path = "../organon" }

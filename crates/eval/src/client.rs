@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::instrument;
 
+use aletheia_koina::http::{API_HEALTH, API_V1, BEARER_PREFIX, CONTENT_TYPE_JSON};
+
 use crate::error::{self, Result};
 use crate::sse::{self, ParsedSseEvent};
 
@@ -37,7 +39,7 @@ impl EvalClient {
     /// Check instance health.
     #[instrument(skip(self))]
     pub async fn health(&self) -> Result<HealthResponse> {
-        let url = format!("{}/api/health", self.base_url);
+        let url = format!("{}{API_HEALTH}", self.base_url);
         let resp = self.http.get(&url).send().await.context(error::HttpSnafu)?;
         self.expect_ok(&url, resp).await
     }
@@ -45,7 +47,7 @@ impl EvalClient {
     /// List all configured nous agents.
     #[instrument(skip(self))]
     pub async fn list_nous(&self) -> Result<Vec<NousSummary>> {
-        let url = format!("{}/api/v1/nous", self.base_url);
+        let url = format!("{}{API_V1}/nous", self.base_url);
         let resp = self.authed_get(&url).await?;
         let list: NousListResponse = self.expect_ok(&url, resp).await?;
         Ok(list.nous)
@@ -54,7 +56,7 @@ impl EvalClient {
     /// Get status for a specific nous agent.
     #[instrument(skip(self))]
     pub async fn get_nous(&self, id: &str) -> Result<NousStatus> {
-        let url = format!("{}/api/v1/nous/{id}", self.base_url);
+        let url = format!("{}{API_V1}/nous/{id}", self.base_url);
         let resp = self.authed_get(&url).await?;
         self.expect_ok(&url, resp).await
     }
@@ -66,7 +68,7 @@ impl EvalClient {
         nous_id: &str,
         session_key: &str,
     ) -> Result<SessionResponse> {
-        let url = format!("{}/api/v1/sessions", self.base_url);
+        let url = format!("{}{API_V1}/sessions", self.base_url);
         let body = serde_json::json!({
             "nous_id": nous_id,
             "session_key": session_key,
@@ -78,7 +80,7 @@ impl EvalClient {
     /// Get session details by ID.
     #[instrument(skip(self))]
     pub async fn get_session(&self, id: &str) -> Result<SessionResponse> {
-        let url = format!("{}/api/v1/sessions/{id}", self.base_url);
+        let url = format!("{}{API_V1}/sessions/{id}", self.base_url);
         let resp = self.authed_get(&url).await?;
         self.expect_ok(&url, resp).await
     }
@@ -86,7 +88,7 @@ impl EvalClient {
     /// Close (archive) a session.
     #[instrument(skip(self))]
     pub async fn close_session(&self, id: &str) -> Result<()> {
-        let url = format!("{}/api/v1/sessions/{id}", self.base_url);
+        let url = format!("{}{API_V1}/sessions/{id}", self.base_url);
         let resp = self.authed_delete(&url).await?;
         let status = resp.status().as_u16();
         if status != 204 && status != 200 {
@@ -111,7 +113,7 @@ impl EvalClient {
         session_id: &str,
         content: &str,
     ) -> Result<Vec<ParsedSseEvent>> {
-        let url = format!("{}/api/v1/sessions/{session_id}/messages", self.base_url);
+        let url = format!("{}{API_V1}/sessions/{session_id}/messages", self.base_url);
         let body = serde_json::json!({ "content": content });
         let resp = self.authed_post(&url, &body).await?;
         let status = resp.status().as_u16();
@@ -133,7 +135,7 @@ impl EvalClient {
     /// Get conversation history for a session.
     #[instrument(skip(self))]
     pub async fn get_history(&self, session_id: &str) -> Result<HistoryResponse> {
-        let url = format!("{}/api/v1/sessions/{session_id}/history", self.base_url);
+        let url = format!("{}{API_V1}/sessions/{session_id}/history", self.base_url);
         let resp = self.authed_get(&url).await?;
         self.expect_ok(&url, resp).await
     }
@@ -155,7 +157,7 @@ impl EvalClient {
         let url = format!("{}{path}", self.base_url);
         self.http
             .post(&url)
-            .header("content-type", "application/json")
+            .header("content-type", CONTENT_TYPE_JSON)
             .header("x-requested-with", "aletheia")
             .json(body)
             .send()
@@ -169,7 +171,7 @@ impl EvalClient {
         let url = format!("{}{path}", self.base_url);
         self.http
             .get(&url)
-            .header("authorization", format!("Bearer {token}"))
+            .header("authorization", format!("{BEARER_PREFIX}{token}"))
             .send()
             .await
             .context(error::HttpSnafu)
@@ -178,7 +180,7 @@ impl EvalClient {
     async fn authed_get(&self, url: &str) -> Result<reqwest::Response> {
         let mut req = self.http.get(url);
         if let Some(ref token) = self.token {
-            req = req.header("authorization", format!("Bearer {token}"));
+            req = req.header("authorization", format!("{BEARER_PREFIX}{token}"));
         }
         req.send().await.context(error::HttpSnafu)
     }
@@ -187,10 +189,10 @@ impl EvalClient {
         let mut req = self
             .http
             .post(url)
-            .header("content-type", "application/json")
+            .header("content-type", CONTENT_TYPE_JSON)
             .header("x-requested-with", "aletheia");
         if let Some(ref token) = self.token {
-            req = req.header("authorization", format!("Bearer {token}"));
+            req = req.header("authorization", format!("{BEARER_PREFIX}{token}"));
         }
         req.json(body).send().await.context(error::HttpSnafu)
     }
@@ -198,7 +200,7 @@ impl EvalClient {
     async fn authed_delete(&self, url: &str) -> Result<reqwest::Response> {
         let mut req = self.http.delete(url).header("x-requested-with", "aletheia");
         if let Some(ref token) = self.token {
-            req = req.header("authorization", format!("Bearer {token}"));
+            req = req.header("authorization", format!("{BEARER_PREFIX}{token}"));
         }
         req.send().await.context(error::HttpSnafu)
     }

@@ -14,6 +14,8 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
+use aletheia_koina::http::{API_HEALTH, API_V1};
+
 use crate::error::ApiError;
 use crate::handlers::{config, health, knowledge, metrics, nous, sessions};
 use crate::middleware::{
@@ -79,8 +81,8 @@ pub fn build_router(state: Arc<AppState>, security: &SecurityConfig) -> Router {
         .route("/knowledge/timeline", get(knowledge::timeline));
 
     let mut router = Router::new()
-        .nest("/api/v1", v1)
-        .route("/api/health", get(health::check))
+        .nest(API_V1, v1)
+        .route(API_HEALTH, get(health::check))
         .route("/api/docs/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::expose));
 

@@ -7,6 +7,8 @@ use axum::http::request::Parts;
 
 use aletheia_symbolon::types::Role;
 
+use aletheia_koina::http::BEARER_PREFIX;
+
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -52,7 +54,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             })?;
 
         let token = header
-            .strip_prefix("Bearer ")
+            .strip_prefix(BEARER_PREFIX)
             .ok_or(ApiError::Unauthorized {
                 location: snafu::Location::default(),
             })?;

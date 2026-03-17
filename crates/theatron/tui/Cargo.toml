@@ -12,6 +12,7 @@ name = "aletheia-tui"
 path = "src/main.rs"
 
 [dependencies]
+aletheia-koina = { path = "../../koina" }
 theatron-core = { path = "../core" }
 
 # Core TUI — ratatui 0.30 defaults to crossterm 0.29

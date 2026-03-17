@@ -4,6 +4,8 @@ use reqwest_eventsource::{Event as EsEvent, EventSource};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
+use aletheia_koina::http::CONTENT_TYPE_EVENT_STREAM;
+
 use crate::id::{NousId, SessionId, TurnId};
 
 use super::types::SseEvent;
@@ -35,7 +37,7 @@ impl SseConnection {
                 let mut backoff_secs: u64 = 1;
 
                 loop {
-                    let req = client.get(&url).header("Accept", "text/event-stream");
+                    let req = client.get(&url).header("Accept", CONTENT_TYPE_EVENT_STREAM);
                     let mut es = match EventSource::new(req) {
                         Ok(es) => es,
                         Err(e) => {

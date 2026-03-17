@@ -8,6 +8,8 @@ use anyhow::{Context, Result};
 use clap::Args;
 use serde::Deserialize;
 
+use aletheia_koina::http::{API_V1, BEARER_PREFIX};
+
 #[derive(Debug, Clone, Args)]
 pub struct SessionExportArgs {
     /// Session ID to export
@@ -73,7 +75,7 @@ pub async fn run(args: &SessionExportArgs) -> Result<()> {
 fn build_client(token: Option<&str>) -> Result<reqwest::Client> {
     let mut headers = reqwest::header::HeaderMap::new();
     if let Some(tok) = token {
-        let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {tok}"))
+        let value = reqwest::header::HeaderValue::from_str(&format!("{BEARER_PREFIX}{tok}"))
             .context("invalid token value")?;
         headers.insert(reqwest::header::AUTHORIZATION, value);
     }
@@ -88,7 +90,7 @@ async fn fetch_session(
     base_url: &str,
     session_id: &str,
 ) -> Result<SessionResponse> {
-    let url = format!("{base_url}/api/v1/sessions/{session_id}");
+    let url = format!("{base_url}{API_V1}/sessions/{session_id}");
     let resp = client.get(&url).send().await.map_err(|e| {
         if e.is_connect() {
             anyhow::anyhow!(
@@ -116,7 +118,7 @@ async fn fetch_history(
     base_url: &str,
     session_id: &str,
 ) -> Result<HistoryResponse> {
-    let url = format!("{base_url}/api/v1/sessions/{session_id}/history");
+    let url = format!("{base_url}{API_V1}/sessions/{session_id}/history");
     let resp = client
         .get(&url)
         .send()

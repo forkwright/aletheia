@@ -7,6 +7,8 @@ use secrecy::SecretString;
 use tokio::sync::Mutex;
 use tower::ServiceExt;
 
+use aletheia_koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
+
 use aletheia_hermeneus::provider::ProviderRegistry;
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_mneme::store::SessionStore;
@@ -141,7 +143,7 @@ pub(super) fn json_request(
     let builder = Request::builder()
         .method(method)
         .uri(uri)
-        .header("content-type", "application/json");
+        .header("content-type", CONTENT_TYPE_JSON);
 
     match body {
         Some(b) => builder
@@ -160,8 +162,8 @@ pub(super) fn authed_request(
     let builder = Request::builder()
         .method(method)
         .uri(uri)
-        .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {token}"));
+        .header("content-type", CONTENT_TYPE_JSON)
+        .header("authorization", format!("{BEARER_PREFIX}{token}"));
 
     match body {
         Some(b) => builder
@@ -174,7 +176,7 @@ pub(super) fn authed_request(
 pub(super) fn authed_get(uri: &str) -> Request<Body> {
     let token = default_token();
     Request::get(uri)
-        .header("authorization", format!("Bearer {token}"))
+        .header("authorization", format!("{BEARER_PREFIX}{token}"))
         .body(Body::empty())
         .unwrap()
 }
@@ -182,7 +184,7 @@ pub(super) fn authed_get(uri: &str) -> Request<Body> {
 pub(super) fn authed_delete(uri: &str) -> Request<Body> {
     let token = default_token();
     Request::delete(uri)
-        .header("authorization", format!("Bearer {token}"))
+        .header("authorization", format!("{BEARER_PREFIX}{token}"))
         .body(Body::empty())
         .unwrap()
 }

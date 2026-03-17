@@ -7,6 +7,8 @@ use snafu::ResultExt;
 use tracing::instrument;
 use uuid::Uuid;
 
+use aletheia_koina::http::CONTENT_TYPE_JSON;
+
 use super::envelope::SignalEnvelope;
 use super::error::{self, Result};
 
@@ -89,7 +91,7 @@ impl SignalClient {
         let response = self
             .client
             .post(&self.rpc_url)
-            .header("content-type", "application/json")
+            .header("content-type", CONTENT_TYPE_JSON)
             .body(body)
             .send()
             .await
@@ -190,7 +192,7 @@ impl SignalClient {
         let response = self
             .client
             .post(&self.rpc_url)
-            .header("content-type", "application/json")
+            .header("content-type", CONTENT_TYPE_JSON)
             .timeout(RECEIVE_TIMEOUT)
             .body(body)
             .send()
