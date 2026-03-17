@@ -38,7 +38,6 @@ jobs:
                 'Consider splitting into smaller PRs for easier review. Not a blocker, just a signal.',
               ].join('\n');
 
-              // Check if we already commented
               const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

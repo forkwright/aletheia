@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- Rust full suite (all features, all targets) ---
   rust-full:
     runs-on: ubuntu-latest
     steps:
