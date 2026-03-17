@@ -11,6 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+aletheia-koina = { path = "../koina" }
 base64 = { workspace = true }
 figment = { workspace = true }
 rand = { workspace = true }

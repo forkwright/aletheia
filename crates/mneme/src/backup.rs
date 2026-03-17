@@ -2,9 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+use aletheia_koina::disk_space::DiskSpaceMonitor;
 use rusqlite::Connection;
 use snafu::ResultExt;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::error::{self, Result};
 
@@ -40,6 +41,7 @@ fn validate_backup_path(path: &Path) -> Result<()> {
 pub struct BackupManager<'a> {
     conn: &'a Connection,
     backup_dir: PathBuf,
+    disk_monitor: Option<DiskSpaceMonitor>,
 }
 
 /// Outcome of creating a backup.
@@ -74,10 +76,20 @@ impl<'a> BackupManager<'a> {
         Self {
             conn,
             backup_dir: backup_dir.into(),
+            disk_monitor: None,
         }
     }
 
+    /// Attach a disk space monitor. Backups are non-essential and will be
+    /// skipped when disk space reaches the critical threshold.
+    pub fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+        self.disk_monitor = Some(monitor);
+    }
+
     /// Create a `SQLite` backup using `VACUUM INTO`.
+    ///
+    /// Backups are non-essential writes. When disk space is critical, this
+    /// method returns `Ok(None)` instead of writing.
     ///
     /// # SQL injection defense
     ///
@@ -89,7 +101,15 @@ impl<'a> BackupManager<'a> {
     /// sequences. Any future changes to path construction MUST go through
     /// `validate_backup_path` (a private helper in this module).
     #[instrument(skip(self))]
-    pub fn create_backup(&self) -> Result<BackupResult> {
+    pub fn create_backup(&self) -> Result<Option<BackupResult>> {
+        if let Some(ref monitor) = self.disk_monitor
+            && !monitor.allow_non_essential_write()
+        {
+            let mb = monitor.status().available_bytes() / (1024 * 1024);
+            warn!(available_mb = mb, "skipping backup: disk space critical");
+            return Ok(None);
+        }
+
         std::fs::create_dir_all(&self.backup_dir).context(error::IoSnafu {
             path: self.backup_dir.clone(),
         })?;
@@ -125,17 +145,31 @@ impl<'a> BackupManager<'a> {
             "backup created"
         );
 
-        Ok(BackupResult {
+        Ok(Some(BackupResult {
             path: backup_path,
             size_bytes: metadata.len(),
             sessions_count,
             messages_count,
-        })
+        }))
     }
 
     /// Export all sessions as individual JSON files.
+    ///
+    /// Exports are non-essential writes. When disk space is critical, this
+    /// method returns `Ok(None)` instead of writing.
     #[instrument(skip(self))]
-    pub fn export_sessions_json(&self, output_dir: &Path) -> Result<ExportResult> {
+    pub fn export_sessions_json(&self, output_dir: &Path) -> Result<Option<ExportResult>> {
+        if let Some(ref monitor) = self.disk_monitor
+            && !monitor.allow_non_essential_write()
+        {
+            let mb = monitor.status().available_bytes() / (1024 * 1024);
+            warn!(
+                available_mb = mb,
+                "skipping JSON export: disk space critical"
+            );
+            return Ok(None);
+        }
+
         std::fs::create_dir_all(output_dir).context(error::IoSnafu {
             path: output_dir.to_path_buf(),
         })?;
@@ -162,11 +196,11 @@ impl<'a> BackupManager<'a> {
         let count = u32::try_from(session_ids.len()).unwrap_or(u32::MAX);
         info!(sessions = count, dir = %output_dir.display(), "JSON export complete");
 
-        Ok(ExportResult {
+        Ok(Some(ExportResult {
             output_dir: output_dir.to_path_buf(),
             sessions_exported: count,
             files_written,
-        })
+        }))
     }
 
     /// List available backup files.

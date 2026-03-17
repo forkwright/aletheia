@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use aletheia_koina::disk_space::DiskSpaceMonitor;
 use snafu::ResultExt;
 
 use crate::error;
@@ -56,21 +57,45 @@ pub struct RotationReport {
 /// Rotates old trace files to an archive directory with optional gzip compression.
 pub struct TraceRotator {
     config: TraceRotationConfig,
+    disk_monitor: Option<DiskSpaceMonitor>,
 }
 
 impl TraceRotator {
     /// Create a rotator with the given configuration.
     pub fn new(config: TraceRotationConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            disk_monitor: None,
+        }
+    }
+
+    /// Attach a disk space monitor. Rotation (a non-essential write) is
+    /// skipped when disk space reaches the critical threshold.
+    pub fn set_disk_monitor(&mut self, monitor: DiskSpaceMonitor) {
+        self.disk_monitor = Some(monitor);
     }
 
     /// Run trace rotation. Moves old files to archive, compresses if configured,
     /// prunes archives exceeding the limit.
+    ///
+    /// Trace rotation is a non-essential write. When disk space is critical,
+    /// rotation is skipped entirely (returns an empty report).
     #[expect(
         clippy::expect_used,
         reason = "file_name() is None only for paths ending in '..', which trace files never are"
     )]
     pub fn rotate(&self) -> error::Result<RotationReport> {
+        if let Some(ref monitor) = self.disk_monitor
+            && !monitor.allow_non_essential_write()
+        {
+            let mb = monitor.status().available_bytes() / (1024 * 1024);
+            tracing::warn!(
+                available_mb = mb,
+                "skipping trace rotation: disk space critical"
+            );
+            return Ok(RotationReport::default());
+        }
+
         if !self.config.trace_dir.exists() {
             return Ok(RotationReport::default());
         }
