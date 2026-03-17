@@ -7,12 +7,6 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 /// No I/O happens here: only data describing what happened.
 #[non_exhaustive]
 #[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "variant fields carry event data that update handlers read via destructuring; \
-              the compiler sees struct-style variant fields as unread when match arms \
-              use wildcard or abbreviated patterns"
-)]
 pub enum Msg {
     CharInput(char),
     Backspace,
@@ -325,16 +319,8 @@ pub enum OverlayKind {
     Help,
     AgentPicker,
     SessionPicker,
-    #[expect(
-        dead_code,
-        reason = "matched in update/overlay.rs; no keybinding constructor yet"
-    )]
     SessionPickerAll,
     SystemStatus,
-    #[expect(
-        dead_code,
-        reason = "matched in update/overlay.rs; no keybinding constructor yet"
-    )]
     Settings,
 }
 
@@ -361,10 +347,6 @@ impl ErrorToast {
 
 #[non_exhaustive]
 #[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "auth flow variants constructed by SSE event handler"
-)]
 pub enum AuthOutcome {
     Success { token: SecretString },
     NoAuthRequired,
