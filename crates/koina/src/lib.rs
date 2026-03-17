@@ -12,6 +12,8 @@ pub mod disk_space;
 pub mod error;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
+/// Declarative macros for reducing boilerplate ([`newtype_id!`]).
+pub mod macros;
 /// Sensitive value redaction for safe log output (API keys, tokens, passwords).
 pub mod redact;
 /// Tracing layer that redacts sensitive field values before output.

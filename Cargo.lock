@@ -272,7 +272,6 @@ dependencies = [
  "smallvec",
  "snafu",
  "static_assertions",
- "strsim",
  "tempfile",
  "tokenizers",
  "tokio",
@@ -6239,6 +6238,7 @@ dependencies = [
 name = "theatron-tui"
 version = "0.12.0"
 dependencies = [
+ "aletheia-koina",
  "arboard",
  "base64 0.22.1",
  "clap",
