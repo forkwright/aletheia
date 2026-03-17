@@ -261,6 +261,10 @@ impl<'s, S: Storage<'s>> Db<S> {
     /// Create a new database object with the given storage.
     /// You must call [`initialize`](Self::initialize) immediately after creation.
     /// Due to lifetime restrictions we are not able to call that for you automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the storage backend fails during initial setup.
     pub fn new(storage: S) -> Result<Self> {
         let ret = Self {
             db: storage,
@@ -459,7 +463,11 @@ pub struct Poison(pub(crate) Arc<AtomicBool>);
 pub(crate) struct ProcessKilled;
 
 impl Poison {
-    /// Will return `Err` if user has initiated termination.
+    /// Check whether the query has been cancelled.
+    ///
+    /// # Errors
+    ///
+    /// Returns a query-killed error if the user initiated termination.
     #[inline(always)]
     pub fn check(&self) -> Result<()> {
         if self.0.load(Ordering::Relaxed) {

@@ -12,7 +12,13 @@ pub struct ValidationError {
     pub location: snafu::Location,
 }
 
-/// Validate a config section update. Returns errors for invalid values.
+/// Validate a config section update.
+///
+/// # Errors
+///
+/// Returns [`ValidationError`] if any field value is out of range, empty when
+/// required, or the section name is unrecognized. The error contains all
+/// collected validation messages.
 pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationError> {
     let mut errors = Vec::new();
 
