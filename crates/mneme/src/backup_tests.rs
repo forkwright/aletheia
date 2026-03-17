@@ -24,7 +24,8 @@ fn json_export_produces_valid_files() {
 
     let result = manager
         .export_sessions_json(&export_dir)
-        .expect("export sessions as JSON");
+        .expect("export sessions as JSON")
+        .expect("export should not be skipped without disk monitor");
     assert_eq!(result.sessions_exported, 1);
     assert_eq!(result.files_written, 1);
 
@@ -60,7 +61,10 @@ fn backup_creates_valid_sqlite_database() {
 
     let backup_dir = dir.path().join("backups");
     let manager = BackupManager::new(&conn, &backup_dir);
-    let result = manager.create_backup().expect("create backup");
+    let result = manager
+        .create_backup()
+        .expect("create backup")
+        .expect("backup should not be skipped without disk monitor");
 
     assert!(result.path.exists());
     assert!(result.size_bytes > 0);
@@ -204,7 +208,10 @@ fn restore_backup_preserves_data() {
 
     let backup_dir = dir.path().join("backups");
     let manager = BackupManager::new(&conn, &backup_dir);
-    let result = manager.create_backup().expect("create backup");
+    let result = manager
+        .create_backup()
+        .expect("create backup")
+        .expect("backup should not be skipped without disk monitor");
 
     let backup_conn = Connection::open(&result.path).expect("open backup SQLite database");
     let session_count: u32 = backup_conn
@@ -421,7 +428,8 @@ fn json_export_is_valid_json() {
     let manager = BackupManager::new(store.conn(), dir.path().join("backups"));
     let result = manager
         .export_sessions_json(&export_dir)
-        .expect("export sessions as JSON");
+        .expect("export sessions as JSON")
+        .expect("export should not be skipped without disk monitor");
 
     assert_eq!(result.sessions_exported, 1);
     assert_eq!(result.files_written, 1);
@@ -458,7 +466,8 @@ fn backup_empty_store() {
     let manager = BackupManager::new(&conn, &backup_dir);
     let result = manager
         .create_backup()
-        .expect("create backup of empty store");
+        .expect("create backup of empty store")
+        .expect("backup should not be skipped without disk monitor");
 
     assert!(result.path.exists());
     assert!(result.size_bytes > 0);
@@ -559,7 +568,8 @@ fn export_sessions_json_empty_store() {
 
     let result = manager
         .export_sessions_json(&export_dir)
-        .expect("export empty store as JSON");
+        .expect("export empty store as JSON")
+        .expect("export should not be skipped without disk monitor");
     assert_eq!(result.sessions_exported, 0);
     assert_eq!(result.files_written, 0);
     assert!(

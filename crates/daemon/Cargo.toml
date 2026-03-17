@@ -11,6 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+aletheia-koina = { path = "../koina" }
 # Required by the `cron` crate API for schedule parsing
 chrono = { workspace = true }
 cron = { workspace = true }

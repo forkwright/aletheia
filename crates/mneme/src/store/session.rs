@@ -54,6 +54,7 @@ impl SessionStore {
         parent_session_id: Option<&str>,
         model: Option<&str>,
     ) -> Result<Session> {
+        self.check_disk("create_session");
         let session_type = SessionType::from_key(session_key);
 
         self.conn

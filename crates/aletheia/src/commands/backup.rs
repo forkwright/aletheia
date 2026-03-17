@@ -117,25 +117,30 @@ pub fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
 
     if export_json {
         let export_dir = oikos.archive().join("sessions");
-        let result = manager
+        match manager
             .export_sessions_json(&export_dir)
-            .context("failed to export sessions")?;
-        println!(
-            "Exported {} session(s) to {}",
-            result.sessions_exported,
-            result.output_dir.display()
-        );
+            .context("failed to export sessions")?
+        {
+            Some(result) => println!(
+                "Exported {} session(s) to {}",
+                result.sessions_exported,
+                result.output_dir.display()
+            ),
+            None => println!("Export skipped: disk space critical."),
+        }
         return Ok(());
     }
 
-    let result = manager.create_backup().context("failed to create backup")?;
-    println!(
-        "Backup created: {} ({} bytes, {} sessions, {} messages)",
-        result.path.display(),
-        result.size_bytes,
-        result.sessions_count,
-        result.messages_count,
-    );
+    match manager.create_backup().context("failed to create backup")? {
+        Some(result) => println!(
+            "Backup created: {} ({} bytes, {} sessions, {} messages)",
+            result.path.display(),
+            result.size_bytes,
+            result.sessions_count,
+            result.messages_count,
+        ),
+        None => println!("Backup skipped: disk space critical."),
+    }
 
     Ok(())
 }

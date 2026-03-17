@@ -6,6 +6,8 @@
 
 /// Credential provider trait for dynamic API key resolution.
 pub mod credential;
+/// Disk space monitoring: threshold checks, cached monitor, write guards.
+pub mod disk_space;
 /// Error types shared across all Aletheia crates (file I/O, JSON, identifiers).
 pub mod error;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
