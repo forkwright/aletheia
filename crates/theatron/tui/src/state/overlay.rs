@@ -15,7 +15,7 @@ pub enum Overlay {
     Settings(SettingsOverlay),
     ToolApproval(ToolApprovalOverlay),
     PlanApproval(PlanApprovalOverlay),
-    #[allow(
+    #[expect(
         dead_code,
         reason = "overlay set by action dispatcher; lint fires in lib but not test target"
     )]
