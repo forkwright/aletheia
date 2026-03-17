@@ -157,7 +157,6 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
                                         .created_at
                                         .map(|t| sanitize_for_display(&t).into_owned()),
                                     model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
-                                    is_streaming: false,
                                     tool_calls: Vec::new(),
                                 })
                             })

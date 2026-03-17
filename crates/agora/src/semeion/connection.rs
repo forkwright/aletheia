@@ -18,7 +18,10 @@ pub enum ConnectionState {
 /// Outbound message queued during disconnection.
 pub(crate) struct BufferedMessage {
     pub params: client::SendParams,
-    #[expect(dead_code, reason = "useful for future metrics/age-based eviction")]
+    #[expect(
+        dead_code,
+        reason = "captured at enqueue time for age-based eviction and metrics"
+    )]
     pub enqueued_at: Instant,
 }
 

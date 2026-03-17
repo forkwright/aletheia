@@ -423,18 +423,6 @@ pub fn truncate_context_summary(summary: &str) -> String {
     }
 }
 
-/// Datalog DDL for the `tool_observations` relation.
-#[expect(dead_code, reason = "DDL string for tool observation table setup")]
-pub(crate) const TOOL_OBSERVATIONS_DDL: &str = r":create tool_observations {
-    id: String =>
-    tool_name: String,
-    parameters: String,
-    outcome: String,
-    context_summary: String,
-    nous_id: String,
-    observed_at: String
-}";
-
 /// Aggregate raw observations into behavioral patterns.
 ///
 /// Groups by (`tool_name`, `context_category`), computes success rates, and

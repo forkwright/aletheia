@@ -87,8 +87,7 @@ pub fn compute_volatility(total_facts: u32, superseded_facts: u32, avg_chain_len
     if total_facts == 0 {
         return 0.0;
     }
-    #[expect(clippy::cast_lossless, reason = "u32 to f64 is always lossless")]
-    let ratio = superseded_facts as f64 / total_facts as f64;
+    let ratio = f64::from(superseded_facts) / f64::from(total_facts);
     let chain_factor = 1.0 + 0.1 * avg_chain_length;
     (ratio * chain_factor).clamp(0.0, 1.0)
 }

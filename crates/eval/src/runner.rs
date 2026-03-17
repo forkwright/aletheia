@@ -193,49 +193,6 @@ impl ScenarioRunner {
 mod tests {
     use super::*;
 
-    #[expect(dead_code, reason = "used in RunReport assertion test")]
-    struct PassScenario;
-    impl Scenario for PassScenario {
-        fn meta(&self) -> crate::scenario::ScenarioMeta {
-            crate::scenario::ScenarioMeta {
-                id: "test-pass",
-                description: "always passes",
-                category: "test",
-                requires_auth: false,
-                requires_nous: false,
-                expected_contains: None,
-                expected_pattern: None,
-            }
-        }
-        fn run<'a>(&'a self, _client: &'a EvalClient) -> crate::scenario::ScenarioFuture<'a> {
-            Box::pin(async move { Ok(()) })
-        }
-    }
-
-    #[expect(dead_code, reason = "used in RunReport assertion test")]
-    struct FailScenario;
-    impl Scenario for FailScenario {
-        fn meta(&self) -> crate::scenario::ScenarioMeta {
-            crate::scenario::ScenarioMeta {
-                id: "test-fail",
-                description: "always fails",
-                category: "test",
-                requires_auth: false,
-                requires_nous: false,
-                expected_contains: None,
-                expected_pattern: None,
-            }
-        }
-        fn run<'a>(&'a self, _client: &'a EvalClient) -> crate::scenario::ScenarioFuture<'a> {
-            Box::pin(async move {
-                crate::error::AssertionSnafu {
-                    message: "intentional failure",
-                }
-                .fail()
-            })
-        }
-    }
-
     #[test]
     fn run_report_counts() {
         let report = RunReport {

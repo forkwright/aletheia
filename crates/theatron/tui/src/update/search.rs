@@ -114,7 +114,6 @@ pub(crate) async fn handle_select(app: &mut App) {
                         text_lower,
                         timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
                         model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
-                        is_streaming: false,
                         tool_calls: Vec::new(),
                     })
                 })

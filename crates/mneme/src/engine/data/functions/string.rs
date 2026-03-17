@@ -223,13 +223,12 @@ pub(crate) fn op_encode_base64(args: &[DataValue]) -> Result<DataValue> {
     }
 }
 
-#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_decode_base64(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         DataValue::Str(s) => {
-            let b = STANDARD.decode(s).map_err(|_| {
+            let b = STANDARD.decode(s).map_err(|e| {
                 EncodingFailedSnafu {
-                    message: "Data is not properly encoded",
+                    message: format!("Data is not properly encoded: {e}"),
                 }
                 .build()
             })?;

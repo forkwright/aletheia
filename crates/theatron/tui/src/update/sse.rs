@@ -442,7 +442,6 @@ mod tests {
             text_lower: "hello".to_string(),
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         });
 
@@ -475,7 +474,6 @@ mod tests {
             text_lower: "hello".to_string(),
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         });
 
@@ -503,7 +501,6 @@ mod tests {
             text_lower: "hello".to_string(),
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         });
 

@@ -192,7 +192,6 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
             text_lower,
             timestamp: None,
             model: Some(sanitize_for_display(&outcome.model).into_owned()),
-            is_streaming: false,
             tool_calls,
         });
         app.viewport.render.virtual_scroll.push_item(h);

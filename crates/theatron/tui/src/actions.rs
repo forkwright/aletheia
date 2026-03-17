@@ -44,7 +44,6 @@ impl App {
             text_lower,
             timestamp: None,
             model: None,
-            is_streaming: false,
             tool_calls: Vec::new(),
         };
         let width = self

@@ -107,8 +107,6 @@ pub struct CrossNousReply {
 pub struct CrossNousEnvelope {
     /// The cross-nous message.
     pub message: CrossNousMessage,
-    #[expect(dead_code, reason = "reserved for future direct-reply integration")]
-    pub(crate) reply_tx: Option<oneshot::Sender<CrossNousReply>>,
 }
 
 /// Tracks in-flight ask edges for cycle detection.
@@ -267,10 +265,7 @@ impl CrossNousRouter {
         };
         drop(routes);
 
-        let envelope = CrossNousEnvelope {
-            message,
-            reply_tx: None,
-        };
+        let envelope = CrossNousEnvelope { message };
 
         match sender.send(envelope).await {
             Ok(()) => {
@@ -361,7 +356,6 @@ impl CrossNousRouter {
 
         let envelope = CrossNousEnvelope {
             message: message.clone(),
-            reply_tx: None,
         };
 
         if sender.send(envelope).await.is_err() {
@@ -962,7 +956,10 @@ mod tests {
 
         let err = router.ask(msg).await.unwrap_err();
         let err_msg = err.to_string();
-        assert!(err_msg.contains("timed out"), "expected timeout, got: {err_msg}");
+        assert!(
+            err_msg.contains("timed out"),
+            "expected timeout, got: {err_msg}"
+        );
 
         // Graph must be clean after timeout.
         assert_eq!(router_check.ask_graph.read().await.edge_count(), 0);

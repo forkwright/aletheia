@@ -303,7 +303,10 @@ pub trait HasId {
 
 /// Trait for types that have a mutable RRF score.
 pub trait HasRrfScore {
-    #[expect(dead_code, reason = "trait getter not yet called by merge logic")]
+    #[expect(
+        dead_code,
+        reason = "trait API completeness; only set_rrf_score used by merge"
+    )]
     fn rrf_score(&self) -> f64;
     fn set_rrf_score(&mut self, score: f64);
 }

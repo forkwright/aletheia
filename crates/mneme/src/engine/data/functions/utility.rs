@@ -276,7 +276,6 @@ pub(crate) fn op_to_unity(args: &[DataValue]) -> Result<DataValue> {
     }))
 }
 
-#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(n) => match n.get_int() {
@@ -291,7 +290,12 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
         DataValue::Str(t) => {
             let s = t as &str;
             i64::from_str(s)
-                .map_err(|_| ParseFailedSnafu { target: "int" }.build())?
+                .map_err(|e| {
+                    ParseFailedSnafu {
+                        target: format!("int: {e}"),
+                    }
+                    .build()
+                })?
                 .into()
         }
         DataValue::Validity(vld) => DataValue::Num(Num::Int(vld.timestamp.0.0)),
@@ -305,7 +309,6 @@ pub(crate) fn op_to_int(args: &[DataValue]) -> Result<DataValue> {
     })
 }
 
-#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
     Ok(match arg(args, 0)? {
         DataValue::Num(n) => n.get_float().into(),
@@ -318,7 +321,12 @@ pub(crate) fn op_to_float(args: &[DataValue]) -> Result<DataValue> {
             "INF" => f64::INFINITY.into(),
             "NEG_INF" => f64::NEG_INFINITY.into(),
             s => f64::from_str(s)
-                .map_err(|_| ParseFailedSnafu { target: "float" }.build())?
+                .map_err(|e| {
+                    ParseFailedSnafu {
+                        target: format!("float: {e}"),
+                    }
+                    .build()
+                })?
                 .into(),
         },
         v => {
@@ -335,13 +343,16 @@ pub(crate) fn op_to_string(args: &[DataValue]) -> Result<DataValue> {
     Ok(DataValue::Str(val2str(arg(args, 0)?).into()))
 }
 
-#[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_to_uuid(args: &[DataValue]) -> Result<DataValue> {
     match arg(args, 0)? {
         d @ DataValue::Uuid(_u) => Ok(d.clone()),
         DataValue::Str(s) => {
-            let id = uuid::Uuid::try_parse(s)
-                .map_err(|_| ParseFailedSnafu { target: "UUID" }.build())?;
+            let id = uuid::Uuid::try_parse(s).map_err(|e| {
+                ParseFailedSnafu {
+                    target: format!("UUID: {e}"),
+                }
+                .build()
+            })?;
             Ok(DataValue::uuid(id))
         }
         _ => TypeMismatchSnafu {

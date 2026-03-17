@@ -26,11 +26,11 @@ struct RpcRequest<'a> {
 
 #[derive(Debug, Deserialize)]
 struct RpcResponse {
-    #[expect(dead_code, reason = "present in wire format, validated implicitly")]
+    #[expect(dead_code, reason = "deserialized from JSON-RPC wire format")]
     jsonrpc: String,
     result: Option<serde_json::Value>,
     error: Option<RpcError>,
-    #[expect(dead_code, reason = "present in wire format, used for correlation")]
+    #[expect(dead_code, reason = "deserialized from JSON-RPC wire format")]
     id: Option<serde_json::Value>,
 }
 

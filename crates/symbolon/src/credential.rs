@@ -138,7 +138,10 @@ impl CredentialFile {
     /// Whether the token needs refresh (expired or within threshold).
     #[must_use]
     #[expect(clippy::cast_possible_wrap, reason = "threshold constant fits in i64")]
-    #[expect(dead_code, reason = "credential internal; no caller yet")]
+    #[expect(
+        dead_code,
+        reason = "refresh logic inlined in refresh_loop; kept as public API"
+    )]
     pub(crate) fn needs_refresh(&self) -> bool {
         match self.seconds_remaining() {
             Some(remaining) => remaining < REFRESH_THRESHOLD_SECS as i64,
@@ -335,13 +338,6 @@ impl FileCredentialProvider {
             path,
             cached: RwLock::new(None),
         }
-    }
-
-    /// The credential file path.
-    #[must_use]
-    #[expect(dead_code, reason = "credential internal; no caller yet")]
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
     }
 
     fn current_mtime(&self) -> Option<SystemTime> {

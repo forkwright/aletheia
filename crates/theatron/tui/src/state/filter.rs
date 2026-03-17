@@ -5,7 +5,10 @@
 pub enum FilterScope {
     #[default]
     Chat,
-    #[expect(dead_code, reason = "planned for sidebar filtering")]
+    #[expect(
+        dead_code,
+        reason = "variant required for #[non_exhaustive] completeness; sidebar filtering"
+    )]
     Agents,
 }
 

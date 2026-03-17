@@ -51,7 +51,10 @@ pub struct EditState {
 pub enum SaveStatus {
     Idle,
     Saving,
-    #[expect(dead_code, reason = "set after successful config save")]
+    #[expect(
+        dead_code,
+        reason = "matched in view/settings.rs; no constructor path yet"
+    )]
     Success,
     Error(String),
 }
