@@ -15,6 +15,7 @@ pub struct Message {
 }
 
 /// Message role.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -45,6 +46,7 @@ impl std::fmt::Display for Role {
 }
 
 /// Message content: either plain text or structured blocks.
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Content {

@@ -39,6 +39,7 @@ impl RetryState {
 }
 
 /// Sections that can appear in a distillation summary.
+#[non_exhaustive]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub enum DistillSection {
     /// One-sentence overview of the conversation topic.

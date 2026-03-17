@@ -113,9 +113,9 @@ pub fn load_history(
         }
 
         let role = match msg.role {
-            Role::User | Role::ToolResult => "user",
             Role::Assistant => "assistant",
-            Role::System => unreachable!(),
+            Role::System => continue,
+            _ => "user",
         };
 
         collected.push(PipelineMessage {

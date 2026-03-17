@@ -49,6 +49,7 @@ pub struct ContextEntry {
 }
 
 /// Bootstrap priority levels matching `SectionPriority` in nous.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Priority {

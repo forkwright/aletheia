@@ -6,6 +6,7 @@ use snafu::ensure;
 use crate::error::{self, Result};
 
 /// Project lifecycle states.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProjectState {
     /// Project has been created but work has not started.
@@ -33,6 +34,7 @@ pub enum ProjectState {
 }
 
 /// Valid transitions between project states.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Transition {
     /// Move from Created to Questioning.

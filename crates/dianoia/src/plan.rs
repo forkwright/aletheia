@@ -33,6 +33,7 @@ pub struct Plan {
 }
 
 /// Plan lifecycle states.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlanState {
     /// Plan has not been evaluated for readiness yet.

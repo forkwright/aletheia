@@ -53,6 +53,7 @@ impl Drop for RunningQueryCleanup {
 }
 
 /// Whether a script is mutable or immutable.
+#[non_exhaustive]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ScriptMutability {
     /// The script is mutable.
@@ -247,6 +248,7 @@ pub(crate) const OK_STR: &str = "OK";
 pub type Payload = (String, BTreeMap<String, DataValue>);
 
 /// Commands to be sent to a multi-transaction
+#[non_exhaustive]
 #[derive(Eq, PartialEq, Debug)]
 pub enum TransactionPayload {
     /// Commit the current transaction

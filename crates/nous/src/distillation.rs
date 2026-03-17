@@ -265,8 +265,8 @@ pub fn convert_to_hermeneus_messages(
         .map(|msg| {
             let role = match msg.role {
                 MnemeRole::System => HermeneusRole::System,
-                MnemeRole::User | MnemeRole::ToolResult => HermeneusRole::User,
                 MnemeRole::Assistant => HermeneusRole::Assistant,
+                _ => HermeneusRole::User,
             };
             HermeneusMessage {
                 role,

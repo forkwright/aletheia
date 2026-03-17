@@ -9,6 +9,7 @@ use tracing::{error, info, warn};
 use crate::error::{self, Result};
 
 /// Database operating mode.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreMode {
     /// Normal read-write operation.
