@@ -9,7 +9,6 @@
 //!   mirror edges internally: supply edges in ONE direction to avoid duplicates.
 //! - Algorithms that do not mirror (DegreeCentrality, BFS, DFS) expect explicit
 //!   bidirectional edges if undirected semantics are needed.
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 
 #[cfg(test)]
 mod graph_algo_tests {
@@ -34,18 +33,24 @@ start[] <- [[0]]
 :order to
 "#,
             )
-            .unwrap()
+            .expect("Dijkstra query should execute successfully")
             .rows;
 
         assert!(!res.is_empty(), "Dijkstra must return results");
-        let row = res.iter().find(|r| r[1] == DataValue::from(4i64)).unwrap();
-        let cost = row[2].get_float().unwrap();
+        let row = res
+            .iter()
+            .find(|r| r[1] == DataValue::from(4i64))
+            .expect("row for destination node 4 should exist");
+        let cost = row[2].get_float().expect("cost field should be a float");
         assert!(
             (cost - 5.0).abs() < 1e-9,
             "Dijkstra 0→4 cost = 5.0, got {cost}"
         );
         assert_eq!(
-            row[3].get_slice().unwrap().len(),
+            row[3]
+                .get_slice()
+                .expect("path field should be a slice")
+                .len(),
             5,
             "path 0→1→2→3→4 has 5 nodes"
         );
@@ -65,7 +70,7 @@ end[]   <- [[2]]
 ?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
 "#,
             )
-            .unwrap()
+            .expect("Dijkstra disconnected query should execute successfully")
             .rows;
 
         // Node 2 is unreachable; Dijkstra emits no row for it.
@@ -91,11 +96,15 @@ end[]   <- [[0]]
 ?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[], end[])
 "#,
             )
-            .unwrap()
+            .expect("Dijkstra self-loop query should execute successfully")
             .rows;
 
-        assert_eq!(res.len(), 1);
-        let cost = res[0][2].get_float().unwrap();
+        assert_eq!(
+            res.len(),
+            1,
+            "self-loop query should return exactly one row"
+        );
+        let cost = res[0][2].get_float().expect("cost field should be a float");
         assert!(
             cost.abs() < 1e-9,
             "Cost from node to itself = 0, got {cost}"
@@ -114,7 +123,7 @@ start[] <- [[0], [2]]
 ?[from, to, cost, path] <~ ShortestPathDijkstra(edges[], start[])
 "#,
             )
-            .unwrap()
+            .expect("Dijkstra multi-start query should execute successfully")
             .rows;
 
         assert!(
@@ -140,16 +149,22 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
 :order node
 "#,
             )
-            .unwrap()
+            .expect("BetweennessCentrality query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 5, "5 nodes → 5 betweenness rows");
-        let bc_0 = res.iter().find(|r| r[0] == DataValue::from(0i64)).unwrap()[1]
+        let bc_0 = res
+            .iter()
+            .find(|r| r[0] == DataValue::from(0i64))
+            .expect("row for node 0 should exist")[1]
             .get_float()
-            .unwrap();
-        let bc_2 = res.iter().find(|r| r[0] == DataValue::from(2i64)).unwrap()[1]
+            .expect("betweenness score for node 0 should be a float");
+        let bc_2 = res
+            .iter()
+            .find(|r| r[0] == DataValue::from(2i64))
+            .expect("row for node 2 should exist")[1]
             .get_float()
-            .unwrap();
+            .expect("betweenness score for node 2 should be a float");
         assert!(
             bc_2 >= bc_0,
             "Node 2 (transit hub) BC >= node 0 BC; bc_2={bc_2}, bc_0={bc_0}"
@@ -168,10 +183,13 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 1.0], [0, 3, 1.0], [0, 4, 1.0]]
 :order -bc
 "#,
             )
-            .unwrap()
+            .expect("BetweennessCentrality star query should execute successfully")
             .rows;
 
-        assert!(!res.is_empty());
+        assert!(
+            !res.is_empty(),
+            "BetweennessCentrality should return results for star graph"
+        );
         assert_eq!(
             res[0][0],
             DataValue::from(0i64),
@@ -190,7 +208,7 @@ edges[src, dst, cost] <- [[0, 1, 1.0]]
 ?[node, bc] <~ BetweennessCentrality(edges[])
 "#,
             )
-            .unwrap()
+            .expect("BetweennessCentrality single-edge query should execute successfully")
             .rows;
 
         assert_eq!(
@@ -200,7 +218,11 @@ edges[src, dst, cost] <- [[0, 1, 1.0]]
         );
         for row in &res {
             assert!(
-                (row[1].get_float().unwrap()).abs() < 1e-9,
+                (row[1]
+                    .get_float()
+                    .expect("betweenness score should be a float"))
+                .abs()
+                    < 1e-9,
                 "No intermediate nodes ⇒ zero betweenness"
             );
         }
@@ -223,12 +245,14 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [0, 2, 4.0], [1, 2, 1.0],
 :order node
 "#,
             )
-            .unwrap()
+            .expect("ClosenessCentrality query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 5, "5 nodes → 5 closeness rows");
         for row in &res {
-            let cc = row[1].get_float().unwrap();
+            let cc = row[1]
+                .get_float()
+                .expect("closeness score should be a float");
             assert!(cc >= 0.0, "Closeness must be non-negative, got {cc}");
         }
     }
@@ -244,12 +268,18 @@ edges[src, dst, cost] <- [[0, 1, 1.0]]
 ?[node, cc] <~ ClosenessCentrality(edges[])
 "#,
             )
-            .unwrap()
+            .expect("ClosenessCentrality single-edge query should execute successfully")
             .rows;
 
-        assert_eq!(res.len(), 2);
+        assert_eq!(res.len(), 2, "single edge should produce 2 closeness rows");
         for row in &res {
-            assert!(row[1].get_float().unwrap() >= 0.0);
+            assert!(
+                row[1]
+                    .get_float()
+                    .expect("closeness score should be a float")
+                    >= 0.0,
+                "closeness score should be non-negative"
+            );
         }
     }
 
@@ -272,13 +302,22 @@ goal[] <- [[4]]
 ?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
 "#,
             )
-            .unwrap()
+            .expect("A* query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 1, "One start-goal pair → one result");
-        let cost = res[0][2].get_float().unwrap();
+        let cost = res[0][2]
+            .get_float()
+            .expect("A* cost field should be a float");
         assert!((cost - 5.0).abs() < 1e-9, "A* 0→4 cost = 5.0, got {cost}");
-        assert_eq!(res[0][3].get_slice().unwrap().len(), 5, "path has 5 nodes");
+        assert_eq!(
+            res[0][3]
+                .get_slice()
+                .expect("A* path field should be a slice")
+                .len(),
+            5,
+            "path has 5 nodes"
+        );
     }
 
     /// A* with no path between start and goal returns infinity.
@@ -295,11 +334,17 @@ goal[] <- [[2]]
 ?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
 "#,
             )
-            .unwrap()
+            .expect("A* no-path query should execute successfully")
             .rows;
 
-        assert_eq!(res.len(), 1);
-        let cost = res[0][2].get_float().unwrap();
+        assert_eq!(
+            res.len(),
+            1,
+            "A* should return one row even when no path exists"
+        );
+        let cost = res[0][2]
+            .get_float()
+            .expect("A* cost field should be a float");
         assert!(cost.is_infinite(), "No path ⇒ cost = infinity, got {cost}");
     }
 
@@ -317,12 +362,27 @@ goal[] <- [[1]]
 ?[from, to, cost, path] <~ ShortestPathAStar(edges[], nodes[n], start[], goal[], heuristic: 0)
 "#,
             )
-            .unwrap()
+            .expect("A* direct-edge query should execute successfully")
             .rows;
 
-        assert_eq!(res.len(), 1);
-        assert!((res[0][2].get_float().unwrap() - 3.5).abs() < 1e-9);
-        assert_eq!(res[0][3].get_slice().unwrap().len(), 2);
+        assert_eq!(res.len(), 1, "direct edge query should return one result");
+        assert!(
+            (res[0][2]
+                .get_float()
+                .expect("A* cost field should be a float")
+                - 3.5)
+                .abs()
+                < 1e-9,
+            "A* cost for direct edge should equal edge weight 3.5"
+        );
+        assert_eq!(
+            res[0][3]
+                .get_slice()
+                .expect("A* path field should be a slice")
+                .len(),
+            2,
+            "direct edge path should have 2 nodes"
+        );
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -342,13 +402,16 @@ start[] <- [[0]]
 ?[from, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 4, limit: 1)
 "#,
             )
-            .unwrap()
+            .expect("BFS query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 1, "BFS finds exactly one matching node");
         assert_eq!(res[0][1], DataValue::from(4i64), "BFS target is node 4");
         assert_eq!(
-            res[0][2].get_slice().unwrap().len(),
+            res[0][2]
+                .get_slice()
+                .expect("BFS path field should be a slice")
+                .len(),
             5,
             "path 0..4 has 5 nodes"
         );
@@ -367,7 +430,7 @@ start[] <- [[0]]
 ?[from, to, path] <~ BFS(edges[], nodes[n], start[], condition: n == 99, limit: 1)
 "#,
             )
-            .unwrap()
+            .expect("BFS no-match query should execute successfully")
             .rows;
 
         assert!(res.is_empty(), "Condition never true → no results");
@@ -390,12 +453,14 @@ start[] <- [[0]]
 ?[from, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 4, limit: 1)
 "#,
             )
-            .unwrap()
+            .expect("DFS query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 1, "DFS finds exactly one matching node");
         assert_eq!(res[0][1], DataValue::from(4i64), "DFS target is node 4");
-        let path = res[0][2].get_slice().unwrap();
+        let path = res[0][2]
+            .get_slice()
+            .expect("DFS path field should be a slice");
         assert_eq!(path[0], DataValue::from(0i64), "path starts at 0");
         assert_eq!(
             path[path.len() - 1],
@@ -417,7 +482,7 @@ start[] <- [[0]]
 ?[from, to, path] <~ DFS(edges[], nodes[n], start[], condition: n == 2, limit: 1)
 "#,
             )
-            .unwrap()
+            .expect("DFS unreachable-target query should execute successfully")
             .rows;
 
         assert!(res.is_empty(), "Node 2 is unreachable from 0");
@@ -443,12 +508,19 @@ edges[src, dst] <- [[0, 1], [1, 0],
 :order node
 "#,
             )
-            .unwrap()
+            .expect("DegreeCentrality query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 5, "5 distinct nodes");
-        let node2 = res.iter().find(|r| r[0] == DataValue::from(2i64)).unwrap();
-        assert_eq!(node2[1].get_int().unwrap(), 6, "Node 2 total degree = 6");
+        let node2 = res
+            .iter()
+            .find(|r| r[0] == DataValue::from(2i64))
+            .expect("row for node 2 should exist");
+        assert_eq!(
+            node2[1].get_int().expect("degree field should be an int"),
+            6,
+            "Node 2 total degree = 6"
+        );
     }
 
     /// Leaf node has in-degree = 1, out-degree = 0 when only receiving edges.
@@ -463,12 +535,27 @@ edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("DegreeCentrality star query should execute successfully")
             .rows;
 
-        let node0 = res.iter().find(|r| r[0] == DataValue::from(0i64)).unwrap();
-        assert_eq!(node0[2].get_int().unwrap(), 3, "Hub out-degree = 3");
-        assert_eq!(node0[3].get_int().unwrap(), 0, "Hub in-degree = 0");
+        let node0 = res
+            .iter()
+            .find(|r| r[0] == DataValue::from(0i64))
+            .expect("row for hub node 0 should exist");
+        assert_eq!(
+            node0[2]
+                .get_int()
+                .expect("out-degree field should be an int"),
+            3,
+            "Hub out-degree = 3"
+        );
+        assert_eq!(
+            node0[3]
+                .get_int()
+                .expect("in-degree field should be an int"),
+            0,
+            "Hub in-degree = 0"
+        );
     }
 
     /// Isolated node included via optional nodes[] relation has degree 0.
@@ -484,13 +571,34 @@ isolated[n]    <- [[5]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("DegreeCentrality isolated-node query should execute successfully")
             .rows;
 
-        let node5 = res.iter().find(|r| r[0] == DataValue::from(5i64)).unwrap();
-        assert_eq!(node5[1].get_int().unwrap(), 0);
-        assert_eq!(node5[2].get_int().unwrap(), 0);
-        assert_eq!(node5[3].get_int().unwrap(), 0);
+        let node5 = res
+            .iter()
+            .find(|r| r[0] == DataValue::from(5i64))
+            .expect("row for isolated node 5 should exist");
+        assert_eq!(
+            node5[1]
+                .get_int()
+                .expect("total degree field should be an int"),
+            0,
+            "isolated node total degree should be 0"
+        );
+        assert_eq!(
+            node5[2]
+                .get_int()
+                .expect("out-degree field should be an int"),
+            0,
+            "isolated node out-degree should be 0"
+        );
+        assert_eq!(
+            node5[3]
+                .get_int()
+                .expect("in-degree field should be an int"),
+            0,
+            "isolated node in-degree should be 0"
+        );
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -509,11 +617,14 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 5.0],
 ?[src, dst, cost] <~ MinimumSpanningForestKruskal(edges[])
 "#,
             )
-            .unwrap()
+            .expect("Kruskal MST query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 4, "MST of 5 nodes = 4 edges");
-        let total: f64 = res.iter().map(|r| r[2].get_float().unwrap()).sum();
+        let total: f64 = res
+            .iter()
+            .map(|r| r[2].get_float().expect("MST edge cost should be a float"))
+            .sum();
         assert!(
             (total - 7.0).abs() < 1e-9,
             "Kruskal MST total cost = 7.0, got {total}"
@@ -532,7 +643,7 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0],
 ?[src, dst, cost] <~ MinimumSpanningForestKruskal(edges[])
 "#,
             )
-            .unwrap()
+            .expect("Kruskal spanning forest query should execute successfully")
             .rows;
 
         // 5 nodes in 2 components → forest has 3 edges (2 from comp 1, 1 from comp 2).
@@ -550,11 +661,14 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 3.0]]
 ?[src, dst, cost] <~ MinimumSpanningForestKruskal(edges[])
 "#,
             )
-            .unwrap()
+            .expect("Kruskal triangle query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 2, "Triangle MST = 2 edges");
-        let total: f64 = res.iter().map(|r| r[2].get_float().unwrap()).sum();
+        let total: f64 = res
+            .iter()
+            .map(|r| r[2].get_float().expect("MST edge cost should be a float"))
+            .sum();
         assert!(
             (total - 3.0).abs() < 1e-9,
             "Triangle MST cost = 1+2 = 3.0, got {total}"
@@ -577,11 +691,14 @@ edges[src, dst, cost] <- [[0, 1, 1.0], [1, 2, 2.0], [0, 2, 5.0],
 ?[src, dst, cost] <~ MinimumSpanningTreePrim(edges[])
 "#,
             )
-            .unwrap()
+            .expect("Prim MST query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 4, "Prim MST of 5 nodes = 4 edges");
-        let total: f64 = res.iter().map(|r| r[2].get_float().unwrap()).sum();
+        let total: f64 = res
+            .iter()
+            .map(|r| r[2].get_float().expect("MST edge cost should be a float"))
+            .sum();
         assert!(
             (total - 7.0).abs() < 1e-9,
             "Prim MST total cost = 7.0, got {total}"
@@ -600,7 +717,7 @@ start[] <- [[2]]
 ?[src, dst, cost] <~ MinimumSpanningTreePrim(edges[], start[])
 "#,
             )
-            .unwrap()
+            .expect("Prim MST with start node query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 3, "Linear 4-node graph MST = 3 edges");
@@ -623,7 +740,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
 ?[label, node] <~ LabelPropagation(edges[], undirected: true, max_iter: 50)
 "#,
             )
-            .unwrap()
+            .expect("LabelPropagation two-cluster query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 6, "Every node must receive a community label");
@@ -640,7 +757,7 @@ edges[src, dst] <- [[0, 1]]
 ?[label, node] <~ LabelPropagation(edges[], undirected: true)
 "#,
             )
-            .unwrap()
+            .expect("LabelPropagation single-edge query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 2, "Single edge → 2 nodes → 2 label rows");
@@ -657,7 +774,7 @@ edges[src, dst] <- [[0, 1], [2, 3]]
 ?[label, node] <~ LabelPropagation(edges[], undirected: true)
 "#,
             )
-            .unwrap()
+            .expect("LabelPropagation disconnected-graph query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 4, "4 nodes → 4 label rows");
@@ -679,7 +796,7 @@ edges[src, dst] <- [[0, 4], [1, 4], [2, 4], [3, 4]]
 :order -rank
 "#,
             )
-            .unwrap()
+            .expect("PageRank star query should execute successfully")
             .rows;
 
         assert!(!res.is_empty(), "PageRank must return results");
@@ -701,11 +818,14 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 0]]
 ?[node, rank] <~ PageRank(edges[], iterations: 100)
 "#,
             )
-            .unwrap()
+            .expect("PageRank cycle query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 4, "4 nodes in cycle");
-        let ranks: Vec<f64> = res.iter().map(|r| r[1].get_float().unwrap()).collect();
+        let ranks: Vec<f64> = res
+            .iter()
+            .map(|r| r[1].get_float().expect("PageRank score should be a float"))
+            .collect();
         let mean = ranks.iter().sum::<f64>() / ranks.len() as f64;
         for &r in &ranks {
             assert!(
@@ -726,7 +846,7 @@ edges[src, dst] <- []
 ?[node, rank] <~ PageRank(edges[])
 "#,
             )
-            .unwrap()
+            .expect("PageRank empty-graph query should execute successfully")
             .rows;
 
         assert!(res.is_empty(), "Empty graph → no PageRank rows");
@@ -749,12 +869,15 @@ start[] <- [[0]]
 ?[walk_id, start_node, path] <~ RandomWalk(edges[], nodes[n], start[], steps: 5, iterations: 1)
 "#,
             )
-            .unwrap()
+            .expect("RandomWalk cycle query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 1, "1 iteration → 1 walk");
         assert_eq!(
-            res[0][2].get_slice().unwrap().len(),
+            res[0][2]
+                .get_slice()
+                .expect("walk path field should be a slice")
+                .len(),
             6,
             "steps=5 → 6-node path"
         );
@@ -774,7 +897,7 @@ start[] <- [[0]]
 ?[walk_id, start_node, path] <~ RandomWalk(edges[], nodes[n], start[], steps: 3, iterations: 5)
 "#,
             )
-            .unwrap()
+            .expect("RandomWalk multi-iteration query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 5, "5 iterations → 5 rows");
@@ -793,12 +916,15 @@ start[] <- [[1]]
 ?[walk_id, start_node, path] <~ RandomWalk(edges[], nodes[n], start[], steps: 10, iterations: 1)
 "#,
             )
-            .unwrap()
+            .expect("RandomWalk dead-end query should execute successfully")
             .rows;
 
-        assert_eq!(res.len(), 1);
+        assert_eq!(res.len(), 1, "dead-end walk should return exactly one row");
         // Node 1 has no outgoing edges, so path is just [1].
-        let path_len = res[0][2].get_slice().unwrap().len();
+        let path_len = res[0][2]
+            .get_slice()
+            .expect("walk path field should be a slice")
+            .len();
         assert!(path_len <= 2, "Dead-end walk path len = {path_len}");
     }
 
@@ -820,7 +946,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
 :order node
 "#,
             )
-            .unwrap()
+            .expect("SCC two-cycles query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 6, "6 nodes must all be assigned a component");
@@ -829,7 +955,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
             res.iter()
                 .find(|r| r[0] == DataValue::from(n))
                 .map(|r| r[1].clone())
-                .unwrap()
+                .expect("row for requested node should exist")
         };
         assert_eq!(comp(0), comp(1), "Nodes 0 and 1 share a SCC");
         assert_eq!(comp(0), comp(2), "Nodes 0 and 2 share a SCC");
@@ -849,7 +975,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("SCC DAG query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 4, "4 nodes in DAG");
@@ -869,7 +995,7 @@ edges[src, dst] <- [[0, 0]]
 ?[node, component] <~ StronglyConnectedComponents(edges[])
 "#,
             )
-            .unwrap()
+            .expect("SCC self-loop query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 1, "Self-loop is one SCC of one node");
@@ -892,16 +1018,41 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 0],
 :order node
 "#,
             )
-            .unwrap()
+            .expect("ConnectedComponents two-triangles query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 6, "6 nodes");
-        let comp_of = |n: i64| res.iter().find(|r| r[0] == DataValue::from(n)).unwrap()[1].clone();
-        assert_eq!(comp_of(0), comp_of(1));
-        assert_eq!(comp_of(0), comp_of(2));
-        assert_ne!(comp_of(0), comp_of(3));
-        assert_eq!(comp_of(3), comp_of(4));
-        assert_eq!(comp_of(4), comp_of(5));
+        let comp_of = |n: i64| {
+            res.iter()
+                .find(|r| r[0] == DataValue::from(n))
+                .expect("row for requested node should exist")[1]
+                .clone()
+        };
+        assert_eq!(
+            comp_of(0),
+            comp_of(1),
+            "nodes 0 and 1 should be in the same component"
+        );
+        assert_eq!(
+            comp_of(0),
+            comp_of(2),
+            "nodes 0 and 2 should be in the same component"
+        );
+        assert_ne!(
+            comp_of(0),
+            comp_of(3),
+            "nodes 0 and 3 should be in different components"
+        );
+        assert_eq!(
+            comp_of(3),
+            comp_of(4),
+            "nodes 3 and 4 should be in the same component"
+        );
+        assert_eq!(
+            comp_of(4),
+            comp_of(5),
+            "nodes 4 and 5 should be in the same component"
+        );
     }
 
     /// Single connected component: all nodes get the same label.
@@ -915,7 +1066,7 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 ?[node, component] <~ ConnectedComponents(edges[])
 "#,
             )
-            .unwrap()
+            .expect("ConnectedComponents single-chain query should execute successfully")
             .rows;
 
         let comps: Vec<_> = res.iter().map(|r| r[1].clone()).collect();
@@ -934,7 +1085,7 @@ edges[src, dst] <- [[0, 1], [0, 2], [0, 3]]
 ?[node, component] <~ ConnectedComponents(edges[])
 "#,
             )
-            .unwrap()
+            .expect("ConnectedComponents directed-star query should execute successfully")
             .rows;
 
         let comps: Vec<_> = res.iter().map(|r| r[1].clone()).collect();
@@ -958,15 +1109,17 @@ edges[src, dst] <- [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]]
 :order idx
 "#,
             )
-            .unwrap()
+            .expect("TopSort DAG query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 5, "5 nodes in topological order");
 
         let mut pos = [0usize; 5];
         for row in &res {
-            let idx = row[0].get_int().unwrap() as usize;
-            let node = row[1].get_int().unwrap() as usize;
+            let idx = row[0]
+                .get_int()
+                .expect("topological index should be an int") as usize;
+            let node = row[1].get_int().expect("node id should be an int") as usize;
             pos[node] = idx;
         }
         assert!(pos[0] < pos[1], "0 before 1");
@@ -988,11 +1141,14 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3]]
 :order idx
 "#,
             )
-            .unwrap()
+            .expect("TopSort linear-chain query should execute successfully")
             .rows;
 
-        assert_eq!(res.len(), 4);
-        let nodes: Vec<i64> = res.iter().map(|r| r[1].get_int().unwrap()).collect();
+        assert_eq!(res.len(), 4, "linear chain of 4 nodes should return 4 rows");
+        let nodes: Vec<i64> = res
+            .iter()
+            .map(|r| r[1].get_int().expect("node id should be an int"))
+            .collect();
         assert_eq!(nodes, vec![0, 1, 2, 3], "Linear chain order is 0,1,2,3");
     }
 
@@ -1008,11 +1164,14 @@ edges[src, dst] <- [[0, 1]]
 :order idx
 "#,
             )
-            .unwrap()
+            .expect("TopSort single-edge query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 2, "Single edge → 2 nodes sorted");
-        let nodes: Vec<i64> = res.iter().map(|r| r[1].get_int().unwrap()).collect();
+        let nodes: Vec<i64> = res
+            .iter()
+            .map(|r| r[1].get_int().expect("node id should be an int"))
+            .collect();
         assert_eq!(nodes, vec![0, 1], "0 must precede 1");
     }
 
@@ -1032,20 +1191,26 @@ edges[src, dst] <- [[0, 1], [1, 2], [0, 2], [2, 3]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("ClusteringCoefficients triangle query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 4, "4 distinct nodes");
 
         for &n in &[0i64, 1, 2] {
-            let tri = res.iter().find(|r| r[0] == DataValue::from(n)).unwrap()[2]
+            let tri = res
+                .iter()
+                .find(|r| r[0] == DataValue::from(n))
+                .expect("row for triangle node should exist")[2]
                 .get_int()
-                .unwrap();
+                .expect("triangle count should be an int");
             assert_eq!(tri, 1, "Node {n} should have 1 triangle, got {tri}");
         }
-        let tri3 = res.iter().find(|r| r[0] == DataValue::from(3i64)).unwrap()[2]
+        let tri3 = res
+            .iter()
+            .find(|r| r[0] == DataValue::from(3i64))
+            .expect("row for tail node 3 should exist")[2]
             .get_int()
-            .unwrap();
+            .expect("triangle count for node 3 should be an int");
         assert_eq!(tri3, 0, "Node 3 has no triangles");
     }
 
@@ -1061,14 +1226,16 @@ edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("ClusteringCoefficients K4 query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 4, "K4 has 4 nodes");
         for row in &res {
-            let tri = row[2].get_int().unwrap();
+            let tri = row[2].get_int().expect("triangle count should be an int");
             assert_eq!(tri, 3, "Every K4 node is in 3 triangles; got {tri}");
-            let cc = row[1].get_float().unwrap();
+            let cc = row[1]
+                .get_float()
+                .expect("clustering coefficient should be a float");
             assert!(
                 (cc - 1.0).abs() < 1e-9,
                 "K4 clustering coefficient = 1.0; got {cc}"
@@ -1087,13 +1254,13 @@ edges[src, dst] <- [[0, 1]]
 ?[node, cc, triangles, degree] <~ ClusteringCoefficients(edges[])
 "#,
             )
-            .unwrap()
+            .expect("ClusteringCoefficients single-edge query should execute successfully")
             .rows;
 
-        assert_eq!(res.len(), 2);
+        assert_eq!(res.len(), 2, "single edge should produce 2 clustering rows");
         for row in &res {
             assert_eq!(
-                row[2].get_int().unwrap(),
+                row[2].get_int().expect("triangle count should be an int"),
                 0,
                 "No triangles for a single edge"
             );
@@ -1119,12 +1286,16 @@ goal[] <- [[3]]
 :order cost
 "#,
             )
-            .unwrap()
+            .expect("KShortestPathYen query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 2, "k=2 → 2 shortest paths");
-        let c1 = res[0][2].get_float().unwrap();
-        let c2 = res[1][2].get_float().unwrap();
+        let c1 = res[0][2]
+            .get_float()
+            .expect("first path cost should be a float");
+        let c2 = res[1][2]
+            .get_float()
+            .expect("second path cost should be a float");
         assert!((c1 - 2.0).abs() < 1e-9, "1st path cost = 2.0, got {c1}");
         assert!((c2 - 4.0).abs() < 1e-9, "2nd path cost = 4.0, got {c2}");
     }
@@ -1142,7 +1313,7 @@ goal[] <- [[2]]
 ?[from, to, cost, path] <~ KShortestPathYen(edges[], start[], goal[], k: 3)
 "#,
             )
-            .unwrap()
+            .expect("KShortestPathYen fewer-paths query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 1, "Only 1 path exists; k=3 still returns 1");
@@ -1165,7 +1336,7 @@ edges[src, dst, w] <- [[0, 1, 1.0], [1, 2, 1.0], [2, 0, 1.0],
 ?[label, node] <~ CommunityDetectionLouvain(edges[], undirected: true, max_iter: 20)
 "#,
             )
-            .unwrap()
+            .expect("Louvain two-triangles query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 6, "All 6 nodes must receive a community label");
@@ -1182,7 +1353,7 @@ edges[src, dst, w] <- [[0, 1, 1.0]]
 ?[label, node] <~ CommunityDetectionLouvain(edges[], undirected: true)
 "#,
             )
-            .unwrap()
+            .expect("Louvain single-edge query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 2, "Single edge → 2 nodes receive labels");
@@ -1207,9 +1378,16 @@ end[] <- [['bob']]
 ?[fr, to, path] <~ ShortestPathBFS(love[], start[], end[])
 "#,
             )
-            .unwrap()
+            .expect("ShortestPathBFS social-graph query should execute successfully")
             .rows;
-        assert_eq!(res[0][2].get_slice().unwrap().len(), 3);
+        assert_eq!(
+            res[0][2]
+                .get_slice()
+                .expect("BFS path field should be a slice")
+                .len(),
+            3,
+            "alice→eve→bob path should have 3 nodes"
+        );
     }
 
     /// No path between disconnected nodes: result path is Null.
@@ -1225,7 +1403,7 @@ end[] <- [['george']]
 ?[fr, to, path] <~ ShortestPathBFS(love[], start[], end[])
 "#,
             )
-            .unwrap()
+            .expect("ShortestPathBFS disconnected query should execute successfully")
             .rows;
         assert_eq!(res[0][2], DataValue::Null, "Disconnected ⇒ path is Null");
     }
@@ -1243,10 +1421,17 @@ end[]   <- [[1]]
 ?[fr, to, path] <~ ShortestPathBFS(edges[], start[], end[])
 "#,
             )
-            .unwrap()
+            .expect("ShortestPathBFS direct-edge query should execute successfully")
             .rows;
 
-        assert_eq!(res[0][2].get_slice().unwrap().len(), 2);
+        assert_eq!(
+            res[0][2]
+                .get_slice()
+                .expect("BFS path field should be a slice")
+                .len(),
+            2,
+            "direct edge path should have 2 nodes"
+        );
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -1268,15 +1453,17 @@ edges[src, dst] <- [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3],[0,4]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("KCore clique-plus-pendant query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 5, "5 nodes → 5 k-core rows");
 
         let k_of = |n: i64| {
-            res.iter().find(|r| r[0] == DataValue::from(n)).unwrap()[1]
+            res.iter()
+                .find(|r| r[0] == DataValue::from(n))
+                .expect("row for requested node should exist")[1]
                 .get_int()
-                .unwrap()
+                .expect("k-core value should be an int")
         };
         assert_eq!(k_of(0), 3, "Node 0 (K4 member) ∈ 3-core");
         assert_eq!(k_of(1), 3, "Node 1 (K4 member) ∈ 3-core");
@@ -1298,14 +1485,14 @@ edges[src, dst] <- [[0, 1], [1, 2], [2, 3], [3, 4]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("KCore path-graph query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 5, "5-node path");
         // A path graph has no 2-core: each endpoint has degree 1 and peels,
         // cascading until all nodes are removed from the 2-core.
         for row in &res {
-            let k = row[1].get_int().unwrap();
+            let k = row[1].get_int().expect("k-core value should be an int");
             assert_eq!(k, 1, "All path nodes are in exactly the 1-core, got k={k}");
         }
     }
@@ -1322,12 +1509,16 @@ edges[src, dst] <- [[0, 1]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("KCore single-edge query should execute successfully")
             .rows;
 
         assert_eq!(res.len(), 2, "Single edge → 2 nodes");
         for row in &res {
-            assert_eq!(row[1].get_int().unwrap(), 1, "Both endpoints are in 1-core");
+            assert_eq!(
+                row[1].get_int().expect("k-core value should be an int"),
+                1,
+                "Both endpoints are in 1-core"
+            );
         }
     }
 
@@ -1342,7 +1533,7 @@ edges[src, dst] <- []
 ?[node, k] <~ KCore(edges[])
 "#,
             )
-            .unwrap()
+            .expect("KCore empty-graph query should execute successfully")
             .rows;
 
         assert!(res.is_empty(), "Empty graph ⇒ no k-core rows");
@@ -1361,13 +1552,15 @@ edges[src, dst] <- [[0,1],[1,2],[0,2],  [3,4]]
 :order node
 "#,
             )
-            .unwrap()
+            .expect("KCore disconnected-graph query should execute successfully")
             .rows;
 
         let k_of = |n: i64| {
-            res.iter().find(|r| r[0] == DataValue::from(n)).unwrap()[1]
+            res.iter()
+                .find(|r| r[0] == DataValue::from(n))
+                .expect("row for requested node should exist")[1]
                 .get_int()
-                .unwrap()
+                .expect("k-core value should be an int")
         };
         assert_eq!(k_of(0), 2, "K3 node 0 ∈ 2-core");
         assert_eq!(k_of(1), 2, "K3 node 1 ∈ 2-core");

@@ -1,4 +1,3 @@
-#![expect(clippy::unwrap_used, reason = "test assertions")]
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{
     CompletionResponse, ContentBlock, StopReason, ToolResultContent, Usage,
@@ -120,47 +119,68 @@ Bug is fixed, test passes.
 #[test]
 fn should_distill_below_threshold_returns_false() {
     let engine = default_engine();
-    assert!(!engine.should_distill(10, 50_000, 200_000, 0.8));
+    assert!(
+        !engine.should_distill(10, 50_000, 200_000, 0.8),
+        "should not distill when token usage is well below the threshold"
+    );
 }
 
 #[test]
 fn should_distill_at_threshold_returns_true() {
     let engine = default_engine();
     // NOTE: 10 >= min_messages(6) + verbatim_tail(3) = 9, tokens at threshold
-    assert!(engine.should_distill(10, 160_000, 200_000, 0.8));
+    assert!(
+        engine.should_distill(10, 160_000, 200_000, 0.8),
+        "should distill when token usage is exactly at the 0.8 threshold"
+    );
 }
 
 #[test]
 fn should_distill_above_threshold_returns_true() {
     let engine = default_engine();
-    assert!(engine.should_distill(10, 190_000, 200_000, 0.8));
+    assert!(
+        engine.should_distill(10, 190_000, 200_000, 0.8),
+        "should distill when token usage is above the threshold"
+    );
 }
 
 #[test]
 fn should_distill_too_few_messages_returns_false() {
     let engine = default_engine();
     // NOTE: 5 < min_messages(6) + verbatim_tail(3) = 9
-    assert!(!engine.should_distill(5, 190_000, 200_000, 0.8));
+    assert!(
+        !engine.should_distill(5, 190_000, 200_000, 0.8),
+        "should not distill when message count is too low even if tokens are high"
+    );
 }
 
 #[test]
 fn should_distill_zero_context_window_returns_false() {
     let engine = default_engine();
-    assert!(!engine.should_distill(10, 100, 0, 0.8));
+    assert!(
+        !engine.should_distill(10, 100, 0, 0.8),
+        "should not distill when context window is zero"
+    );
 }
 
 #[test]
 fn should_distill_exact_min_plus_tail() {
     let engine = default_engine();
     // NOTE: exactly min_messages(6) + verbatim_tail(3) = 9
-    assert!(engine.should_distill(9, 180_000, 200_000, 0.8));
+    assert!(
+        engine.should_distill(9, 180_000, 200_000, 0.8),
+        "should distill when message count equals exactly min_messages + verbatim_tail"
+    );
 }
 
 #[test]
 fn should_distill_below_min_plus_tail_returns_false() {
     let engine = default_engine();
     // NOTE: 8 < min_messages(6) + verbatim_tail(3) = 9
-    assert!(!engine.should_distill(8, 190_000, 200_000, 0.8));
+    assert!(
+        !engine.should_distill(8, 190_000, 200_000, 0.8),
+        "should not distill when message count is one below min_messages + verbatim_tail"
+    );
 }
 
 #[test]
@@ -169,11 +189,23 @@ fn build_prompt_has_system_prompt() {
     let messages = sample_conversation();
     let request = engine.build_prompt(&messages, "test-nous");
 
-    assert!(request.system.is_some());
-    let system = request.system.unwrap();
-    assert!(system.contains("## Summary"));
-    assert!(system.contains("## Key Decisions"));
-    assert!(system.contains("## Corrections"));
+    assert!(
+        request.system.is_some(),
+        "build_prompt should produce a system prompt"
+    );
+    let system = request.system.expect("system prompt should be present");
+    assert!(
+        system.contains("## Summary"),
+        "system prompt should contain ## Summary section"
+    );
+    assert!(
+        system.contains("## Key Decisions"),
+        "system prompt should contain ## Key Decisions section"
+    );
+    assert!(
+        system.contains("## Corrections"),
+        "system prompt should contain ## Corrections section"
+    );
 }
 
 #[test]
@@ -183,7 +215,10 @@ fn build_prompt_includes_nous_id() {
     let request = engine.build_prompt(&messages, "my-agent");
 
     let user_text = request.messages[0].content.text();
-    assert!(user_text.contains("my-agent"));
+    assert!(
+        user_text.contains("my-agent"),
+        "prompt user message should include the nous_id"
+    );
 }
 
 #[test]
@@ -193,8 +228,14 @@ fn build_prompt_formats_messages_with_roles() {
     let request = engine.build_prompt(&messages, "test-nous");
 
     let user_text = request.messages[0].content.text();
-    assert!(user_text.contains("[USER]"));
-    assert!(user_text.contains("[ASSISTANT]"));
+    assert!(
+        user_text.contains("[USER]"),
+        "prompt should format user messages with [USER] role label"
+    );
+    assert!(
+        user_text.contains("[ASSISTANT]"),
+        "prompt should format assistant messages with [ASSISTANT] role label"
+    );
 }
 
 #[test]
@@ -205,7 +246,10 @@ fn build_prompt_uses_config_model() {
     };
     let engine = DistillEngine::new(config);
     let request = engine.build_prompt(&sample_conversation(), "test");
-    assert_eq!(request.model, "claude-haiku-4-5-20251001");
+    assert_eq!(
+        request.model, "claude-haiku-4-5-20251001",
+        "build_prompt should use the model from config"
+    );
 }
 
 #[test]
@@ -216,14 +260,20 @@ fn build_prompt_uses_config_max_tokens() {
     };
     let engine = DistillEngine::new(config);
     let request = engine.build_prompt(&sample_conversation(), "test");
-    assert_eq!(request.max_tokens, 2048);
+    assert_eq!(
+        request.max_tokens, 2048,
+        "build_prompt should use max_output_tokens from config"
+    );
 }
 
 #[test]
 fn build_prompt_no_tools() {
     let engine = default_engine();
     let request = engine.build_prompt(&sample_conversation(), "test");
-    assert!(request.tools.is_empty());
+    assert!(
+        request.tools.is_empty(),
+        "build_prompt should not include any tools"
+    );
 }
 
 #[tokio::test]
@@ -233,14 +283,30 @@ async fn distill_success_returns_result() {
     let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine.distill(&messages, "test-nous", &provider, 1).await;
-    assert!(result.is_ok());
+    assert!(
+        result.is_ok(),
+        "distill should succeed with a valid provider and messages"
+    );
 
-    let result = result.unwrap();
-    assert!(result.summary.contains("Fixed login bug"));
+    let result = result.expect("distill result should be Ok");
+    assert!(
+        result.summary.contains("Fixed login bug"),
+        "distill result summary should contain the mock LLM output"
+    );
     // NOTE: 6 messages - 3 verbatim_tail = 3 distilled
-    assert_eq!(result.messages_distilled, 3);
-    assert_eq!(result.verbatim_messages.len(), 3);
-    assert_eq!(result.distillation_number, 1);
+    assert_eq!(
+        result.messages_distilled, 3,
+        "should distill 6 messages minus 3 verbatim tail"
+    );
+    assert_eq!(
+        result.verbatim_messages.len(),
+        3,
+        "should preserve 3 verbatim tail messages"
+    );
+    assert_eq!(
+        result.distillation_number, 1,
+        "distillation_number should match the value passed to distill"
+    );
 }
 
 #[tokio::test]
@@ -252,10 +318,16 @@ async fn distill_token_estimates_populated() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .unwrap();
+        .expect("distill should succeed with a valid provider");
 
-    assert!(result.tokens_before > 0);
-    assert_eq!(result.tokens_after, 200); // from mock Usage
+    assert!(
+        result.tokens_before > 0,
+        "tokens_before should be non-zero for a non-empty conversation"
+    );
+    assert_eq!(
+        result.tokens_after, 200,
+        "tokens_after should match the mock usage output_tokens"
+    ); // from mock Usage
 }
 
 #[tokio::test]
@@ -267,8 +339,11 @@ async fn distill_distillation_number_passed_through() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 42)
         .await
-        .unwrap();
-    assert_eq!(result.distillation_number, 42);
+        .expect("distill should succeed with a valid provider");
+    assert_eq!(
+        result.distillation_number, 42,
+        "distillation_number should be passed through unchanged"
+    );
 }
 
 #[tokio::test]
@@ -280,7 +355,7 @@ async fn distill_timestamp_is_valid() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .unwrap();
+        .expect("distill should succeed with a valid provider");
 
     // NOTE: jiff::Timestamp::to_string() produces RFC 3339 / ISO 8601
     assert!(
@@ -296,9 +371,15 @@ async fn distill_empty_messages_returns_no_messages_error() {
     let provider = success_provider(MOCK_SUMMARY);
 
     let result = engine.distill(&[], "test-nous", &provider, 1).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("no messages"));
+    assert!(
+        result.is_err(),
+        "distill should return an error when called with no messages"
+    );
+    let err = result.expect_err("distill with empty messages should be an Err");
+    assert!(
+        err.to_string().contains("no messages"),
+        "error message should indicate no messages were provided"
+    );
 }
 
 #[tokio::test]
@@ -308,9 +389,15 @@ async fn distill_llm_failure_returns_llm_call_error() {
     let provider = failure_provider();
 
     let result = engine.distill(&messages, "test-nous", &provider, 1).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("LLM call failed"));
+    assert!(
+        result.is_err(),
+        "distill should return an error when the LLM provider fails"
+    );
+    let err = result.expect_err("distill with failing provider should be an Err");
+    assert!(
+        err.to_string().contains("LLM call failed"),
+        "error message should indicate LLM call failure"
+    );
 }
 
 #[tokio::test]
@@ -320,9 +407,15 @@ async fn distill_empty_response_returns_empty_summary_error() {
     let provider = empty_response_provider();
 
     let result = engine.distill(&messages, "test-nous", &provider, 1).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("empty summary"));
+    assert!(
+        result.is_err(),
+        "distill should return an error when the response has no content blocks"
+    );
+    let err = result.expect_err("distill with empty response should be an Err");
+    assert!(
+        err.to_string().contains("empty summary"),
+        "error message should indicate an empty summary"
+    );
 }
 
 #[tokio::test]
@@ -332,41 +425,68 @@ async fn distill_whitespace_only_response_returns_empty_summary_error() {
     let provider = empty_text_provider();
 
     let result = engine.distill(&messages, "test-nous", &provider, 1).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("empty summary"));
+    assert!(
+        result.is_err(),
+        "distill should return an error when all text blocks are whitespace-only"
+    );
+    let err = result.expect_err("distill with whitespace-only response should be an Err");
+    assert!(
+        err.to_string().contains("empty summary"),
+        "error message should indicate an empty summary"
+    );
 }
 
 #[test]
 fn config_default_model() {
     let config = DistillConfig::default();
-    assert_eq!(config.model, "claude-sonnet-4-20250514");
+    assert_eq!(
+        config.model, "claude-sonnet-4-20250514",
+        "default model should be claude-sonnet-4-20250514"
+    );
 }
 
 #[test]
 fn config_default_values() {
     let config = DistillConfig::default();
-    assert_eq!(config.max_output_tokens, 4096);
-    assert_eq!(config.min_messages, 6);
-    assert!(config.include_tool_calls);
+    assert_eq!(
+        config.max_output_tokens, 4096,
+        "default max_output_tokens should be 4096"
+    );
+    assert_eq!(config.min_messages, 6, "default min_messages should be 6");
+    assert!(
+        config.include_tool_calls,
+        "include_tool_calls should default to true"
+    );
 }
 
 #[test]
 fn estimate_tokens_chars_div_4() {
     let messages = vec![text_msg(Role::User, "abcdefgh")]; // 8 chars → 2 tokens
-    assert_eq!(estimate_tokens(&messages), 2);
+    assert_eq!(
+        estimate_tokens(&messages),
+        2,
+        "8 chars should estimate to 2 tokens (chars / 4)"
+    );
 }
 
 #[test]
 fn estimate_tokens_rounds_up() {
     let messages = vec![text_msg(Role::User, "abcde")]; // 5 chars → ceil(5/4) = 2
-    assert_eq!(estimate_tokens(&messages), 2);
+    assert_eq!(
+        estimate_tokens(&messages),
+        2,
+        "5 chars should round up to 2 tokens (ceil(5/4))"
+    );
 }
 
 #[test]
 fn estimate_tokens_empty_messages() {
     let messages: Vec<Message> = vec![];
-    assert_eq!(estimate_tokens(&messages), 0);
+    assert_eq!(
+        estimate_tokens(&messages),
+        0,
+        "empty message list should estimate to 0 tokens"
+    );
 }
 
 #[test]
@@ -382,7 +502,10 @@ fn extract_summary_from_text_blocks() {
         },
     ];
     let text = extract_summary_text(&blocks);
-    assert_eq!(text, "Part 1\nPart 2");
+    assert_eq!(
+        text, "Part 1\nPart 2",
+        "multiple text blocks should be joined with a newline"
+    );
 }
 
 #[test]
@@ -398,7 +521,10 @@ fn extract_summary_skips_non_text_blocks() {
         },
     ];
     let text = extract_summary_text(&blocks);
-    assert_eq!(text, "Summary text");
+    assert_eq!(
+        text, "Summary text",
+        "non-text blocks like Thinking should be skipped when extracting summary"
+    );
 }
 
 #[test]
@@ -408,32 +534,70 @@ fn extract_summary_trims_whitespace() {
         citations: None,
     }];
     let text = extract_summary_text(&blocks);
-    assert_eq!(text, "summary");
+    assert_eq!(
+        text, "summary",
+        "leading and trailing whitespace should be trimmed from extracted summary"
+    );
 }
 
 #[test]
 fn config_default_sections() {
     let config = DistillConfig::default();
-    assert_eq!(config.sections.len(), 7);
-    assert_eq!(config.sections[0], DistillSection::Summary);
-    assert_eq!(config.sections[1], DistillSection::TaskContext);
-    assert_eq!(config.sections[2], DistillSection::CompletedWork);
-    assert_eq!(config.sections[3], DistillSection::KeyDecisions);
-    assert_eq!(config.sections[4], DistillSection::CurrentState);
-    assert_eq!(config.sections[5], DistillSection::OpenThreads);
-    assert_eq!(config.sections[6], DistillSection::Corrections);
+    assert_eq!(
+        config.sections.len(),
+        7,
+        "default config should have exactly 7 sections"
+    );
+    assert_eq!(
+        config.sections[0],
+        DistillSection::Summary,
+        "first section should be Summary"
+    );
+    assert_eq!(
+        config.sections[1],
+        DistillSection::TaskContext,
+        "second section should be TaskContext"
+    );
+    assert_eq!(
+        config.sections[2],
+        DistillSection::CompletedWork,
+        "third section should be CompletedWork"
+    );
+    assert_eq!(
+        config.sections[3],
+        DistillSection::KeyDecisions,
+        "fourth section should be KeyDecisions"
+    );
+    assert_eq!(
+        config.sections[4],
+        DistillSection::CurrentState,
+        "fifth section should be CurrentState"
+    );
+    assert_eq!(
+        config.sections[5],
+        DistillSection::OpenThreads,
+        "sixth section should be OpenThreads"
+    );
+    assert_eq!(
+        config.sections[6],
+        DistillSection::Corrections,
+        "seventh section should be Corrections"
+    );
 }
 
 #[test]
 fn config_default_verbatim_tail() {
     let config = DistillConfig::default();
-    assert_eq!(config.verbatim_tail, 3);
+    assert_eq!(config.verbatim_tail, 3, "default verbatim_tail should be 3");
 }
 
 #[test]
 fn config_default_distillation_model() {
     let config = DistillConfig::default();
-    assert!(config.distillation_model.is_none());
+    assert!(
+        config.distillation_model.is_none(),
+        "distillation_model should default to None"
+    );
 }
 
 #[test]
@@ -444,7 +608,10 @@ fn build_prompt_uses_distillation_model_when_set() {
     };
     let engine = DistillEngine::new(config);
     let request = engine.build_prompt(&sample_conversation(), "test");
-    assert_eq!(request.model, "claude-haiku-4-5-20251001");
+    assert_eq!(
+        request.model, "claude-haiku-4-5-20251001",
+        "build_prompt should use distillation_model when set"
+    );
 }
 
 #[test]
@@ -456,7 +623,10 @@ fn build_prompt_falls_back_to_primary_model() {
     };
     let engine = DistillEngine::new(config);
     let request = engine.build_prompt(&sample_conversation(), "test");
-    assert_eq!(request.model, "claude-sonnet-4-20250514");
+    assert_eq!(
+        request.model, "claude-sonnet-4-20250514",
+        "build_prompt should fall back to primary model when distillation_model is None"
+    );
 }
 
 #[test]
@@ -467,10 +637,21 @@ fn build_prompt_uses_dynamic_system_prompt() {
     };
     let engine = DistillEngine::new(config);
     let request = engine.build_prompt(&sample_conversation(), "test");
-    let system = request.system.unwrap();
-    assert!(system.contains("## Summary"));
-    assert!(system.contains("## Key Decisions"));
-    assert!(!system.contains("## Open Threads"));
+    let system = request
+        .system
+        .expect("build_prompt should produce a system prompt");
+    assert!(
+        system.contains("## Summary"),
+        "system prompt should include the Summary section when configured"
+    );
+    assert!(
+        system.contains("## Key Decisions"),
+        "system prompt should include the Key Decisions section when configured"
+    );
+    assert!(
+        !system.contains("## Open Threads"),
+        "system prompt should not include Open Threads when not in configured sections"
+    );
 }
 
 #[tokio::test]
@@ -486,16 +667,31 @@ async fn distill_preserves_verbatim_messages() {
     let result = engine
         .distill(&messages, "test-nous", &provider, 1)
         .await
-        .unwrap();
+        .expect("distill should succeed with a valid provider");
 
-    assert_eq!(result.messages_distilled, 4); // 6 - 2
-    assert_eq!(result.verbatim_messages.len(), 2);
+    assert_eq!(
+        result.messages_distilled, 4,
+        "should distill 6 messages minus verbatim_tail of 2"
+    ); // 6 - 2
+    assert_eq!(
+        result.verbatim_messages.len(),
+        2,
+        "should preserve 2 verbatim tail messages"
+    );
 }
 
 #[test]
 fn distill_section_equality() {
-    assert_eq!(DistillSection::Summary, DistillSection::Summary);
-    assert_ne!(DistillSection::Summary, DistillSection::TaskContext);
+    assert_eq!(
+        DistillSection::Summary,
+        DistillSection::Summary,
+        "identical variants should be equal"
+    );
+    assert_ne!(
+        DistillSection::Summary,
+        DistillSection::TaskContext,
+        "different variants should not be equal"
+    );
     assert_eq!(
         DistillSection::Custom {
             name: "Test".to_owned(),
@@ -504,7 +700,8 @@ fn distill_section_equality() {
         DistillSection::Custom {
             name: "Test".to_owned(),
             description: "desc".to_owned()
-        }
+        },
+        "Custom variants with identical fields should be equal"
     );
     assert_ne!(
         DistillSection::Custom {
@@ -514,44 +711,83 @@ fn distill_section_equality() {
         DistillSection::Custom {
             name: "B".to_owned(),
             description: "desc".to_owned()
-        }
+        },
+        "Custom variants with different names should not be equal"
     );
 }
 
 #[test]
 fn tick_turn_returns_false_when_no_failures() {
     let engine = default_engine();
-    assert!(!engine.tick_turn());
+    assert!(
+        !engine.tick_turn(),
+        "tick_turn should return false when no failures have been recorded"
+    );
 }
 
 #[test]
 fn in_backoff_is_false_on_fresh_engine() {
     let engine = default_engine();
-    assert!(!engine.in_backoff());
+    assert!(
+        !engine.in_backoff(),
+        "fresh engine should not be in backoff"
+    );
 }
 
 #[test]
 fn backoff_activates_after_failure_and_expires_after_one_turn() {
     let engine = default_engine();
-    engine.retry_state.lock().unwrap().record_failure();
-    assert!(engine.in_backoff());
-    assert!(engine.tick_turn()); // still in backoff, counter decrements to 0
-    assert!(!engine.in_backoff());
-    assert!(!engine.tick_turn()); // no longer in backoff
+    engine
+        .retry_state
+        .lock()
+        .expect("retry_state mutex should not be poisoned")
+        .record_failure();
+    assert!(
+        engine.in_backoff(),
+        "engine should be in backoff after recording a failure"
+    );
+    assert!(
+        engine.tick_turn(),
+        "tick_turn should return true while still in backoff"
+    ); // still in backoff, counter decrements to 0
+    assert!(
+        !engine.in_backoff(),
+        "engine should exit backoff after turns_to_skip reaches zero"
+    );
+    assert!(
+        !engine.tick_turn(),
+        "tick_turn should return false once backoff has expired"
+    ); // no longer in backoff
 }
 
 #[test]
 fn backoff_resets_on_success() {
     let engine = default_engine();
     {
-        let mut state = engine.retry_state.lock().unwrap();
+        let mut state = engine
+            .retry_state
+            .lock()
+            .expect("retry_state mutex should not be poisoned");
         state.record_failure();
         state.record_failure();
     }
-    assert!(engine.in_backoff());
-    engine.retry_state.lock().unwrap().record_success();
-    assert!(!engine.in_backoff());
-    assert!(!engine.tick_turn());
+    assert!(
+        engine.in_backoff(),
+        "engine should be in backoff after two failures"
+    );
+    engine
+        .retry_state
+        .lock()
+        .expect("retry_state mutex should not be poisoned")
+        .record_success();
+    assert!(
+        !engine.in_backoff(),
+        "backoff should clear after recording a success"
+    );
+    assert!(
+        !engine.tick_turn(),
+        "tick_turn should return false after backoff is cleared"
+    );
 }
 
 #[test]
@@ -561,12 +797,19 @@ fn backoff_schedule_is_exponential() {
     for &(failures, expected_skip) in cases {
         let engine = default_engine();
         {
-            let mut state = engine.retry_state.lock().unwrap();
+            let mut state = engine
+                .retry_state
+                .lock()
+                .expect("retry_state mutex should not be poisoned");
             for _ in 0..failures {
                 state.record_failure();
             }
         }
-        let actual = engine.retry_state.lock().unwrap().turns_to_skip;
+        let actual = engine
+            .retry_state
+            .lock()
+            .expect("retry_state mutex should not be poisoned")
+            .turns_to_skip;
         assert_eq!(
             actual, expected_skip,
             "after {failures} failures expected turns_to_skip={expected_skip}, got {actual}"
@@ -591,15 +834,22 @@ async fn distill_records_failure_on_llm_error() {
 #[tokio::test]
 async fn distill_records_success_and_clears_backoff() {
     let engine = default_engine();
-    engine.retry_state.lock().unwrap().record_failure();
-    assert!(engine.in_backoff());
+    engine
+        .retry_state
+        .lock()
+        .expect("retry_state mutex should not be poisoned")
+        .record_failure();
+    assert!(
+        engine.in_backoff(),
+        "engine should be in backoff after recording a failure"
+    );
 
     let messages = sample_conversation();
     let provider = success_provider(MOCK_SUMMARY);
     engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .unwrap();
+        .expect("distill should succeed with a valid provider");
 
     assert!(
         !engine.in_backoff(),
@@ -612,8 +862,15 @@ fn enforce_context_limit_returns_zero_when_within_window() {
     let mut messages = sample_conversation();
     let count_before = messages.len();
     let dropped = enforce_context_limit(&mut messages, 1_000_000);
-    assert_eq!(dropped, 0);
-    assert_eq!(messages.len(), count_before);
+    assert_eq!(
+        dropped, 0,
+        "no messages should be dropped when within the context window"
+    );
+    assert_eq!(
+        messages.len(),
+        count_before,
+        "message count should be unchanged when within the context window"
+    );
 }
 
 #[test]
@@ -624,7 +881,11 @@ fn enforce_context_limit_drops_oldest_messages_when_over() {
     let initial_count = messages.len();
     let dropped = enforce_context_limit(&mut messages, 4);
     assert!(dropped > 0, "should have dropped some messages");
-    assert_eq!(messages.len(), initial_count - dropped);
+    assert_eq!(
+        messages.len(),
+        initial_count - dropped,
+        "remaining message count should equal initial minus dropped"
+    );
 }
 
 #[test]
@@ -633,7 +894,11 @@ fn enforce_context_limit_keeps_at_least_one_message() {
     // NOTE: window of 1 token: impossible to satisfy, but we must keep the last message
     let dropped = enforce_context_limit(&mut messages, 1);
     assert_eq!(dropped, 0, "single message must not be dropped");
-    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages.len(),
+        1,
+        "single message should remain after enforce_context_limit even if oversized"
+    );
 }
 
 #[test]
@@ -645,33 +910,64 @@ fn enforce_context_limit_drops_from_front() {
     ];
     // NOTE: 201 total tokens, window of 2 keeps last ~8 chars = 2 tokens
     let dropped = enforce_context_limit(&mut messages, 2);
-    assert!(dropped > 0);
-    assert!(messages.last().unwrap().content.text().starts_with('c'));
+    assert!(
+        dropped > 0,
+        "at least one oversized message should be dropped"
+    );
+    assert!(
+        messages
+            .last()
+            .expect("messages should not be empty after enforce_context_limit")
+            .content
+            .text()
+            .starts_with('c'),
+        "newest message (starting with 'c') should be kept"
+    );
 }
 
 #[test]
 fn sanitize_nous_id_clean_string_unchanged() {
-    assert_eq!(sanitize_nous_id("my-agent-01"), "my-agent-01");
+    assert_eq!(
+        sanitize_nous_id("my-agent-01"),
+        "my-agent-01",
+        "clean string with no special characters should be unchanged"
+    );
 }
 
 #[test]
 fn sanitize_nous_id_removes_backtick() {
-    assert_eq!(sanitize_nous_id("agent`hack"), "agenthack");
+    assert_eq!(
+        sanitize_nous_id("agent`hack"),
+        "agenthack",
+        "backtick should be removed from nous_id"
+    );
 }
 
 #[test]
 fn sanitize_nous_id_removes_newline() {
-    assert_eq!(sanitize_nous_id("agent\nhack"), "agenthack");
+    assert_eq!(
+        sanitize_nous_id("agent\nhack"),
+        "agenthack",
+        "newline should be removed from nous_id"
+    );
 }
 
 #[test]
 fn sanitize_nous_id_removes_carriage_return() {
-    assert_eq!(sanitize_nous_id("agent\rhack"), "agenthack");
+    assert_eq!(
+        sanitize_nous_id("agent\rhack"),
+        "agenthack",
+        "carriage return should be removed from nous_id"
+    );
 }
 
 #[test]
 fn sanitize_nous_id_removes_control_chars() {
-    assert_eq!(sanitize_nous_id("agent\x00\x1bhack"), "agenthack");
+    assert_eq!(
+        sanitize_nous_id("agent\x00\x1bhack"),
+        "agenthack",
+        "control characters should be removed from nous_id"
+    );
 }
 
 #[test]
@@ -683,7 +979,10 @@ fn build_prompt_sanitizes_backtick_in_nous_id() {
         !user_text.contains('`'),
         "backtick must not appear in prompt"
     );
-    assert!(user_text.contains("idinjection"));
+    assert!(
+        user_text.contains("idinjection"),
+        "sanitized nous_id without backtick should appear in prompt"
+    );
 }
 
 #[test]
@@ -768,7 +1067,7 @@ async fn distill_result_contains_memory_flush_field() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .unwrap();
+        .expect("distill should succeed with a valid provider");
     // NOTE: assert the field exists: mock summary has no decisions to assert content on
     let _ = &result.memory_flush;
 }
@@ -787,16 +1086,22 @@ Fixed login bug.
 - Wrong file initially.
 ";
     let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
-    assert_eq!(flush.decisions.len(), 2);
+    assert_eq!(
+        flush.decisions.len(),
+        2,
+        "should extract exactly 2 decisions from the summary"
+    );
     assert!(
         flush.decisions[0]
             .content
-            .contains("Decision: Use null check")
+            .contains("Decision: Use null check"),
+        "first extracted decision should contain the null check decision"
     );
     assert!(
         flush.decisions[1]
             .content
-            .contains("Decision: Keep auth module")
+            .contains("Decision: Keep auth module"),
+        "second extracted decision should contain the keep auth module decision"
     );
 }
 
@@ -811,8 +1116,15 @@ Fixed auth.
 - Missed the null check.
 ";
     let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
-    assert_eq!(flush.corrections.len(), 2);
-    assert!(flush.corrections[0].content.contains("Wrong file at first"));
+    assert_eq!(
+        flush.corrections.len(),
+        2,
+        "should extract exactly 2 corrections from the summary"
+    );
+    assert!(
+        flush.corrections[0].content.contains("Wrong file at first"),
+        "first correction should describe the wrong-file mistake"
+    );
 }
 
 #[test]
@@ -829,24 +1141,48 @@ Fixing the null pointer crash.
 Done.
 ";
     let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
-    assert!(flush.task_state.is_some());
-    let state = flush.task_state.unwrap();
-    assert!(state.contains("login flow"));
+    assert!(
+        flush.task_state.is_some(),
+        "task_state should be populated when Task Context section is present"
+    );
+    let state = flush
+        .task_state
+        .expect("task_state should be Some when Task Context section is present");
+    assert!(
+        state.contains("login flow"),
+        "task_state should contain the login flow context from the summary"
+    );
 }
 
 #[test]
 fn parse_summary_empty_sections_produce_no_items() {
     let summary = "## Summary\nJust a summary.\n\n## Key Decisions\n\n## Corrections\n";
     let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
-    assert!(flush.decisions.is_empty());
-    assert!(flush.corrections.is_empty());
-    assert!(flush.task_state.is_none());
+    assert!(
+        flush.decisions.is_empty(),
+        "empty Key Decisions section should produce no decision items"
+    );
+    assert!(
+        flush.corrections.is_empty(),
+        "empty Corrections section should produce no correction items"
+    );
+    assert!(
+        flush.task_state.is_none(),
+        "missing Task Context section should leave task_state as None"
+    );
 }
 
 #[test]
 fn parse_summary_flush_source_is_extracted() {
     let summary = "## Key Decisions\n- Decision: Use snafu. Reason: Standard.\n";
     let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
-    assert_eq!(flush.decisions.len(), 1);
-    assert!(matches!(flush.decisions[0].source, FlushSource::Extracted));
+    assert_eq!(
+        flush.decisions.len(),
+        1,
+        "should extract exactly 1 decision from the summary"
+    );
+    assert!(
+        matches!(flush.decisions[0].source, FlushSource::Extracted),
+        "extracted decision source should be FlushSource::Extracted"
+    );
 }
