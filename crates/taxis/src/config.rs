@@ -511,8 +511,10 @@ impl Default for CsrfConfig {
 pub struct RateLimitConfig {
     /// Whether rate limiting is active.
     pub enabled: bool,
-    /// Maximum requests per minute per client IP.
+    /// Maximum requests per minute per client IP (global rate limit).
     pub requests_per_minute: u32,
+    /// Per-user rate limiting settings keyed by authenticated identity.
+    pub per_user: PerUserRateLimitConfig,
 }
 
 impl Default for RateLimitConfig {
@@ -520,6 +522,48 @@ impl Default for RateLimitConfig {
         Self {
             enabled: false,
             requests_per_minute: 60,
+            per_user: PerUserRateLimitConfig::default(),
+        }
+    }
+}
+
+/// Per-user rate limiting configuration keyed by authenticated identity.
+///
+/// Applies token bucket rate limiting per user with different limits for
+/// general, LLM, and tool execution endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct PerUserRateLimitConfig {
+    /// Whether per-user rate limiting is active.
+    pub enabled: bool,
+    /// Default requests per minute for general API endpoints.
+    pub default_rpm: u32,
+    /// Burst allowance above the sustained rate for general endpoints.
+    pub default_burst: u32,
+    /// Requests per minute for LLM/chat endpoints (more expensive).
+    pub llm_rpm: u32,
+    /// Burst allowance for LLM endpoints.
+    pub llm_burst: u32,
+    /// Requests per minute for tool execution endpoints.
+    pub tool_rpm: u32,
+    /// Burst allowance for tool execution endpoints.
+    pub tool_burst: u32,
+    /// Seconds after which an idle user's rate limit state is evicted.
+    pub stale_after_secs: u64,
+}
+
+impl Default for PerUserRateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            default_rpm: 60,
+            default_burst: 10,
+            llm_rpm: 20,
+            llm_burst: 5,
+            tool_rpm: 30,
+            tool_burst: 8,
+            stale_after_secs: 600,
         }
     }
 }

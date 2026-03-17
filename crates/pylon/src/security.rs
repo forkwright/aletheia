@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use aletheia_taxis::config::GatewayConfig;
+use aletheia_taxis::config::{GatewayConfig, PerUserRateLimitConfig};
 
 /// The insecure default CSRF token value shipped in the default config.
 ///
@@ -45,6 +45,8 @@ pub struct SecurityConfig {
     /// or overwrites these headers from untrusted clients. When false, the
     /// peer TCP address is used for rate limiting and logging.
     pub trust_proxy: bool,
+    /// Per-user rate limiting configuration.
+    pub per_user_rate_limit: PerUserRateLimitConfig,
 }
 
 /// Generate a cryptographically random 32-character hex CSRF token.
@@ -90,6 +92,7 @@ impl SecurityConfig {
             rate_limit_enabled: gateway.rate_limit.enabled,
             rate_limit_requests_per_minute: gateway.rate_limit.requests_per_minute,
             trust_proxy: false,
+            per_user_rate_limit: gateway.rate_limit.per_user.clone(),
         }
     }
 }
@@ -109,6 +112,7 @@ impl Default for SecurityConfig {
             rate_limit_enabled: false,
             rate_limit_requests_per_minute: 60,
             trust_proxy: false,
+            per_user_rate_limit: PerUserRateLimitConfig::default(),
         }
     }
 }
