@@ -125,9 +125,9 @@ impl SessionResponse {
             session_key: s.session_key.clone(),
             status: s.status.as_str().to_owned(),
             model: s.model.clone(),
-            name: s.display_name.clone(),
-            message_count: s.message_count,
-            token_count_estimate: s.token_count_estimate,
+            name: s.origin.display_name.clone(),
+            message_count: s.metrics.message_count,
+            token_count_estimate: s.metrics.token_count_estimate,
             created_at: s.created_at.clone(),
             updated_at: s.updated_at.clone(),
         }

@@ -32,7 +32,7 @@ impl App {
                         && mouse.row >= sidebar.y
                     {
                         let mut y = sidebar.y + 1;
-                        for agent in &self.agents {
+                        for agent in &self.dashboard.agents {
                             let row_count = if agent.active_tool.is_some()
                                 || agent.compaction_stage.is_some()
                             {
@@ -56,19 +56,19 @@ impl App {
     }
 
     fn map_key(&self, key: KeyEvent) -> Option<Msg> {
-        if self.overlay.is_some() {
+        if self.layout.overlay.is_some() {
             return self.map_overlay_key(key);
         }
 
-        if self.command_palette.active {
+        if self.interaction.command_palette.active {
             return self.map_palette_key(key);
         }
 
-        if self.filter.editing {
+        if self.interaction.filter.editing {
             return self.map_filter_editing_key(key);
         }
 
-        if self.filter.active
+        if self.interaction.filter.active
             && let Some(msg) = self.map_filter_applied_key(key)
         {
             return Some(msg);
@@ -76,7 +76,7 @@ impl App {
 
         // WHY: g-prefix must intercept before normal key routing so gt/gT are
         // treated as two-key sequences; after 'g' is consumed, the second char falls through.
-        if self.pending_g {
+        if self.layout.pending_g {
             return match (key.modifiers, key.code) {
                 (KeyModifiers::NONE, KeyCode::Char('t')) => Some(Msg::TabNext),
                 (KeyModifiers::SHIFT, KeyCode::Char('T')) => Some(Msg::TabPrev),
@@ -93,26 +93,32 @@ impl App {
 
         // WHY: ViewPopBack takes priority over DeselectMessage so Esc always unwinds
         // the view stack before affecting selection state.
-        if !self.view_stack.is_home() && matches!((key.modifiers, key.code), (_, KeyCode::Esc)) {
+        if !self.layout.view_stack.is_home()
+            && matches!((key.modifiers, key.code), (_, KeyCode::Esc))
+        {
             return Some(Msg::ViewPopBack);
         }
 
-        if self.selected_message.is_some() {
+        if self.interaction.selected_message.is_some() {
             return self.map_selection_key(key);
         }
 
-        if self.ops.visible && self.ops.focused_pane == crate::state::FocusedPane::Operations {
+        if self.layout.ops.visible
+            && self.layout.ops.focused_pane == crate::state::FocusedPane::Operations
+        {
             return self.map_ops_pane_key(key);
         }
 
         // Configurable keymap: covers global Ctrl+key shortcuts.
-        if let Some(action) = self.keymap.lookup(key.modifiers, key.code) {
+        if let Some(action) = self.interaction.keymap.lookup(key.modifiers, key.code) {
             return Some(action.to_msg());
         }
 
         match (key.modifiers, key.code) {
             // Context-dependent Ctrl+W: TabClose when input is empty, DeleteWord otherwise.
-            (KeyModifiers::CONTROL, KeyCode::Char('w')) if self.input.text.is_empty() => {
+            (KeyModifiers::CONTROL, KeyCode::Char('w'))
+                if self.interaction.input.text.is_empty() =>
+            {
                 Some(Msg::TabClose)
             }
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::DeleteWord),
@@ -130,9 +136,9 @@ impl App {
             }
 
             (_, KeyCode::Tab) => {
-                if self.input.text.contains('@') {
+                if self.interaction.input.text.contains('@') {
                     Some(Msg::CharInput('\t'))
-                } else if self.ops.visible {
+                } else if self.layout.ops.visible {
                     Some(Msg::OpsFocusSwitch)
                 } else {
                     Some(Msg::NextAgent)
@@ -146,42 +152,51 @@ impl App {
             (_, KeyCode::Left) => Some(Msg::CursorLeft),
             (_, KeyCode::Right) => Some(Msg::CursorRight),
             (_, KeyCode::Home) => Some(Msg::CursorHome),
-            (_, KeyCode::End) if self.input.text.is_empty() => Some(Msg::ScrollToBottom),
+            (_, KeyCode::End) if self.interaction.input.text.is_empty() => {
+                Some(Msg::ScrollToBottom)
+            }
             (_, KeyCode::End) => Some(Msg::CursorEnd),
 
             // WHY: Up/Down with empty input enters selection mode rather than history nav,
             // matching the modal editing convention where arrow keys in read state navigate messages.
-            (_, KeyCode::Up) if self.input.text.is_empty() && !self.messages.is_empty() => {
+            (_, KeyCode::Up)
+                if self.interaction.input.text.is_empty()
+                    && !self.dashboard.messages.is_empty() =>
+            {
                 Some(Msg::SelectPrev)
             }
-            (_, KeyCode::Down) if self.input.text.is_empty() && !self.messages.is_empty() => {
+            (_, KeyCode::Down)
+                if self.interaction.input.text.is_empty()
+                    && !self.dashboard.messages.is_empty() =>
+            {
                 Some(Msg::SelectNext)
             }
             (_, KeyCode::Up) => Some(Msg::HistoryUp),
             (_, KeyCode::Down) => Some(Msg::HistoryDown),
 
-            (KeyModifiers::NONE, KeyCode::Char('?')) if self.input.text.is_empty() => {
+            (KeyModifiers::NONE, KeyCode::Char('?')) if self.interaction.input.text.is_empty() => {
                 Some(Msg::OpenOverlay(OverlayKind::Help))
             }
 
             (KeyModifiers::NONE | KeyModifiers::SHIFT, KeyCode::Char(':'))
-                if self.input.text.is_empty() =>
+                if self.interaction.input.text.is_empty() =>
             {
                 Some(Msg::CommandPaletteOpen)
             }
 
-            (KeyModifiers::NONE, KeyCode::Char('/')) if self.input.text.is_empty() => {
+            (KeyModifiers::NONE, KeyCode::Char('/')) if self.interaction.input.text.is_empty() => {
                 Some(Msg::SessionSearchOpen)
             }
 
             (KeyModifiers::NONE, KeyCode::Char('v'))
-                if self.input.text.is_empty() && !self.messages.is_empty() =>
+                if self.interaction.input.text.is_empty()
+                    && !self.dashboard.messages.is_empty() =>
             {
                 Some(Msg::SelectPrev)
             }
 
             (KeyModifiers::NONE, KeyCode::Char('g'))
-                if self.input.text.is_empty() && self.tab_bar.len() > 1 =>
+                if self.interaction.input.text.is_empty() && self.layout.tab_bar.len() > 1 =>
             {
                 Some(Msg::GPrefix)
             }
@@ -282,7 +297,7 @@ impl App {
             }
             (_, KeyCode::Enter) => Some(Msg::FilterConfirm),
             (_, KeyCode::Backspace) => {
-                if self.filter.text.is_empty() {
+                if self.interaction.filter.text.is_empty() {
                     Some(Msg::FilterClose)
                 } else {
                     Some(Msg::FilterBackspace)
@@ -299,10 +314,10 @@ impl App {
     fn map_filter_applied_key(&self, key: KeyEvent) -> Option<Msg> {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc) => Some(Msg::FilterClose),
-            (KeyModifiers::NONE, KeyCode::Char('/')) if self.input.text.is_empty() => {
+            (KeyModifiers::NONE, KeyCode::Char('/')) if self.interaction.input.text.is_empty() => {
                 Some(Msg::FilterOpen)
             }
-            (KeyModifiers::NONE, KeyCode::Char('n')) if self.input.text.is_empty() => {
+            (KeyModifiers::NONE, KeyCode::Char('n')) if self.interaction.input.text.is_empty() => {
                 Some(Msg::FilterNextMatch)
             }
             (KeyModifiers::SHIFT, KeyCode::Char('N')) => Some(Msg::FilterPrevMatch),
@@ -322,7 +337,9 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => Some(Msg::CommandPaletteDeleteWord),
             (KeyModifiers::CONTROL, KeyCode::Char('u')) => Some(Msg::CommandPaletteClose),
 
-            (KeyModifiers::NONE, KeyCode::Char('?')) if self.command_palette.input.is_empty() => {
+            (KeyModifiers::NONE, KeyCode::Char('?'))
+                if self.interaction.command_palette.input.is_empty() =>
+            {
                 Some(Msg::OpenOverlay(OverlayKind::Help))
             }
 
@@ -335,7 +352,7 @@ impl App {
 
     fn is_memory_view(&self) -> bool {
         matches!(
-            self.view_stack.current(),
+            self.layout.view_stack.current(),
             crate::state::view_stack::View::MemoryInspector
                 | crate::state::view_stack::View::FactDetail { .. }
         )
@@ -350,7 +367,7 @@ impl App {
             _ => {}
         }
 
-        if self.memory.editing_confidence {
+        if self.layout.memory.fact_list.editing_confidence {
             return match (key.modifiers, key.code) {
                 (_, KeyCode::Enter) => Some(Msg::MemoryConfidenceSubmit),
                 (_, KeyCode::Esc) => Some(Msg::MemoryConfidenceCancel),
@@ -360,7 +377,7 @@ impl App {
             };
         }
 
-        if self.memory.search_active {
+        if self.layout.memory.search.search_active {
             return match (key.modifiers, key.code) {
                 (_, KeyCode::Enter) => Some(Msg::MemorySearchSubmit),
                 (_, KeyCode::Esc) => Some(Msg::MemorySearchClose),
@@ -372,7 +389,7 @@ impl App {
             };
         }
 
-        if self.memory.filter_editing {
+        if self.layout.memory.filters.filter_editing {
             return match (key.modifiers, key.code) {
                 (_, KeyCode::Esc) => Some(Msg::MemoryFilterClose),
                 (_, KeyCode::Enter) => Some(Msg::MemoryFilterClose),
@@ -385,7 +402,7 @@ impl App {
         }
 
         if matches!(
-            self.view_stack.current(),
+            self.layout.view_stack.current(),
             crate::state::view_stack::View::FactDetail { .. }
         ) {
             return match (key.modifiers, key.code) {
@@ -425,23 +442,23 @@ impl App {
     }
 
     fn is_context_actions_overlay(&self) -> bool {
-        matches!(&self.overlay, Some(Overlay::ContextActions(_)))
+        matches!(&self.layout.overlay, Some(Overlay::ContextActions(_)))
     }
 
     fn is_session_picker_overlay(&self) -> bool {
-        matches!(&self.overlay, Some(Overlay::SessionPicker(_)))
+        matches!(&self.layout.overlay, Some(Overlay::SessionPicker(_)))
     }
 
     fn is_diff_view_overlay(&self) -> bool {
-        matches!(&self.overlay, Some(Overlay::DiffView(_)))
+        matches!(&self.layout.overlay, Some(Overlay::DiffView(_)))
     }
 
     fn map_overlay_key(&self, key: KeyEvent) -> Option<Msg> {
-        if matches!(&self.overlay, Some(Overlay::Settings(_))) {
+        if matches!(&self.layout.overlay, Some(Overlay::Settings(_))) {
             return self.map_settings_overlay_key(key);
         }
 
-        if matches!(&self.overlay, Some(Overlay::SessionSearch(_))) {
+        if matches!(&self.layout.overlay, Some(Overlay::SessionSearch(_))) {
             return self.map_session_search_key(key);
         }
 
@@ -461,7 +478,7 @@ impl App {
         }
 
         // WHY: `?` toggles help overlay: pressing it again closes it.
-        if matches!(&self.overlay, Some(Overlay::Help))
+        if matches!(&self.layout.overlay, Some(Overlay::Help))
             && matches!(
                 (key.modifiers, key.code),
                 (KeyModifiers::NONE, KeyCode::Char('?'))
@@ -506,11 +523,11 @@ impl App {
     }
 
     pub(crate) fn is_tool_approval_overlay(&self) -> bool {
-        matches!(&self.overlay, Some(Overlay::ToolApproval(_)))
+        matches!(&self.layout.overlay, Some(Overlay::ToolApproval(_)))
     }
 
     fn is_plan_approval_overlay(&self) -> bool {
-        matches!(&self.overlay, Some(Overlay::PlanApproval(_)))
+        matches!(&self.layout.overlay, Some(Overlay::PlanApproval(_)))
     }
 
     #[expect(
@@ -535,7 +552,7 @@ impl App {
 
     fn map_settings_overlay_key(&self, key: KeyEvent) -> Option<Msg> {
         let editing = matches!(
-            &self.overlay,
+            &self.layout.overlay,
             Some(Overlay::Settings(s)) if s.editing.is_some()
         );
 
@@ -773,8 +790,8 @@ mod tests {
     #[test]
     fn question_mark_with_text_is_char_input() {
         let mut app = test_app();
-        app.input.text = "hello".to_string();
-        app.input.cursor = 5;
+        app.interaction.input.text = "hello".to_string();
+        app.interaction.input.cursor = 5;
         let event = Event::Terminal(key(KeyCode::Char('?')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CharInput('?'))));
@@ -799,7 +816,7 @@ mod tests {
     #[test]
     fn up_with_empty_input_and_messages_selects() {
         let mut app = test_app();
-        app.messages.push(crate::state::ChatMessage {
+        app.dashboard.messages.push(crate::state::ChatMessage {
             role: "user".to_string(),
             text: "hi".to_string(),
             text_lower: "hi".to_string(),
@@ -816,8 +833,8 @@ mod tests {
     #[test]
     fn up_with_text_navigates_history() {
         let mut app = test_app();
-        app.input.text = "some text".to_string();
-        app.input.cursor = 9;
+        app.interaction.input.text = "some text".to_string();
+        app.interaction.input.cursor = 9;
         let event = Event::Terminal(key(KeyCode::Up));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::HistoryUp)));
@@ -836,7 +853,7 @@ mod tests {
     #[test]
     fn selection_mode_j_moves_next() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         let event = Event::Terminal(key(KeyCode::Char('j')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::SelectNext)));
@@ -845,7 +862,7 @@ mod tests {
     #[test]
     fn selection_mode_k_moves_prev() {
         let mut app = test_app_with_messages(vec![("user", "a"), ("assistant", "b")]);
-        app.selected_message = Some(1);
+        app.interaction.selected_message = Some(1);
         let event = Event::Terminal(key(KeyCode::Char('k')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::SelectPrev)));
@@ -854,7 +871,7 @@ mod tests {
     #[test]
     fn selection_mode_esc_deselects() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::DeselectMessage)));
@@ -863,7 +880,7 @@ mod tests {
     #[test]
     fn selection_mode_c_copies() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         let event = Event::Terminal(key(KeyCode::Char('c')));
         let msg = app.map_event(event);
         assert!(matches!(
@@ -877,7 +894,7 @@ mod tests {
     #[test]
     fn palette_esc_closes() {
         let mut app = test_app();
-        app.command_palette.active = true;
+        app.interaction.command_palette.active = true;
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CommandPaletteClose)));
@@ -886,7 +903,7 @@ mod tests {
     #[test]
     fn palette_enter_selects() {
         let mut app = test_app();
-        app.command_palette.active = true;
+        app.interaction.command_palette.active = true;
         let event = Event::Terminal(key(KeyCode::Enter));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CommandPaletteSelect)));
@@ -895,7 +912,7 @@ mod tests {
     #[test]
     fn palette_char_inputs() {
         let mut app = test_app();
-        app.command_palette.active = true;
+        app.interaction.command_palette.active = true;
         let event = Event::Terminal(key(KeyCode::Char('a')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CommandPaletteInput('a'))));
@@ -906,8 +923,8 @@ mod tests {
     #[test]
     fn filter_editing_esc_closes() {
         let mut app = test_app();
-        app.filter.active = true;
-        app.filter.editing = true;
+        app.interaction.filter.active = true;
+        app.interaction.filter.editing = true;
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::FilterClose)));
@@ -916,8 +933,8 @@ mod tests {
     #[test]
     fn filter_editing_enter_confirms() {
         let mut app = test_app();
-        app.filter.active = true;
-        app.filter.editing = true;
+        app.interaction.filter.active = true;
+        app.interaction.filter.editing = true;
         let event = Event::Terminal(key(KeyCode::Enter));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::FilterConfirm)));
@@ -926,8 +943,8 @@ mod tests {
     #[test]
     fn filter_editing_char_inputs() {
         let mut app = test_app();
-        app.filter.active = true;
-        app.filter.editing = true;
+        app.interaction.filter.active = true;
+        app.interaction.filter.editing = true;
         let event = Event::Terminal(key(KeyCode::Char('x')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::FilterInput('x'))));
@@ -936,9 +953,9 @@ mod tests {
     #[test]
     fn filter_applied_n_next_match() {
         let mut app = test_app();
-        app.filter.active = true;
-        app.filter.editing = false;
-        app.filter.text = "search".to_string();
+        app.interaction.filter.active = true;
+        app.interaction.filter.editing = false;
+        app.interaction.filter.text = "search".to_string();
         let event = Event::Terminal(key(KeyCode::Char('n')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::FilterNextMatch)));
@@ -949,7 +966,7 @@ mod tests {
     #[test]
     fn overlay_esc_closes() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::Help);
+        app.layout.overlay = Some(Overlay::Help);
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CloseOverlay)));
@@ -958,7 +975,7 @@ mod tests {
     #[test]
     fn overlay_up_navigates() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+        app.layout.overlay = Some(Overlay::AgentPicker { cursor: 0 });
         let event = Event::Terminal(key(KeyCode::Up));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::OverlayUp)));
@@ -1024,7 +1041,7 @@ mod tests {
     fn settings_overlay_up_down() {
         let mut app = test_app();
         let settings = crate::state::settings::SettingsOverlay::from_config(&serde_json::json!({}));
-        app.overlay = Some(Overlay::Settings(settings));
+        app.layout.overlay = Some(Overlay::Settings(settings));
         let event = Event::Terminal(key(KeyCode::Up));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::OverlayUp)));
@@ -1034,7 +1051,7 @@ mod tests {
     fn settings_overlay_s_key_saves() {
         let mut app = test_app();
         let settings = crate::state::settings::SettingsOverlay::from_config(&serde_json::json!({}));
-        app.overlay = Some(Overlay::Settings(settings));
+        app.layout.overlay = Some(Overlay::Settings(settings));
         let event = Event::Terminal(key(KeyCode::Char('s')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::OverlayFilter('s'))));
@@ -1061,8 +1078,8 @@ mod tests {
     #[test]
     fn v_with_text_is_char_input() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.input.text = "typing".to_string();
-        app.input.cursor = 6;
+        app.interaction.input.text = "typing".to_string();
+        app.interaction.input.cursor = 6;
         let event = Event::Terminal(key(KeyCode::Char('v')));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CharInput('v'))));
@@ -1073,7 +1090,7 @@ mod tests {
     #[test]
     fn selection_mode_enter_drills_in() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         let event = Event::Terminal(key(KeyCode::Enter));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::ViewDrillIn)));
@@ -1084,7 +1101,7 @@ mod tests {
     #[test]
     fn context_actions_overlay_j_moves_down() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::ContextActions(
+        app.layout.overlay = Some(Overlay::ContextActions(
             crate::state::ContextActionsOverlay {
                 actions: vec![crate::state::ContextAction {
                     label: "Copy",
@@ -1101,7 +1118,7 @@ mod tests {
     #[test]
     fn context_actions_overlay_k_moves_up() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::ContextActions(
+        app.layout.overlay = Some(Overlay::ContextActions(
             crate::state::ContextActionsOverlay {
                 actions: vec![crate::state::ContextAction {
                     label: "Copy",
@@ -1120,7 +1137,7 @@ mod tests {
     #[test]
     fn esc_at_non_home_view_pops_back() {
         let mut app = test_app();
-        app.view_stack.push(crate::state::View::Sessions {
+        app.layout.view_stack.push(crate::state::View::Sessions {
             agent_id: "syn".into(),
         });
         let event = Event::Terminal(key(KeyCode::Esc));
@@ -1131,7 +1148,7 @@ mod tests {
     #[test]
     fn esc_at_home_with_selection_deselects() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.selected_message = Some(0);
+        app.interaction.selected_message = Some(0);
         // view_stack is Home by default
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
@@ -1141,8 +1158,9 @@ mod tests {
     #[test]
     fn esc_at_non_home_with_selection_still_pops() {
         let mut app = test_app_with_messages(vec![("user", "a")]);
-        app.selected_message = Some(0);
-        app.view_stack
+        app.interaction.selected_message = Some(0);
+        app.layout
+            .view_stack
             .push(crate::state::View::MessageDetail { message_index: 0 });
         let event = Event::Terminal(key(KeyCode::Esc));
         let msg = app.map_event(event);
@@ -1162,8 +1180,8 @@ mod tests {
     #[test]
     fn end_key_with_text_moves_cursor_to_end() {
         let mut app = test_app();
-        app.input.text = "hello".to_string();
-        app.input.cursor = 0;
+        app.interaction.input.text = "hello".to_string();
+        app.interaction.input.cursor = 0;
         let event = Event::Terminal(key(KeyCode::End));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CursorEnd)));
@@ -1182,8 +1200,8 @@ mod tests {
     #[test]
     fn tab_with_at_mention_does_completion_not_agent_cycle() {
         let mut app = test_app();
-        app.input.text = "@al".to_string();
-        app.input.cursor = 3;
+        app.interaction.input.text = "@al".to_string();
+        app.interaction.input.cursor = 3;
         let event = Event::Terminal(key(KeyCode::Tab));
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::CharInput('\t'))));

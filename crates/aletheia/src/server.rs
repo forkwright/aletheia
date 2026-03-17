@@ -279,17 +279,17 @@ pub(crate) async fn serve(cli: Cli) -> Result<()> {
             let nous_config = NousConfig {
                 id: resolved.id,
                 name: resolved.name,
-                model: resolved.model,
-                context_window: resolved.context_tokens,
-                max_output_tokens: resolved.max_output_tokens,
-                bootstrap_max_tokens: resolved.bootstrap_max_tokens,
-                thinking_enabled: resolved.thinking_enabled,
-                thinking_budget: resolved.thinking_budget,
-                max_tool_iterations: resolved.max_tool_iterations,
+                model: resolved.model.primary,
+                context_window: resolved.limits.context_tokens,
+                max_output_tokens: resolved.limits.max_output_tokens,
+                bootstrap_max_tokens: resolved.limits.bootstrap_max_tokens,
+                thinking_enabled: resolved.capabilities.thinking_enabled,
+                thinking_budget: resolved.limits.thinking_budget,
+                max_tool_iterations: resolved.capabilities.max_tool_iterations,
                 loop_detection_threshold: 3,
                 domains,
                 server_tools: Vec::new(),
-                cache_enabled: resolved.cache_enabled,
+                cache_enabled: resolved.capabilities.cache_enabled,
             };
             nous_manager
                 .spawn(

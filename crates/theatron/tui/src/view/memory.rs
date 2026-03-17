@@ -42,7 +42,7 @@ pub(crate) fn render_inspector(app: &App, frame: &mut Frame, area: Rect, theme: 
 
     render_tab_bar(app, frame, layout[0], theme);
 
-    match app.memory.tab {
+    match app.layout.memory.tab {
         MemoryTab::Facts => render_facts_table(app, frame, layout[1], theme),
         MemoryTab::Graph => render_graph_view(app, frame, layout[1], theme),
         MemoryTab::Timeline => render_timeline_view(app, frame, layout[1], theme),
@@ -56,7 +56,7 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
-    if let Some(ref detail) = app.memory.detail {
+    if let Some(ref detail) = app.layout.memory.fact_list.detail {
         let f = &detail.fact;
 
         lines.push(Line::from(vec![
@@ -164,7 +164,7 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
                 ]));
             }
         }
-    } else if app.memory.loading {
+    } else if app.layout.memory.loading {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled("Loading fact detail...", theme.style_dim()),
@@ -176,7 +176,7 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
         ]));
     }
 
-    if app.memory.editing_confidence {
+    if app.layout.memory.fact_list.editing_confidence {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
             Span::raw("  "),
@@ -185,7 +185,7 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
                 theme.style_accent().add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                &app.memory.confidence_buffer,
+                &app.layout.memory.fact_list.confidence_buffer,
                 theme.style_fg().add_modifier(Modifier::UNDERLINED),
             ),
             Span::styled("▌", theme.style_accent()),
@@ -201,7 +201,9 @@ pub(crate) fn render_fact_detail(app: &App, frame: &mut Frame, area: Rect, theme
         Span::styled(" edit confidence  ", theme.style_dim()),
     ];
     if app
+        .layout
         .memory
+        .fact_list
         .detail
         .as_ref()
         .is_some_and(|d| d.fact.is_forgotten)
@@ -229,7 +231,7 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         if i > 0 {
             spans.push(Span::styled(" │ ", theme.style_dim()));
         }
-        let style = if *tab == app.memory.tab {
+        let style = if *tab == app.layout.memory.tab {
             theme.style_accent().add_modifier(Modifier::BOLD)
         } else {
             theme.style_dim()
@@ -238,32 +240,39 @@ fn render_tab_bar(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     }
 
     spans.push(Span::raw("  "));
-    let arrow = if app.memory.sort_asc { "↑" } else { "↓" };
+    let arrow = if app.layout.memory.fact_list.sort_asc {
+        "↑"
+    } else {
+        "↓"
+    };
     spans.push(Span::styled(
-        format!("[s]ort: {} {arrow}", app.memory.sort.label()),
+        format!(
+            "[s]ort: {} {arrow}",
+            app.layout.memory.fact_list.sort.label()
+        ),
         theme.style_dim(),
     ));
 
-    if app.memory.search_active {
+    if app.layout.memory.search.search_active {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
-            format!("search: {}", app.memory.search_query),
+            format!("search: {}", app.layout.memory.search.search_query),
             theme.style_warning(),
         ));
         spans.push(Span::styled("▌", theme.style_accent()));
     }
 
-    if app.memory.filter_editing {
+    if app.layout.memory.filters.filter_editing {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
-            format!("filter: {}", app.memory.filter_text),
+            format!("filter: {}", app.layout.memory.filters.filter_text),
             theme.style_warning(),
         ));
         spans.push(Span::styled("▌", theme.style_accent()));
-    } else if !app.memory.filter_text.is_empty() {
+    } else if !app.layout.memory.filters.filter_text.is_empty() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
-            format!("filter: {}", app.memory.filter_text),
+            format!("filter: {}", app.layout.memory.filters.filter_text),
             theme.style_muted(),
         ));
     }
@@ -285,8 +294,8 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         Span::styled("Content", header_style),
     ]));
 
-    if app.memory.facts.is_empty() {
-        if app.memory.loading {
+    if app.layout.memory.fact_list.facts.is_empty() {
+        if app.layout.memory.loading {
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled("Loading facts...", theme.style_dim()),
@@ -298,15 +307,17 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             ]));
         }
     } else {
-        let filter = app.memory.filter_text.to_lowercase();
+        let filter = app.layout.memory.filters.filter_text.to_lowercase();
         let visible_height = area.height.saturating_sub(1) as usize;
         let content_width = area.width.saturating_sub(RESERVED_COLUMN_WIDTH) as usize;
 
-        let type_filter = app.memory.type_filter.as_deref();
-        let tier_filter = app.memory.tier_filter.as_deref();
+        let type_filter = app.layout.memory.filters.type_filter.as_deref();
+        let tier_filter = app.layout.memory.filters.tier_filter.as_deref();
 
         let filtered_facts: Vec<(usize, &crate::state::memory::MemoryFact)> = app
+            .layout
             .memory
+            .fact_list
             .facts
             .iter()
             .enumerate()
@@ -330,11 +341,11 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             })
             .collect();
 
-        let start = app.memory.scroll_offset;
+        let start = app.layout.memory.fact_list.scroll_offset;
         let end = (start + visible_height).min(filtered_facts.len());
 
         for &(original_idx, fact) in &filtered_facts[start..end] {
-            let is_selected = original_idx == app.memory.selected;
+            let is_selected = original_idx == app.layout.memory.fact_list.selected;
             let marker = if is_selected { "▸ " } else { "  " };
             let marker_style = if is_selected {
                 Style::default().fg(theme.borders.selected)
@@ -382,7 +393,7 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::raw(""));
 
-    if app.memory.entities.is_empty() {
+    if app.layout.memory.graph.entities.is_empty() {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled(
@@ -406,18 +417,23 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled(
-                format!("Entity Graph ({} entities)", app.memory.entities.len()),
+                format!(
+                    "Entity Graph ({} entities)",
+                    app.layout.memory.graph.entities.len()
+                ),
                 theme.style_accent().add_modifier(Modifier::BOLD),
             ),
         ]));
         lines.push(Line::raw(""));
 
-        for (i, entity) in app.memory.entities.iter().enumerate() {
-            let is_selected = i == app.memory.selected;
+        for (i, entity) in app.layout.memory.graph.entities.iter().enumerate() {
+            let is_selected = i == app.layout.memory.fact_list.selected;
             let marker = if is_selected { "▸ " } else { "  " };
 
             let rel_count = app
+                .layout
                 .memory
+                .graph
                 .relationships
                 .iter()
                 .filter(|r| r.src == entity.id || r.dst == entity.id)
@@ -438,7 +454,7 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             ]));
         }
 
-        if !app.memory.relationships.is_empty() {
+        if !app.layout.memory.graph.relationships.is_empty() {
             lines.push(Line::raw(""));
             lines.push(Line::from(vec![
                 Span::raw("  "),
@@ -448,7 +464,9 @@ fn render_graph_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 ),
             ]));
             for rel in app
+                .layout
                 .memory
+                .graph
                 .relationships
                 .iter()
                 .take(RELATIONSHIP_DISPLAY_LIMIT)
@@ -483,14 +501,14 @@ fn render_timeline_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
     ]));
     lines.push(Line::raw(""));
 
-    if app.memory.timeline_events.is_empty() {
+    if app.layout.memory.graph.timeline_events.is_empty() {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled("No timeline events.", theme.style_dim()),
         ]));
     } else {
-        for (i, event) in app.memory.timeline_events.iter().enumerate() {
-            let is_selected = i == app.memory.selected;
+        for (i, event) in app.layout.memory.graph.timeline_events.iter().enumerate() {
+            let is_selected = i == app.layout.memory.fact_list.selected;
             let marker = if is_selected { "▸ " } else { "  " };
 
             let time = MemoryInspectorState::relative_time(&event.timestamp);
@@ -535,9 +553,9 @@ fn render_timeline_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
 }
 
 fn render_memory_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
-    let total = app.memory.total_facts;
-    let visible = app.memory.facts.len();
-    let sel = app.memory.selected + 1;
+    let total = app.layout.memory.fact_list.total_facts;
+    let visible = app.layout.memory.fact_list.facts.len();
+    let sel = app.layout.memory.fact_list.selected + 1;
 
     let mut spans = vec![
         Span::raw(" "),

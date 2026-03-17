@@ -31,14 +31,14 @@ impl NousActor {
         caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
-        if self.lifecycle == NousLifecycle::Dormant {
+        if self.channel.status == NousLifecycle::Dormant {
             debug!("auto-waking from dormant for turn");
-            self.lifecycle = NousLifecycle::Idle;
+            self.channel.status = NousLifecycle::Idle;
         }
 
-        self.lifecycle = NousLifecycle::Active;
+        self.channel.status = NousLifecycle::Active;
         self.active_session = Some(session_key.clone());
-        self.active_turn.store(true, Ordering::Release);
+        self.runtime.active_turn.store(true, Ordering::Release);
 
         let result = self
             .execute_turn_with_panic_boundary(
@@ -63,10 +63,10 @@ impl NousActor {
 
         self.active_session = None;
         // WHY: only reset to Idle if not degraded: preserve degraded state
-        if self.lifecycle != NousLifecycle::Degraded {
-            self.lifecycle = NousLifecycle::Idle;
+        if self.channel.status != NousLifecycle::Degraded {
+            self.channel.status = NousLifecycle::Idle;
         }
-        self.active_turn.store(false, Ordering::Release);
+        self.runtime.active_turn.store(false, Ordering::Release);
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);
@@ -86,14 +86,14 @@ impl NousActor {
         caller_span: tracing::Span,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
     ) {
-        if self.lifecycle == NousLifecycle::Dormant {
+        if self.channel.status == NousLifecycle::Dormant {
             debug!("auto-waking from dormant for streaming turn");
-            self.lifecycle = NousLifecycle::Idle;
+            self.channel.status = NousLifecycle::Idle;
         }
 
-        self.lifecycle = NousLifecycle::Active;
+        self.channel.status = NousLifecycle::Active;
         self.active_session = Some(session_key.clone());
-        self.active_turn.store(true, Ordering::Release);
+        self.runtime.active_turn.store(true, Ordering::Release);
 
         let result = self
             .execute_streaming_turn_with_panic_boundary(
@@ -119,10 +119,10 @@ impl NousActor {
 
         self.active_session = None;
         // WHY: only reset to Idle if not degraded: preserve degraded state
-        if self.lifecycle != NousLifecycle::Degraded {
-            self.lifecycle = NousLifecycle::Idle;
+        if self.channel.status != NousLifecycle::Degraded {
+            self.channel.status = NousLifecycle::Idle;
         }
-        self.active_turn.store(false, Ordering::Release);
+        self.runtime.active_turn.store(false, Ordering::Release);
 
         // WHY: ignore send error: caller may have dropped the receiver
         let _ = reply.send(result);
@@ -215,9 +215,9 @@ impl NousActor {
         let tool_ctx = ToolContext {
             nous_id,
             session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
-            workspace: self.oikos.nous_dir(&self.id),
-            allowed_roots: vec![self.oikos.root().to_path_buf()],
-            services: self.tool_services.clone(),
+            workspace: self.services.oikos.nous_dir(&self.id),
+            allowed_roots: vec![self.services.oikos.root().to_path_buf()],
+            services: self.services.tool_services.clone(),
             active_tools: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashSet::new(),
             )),
@@ -226,16 +226,16 @@ impl NousActor {
         let mut extra_bootstrap = self.extra_bootstrap.clone();
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 
-        let oikos = Arc::clone(&self.oikos);
+        let oikos = Arc::clone(&self.services.oikos);
         let config = self.config.clone();
         let pipeline_config = self.pipeline_config.clone();
-        let providers = Arc::clone(&self.providers);
-        let tools = Arc::clone(&self.tools);
-        let embedding_provider = self.embedding_provider.clone();
-        let vector_search = self.vector_search.clone();
+        let providers = Arc::clone(&self.services.providers);
+        let tools = Arc::clone(&self.services.tools);
+        let embedding_provider = self.services.embedding_provider.clone();
+        let vector_search = self.stores.vector_search.clone();
         #[cfg(feature = "knowledge-store")]
-        let text_search = self.text_search.clone();
-        let session_store = self.session_store.clone();
+        let text_search = self.stores.text_search.clone();
+        let session_store = self.stores.session_store.clone();
         tokio::spawn(
             async move {
                 #[cfg(feature = "knowledge-store")]
@@ -316,7 +316,7 @@ impl NousActor {
                 error!(
                     nous_id = %self.id,
                     session_key = %session_key,
-                    panic_count = self.panic_count,
+                    panic_count = self.runtime.panic_count,
                     message = %panic_msg,
                     "pipeline panicked — actor continues"
                 );
@@ -332,22 +332,24 @@ impl NousActor {
 
     /// Record a panic occurrence. Enters degraded mode if too many panics in the window.
     pub(super) fn record_panic(&mut self) {
-        self.panic_count += 1;
-        self.panic_timestamps.push(std::time::Instant::now());
+        self.runtime.panic_count += 1;
+        self.runtime
+            .panic_timestamps
+            .push(std::time::Instant::now());
 
         let cutoff = std::time::Instant::now()
             .checked_sub(DEGRADED_WINDOW)
-            .unwrap_or(self.started_at);
-        self.panic_timestamps.retain(|t| *t > cutoff);
+            .unwrap_or(self.runtime.started_at);
+        self.runtime.panic_timestamps.retain(|t| *t > cutoff);
 
-        if self.panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
+        if self.runtime.panic_timestamps.len() >= DEGRADED_PANIC_THRESHOLD as usize {
             warn!(
                 nous_id = %self.id,
-                panic_count = self.panic_count,
-                recent_panics = self.panic_timestamps.len(),
+                panic_count = self.runtime.panic_count,
+                recent_panics = self.runtime.panic_timestamps.len(),
                 "entering degraded mode — too many panics in window"
             );
-            self.lifecycle = NousLifecycle::Degraded;
+            self.channel.status = NousLifecycle::Degraded;
         }
     }
 
@@ -389,9 +391,9 @@ impl NousActor {
         let tool_ctx = ToolContext {
             nous_id,
             session_id: SessionId::parse(session.id.as_str()).unwrap_or_else(|_| SessionId::new()),
-            workspace: self.oikos.nous_dir(&self.id),
-            allowed_roots: vec![self.oikos.root().to_path_buf()],
-            services: self.tool_services.clone(),
+            workspace: self.services.oikos.nous_dir(&self.id),
+            allowed_roots: vec![self.services.oikos.root().to_path_buf()],
+            services: self.services.tool_services.clone(),
             active_tools: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashSet::new(),
             )),
@@ -401,22 +403,23 @@ impl NousActor {
         extra_bootstrap.extend(self.resolve_skill_sections(content).await);
 
         #[cfg(feature = "knowledge-store")]
-        let text_search_ref: Option<&dyn crate::recall::TextSearch> = self.text_search.as_deref();
+        let text_search_ref: Option<&dyn crate::recall::TextSearch> =
+            self.stores.text_search.as_deref();
         #[cfg(not(feature = "knowledge-store"))]
         let text_search_ref: Option<&dyn crate::recall::TextSearch> = None;
 
         crate::pipeline::run_pipeline(
             input,
-            &self.oikos,
+            &self.services.oikos,
             &self.config,
             &self.pipeline_config,
-            &self.providers,
-            &self.tools,
+            &self.services.providers,
+            &self.services.tools,
             &tool_ctx,
-            self.embedding_provider.as_deref(),
-            self.vector_search.as_deref(),
+            self.services.embedding_provider.as_deref(),
+            self.stores.vector_search.as_deref(),
             text_search_ref,
-            self.session_store.as_deref(),
+            self.stores.session_store.as_deref(),
             extra_bootstrap,
             None,
         )

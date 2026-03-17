@@ -29,14 +29,16 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
     // Para-relative link data collected from all messages.
     let mut para_links: Vec<(usize, u16, String, String)> = Vec::new(); // (line_idx, col, text, url)
 
-    let filter_active =
-        app.filter.active && app.filter.scope == FilterScope::Chat && !app.filter.text.is_empty();
-    let (pattern, inverted) = app.filter.pattern();
+    let filter_active = app.interaction.filter.active
+        && app.interaction.filter.scope == FilterScope::Chat
+        && !app.interaction.filter.text.is_empty();
+    let (pattern, inverted) = app.interaction.filter.pattern();
 
     let agent_name_lower: &str = app
+        .dashboard
         .focused_agent
         .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| a.id == *id))
+        .and_then(|id| app.dashboard.agents.iter().find(|a| a.id == *id))
         .map(|a| a.name_lower.as_str())
         .unwrap_or("assistant");
 
@@ -76,7 +78,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
     }
 
     // Empty state: no messages and not streaming: show helpful placeholder.
-    if app.messages.is_empty() && app.active_turn_id.is_none() && !filter_active {
+    if app.dashboard.messages.is_empty()
+        && app.connection.active_turn_id.is_none()
+        && !filter_active
+    {
         lines.push(Line::from(vec![
             Span::raw(" "),
             Span::styled("no messages yet", theme.style_dim()),
@@ -98,9 +103,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
     }
 
     // Streaming response (in progress)
-    if !app.streaming_text.is_empty()
-        || !app.streaming_thinking.is_empty()
-        || app.active_turn_id.is_some()
+    if !app.connection.streaming_text.is_empty()
+        || !app.connection.streaming_thinking.is_empty()
+        || app.connection.active_turn_id.is_some()
     {
         render_streaming(app, &mut lines, inner_width, theme, agent_name_lower);
     }
@@ -145,20 +150,22 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) -> Vec<Os
         .sum();
     let vh = visible_height as usize;
 
-    let scroll = if app.auto_scroll {
+    let scroll = if app.viewport.render.auto_scroll {
         // Pin to the very bottom of whatever was rendered (committed + streaming).
         total_visual.saturating_sub(vh)
     } else if filter_active {
         // Filtered path: all messages are in `lines`; use the pre-computed total.
         total_visual
             .saturating_sub(vh)
-            .saturating_sub(app.scroll_offset)
+            .saturating_sub(app.viewport.render.scroll_offset)
     } else {
         // Virtual scroll path with manual offset: line_offset already positions us
         // correctly within the rendered (viewport-only) items.
-        let slice =
-            app.virtual_scroll
-                .visible_slice(app.scroll_offset, app.auto_scroll, visible_height);
+        let slice = app.viewport.render.virtual_scroll.visible_slice(
+            app.viewport.render.scroll_offset,
+            app.viewport.render.auto_scroll,
+            visible_height,
+        );
         slice.line_offset as usize
     };
 
@@ -268,16 +275,17 @@ fn render_virtual_messages(
     // This is a read-only check: cache rebuilds happen in the update layer.
     // If the cache is stale (width changed or item count mismatch), fall back to
     // full iteration for this single frame. The next update tick will rebuild.
-    let needs_fallback = app.virtual_scroll.len() != app.messages.len()
-        || (app.virtual_scroll.cached_width() != wrap_width && !app.messages.is_empty());
+    let needs_fallback = app.viewport.render.virtual_scroll.len() != app.dashboard.messages.len()
+        || (app.viewport.render.virtual_scroll.cached_width() != wrap_width
+            && !app.dashboard.messages.is_empty());
 
     if needs_fallback {
         // Fallback: render all messages this frame. The cache will be rebuilt.
-        for (idx, msg) in app.messages.iter().enumerate() {
+        for (idx, msg) in app.dashboard.messages.iter().enumerate() {
             let ctx = MessageCtx {
                 inner_width,
                 theme,
-                selected: app.selected_message == Some(idx),
+                selected: app.interaction.selected_message == Some(idx),
                 highlight: None,
                 agent_name,
             };
@@ -286,20 +294,22 @@ fn render_virtual_messages(
         return;
     }
 
-    let slice =
-        app.virtual_scroll
-            .visible_slice(app.scroll_offset, app.auto_scroll, visible_height);
+    let slice = app.viewport.render.virtual_scroll.visible_slice(
+        app.viewport.render.scroll_offset,
+        app.viewport.render.auto_scroll,
+        visible_height,
+    );
 
     if slice.range.is_empty() {
         return;
     }
 
     for idx in slice.range.clone() {
-        let msg = &app.messages[idx];
+        let msg = &app.dashboard.messages[idx];
         let ctx = MessageCtx {
             inner_width,
             theme,
-            selected: app.selected_message == Some(idx),
+            selected: app.interaction.selected_message == Some(idx),
             highlight: None,
             agent_name,
         };
@@ -322,7 +332,7 @@ fn render_filtered_messages(
     inverted: bool,
     para_links: &mut Vec<(usize, u16, String, String)>,
 ) {
-    for (idx, msg) in app.messages.iter().enumerate() {
+    for (idx, msg) in app.dashboard.messages.iter().enumerate() {
         let contains = msg.text_lower.contains(pattern);
         let show = if inverted { !contains } else { contains };
         if !show {
@@ -331,7 +341,7 @@ fn render_filtered_messages(
         let ctx = MessageCtx {
             inner_width,
             theme,
-            selected: app.selected_message == Some(idx),
+            selected: app.interaction.selected_message == Some(idx),
             highlight: Some(pattern),
             agent_name,
         };
@@ -546,7 +556,7 @@ fn render_streaming(
     name: &str,
 ) {
     // Thinking block (if visible)
-    if app.thinking_expanded && !app.streaming_thinking.is_empty() {
+    if app.layout.thinking_expanded && !app.connection.streaming_thinking.is_empty() {
         lines.push(Line::from(vec![
             Span::raw(" "),
             Span::styled("─── thinking ", Style::default().fg(theme.thinking.border)),
@@ -555,7 +565,7 @@ fn render_streaming(
                 Style::default().fg(theme.thinking.border),
             ),
         ]));
-        for line in app.streaming_thinking.lines() {
+        for line in app.connection.streaming_thinking.lines() {
             lines.push(Line::from(vec![
                 Span::raw(" "),
                 Span::styled(line.to_string(), Style::default().fg(theme.thinking.fg)),
@@ -571,11 +581,11 @@ fn render_streaming(
     }
 
     // Active tool calls during streaming (show completed + current)
-    if !app.streaming_tool_calls.is_empty() {
+    if !app.connection.streaming_tool_calls.is_empty() {
         let mut tool_spans: Vec<Span> =
             vec![Span::raw("  "), Span::styled("╰─ ", theme.style_dim())];
 
-        for (i, tc) in app.streaming_tool_calls.iter().enumerate() {
+        for (i, tc) in app.connection.streaming_tool_calls.iter().enumerate() {
             if i > 0 {
                 tool_spans.push(Span::styled(" → ", theme.style_dim()));
             }
@@ -605,7 +615,7 @@ fn render_streaming(
                 tool_spans.push(Span::styled(label, Style::default().fg(color)));
             } else {
                 // Currently running tool: animated
-                let ch = theme::spinner_frame(app.tick_count);
+                let ch = theme::spinner_frame(app.viewport.tick_count);
                 tool_spans.push(Span::styled(
                     format!("{} {}", ch, tc.name),
                     Style::default().fg(theme.status.spinner),
@@ -617,7 +627,7 @@ fn render_streaming(
     }
 
     // Streaming text with cursor
-    if !app.streaming_text.is_empty() {
+    if !app.connection.streaming_text.is_empty() {
         lines.push(Line::from(vec![Span::styled(
             format!(" {}", name),
             theme.style_assistant(),
@@ -625,12 +635,18 @@ fn render_streaming(
 
         // Use cached markdown if text AND width match (streaming content, no OSC 8 links).
         let render_width = inner_width.saturating_sub(2);
-        let rendered = if app.markdown_cache.text == app.streaming_text
-            && app.markdown_cache.width == render_width
+        let rendered = if app.viewport.render.markdown_cache.text == app.connection.streaming_text
+            && app.viewport.render.markdown_cache.width == render_width
         {
-            app.markdown_cache.lines.clone()
+            app.viewport.render.markdown_cache.lines.clone()
         } else {
-            markdown::render(&app.streaming_text, render_width, theme, &app.highlighter).0
+            markdown::render(
+                &app.connection.streaming_text,
+                render_width,
+                theme,
+                &app.highlighter,
+            )
+            .0
         };
 
         for line in rendered {
@@ -640,7 +656,7 @@ fn render_streaming(
         }
 
         // Braille cursor
-        let ch = theme::spinner_frame(app.tick_count);
+        let ch = theme::spinner_frame(app.viewport.tick_count);
         lines.push(Line::from(vec![
             Span::raw(" "),
             Span::styled(
@@ -650,9 +666,9 @@ fn render_streaming(
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
-    } else if app.active_turn_id.is_some() {
+    } else if app.connection.active_turn_id.is_some() {
         // No text yet: show spinner with agent name
-        let ch = theme::spinner_frame(app.tick_count);
+        let ch = theme::spinner_frame(app.viewport.tick_count);
 
         lines.push(Line::from(vec![
             Span::styled(format!(" {}", name), theme.style_assistant()),

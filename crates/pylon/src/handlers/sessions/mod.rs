@@ -150,9 +150,9 @@ pub async fn list_sessions(
             nous_id: s.nous_id,
             session_key: s.session_key,
             status: s.status.as_str().to_owned(),
-            message_count: s.message_count,
+            message_count: s.metrics.message_count,
             updated_at: s.updated_at,
-            display_name: s.display_name,
+            display_name: s.origin.display_name,
         })
         .collect();
 

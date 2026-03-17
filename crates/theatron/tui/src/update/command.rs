@@ -6,122 +6,154 @@ use crate::state::{Overlay, SessionPickerOverlay};
 
 #[tracing::instrument(skip_all)]
 pub fn handle_open(app: &mut App) {
-    app.command_palette.active = true;
-    app.command_palette.input.clear();
-    app.command_palette.cursor = 0;
-    app.command_palette.selected = 0;
-    app.command_palette.suggestions = build_suggestions("", &app.agents);
+    app.interaction.command_palette.active = true;
+    app.interaction.command_palette.input.clear();
+    app.interaction.command_palette.cursor = 0;
+    app.interaction.command_palette.selected = 0;
+    app.interaction.command_palette.suggestions = build_suggestions("", &app.dashboard.agents);
 }
 
 #[tracing::instrument(skip_all)]
 pub fn handle_close(app: &mut App) {
-    app.command_palette.active = false;
-    app.command_palette.input.clear();
+    app.interaction.command_palette.active = false;
+    app.interaction.command_palette.input.clear();
 }
 
 pub fn handle_input(app: &mut App, c: char) {
-    app.command_history_index = None;
-    app.command_palette
+    app.interaction.command_history_index = None;
+    app.interaction
+        .command_palette
         .input
-        .insert(app.command_palette.cursor, c);
-    app.command_palette.cursor += c.len_utf8();
+        .insert(app.interaction.command_palette.cursor, c);
+    app.interaction.command_palette.cursor += c.len_utf8();
     refresh_suggestions(app);
-    app.command_palette.selected = 0;
+    app.interaction.command_palette.selected = 0;
 }
 
 pub fn handle_backspace(app: &mut App) {
-    if app.command_palette.cursor > 0 {
-        let mut prev = app.command_palette.cursor - 1;
-        while prev > 0 && !app.command_palette.input.is_char_boundary(prev) {
+    if app.interaction.command_palette.cursor > 0 {
+        let mut prev = app.interaction.command_palette.cursor - 1;
+        while prev > 0 && !app.interaction.command_palette.input.is_char_boundary(prev) {
             prev -= 1;
         }
-        app.command_palette.input.remove(prev);
-        app.command_palette.cursor = prev;
+        app.interaction.command_palette.input.remove(prev);
+        app.interaction.command_palette.cursor = prev;
         refresh_suggestions(app);
-        app.command_palette.selected = 0;
+        app.interaction.command_palette.selected = 0;
     } else {
         // WHY: closes on empty backspace to match vim command-mode behavior
-        app.command_palette.active = false;
+        app.interaction.command_palette.active = false;
     }
 }
 
 pub fn handle_delete_word(app: &mut App) {
-    let mut pos = app.command_palette.cursor;
-    while pos > 0 && app.command_palette.input.as_bytes().get(pos - 1) == Some(&b' ') {
+    let mut pos = app.interaction.command_palette.cursor;
+    while pos > 0
+        && app
+            .interaction
+            .command_palette
+            .input
+            .as_bytes()
+            .get(pos - 1)
+            == Some(&b' ')
+    {
         pos -= 1;
     }
-    while pos > 0 && app.command_palette.input.as_bytes().get(pos - 1) != Some(&b' ') {
+    while pos > 0
+        && app
+            .interaction
+            .command_palette
+            .input
+            .as_bytes()
+            .get(pos - 1)
+            != Some(&b' ')
+    {
         pos -= 1;
     }
-    app.command_palette
+    app.interaction
+        .command_palette
         .input
-        .drain(pos..app.command_palette.cursor);
-    app.command_palette.cursor = pos;
+        .drain(pos..app.interaction.command_palette.cursor);
+    app.interaction.command_palette.cursor = pos;
     refresh_suggestions(app);
-    app.command_palette.selected = 0;
+    app.interaction.command_palette.selected = 0;
 }
 
 pub fn handle_up(app: &mut App) {
-    if app.command_history_index.is_some() {
+    if app.interaction.command_history_index.is_some() {
         // WHY: Already in history-browsing mode: continue navigating history.
-        if !app.command_history.is_empty() {
-            let idx = match app.command_history_index {
-                Some(i) if i + 1 < app.command_history.len() => i + 1,
+        if !app.interaction.command_history.is_empty() {
+            let idx = match app.interaction.command_history_index {
+                Some(i) if i + 1 < app.interaction.command_history.len() => i + 1,
                 None => 0,
                 Some(i) => i,
             };
-            app.command_history_index = Some(idx);
-            let entry = app.command_history[app.command_history.len() - 1 - idx].clone();
-            app.command_palette.input = entry;
-            app.command_palette.cursor = app.command_palette.input.len();
+            app.interaction.command_history_index = Some(idx);
+            let entry = app.interaction.command_history
+                [app.interaction.command_history.len() - 1 - idx]
+                .clone();
+            app.interaction.command_palette.input = entry;
+            app.interaction.command_palette.cursor = app.interaction.command_palette.input.len();
             refresh_suggestions(app);
         }
     } else {
-        app.command_palette.selected = app.command_palette.selected.saturating_sub(1);
+        app.interaction.command_palette.selected =
+            app.interaction.command_palette.selected.saturating_sub(1);
     }
 }
 
 pub fn handle_down(app: &mut App) {
-    if app.command_history_index.is_some() {
-        match app.command_history_index {
+    if app.interaction.command_history_index.is_some() {
+        match app.interaction.command_history_index {
             Some(0) => {
-                app.command_history_index = None;
-                app.command_palette.input.clear();
-                app.command_palette.cursor = 0;
+                app.interaction.command_history_index = None;
+                app.interaction.command_palette.input.clear();
+                app.interaction.command_palette.cursor = 0;
                 refresh_suggestions(app);
             }
             Some(i) => {
                 let idx = i - 1;
-                app.command_history_index = Some(idx);
-                let entry = app.command_history[app.command_history.len() - 1 - idx].clone();
-                app.command_palette.input = entry;
-                app.command_palette.cursor = app.command_palette.input.len();
+                app.interaction.command_history_index = Some(idx);
+                let entry = app.interaction.command_history
+                    [app.interaction.command_history.len() - 1 - idx]
+                    .clone();
+                app.interaction.command_palette.input = entry;
+                app.interaction.command_palette.cursor =
+                    app.interaction.command_palette.input.len();
                 refresh_suggestions(app);
             }
             // NOTE: already at latest input, no history to navigate
             None => {}
         }
     } else {
-        let max = app.command_palette.suggestions.len().saturating_sub(1);
-        app.command_palette.selected = (app.command_palette.selected + 1).min(max);
+        let max = app
+            .interaction
+            .command_palette
+            .suggestions
+            .len()
+            .saturating_sub(1);
+        app.interaction.command_palette.selected =
+            (app.interaction.command_palette.selected + 1).min(max);
     }
 }
 
 pub fn handle_tab(app: &mut App) {
     if let Some(suggestion) = app
+        .interaction
         .command_palette
         .suggestions
-        .get(app.command_palette.selected)
+        .get(app.interaction.command_palette.selected)
     {
         let base = suggestion.execute_as.clone();
         let args = app
+            .interaction
             .command_palette
             .input
             .split_once(' ')
             .map(|(_, a)| format!(" {a}"))
             .unwrap_or_default();
-        app.command_palette.input = format!("{base}{args}");
-        app.command_palette.cursor = base.len();
+        app.interaction.command_palette.input = format!("{base}{args}");
+        app.interaction.command_palette.cursor = base.len();
         refresh_suggestions(app);
     }
 }
@@ -129,12 +161,14 @@ pub fn handle_tab(app: &mut App) {
 #[tracing::instrument(skip_all)]
 pub async fn handle_select(app: &mut App) {
     if let Some(suggestion) = app
+        .interaction
         .command_palette
         .suggestions
-        .get(app.command_palette.selected)
+        .get(app.interaction.command_palette.selected)
     {
         let execute_as = suggestion.execute_as.clone();
         let extra_args = app
+            .interaction
             .command_palette
             .input
             .split_once(' ')
@@ -142,14 +176,14 @@ pub async fn handle_select(app: &mut App) {
             .unwrap_or_default();
 
         if extra_args.is_empty() {
-            app.command_palette.input = execute_as;
+            app.interaction.command_palette.input = execute_as;
         } else {
             // NOTE: preserve typed args: user may have typed extra text beyond the suggestion base
             let suggestion_has_args = execute_as.contains(' ');
             if suggestion_has_args {
-                app.command_palette.input = execute_as;
+                app.interaction.command_palette.input = execute_as;
             } else {
-                app.command_palette.input = format!("{execute_as} {extra_args}");
+                app.interaction.command_palette.input = format!("{execute_as} {extra_args}");
             }
         }
     }
@@ -157,27 +191,31 @@ pub async fn handle_select(app: &mut App) {
 }
 
 fn refresh_suggestions(app: &mut App) {
-    app.command_palette.suggestions = build_suggestions(&app.command_palette.input, &app.agents);
+    app.interaction.command_palette.suggestions = build_suggestions(
+        &app.interaction.command_palette.input,
+        &app.dashboard.agents,
+    );
 }
 
 async fn execute_command(app: &mut App) {
-    let input = app.command_palette.input.trim().to_string();
-    app.command_palette.active = false;
-    app.command_palette.input.clear();
-    app.command_history_index = None;
+    let input = app.interaction.command_palette.input.trim().to_string();
+    app.interaction.command_palette.active = false;
+    app.interaction.command_palette.input.clear();
+    app.interaction.command_history_index = None;
 
     if input.is_empty() {
         return;
     }
 
     // Persist command to history (deduplicate consecutive duplicates)
-    if app.command_history.last().map(|s| s.as_str()) != Some(&input) {
-        app.command_history.push(input.clone());
-        if app.command_history.len() > app::MAX_COMMAND_HISTORY {
-            app.command_history
-                .drain(..app.command_history.len() - app::MAX_COMMAND_HISTORY);
+    if app.interaction.command_history.last().map(|s| s.as_str()) != Some(&input) {
+        app.interaction.command_history.push(input.clone());
+        if app.interaction.command_history.len() > app::MAX_COMMAND_HISTORY {
+            app.interaction
+                .command_history
+                .drain(..app.interaction.command_history.len() - app::MAX_COMMAND_HISTORY);
         }
-        app::save_command_history(&app.config, &app.command_history);
+        app::save_command_history(&app.config, &app.interaction.command_history);
     }
 
     let (cmd_name, args) = match input.split_once(' ') {
@@ -188,50 +226,52 @@ async fn execute_command(app: &mut App) {
     match cmd_name {
         "quit" | "q" => app.should_quit = true,
         "help" | "?" => {
-            app.overlay = Some(Overlay::Help);
+            app.layout.overlay = Some(Overlay::Help);
         }
         "agents" | "a" => {
-            app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+            app.layout.overlay = Some(Overlay::AgentPicker { cursor: 0 });
         }
         "sessions" | "s" => {
             let show_archived = args == "--all" || args == "-a";
-            app.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
+            app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
                 cursor: 0,
                 show_archived,
             }));
         }
         "health" | "h" | "cost" | "$" => {
-            app.overlay = Some(Overlay::SystemStatus);
+            app.layout.overlay = Some(Overlay::SystemStatus);
         }
         "agent" => {
             if !args.is_empty() {
                 let target = args.to_lowercase();
                 if let Some(agent) = app
+                    .dashboard
                     .agents
                     .iter()
                     .find(|a| a.id.to_lowercase() == target || a.name.to_lowercase() == target)
                 {
                     let id = agent.id.clone();
                     app.save_scroll_state();
-                    if let Some(a) = app.agents.iter_mut().find(|a| a.id == id) {
+                    if let Some(a) = app.dashboard.agents.iter_mut().find(|a| a.id == id) {
                         a.unread_count = 0;
                     }
-                    app.focused_agent = Some(id);
+                    app.dashboard.focused_agent = Some(id);
                     app.load_focused_session().await;
                     app.restore_scroll_state();
                 } else {
-                    app.error_toast = Some(ErrorToast::new(format!("Unknown agent: {args}")));
+                    app.viewport.error_toast =
+                        Some(ErrorToast::new(format!("Unknown agent: {args}")));
                 }
             } else {
-                app.overlay = Some(Overlay::AgentPicker { cursor: 0 });
+                app.layout.overlay = Some(Overlay::AgentPicker { cursor: 0 });
             }
         }
         "clear" => {
-            app.messages.clear();
-            app.focused_session_id = None;
-            app.streaming_text.clear();
-            app.streaming_thinking.clear();
-            app.streaming_tool_calls.clear();
+            app.dashboard.messages.clear();
+            app.dashboard.focused_session_id = None;
+            app.connection.streaming_text.clear();
+            app.connection.streaming_thinking.clear();
+            app.connection.streaming_tool_calls.clear();
             app.scroll_to_bottom();
         }
         "compact" => {
@@ -239,7 +279,7 @@ async fn execute_command(app: &mut App) {
         }
         "recall" | "r" => {
             if args.is_empty() {
-                app.error_toast = Some(ErrorToast::new("Usage: :recall <query>".into()));
+                app.viewport.error_toast = Some(ErrorToast::new("Usage: :recall <query>".into()));
             } else {
                 execute_recall(app, args).await;
             }
@@ -252,7 +292,7 @@ async fn execute_command(app: &mut App) {
         }
         "rename" => {
             if args.is_empty() {
-                app.error_toast = Some(ErrorToast::new("Usage: :rename <name>".into()));
+                app.viewport.error_toast = Some(ErrorToast::new("Usage: :rename <name>".into()));
             } else {
                 execute_rename(app, args).await;
             }
@@ -273,7 +313,7 @@ async fn execute_command(app: &mut App) {
             super::diff::handle_diff_open(app).await;
         }
         "ops" => {
-            app.ops.toggle();
+            app.layout.ops.toggle();
         }
         "tab" => {
             super::tabs::handle_tab_command(app, args);
@@ -282,34 +322,36 @@ async fn execute_command(app: &mut App) {
             execute_export(app);
         }
         _ => {
-            app.error_toast = Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
+            app.viewport.error_toast =
+                Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
         }
     }
 }
 
 fn execute_model(app: &mut App) {
     let agent = app
+        .dashboard
         .focused_agent
         .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| &a.id == id));
+        .and_then(|id| app.dashboard.agents.iter().find(|a| &a.id == id));
 
     match agent {
         Some(agent) => {
             let model = agent.model.as_deref().unwrap_or("unknown");
             let name = &agent.name;
-            app.error_toast = Some(ErrorToast::new(format!("{name}: {model}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("{name}: {model}")));
         }
         None => {
-            app.error_toast = Some(ErrorToast::new("No agent focused".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("No agent focused".into()));
         }
     }
 }
 
 async fn execute_compact(app: &mut App) {
-    let session_id = match &app.focused_session_id {
+    let session_id = match &app.dashboard.focused_session_id {
         Some(id) => id.clone(),
         None => {
-            app.error_toast = Some(ErrorToast::new("No active session to compact".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("No active session to compact".into()));
             return;
         }
     };
@@ -317,19 +359,19 @@ async fn execute_compact(app: &mut App) {
     let client = app.client.clone();
     match client.compact(&session_id).await {
         Ok(()) => {
-            app.error_toast = Some(ErrorToast::new("Distillation triggered".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("Distillation triggered".into()));
         }
         Err(e) => {
-            app.error_toast = Some(ErrorToast::new(format!("Compact failed: {e}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Compact failed: {e}")));
         }
     }
 }
 
 async fn execute_recall(app: &mut App, query: &str) {
-    let nous_id = match &app.focused_agent {
+    let nous_id = match &app.dashboard.focused_agent {
         Some(id) => id.clone(),
         None => {
-            app.error_toast = Some(ErrorToast::new("No agent focused for recall".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("No agent focused for recall".into()));
             return;
         }
     };
@@ -345,19 +387,19 @@ async fn execute_recall(app: &mut App, query: &str) {
             } else {
                 clean
             };
-            app.error_toast = Some(ErrorToast::new(display));
+            app.viewport.error_toast = Some(ErrorToast::new(display));
         }
         Err(e) => {
-            app.error_toast = Some(ErrorToast::new(format!("Recall failed: {e}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Recall failed: {e}")));
         }
     }
 }
 
 async fn execute_rename(app: &mut App, name: &str) {
-    let session_id = match &app.focused_session_id {
+    let session_id = match &app.dashboard.focused_session_id {
         Some(id) => id.clone(),
         None => {
-            app.error_toast = Some(ErrorToast::new("No active session to rename".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("No active session to rename".into()));
             return;
         }
     };
@@ -368,25 +410,25 @@ async fn execute_rename(app: &mut App, name: &str) {
     let sid = session_id.clone();
     match client.rename_session(&sid, &name_for_update).await {
         Ok(()) => {
-            if let Some(ref agent_id) = app.focused_agent
-                && let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id)
+            if let Some(ref agent_id) = app.dashboard.focused_agent
+                && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| &a.id == agent_id)
                 && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
             {
                 session.display_name = Some(name.clone());
             }
-            app.error_toast = Some(ErrorToast::new(format!("Renamed to: {name}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Renamed to: {name}")));
         }
         Err(e) => {
-            app.error_toast = Some(ErrorToast::new(format!("Rename failed: {e}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Rename failed: {e}")));
         }
     }
 }
 
 async fn execute_archive(app: &mut App) {
-    let session_id = match &app.focused_session_id {
+    let session_id = match &app.dashboard.focused_session_id {
         Some(id) => id.clone(),
         None => {
-            app.error_toast = Some(ErrorToast::new("No active session to archive".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("No active session to archive".into()));
             return;
         }
     };
@@ -394,28 +436,29 @@ async fn execute_archive(app: &mut App) {
     let client = app.client.clone();
     match client.archive_session(&session_id).await {
         Ok(()) => {
-            if let Some(ref agent_id) = app.focused_agent
-                && let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id)
+            if let Some(ref agent_id) = app.dashboard.focused_agent
+                && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| &a.id == agent_id)
                 && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
             {
                 session.status = Some("archived".to_string());
             }
-            app.messages.clear();
-            app.focused_session_id = None;
+            app.dashboard.messages.clear();
+            app.dashboard.focused_session_id = None;
             app.scroll_to_bottom();
-            app.error_toast = Some(ErrorToast::new("Session archived".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("Session archived".into()));
         }
         Err(e) => {
-            app.error_toast = Some(ErrorToast::new(format!("Archive failed: {e}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Archive failed: {e}")));
         }
     }
 }
 
 async fn execute_unarchive(app: &mut App) {
-    let session_id = match &app.focused_session_id {
+    let session_id = match &app.dashboard.focused_session_id {
         Some(id) => id.clone(),
         None => {
-            app.error_toast = Some(ErrorToast::new("No active session to unarchive".into()));
+            app.viewport.error_toast =
+                Some(ErrorToast::new("No active session to unarchive".into()));
             return;
         }
     };
@@ -423,16 +466,16 @@ async fn execute_unarchive(app: &mut App) {
     let client = app.client.clone();
     match client.unarchive_session(&session_id).await {
         Ok(()) => {
-            if let Some(ref agent_id) = app.focused_agent
-                && let Some(agent) = app.agents.iter_mut().find(|a| &a.id == agent_id)
+            if let Some(ref agent_id) = app.dashboard.focused_agent
+                && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| &a.id == agent_id)
                 && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
             {
                 session.status = Some("active".to_string());
             }
-            app.error_toast = Some(ErrorToast::new("Session restored".into()));
+            app.viewport.error_toast = Some(ErrorToast::new("Session restored".into()));
         }
         Err(e) => {
-            app.error_toast = Some(ErrorToast::new(format!("Unarchive failed: {e}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Unarchive failed: {e}")));
         }
     }
 }
@@ -453,14 +496,14 @@ pub(crate) fn execute_export_from_msg(app: &mut App) {
 }
 
 fn execute_export(app: &mut App) {
-    if app.messages.is_empty() {
-        app.error_toast = Some(ErrorToast::new("No messages to export".into()));
+    if app.dashboard.messages.is_empty() {
+        app.viewport.error_toast = Some(ErrorToast::new("No messages to export".into()));
         return;
     }
 
     let exports_dir = app::exports_dir(&app.config);
     if let Err(e) = std::fs::create_dir_all(&exports_dir) {
-        app.error_toast = Some(ErrorToast::new(format!(
+        app.viewport.error_toast = Some(ErrorToast::new(format!(
             "Failed to create exports dir: {e}"
         )));
         return;
@@ -471,13 +514,15 @@ fn execute_export(app: &mut App) {
     let path = exports_dir.join(&filename);
 
     let agent_name = app
+        .dashboard
         .focused_agent
         .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| &a.id == id))
+        .and_then(|id| app.dashboard.agents.iter().find(|a| &a.id == id))
         .map(|a| a.name.as_str())
         .unwrap_or("unknown");
 
     let session_label = app
+        .dashboard
         .focused_session_id
         .as_ref()
         .map(|id| id.to_string())
@@ -487,7 +532,7 @@ fn execute_export(app: &mut App) {
         "# Conversation Export\n\n- **Agent:** {agent_name}\n- **Session:** {session_label}\n- **Exported:** {now}\n\n---\n\n"
     );
 
-    for msg in app.messages.iter() {
+    for msg in app.dashboard.messages.iter() {
         let role_label = match msg.role.as_str() {
             "user" => "User",
             "assistant" => "Assistant",
@@ -513,10 +558,11 @@ fn execute_export(app: &mut App) {
 
     match std::fs::write(&path, &md) {
         Ok(()) => {
-            app.success_toast = Some(ErrorToast::new(format!("Exported to {}", path.display())));
+            app.viewport.success_toast =
+                Some(ErrorToast::new(format!("Exported to {}", path.display())));
         }
         Err(e) => {
-            app.error_toast = Some(ErrorToast::new(format!("Export failed: {e}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Export failed: {e}")));
         }
     }
 }
@@ -530,11 +576,11 @@ mod tests {
     fn handle_open_activates_palette() {
         let mut app = test_app();
         handle_open(&mut app);
-        assert!(app.command_palette.active);
-        assert!(app.command_palette.input.is_empty());
-        assert_eq!(app.command_palette.cursor, 0);
-        assert_eq!(app.command_palette.selected, 0);
-        assert!(!app.command_palette.suggestions.is_empty());
+        assert!(app.interaction.command_palette.active);
+        assert!(app.interaction.command_palette.input.is_empty());
+        assert_eq!(app.interaction.command_palette.cursor, 0);
+        assert_eq!(app.interaction.command_palette.selected, 0);
+        assert!(!app.interaction.command_palette.suggestions.is_empty());
     }
 
     #[test]
@@ -542,8 +588,8 @@ mod tests {
         let mut app = test_app();
         handle_open(&mut app);
         handle_close(&mut app);
-        assert!(!app.command_palette.active);
-        assert!(app.command_palette.input.is_empty());
+        assert!(!app.interaction.command_palette.active);
+        assert!(app.interaction.command_palette.input.is_empty());
     }
 
     #[test]
@@ -551,9 +597,9 @@ mod tests {
         let mut app = test_app();
         handle_open(&mut app);
         handle_input(&mut app, 'q');
-        assert_eq!(app.command_palette.input, "q");
-        assert_eq!(app.command_palette.cursor, 1);
-        assert_eq!(app.command_palette.selected, 0);
+        assert_eq!(app.interaction.command_palette.input, "q");
+        assert_eq!(app.interaction.command_palette.cursor, 1);
+        assert_eq!(app.interaction.command_palette.selected, 0);
     }
 
     #[test]
@@ -561,8 +607,8 @@ mod tests {
         let mut app = test_app();
         handle_open(&mut app);
         handle_input(&mut app, '\u{00e9}'); // e with accent
-        assert_eq!(app.command_palette.input, "\u{00e9}");
-        assert_eq!(app.command_palette.cursor, 2); // 2-byte UTF-8
+        assert_eq!(app.interaction.command_palette.input, "\u{00e9}");
+        assert_eq!(app.interaction.command_palette.cursor, 2); // 2-byte UTF-8
     }
 
     #[test]
@@ -572,8 +618,8 @@ mod tests {
         handle_input(&mut app, 'a');
         handle_input(&mut app, 'b');
         handle_backspace(&mut app);
-        assert_eq!(app.command_palette.input, "a");
-        assert_eq!(app.command_palette.cursor, 1);
+        assert_eq!(app.interaction.command_palette.input, "a");
+        assert_eq!(app.interaction.command_palette.cursor, 1);
     }
 
     #[test]
@@ -581,7 +627,7 @@ mod tests {
         let mut app = test_app();
         handle_open(&mut app);
         handle_backspace(&mut app);
-        assert!(!app.command_palette.active);
+        assert!(!app.interaction.command_palette.active);
     }
 
     #[test]
@@ -592,35 +638,40 @@ mod tests {
             handle_input(&mut app, c);
         }
         handle_delete_word(&mut app);
-        assert_eq!(app.command_palette.input, "hello ");
+        assert_eq!(app.interaction.command_palette.input, "hello ");
     }
 
     #[test]
     fn handle_up_decrements_selected() {
         let mut app = test_app();
         handle_open(&mut app);
-        app.command_palette.selected = 3;
+        app.interaction.command_palette.selected = 3;
         handle_up(&mut app);
-        assert_eq!(app.command_palette.selected, 2);
+        assert_eq!(app.interaction.command_palette.selected, 2);
     }
 
     #[test]
     fn handle_up_saturates_at_zero() {
         let mut app = test_app();
         handle_open(&mut app);
-        app.command_palette.selected = 0;
+        app.interaction.command_palette.selected = 0;
         handle_up(&mut app);
-        assert_eq!(app.command_palette.selected, 0);
+        assert_eq!(app.interaction.command_palette.selected, 0);
     }
 
     #[test]
     fn handle_down_clamps_at_max() {
         let mut app = test_app();
         handle_open(&mut app);
-        let max = app.command_palette.suggestions.len().saturating_sub(1);
-        app.command_palette.selected = max;
+        let max = app
+            .interaction
+            .command_palette
+            .suggestions
+            .len()
+            .saturating_sub(1);
+        app.interaction.command_palette.selected = max;
         handle_down(&mut app);
-        assert_eq!(app.command_palette.selected, max);
+        assert_eq!(app.interaction.command_palette.selected, max);
     }
 
     #[test]
@@ -631,8 +682,8 @@ mod tests {
         handle_tab(&mut app);
         // After tab, input should contain the full command name
         assert!(
-            app.command_palette.input.starts_with("quit")
-                || !app.command_palette.suggestions.is_empty()
+            app.interaction.command_palette.input.starts_with("quit")
+                || !app.interaction.command_palette.suggestions.is_empty()
         );
     }
 

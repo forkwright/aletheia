@@ -2,32 +2,32 @@ use crate::app::App;
 use crate::id::NousId;
 
 pub(crate) fn handle_scroll_up(app: &mut App) {
-    app.scroll_offset = app.scroll_offset.saturating_add(3);
-    app.auto_scroll = false;
+    app.viewport.render.scroll_offset = app.viewport.render.scroll_offset.saturating_add(3);
+    app.viewport.render.auto_scroll = false;
     clamp_scroll_offset(app);
 }
 
 pub(crate) fn handle_scroll_down(app: &mut App) {
-    if app.scroll_offset >= 3 {
-        app.scroll_offset -= 3;
+    if app.viewport.render.scroll_offset >= 3 {
+        app.viewport.render.scroll_offset -= 3;
     } else {
-        app.scroll_offset = 0;
-        app.auto_scroll = true;
+        app.viewport.render.scroll_offset = 0;
+        app.viewport.render.auto_scroll = true;
     }
 }
 
 pub(crate) fn handle_scroll_line_up(app: &mut App) {
-    app.scroll_offset = app.scroll_offset.saturating_add(1);
-    app.auto_scroll = false;
+    app.viewport.render.scroll_offset = app.viewport.render.scroll_offset.saturating_add(1);
+    app.viewport.render.auto_scroll = false;
     clamp_scroll_offset(app);
 }
 
 pub(crate) fn handle_scroll_line_down(app: &mut App) {
-    if app.scroll_offset >= 1 {
-        app.scroll_offset -= 1;
+    if app.viewport.render.scroll_offset >= 1 {
+        app.viewport.render.scroll_offset -= 1;
     } else {
-        app.scroll_offset = 0;
-        app.auto_scroll = true;
+        app.viewport.render.scroll_offset = 0;
+        app.viewport.render.auto_scroll = true;
     }
 }
 
@@ -37,91 +37,91 @@ pub(crate) fn handle_scroll_line_down(app: &mut App) {
 /// The result is used as the page-scroll distance so PageUp/PageDown move by one
 /// viewport rather than a hard-coded constant.
 fn chat_viewport_height(app: &App) -> usize {
-    app.terminal_height.saturating_sub(6).max(1) as usize
+    app.viewport.terminal_height.saturating_sub(6).max(1) as usize
 }
 
 pub(crate) fn handle_scroll_page_up(app: &mut App) {
     let page = chat_viewport_height(app);
-    app.scroll_offset = app.scroll_offset.saturating_add(page);
-    app.auto_scroll = false;
+    app.viewport.render.scroll_offset = app.viewport.render.scroll_offset.saturating_add(page);
+    app.viewport.render.auto_scroll = false;
     clamp_scroll_offset(app);
 }
 
 pub(crate) fn handle_scroll_page_down(app: &mut App) {
     let page = chat_viewport_height(app);
-    if app.scroll_offset >= page {
-        app.scroll_offset -= page;
+    if app.viewport.render.scroll_offset >= page {
+        app.viewport.render.scroll_offset -= page;
     } else {
-        app.scroll_offset = 0;
-        app.auto_scroll = true;
+        app.viewport.render.scroll_offset = 0;
+        app.viewport.render.auto_scroll = true;
     }
 }
 
 pub(crate) fn handle_scroll_to_bottom(app: &mut App) {
-    app.scroll_offset = 0;
-    app.auto_scroll = true;
+    app.viewport.render.scroll_offset = 0;
+    app.viewport.render.auto_scroll = true;
 }
 
 pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
     app.save_scroll_state();
-    if let Some(agent) = app.agents.iter_mut().find(|a| a.id == id) {
+    if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == id) {
         agent.unread_count = 0;
     }
-    app.focused_agent = Some(id);
+    app.dashboard.focused_agent = Some(id);
     app.load_focused_session().await;
     app.restore_scroll_state();
 }
 
 pub(crate) async fn handle_next_agent(app: &mut App) {
-    if app.agents.is_empty() {
+    if app.dashboard.agents.is_empty() {
         return;
     }
     app.save_scroll_state();
-    if let Some(ref current) = app.focused_agent
-        && let Some(idx) = app.agents.iter().position(|a| a.id == *current)
+    if let Some(ref current) = app.dashboard.focused_agent
+        && let Some(idx) = app.dashboard.agents.iter().position(|a| a.id == *current)
     {
-        let next = (idx + 1) % app.agents.len();
-        let id = app.agents[next].id.clone();
-        app.focused_agent = Some(id);
+        let next = (idx + 1) % app.dashboard.agents.len();
+        let id = app.dashboard.agents[next].id.clone();
+        app.dashboard.focused_agent = Some(id);
         app.load_focused_session().await;
         app.restore_scroll_state();
     }
 }
 
 pub(crate) async fn handle_prev_agent(app: &mut App) {
-    if app.agents.is_empty() {
+    if app.dashboard.agents.is_empty() {
         return;
     }
     app.save_scroll_state();
-    if let Some(ref current) = app.focused_agent
-        && let Some(idx) = app.agents.iter().position(|a| a.id == *current)
+    if let Some(ref current) = app.dashboard.focused_agent
+        && let Some(idx) = app.dashboard.agents.iter().position(|a| a.id == *current)
     {
         let prev = if idx == 0 {
-            app.agents.len() - 1
+            app.dashboard.agents.len() - 1
         } else {
             idx - 1
         };
-        let id = app.agents[prev].id.clone();
-        app.focused_agent = Some(id);
+        let id = app.dashboard.agents[prev].id.clone();
+        app.dashboard.focused_agent = Some(id);
         app.load_focused_session().await;
         app.restore_scroll_state();
     }
 }
 
 pub(crate) fn handle_toggle_sidebar(app: &mut App) {
-    app.sidebar_visible = !app.sidebar_visible;
+    app.layout.sidebar_visible = !app.layout.sidebar_visible;
 }
 
 pub(crate) fn handle_toggle_thinking(app: &mut App) {
-    app.thinking_expanded = !app.thinking_expanded;
+    app.layout.thinking_expanded = !app.layout.thinking_expanded;
 }
 
 pub(crate) fn handle_toggle_ops_pane(app: &mut App) {
-    app.ops.toggle();
+    app.layout.ops.toggle();
 }
 
 pub(crate) fn handle_ops_focus_switch(app: &mut App) {
-    app.ops.toggle_focus();
+    app.layout.ops.toggle_focus();
 }
 
 /// Clamp `scroll_offset` to the maximum scrollable distance given current content
@@ -132,32 +132,32 @@ pub(crate) fn handle_ops_focus_switch(app: &mut App) {
 /// No-op when there are no messages (nothing to bound against) or when
 /// auto-scroll is already active.
 fn clamp_scroll_offset(app: &mut App) {
-    if app.auto_scroll || app.messages.is_empty() {
+    if app.viewport.render.auto_scroll || app.dashboard.messages.is_empty() {
         return;
     }
-    let total = app.virtual_scroll.total_height();
+    let total = app.viewport.render.virtual_scroll.total_height();
     let vh = chat_viewport_height(app) as u64;
     let max_offset = total.saturating_sub(vh) as usize;
-    if app.scroll_offset > max_offset {
-        app.scroll_offset = max_offset;
+    if app.viewport.render.scroll_offset > max_offset {
+        app.viewport.render.scroll_offset = max_offset;
         if max_offset == 0 {
-            app.auto_scroll = true;
+            app.viewport.render.auto_scroll = true;
         }
     }
 }
 
 pub(crate) fn handle_resize(app: &mut App, w: u16, h: u16) {
-    app.terminal_width = w;
-    app.terminal_height = h;
+    app.viewport.terminal_width = w;
+    app.viewport.terminal_height = h;
     app.rebuild_virtual_scroll();
     // NOTE: cap scroll_offset after reflow so the user cannot scroll past the top of content; auto-scroll is unaffected
-    if !app.auto_scroll {
-        let total = app.virtual_scroll.total_height();
+    if !app.viewport.render.auto_scroll {
+        let total = app.viewport.render.virtual_scroll.total_height();
         let vh = chat_viewport_height(app) as u64;
         let max_offset = total.saturating_sub(vh) as usize;
-        app.scroll_offset = app.scroll_offset.min(max_offset);
-        if app.scroll_offset == 0 {
-            app.auto_scroll = true;
+        app.viewport.render.scroll_offset = app.viewport.render.scroll_offset.min(max_offset);
+        if app.viewport.render.scroll_offset == 0 {
+            app.viewport.render.auto_scroll = true;
         }
     }
 }
@@ -171,8 +171,8 @@ mod tests {
     fn scroll_up_increases_offset() {
         let mut app = test_app();
         handle_scroll_up(&mut app);
-        assert_eq!(app.scroll_offset, 3);
-        assert!(!app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 3);
+        assert!(!app.viewport.render.auto_scroll);
     }
 
     #[test]
@@ -180,27 +180,27 @@ mod tests {
         let mut app = test_app();
         handle_scroll_up(&mut app);
         handle_scroll_up(&mut app);
-        assert_eq!(app.scroll_offset, 6);
+        assert_eq!(app.viewport.render.scroll_offset, 6);
     }
 
     #[test]
     fn scroll_down_decreases_offset() {
         let mut app = test_app();
-        app.scroll_offset = 10;
-        app.auto_scroll = false;
+        app.viewport.render.scroll_offset = 10;
+        app.viewport.render.auto_scroll = false;
         handle_scroll_down(&mut app);
-        assert_eq!(app.scroll_offset, 7);
-        assert!(!app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 7);
+        assert!(!app.viewport.render.auto_scroll);
     }
 
     #[test]
     fn scroll_down_to_zero_enables_auto_scroll() {
         let mut app = test_app();
-        app.scroll_offset = 2;
-        app.auto_scroll = false;
+        app.viewport.render.scroll_offset = 2;
+        app.viewport.render.auto_scroll = false;
         handle_scroll_down(&mut app);
-        assert_eq!(app.scroll_offset, 0);
-        assert!(app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 0);
+        assert!(app.viewport.render.auto_scroll);
     }
 
     #[test]
@@ -209,45 +209,45 @@ mod tests {
         // test_app terminal_height=40 → chat_viewport_height = 40-6 = 34
         let expected = chat_viewport_height(&app);
         handle_scroll_page_up(&mut app);
-        assert_eq!(app.scroll_offset, expected);
-        assert!(!app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, expected);
+        assert!(!app.viewport.render.auto_scroll);
     }
 
     #[test]
     fn scroll_page_down_jumps_one_viewport() {
         let mut app = test_app();
         let page = chat_viewport_height(&app);
-        app.scroll_offset = page + 10;
+        app.viewport.render.scroll_offset = page + 10;
         handle_scroll_page_down(&mut app);
-        assert_eq!(app.scroll_offset, 10);
+        assert_eq!(app.viewport.render.scroll_offset, 10);
     }
 
     #[test]
     fn scroll_page_down_to_zero_auto_scrolls() {
         let mut app = test_app();
-        app.scroll_offset = 5; // less than a full page
-        app.auto_scroll = false;
+        app.viewport.render.scroll_offset = 5; // less than a full page
+        app.viewport.render.auto_scroll = false;
         handle_scroll_page_down(&mut app);
-        assert_eq!(app.scroll_offset, 0);
-        assert!(app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 0);
+        assert!(app.viewport.render.auto_scroll);
     }
 
     #[test]
     fn scroll_to_bottom_resets() {
         let mut app = test_app();
-        app.scroll_offset = 50;
-        app.auto_scroll = false;
+        app.viewport.render.scroll_offset = 50;
+        app.viewport.render.auto_scroll = false;
         handle_scroll_to_bottom(&mut app);
-        assert_eq!(app.scroll_offset, 0);
-        assert!(app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 0);
+        assert!(app.viewport.render.auto_scroll);
     }
 
     #[test]
     fn scroll_line_up_increases_offset_by_one() {
         let mut app = test_app();
         handle_scroll_line_up(&mut app);
-        assert_eq!(app.scroll_offset, 1);
-        assert!(!app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 1);
+        assert!(!app.viewport.render.auto_scroll);
     }
 
     #[test]
@@ -256,55 +256,55 @@ mod tests {
         handle_scroll_line_up(&mut app);
         handle_scroll_line_up(&mut app);
         handle_scroll_line_up(&mut app);
-        assert_eq!(app.scroll_offset, 3);
+        assert_eq!(app.viewport.render.scroll_offset, 3);
     }
 
     #[test]
     fn scroll_line_down_decreases_offset_by_one() {
         let mut app = test_app();
-        app.scroll_offset = 5;
-        app.auto_scroll = false;
+        app.viewport.render.scroll_offset = 5;
+        app.viewport.render.auto_scroll = false;
         handle_scroll_line_down(&mut app);
-        assert_eq!(app.scroll_offset, 4);
-        assert!(!app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 4);
+        assert!(!app.viewport.render.auto_scroll);
     }
 
     #[test]
     fn scroll_line_down_to_zero_enables_auto_scroll() {
         let mut app = test_app();
-        app.scroll_offset = 1;
-        app.auto_scroll = false;
+        app.viewport.render.scroll_offset = 1;
+        app.viewport.render.auto_scroll = false;
         handle_scroll_line_down(&mut app);
-        assert_eq!(app.scroll_offset, 0);
-        assert!(app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 0);
+        assert!(app.viewport.render.auto_scroll);
     }
 
     #[test]
     fn toggle_sidebar_flips() {
         let mut app = test_app();
-        assert!(app.sidebar_visible);
+        assert!(app.layout.sidebar_visible);
         handle_toggle_sidebar(&mut app);
-        assert!(!app.sidebar_visible);
+        assert!(!app.layout.sidebar_visible);
         handle_toggle_sidebar(&mut app);
-        assert!(app.sidebar_visible);
+        assert!(app.layout.sidebar_visible);
     }
 
     #[test]
     fn toggle_thinking_flips() {
         let mut app = test_app();
-        assert!(!app.thinking_expanded);
+        assert!(!app.layout.thinking_expanded);
         handle_toggle_thinking(&mut app);
-        assert!(app.thinking_expanded);
+        assert!(app.layout.thinking_expanded);
         handle_toggle_thinking(&mut app);
-        assert!(!app.thinking_expanded);
+        assert!(!app.layout.thinking_expanded);
     }
 
     #[test]
     fn resize_updates_dimensions() {
         let mut app = test_app();
         handle_resize(&mut app, 200, 50);
-        assert_eq!(app.terminal_width, 200);
-        assert_eq!(app.terminal_height, 50);
+        assert_eq!(app.viewport.terminal_width, 200);
+        assert_eq!(app.viewport.terminal_height, 50);
     }
 
     #[test]
@@ -313,12 +313,12 @@ mod tests {
         // Two short messages, very tall terminal: content fits, max_offset = 0.
         let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hey")]);
         app.rebuild_virtual_scroll();
-        app.auto_scroll = false;
+        app.viewport.render.auto_scroll = false;
         // Scrolling up when content fits should clamp back to 0.
         handle_scroll_up(&mut app);
-        assert_eq!(app.scroll_offset, 0);
+        assert_eq!(app.viewport.render.scroll_offset, 0);
         assert!(
-            app.auto_scroll,
+            app.viewport.render.auto_scroll,
             "should re-enable auto-scroll when clamped to 0"
         );
     }
@@ -328,8 +328,8 @@ mod tests {
         // Without messages the clamp must not activate: existing behaviour preserved.
         let mut app = test_app();
         handle_scroll_up(&mut app);
-        assert_eq!(app.scroll_offset, 3);
-        assert!(!app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 3);
+        assert!(!app.viewport.render.auto_scroll);
     }
 
     #[test]
@@ -337,11 +337,11 @@ mod tests {
         use crate::app::test_helpers::test_app_with_messages;
         let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hey")]);
         app.rebuild_virtual_scroll();
-        app.auto_scroll = false;
+        app.viewport.render.auto_scroll = false;
         handle_scroll_page_up(&mut app);
         // Content fits in the tall test terminal: offset must be clamped to 0.
-        assert_eq!(app.scroll_offset, 0);
-        assert!(app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 0);
+        assert!(app.viewport.render.auto_scroll);
     }
 
     #[test]
@@ -353,16 +353,16 @@ mod tests {
             .collect();
         let mut app = test_app_with_messages(msgs);
         app.rebuild_virtual_scroll();
-        app.auto_scroll = false;
-        let total = app.virtual_scroll.total_height();
+        app.viewport.render.auto_scroll = false;
+        let total = app.viewport.render.virtual_scroll.total_height();
         let vh = chat_viewport_height(&app) as u64;
         // Offset within valid range: no clamping expected.
         if total > vh {
-            app.scroll_offset = 3;
+            app.viewport.render.scroll_offset = 3;
             handle_scroll_up(&mut app);
             // Offset should be 6 (3 + 3) as long as content allows.
-            assert!(app.scroll_offset <= (total.saturating_sub(vh) as usize));
-            assert!(!app.auto_scroll);
+            assert!(app.viewport.render.scroll_offset <= (total.saturating_sub(vh) as usize));
+            assert!(!app.viewport.render.auto_scroll);
         }
     }
 
@@ -372,12 +372,12 @@ mod tests {
         let mut app = test_app_with_messages(vec![("user", "hi"), ("assistant", "hello")]);
         app.rebuild_virtual_scroll();
         // Scroll up to a large offset that will exceed content after resize
-        app.scroll_offset = 9999;
-        app.auto_scroll = false;
+        app.viewport.render.scroll_offset = 9999;
+        app.viewport.render.auto_scroll = false;
         // Resize to a very tall terminal: content now fits, offset must be clamped to 0
         handle_resize(&mut app, 120, 200);
-        assert_eq!(app.scroll_offset, 0);
-        assert!(app.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 0);
+        assert!(app.viewport.render.auto_scroll);
     }
 
     #[test]
@@ -397,29 +397,29 @@ mod tests {
             .collect();
         let mut app = test_app_with_messages(msgs);
         app.rebuild_virtual_scroll();
-        app.scroll_offset = 5;
-        app.auto_scroll = false;
+        app.viewport.render.scroll_offset = 5;
+        app.viewport.render.auto_scroll = false;
         // Resize with same height: offset within valid range should be preserved
         handle_resize(&mut app, 120, 40);
-        assert!(!app.auto_scroll);
-        assert_eq!(app.scroll_offset, 5);
+        assert!(!app.viewport.render.auto_scroll);
+        assert_eq!(app.viewport.render.scroll_offset, 5);
     }
 
     #[tokio::test]
     async fn next_agent_empty_list_is_noop() {
         let mut app = test_app();
-        assert!(app.agents.is_empty());
+        assert!(app.dashboard.agents.is_empty());
         handle_next_agent(&mut app).await;
         // No panic, no state change
-        assert!(app.focused_agent.is_none());
+        assert!(app.dashboard.focused_agent.is_none());
     }
 
     #[tokio::test]
     async fn prev_agent_empty_list_is_noop() {
         let mut app = test_app();
-        assert!(app.agents.is_empty());
+        assert!(app.dashboard.agents.is_empty());
         handle_prev_agent(&mut app).await;
         // No panic, no state change
-        assert!(app.focused_agent.is_none());
+        assert!(app.dashboard.focused_agent.is_none());
     }
 }

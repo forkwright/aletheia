@@ -894,6 +894,47 @@ impl Default for McpRateLimitConfig {
     }
 }
 
+/// Resolved model selection for an agent.
+#[derive(Debug, Clone)]
+pub struct ResolvedModelConfig {
+    /// Primary model identifier.
+    pub primary: String,
+    /// Ordered fallback models.
+    pub fallbacks: Vec<String>,
+    /// How many times to retry the current model before trying the next fallback.
+    pub retries_before_fallback: u32,
+}
+
+/// Token budget limits for an agent.
+#[derive(Debug, Clone)]
+pub struct TokenLimits {
+    /// Maximum input context window in tokens.
+    pub context_tokens: u32,
+    /// Maximum output tokens per response.
+    pub max_output_tokens: u32,
+    /// Token budget for bootstrap content.
+    pub bootstrap_max_tokens: u32,
+    /// Token budget for extended thinking.
+    pub thinking_budget: u32,
+    /// Characters per token for token-budget estimation.
+    pub chars_per_token: u32,
+    /// Fraction of the context window reserved for conversation history.
+    pub history_budget_ratio: f64,
+}
+
+/// Behavioral capabilities for an agent.
+#[derive(Debug, Clone)]
+pub struct AgentCapabilities {
+    /// Whether extended thinking is enabled for this agent.
+    pub thinking_enabled: bool,
+    /// Effective agency level for this agent.
+    pub agency: AgencyLevel,
+    /// Maximum consecutive tool use iterations per turn.
+    pub max_tool_iterations: u32,
+    /// Whether prompt caching is enabled.
+    pub cache_enabled: bool,
+}
+
 /// Resolved configuration for a specific nous agent.
 ///
 /// Produced by merging [`AgentDefaults`] with a matching [`NousDefinition`].
@@ -903,40 +944,20 @@ pub struct ResolvedNousConfig {
     pub id: String,
     /// Human-readable display name (from the agent definition, if set).
     pub name: Option<String>,
-    /// Resolved primary model identifier.
-    pub model: String,
-    /// Ordered fallback models.
-    pub fallbacks: Vec<String>,
-    /// How many times to retry the current model before trying the next fallback.
-    pub retries_before_fallback: u32,
-    /// Maximum input context window in tokens.
-    pub context_tokens: u32,
-    /// Maximum output tokens per response.
-    pub max_output_tokens: u32,
-    /// Token budget for bootstrap content.
-    pub bootstrap_max_tokens: u32,
-    /// Whether extended thinking is enabled for this agent.
-    pub thinking_enabled: bool,
-    /// Token budget for extended thinking.
-    pub thinking_budget: u32,
-    /// Effective agency level for this agent.
-    pub agency: AgencyLevel,
-    /// Maximum consecutive tool use iterations per turn.
-    pub max_tool_iterations: u32,
+    /// Resolved model selection.
+    pub model: ResolvedModelConfig,
+    /// Token budget limits.
+    pub limits: TokenLimits,
+    /// Behavioral capabilities.
+    pub capabilities: AgentCapabilities,
     /// Resolved workspace directory path.
     pub workspace: String,
     /// Merged set of permitted filesystem roots.
     pub allowed_roots: Vec<String>,
     /// Knowledge domains this agent covers.
     pub domains: Vec<String>,
-    /// Whether prompt caching is enabled.
-    pub cache_enabled: bool,
     /// Resolved recall pipeline settings.
     pub recall: RecallSettings,
-    /// Characters per token for token-budget estimation.
-    pub chars_per_token: u32,
-    /// Fraction of the context window reserved for conversation history.
-    pub history_budget_ratio: f64,
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -998,23 +1019,29 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     ResolvedNousConfig {
         id: nous_id.to_owned(),
         name,
-        model,
-        fallbacks,
-        retries_before_fallback,
-        context_tokens: defaults.context_tokens,
-        max_output_tokens: defaults.max_output_tokens,
-        bootstrap_max_tokens: defaults.bootstrap_max_tokens,
-        thinking_enabled,
-        thinking_budget: defaults.thinking_budget,
-        agency,
-        max_tool_iterations,
+        model: ResolvedModelConfig {
+            primary: model,
+            fallbacks,
+            retries_before_fallback,
+        },
+        limits: TokenLimits {
+            context_tokens: defaults.context_tokens,
+            max_output_tokens: defaults.max_output_tokens,
+            bootstrap_max_tokens: defaults.bootstrap_max_tokens,
+            thinking_budget: defaults.thinking_budget,
+            chars_per_token: defaults.chars_per_token,
+            history_budget_ratio: defaults.history_budget_ratio,
+        },
+        capabilities: AgentCapabilities {
+            thinking_enabled,
+            agency,
+            max_tool_iterations,
+            cache_enabled: defaults.caching.enabled && defaults.caching.strategy != "disabled",
+        },
         workspace,
         allowed_roots,
         domains,
-        cache_enabled: defaults.caching.enabled && defaults.caching.strategy != "disabled",
         recall,
-        chars_per_token: defaults.chars_per_token,
-        history_budget_ratio: defaults.history_budget_ratio,
     }
 }
 

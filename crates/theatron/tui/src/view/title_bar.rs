@@ -9,9 +9,10 @@ use crate::theme::Theme;
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let agent_name = app
+        .dashboard
         .focused_agent
         .as_ref()
-        .and_then(|id| app.agents.iter().find(|a| a.id == *id))
+        .and_then(|id| app.dashboard.agents.iter().find(|a| a.id == *id))
         .map(|a| {
             let emoji = a.emoji.as_deref().unwrap_or("");
             if emoji.is_empty() {
@@ -22,7 +23,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         })
         .unwrap_or_else(|| "no agent".to_string());
 
-    let sse_indicator = if app.sse_connected {
+    let sse_indicator = if app.connection.sse_connected {
         Span::styled("●", theme.style_success())
     } else {
         Span::styled("○", theme.style_error())
@@ -33,8 +34,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         Span::styled("aletheia", theme.style_accent()),
     ];
 
-    if !app.view_stack.is_home() {
-        let breadcrumbs = app.view_stack.breadcrumbs();
+    if !app.layout.view_stack.is_home() {
+        let breadcrumbs = app.layout.view_stack.breadcrumbs();
         let last_idx = breadcrumbs.len() - 1;
 
         spans.push(Span::styled(" │ ", theme.style_dim()));

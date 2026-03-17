@@ -164,7 +164,7 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
         // Without this, only a few handlers update the timestamp, causing the
         // status bar to show "Stale" even when pings arrive regularly.
         if matches!(&event, Event::Sse(_)) {
-            app.sse_last_event_at = Some(std::time::Instant::now());
+            app.connection.sse_last_event_at = Some(std::time::Instant::now());
         }
 
         if let Some(msg) = app.map_event(event) {

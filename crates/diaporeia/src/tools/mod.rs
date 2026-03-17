@@ -41,7 +41,7 @@ impl DiaporeiaServer {
             "nous_id": session.nous_id,
             "session_key": session.session_key,
             "status": session.status.as_str(),
-            "message_count": session.message_count,
+            "message_count": session.metrics.message_count,
             "created_at": session.created_at,
         }))
         .context(SerializationSnafu {})
@@ -73,7 +73,7 @@ impl DiaporeiaServer {
                     "nous_id": s.nous_id,
                     "session_key": s.session_key,
                     "status": s.status.as_str(),
-                    "message_count": s.message_count,
+                    "message_count": s.metrics.message_count,
                     "created_at": s.created_at,
                     "updated_at": s.updated_at,
                 })

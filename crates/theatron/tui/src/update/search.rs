@@ -6,15 +6,15 @@ pub(crate) fn handle_open(app: &mut App) {
     let mut overlay = SessionSearchOverlay::new();
     // Pre-populate results with all sessions across all agents
     overlay.results = build_results(app, "");
-    app.overlay = Some(Overlay::SessionSearch(overlay));
+    app.layout.overlay = Some(Overlay::SessionSearch(overlay));
 }
 
 pub(crate) fn handle_close(app: &mut App) {
-    app.overlay = None;
+    app.layout.overlay = None;
 }
 
 pub(crate) fn handle_input(app: &mut App, c: char) {
-    if let Some(Overlay::SessionSearch(ref mut search)) = app.overlay {
+    if let Some(Overlay::SessionSearch(ref mut search)) = app.layout.overlay {
         search.query.insert(search.cursor, c);
         search.cursor += c.len_utf8();
         search.selected = 0;
@@ -23,7 +23,7 @@ pub(crate) fn handle_input(app: &mut App, c: char) {
 }
 
 pub(crate) fn handle_backspace(app: &mut App) {
-    let should_close = if let Some(Overlay::SessionSearch(ref mut search)) = app.overlay {
+    let should_close = if let Some(Overlay::SessionSearch(ref mut search)) = app.layout.overlay {
         if search.cursor > 0 {
             let prev = search.query[..search.cursor]
                 .char_indices()
@@ -41,27 +41,27 @@ pub(crate) fn handle_backspace(app: &mut App) {
         false
     };
     if should_close {
-        app.overlay = None;
+        app.layout.overlay = None;
     } else {
         refresh_results(app);
     }
 }
 
 pub(crate) fn handle_up(app: &mut App) {
-    if let Some(Overlay::SessionSearch(ref mut search)) = app.overlay {
+    if let Some(Overlay::SessionSearch(ref mut search)) = app.layout.overlay {
         search.selected = search.selected.saturating_sub(1);
     }
 }
 
 pub(crate) fn handle_down(app: &mut App) {
-    if let Some(Overlay::SessionSearch(ref mut search)) = app.overlay {
+    if let Some(Overlay::SessionSearch(ref mut search)) = app.layout.overlay {
         let max = search.results.len().saturating_sub(1);
         search.selected = (search.selected + 1).min(max);
     }
 }
 
 pub(crate) async fn handle_select(app: &mut App) {
-    let (agent_id, session_id) = match &app.overlay {
+    let (agent_id, session_id) = match &app.layout.overlay {
         Some(Overlay::SessionSearch(search)) => {
             if let Some(result) = search.results.get(search.selected) {
                 (result.agent_id.clone(), result.session_id.clone())
@@ -72,33 +72,33 @@ pub(crate) async fn handle_select(app: &mut App) {
         _ => return,
     };
 
-    app.overlay = None;
+    app.layout.overlay = None;
 
     // Switch to the agent if different
-    if app.focused_agent.as_ref() != Some(&agent_id) {
+    if app.dashboard.focused_agent.as_ref() != Some(&agent_id) {
         app.save_scroll_state();
-        if let Some(a) = app.agents.iter_mut().find(|a| a.id == agent_id) {
+        if let Some(a) = app.dashboard.agents.iter_mut().find(|a| a.id == agent_id) {
             a.unread_count = 0;
         }
-        app.focused_agent = Some(agent_id.clone());
+        app.dashboard.focused_agent = Some(agent_id.clone());
 
         // Load sessions if not already loaded
-        if let Some(agent) = app.agents.iter().find(|a| a.id == agent_id)
+        if let Some(agent) = app.dashboard.agents.iter().find(|a| a.id == agent_id)
             && agent.sessions.is_empty()
             && let Ok(sessions) = app.client.sessions(&agent_id).await
-            && let Some(agent) = app.agents.iter_mut().find(|a| a.id == agent_id)
+            && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == agent_id)
         {
             agent.sessions = sessions;
         }
     }
 
     // Switch to the target session
-    app.focused_session_id = Some(session_id.clone());
+    app.dashboard.focused_session_id = Some(session_id.clone());
     match app.client.history(&session_id).await {
         Ok(history) => {
             use crate::sanitize::sanitize_for_display;
             use crate::update::extract_text_content;
-            app.messages = history
+            app.dashboard.messages = history
                 .into_iter()
                 .filter_map(|m| {
                     if m.role != "user" && m.role != "assistant" {
@@ -121,18 +121,18 @@ pub(crate) async fn handle_select(app: &mut App) {
             app.scroll_to_bottom();
         }
         Err(e) => {
-            app.error_toast = Some(ErrorToast::new(format!("Load failed: {e}")));
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Load failed: {e}")));
         }
     }
 }
 
 fn refresh_results(app: &mut App) {
-    let query = match &app.overlay {
+    let query = match &app.layout.overlay {
         Some(Overlay::SessionSearch(search)) => search.query.clone(),
         _ => return,
     };
     let results = build_results(app, &query);
-    if let Some(Overlay::SessionSearch(ref mut search)) = app.overlay {
+    if let Some(Overlay::SessionSearch(ref mut search)) = app.layout.overlay {
         search.results = results;
     }
 }
@@ -142,7 +142,7 @@ fn build_results(app: &App, query: &str) -> Vec<SearchResult> {
     let mut results = Vec::new();
 
     // Search session names/labels across all agents
-    for agent in &app.agents {
+    for agent in &app.dashboard.agents {
         for session in &agent.sessions {
             if !session.is_interactive() {
                 continue;
@@ -168,17 +168,26 @@ fn build_results(app: &App, query: &str) -> Vec<SearchResult> {
 
     // Search current session message content
     if !query_lower.is_empty() {
-        for (i, msg) in app.messages.iter().enumerate() {
+        for (i, msg) in app.dashboard.messages.iter().enumerate() {
             if msg.text_lower.contains(&query_lower) {
                 let snippet = excerpt(&msg.text, &query_lower, 60);
-                let session_id = app.focused_session_id.clone().unwrap_or_else(|| "".into());
+                let session_id = app
+                    .dashboard
+                    .focused_session_id
+                    .clone()
+                    .unwrap_or_else(|| "".into());
                 let agent_name = app
+                    .dashboard
                     .focused_agent
                     .as_ref()
-                    .and_then(|id| app.agents.iter().find(|a| &a.id == id))
+                    .and_then(|id| app.dashboard.agents.iter().find(|a| &a.id == id))
                     .map(|a| a.name.clone())
                     .unwrap_or_default();
-                let agent_id = app.focused_agent.clone().unwrap_or_else(|| "".into());
+                let agent_id = app
+                    .dashboard
+                    .focused_agent
+                    .clone()
+                    .unwrap_or_else(|| "".into());
                 results.push(SearchResult {
                     agent_id,
                     agent_name,
@@ -253,26 +262,29 @@ mod tests {
             updated_at: None,
             display_name: None,
         });
-        app.agents.push(agent);
+        app.dashboard.agents.push(agent);
         handle_open(&mut app);
-        assert!(matches!(app.overlay, Some(Overlay::SessionSearch(_))));
+        assert!(matches!(
+            app.layout.overlay,
+            Some(Overlay::SessionSearch(_))
+        ));
     }
 
     #[test]
     fn handle_close_clears_overlay() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::SessionSearch(SessionSearchOverlay::new()));
+        app.layout.overlay = Some(Overlay::SessionSearch(SessionSearchOverlay::new()));
         handle_close(&mut app);
-        assert!(app.overlay.is_none());
+        assert!(app.layout.overlay.is_none());
     }
 
     #[test]
     fn handle_input_updates_query() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::SessionSearch(SessionSearchOverlay::new()));
+        app.layout.overlay = Some(Overlay::SessionSearch(SessionSearchOverlay::new()));
         handle_input(&mut app, 't');
         handle_input(&mut app, 'e');
-        if let Some(Overlay::SessionSearch(ref search)) = app.overlay {
+        if let Some(Overlay::SessionSearch(ref search)) = app.layout.overlay {
             assert_eq!(search.query, "te");
         }
     }
@@ -280,9 +292,9 @@ mod tests {
     #[test]
     fn handle_backspace_on_empty_closes() {
         let mut app = test_app();
-        app.overlay = Some(Overlay::SessionSearch(SessionSearchOverlay::new()));
+        app.layout.overlay = Some(Overlay::SessionSearch(SessionSearchOverlay::new()));
         handle_backspace(&mut app);
-        assert!(app.overlay.is_none());
+        assert!(app.layout.overlay.is_none());
     }
 
     #[test]
@@ -299,7 +311,7 @@ mod tests {
             updated_at: None,
             display_name: Some("Debug Session".to_string()),
         });
-        app.agents.push(agent);
+        app.dashboard.agents.push(agent);
 
         let results = build_results(&app, "debug");
         assert_eq!(results.len(), 1);
@@ -320,7 +332,7 @@ mod tests {
             updated_at: None,
             display_name: None,
         });
-        app.agents.push(agent);
+        app.dashboard.agents.push(agent);
 
         let results = build_results(&app, "");
         assert!(!results.is_empty());
@@ -332,8 +344,8 @@ mod tests {
             ("user", "hello world"),
             ("assistant", "goodbye world"),
         ]);
-        app.focused_agent = Some("syn".into());
-        app.focused_session_id = Some("s1".into());
+        app.dashboard.focused_agent = Some("syn".into());
+        app.dashboard.focused_session_id = Some("s1".into());
 
         let results = build_results(&app, "goodbye");
         assert!(
