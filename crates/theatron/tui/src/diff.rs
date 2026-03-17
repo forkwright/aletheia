@@ -717,9 +717,14 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
         while end > 0 && !s.is_char_boundary(end) {
             end -= 1;
         }
-        let truncated = &s[..end];
+        let truncated = s.get(..end).unwrap_or(s);
         if end >= 2 {
-            format!("{}…", &truncated[..truncated.len().saturating_sub(1)])
+            format!(
+                "{}…",
+                truncated
+                    .get(..truncated.len().saturating_sub(1))
+                    .unwrap_or(truncated)
+            )
         } else {
             truncated.to_string()
         }
@@ -728,7 +733,7 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
 
 fn pad_to(s: String, width: usize) -> String {
     if s.len() >= width {
-        s[..width].to_string()
+        s.get(..width).unwrap_or(&s).to_string()
     } else {
         format!("{s:<width$}")
     }

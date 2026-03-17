@@ -110,7 +110,7 @@ fn truncate_title(title: &str, max_width: usize) -> String {
     while end > 0 && !title.is_char_boundary(end) {
         end -= 1;
     }
-    format!("{}\u{2026}", &title[..end])
+    format!("{}\u{2026}", title.get(..end).unwrap_or(title))
 }
 
 /// Whether the tab bar should be shown (more than 1 tab or always-on).

@@ -469,7 +469,7 @@ fn highlight_span(
 
     for (byte_start, _) in content_lower.match_indices(&pattern_lower) {
         // Convert byte offset in the original string to char index
-        let char_start = content[..byte_start].chars().count();
+        let char_start = content.get(..byte_start).unwrap_or("").chars().count();
         let pattern_chars = pattern.chars().count();
         let char_end = char_start + pattern_chars;
 

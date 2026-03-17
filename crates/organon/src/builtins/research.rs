@@ -192,7 +192,7 @@ impl ToolExecutor for WebFetchExecutor {
                 }
                 format!(
                     "{}...\n\n[Truncated at {max_length} characters]",
-                    &text[..end]
+                    text.get(..end).unwrap_or(&text)
                 )
             } else {
                 text

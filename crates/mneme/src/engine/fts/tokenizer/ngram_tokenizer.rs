@@ -144,7 +144,9 @@ impl<'a> TokenStream for NgramTokenStream<'a> {
             self.token.offset_from = offset_from;
             self.token.offset_to = offset_to;
             self.token.text.clear();
-            self.token.text.push_str(&self.text[offset_from..offset_to]);
+            self.token
+                .text
+                .push_str(self.text.get(offset_from..offset_to).unwrap_or(""));
             true
         } else {
             false
@@ -273,7 +275,7 @@ impl<'a> Iterator for CodepointFrontiers<'a> {
                 self.next_el = None;
             } else {
                 let first_codepoint_width = utf8_codepoint_width(self.s.as_bytes()[0]);
-                self.s = &self.s[first_codepoint_width..];
+                self.s = self.s.get(first_codepoint_width..).unwrap_or("");
                 self.next_el = Some(offset + first_codepoint_width);
             }
         })

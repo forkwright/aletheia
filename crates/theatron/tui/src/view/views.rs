@@ -87,7 +87,8 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
                                 .nth(8)
                                 .map(|(b, _)| b)
                                 .unwrap_or(nous_id_str.len());
-                            fallback_label = nous_id_str[..end].to_string();
+                            fallback_label =
+                                nous_id_str.get(..end).unwrap_or(nous_id_str).to_string();
                             &fallback_label
                         }
                     };

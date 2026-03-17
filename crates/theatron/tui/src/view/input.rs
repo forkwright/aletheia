@@ -44,7 +44,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
 
     let mut ratatui_lines: Vec<Line<'static>> = Vec::with_capacity(total_rows);
     for (i, &(start, end)) in line_ranges.iter().enumerate() {
-        let line_text = text[start..end].to_string();
+        let line_text = text.get(start..end).unwrap_or("").to_string();
         if i == 0 {
             ratatui_lines.push(Line::from(vec![
                 Span::styled(prompt_str.to_string(), Style::default().fg(prompt_color)),
@@ -111,7 +111,7 @@ pub(crate) fn word_wrap_lines(
         };
         is_first = false;
 
-        let remaining = &text[pos..];
+        let remaining = text.get(pos..).unwrap_or("");
 
         if remaining.is_empty() {
             break;
@@ -141,7 +141,10 @@ pub(crate) fn word_wrap_lines(
 
         if let Some(ws_b) = last_ws_byte {
             // NOTE: break at the last whitespace: exclude it from both lines
-            let ws_len = remaining[ws_b..].chars().next().map_or(1, |c| c.len_utf8());
+            let ws_len = remaining
+                .get(ws_b..)
+                .and_then(|s| s.chars().next())
+                .map_or(1, |c| c.len_utf8());
             lines.push((pos, pos + ws_b));
             pos += ws_b + ws_len; // skip over the whitespace
         } else {
@@ -171,7 +174,7 @@ pub(crate) fn cursor_visual_position(
         // Cursor on this line if it falls within [start, end] (inclusive at end
         // so cursor-at-end-of-line is on this line rather than the next).
         if cursor_byte >= start && cursor_byte <= end {
-            let col_display = UnicodeWidthStr::width(&text[start..cursor_byte]);
+            let col_display = UnicodeWidthStr::width(text.get(start..cursor_byte).unwrap_or(""));
             let col = if row == 0 {
                 prompt_width + col_display
             } else {
@@ -185,7 +188,8 @@ pub(crate) fn cursor_visual_position(
     // Place it at the start of the next line.
     let last_row = line_ranges.len().saturating_sub(1);
     if let Some(&(start, _)) = line_ranges.last() {
-        let col_display = UnicodeWidthStr::width(&text[start..cursor_byte.min(text.len())]);
+        let col_display =
+            UnicodeWidthStr::width(text.get(start..cursor_byte.min(text.len())).unwrap_or(""));
         let col = if last_row == 0 {
             prompt_width + col_display
         } else {
@@ -271,8 +275,8 @@ mod tests {
         // emoji 😀 (width 2) + "xyz" (width 3) = 5 cols; avail=4 → "😀xy" (4 cols) on line 0, "z" on line 1
         let ranges = word_wrap_lines("😀xyz", 4, 4);
         assert_eq!(ranges.len(), 2);
-        assert_eq!(&"😀xyz"[ranges[0].0..ranges[0].1], "😀xy");
-        assert_eq!(&"😀xyz"[ranges[1].0..ranges[1].1], "z");
+        assert_eq!("😀xyz".get(ranges[0].0..ranges[0].1).unwrap_or(""), "😀xy");
+        assert_eq!("😀xyz".get(ranges[1].0..ranges[1].1).unwrap_or(""), "z");
     }
 
     #[test]

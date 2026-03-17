@@ -814,7 +814,7 @@ fn parse_relation_apply_atom(
     };
     Ok(InputAtom::Relation {
         inner: InputRelationApplyAtom {
-            name: Symbol::new(&name.as_str()[1..], name.extract_span()),
+            name: Symbol::new(name.as_str().get(1..).unwrap_or(""), name.extract_span()),
             args,
             valid_at,
             span,
@@ -871,7 +871,10 @@ fn parse_relation_named_apply_atom(
     let name_p = src
         .next()
         .expect("pest guarantees relation_named_apply name");
-    let name = Symbol::new(&name_p.as_str()[1..], name_p.extract_span());
+    let name = Symbol::new(
+        name_p.as_str().get(1..).unwrap_or(""),
+        name_p.extract_span(),
+    );
     let args = src
         .next()
         .expect("pest guarantees relation_named_apply args")

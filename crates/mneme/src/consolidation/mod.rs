@@ -270,13 +270,13 @@ pub struct LlmRelationshipEntry {
 fn extract_json_array(s: &str) -> Option<&str> {
     let start = s.find('[')?;
     let mut depth = 0i32;
-    for (i, ch) in s[start..].char_indices() {
+    for (i, ch) in s.get(start..).unwrap_or("").char_indices() {
         match ch {
             '[' => depth += 1,
             ']' => {
                 depth -= 1;
                 if depth == 0 {
-                    return Some(&s[start..=start + i]);
+                    return s.get(start..=start + i);
                 }
             }
             // NOTE: non-bracket character, no depth change

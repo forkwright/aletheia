@@ -206,10 +206,10 @@ fn split_frontmatter(source: &str) -> (Option<&str>, &str) {
     if !trimmed.starts_with("---") {
         return (None, source);
     }
-    let after_open = &trimmed[3..];
+    let after_open = trimmed.get(3..).unwrap_or("");
     if let Some(close_pos) = after_open.find("\n---") {
-        let fm = &after_open[..close_pos];
-        let body = &after_open[close_pos + 4..];
+        let fm = after_open.get(..close_pos).unwrap_or("");
+        let body = after_open.get(close_pos + 4..).unwrap_or("");
         (Some(fm), body)
     } else {
         (None, source)
@@ -233,9 +233,9 @@ fn extract_steps(lines: &[String]) -> Vec<String> {
         .iter()
         .filter_map(|line| {
             let stripped = if let Some(pos) = line.find(". ") {
-                let prefix = &line[..pos];
+                let prefix = line.get(..pos).unwrap_or("");
                 if prefix.chars().all(|c| c.is_ascii_digit()) {
-                    line[pos + 2..].trim().to_owned()
+                    line.get(pos + 2..).unwrap_or("").trim().to_owned()
                 } else {
                     line.clone()
                 }
@@ -260,7 +260,7 @@ fn extract_tools(lines: &[String]) -> Vec<String> {
         .filter_map(|line| {
             let line = line.strip_prefix("- ").unwrap_or(line);
             let name = if let Some(colon_pos) = line.find(':') {
-                line[..colon_pos].trim()
+                line.get(..colon_pos).unwrap_or("").trim()
             } else {
                 line.trim()
             };

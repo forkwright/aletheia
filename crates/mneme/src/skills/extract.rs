@@ -363,7 +363,7 @@ fn parse_skill_response(response: &str) -> Result<ExtractedSkill, SkillExtractio
             .rfind("```")
             .filter(|&e| e > start)
             .unwrap_or(trimmed.len());
-        &trimmed[start..end]
+        trimmed.get(start..end).unwrap_or("")
     } else {
         trimmed
     };
@@ -371,7 +371,7 @@ fn parse_skill_response(response: &str) -> Result<ExtractedSkill, SkillExtractio
     let json_str = json_str.trim();
     let json_str = if let Some(start) = json_str.find('{') {
         let end = json_str.rfind('}').unwrap_or(json_str.len());
-        &json_str[start..=end]
+        json_str.get(start..=end).unwrap_or(json_str)
     } else {
         json_str
     };
@@ -380,7 +380,7 @@ fn parse_skill_response(response: &str) -> Result<ExtractedSkill, SkillExtractio
         ParseResponseSnafu {
             message: format!(
                 "invalid JSON in LLM response: {e}. Response was: {}",
-                &response[..response.len().min(200)]
+                response.get(..200).unwrap_or(response)
             ),
         }
         .build()

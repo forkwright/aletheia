@@ -68,7 +68,10 @@ impl FilterState {
 
     pub fn backspace(&mut self) {
         if self.cursor > 0 {
-            let prev = self.text[..self.cursor]
+            let prev = self
+                .text
+                .get(..self.cursor)
+                .unwrap_or("")
                 .char_indices()
                 .next_back()
                 .map(|(i, _)| i)

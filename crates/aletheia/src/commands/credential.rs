@@ -18,7 +18,11 @@ pub enum Action {
 
 fn token_preview(s: &str) -> String {
     if s.len() > 10 {
-        format!("{}...{}", &s[..10], &s[s.len() - 3..])
+        format!(
+            "{}...{}",
+            s.get(..10).unwrap_or(s),
+            s.get(s.len() - 3..).unwrap_or("")
+        )
     } else {
         "***".to_owned()
     }

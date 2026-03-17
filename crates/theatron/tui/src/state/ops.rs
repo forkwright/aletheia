@@ -321,7 +321,7 @@ fn parse_diff_from_output(output: &str, tool_name: &str) -> Option<OpsDiffEntry>
 
     for line in output.lines() {
         if line.starts_with("--- ") || line.starts_with("+++ ") {
-            let path = line[4..].trim().to_string();
+            let path = line.get(4..).unwrap_or("").trim().to_string();
             if !path.is_empty() && file_path.is_empty() {
                 file_path = path;
             }

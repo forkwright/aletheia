@@ -82,9 +82,9 @@ impl App {
     }
 
     pub(crate) fn handle_tab_completion(&mut self) {
-        let text_before_cursor = &self.input.text[..self.input.cursor];
+        let text_before_cursor = self.input.text.get(..self.input.cursor).unwrap_or("");
         if let Some(at_pos) = text_before_cursor.rfind('@') {
-            let prefix = &text_before_cursor[at_pos + 1..];
+            let prefix = text_before_cursor.get(at_pos + 1..).unwrap_or("");
 
             if let Some(ref mut tc) = self.tab_completion
                 && (tc.prefix == prefix || (!tc.candidates.is_empty() && tc.insert_start == at_pos))
