@@ -15,6 +15,21 @@ mod trig;
 mod utility;
 mod vector;
 
+/// Bounds-checked argument access for engine built-in functions.
+///
+/// The engine validates arity before calling functions (see `min_arity` in
+/// `Op`), so out-of-bounds access indicates an internal engine bug rather than
+/// user error. Returns a typed error instead of panicking.
+pub(crate) fn arg(args: &[DataValue], idx: usize) -> Result<&DataValue> {
+    args.get(idx).ok_or_else(|| {
+        TypeMismatchSnafu {
+            op: "builtin",
+            expected: format!("at least {} argument(s)", idx + 1),
+        }
+        .build()
+    })
+}
+
 pub(crate) use aggregate::*;
 pub(crate) use bits::*;
 pub(crate) use math::*;
@@ -195,5 +210,5 @@ define_op!(OP_COS_DIST, op_cos_dist, 2, false);
 define_op!(OP_T2S, op_t2s, 1, false);
 fn op_t2s(args: &[DataValue]) -> Result<DataValue> {
     // fast2s crate removed; pass through unchanged
-    Ok(args[0].clone())
+    Ok(arg(args, 0)?.clone())
 }

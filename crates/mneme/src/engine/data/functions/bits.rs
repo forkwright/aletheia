@@ -7,6 +7,7 @@ use std::ops::Div;
 
 use itertools::Itertools;
 
+use super::arg;
 use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::engine::data::value::DataValue;
@@ -42,7 +43,7 @@ pub(crate) fn op_or(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_negate(args: &[DataValue]) -> Result<DataValue> {
-    if let DataValue::Bool(b) = &args[0] {
+    if let DataValue::Bool(b) = arg(args, 0)? {
         Ok(DataValue::from(!*b))
     } else {
         TypeMismatchSnafu {
@@ -54,7 +55,7 @@ pub(crate) fn op_negate(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_bit_and(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
             snafu::ensure!(
                 left.len() == right.len(),
@@ -75,7 +76,7 @@ pub(crate) fn op_bit_and(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_bit_or(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
             snafu::ensure!(
                 left.len() == right.len(),
@@ -96,7 +97,7 @@ pub(crate) fn op_bit_or(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_bit_not(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::Bytes(arg) => {
             let mut ret = arg.clone();
             for l in ret.iter_mut() {
@@ -113,7 +114,7 @@ pub(crate) fn op_bit_not(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_bit_xor(args: &[DataValue]) -> Result<DataValue> {
-    match (&args[0], &args[1]) {
+    match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Bytes(left), DataValue::Bytes(right)) => {
             snafu::ensure!(
                 left.len() == right.len(),
@@ -134,7 +135,7 @@ pub(crate) fn op_bit_xor(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_unpack_bits(args: &[DataValue]) -> Result<DataValue> {
-    if let DataValue::Bytes(bs) = &args[0] {
+    if let DataValue::Bytes(bs) = arg(args, 0)? {
         let mut ret = vec![false; bs.len() * 8];
         for (chunk, byte) in bs.iter().enumerate() {
             ret[chunk * 8] = (*byte & 0b10000000) != 0;
@@ -159,7 +160,7 @@ pub(crate) fn op_unpack_bits(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
-    if let DataValue::List(v) = &args[0] {
+    if let DataValue::List(v) = arg(args, 0)? {
         let l = (v.len() as f64 / 8.).ceil() as usize;
         let mut res = vec![0u8; l];
         for (i, b) in v.iter().enumerate() {
@@ -194,7 +195,7 @@ pub(crate) fn op_pack_bits(args: &[DataValue]) -> Result<DataValue> {
             }
         }
         Ok(DataValue::Bytes(res))
-    } else if let DataValue::Set(v) = &args[0] {
+    } else if let DataValue::Set(v) = arg(args, 0)? {
         let l = v.iter().cloned().collect_vec();
         op_pack_bits(&[DataValue::List(l)])
     } else {

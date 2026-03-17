@@ -1,10 +1,11 @@
 //! Trigonometric, hyperbolic, and geographic functions.
 use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
+use super::arg;
 use crate::engine::data::value::{DataValue, Num, Vector};
 
 pub(crate) fn op_sin(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -25,7 +26,7 @@ pub(crate) fn op_sin(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_cos(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -46,7 +47,7 @@ pub(crate) fn op_cos(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_tan(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -67,7 +68,7 @@ pub(crate) fn op_tan(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_asin(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -88,7 +89,7 @@ pub(crate) fn op_asin(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_acos(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -109,7 +110,7 @@ pub(crate) fn op_acos(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_atan(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -130,7 +131,7 @@ pub(crate) fn op_atan(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         _ => {
@@ -141,7 +142,7 @@ pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
             .fail();
         }
     };
-    let b = match &args[1] {
+    let b = match arg(args, 1)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         _ => {
@@ -157,7 +158,7 @@ pub(crate) fn op_atan2(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_sinh(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -178,7 +179,7 @@ pub(crate) fn op_sinh(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_cosh(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -199,7 +200,7 @@ pub(crate) fn op_cosh(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_tanh(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -220,7 +221,7 @@ pub(crate) fn op_tanh(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_asinh(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -241,7 +242,7 @@ pub(crate) fn op_asinh(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_acosh(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -262,7 +263,7 @@ pub(crate) fn op_acosh(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_atanh(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -290,10 +291,10 @@ pub(crate) fn op_haversine(args: &[DataValue]) -> Result<DataValue> {
         }
         .build()
     };
-    let lat1 = args[0].get_float().ok_or_else(make_err)?;
-    let lon1 = args[1].get_float().ok_or_else(make_err)?;
-    let lat2 = args[2].get_float().ok_or_else(make_err)?;
-    let lon2 = args[3].get_float().ok_or_else(make_err)?;
+    let lat1 = arg(args, 0)?.get_float().ok_or_else(make_err)?;
+    let lon1 = arg(args, 1)?.get_float().ok_or_else(make_err)?;
+    let lat2 = arg(args, 2)?.get_float().ok_or_else(make_err)?;
+    let lon2 = arg(args, 3)?.get_float().ok_or_else(make_err)?;
     let ret = 2.
         * f64::asin(f64::sqrt(
             f64::sin((lat1 - lat2) / 2.).powi(2)
@@ -310,10 +311,10 @@ pub(crate) fn op_haversine_deg_input(args: &[DataValue]) -> Result<DataValue> {
         }
         .build()
     };
-    let lat1 = args[0].get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
-    let lon1 = args[1].get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
-    let lat2 = args[2].get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
-    let lon2 = args[3].get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
+    let lat1 = arg(args, 0)?.get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
+    let lon1 = arg(args, 1)?.get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
+    let lat2 = arg(args, 2)?.get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
+    let lon2 = arg(args, 3)?.get_float().ok_or_else(make_err)? * std::f64::consts::PI / 180.;
     let ret = 2.
         * f64::asin(f64::sqrt(
             f64::sin((lat1 - lat2) / 2.).powi(2)
@@ -323,7 +324,7 @@ pub(crate) fn op_haversine_deg_input(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_deg_to_rad(args: &[DataValue]) -> Result<DataValue> {
-    let x = args[0].get_float().ok_or_else(|| {
+    let x = arg(args, 0)?.get_float().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "deg_to_rad",
             expected: "numbers",
@@ -334,7 +335,7 @@ pub(crate) fn op_deg_to_rad(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_rad_to_deg(args: &[DataValue]) -> Result<DataValue> {
-    let x = args[0].get_float().ok_or_else(|| {
+    let x = arg(args, 0)?.get_float().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "rad_to_deg",
             expected: "numbers",

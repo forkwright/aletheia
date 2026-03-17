@@ -5,6 +5,7 @@
 )]
 use std::ops::Rem;
 
+use super::arg;
 use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::engine::data::value::{DataValue, Num, Vector};
@@ -34,7 +35,7 @@ pub(crate) fn ensure_same_value_type(a: &DataValue, b: &DataValue) -> Result<()>
 
 pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
     if args.len() == 1 {
-        return Ok(args[0].clone());
+        return Ok(arg(args, 0)?.clone());
     }
     let (last, first) = args
         .split_last()
@@ -100,7 +101,7 @@ pub(crate) fn add_vecs(args: &[DataValue]) -> Result<DataValue> {
 
 pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
     if args.len() == 1 {
-        return Ok(args[0].clone());
+        return Ok(arg(args, 0)?.clone());
     }
     let (last, first) = args
         .split_last()
@@ -165,7 +166,7 @@ pub(crate) fn mul_vecs(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_eq(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match (&args[0], &args[1]) {
+    Ok(DataValue::from(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Float(f)), DataValue::Num(Num::Int(i)))
         | (DataValue::Num(Num::Int(i)), DataValue::Num(Num::Float(f))) => *i as f64 == *f,
         (a, b) => a == b,
@@ -173,7 +174,7 @@ pub(crate) fn op_eq(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_neq(args: &[DataValue]) -> Result<DataValue> {
-    Ok(DataValue::from(match (&args[0], &args[1]) {
+    Ok(DataValue::from(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Float(f)), DataValue::Num(Num::Int(i)))
         | (DataValue::Num(Num::Int(i)), DataValue::Num(Num::Float(f))) => *i as f64 != *f,
         (a, b) => a != b,
@@ -181,8 +182,8 @@ pub(crate) fn op_neq(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_gt(args: &[DataValue]) -> Result<DataValue> {
-    ensure_same_value_type(&args[0], &args[1])?;
-    Ok(DataValue::from(match (&args[0], &args[1]) {
+    ensure_same_value_type(arg(args, 0)?, arg(args, 1)?)?;
+    Ok(DataValue::from(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Float(l)), DataValue::Num(Num::Int(r))) => *l > *r as f64,
         (DataValue::Num(Num::Int(l)), DataValue::Num(Num::Float(r))) => *l as f64 > *r,
         (a, b) => a > b,
@@ -190,8 +191,8 @@ pub(crate) fn op_gt(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_ge(args: &[DataValue]) -> Result<DataValue> {
-    ensure_same_value_type(&args[0], &args[1])?;
-    Ok(DataValue::from(match (&args[0], &args[1]) {
+    ensure_same_value_type(arg(args, 0)?, arg(args, 1)?)?;
+    Ok(DataValue::from(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Float(l)), DataValue::Num(Num::Int(r))) => *l >= *r as f64,
         (DataValue::Num(Num::Int(l)), DataValue::Num(Num::Float(r))) => *l as f64 >= *r,
         (a, b) => a >= b,
@@ -199,8 +200,8 @@ pub(crate) fn op_ge(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_lt(args: &[DataValue]) -> Result<DataValue> {
-    ensure_same_value_type(&args[0], &args[1])?;
-    Ok(DataValue::from(match (&args[0], &args[1]) {
+    ensure_same_value_type(arg(args, 0)?, arg(args, 1)?)?;
+    Ok(DataValue::from(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Float(l)), DataValue::Num(Num::Int(r))) => *l < (*r as f64),
         (DataValue::Num(Num::Int(l)), DataValue::Num(Num::Float(r))) => (*l as f64) < *r,
         (a, b) => a < b,
@@ -208,8 +209,8 @@ pub(crate) fn op_lt(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_le(args: &[DataValue]) -> Result<DataValue> {
-    ensure_same_value_type(&args[0], &args[1])?;
-    Ok(DataValue::from(match (&args[0], &args[1]) {
+    ensure_same_value_type(arg(args, 0)?, arg(args, 1)?)?;
+    Ok(DataValue::from(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Float(l)), DataValue::Num(Num::Int(r))) => *l <= (*r as f64),
         (DataValue::Num(Num::Int(l)), DataValue::Num(Num::Float(r))) => (*l as f64) <= *r,
         (a, b) => a <= b,
@@ -277,7 +278,7 @@ pub(crate) fn op_min(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_sub(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match (&args[0], &args[1]) {
+    Ok(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
             DataValue::Num(Num::Int(*a - *b))
         }
@@ -375,7 +376,7 @@ pub(crate) fn op_mul(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match (&args[0], &args[1]) {
+    Ok(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
             DataValue::Num(Num::Float((*a as f64) / (*b as f64)))
         }
@@ -443,7 +444,7 @@ pub(crate) fn op_div(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_minus(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(-(*i))),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(-(*f))),
         DataValue::Vec(Vector::F64(v)) => DataValue::Vec(Vector::F64(0. - v)),
@@ -459,7 +460,7 @@ pub(crate) fn op_minus(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_abs(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(i.abs())),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.abs())),
         DataValue::Vec(Vector::F64(v)) => DataValue::Vec(Vector::F64(v.mapv(|x| x.abs()))),
@@ -475,7 +476,7 @@ pub(crate) fn op_abs(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_signum(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(i.signum())),
         DataValue::Num(Num::Float(f)) => {
             if f.signum() < 0. {
@@ -499,7 +500,7 @@ pub(crate) fn op_signum(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_floor(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.floor())),
         _ => {
@@ -513,7 +514,7 @@ pub(crate) fn op_floor(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_ceil(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.ceil())),
         _ => {
@@ -527,7 +528,7 @@ pub(crate) fn op_ceil(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_round(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => DataValue::Num(Num::Int(*i)),
         DataValue::Num(Num::Float(f)) => DataValue::Num(Num::Float(f.round())),
         _ => {
@@ -541,7 +542,7 @@ pub(crate) fn op_round(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -562,7 +563,7 @@ pub(crate) fn op_sqrt(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -583,7 +584,7 @@ pub(crate) fn op_exp(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -604,7 +605,7 @@ pub(crate) fn op_exp2(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -625,7 +626,7 @@ pub(crate) fn op_ln(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -646,7 +647,7 @@ pub(crate) fn op_log2(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
@@ -667,11 +668,11 @@ pub(crate) fn op_log10(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
-    let a = match &args[0] {
+    let a = match arg(args, 0)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         DataValue::Vec(Vector::F32(v)) => {
-            let b = args[1].get_float().ok_or_else(|| {
+            let b = arg(args, 1)?.get_float().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "pow",
                     expected: "numbers",
@@ -681,7 +682,7 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
             return Ok(DataValue::Vec(Vector::F32(v.mapv(|x| x.powf(b as f32)))));
         }
         DataValue::Vec(Vector::F64(v)) => {
-            let b = args[1].get_float().ok_or_else(|| {
+            let b = arg(args, 1)?.get_float().ok_or_else(|| {
                 TypeMismatchSnafu {
                     op: "pow",
                     expected: "numbers",
@@ -698,7 +699,7 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
             .fail();
         }
     };
-    let b = match &args[1] {
+    let b = match arg(args, 1)? {
         DataValue::Num(Num::Int(i)) => *i as f64,
         DataValue::Num(Num::Float(f)) => *f,
         _ => {
@@ -713,7 +714,7 @@ pub(crate) fn op_pow(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match (&args[0], &args[1]) {
+    Ok(match (arg(args, 0)?, arg(args, 1)?) {
         (DataValue::Num(Num::Int(a)), DataValue::Num(Num::Int(b))) => {
             if *b == 0 {
                 return TypeMismatchSnafu {
@@ -744,8 +745,8 @@ pub(crate) fn op_mod(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_is_in(args: &[DataValue]) -> Result<DataValue> {
-    let left = &args[0];
-    let right = args[1].get_slice().ok_or_else(|| {
+    let left = arg(args, 0)?;
+    let right = arg(args, 1)?.get_slice().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "is_in",
             expected: "a list as right hand side",

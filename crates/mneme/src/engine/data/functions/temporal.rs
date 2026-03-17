@@ -13,6 +13,7 @@ use js_sys::Date;
 use rand::prelude::*;
 use uuid::v1::Timestamp;
 
+use super::arg;
 use crate::engine::data::error::*;
 type Result<T> = DataResult<T>;
 use crate::engine::data::value::{DataValue, UuidWrapper, Validity, ValidityTs};
@@ -66,7 +67,7 @@ pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
-    let millis = match &args[0] {
+    let millis = match arg(args, 0)? {
         DataValue::Validity(vld) => vld.timestamp.0.0 / 1000,
         v => {
             let f = v.get_float().ok_or_else(|| {
@@ -79,9 +80,10 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
             (f * 1000.) as i64
         }
     };
+    let raw_arg = arg(args, 0)?;
     let ts = jiff::Timestamp::from_millisecond(millis).map_err(|_| {
         BadTimeSnafu {
-            message: format!("bad time: {}", &args[0]),
+            message: format!("bad time: {raw_arg}"),
         }
         .build()
     })?;
@@ -113,7 +115,7 @@ pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
 
 #[expect(clippy::map_err_ignore, reason = "error context preserved in message")]
 pub(crate) fn op_parse_timestamp(args: &[DataValue]) -> Result<DataValue> {
-    let s = args[0].get_str().ok_or_else(|| {
+    let s = arg(args, 0)?.get_str().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "parse_timestamp",
             expected: "a string",
@@ -161,7 +163,7 @@ pub(crate) fn op_rand_uuid_v4(_args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_uuid_timestamp(args: &[DataValue]) -> Result<DataValue> {
-    Ok(match &args[0] {
+    Ok(match arg(args, 0)? {
         DataValue::Uuid(UuidWrapper(id)) => match id.get_timestamp() {
             None => DataValue::Null,
             Some(t) => {
@@ -185,7 +187,7 @@ pub(crate) fn op_rand_float(_args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
-    let prob = match &args[0] {
+    let prob = match arg(args, 0)? {
         DataValue::Num(n) => {
             let f = n.get_float();
             snafu::ensure!(
@@ -208,14 +210,14 @@ pub(crate) fn op_rand_bernoulli(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
-    let lower = &args[0].get_int().ok_or_else(|| {
+    let lower = &arg(args, 0)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "rand_int",
             expected: "integers",
         }
         .build()
     })?;
-    let upper = &args[1].get_int().ok_or_else(|| {
+    let upper = &arg(args, 1)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "rand_int",
             expected: "integers",
@@ -226,7 +228,7 @@ pub(crate) fn op_rand_int(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
-    match &args[0] {
+    match arg(args, 0)? {
         DataValue::List(l) => Ok(l
             .choose(&mut rand::rng())
             .cloned()
@@ -247,7 +249,7 @@ pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
-    let ts = args[0].get_int().ok_or_else(|| {
+    let ts = arg(args, 0)?.get_int().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "validity",
             expected: "an integer",
@@ -257,7 +259,7 @@ pub(crate) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
     let is_assert = if args.len() == 1 {
         true
     } else {
-        args[1].get_bool().ok_or_else(|| {
+        arg(args, 1)?.get_bool().ok_or_else(|| {
             TypeMismatchSnafu {
                 op: "validity",
                 expected: "a boolean as second argument",
