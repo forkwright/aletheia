@@ -654,7 +654,7 @@ mod engine_tests {
 
         // Build context with a1 as seed
         let ctx = store
-            .build_graph_context(&["a1".to_owned()])
+            .build_graph_context(&["a1".to_owned()], 0.10)
             .expect("build_graph_context");
 
         // a1 should be a seed → its cluster is in context_clusters
@@ -663,6 +663,47 @@ mod engine_tests {
         assert!(
             ctx.same_cluster("a2"),
             "a2 should be in same cluster as seed a1"
+        );
+    }
+
+    #[test]
+    fn build_graph_context_skipped_when_weight_zero() {
+        let store = test_store();
+
+        for (id, name) in [("x1", "X1"), ("x2", "X2")] {
+            store
+                .insert_entity(&make_entity(id, name))
+                .expect("insert entity");
+        }
+        store
+            .insert_relationship(&make_relationship("x1", "x2", "LINKED", 0.8))
+            .expect("insert relationship");
+        store.recompute_graph_scores().expect("recompute");
+
+        // With weight=0.0, build_graph_context returns empty without traversal.
+        let ctx = store
+            .build_graph_context(&["x1".to_owned()], 0.0)
+            .expect("build_graph_context with zero weight");
+        assert!(
+            ctx.is_empty(),
+            "graph context must be empty when weight is zero"
+        );
+        assert!(
+            ctx.proximity.is_empty(),
+            "no BFS proximity should be computed when weight is zero"
+        );
+        assert!(
+            ctx.chain_lengths.is_empty(),
+            "no chain lengths should be computed when weight is zero"
+        );
+
+        // With nonzero weight, graph data should be populated.
+        let ctx_active = store
+            .build_graph_context(&["x1".to_owned()], 0.10)
+            .expect("build_graph_context with nonzero weight");
+        assert!(
+            !ctx_active.is_empty(),
+            "graph context should have data when weight is nonzero"
         );
     }
 

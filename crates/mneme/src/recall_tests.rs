@@ -727,6 +727,89 @@ mod tests {
         assert!((ranked1[0].score - ranked2[0].score).abs() < f64::EPSILON);
     }
 
+    // --- Graph recall skip when weight is zero ---
+
+    #[test]
+    fn graph_recall_active_with_default_weights() {
+        let w = RecallWeights::default();
+        assert!(
+            w.graph_recall_active(),
+            "default relationship_proximity is 0.10, graph recall should be active"
+        );
+    }
+
+    #[test]
+    fn graph_recall_inactive_when_proximity_weight_zero() {
+        let w = RecallWeights {
+            relationship_proximity: 0.0,
+            ..RecallWeights::default()
+        };
+        assert!(
+            !w.graph_recall_active(),
+            "graph recall should be inactive when relationship_proximity is 0.0"
+        );
+    }
+
+    #[test]
+    fn graph_enhanced_scoring_skipped_when_weight_zero() {
+        let weights = RecallWeights {
+            relationship_proximity: 0.0,
+            ..RecallWeights::default()
+        };
+        let e = RecallEngine::with_weights(weights);
+
+        let base_tier = e.score_epistemic_tier("verified");
+        let enhanced_tier = e.score_epistemic_tier_with_importance("verified", 1.0);
+        assert!(
+            (base_tier - enhanced_tier).abs() < f64::EPSILON,
+            "with zero weight, importance boost should be skipped: base={base_tier}, enhanced={enhanced_tier}"
+        );
+
+        let base_prox = e.score_relationship_proximity(None);
+        let enhanced_prox = e.score_relationship_proximity_with_cluster(None, true);
+        assert!(
+            (base_prox - enhanced_prox).abs() < f64::EPSILON,
+            "with zero weight, cluster floor should be skipped: base={base_prox}, enhanced={enhanced_prox}"
+        );
+
+        let base_access = e.score_access_frequency(10);
+        let enhanced_access = e.score_access_with_evolution(10, 4);
+        assert!(
+            (base_access - enhanced_access).abs() < f64::EPSILON,
+            "with zero weight, evolution bonus should be skipped: base={base_access}, enhanced={enhanced_access}"
+        );
+    }
+
+    #[test]
+    fn graph_enhanced_scoring_active_when_weight_nonzero() {
+        let e = engine();
+        assert!(
+            e.weights().graph_recall_active(),
+            "default engine should have graph recall active"
+        );
+
+        let base_tier = e.score_epistemic_tier("inferred");
+        let enhanced_tier = e.score_epistemic_tier_with_importance("inferred", 1.0);
+        assert!(
+            enhanced_tier > base_tier,
+            "with nonzero weight, importance should boost: base={base_tier}, enhanced={enhanced_tier}"
+        );
+
+        let base_prox = e.score_relationship_proximity(None);
+        let enhanced_prox = e.score_relationship_proximity_with_cluster(None, true);
+        assert!(
+            enhanced_prox > base_prox,
+            "with nonzero weight, cluster floor should lift: base={base_prox}, enhanced={enhanced_prox}"
+        );
+
+        let base_access = e.score_access_frequency(10);
+        let enhanced_access = e.score_access_with_evolution(10, 4);
+        assert!(
+            enhanced_access > base_access,
+            "with nonzero weight, evolution bonus should apply: base={base_access}, enhanced={enhanced_access}"
+        );
+    }
+
     // --- Default and builder tests ---
 
     #[test]
