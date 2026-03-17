@@ -155,7 +155,10 @@ impl EvalClient {
         let url = format!("{}{path}", self.base_url);
         self.http
             .post(&url)
-            .header("content-type", "application/json")
+            .header(
+                "content-type",
+                aletheia_koina::http_constants::APPLICATION_JSON,
+            )
             .header("x-requested-with", "aletheia")
             .json(body)
             .send()
@@ -169,7 +172,10 @@ impl EvalClient {
         let url = format!("{}{path}", self.base_url);
         self.http
             .get(&url)
-            .header("authorization", format!("Bearer {token}"))
+            .header(
+                "authorization",
+                format!("{}{token}", aletheia_koina::http_constants::BEARER_PREFIX),
+            )
             .send()
             .await
             .context(error::HttpSnafu)
@@ -178,7 +184,10 @@ impl EvalClient {
     async fn authed_get(&self, url: &str) -> Result<reqwest::Response> {
         let mut req = self.http.get(url);
         if let Some(ref token) = self.token {
-            req = req.header("authorization", format!("Bearer {token}"));
+            req = req.header(
+                "authorization",
+                format!("{}{token}", aletheia_koina::http_constants::BEARER_PREFIX),
+            );
         }
         req.send().await.context(error::HttpSnafu)
     }
@@ -187,10 +196,16 @@ impl EvalClient {
         let mut req = self
             .http
             .post(url)
-            .header("content-type", "application/json")
+            .header(
+                "content-type",
+                aletheia_koina::http_constants::APPLICATION_JSON,
+            )
             .header("x-requested-with", "aletheia");
         if let Some(ref token) = self.token {
-            req = req.header("authorization", format!("Bearer {token}"));
+            req = req.header(
+                "authorization",
+                format!("{}{token}", aletheia_koina::http_constants::BEARER_PREFIX),
+            );
         }
         req.json(body).send().await.context(error::HttpSnafu)
     }
@@ -198,7 +213,10 @@ impl EvalClient {
     async fn authed_delete(&self, url: &str) -> Result<reqwest::Response> {
         let mut req = self.http.delete(url).header("x-requested-with", "aletheia");
         if let Some(ref token) = self.token {
-            req = req.header("authorization", format!("Bearer {token}"));
+            req = req.header(
+                "authorization",
+                format!("{}{token}", aletheia_koina::http_constants::BEARER_PREFIX),
+            );
         }
         req.send().await.context(error::HttpSnafu)
     }

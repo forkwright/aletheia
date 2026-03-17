@@ -98,5 +98,11 @@ pub async fn openapi_json() -> impl IntoResponse {
     let spec = ApiDoc::openapi()
         .to_json()
         .expect("OpenAPI spec serialization");
-    ([(header::CONTENT_TYPE, "application/json")], spec)
+    (
+        [(
+            header::CONTENT_TYPE,
+            aletheia_koina::http_constants::APPLICATION_JSON,
+        )],
+        spec,
+    )
 }

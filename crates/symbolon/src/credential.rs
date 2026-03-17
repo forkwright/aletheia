@@ -614,7 +614,10 @@ async fn do_refresh(client: &reqwest::Client, refresh_token: &str) -> Option<OAu
 
     let resp = client
         .post(OAUTH_TOKEN_URL)
-        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header(
+            "Content-Type",
+            aletheia_koina::http_constants::APPLICATION_FORM_URLENCODED,
+        )
         .body(body)
         .timeout(Duration::from_secs(30))
         .send()

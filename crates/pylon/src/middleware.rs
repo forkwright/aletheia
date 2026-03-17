@@ -121,7 +121,7 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
         .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.contains("application/json"));
+        .is_some_and(|ct| ct.contains(aletheia_koina::http_constants::APPLICATION_JSON));
 
     if !is_json {
         return response;

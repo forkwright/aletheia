@@ -440,14 +440,17 @@ impl AnthropicProvider {
                 }
                 .build()
             })?;
-            headers.insert("x-api-key", value);
+            headers.insert(aletheia_koina::http_constants::HEADER_X_API_KEY, value);
         }
         headers.insert(
-            "anthropic-version",
+            aletheia_koina::http_constants::HEADER_ANTHROPIC_VERSION,
             HeaderValue::from_str(&self.api_version)
                 .unwrap_or_else(|_| HeaderValue::from_static(DEFAULT_API_VERSION)),
         );
-        headers.insert("content-type", HeaderValue::from_static("application/json"));
+        headers.insert(
+            "content-type",
+            HeaderValue::from_static(aletheia_koina::http_constants::APPLICATION_JSON),
+        );
         Ok(headers)
     }
 

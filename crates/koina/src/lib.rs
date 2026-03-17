@@ -8,6 +8,8 @@
 pub mod credential;
 /// Error types shared across all Aletheia crates (file I/O, JSON, identifiers).
 pub mod error;
+/// Shared HTTP constants (content types, header names, auth prefixes).
+pub mod http_constants;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
 /// Sensitive value redaction for safe log output (API keys, tokens, passwords).

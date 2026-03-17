@@ -12,7 +12,7 @@ use crate::state::DiaporeiaState;
 pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
     let raw = RawResourceTemplate::new("aletheia://config", "Aletheia Configuration")
         .with_description("Runtime configuration (sensitive fields redacted)")
-        .with_mime_type("application/json");
+        .with_mime_type(aletheia_koina::http_constants::APPLICATION_JSON);
     vec![ResourceTemplate {
         raw,
         annotations: None,

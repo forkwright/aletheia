@@ -33,7 +33,7 @@ pub fn stream_message(
     let builder = client
         .post(&url)
         .json(&body)
-        .header("Accept", "text/event-stream");
+        .header("Accept", aletheia_koina::http_constants::TEXT_EVENT_STREAM);
 
     let span = tracing::info_span!("stream_message");
     tokio::spawn(

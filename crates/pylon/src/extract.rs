@@ -52,7 +52,7 @@ impl FromRequestParts<Arc<AppState>> for Claims {
             })?;
 
         let token = header
-            .strip_prefix("Bearer ")
+            .strip_prefix(aletheia_koina::http_constants::BEARER_PREFIX)
             .ok_or(ApiError::Unauthorized {
                 location: snafu::Location::default(),
             })?;

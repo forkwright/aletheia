@@ -89,7 +89,10 @@ impl SignalClient {
         let response = self
             .client
             .post(&self.rpc_url)
-            .header("content-type", "application/json")
+            .header(
+                "content-type",
+                aletheia_koina::http_constants::APPLICATION_JSON,
+            )
             .body(body)
             .send()
             .await
@@ -190,7 +193,10 @@ impl SignalClient {
         let response = self
             .client
             .post(&self.rpc_url)
-            .header("content-type", "application/json")
+            .header(
+                "content-type",
+                aletheia_koina::http_constants::APPLICATION_JSON,
+            )
             .timeout(RECEIVE_TIMEOUT)
             .body(body)
             .send()

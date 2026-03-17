@@ -36,8 +36,11 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
     let mut headers = header::HeaderMap::new();
 
     if let Some(t) = token {
-        let auth_value = header::HeaderValue::from_str(&format!("Bearer {t}"))
-            .map_err(|_invalid| ApiError::InvalidToken)?;
+        let auth_value = header::HeaderValue::from_str(&format!(
+            "{}{t}",
+            aletheia_koina::http_constants::BEARER_PREFIX
+        ))
+        .map_err(|_invalid| ApiError::InvalidToken)?;
         headers.insert(header::AUTHORIZATION, auth_value);
     }
 
@@ -47,11 +50,11 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
     );
     headers.insert(
         header::CONTENT_TYPE,
-        header::HeaderValue::from_static("application/json"),
+        header::HeaderValue::from_static(aletheia_koina::http_constants::APPLICATION_JSON),
     );
     headers.insert(
         header::ACCEPT,
-        header::HeaderValue::from_static("application/json"),
+        header::HeaderValue::from_static(aletheia_koina::http_constants::APPLICATION_JSON),
     );
 
     Client::builder()
