@@ -236,7 +236,7 @@ impl JwtManager {
     ///
     /// Exposed for tests that need to craft tokens with specific claims (e.g. expired tokens).
     /// Production code should use [`issue_access`](Self::issue_access) or
-    /// [`issue_refresh`](Self::issue_refresh).
+    /// `issue_refresh`.
     pub fn encode_claims(&self, claims: &Claims) -> Result<String> {
         let payload_json = serde_json::to_vec(claims).map_err(|e| {
             error::TokenEncodeSnafu {
