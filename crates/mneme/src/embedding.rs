@@ -382,6 +382,10 @@ mod candle_provider {
         }
     }
 
+    #[allow(
+        clippy::items_after_test_module,
+        reason = "test module accesses private CandelProvider methods"
+    )]
     impl EmbeddingProvider for CandelProvider {
         #[instrument(skip(self, text))]
         fn embed(&self, text: &str) -> EmbeddingResult<Vec<f32>> {

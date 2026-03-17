@@ -300,17 +300,17 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    #[expect(
+    #[allow(
         dead_code,
         reason = "constructed in context action overlay; creation pending keybinding wiring"
     )]
     QuoteInReply,
-    #[expect(
+    #[allow(
         dead_code,
         reason = "constructed in context action overlay; creation pending keybinding wiring"
     )]
     RateResponse,
-    #[expect(
+    #[allow(
         dead_code,
         reason = "constructed in context action overlay; creation pending keybinding wiring"
     )]
