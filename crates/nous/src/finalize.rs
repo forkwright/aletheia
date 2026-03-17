@@ -277,7 +277,7 @@ mod tests {
         finalize(&store, &session, "Read the file", &result, &config).expect("finalize");
 
         let history = store.get_history("ses-1", None).expect("history");
-        // user + tool_call(assistant) + tool_result + assistant = 4
+        // NOTE: user + tool_call(assistant) + tool_result + assistant = 4
         assert_eq!(history.len(), 4);
         assert_eq!(history[0].role, Role::User);
         assert_eq!(history[1].role, Role::Assistant);
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn finalize_creates_session_if_missing() {
         let store = SessionStore::open_in_memory().expect("in-memory store");
-        // Do NOT call store.create_session: the actor wouldn't have done so.
+        // WHY: Do NOT call store.create_session: the actor wouldn't have done so.
         let config_nous = NousConfig {
             id: "test-nous".to_owned(),
             model: "test-model".to_owned(),
@@ -332,7 +332,7 @@ mod tests {
         let result = simple_result();
         let config = FinalizeConfig::default();
 
-        // This would previously fail with FOREIGN KEY constraint error
+        // NOTE: This would previously fail with FOREIGN KEY constraint error
         finalize(&store, &session, "Hi from orphan", &result, &config).expect("finalize");
 
         let history = store.get_history("ses-orphan", None).expect("history");
@@ -352,7 +352,6 @@ mod tests {
 
         let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
         assert!(!fr.usage_recorded);
-        // Messages should still be persisted
         assert_eq!(fr.messages_persisted, 2);
     }
 
@@ -362,17 +361,14 @@ mod tests {
         let result = simple_result();
         let config = FinalizeConfig::default();
 
-        // First call succeeds
         let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
         assert_eq!(fr.messages_persisted, 2);
         assert!(fr.usage_recorded);
 
-        // Second call with same session/turn is skipped
         let fr2 = finalize(&store, &session, "Hi again", &result, &config).expect("finalize");
         assert_eq!(fr2.messages_persisted, 0);
         assert!(!fr2.usage_recorded);
 
-        // Only the first set of messages should exist
         let history = store.get_history("ses-1", None).expect("history");
         assert_eq!(history.len(), 2);
     }
@@ -381,20 +377,19 @@ mod tests {
     fn finalize_returns_correct_counts() {
         let (store, session) = test_store_and_session();
 
-        // No tool calls: user + assistant = 2
+        // NOTE: No tool calls: user + assistant = 2
         let result = simple_result();
         let config = FinalizeConfig::default();
         let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
         assert_eq!(fr.messages_persisted, 2);
 
-        // New session for tool calls test
         store
             .create_session("ses-2", "test-nous", "main-2", None, Some("test-model"))
             .expect("create session");
         let mut session2 = session.clone();
         session2.id = "ses-2".to_owned();
 
-        // One tool call: user + tool_call + tool_result + assistant = 4
+        // NOTE: One tool call: user + tool_call + tool_result + assistant = 4
         let result = result_with_tools();
         let fr = finalize(&store, &session2, "Read it", &result, &config).expect("finalize");
         assert_eq!(fr.messages_persisted, 4);
@@ -414,12 +409,11 @@ mod tests {
         let store = SessionStore::open_in_memory().expect("in-memory store");
         let db_session_id = "db-ses-from-pylon";
 
-        // Simulate pylon creating the session in the store
         store
             .create_session(db_session_id, "test-nous", "main", None, Some("test-model"))
             .expect("create session");
 
-        // Actor's SessionState must use the SAME ID as the database.
+        // WHY: Actor's SessionState must use the SAME ID as the database.
         // Before the fix, the actor would generate a different ULID here.
         let config = NousConfig {
             id: "test-nous".to_owned(),
@@ -431,13 +425,12 @@ mod tests {
         let result = simple_result();
         let finalize_config = FinalizeConfig::default();
 
-        // This must succeed: no FK violation because IDs match.
+        // NOTE: This must succeed: no FK violation because IDs match.
         let fr = finalize(&store, &session, "Hello", &result, &finalize_config)
             .expect("finalize should not fail with matching session IDs");
         assert_eq!(fr.messages_persisted, 2);
         assert!(fr.usage_recorded);
 
-        // Verify messages are under the correct session ID.
         let history = store.get_history(db_session_id, None).expect("history");
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].role, Role::User);
@@ -454,12 +447,11 @@ mod tests {
     fn divergent_session_id_causes_fk_violation() {
         let store = SessionStore::open_in_memory().expect("in-memory store");
 
-        // Pylon creates session with one ID
         store
             .create_session("pylon-id", "test-nous", "main", None, Some("test-model"))
             .expect("create session");
 
-        // Actor would have generated a DIFFERENT ID (before the fix)
+        // NOTE: Actor would have generated a DIFFERENT ID (before the fix)
         let config = NousConfig {
             id: "test-nous".to_owned(),
             model: "test-model".to_owned(),
@@ -471,7 +463,7 @@ mod tests {
         let result = simple_result();
         let finalize_config = FinalizeConfig::default();
 
-        // find_or_create_session finds "pylon-id" by (nous_id, session_key).
+        // WHY: find_or_create_session finds "pylon-id" by (nous_id, session_key).
         // But append_message uses "actor-generated-id" which has no DB row.
         // finalize internally calls find_or_create_session which ensures a
         // row exists matching the session_key, then tries append_message with
@@ -491,7 +483,7 @@ mod tests {
             &finalize_config,
         );
 
-        // This should fail with a database error due to FK constraint
+        // NOTE: This should fail with a database error due to FK constraint
         assert!(
             result.is_err(),
             "divergent session ID should cause FK violation"

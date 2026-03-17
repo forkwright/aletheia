@@ -90,7 +90,6 @@ impl TraceRotator {
         let total_size_bytes: u64 = entries.iter().map(|e| e.size).sum();
         let max_bytes = self.config.max_total_size_mb * 1024 * 1024;
 
-        // Determine which files to rotate: old files, or oldest when over size limit.
         let mut to_rotate = Vec::new();
         let mut cumulative_freed: u64 = 0;
 
@@ -117,7 +116,7 @@ impl TraceRotator {
                 context: format!("moving {} to archive", entry.path.display()),
             })?;
 
-            // Rename-and-reopen: create a new empty file at the original path so active
+            // WHY: Rename-and-reopen: create a new empty file at the original path so active
             // writers complete their current write to the renamed file (old inode) and
             // immediately get the new file on the next open by name.
             if let Err(e) = std::fs::File::create(&entry.path) {
@@ -285,8 +284,8 @@ mod tests {
     fn old_files_are_rotated_via_size_limit() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut config = make_config(tmp.path());
-        config.max_age_days = 0; // treat all files as old
-        config.max_total_size_mb = 9999; // don't trigger size
+        config.max_age_days = 0; // NOTE: treat all files as old
+        config.max_total_size_mb = 9999; // NOTE: don't trigger size
         fs::create_dir_all(&config.trace_dir).unwrap();
 
         let file = config.trace_dir.join("old-trace.log");
@@ -315,8 +314,8 @@ mod tests {
     fn size_limit_triggers_rotation() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut config = make_config(tmp.path());
-        config.max_total_size_mb = 0; // force everything to rotate
-        config.max_age_days = 9999; // don't rotate by age
+        config.max_total_size_mb = 0; // NOTE: force everything to rotate
+        config.max_age_days = 9999; // NOTE: don't rotate by age
         fs::create_dir_all(&config.trace_dir).unwrap();
 
         fs::write(config.trace_dir.join("a.log"), "data").unwrap();
@@ -357,7 +356,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut config = make_config(tmp.path());
         config.compress = true;
-        config.max_total_size_mb = 0; // rotate everything
+        config.max_total_size_mb = 0; // NOTE: force rotation of all files
         fs::create_dir_all(&config.trace_dir).unwrap();
 
         fs::write(config.trace_dir.join("trace.log"), "compressible data").unwrap();
@@ -428,7 +427,7 @@ mod tests {
     fn multiple_old_files_rotated() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut config = make_config(tmp.path());
-        config.max_age_days = 0; // treat all files as old
+        config.max_age_days = 0; // NOTE: treat all files as old
         config.max_total_size_mb = 9999;
         fs::create_dir_all(&config.trace_dir).unwrap();
 

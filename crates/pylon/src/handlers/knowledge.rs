@@ -510,7 +510,6 @@ pub async fn search(
     State(state): State<Arc<AppState>>,
     Query(mut query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
-    // Enforce pagination bound.
     query.limit = query.limit.min(MAX_SEARCH_LIMIT);
 
     // WHY: Pass the caller-supplied nous_id so get_stored_facts can query the store.
@@ -536,7 +535,7 @@ pub async fn search(
         .filter(|f| !f.is_forgotten)
         .filter_map(|f| {
             let content_lower = f.content.to_lowercase();
-            // Simple BM25-like scoring: term frequency
+            // NOTE: Simple BM25-like scoring: term frequency weighted by confidence.
             let mut score = 0.0_f64;
             for term in &query_terms {
                 if content_lower.contains(term) {
@@ -780,17 +779,15 @@ mod tests {
         let s = "a".repeat(100);
         let result = truncate_content(&s, 80);
         assert!(result.ends_with("..."));
-        // Content before ellipsis is 80 chars, total is 83
         assert_eq!(result.len(), 83);
     }
 
     #[test]
     fn truncate_content_handles_utf8_boundary() {
-        // "é" is 2 bytes; with max=1 we must not split mid-char
+        // NOTE: "é" is 2 bytes; with max=1 we must not split mid-char.
         let s = "éàü";
         let result = truncate_content(s, 1);
         assert!(result.ends_with("..."));
-        // Must be valid UTF-8 (no panic)
         assert!(std::str::from_utf8(result.as_bytes()).is_ok());
     }
 
@@ -850,7 +847,7 @@ mod tests {
 
     #[test]
     fn facts_query_default_values() {
-        // FactsQuery has individual serde defaults; test them via JSON
+        // NOTE: FactsQuery has individual serde defaults; test them via JSON.
         let q: FactsQuery = serde_json::from_str("{}").unwrap();
         assert_eq!(q.sort, "confidence");
         assert_eq!(q.order, "desc");
@@ -860,7 +857,7 @@ mod tests {
 
     #[test]
     fn limit_is_capped_at_max() {
-        // list_facts clamps query.limit to MAX_LIMIT (1000) before use.
+        // NOTE: list_facts clamps query.limit to MAX_LIMIT (1000) before use.
         const { assert!(MAX_LIMIT <= 1000) };
         assert_eq!(MAX_LIMIT, 1000);
     }
@@ -876,7 +873,7 @@ mod tests {
             score: 0.64,
         };
         let json = serde_json::to_value(&result).unwrap();
-        // fact_type → factType, not fact_type
+        // NOTE: serde(rename_all = "camelCase") maps fact_type to factType.
         assert!(json.get("factType").is_some());
         assert_eq!(json["factType"], "knowledge");
         assert_eq!(json["confidence"], 0.8);
@@ -937,7 +934,7 @@ mod tests {
     #[test]
     fn sort_facts_with_uppercase_order() {
         let mut facts = vec![make_fact("a", "low", 0.3), make_fact("b", "high", 0.9)];
-        // After validation, order is normalized to lowercase before reaching sort_facts
+        // NOTE: After validation, order is normalized to lowercase before reaching sort_facts.
         sort_facts(&mut facts, "confidence", "desc");
         assert_eq!(facts[0].id.as_str(), "b");
         assert_eq!(facts[1].id.as_str(), "a");

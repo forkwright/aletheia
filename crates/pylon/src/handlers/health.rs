@@ -25,7 +25,6 @@ pub async fn check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 
     let mut checks = Vec::new();
 
-    // Check session store connectivity
     let store_ok = state.session_store.lock().await.ping().is_ok();
     checks.push(HealthCheck {
         name: "session_store",
@@ -37,7 +36,6 @@ pub async fn check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         },
     });
 
-    // Check provider registry has at least one provider
     let has_providers = !state.provider_registry.providers().is_empty();
     checks.push(HealthCheck {
         name: "providers",
@@ -49,7 +47,6 @@ pub async fn check(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         },
     });
 
-    // Check nous actor health
     let actor_health = state.nous_manager.check_health().await;
     let any_dead = actor_health.values().any(|h| !h.alive);
     checks.push(HealthCheck {
@@ -156,7 +153,7 @@ mod tests {
         let json = serde_json::to_value(&check).unwrap();
         assert_eq!(json["name"], "session_store");
         assert_eq!(json["status"], "pass");
-        // message is None: serializes as null (no skip annotation)
+        // NOTE: message is None: serializes as null (no skip annotation).
         assert!(json["message"].is_null());
     }
 

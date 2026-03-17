@@ -176,7 +176,7 @@ fn detect_file_paths(text: &str) -> Vec<(usize, usize, &str, String)> {
         reason = "regex is a compile-time string literal and is always valid"
     )]
     static PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
-        // crates/foo/src/bar.rs:142  or  src/foo.rs  or  ./src/foo.ts
+        // NOTE: crates/foo/src/bar.rs:142  or  src/foo.rs  or  ./src/foo.ts
         Regex::new(r"(?:\.{0,2}/)?(?:[a-zA-Z0-9_\-]+/)+[a-zA-Z0-9_\-]+\.[a-zA-Z]{1,6}(?::[0-9]+)?")
             .expect("file path regex is valid")
     });
@@ -189,7 +189,6 @@ fn detect_file_paths(text: &str) -> Vec<(usize, usize, &str, String)> {
     let mut out = Vec::new();
     for m in PATH_RE.find_iter(text) {
         let s = m.as_str();
-        // Only match paths with a recognised source extension
         let base = s.split(':').next().unwrap_or(s);
         let ext = base.rsplit('.').next().unwrap_or("");
         if !SOURCE_EXTS.contains(&ext) {
@@ -205,8 +204,6 @@ fn detect_file_paths(text: &str) -> Vec<(usize, usize, &str, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── detect_urls ──
 
     #[test]
     fn detects_https_url() {
@@ -297,13 +294,10 @@ mod tests {
 
     #[test]
     fn strips_multiple_trailing_chars() {
-        // comma after dot
         let urls = detect_urls("See https://foo.com/bar.,");
         assert_eq!(urls.len(), 1);
         assert_eq!(urls[0].2, "https://foo.com/bar");
     }
-
-    // ── OSC 8 sequence format ──
 
     #[test]
     fn osc8_open_format() {
@@ -342,11 +336,9 @@ mod tests {
         assert_eq!(full, "\x1b]8;;https://example.com\x07click me\x1b]8;;\x07");
     }
 
-    // ── supports_hyperlinks ──
-
     #[test]
     fn supports_hyperlinks_returns_bool() {
-        // Smoke test: function must not panic regardless of environment
+        // NOTE: function must not panic regardless of environment
         let _ = supports_hyperlinks();
     }
 
@@ -356,7 +348,7 @@ mod tests {
         reason = "test-only env mutation in single-threaded test context"
     )]
     fn probe_detects_ghostty_resources_dir() {
-        // Use the raw probe (not cached) to test detection logic.
+        // WHY: Use the raw probe (not cached) to test detection logic.
         // SAFETY: test-only env mutation; env vars are not read concurrently here.
         unsafe { std::env::set_var("GHOSTTY_RESOURCES_DIR", "/usr/share/ghostty") };
         let result = probe_hyperlink_support();
@@ -403,8 +395,6 @@ mod tests {
         assert!(result, "should detect Windows Terminal via WT_SESSION");
     }
 
-    // ── file path detection ──
-
     #[test]
     fn detects_rust_file_path() {
         let paths = detect_file_paths("See crates/nous/src/actor.rs:142 for details");
@@ -415,7 +405,7 @@ mod tests {
 
     #[test]
     fn ignores_non_source_extension() {
-        // .bin files are not in SOURCE_EXTS
+        // NOTE: .bin files are not in SOURCE_EXTS
         let paths = detect_file_paths("target/debug/aletheia.bin");
         assert!(paths.is_empty());
     }
