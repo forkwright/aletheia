@@ -357,7 +357,7 @@ mod candle_provider {
     }
 
     #[cfg(test)]
-    #[allow(clippy::expect_used, reason = "test assertions")]
+    #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
     mod tests {
         use super::*;
         use candle_core::{DType, Device, Tensor};
@@ -382,7 +382,7 @@ mod candle_provider {
         }
     }
 
-    #[allow(
+    #[expect(
         clippy::items_after_test_module,
         reason = "test module accesses private CandelProvider methods"
     )]

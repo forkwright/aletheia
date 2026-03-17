@@ -308,7 +308,7 @@ pub(crate) fn rank_skills(candidates: Vec<Fact>) -> Vec<Fact> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
 

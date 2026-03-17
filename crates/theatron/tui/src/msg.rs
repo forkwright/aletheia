@@ -5,7 +5,7 @@ use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 /// No I/O happens here: only data describing what happened.
 #[non_exhaustive]
 #[derive(Debug)]
-#[allow(
+#[expect(
     dead_code,
     reason = "variant fields carry event data that update handlers read via destructuring; \
               the compiler sees struct-style variant fields as unread when match arms \
@@ -300,17 +300,17 @@ pub enum MessageActionKind {
     Delete,
     OpenLinks,
     Inspect,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; creation pending keybinding wiring"
     )]
     QuoteInReply,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; creation pending keybinding wiring"
     )]
     RateResponse,
-    #[allow(
+    #[expect(
         dead_code,
         reason = "constructed in context action overlay; creation pending keybinding wiring"
     )]
@@ -323,10 +323,10 @@ pub enum OverlayKind {
     Help,
     AgentPicker,
     SessionPicker,
-    #[allow(dead_code, reason = "opened via command palette :sessions! command")]
+    #[expect(dead_code, reason = "opened via command palette :sessions! command")]
     SessionPickerAll,
     SystemStatus,
-    #[allow(dead_code, reason = "opened via command palette")]
+    #[expect(dead_code, reason = "opened via command palette")]
     Settings,
 }
 
@@ -353,7 +353,10 @@ impl ErrorToast {
 
 #[non_exhaustive]
 #[derive(Debug)]
-#[allow(dead_code, reason = "auth flow variants")]
+#[expect(
+    dead_code,
+    reason = "auth flow variants constructed by SSE event handler"
+)]
 pub enum AuthOutcome {
     Success { token: String },
     NoAuthRequired,
