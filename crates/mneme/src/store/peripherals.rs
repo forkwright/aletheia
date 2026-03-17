@@ -19,6 +19,7 @@ impl SessionStore {
         category: &str,
         content: &str,
     ) -> Result<i64> {
+        self.require_writable()?;
         let id = self
             .conn
             .query_row(
@@ -63,6 +64,7 @@ impl SessionStore {
     /// Delete a note by ID.
     #[instrument(skip(self))]
     pub fn delete_note(&self, note_id: i64) -> Result<bool> {
+        self.require_writable()?;
         let rows = self
             .conn
             .execute("DELETE FROM agent_notes WHERE id = ?1", [note_id])
@@ -81,6 +83,7 @@ impl SessionStore {
         author: &str,
         ttl_secs: i64,
     ) -> Result<()> {
+        self.require_writable()?;
         let id = ulid::Ulid::new().to_string();
         self.conn
             .execute(
@@ -159,6 +162,7 @@ impl SessionStore {
     /// Delete a blackboard entry. Only the original author can delete.
     #[instrument(skip(self))]
     pub fn blackboard_delete(&self, key: &str, author: &str) -> Result<bool> {
+        self.require_writable()?;
         let rows = self
             .conn
             .execute(

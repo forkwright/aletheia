@@ -16,6 +16,25 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Database is in degraded (read-only) mode due to corruption.
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("database is degraded (read-only): write rejected for {}", path.display()))]
+    DatabaseDegraded {
+        path: std::path::PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Database corruption detected via integrity check or error code.
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("database corruption detected at {}: {detail}", path.display()))]
+    DatabaseCorrupt {
+        path: std::path::PathBuf,
+        detail: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Session not found.
     #[cfg(feature = "sqlite")]
     #[snafu(display("session not found: {id}"))]
