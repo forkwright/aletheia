@@ -44,7 +44,6 @@ impl KnowledgeStore {
         let now_str = format_timestamp(&now);
 
         let mut params = BTreeMap::new();
-        // Old fact params
         params.insert(
             String::from("old_id"),
             DataValue::Str(old_fact.id.as_str().into()),
@@ -112,7 +111,6 @@ impl KnowledgeStore {
         params.insert(String::from("old_forgotten_at"), DataValue::Null);
         params.insert(String::from("old_forget_reason"), DataValue::Null);
 
-        // New fact params
         params.insert(
             String::from("new_content"),
             DataValue::Str(new_fact.content.as_str().into()),
@@ -182,9 +180,8 @@ impl KnowledgeStore {
         }
         let now = jiff::Timestamp::now();
         for id in fact_ids {
-            // Read the current fact rows, increment in Rust, then write back.
-            // `CozoDB` in-memory read-modify-write in a single Datalog rule does not
-            // reflect the mutation in subsequent reads: avoid that pattern.
+            // WHY: CozoDB in-memory read-modify-write in a single Datalog rule does not
+            // reflect the mutation in subsequent reads, so we read-increment-write in Rust.
             let facts = match self.read_facts_by_id(id.as_str()) {
                 Ok(f) => f,
                 Err(e) => {
@@ -225,7 +222,6 @@ impl KnowledgeStore {
         fact_id: &crate::id::FactId,
         reason: crate::knowledge::ForgetReason,
     ) -> crate::error::Result<crate::knowledge::Fact> {
-        // Verify fact exists before mutating.
         let existing = self.read_facts_by_id(fact_id.as_str())?;
         if existing.is_empty() {
             return Err(crate::error::FactNotFoundSnafu {
@@ -267,7 +263,6 @@ impl KnowledgeStore {
         );
         self.run_mut(script, params)?;
 
-        // Re-read the fact to return its updated state.
         let facts = self.read_facts_by_id(fact_id.as_str())?;
         facts.into_iter().next().ok_or_else(|| {
             crate::error::FactNotFoundSnafu {
@@ -368,7 +363,7 @@ impl KnowledgeStore {
             return Ok(results);
         }
 
-        // Batch-check which fact IDs are forgotten via a single query.
+        // PERF: Batch-check forgotten status in a single query rather than per-result.
         let forgotten_ids = self.forgotten_fact_ids(&results)?;
         if forgotten_ids.is_empty() {
             return Ok(results);
@@ -472,8 +467,8 @@ impl KnowledgeStore {
         let removed_rows = self.run_read(queries::TEMPORAL_DIFF_REMOVED, params)?;
         let removed = rows_to_facts(removed_rows, nous_id)?;
 
-        // Modified facts: those that appear in both added and removed (supersession chain).
-        // A fact ID in removed that has a superseded_by pointing to one in added is a modification.
+        // NOTE: A fact in "removed" whose superseded_by points to one in "added" is a
+        // modification, not a pure removal.
         let added_ids: std::collections::HashSet<&str> =
             added.iter().map(|f| f.id.as_str()).collect();
         let mut modified = Vec::new();
@@ -490,7 +485,6 @@ impl KnowledgeStore {
             pure_removed.push(old.clone());
         }
 
-        // Pure added: those not part of a modification pair
         let modified_new_ids: std::collections::HashSet<&str> =
             modified.iter().map(|(_, new)| new.id.as_str()).collect();
         let pure_added: Vec<_> = added
@@ -594,7 +588,7 @@ impl KnowledgeStore {
         rows_to_facts(rows, nous_id)
     }
 
-    // --- Async wrappers ---
+    // NOTE: Async wrappers use spawn_blocking because CozoDB is synchronous.
 
     /// Async `forget_fact`: wraps sync call in `spawn_blocking`.
     #[instrument(skip(self))]

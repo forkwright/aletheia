@@ -213,7 +213,7 @@ pub async fn update_section(
         deep_merge(existing, body);
     }
 
-    // Deserialize back to verify structural validity.
+    // WHY: Deserialize back to verify structural validity.
     // Log serde details internally; the error message exposed to the client must not
     // include field paths or internal type names from the serde error. (#845)
     let new_config: aletheia_taxis::config::AletheiaConfig =

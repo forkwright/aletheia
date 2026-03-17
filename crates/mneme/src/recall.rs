@@ -180,7 +180,7 @@ impl RecallEngine {
             return 1.0;
         }
         let s = compute_effective_stability(fact_type, tier, access_count);
-        // Guard against zero/negative stability (shouldn't happen, but be safe)
+        // SAFETY: Guard against zero/negative stability to prevent division by zero.
         if s <= 0.0 {
             return 0.0;
         }
@@ -196,9 +196,9 @@ impl RecallEngine {
         if memory_nous_id == query_nous_id {
             1.0
         } else if memory_nous_id.is_empty() {
-            0.5 // Shared memory
+            0.5 // NOTE: Shared memory (no owning nous)
         } else {
-            0.3 // Another agent's memory
+            0.3 // NOTE: Another agent's memory
         }
     }
 
@@ -209,7 +209,7 @@ impl RecallEngine {
         match tier {
             "verified" => 1.0,
             "inferred" => 0.6,
-            // assumed or unknown
+            // NOTE: assumed or unknown tiers get lowest weight
             _ => 0.3,
         }
     }
@@ -222,11 +222,11 @@ impl RecallEngine {
     #[instrument(skip(self))]
     pub fn score_relationship_proximity(&self, hops: Option<u32>) -> f64 {
         match hops {
-            Some(0 | 1) => 1.0, // Same entity or direct neighbor
+            Some(0 | 1) => 1.0,
             Some(2) => 0.5,
             Some(3) => 0.25,
             Some(n) => (0.5_f64).powi(i32::try_from(n.saturating_sub(1)).unwrap_or(i32::MAX)),
-            None => 0.0, // No connection
+            None => 0.0,
         }
     }
 

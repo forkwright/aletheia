@@ -228,7 +228,7 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // WHY: File doesn't exist: not an error for health checks.
+                // NOTE: File doesn't exist: not an error for health checks.
             }
             Err(e) => {
                 tracing::warn!(

@@ -62,7 +62,6 @@ use tracing::instrument;
 
 /// Datalog DDL for initializing the knowledge schema.
 pub const KNOWLEDGE_DDL: &[&str] = &[
-    // Facts: bi-temporal, epistemic-tiered
     r":create facts {
         id: String, valid_from: String =>
         content: String,
@@ -81,7 +80,6 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         forgotten_at: String?,
         forget_reason: String?
     }",
-    // Entities: typed nodes in the knowledge graph
     r":create entities {
         id: String =>
         name: String,
@@ -90,19 +88,16 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         created_at: String,
         updated_at: String
     }",
-    // Relationships: weighted edges
     r":create relationships {
         src: String, dst: String =>
         relation: String,
         weight: Float,
         created_at: String
     }",
-    // Fact-entity mappings: which entities a fact mentions
     r":create fact_entities {
         fact_id: String, entity_id: String =>
         created_at: String
     }",
-    // Entity merge audit trail
     r":create merge_audit {
         canonical_id: String, merged_id: String =>
         merged_name: String,
@@ -111,7 +106,6 @@ pub const KNOWLEDGE_DDL: &[&str] = &[
         relationships_redirected: Int,
         merged_at: String
     }",
-    // Pending entity merges awaiting review (score 0.70–0.90)
     r":create pending_merges {
         entity_a: String, entity_b: String =>
         name_a: String,

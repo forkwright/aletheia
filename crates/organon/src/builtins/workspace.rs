@@ -204,7 +204,6 @@ impl ToolExecutor for ReadExecutor {
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
             let path = validate_path(path_str, ctx, &input.name)?;
 
-            // NOTE: File size guard: reject files larger than 50 MB
             match std::fs::metadata(&path) {
                 Ok(meta) if meta.len() > MAX_READ_BYTES => {
                     return Ok(err_result(format!(
@@ -219,7 +218,6 @@ impl ToolExecutor for ReadExecutor {
                 Err(e) => {
                     return Ok(err_result(format!("read failed: {e}")));
                 }
-                // NOTE: metadata check passed, proceed to read content
                 Ok(_) => {}
             }
 
@@ -459,7 +457,7 @@ impl ToolExecutor for ExecExecutor {
                 }
             }
 
-            // WHY: Wrap immediately so the child is killed on any early return
+            // NOTE: Wrap immediately so the child is killed on any early return
             // (timeout, wait error, or panic).
             let mut guard = match cmd.spawn() {
                 Ok(c) => ProcessGuard::new(c),

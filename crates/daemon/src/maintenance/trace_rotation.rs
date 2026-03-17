@@ -5,8 +5,9 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use aletheia_koina::disk_space::DiskSpaceMonitor;
 use snafu::ResultExt;
+
+use aletheia_koina::disk_space::DiskSpaceMonitor;
 
 use crate::error;
 

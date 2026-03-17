@@ -38,7 +38,6 @@ impl ToolExecutor for EnableToolExecutor {
                 return Ok(ToolResult::error(format!("invalid tool name: {name}")));
             };
 
-            // NOTE: Check lazy catalog (native tools) and server tool catalog
             let server_catalog = services.server_tool_config.catalog_entries();
             let catalog_entry = services
                 .lazy_tool_catalog

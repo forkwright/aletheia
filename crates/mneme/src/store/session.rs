@@ -8,7 +8,7 @@ use crate::error::{self, Result};
 use crate::types::{Session, SessionStatus, SessionType};
 
 impl SessionStore {
-    // --- Sessions ---
+    // NOTE: Session writes guard degraded mode via require_writable().
 
     /// Find an active session by nous ID and session key.
     #[instrument(skip(self))]
@@ -107,7 +107,6 @@ impl SessionStore {
             info!(id, nous_id, session_key, %session_type, "created session");
         }
 
-        // Fetch the session: either just-created or pre-existing.
         let mut stmt = self
             .conn
             .prepare_cached("SELECT * FROM sessions WHERE nous_id = ?1 AND session_key = ?2")
@@ -124,7 +123,7 @@ impl SessionStore {
                 .build()
             })?;
 
-        // Reactivate if the existing session is not active.
+        // WHY: Archived/distilled sessions are reactivated rather than creating a duplicate.
         if session.status != SessionStatus::Active {
             self.conn
                 .execute(

@@ -126,7 +126,7 @@ impl ToolExecutor for WebFetchExecutor {
                             return attempt.stop();
                         }
                     }
-                    // For redirects we can only check parsed IPs directly;
+                    // WHY: For redirects we can only check parsed IPs directly;
                     // full async DNS isn't available in the sync callback.
                     // Reject if the redirect target is an IP literal in a private range.
                     if let Some(addr) = url.host_str().and_then(|h| h.parse::<IpAddr>().ok())
