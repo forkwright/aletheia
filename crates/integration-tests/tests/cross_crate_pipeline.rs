@@ -777,7 +777,6 @@ async fn auth_invalid_token_returns_401() {
 
 #[tokio::test]
 async fn auth_expired_token_returns_401() {
-    // Craft a token with exp far in the past (beyond jsonwebtoken's 60s leeway)
     let claims = aletheia_symbolon::types::Claims {
         sub: "test-user".to_owned(),
         role: Role::Operator,
@@ -788,9 +787,8 @@ async fn auth_expired_token_returns_401() {
         jti: "expired-test".to_owned(),
         kind: aletheia_symbolon::types::TokenKind::Access,
     };
-    let key = jsonwebtoken::EncodingKey::from_secret(b"test-secret-key-for-jwt");
-    let token = jsonwebtoken::encode(&jsonwebtoken::Header::default(), &claims, &key)
-        .expect("encode expired token");
+    let key = aletheia_symbolon::jwt::hmac_key(b"test-secret-key-for-jwt");
+    let token = aletheia_symbolon::jwt::encode(&claims, &key).expect("encode expired token");
 
     let harness = TestHarness::build().await;
     let router = harness.router();

@@ -1,14 +1,22 @@
 //! JWT token issuance and validation.
+//!
+//! Implements HS256 (HMAC-SHA256) JWT encode/decode directly using `ring`,
+//! eliminating the `jsonwebtoken` crate and its CVE-flagged transitive deps.
 
 use std::time::Duration;
 
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use ring::hmac;
 use secrecy::{ExposeSecret, SecretString};
-use snafu::IntoError;
+use snafu::ensure;
 use tracing::instrument;
 
 use crate::error::{self, Result};
 use crate::types::{Claims, Role, TokenKind, TokenPair};
+
+/// Fixed HS256 JWT header, pre-encoded as base64url.
+const HS256_HEADER_B64: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
 
 /// Configuration for JWT token management.
 pub struct JwtConfig {
@@ -81,8 +89,7 @@ impl JwtConfig {
 
 /// Manages JWT issuance and validation.
 pub struct JwtManager {
-    encoding_key: EncodingKey,
-    decoding_key: DecodingKey,
+    hmac_key: hmac::Key,
     config: JwtConfig,
 }
 
@@ -90,13 +97,8 @@ impl JwtManager {
     /// Create a new JWT manager from the given config.
     pub fn new(config: JwtConfig) -> Self {
         let key_bytes = config.signing_key.expose_secret().as_bytes();
-        let encoding_key = EncodingKey::from_secret(key_bytes);
-        let decoding_key = DecodingKey::from_secret(key_bytes);
-        Self {
-            encoding_key,
-            decoding_key,
-            config,
-        }
+        let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, key_bytes);
+        Self { hmac_key, config }
     }
 
     /// Issue an access token.
@@ -129,19 +131,24 @@ impl JwtManager {
     /// Returns [`crate::error::Error::TokenDecode`] if the token is malformed, has an invalid
     /// signature, or fails any other JWT validation check.
     pub fn validate(&self, token: &str) -> Result<Claims> {
-        let mut validation = Validation::new(Algorithm::HS256);
-        validation.set_issuer(&[&self.config.issuer]);
-        validation.set_required_spec_claims(&["exp", "iss", "sub", "iat"]);
+        let claims = decode(token, &self.hmac_key)?;
 
-        let token_data = jsonwebtoken::decode::<Claims>(token, &self.decoding_key, &validation)
-            .map_err(|e| match e.kind() {
-                jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
-                    error::ExpiredTokenSnafu.build()
-                }
-                _ => error::TokenDecodeSnafu.into_error(e),
-            })?;
+        ensure!(
+            claims.iss == self.config.issuer,
+            error::TokenDecodeSnafu {
+                message: format!(
+                    "issuer mismatch: expected '{}', got '{}'",
+                    self.config.issuer, claims.iss
+                )
+            }
+        );
 
-        Ok(token_data.claims)
+        let now = now_unix();
+        if claims.exp <= now {
+            return Err(error::ExpiredTokenSnafu.build());
+        }
+
+        Ok(claims)
     }
 
     /// Refresh a token pair: validate the refresh token, issue a new access + refresh pair.
@@ -193,12 +200,99 @@ impl JwtManager {
             kind,
         };
 
-        jsonwebtoken::encode(&Header::new(Algorithm::HS256), &claims, &self.encoding_key)
-            .context(error::TokenEncodeSnafu)
+        encode(&claims, &self.hmac_key)
     }
 }
 
-use snafu::ResultExt;
+/// Encode claims as an HS256 JWT.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::TokenEncode`] if the claims cannot be serialized to JSON.
+pub fn encode(claims: &Claims, key: &hmac::Key) -> Result<String> {
+    let payload_json = serde_json::to_vec(claims).map_err(|e| {
+        error::TokenEncodeSnafu {
+            message: e.to_string(),
+        }
+        .build()
+    })?;
+    let payload_b64 = URL_SAFE_NO_PAD.encode(&payload_json);
+
+    let signing_input = format!("{HS256_HEADER_B64}.{payload_b64}");
+    let signature = hmac::sign(key, signing_input.as_bytes());
+    let sig_b64 = URL_SAFE_NO_PAD.encode(signature.as_ref());
+
+    Ok(format!("{signing_input}.{sig_b64}"))
+}
+
+/// Decode and verify an HS256 JWT, returning the claims.
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::TokenDecode`] if the token is malformed or the signature
+/// is invalid.
+pub fn decode(token: &str, key: &hmac::Key) -> Result<Claims> {
+    let (header_payload, sig_b64) = token.rsplit_once('.').ok_or_else(|| {
+        error::TokenDecodeSnafu {
+            message: "missing signature segment".to_owned(),
+        }
+        .build()
+    })?;
+
+    // Verify there are exactly 3 segments
+    if header_payload.matches('.').count() != 1 {
+        return Err(error::TokenDecodeSnafu {
+            message: "token must have exactly 3 segments".to_owned(),
+        }
+        .build());
+    }
+
+    let sig_bytes = URL_SAFE_NO_PAD.decode(sig_b64).map_err(|_e| {
+        error::TokenDecodeSnafu {
+            message: "invalid base64url in signature".to_owned(),
+        }
+        .build()
+    })?;
+
+    hmac::verify(key, header_payload.as_bytes(), &sig_bytes).map_err(|_e| {
+        error::TokenDecodeSnafu {
+            message: "signature verification failed".to_owned(),
+        }
+        .build()
+    })?;
+
+    let payload_b64 = header_payload
+        .split_once('.')
+        .map(|(_, p)| p)
+        .ok_or_else(|| {
+            error::TokenDecodeSnafu {
+                message: "missing payload segment".to_owned(),
+            }
+            .build()
+        })?;
+
+    let payload_bytes = URL_SAFE_NO_PAD.decode(payload_b64).map_err(|_e| {
+        error::TokenDecodeSnafu {
+            message: "invalid base64url in payload".to_owned(),
+        }
+        .build()
+    })?;
+
+    let claims: Claims = serde_json::from_slice(&payload_bytes).map_err(|e| {
+        error::TokenDecodeSnafu {
+            message: format!("invalid claims JSON: {e}"),
+        }
+        .build()
+    })?;
+
+    Ok(claims)
+}
+
+/// Build an `hmac::Key` from raw secret bytes. Convenience for test helpers.
+#[must_use]
+pub fn hmac_key(secret: &[u8]) -> hmac::Key {
+    hmac::Key::new(hmac::HMAC_SHA256, secret)
+}
 
 fn now_unix() -> i64 {
     i64::try_from(
@@ -274,8 +368,8 @@ mod tests {
     #[test]
     fn expired_token_rejected() {
         let mgr = test_manager();
+        let key = hmac_key(b"test-secret-key-for-jwt");
 
-        // NOTE: manually encode a token with exp far in the past, beyond the 60s leeway
         let claims = Claims {
             sub: "user-1".to_owned(),
             role: Role::Operator,
@@ -286,12 +380,7 @@ mod tests {
             jti: "expired-jti".to_owned(),
             kind: TokenKind::Access,
         };
-        let token = jsonwebtoken::encode(
-            &Header::new(Algorithm::HS256),
-            &claims,
-            &EncodingKey::from_secret(b"test-secret-key-for-jwt"),
-        )
-        .unwrap();
+        let token = encode(&claims, &key).unwrap();
 
         let result = mgr.validate(&token);
         assert!(result.is_err());
@@ -385,5 +474,74 @@ mod tests {
         assert!(config.validate_for_auth_mode("jwt").is_ok());
         assert!(config.validate_for_auth_mode("token").is_ok());
         assert!(config.validate_for_auth_mode("none").is_ok());
+    }
+
+    #[test]
+    fn tampered_payload_rejected() {
+        let mgr = test_manager();
+        let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
+
+        // Tamper with the payload segment
+        let parts: Vec<&str> = token.splitn(3, '.').collect();
+        let tampered = format!("{}.dGFtcGVyZWQ.{}", parts[0], parts[2]);
+        assert!(mgr.validate(&tampered).is_err());
+    }
+
+    #[test]
+    fn tampered_signature_rejected() {
+        let mgr = test_manager();
+        let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
+
+        // Replace last character of signature
+        let mut tampered = token.clone();
+        let last = tampered.pop().unwrap();
+        tampered.push(if last == 'A' { 'B' } else { 'A' });
+        assert!(mgr.validate(&tampered).is_err());
+    }
+
+    #[test]
+    fn token_has_three_dot_separated_segments() {
+        let mgr = test_manager();
+        let token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
+        assert_eq!(
+            token.matches('.').count(),
+            2,
+            "JWT must have exactly 3 segments"
+        );
+    }
+
+    #[test]
+    fn roundtrip_preserves_all_claims_fields() {
+        let mgr = test_manager();
+        let token = mgr
+            .issue_access("agent-syn", Role::Agent, Some("syn-nous"))
+            .unwrap();
+        let claims = mgr.validate(&token).unwrap();
+
+        assert_eq!(claims.sub, "agent-syn");
+        assert_eq!(claims.role, Role::Agent);
+        assert_eq!(claims.nous_id.as_deref(), Some("syn-nous"));
+        assert_eq!(claims.iss, "aletheia-test");
+        assert_eq!(claims.kind, TokenKind::Access);
+        assert!(claims.iat > 0, "iat must be positive");
+        assert!(claims.exp > claims.iat, "exp must be after iat");
+        assert!(!claims.jti.is_empty(), "jti must be non-empty");
+    }
+
+    #[test]
+    fn issuer_mismatch_rejected() {
+        let mgr1 = JwtManager::new(JwtConfig {
+            signing_key: SecretString::from("shared-key".to_owned()),
+            issuer: "issuer-a".to_owned(),
+            ..JwtConfig::default()
+        });
+        let mgr2 = JwtManager::new(JwtConfig {
+            signing_key: SecretString::from("shared-key".to_owned()),
+            issuer: "issuer-b".to_owned(),
+            ..JwtConfig::default()
+        });
+
+        let token = mgr1.issue_access("user-1", Role::Operator, None).unwrap();
+        assert!(mgr2.validate(&token).is_err());
     }
 }

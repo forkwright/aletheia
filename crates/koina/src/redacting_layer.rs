@@ -267,7 +267,9 @@ mod tests {
     }
 
     fn output_string(buffer: &Arc<Mutex<Vec<u8>>>) -> String {
-        let guard = buffer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let guard = buffer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         String::from_utf8_lossy(&guard).into_owned()
     }
 

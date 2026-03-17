@@ -211,7 +211,7 @@ strip = "symbols"
 ## Structural properties
 
 - **koina is a true leaf node.** No workspace deps in Rust.
-- **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, jsonwebtoken).
+- **symbolon depends only on koina** (plus external crates: reqwest, rusqlite, ring).
 - **Datalog+HNSW engine is embedded** inside `mneme/src/engine/`, gated behind the `mneme-engine` feature.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.

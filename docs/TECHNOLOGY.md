@@ -87,7 +87,7 @@ Lean dependency count. See `Cargo.toml` workspace members and `[workspace.depend
 | **nous** | koina, taxis, mneme, hermeneus, organon, melete, tokio, ulid, compact_str |
 | **dianoia** | koina, taxis, mneme, hermeneus, nous, rusqlite |
 | **pylon** | koina, taxis, nous, axum, tower, tower-http, symbolon, serde_json, chacha20poly1305 |
-| **symbolon** | koina, taxis, rusqlite, jsonwebtoken, argon2 |
+| **symbolon** | koina, taxis, rusqlite, ring, argon2 |
 | **agora** | koina, taxis, nous, tokio (semeion: tokio::process, slack: tokio-tungstenite) |
 | **daemon** | koina, taxis, nous, mneme, cron, notify, arc-swap |
 | **melete** | koina, taxis, mneme, hermeneus, nous |
