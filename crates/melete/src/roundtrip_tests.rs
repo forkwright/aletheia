@@ -1,4 +1,5 @@
 //! Roundtrip and comprehensive tests for melete distillation pipeline.
+#![expect(clippy::expect_used, reason = "test assertions use .expect() for descriptive panic messages")]
 
 use aletheia_hermeneus::test_utils::MockProvider;
 use aletheia_hermeneus::types::{Content, ContentBlock, Message, Role, ToolResultContent};
@@ -74,13 +75,13 @@ Bug is fixed, migration applied, all tests passing.
 #[test]
 fn test_distill_section_summary_roundtrip() {
     let section = DistillSection::Summary;
-    let json =
-        serde_json::to_string(&section).expect("DistillSection::Summary should serialize to JSON");
-    let back: DistillSection =
-        serde_json::from_str(&json).expect("serialized DistillSection::Summary should deserialize");
+    let json = serde_json::to_string(&section)
+        .expect("DistillSection::Summary serialization should succeed");
+    let back: DistillSection = serde_json::from_str(&json)
+        .expect("DistillSection::Summary deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::Summary should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::Summary"
     );
 }
 
@@ -88,12 +89,12 @@ fn test_distill_section_summary_roundtrip() {
 fn test_distill_section_task_context_roundtrip() {
     let section = DistillSection::TaskContext;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::TaskContext should serialize to JSON");
+        .expect("DistillSection::TaskContext serialization should succeed");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::TaskContext should deserialize");
+        .expect("DistillSection::TaskContext deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::TaskContext should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::TaskContext"
     );
 }
 
@@ -101,12 +102,12 @@ fn test_distill_section_task_context_roundtrip() {
 fn test_distill_section_completed_work_roundtrip() {
     let section = DistillSection::CompletedWork;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::CompletedWork should serialize to JSON");
+        .expect("DistillSection::CompletedWork serialization should succeed");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::CompletedWork should deserialize");
+        .expect("DistillSection::CompletedWork deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::CompletedWork should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::CompletedWork"
     );
 }
 
@@ -114,12 +115,12 @@ fn test_distill_section_completed_work_roundtrip() {
 fn test_distill_section_key_decisions_roundtrip() {
     let section = DistillSection::KeyDecisions;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::KeyDecisions should serialize to JSON");
+        .expect("DistillSection::KeyDecisions serialization should succeed");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::KeyDecisions should deserialize");
+        .expect("DistillSection::KeyDecisions deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::KeyDecisions should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::KeyDecisions"
     );
 }
 
@@ -127,12 +128,12 @@ fn test_distill_section_key_decisions_roundtrip() {
 fn test_distill_section_current_state_roundtrip() {
     let section = DistillSection::CurrentState;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::CurrentState should serialize to JSON");
+        .expect("DistillSection::CurrentState serialization should succeed");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::CurrentState should deserialize");
+        .expect("DistillSection::CurrentState deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::CurrentState should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::CurrentState"
     );
 }
 
@@ -140,12 +141,12 @@ fn test_distill_section_current_state_roundtrip() {
 fn test_distill_section_open_threads_roundtrip() {
     let section = DistillSection::OpenThreads;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::OpenThreads should serialize to JSON");
+        .expect("DistillSection::OpenThreads serialization should succeed");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::OpenThreads should deserialize");
+        .expect("DistillSection::OpenThreads deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::OpenThreads should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::OpenThreads"
     );
 }
 
@@ -153,12 +154,12 @@ fn test_distill_section_open_threads_roundtrip() {
 fn test_distill_section_corrections_roundtrip() {
     let section = DistillSection::Corrections;
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::Corrections should serialize to JSON");
+        .expect("DistillSection::Corrections serialization should succeed");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::Corrections should deserialize");
+        .expect("DistillSection::Corrections deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::Corrections should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::Corrections"
     );
 }
 
@@ -168,13 +169,13 @@ fn test_distill_section_custom_roundtrip() {
         name: "Architecture Notes".to_owned(),
         description: "Record architectural decisions.".to_owned(),
     };
-    let json =
-        serde_json::to_string(&section).expect("DistillSection::Custom should serialize to JSON");
+    let json = serde_json::to_string(&section)
+        .expect("DistillSection::Custom serialization should succeed");
     let back: DistillSection =
-        serde_json::from_str(&json).expect("serialized DistillSection::Custom should deserialize");
+        serde_json::from_str(&json).expect("DistillSection::Custom deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::Custom should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::Custom"
     );
 }
 
@@ -185,46 +186,48 @@ fn test_distill_section_custom_with_special_chars_roundtrip() {
         description: "Contains special chars: \\ / \n newline".to_owned(),
     };
     let json = serde_json::to_string(&section)
-        .expect("DistillSection::Custom with special chars should serialize to JSON");
+        .expect("DistillSection::Custom with special chars serialization should succeed");
     let back: DistillSection = serde_json::from_str(&json)
-        .expect("serialized DistillSection::Custom with special chars should deserialize");
+        .expect("DistillSection::Custom with special chars deserialization should succeed");
     assert_eq!(
         section, back,
-        "DistillSection::Custom with special chars should survive a JSON roundtrip"
+        "roundtrip should preserve DistillSection::Custom with special characters"
     );
 }
 
 #[test]
 fn test_distill_config_default_roundtrip() {
     let config = DistillConfig::default();
-    let json =
-        serde_json::to_string(&config).expect("DistillConfig::default() should serialize to JSON");
+    let json = serde_json::to_string(&config).expect("DistillConfig serialization should succeed");
     let back: DistillConfig =
-        serde_json::from_str(&json).expect("serialized DistillConfig should deserialize");
-    assert_eq!(back.model, config.model, "model should survive roundtrip");
+        serde_json::from_str(&json).expect("DistillConfig deserialization should succeed");
+    assert_eq!(
+        back.model, config.model,
+        "roundtrip should preserve DistillConfig model"
+    );
     assert_eq!(
         back.max_output_tokens, config.max_output_tokens,
-        "max_output_tokens should survive roundtrip"
+        "roundtrip should preserve DistillConfig max_output_tokens"
     );
     assert_eq!(
         back.min_messages, config.min_messages,
-        "min_messages should survive roundtrip"
+        "roundtrip should preserve DistillConfig min_messages"
     );
     assert_eq!(
         back.include_tool_calls, config.include_tool_calls,
-        "include_tool_calls should survive roundtrip"
+        "roundtrip should preserve DistillConfig include_tool_calls"
     );
     assert_eq!(
         back.distillation_model, config.distillation_model,
-        "distillation_model should survive roundtrip"
+        "roundtrip should preserve DistillConfig distillation_model"
     );
     assert_eq!(
         back.verbatim_tail, config.verbatim_tail,
-        "verbatim_tail should survive roundtrip"
+        "roundtrip should preserve DistillConfig verbatim_tail"
     );
     assert_eq!(
         back.sections, config.sections,
-        "sections should survive roundtrip"
+        "roundtrip should preserve DistillConfig sections"
     );
 }
 
@@ -235,13 +238,13 @@ fn test_distill_config_with_downshift_roundtrip() {
         ..DistillConfig::default()
     };
     let json = serde_json::to_string(&config)
-        .expect("DistillConfig with distillation_model should serialize to JSON");
+        .expect("DistillConfig with distillation_model serialization should succeed");
     let back: DistillConfig = serde_json::from_str(&json)
-        .expect("serialized DistillConfig with distillation_model should deserialize");
+        .expect("DistillConfig with distillation_model deserialization should succeed");
     assert_eq!(
         back.distillation_model,
         Some("claude-haiku-4-5-20251001".to_owned()),
-        "distillation_model should survive roundtrip"
+        "roundtrip should preserve distillation_model value"
     );
 }
 
@@ -258,85 +261,86 @@ fn test_distill_config_custom_sections_roundtrip() {
         ..DistillConfig::default()
     };
     let json = serde_json::to_string(&config)
-        .expect("DistillConfig with custom sections should serialize to JSON");
+        .expect("DistillConfig with custom sections serialization should succeed");
     let back: DistillConfig = serde_json::from_str(&json)
-        .expect("serialized DistillConfig with custom sections should deserialize");
+        .expect("DistillConfig with custom sections deserialization should succeed");
     assert_eq!(
         back.sections.len(),
         2,
-        "deserialized config should have 2 sections"
+        "roundtrip should preserve section count"
     );
     assert_eq!(
         back.sections[0],
         DistillSection::Summary,
-        "first section should be Summary after roundtrip"
+        "roundtrip should preserve first section as Summary"
     );
 }
 
 #[test]
 fn test_flush_source_extracted_roundtrip() {
     let source = FlushSource::Extracted;
-    let json =
-        serde_json::to_string(&source).expect("FlushSource::Extracted should serialize to JSON");
+    let json = serde_json::to_string(&source)
+        .expect("FlushSource::Extracted serialization should succeed");
     let back: FlushSource =
-        serde_json::from_str(&json).expect("serialized FlushSource::Extracted should deserialize");
+        serde_json::from_str(&json).expect("FlushSource::Extracted deserialization should succeed");
     assert!(
         matches!(back, FlushSource::Extracted),
-        "deserialized value should be FlushSource::Extracted"
+        "roundtrip should preserve FlushSource::Extracted variant"
     );
 }
 
 #[test]
 fn test_flush_source_agent_note_roundtrip() {
     let source = FlushSource::AgentNote;
-    let json =
-        serde_json::to_string(&source).expect("FlushSource::AgentNote should serialize to JSON");
+    let json = serde_json::to_string(&source)
+        .expect("FlushSource::AgentNote serialization should succeed");
     let back: FlushSource =
-        serde_json::from_str(&json).expect("serialized FlushSource::AgentNote should deserialize");
+        serde_json::from_str(&json).expect("FlushSource::AgentNote deserialization should succeed");
     assert!(
         matches!(back, FlushSource::AgentNote),
-        "deserialized value should be FlushSource::AgentNote"
+        "roundtrip should preserve FlushSource::AgentNote variant"
     );
 }
 
 #[test]
 fn test_flush_source_tool_pattern_roundtrip() {
     let source = FlushSource::ToolPattern;
-    let json =
-        serde_json::to_string(&source).expect("FlushSource::ToolPattern should serialize to JSON");
+    let json = serde_json::to_string(&source)
+        .expect("FlushSource::ToolPattern serialization should succeed");
     let back: FlushSource = serde_json::from_str(&json)
-        .expect("serialized FlushSource::ToolPattern should deserialize");
+        .expect("FlushSource::ToolPattern deserialization should succeed");
     assert!(
         matches!(back, FlushSource::ToolPattern),
-        "deserialized value should be FlushSource::ToolPattern"
+        "roundtrip should preserve FlushSource::ToolPattern variant"
     );
 }
 
 #[test]
 fn test_flush_item_roundtrip() {
     let item = sample_flush_item("Use snafu for errors", FlushSource::Extracted);
-    let json = serde_json::to_string(&item).expect("FlushItem should serialize to JSON");
+    let json = serde_json::to_string(&item).expect("FlushItem serialization should succeed");
     let back: FlushItem =
-        serde_json::from_str(&json).expect("serialized FlushItem should deserialize");
+        serde_json::from_str(&json).expect("FlushItem deserialization should succeed");
     assert_eq!(
         back.content, item.content,
-        "FlushItem content should survive roundtrip"
+        "roundtrip should preserve FlushItem content"
     );
     assert_eq!(
         back.timestamp, item.timestamp,
-        "FlushItem timestamp should survive roundtrip"
+        "roundtrip should preserve FlushItem timestamp"
     );
 }
 
 #[test]
 fn test_memory_flush_empty_roundtrip() {
     let flush = MemoryFlush::empty();
-    let json = serde_json::to_string(&flush).expect("empty MemoryFlush should serialize to JSON");
+    let json =
+        serde_json::to_string(&flush).expect("empty MemoryFlush serialization should succeed");
     let back: MemoryFlush =
-        serde_json::from_str(&json).expect("serialized empty MemoryFlush should deserialize");
+        serde_json::from_str(&json).expect("empty MemoryFlush deserialization should succeed");
     assert!(
         back.is_empty(),
-        "deserialized MemoryFlush should still be empty"
+        "roundtrip should preserve empty MemoryFlush as empty"
     );
 }
 
@@ -352,32 +356,28 @@ fn test_memory_flush_full_roundtrip() {
         task_state: Some("Implementing pipeline".to_owned()),
     };
     let json =
-        serde_json::to_string(&flush).expect("populated MemoryFlush should serialize to JSON");
+        serde_json::to_string(&flush).expect("full MemoryFlush serialization should succeed");
     let back: MemoryFlush =
-        serde_json::from_str(&json).expect("serialized populated MemoryFlush should deserialize");
+        serde_json::from_str(&json).expect("full MemoryFlush deserialization should succeed");
     assert_eq!(
         back.decisions.len(),
         1,
-        "decisions should have 1 item after roundtrip"
+        "roundtrip should preserve decisions count"
     );
     assert_eq!(
         back.corrections.len(),
         1,
-        "corrections should have 1 item after roundtrip"
+        "roundtrip should preserve corrections count"
     );
-    assert_eq!(
-        back.facts.len(),
-        1,
-        "facts should have 1 item after roundtrip"
-    );
+    assert_eq!(back.facts.len(), 1, "roundtrip should preserve facts count");
     assert_eq!(
         back.task_state,
         Some("Implementing pipeline".to_owned()),
-        "task_state should survive roundtrip"
+        "roundtrip should preserve task_state"
     );
     assert!(
         !back.is_empty(),
-        "populated MemoryFlush should not be empty after roundtrip"
+        "full MemoryFlush should not be empty after roundtrip"
     );
 }
 
@@ -385,12 +385,12 @@ fn test_memory_flush_full_roundtrip() {
 fn test_all_standard_sections_roundtrip() {
     let sections = DistillSection::all_standard();
     let json = serde_json::to_string(&sections)
-        .expect("all standard DistillSections should serialize to JSON");
-    let back: Vec<DistillSection> = serde_json::from_str(&json)
-        .expect("serialized standard DistillSections should deserialize");
+        .expect("all standard sections serialization should succeed");
+    let back: Vec<DistillSection> =
+        serde_json::from_str(&json).expect("all standard sections deserialization should succeed");
     assert_eq!(
         sections, back,
-        "all standard sections should survive a JSON roundtrip"
+        "roundtrip should preserve all standard sections"
     );
 }
 
@@ -408,15 +408,15 @@ async fn test_split_when_verbatim_tail_zero_summarizes_all() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with verbatim_tail=0");
+        .expect("distillation with zero verbatim_tail should succeed");
 
     assert_eq!(
         result.messages_distilled, 6,
-        "all 6 messages should be distilled when verbatim_tail=0"
+        "all 6 messages should be distilled when verbatim_tail is 0"
     );
     assert!(
         result.verbatim_messages.is_empty(),
-        "no verbatim messages should remain when verbatim_tail=0"
+        "verbatim messages should be empty when verbatim_tail is 0"
     );
 }
 
@@ -434,7 +434,7 @@ async fn test_split_when_verbatim_tail_equals_messages_distills_none() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when verbatim_tail equals message count");
+        .expect("distillation when verbatim_tail equals message count should succeed");
 
     assert_eq!(
         result.messages_distilled, 0,
@@ -443,7 +443,7 @@ async fn test_split_when_verbatim_tail_equals_messages_distills_none() {
     assert_eq!(
         result.verbatim_messages.len(),
         4,
-        "all 4 messages should be kept verbatim"
+        "all 4 messages should be preserved verbatim"
     );
 }
 
@@ -461,7 +461,7 @@ async fn test_split_when_verbatim_tail_exceeds_messages_clamps() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when verbatim_tail exceeds message count");
+        .expect("distillation when verbatim_tail exceeds message count should succeed");
 
     assert_eq!(
         result.messages_distilled, 0,
@@ -470,7 +470,7 @@ async fn test_split_when_verbatim_tail_exceeds_messages_clamps() {
     assert_eq!(
         result.verbatim_messages.len(),
         3,
-        "all 3 messages should be kept verbatim when verbatim_tail is clamped"
+        "all messages should be preserved verbatim when verbatim_tail exceeds count"
     );
 }
 
@@ -493,7 +493,7 @@ async fn test_split_preserves_exact_tail_content() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when preserving exact tail content");
+        .expect("distillation preserving tail content should succeed");
 
     assert_eq!(
         result.messages_distilled, 2,
@@ -502,7 +502,7 @@ async fn test_split_preserves_exact_tail_content() {
     assert_eq!(
         result.verbatim_messages.len(),
         2,
-        "last 2 messages should be kept verbatim"
+        "last 2 messages should be preserved verbatim"
     );
     assert_eq!(
         result.verbatim_messages[0].content.text(),
@@ -522,7 +522,7 @@ fn test_should_distill_when_exactly_at_threshold_returns_true() {
     // NOTE: ratio = 80000/100000 = 0.8, threshold = 0.8 → true
     assert!(
         engine.should_distill(10, 80_000, 100_000, 0.8),
-        "should_distill should return true when ratio equals threshold"
+        "should_distill should return true when token ratio exactly meets threshold"
     );
 }
 
@@ -532,7 +532,7 @@ fn test_should_distill_when_just_below_threshold_returns_false() {
     // NOTE: ratio = 79999/100000 = 0.79999, threshold = 0.8 → false
     assert!(
         !engine.should_distill(10, 79_999, 100_000, 0.8),
-        "should_distill should return false when ratio is just below threshold"
+        "should_distill should return false when token ratio is just below threshold"
     );
 }
 
@@ -541,7 +541,7 @@ fn test_should_distill_when_threshold_zero_always_true_if_enough_messages() {
     let engine = default_engine();
     assert!(
         engine.should_distill(10, 1, 100_000, 0.0),
-        "should_distill should return true for any token count when threshold is zero"
+        "should_distill should return true with threshold 0.0 when there are enough messages"
     );
 }
 
@@ -550,11 +550,11 @@ fn test_should_distill_when_threshold_one_needs_full_context() {
     let engine = default_engine();
     assert!(
         engine.should_distill(10, 100_000, 100_000, 1.0),
-        "should_distill should return true when tokens fill entire context and threshold is 1.0"
+        "should_distill should return true when context is completely full"
     );
     assert!(
         !engine.should_distill(10, 99_999, 100_000, 1.0),
-        "should_distill should return false when tokens are one short of full context and threshold is 1.0"
+        "should_distill should return false when context is one token below full"
     );
 }
 
@@ -563,7 +563,7 @@ fn test_should_distill_when_large_token_count_returns_true() {
     let engine = default_engine();
     assert!(
         engine.should_distill(100, 900_000, 1_000_000, 0.8),
-        "should_distill should return true with large token counts at threshold"
+        "should_distill should return true for large token counts above threshold"
     );
 }
 
@@ -578,11 +578,11 @@ fn test_should_distill_with_custom_min_messages() {
     // NOTE: need at least min_messages(20) + verbatim_tail(5) = 25 messages
     assert!(
         !engine.should_distill(24, 180_000, 200_000, 0.8),
-        "should_distill should return false with 24 messages when minimum required is 25"
+        "should_distill should return false when message count is below min_messages + verbatim_tail"
     );
     assert!(
         engine.should_distill(25, 180_000, 200_000, 0.8),
-        "should_distill should return true with exactly 25 messages when minimum required is 25"
+        "should_distill should return true when message count meets min_messages + verbatim_tail"
     );
 }
 
@@ -597,11 +597,11 @@ fn test_should_distill_with_zero_verbatim_tail() {
     // NOTE: need only min_messages(6) + verbatim_tail(0) = 6 messages
     assert!(
         !engine.should_distill(5, 180_000, 200_000, 0.8),
-        "should_distill should return false with 5 messages when minimum required is 6"
+        "should_distill should return false when message count is below min_messages"
     );
     assert!(
         engine.should_distill(6, 180_000, 200_000, 0.8),
-        "should_distill should return true with exactly 6 messages when minimum required is 6"
+        "should_distill should return true when message count meets min_messages with zero verbatim_tail"
     );
 }
 
@@ -627,12 +627,12 @@ async fn test_verbatim_tail_preserves_roles() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when preserving verbatim tail roles");
+        .expect("distillation preserving tail roles should succeed");
 
     assert_eq!(
         result.verbatim_messages.len(),
         3,
-        "last 3 messages should be kept verbatim"
+        "exactly 3 messages should be preserved verbatim"
     );
     assert_eq!(
         result.verbatim_messages[0].role,
@@ -665,17 +665,17 @@ async fn test_verbatim_tail_when_single_message_preserves_it() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with single message input");
+        .expect("distillation with single message should succeed");
 
     assert_eq!(
         result.verbatim_messages.len(),
         1,
-        "single message should be kept verbatim"
+        "single message should be preserved verbatim"
     );
     assert_eq!(
         result.verbatim_messages[0].content.text(),
         "Only message",
-        "verbatim message content should match input"
+        "verbatim message content should match original"
     );
     assert_eq!(
         result.messages_distilled, 0,
@@ -715,19 +715,19 @@ async fn test_verbatim_tail_preserves_block_content() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when last message has block content");
+        .expect("distillation preserving block content should succeed");
 
     assert_eq!(
         result.verbatim_messages.len(),
         1,
-        "last message with block content should be kept verbatim"
+        "exactly 1 message should be preserved verbatim"
     );
     assert!(
         result.verbatim_messages[0]
             .content
             .text()
             .contains("Block content preserved"),
-        "verbatim block message should contain the original text block content"
+        "verbatim message should preserve block text content"
     );
 }
 
@@ -742,7 +742,7 @@ fn test_build_prompt_when_distillation_model_set_uses_it() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.model, "claude-haiku-4-5-20251001",
-        "prompt should use distillation_model when set"
+        "build_prompt should use distillation_model when set"
     );
 }
 
@@ -757,7 +757,7 @@ fn test_build_prompt_when_no_distillation_model_uses_primary() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.model, "claude-opus-4-20250514",
-        "prompt should use primary model when distillation_model is None"
+        "build_prompt should use primary model when distillation_model is None"
     );
 }
 
@@ -772,7 +772,7 @@ fn test_build_prompt_downshift_does_not_affect_max_tokens() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.max_tokens, 8192,
-        "max_tokens should be taken from config even when using a downshift model"
+        "downshifting the distillation model should not affect max_tokens"
     );
 }
 
@@ -787,7 +787,7 @@ fn test_build_prompt_downshift_sonnet_to_haiku() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.model, "claude-haiku-4-5-20251001",
-        "prompt should downshift from sonnet to haiku when distillation_model is set"
+        "build_prompt should downshift from sonnet to haiku when distillation_model is set"
     );
 }
 
@@ -802,7 +802,7 @@ fn test_build_prompt_downshift_opus_to_sonnet() {
     let request = engine.build_prompt(&n_messages(4), "test");
     assert_eq!(
         request.model, "claude-sonnet-4-20250514",
-        "prompt should downshift from opus to sonnet when distillation_model is set"
+        "build_prompt should downshift from opus to sonnet when distillation_model is set"
     );
 }
 
@@ -826,15 +826,15 @@ async fn test_full_pipeline_preserves_tool_results() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for tool-result pipeline");
+        .expect("full pipeline distillation with tool results should succeed");
 
     assert!(
         result.summary.contains("migrate_db"),
-        "summary should contain the tool call name 'migrate_db'"
+        "summary should preserve tool call name 'migrate_db'"
     );
     assert!(
         result.summary.contains("database migration"),
-        "summary should mention database migration"
+        "summary should preserve mention of database migration"
     );
 }
 
@@ -861,15 +861,15 @@ async fn test_full_pipeline_preserves_decisions() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for decisions pipeline");
+        .expect("full pipeline distillation preserving decisions should succeed");
 
     assert!(
         result.summary.contains("Decision: Add null check"),
-        "summary should contain the null check decision"
+        "summary should preserve null check decision"
     );
     assert!(
         result.summary.contains("Decision: Use v2 schema"),
-        "summary should contain the v2 schema decision"
+        "summary should preserve v2 schema decision"
     );
 }
 
@@ -896,15 +896,15 @@ async fn test_full_pipeline_preserves_corrections() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for corrections pipeline");
+        .expect("full pipeline distillation preserving corrections should succeed");
 
     assert!(
         result.summary.contains("CORRECTION"),
-        "summary should contain the CORRECTION marker"
+        "summary should preserve CORRECTION marker"
     );
     assert!(
         result.summary.contains("login.rs"),
-        "summary should contain the corrected file path login.rs"
+        "summary should preserve corrected file reference login.rs"
     );
 }
 
@@ -917,7 +917,7 @@ async fn test_full_pipeline_reduces_token_count() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for token reduction pipeline");
+        .expect("full pipeline distillation should succeed");
 
     assert!(
         result.tokens_after < result.tokens_before,
@@ -936,7 +936,7 @@ async fn test_full_pipeline_summary_contains_all_sections() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for all-sections pipeline");
+        .expect("full pipeline distillation with all sections should succeed");
 
     for section in DistillSection::all_standard() {
         let heading = section.heading();
@@ -966,12 +966,12 @@ async fn test_full_pipeline_verbatim_tail_integrity() {
     let result = engine
         .distill(&messages, "syn", &provider, 1)
         .await
-        .expect("distill should succeed for verbatim tail integrity check");
+        .expect("full pipeline distillation preserving verbatim tail should succeed");
 
     assert_eq!(
         result.verbatim_messages.len(),
         3,
-        "last 3 messages should be kept verbatim"
+        "exactly 3 messages should be preserved verbatim"
     );
     assert_eq!(
         result.verbatim_messages[0].content.text(),
@@ -1013,13 +1013,10 @@ async fn test_distill_when_empty_messages_returns_error() {
     let result = engine.distill(&[], "syn", &provider, 1).await;
     assert!(
         result.is_err(),
-        "distill should return an error when given no messages"
+        "distillation with empty messages should return an error"
     );
     assert!(
-        result
-            .expect_err("distill with empty input should have returned an error")
-            .to_string()
-            .contains("no messages"),
+        result.unwrap_err().to_string().contains("no messages"),
         "error message should mention 'no messages'"
     );
 }
@@ -1038,16 +1035,16 @@ async fn test_distill_when_single_message_all_verbatim() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with a single message");
+        .expect("distillation with single message should succeed");
 
     assert_eq!(
         result.verbatim_messages.len(),
         1,
-        "single message should be kept verbatim"
+        "single message should be preserved verbatim"
     );
     assert_eq!(
         result.messages_distilled, 0,
-        "no messages should be distilled when input is a single message"
+        "no messages should be distilled when only one message exists"
     );
 }
 
@@ -1072,7 +1069,7 @@ async fn test_distill_when_oversized_input_handles_gracefully() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with oversized input");
+        .expect("distillation with oversized input should succeed");
 
     assert_eq!(
         result.messages_distilled, 97,
@@ -1081,11 +1078,11 @@ async fn test_distill_when_oversized_input_handles_gracefully() {
     assert_eq!(
         result.verbatim_messages.len(),
         3,
-        "last 3 messages should be kept verbatim"
+        "exactly 3 messages should be preserved verbatim"
     );
     assert!(
         result.tokens_before > 10_000,
-        "token count for 100 large messages should exceed 10,000"
+        "oversized input should have more than 10,000 tokens before distillation"
     );
 }
 
@@ -1136,16 +1133,16 @@ async fn test_distill_when_all_tool_call_messages() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed with mixed tool-call messages");
+        .expect("distillation with tool call messages should succeed");
 
     assert_eq!(
         result.messages_distilled, 3,
-        "first 3 messages (including tool call/result) should be distilled"
+        "3 messages including tool calls should be distilled"
     );
     assert_eq!(
         result.verbatim_messages.len(),
         2,
-        "last 2 messages should be kept verbatim"
+        "last 2 messages should be preserved verbatim"
     );
 }
 
@@ -1166,16 +1163,16 @@ async fn test_distill_when_two_messages_with_tail_three() {
     let result = engine
         .distill(&messages, "test", &provider, 1)
         .await
-        .expect("distill should succeed when message count is less than verbatim_tail");
+        .expect("distillation with 2 messages and verbatim_tail of 3 should succeed");
 
     assert_eq!(
         result.verbatim_messages.len(),
         2,
-        "both messages should be kept verbatim when count is less than verbatim_tail"
+        "both messages should be preserved verbatim when verbatim_tail exceeds message count"
     );
     assert_eq!(
         result.messages_distilled, 0,
-        "no messages should be distilled when all fit within verbatim_tail"
+        "no messages should be distilled when verbatim_tail exceeds message count"
     );
 }
 
@@ -1194,7 +1191,7 @@ fn test_section_heading_for_each_standard_variant() {
         assert_eq!(
             section.heading(),
             heading,
-            "heading for {section:?} should be {heading:?}"
+            "heading for {section:?} should match expected value"
         );
     }
 }
@@ -1240,7 +1237,7 @@ fn test_all_standard_returns_seven_sections() {
     assert_eq!(
         DistillSection::all_standard().len(),
         7,
-        "all_standard() should return exactly 7 sections"
+        "all_standard should return exactly 7 sections"
     );
 }
 
@@ -1252,7 +1249,7 @@ fn test_build_prompt_includes_message_count() {
     let text = request.messages[0].content.text();
     assert!(
         text.contains("8 messages"),
-        "prompt should include the message count '8 messages'"
+        "build_prompt system message should include the message count"
     );
 }
 
@@ -1263,7 +1260,7 @@ fn test_build_prompt_temperature_is_zero() {
     assert_eq!(
         request.temperature,
         Some(0.0),
-        "distillation prompt should use temperature 0.0 for deterministic output"
+        "build_prompt should set temperature to 0.0 for deterministic output"
     );
 }
 
@@ -1282,7 +1279,7 @@ fn test_build_prompt_with_system_message() {
     let text = request.messages[0].content.text();
     assert!(
         text.contains("[SYSTEM]"),
-        "prompt should include [SYSTEM] marker when a system message is present"
+        "build_prompt should include [SYSTEM] marker when system message is present"
     );
 }
 
@@ -1296,7 +1293,7 @@ fn test_memory_flush_is_empty_when_only_empty_vecs() {
     };
     assert!(
         flush.is_empty(),
-        "MemoryFlush with all empty fields should be considered empty"
+        "MemoryFlush with all empty vecs and no task_state should be empty"
     );
 }
 
@@ -1310,7 +1307,7 @@ fn test_memory_flush_not_empty_when_has_facts() {
     };
     assert!(
         !flush.is_empty(),
-        "MemoryFlush with facts should not be considered empty"
+        "MemoryFlush with facts should not be empty"
     );
 }
 
@@ -1324,7 +1321,7 @@ fn test_memory_flush_not_empty_when_has_corrections() {
     };
     assert!(
         !flush.is_empty(),
-        "MemoryFlush with corrections should not be considered empty"
+        "MemoryFlush with corrections should not be empty"
     );
 }
 
@@ -1342,19 +1339,19 @@ fn test_memory_flush_markdown_multiple_items_per_section() {
     let md = flush.to_markdown();
     assert!(
         md.contains("Decision A"),
-        "markdown should include 'Decision A'"
+        "markdown should contain first decision item"
     );
     assert!(
         md.contains("Decision B"),
-        "markdown should include 'Decision B'"
+        "markdown should contain second decision item"
     );
     assert!(
         md.contains("(source: extracted)"),
-        "markdown should label extracted items with their source"
+        "markdown should label extracted source"
     );
     assert!(
         md.contains("(source: agent_note)"),
-        "markdown should label agent_note items with their source"
+        "markdown should label agent_note source"
     );
 }
 
@@ -1369,15 +1366,15 @@ fn test_flush_source_labels_via_markdown() {
     let md = flush.to_markdown();
     assert!(
         md.contains("(source: extracted)"),
-        "markdown should label Extracted items with '(source: extracted)'"
+        "markdown should label FlushSource::Extracted as 'extracted'"
     );
     assert!(
         md.contains("(source: agent_note)"),
-        "markdown should label AgentNote items with '(source: agent_note)'"
+        "markdown should label FlushSource::AgentNote as 'agent_note'"
     );
     assert!(
         md.contains("(source: tool_pattern)"),
-        "markdown should label ToolPattern items with '(source: tool_pattern)'"
+        "markdown should label FlushSource::ToolPattern as 'tool_pattern'"
     );
 }
 
@@ -1392,12 +1389,12 @@ fn test_engine_config_returns_reference() {
     assert_eq!(
         engine.config().model,
         "custom-model",
-        "engine config should reflect the provided model name"
+        "engine config should return the model set at construction"
     );
     assert_eq!(
         engine.config().max_output_tokens,
         2048,
-        "engine config should reflect the provided max_output_tokens"
+        "engine config should return the max_output_tokens set at construction"
     );
 }
 
@@ -1411,7 +1408,7 @@ fn test_engine_config_sections_match_input() {
     assert_eq!(
         engine.config().sections.len(),
         2,
-        "engine config should have 2 sections as provided"
+        "engine config should return sections with count matching input"
     );
     assert_eq!(
         engine.config().sections[0],

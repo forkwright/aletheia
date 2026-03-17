@@ -164,95 +164,256 @@ impl<'a> TokenStream for SplitCompoundWordsTokenStream<'a> {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::engine::fts::tokenizer::{SimpleTokenizer, TextAnalyzer};
 
     #[test]
     fn splitting_compound_words_works() {
-        let tokenizer = TextAnalyzer::from(SimpleTokenizer)
-            .filter(SplitCompoundWords::from_dictionary(["foo", "bar"]).unwrap());
+        let tokenizer = TextAnalyzer::from(SimpleTokenizer).filter(
+            SplitCompoundWords::from_dictionary(["foo", "bar"])
+                .expect("dictionary construction with valid patterns should succeed"),
+        );
 
         {
             let mut stream = tokenizer.token_stream("");
-            assert_eq!(stream.next(), None);
+            assert_eq!(stream.next(), None, "empty input should produce no tokens");
         }
 
         {
             let mut stream = tokenizer.token_stream("foo bar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "foo",
+                "first token of 'foo bar' should be 'foo'"
+            );
+            assert_eq!(
+                stream.next().expect("second token should be present").text,
+                "bar",
+                "second token of 'foo bar' should be 'bar'"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'foo bar' should produce exactly two tokens"
+            );
         }
 
         {
             let mut stream = tokenizer.token_stream("foobar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "foo",
+                "compound 'foobar' should split into 'foo' as the first token"
+            );
+            assert_eq!(
+                stream.next().expect("second token should be present").text,
+                "bar",
+                "compound 'foobar' should split into 'bar' as the second token"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'foobar' should produce exactly two tokens after splitting"
+            );
         }
 
         {
             let mut stream = tokenizer.token_stream("foobarbaz");
-            assert_eq!(stream.next().unwrap().text, "foobarbaz");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "foobarbaz",
+                "'foobarbaz' cannot be fully split and should be returned as-is"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'foobarbaz' should produce exactly one token"
+            );
         }
 
         {
             let mut stream = tokenizer.token_stream("baz foobar qux");
-            assert_eq!(stream.next().unwrap().text, "baz");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next().unwrap().text, "qux");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "baz",
+                "first token of 'baz foobar qux' should be 'baz'"
+            );
+            assert_eq!(
+                stream.next().expect("second token should be present").text,
+                "foo",
+                "second token of 'baz foobar qux' should be 'foo' (from split 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("third token should be present").text,
+                "bar",
+                "third token of 'baz foobar qux' should be 'bar' (from split 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("fourth token should be present").text,
+                "qux",
+                "fourth token of 'baz foobar qux' should be 'qux'"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'baz foobar qux' should produce exactly four tokens"
+            );
         }
 
         {
             let mut stream = tokenizer.token_stream("foobar foobar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "foo",
+                "first token of 'foobar foobar' should be 'foo'"
+            );
+            assert_eq!(
+                stream.next().expect("second token should be present").text,
+                "bar",
+                "second token of 'foobar foobar' should be 'bar'"
+            );
+            assert_eq!(
+                stream.next().expect("third token should be present").text,
+                "foo",
+                "third token of 'foobar foobar' should be 'foo' (second compound)"
+            );
+            assert_eq!(
+                stream.next().expect("fourth token should be present").text,
+                "bar",
+                "fourth token of 'foobar foobar' should be 'bar' (second compound)"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'foobar foobar' should produce exactly four tokens"
+            );
         }
 
         {
             let mut stream = tokenizer.token_stream("foobar foo bar foobar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "foo",
+                "first token should be 'foo' (from first 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("second token should be present").text,
+                "bar",
+                "second token should be 'bar' (from first 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("third token should be present").text,
+                "foo",
+                "third token should be standalone 'foo'"
+            );
+            assert_eq!(
+                stream.next().expect("fourth token should be present").text,
+                "bar",
+                "fourth token should be standalone 'bar'"
+            );
+            assert_eq!(
+                stream.next().expect("fifth token should be present").text,
+                "foo",
+                "fifth token should be 'foo' (from last 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("sixth token should be present").text,
+                "bar",
+                "sixth token should be 'bar' (from last 'foobar')"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'foobar foo bar foobar' should produce exactly six tokens"
+            );
         }
 
         {
             let mut stream = tokenizer.token_stream("foobazbar foo bar foobar");
-            assert_eq!(stream.next().unwrap().text, "foobazbar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "foobazbar",
+                "'foobazbar' cannot be fully split and should be returned as-is"
+            );
+            assert_eq!(
+                stream.next().expect("second token should be present").text,
+                "foo",
+                "second token should be standalone 'foo'"
+            );
+            assert_eq!(
+                stream.next().expect("third token should be present").text,
+                "bar",
+                "third token should be standalone 'bar'"
+            );
+            assert_eq!(
+                stream.next().expect("fourth token should be present").text,
+                "foo",
+                "fourth token should be 'foo' (from split 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("fifth token should be present").text,
+                "bar",
+                "fifth token should be 'bar' (from split 'foobar')"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'foobazbar foo bar foobar' should produce exactly five tokens"
+            );
         }
 
         {
             let mut stream = tokenizer.token_stream("foobar qux foobar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next().unwrap().text, "qux");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "foo",
+                "first token should be 'foo' (from first 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("second token should be present").text,
+                "bar",
+                "second token should be 'bar' (from first 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("third token should be present").text,
+                "qux",
+                "third token should be standalone 'qux'"
+            );
+            assert_eq!(
+                stream.next().expect("fourth token should be present").text,
+                "foo",
+                "fourth token should be 'foo' (from last 'foobar')"
+            );
+            assert_eq!(
+                stream.next().expect("fifth token should be present").text,
+                "bar",
+                "fifth token should be 'bar' (from last 'foobar')"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'foobar qux foobar' should produce exactly five tokens"
+            );
         }
 
         {
             let mut stream = tokenizer.token_stream("barfoo");
-            assert_eq!(stream.next().unwrap().text, "bar");
-            assert_eq!(stream.next().unwrap().text, "foo");
-            assert_eq!(stream.next(), None);
+            assert_eq!(
+                stream.next().expect("first token should be present").text,
+                "bar",
+                "compound 'barfoo' should split into 'bar' as the first token"
+            );
+            assert_eq!(
+                stream.next().expect("second token should be present").text,
+                "foo",
+                "compound 'barfoo' should split into 'foo' as the second token"
+            );
+            assert_eq!(
+                stream.next(),
+                None,
+                "'barfoo' should produce exactly two tokens after splitting"
+            );
         }
     }
 }

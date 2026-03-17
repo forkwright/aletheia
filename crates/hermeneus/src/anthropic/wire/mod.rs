@@ -73,9 +73,9 @@ pub(super) fn parse_stop_reason(s: &str) -> Result<StopReason, String> {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions use .expect() for descriptive panic messages")]
 mod tests;
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions use .expect() for descriptive panic messages")]
 mod tests_extended;

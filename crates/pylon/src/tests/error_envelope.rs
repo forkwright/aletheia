@@ -37,10 +37,7 @@ async fn create_session_empty_nous_id_returns_400_with_envelope() {
             "session_key": "test-key"
         })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to POST /sessions should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
@@ -68,10 +65,7 @@ async fn create_session_empty_session_key_returns_400_with_envelope() {
             "session_key": ""
         })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to POST /sessions should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
@@ -99,14 +93,11 @@ async fn create_session_unknown_nous_returns_404_with_envelope() {
             "session_key": "test-key"
         })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to POST /sessions should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "unknown nous should return 404"
+        "unknown nous_id should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "nous_not_found");
@@ -120,14 +111,11 @@ async fn rename_nonexistent_session_returns_404_with_envelope() {
         "/api/v1/sessions/nonexistent-id/name",
         Some(serde_json::json!({ "name": "New Name" })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to PUT /sessions/.../name should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "rename of nonexistent session should return 404"
+        "renaming nonexistent session should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "session_not_found");
@@ -139,7 +127,7 @@ async fn rename_session_empty_name_returns_400_with_envelope() {
     let created = create_test_session(&router).await;
     let id = created["id"]
         .as_str()
-        .expect("created session should have a string id");
+        .expect("created session should have string id");
 
     let req = authed_request(
         "PUT",
@@ -150,7 +138,7 @@ async fn rename_session_empty_name_returns_400_with_envelope() {
         .clone()
         .oneshot(req)
         .await
-        .expect("request to PUT /sessions/.../name should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
@@ -171,14 +159,11 @@ async fn rename_session_empty_name_returns_400_with_envelope() {
 async fn unarchive_nonexistent_session_returns_404_with_envelope() {
     let (app, _dir) = app().await;
     let req = authed_request("POST", "/api/v1/sessions/nonexistent-id/unarchive", None);
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to POST /sessions/.../unarchive should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "unarchive of nonexistent session should return 404"
+        "unarchiving nonexistent session should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "session_not_found");
@@ -188,14 +173,11 @@ async fn unarchive_nonexistent_session_returns_404_with_envelope() {
 async fn archive_post_nonexistent_session_returns_404_with_envelope() {
     let (app, _dir) = app().await;
     let req = authed_request("POST", "/api/v1/sessions/nonexistent-id/archive", None);
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to POST /sessions/.../archive should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "archive of nonexistent session should return 404"
+        "archiving nonexistent session should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "session_not_found");
@@ -207,29 +189,29 @@ async fn get_archived_session_returns_404_with_envelope() {
     let created = create_test_session(&router).await;
     let id = created["id"]
         .as_str()
-        .expect("created session should have a string id");
+        .expect("created session should have string id");
 
     // Archive the session.
     let del = router
         .clone()
         .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
         .await
-        .expect("DELETE /sessions/{id} request should succeed");
+        .expect("delete request should complete");
     assert_eq!(
         del.status(),
         StatusCode::NO_CONTENT,
-        "archive via DELETE should return 204"
+        "delete should return 204 No Content"
     );
 
     let resp = router
         .clone()
         .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
         .await
-        .expect("GET /sessions/{id} request should succeed");
+        .expect("get request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "archived session should return 404 on GET"
+        "archived session should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "session_not_found");
@@ -251,7 +233,7 @@ async fn duplicate_session_conflict_has_error_envelope() {
         .clone()
         .oneshot(req1)
         .await
-        .expect("first POST /sessions request should succeed");
+        .expect("first create request should complete");
     assert_eq!(
         resp1.status(),
         StatusCode::CREATED,
@@ -270,7 +252,7 @@ async fn duplicate_session_conflict_has_error_envelope() {
         .clone()
         .oneshot(req2)
         .await
-        .expect("second POST /sessions request should succeed");
+        .expect("second create request should complete");
     assert_eq!(
         resp2.status(),
         StatusCode::CONFLICT,
@@ -281,7 +263,7 @@ async fn duplicate_session_conflict_has_error_envelope() {
     assert!(
         body["error"]["message"]
             .as_str()
-            .expect("conflict error message should be a string")
+            .expect("error message should be a string")
             .contains("already exists"),
         "conflict message should indicate existing session"
     );
@@ -293,17 +275,17 @@ async fn archived_session_message_conflict_has_envelope() {
     let created = create_test_session(&router).await;
     let id = created["id"]
         .as_str()
-        .expect("created session should have a string id");
+        .expect("created session should have string id");
 
     let del = router
         .clone()
         .oneshot(authed_delete(&format!("/api/v1/sessions/{id}")))
         .await
-        .expect("DELETE /sessions/{id} request should succeed");
+        .expect("delete request should complete");
     assert_eq!(
         del.status(),
         StatusCode::NO_CONTENT,
-        "archive via DELETE should return 204"
+        "delete should return 204 No Content"
     );
 
     let req = authed_request(
@@ -315,18 +297,18 @@ async fn archived_session_message_conflict_has_envelope() {
         .clone()
         .oneshot(req)
         .await
-        .expect("POST /sessions/{id}/messages request should succeed");
+        .expect("message request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::CONFLICT,
-        "posting message to archived session should return 409"
+        "sending message to archived session should return 409"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "conflict");
     assert!(
         body["error"]["message"]
             .as_str()
-            .expect("conflict error message should be a string")
+            .expect("error message should be a string")
             .contains("not active"),
         "message should explain session is not active"
     );
@@ -338,11 +320,11 @@ async fn history_nonexistent_session_returns_404_with_envelope() {
     let resp = app
         .oneshot(authed_get("/api/v1/sessions/nonexistent-id/history"))
         .await
-        .expect("GET /sessions/.../history request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "history of nonexistent session should return 404"
+        "history for nonexistent session should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "session_not_found");
@@ -356,7 +338,7 @@ async fn list_facts_invalid_sort_field_returns_400_with_envelope() {
     let resp = app
         .oneshot(authed_get("/api/v1/knowledge/facts?sort=invalid_field"))
         .await
-        .expect("GET /knowledge/facts request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
@@ -381,7 +363,7 @@ async fn list_facts_invalid_order_returns_400_with_envelope() {
             "/api/v1/knowledge/facts?sort=confidence&order=upward",
         ))
         .await
-        .expect("GET /knowledge/facts request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
@@ -406,10 +388,7 @@ async fn update_confidence_above_range_returns_400_with_envelope() {
         "/api/v1/knowledge/facts/fact-01/confidence",
         Some(serde_json::json!({ "confidence": 1.5 })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to PUT /knowledge/facts/.../confidence should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
@@ -434,10 +413,7 @@ async fn update_confidence_negative_returns_400_with_envelope() {
         "/api/v1/knowledge/facts/fact-01/confidence",
         Some(serde_json::json!({ "confidence": -0.1 })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to PUT /knowledge/facts/.../confidence should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
@@ -455,14 +431,11 @@ async fn update_confidence_valid_range_returns_501_with_envelope() {
         "/api/v1/knowledge/facts/fact-01/confidence",
         Some(serde_json::json!({ "confidence": 0.5 })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("request to PUT /knowledge/facts/.../confidence should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_IMPLEMENTED,
-        "valid confidence on unimplemented endpoint should return 501"
+        "valid confidence update should return 501 until implemented"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "not_implemented");
@@ -474,7 +447,7 @@ async fn get_nonexistent_fact_returns_404_with_envelope() {
     let resp = app
         .oneshot(authed_get("/api/v1/knowledge/facts/nonexistent-fact-id"))
         .await
-        .expect("GET /knowledge/facts/... request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
@@ -492,7 +465,7 @@ async fn send_message_missing_content_field_returns_422() {
     let created = create_test_session(&router).await;
     let id = created["id"]
         .as_str()
-        .expect("created session should have a string id");
+        .expect("created session should have string id");
 
     let req = authed_request(
         "POST",
@@ -503,7 +476,7 @@ async fn send_message_missing_content_field_returns_422() {
         .clone()
         .oneshot(req)
         .await
-        .expect("POST /sessions/{id}/messages request should succeed");
+        .expect("request should complete");
     // Axum's Json extractor returns 422 for missing required fields.
     assert_eq!(
         resp.status(),
@@ -522,15 +495,12 @@ async fn stream_turn_missing_agent_id_returns_422() {
             "message": "hello"
         })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("POST /sessions/stream request should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     // Axum's Json extractor returns 422 for missing required fields.
     assert_eq!(
         resp.status(),
         StatusCode::UNPROCESSABLE_ENTITY,
-        "missing agentId field should return 422"
+        "missing agent_id field should return 422"
     );
 }
 
@@ -545,14 +515,11 @@ async fn stream_turn_unknown_agent_returns_404_with_envelope() {
             "message": "hello"
         })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("POST /sessions/stream request should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "unknown agent should return 404"
+        "streaming with unknown agent should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "nous_not_found");
@@ -565,7 +532,7 @@ async fn send_message_no_provider_returns_500_with_envelope() {
     let created = create_test_session(&router).await;
     let id = created["id"]
         .as_str()
-        .expect("created session should have a string id");
+        .expect("created session should have string id");
 
     let req = authed_request(
         "POST",
@@ -576,7 +543,7 @@ async fn send_message_no_provider_returns_500_with_envelope() {
         .clone()
         .oneshot(req)
         .await
-        .expect("POST /sessions/{id}/messages request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -602,7 +569,7 @@ async fn config_get_unknown_section_returns_404_with_envelope() {
     let resp = app
         .oneshot(authed_get("/api/v1/config/nonexistent_section"))
         .await
-        .expect("GET /config/... request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
@@ -620,14 +587,11 @@ async fn config_update_unknown_section_returns_404_with_envelope() {
         "/api/v1/config/nonexistent_section",
         Some(serde_json::json!({ "key": "value" })),
     );
-    let resp = app
-        .oneshot(req)
-        .await
-        .expect("PUT /config/... request should succeed");
+    let resp = app.oneshot(req).await.expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "update of unknown config section should return 404"
+        "updating unknown config section should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "not_found");
@@ -641,11 +605,11 @@ async fn nous_tools_unknown_agent_returns_404_with_envelope() {
     let resp = app
         .oneshot(authed_get("/api/v1/nous/nonexistent-nous/tools"))
         .await
-        .expect("GET /nous/.../tools request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "tools for unknown nous should return 404"
+        "tools request for unknown nous should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "nous_not_found");
@@ -657,11 +621,11 @@ async fn nous_status_unknown_agent_returns_404_with_envelope() {
     let resp = app
         .oneshot(authed_get("/api/v1/nous/nonexistent-nous"))
         .await
-        .expect("GET /nous/... request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
-        "status of unknown nous should return 404"
+        "status request for unknown nous should return 404"
     );
     let body = body_json(resp).await;
     assert_error_envelope(&body, "nous_not_found");
@@ -683,7 +647,7 @@ async fn all_error_codes_include_request_id_in_envelope() {
         .clone()
         .oneshot(req)
         .await
-        .expect("POST /sessions request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::BAD_REQUEST,
@@ -700,7 +664,7 @@ async fn all_error_codes_include_request_id_in_envelope() {
         .clone()
         .oneshot(authed_get("/api/v1/sessions/no-such-session"))
         .await
-        .expect("GET /sessions/... request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,
@@ -717,7 +681,7 @@ async fn all_error_codes_include_request_id_in_envelope() {
         .clone()
         .oneshot(authed_get("/api/v1/nous/no-such-nous"))
         .await
-        .expect("GET /nous/... request should succeed");
+        .expect("request should complete");
     assert_eq!(
         resp.status(),
         StatusCode::NOT_FOUND,

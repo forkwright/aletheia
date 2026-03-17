@@ -1,3 +1,4 @@
+#![expect(clippy::expect_used, reason = "test assertions use .expect() for descriptive panic messages")]
 use super::*;
 
 #[test]
@@ -5,7 +6,7 @@ fn role_serde_roundtrip() {
     for role in [Role::System, Role::User, Role::Assistant] {
         let json = serde_json::to_string(&role).expect("Role should serialize to JSON");
         let back: Role = serde_json::from_str(&json).expect("Role should deserialize from JSON");
-        assert_eq!(role, back, "Role should round-trip through JSON unchanged");
+        assert_eq!(role, back, "Role should roundtrip through JSON unchanged");
     }
 }
 
@@ -22,7 +23,7 @@ fn stop_reason_serde_roundtrip() {
             serde_json::from_str(&json).expect("StopReason should deserialize from JSON");
         assert_eq!(
             reason, back,
-            "StopReason should round-trip through JSON unchanged"
+            "StopReason should roundtrip through JSON unchanged"
         );
     }
 }
@@ -33,7 +34,7 @@ fn content_text_extraction() {
     assert_eq!(
         text.text(),
         "hello world",
-        "Content::Text should return its string via text()"
+        "Text content should extract its string value"
     );
 
     let blocks = Content::Blocks(vec![
@@ -48,11 +49,11 @@ fn content_text_extraction() {
     ]);
     assert!(
         blocks.text().contains("let me think"),
-        "text() should include thinking block content"
+        "Blocks text should include thinking content"
     );
     assert!(
         blocks.text().contains("the answer is 42"),
-        "text() should include text block content"
+        "Blocks text should include text block content"
     );
 }
 
@@ -66,19 +67,19 @@ fn tool_use_block_serde() {
     let json = serde_json::to_string(&block).expect("ToolUse block should serialize to JSON");
     assert!(
         json.contains("tool_use"),
-        "serialized ToolUse should contain type tag 'tool_use'"
+        "Serialized ToolUse block should contain type tag"
     );
     assert!(
         json.contains("exec"),
-        "serialized ToolUse should contain tool name 'exec'"
+        "Serialized ToolUse block should contain tool name"
     );
 
     let back: ContentBlock =
         serde_json::from_str(&json).expect("ToolUse block should deserialize from JSON");
     match back {
         ContentBlock::ToolUse { id, name, .. } => {
-            assert_eq!(id, "tool_123", "ToolUse id should round-trip unchanged");
-            assert_eq!(name, "exec", "ToolUse name should round-trip unchanged");
+            assert_eq!(id, "tool_123", "ToolUse id should roundtrip unchanged");
+            assert_eq!(name, "exec", "ToolUse name should roundtrip unchanged");
         }
         _ => panic!("expected ToolUse"),
     }
@@ -102,17 +103,17 @@ fn tool_result_block_serde() {
         } => {
             assert_eq!(
                 tool_use_id, "tool_123",
-                "ToolResult tool_use_id should round-trip unchanged"
+                "ToolResult tool_use_id should roundtrip unchanged"
             );
             assert_eq!(
                 content.text_summary(),
                 "file.txt\ndir/",
-                "ToolResult content text should round-trip unchanged"
+                "ToolResult content text should roundtrip unchanged"
             );
             assert_eq!(
                 is_error,
                 Some(false),
-                "ToolResult is_error should round-trip unchanged"
+                "ToolResult is_error should roundtrip unchanged"
             );
         }
         _ => panic!("expected ToolResult"),
@@ -126,16 +127,17 @@ fn tool_result_text_serializes_as_string() {
         content: ToolResultContent::text("hello"),
         is_error: None,
     };
-    let json = serde_json::to_string(&block).expect("ToolResult block should serialize to JSON");
+    let json = serde_json::to_string(&block)
+        .expect("ToolResult with text content should serialize to JSON");
     let v: serde_json::Value =
-        serde_json::from_str(&json).expect("ToolResult JSON should parse as serde_json::Value");
+        serde_json::from_str(&json).expect("Serialized ToolResult should parse as JSON value");
     assert!(
         v["content"].is_string(),
         "Text should serialize as bare string"
     );
     assert_eq!(
         v["content"], "hello",
-        "ToolResult text content should serialize to 'hello'"
+        "ToolResult text content value should be preserved"
     );
 }
 
@@ -157,9 +159,10 @@ fn tool_result_blocks_serializes_as_array() {
         ]),
         is_error: None,
     };
-    let json = serde_json::to_string(&block).expect("ToolResult blocks should serialize to JSON");
+    let json =
+        serde_json::to_string(&block).expect("ToolResult with blocks should serialize to JSON");
     let v: serde_json::Value = serde_json::from_str(&json)
-        .expect("ToolResult blocks JSON should parse as serde_json::Value");
+        .expect("Serialized ToolResult blocks should parse as JSON value");
     assert!(v["content"].is_array(), "Blocks should serialize as array");
     assert_eq!(
         v["content"]
@@ -167,15 +170,15 @@ fn tool_result_blocks_serializes_as_array() {
             .expect("content should be a JSON array")
             .len(),
         2,
-        "content array should have exactly 2 elements"
+        "Blocks array should contain exactly 2 elements"
     );
     assert_eq!(
         v["content"][0]["type"], "text",
-        "first block type should be 'text'"
+        "First block type should be text"
     );
     assert_eq!(
         v["content"][1]["type"], "image",
-        "second block type should be 'image'"
+        "Second block type should be image"
     );
 }
 
@@ -189,7 +192,7 @@ fn tool_result_content_text_deserializes_from_string() {
             assert_eq!(
                 content.text_summary(),
                 "hello",
-                "ToolResult text content should deserialize from string"
+                "ToolResult text content deserialized from string should match"
             );
         }
         _ => panic!("expected ToolResult"),
@@ -206,7 +209,7 @@ fn tool_result_content_blocks_deserializes_from_array() {
             assert_eq!(
                 content.text_summary(),
                 "hi\n[image]",
-                "ToolResult blocks content should produce correct text summary"
+                "ToolResult blocks deserialized from array should produce correct text summary"
             );
         }
         _ => panic!("expected ToolResult"),
@@ -225,15 +228,15 @@ fn image_source_serde_roundtrip() {
         serde_json::from_str(&json).expect("ImageSource should deserialize from JSON");
     assert_eq!(
         back.source_type, "base64",
-        "ImageSource source_type should round-trip unchanged"
+        "ImageSource source_type should roundtrip unchanged"
     );
     assert_eq!(
         back.media_type, "image/png",
-        "ImageSource media_type should round-trip unchanged"
+        "ImageSource media_type should roundtrip unchanged"
     );
     assert_eq!(
         back.data, "iVBOR",
-        "ImageSource data should round-trip unchanged"
+        "ImageSource data should roundtrip unchanged"
     );
 }
 
@@ -249,15 +252,15 @@ fn document_source_serde_roundtrip() {
         serde_json::from_str(&json).expect("DocumentSource should deserialize from JSON");
     assert_eq!(
         back.source_type, "base64",
-        "DocumentSource source_type should round-trip unchanged"
+        "DocumentSource source_type should roundtrip unchanged"
     );
     assert_eq!(
         back.media_type, "application/pdf",
-        "DocumentSource media_type should round-trip unchanged"
+        "DocumentSource media_type should roundtrip unchanged"
     );
     assert_eq!(
         back.data, "JVBERi0",
-        "DocumentSource data should round-trip unchanged"
+        "DocumentSource data should roundtrip unchanged"
     );
 }
 
@@ -267,7 +270,7 @@ fn tool_result_content_from_string() {
     assert_eq!(
         content.text_summary(),
         "hello",
-        "ToolResultContent created from String should report correct text summary"
+        "ToolResultContent created from string should have matching text summary"
     );
 }
 
@@ -282,7 +285,7 @@ fn usage_total() {
     assert_eq!(
         usage.total(),
         1500,
-        "Usage.total() should equal input_tokens + output_tokens"
+        "Usage total should equal input_tokens + output_tokens"
     );
 }
 
@@ -294,9 +297,10 @@ fn citation_char_location_serde() {
         end_char_index: 50,
         cited_text: "some text".to_owned(),
     };
-    let json = serde_json::to_string(&citation).expect("Citation should serialize to JSON");
+    let json =
+        serde_json::to_string(&citation).expect("Citation::CharLocation should serialize to JSON");
     let back: Citation =
-        serde_json::from_str(&json).expect("Citation should deserialize from JSON");
+        serde_json::from_str(&json).expect("Citation::CharLocation should deserialize from JSON");
     match back {
         Citation::CharLocation {
             document_index,
@@ -305,11 +309,11 @@ fn citation_char_location_serde() {
         } => {
             assert_eq!(
                 document_index, 0,
-                "Citation document_index should round-trip unchanged"
+                "Citation document_index should roundtrip unchanged"
             );
             assert_eq!(
                 start_char_index, 10,
-                "Citation start_char_index should round-trip unchanged"
+                "Citation start_char_index should roundtrip unchanged"
             );
         }
         _ => panic!("expected CharLocation"),
@@ -322,9 +326,10 @@ fn thinking_signature_roundtrip() {
         thinking: "deep thoughts".to_owned(),
         signature: Some("sig_xyz".to_owned()),
     };
-    let json = serde_json::to_string(&block).expect("Thinking block should serialize to JSON");
-    let back: ContentBlock =
-        serde_json::from_str(&json).expect("Thinking block should deserialize from JSON");
+    let json = serde_json::to_string(&block)
+        .expect("Thinking block with signature should serialize to JSON");
+    let back: ContentBlock = serde_json::from_str(&json)
+        .expect("Thinking block with signature should deserialize from JSON");
     match back {
         ContentBlock::Thinking {
             thinking,
@@ -332,12 +337,12 @@ fn thinking_signature_roundtrip() {
         } => {
             assert_eq!(
                 thinking, "deep thoughts",
-                "Thinking content should round-trip unchanged"
+                "Thinking content should roundtrip unchanged"
             );
             assert_eq!(
                 signature.as_deref(),
                 Some("sig_xyz"),
-                "Thinking signature should round-trip unchanged"
+                "Thinking signature should roundtrip unchanged"
             );
         }
         _ => panic!("expected Thinking"),
@@ -375,7 +380,7 @@ fn server_tool_use_block_serde() {
     let json = serde_json::to_string(&block).expect("ServerToolUse block should serialize to JSON");
     assert!(
         json.contains("server_tool_use"),
-        "serialized ServerToolUse should contain type tag 'server_tool_use'"
+        "Serialized ServerToolUse block should contain type tag"
     );
     let back: ContentBlock =
         serde_json::from_str(&json).expect("ServerToolUse block should deserialize from JSON");
@@ -383,15 +388,15 @@ fn server_tool_use_block_serde() {
         ContentBlock::ServerToolUse { id, name, input } => {
             assert_eq!(
                 id, "srvtoolu_123",
-                "ServerToolUse id should round-trip unchanged"
+                "ServerToolUse id should roundtrip unchanged"
             );
             assert_eq!(
                 name, "web_search",
-                "ServerToolUse name should round-trip unchanged"
+                "ServerToolUse name should roundtrip unchanged"
             );
             assert_eq!(
                 input["query"], "rust async",
-                "ServerToolUse input query should round-trip unchanged"
+                "ServerToolUse input should roundtrip unchanged"
             );
         }
         _ => panic!("expected ServerToolUse"),
@@ -410,7 +415,7 @@ fn web_search_tool_result_block_serde() {
         serde_json::to_string(&block).expect("WebSearchToolResult block should serialize to JSON");
     assert!(
         json.contains("web_search_tool_result"),
-        "serialized WebSearchToolResult should contain type tag 'web_search_tool_result'"
+        "Serialized WebSearchToolResult block should contain type tag"
     );
     let back: ContentBlock = serde_json::from_str(&json)
         .expect("WebSearchToolResult block should deserialize from JSON");
@@ -421,11 +426,11 @@ fn web_search_tool_result_block_serde() {
         } => {
             assert_eq!(
                 tool_use_id, "srvtoolu_123",
-                "WebSearchToolResult tool_use_id should round-trip unchanged"
+                "WebSearchToolResult tool_use_id should roundtrip unchanged"
             );
             assert!(
                 content.is_array(),
-                "WebSearchToolResult content should deserialize as a JSON array"
+                "WebSearchToolResult content should be a JSON array"
             );
         }
         _ => panic!("expected WebSearchToolResult"),
@@ -445,18 +450,18 @@ fn server_tool_definition_serde() {
     let json = serde_json::to_string(&def).expect("ServerToolDefinition should serialize to JSON");
     assert!(
         json.contains("web_search_20250305"),
-        "serialized ServerToolDefinition should contain tool_type 'web_search_20250305'"
+        "Serialized ServerToolDefinition should contain tool_type"
     );
     let back: ServerToolDefinition =
         serde_json::from_str(&json).expect("ServerToolDefinition should deserialize from JSON");
     assert_eq!(
         back.tool_type, "web_search_20250305",
-        "ServerToolDefinition tool_type should round-trip unchanged"
+        "ServerToolDefinition tool_type should roundtrip unchanged"
     );
     assert_eq!(
         back.max_uses,
         Some(5),
-        "ServerToolDefinition max_uses should round-trip unchanged"
+        "ServerToolDefinition max_uses should roundtrip unchanged"
     );
 }
 
@@ -465,43 +470,43 @@ fn completion_request_default() {
     let req = CompletionRequest::default();
     assert!(
         req.model.is_empty(),
-        "default CompletionRequest model should be empty"
+        "Default CompletionRequest model should be empty"
     );
     assert!(
         req.system.is_none(),
-        "default CompletionRequest system should be None"
+        "Default CompletionRequest system should be None"
     );
     assert!(
         req.messages.is_empty(),
-        "default CompletionRequest messages should be empty"
+        "Default CompletionRequest messages should be empty"
     );
     assert_eq!(
         req.max_tokens, 4096,
-        "default CompletionRequest max_tokens should be 4096"
+        "Default CompletionRequest max_tokens should be 4096"
     );
     assert!(
         req.server_tools.is_empty(),
-        "default CompletionRequest server_tools should be empty"
+        "Default CompletionRequest server_tools should be empty"
     );
     assert!(
         !req.cache_system,
-        "default CompletionRequest cache_system should be false"
+        "Default CompletionRequest cache_system should be false"
     );
     assert!(
         !req.cache_tools,
-        "default CompletionRequest cache_tools should be false"
+        "Default CompletionRequest cache_tools should be false"
     );
     assert!(
         req.tool_choice.is_none(),
-        "default CompletionRequest tool_choice should be None"
+        "Default CompletionRequest tool_choice should be None"
     );
     assert!(
         req.metadata.is_none(),
-        "default CompletionRequest metadata should be None"
+        "Default CompletionRequest metadata should be None"
     );
     assert!(
         req.citations.is_none(),
-        "default CompletionRequest citations should be None"
+        "Default CompletionRequest citations should be None"
     );
 }
 
@@ -511,7 +516,7 @@ fn tool_choice_serde() {
     let json = serde_json::to_string(&auto).expect("ToolChoice::Auto should serialize to JSON");
     assert!(
         json.contains("\"type\":\"auto\""),
-        "serialized ToolChoice::Auto should contain '\"type\":\"auto\"'"
+        "Serialized ToolChoice::Auto should contain auto type tag"
     );
 
     let tool = ToolChoice::Tool {
@@ -520,11 +525,11 @@ fn tool_choice_serde() {
     let json = serde_json::to_string(&tool).expect("ToolChoice::Tool should serialize to JSON");
     assert!(
         json.contains("\"type\":\"tool\""),
-        "serialized ToolChoice::Tool should contain '\"type\":\"tool\"'"
+        "Serialized ToolChoice::Tool should contain tool type tag"
     );
     assert!(
         json.contains("\"name\":\"exec\""),
-        "serialized ToolChoice::Tool should contain '\"name\":\"exec\"'"
+        "Serialized ToolChoice::Tool should contain tool name"
     );
 }
 
@@ -547,10 +552,10 @@ fn text_block_with_citations_serde() {
         ContentBlock::Text { citations, .. } => {
             assert_eq!(
                 citations
-                    .expect("citations should be present after round-trip")
+                    .expect("citations should be present after roundtrip")
                     .len(),
                 1,
-                "citations vec should contain exactly one entry"
+                "Text block should preserve exactly one citation through roundtrip"
             );
         }
         _ => panic!("expected Text"),
@@ -579,12 +584,12 @@ fn completion_response_serde() {
         serde_json::from_str(&json).expect("CompletionResponse should deserialize from JSON");
     assert_eq!(
         back.id, "msg_123",
-        "CompletionResponse id should round-trip unchanged"
+        "CompletionResponse id should roundtrip unchanged"
     );
     assert_eq!(
         back.stop_reason,
         StopReason::EndTurn,
-        "CompletionResponse stop_reason should round-trip unchanged"
+        "CompletionResponse stop_reason should roundtrip unchanged"
     );
 }
 
@@ -594,14 +599,14 @@ fn cache_control_type_serde() {
     let json = serde_json::to_string(&cc).expect("CacheControl should serialize to JSON");
     assert!(
         json.contains("\"type\":\"ephemeral\""),
-        "serialized CacheControl should contain '\"type\":\"ephemeral\"'"
+        "Serialized CacheControl should contain ephemeral type tag"
     );
     let back: CacheControl =
         serde_json::from_str(&json).expect("CacheControl should deserialize from JSON");
     assert_eq!(
         back.kind,
         CacheControlType::Ephemeral,
-        "CacheControl kind should round-trip as Ephemeral"
+        "CacheControl kind should roundtrip as Ephemeral"
     );
 }
 
@@ -610,12 +615,12 @@ fn caching_config_defaults() {
     let config = CachingConfig::default();
     assert!(
         config.enabled,
-        "default CachingConfig should have enabled=true"
+        "Default CachingConfig should have enabled=true"
     );
     assert_eq!(
         config.strategy,
         CachingStrategy::Auto,
-        "default CachingConfig strategy should be Auto"
+        "Default CachingConfig strategy should be Auto"
     );
 }
 
@@ -628,7 +633,7 @@ fn caching_strategy_serde_roundtrip() {
             serde_json::from_str(&json).expect("CachingStrategy should deserialize from JSON");
         assert_eq!(
             strategy, back,
-            "CachingStrategy should round-trip through JSON unchanged"
+            "CachingStrategy should roundtrip through JSON unchanged"
         );
     }
 }
@@ -638,15 +643,15 @@ fn completion_request_cache_defaults() {
     let req = CompletionRequest::default();
     assert!(
         !req.cache_system,
-        "default CompletionRequest cache_system should be false"
+        "Default CompletionRequest cache_system should be false"
     );
     assert!(
         !req.cache_tools,
-        "default CompletionRequest cache_tools should be false"
+        "Default CompletionRequest cache_tools should be false"
     );
     assert!(
         !req.cache_turns,
-        "default CompletionRequest cache_turns should be false"
+        "Default CompletionRequest cache_turns should be false"
     );
 }
 
@@ -662,11 +667,11 @@ fn code_execution_result_block_serde() {
         serde_json::to_string(&block).expect("CodeExecutionResult block should serialize to JSON");
     assert!(
         json.contains("code_execution_result"),
-        "serialized CodeExecutionResult should contain type tag 'code_execution_result'"
+        "Serialized CodeExecutionResult block should contain type tag"
     );
     assert!(
         json.contains("print('hello')"),
-        "serialized CodeExecutionResult should contain the code field"
+        "Serialized CodeExecutionResult block should contain code"
     );
     let back: ContentBlock = serde_json::from_str(&json)
         .expect("CodeExecutionResult block should deserialize from JSON");
@@ -679,19 +684,19 @@ fn code_execution_result_block_serde() {
         } => {
             assert_eq!(
                 code, "print('hello')",
-                "CodeExecutionResult code should round-trip unchanged"
+                "CodeExecutionResult code should roundtrip unchanged"
             );
             assert_eq!(
                 stdout, "hello\n",
-                "CodeExecutionResult stdout should round-trip unchanged"
+                "CodeExecutionResult stdout should roundtrip unchanged"
             );
             assert!(
                 stderr.is_empty(),
-                "CodeExecutionResult stderr should round-trip as empty"
+                "CodeExecutionResult stderr should be empty"
             );
             assert_eq!(
                 return_code, 0,
-                "CodeExecutionResult return_code should round-trip as 0"
+                "CodeExecutionResult return_code should roundtrip unchanged"
             );
         }
         _ => panic!("expected CodeExecutionResult"),
@@ -702,7 +707,7 @@ fn code_execution_result_block_serde() {
 fn code_execution_result_nonzero_return_code() {
     let json = r#"{"type":"code_execution_result","code":"exit(1)","stdout":"","stderr":"error","return_code":1}"#;
     let block: ContentBlock = serde_json::from_str(json)
-        .expect("CodeExecutionResult with nonzero return_code should deserialize");
+        .expect("CodeExecutionResult with nonzero return code should deserialize");
     match block {
         ContentBlock::CodeExecutionResult {
             return_code,
@@ -711,11 +716,11 @@ fn code_execution_result_nonzero_return_code() {
         } => {
             assert_eq!(
                 return_code, 1,
-                "CodeExecutionResult return_code should deserialize as 1"
+                "CodeExecutionResult return_code should be 1"
             );
             assert_eq!(
                 stderr, "error",
-                "CodeExecutionResult stderr should deserialize as 'error'"
+                "CodeExecutionResult stderr should contain error message"
             );
         }
         _ => panic!("expected CodeExecutionResult"),
@@ -733,14 +738,14 @@ fn tool_definition_disable_passthrough_serde() {
     let json = serde_json::to_string(&def).expect("ToolDefinition should serialize to JSON");
     assert!(
         json.contains("\"disable_passthrough\":true"),
-        "serialized ToolDefinition should contain '\"disable_passthrough\":true'"
+        "Serialized ToolDefinition should contain disable_passthrough field when set"
     );
     let back: ToolDefinition =
         serde_json::from_str(&json).expect("ToolDefinition should deserialize from JSON");
     assert_eq!(
         back.disable_passthrough,
         Some(true),
-        "ToolDefinition disable_passthrough should round-trip as Some(true)"
+        "ToolDefinition disable_passthrough should roundtrip as Some(true)"
     );
 }
 
@@ -752,7 +757,8 @@ fn tool_definition_disable_passthrough_none_omitted() {
         input_schema: serde_json::json!({"type": "object"}),
         disable_passthrough: None,
     };
-    let json = serde_json::to_string(&def).expect("ToolDefinition should serialize to JSON");
+    let json = serde_json::to_string(&def)
+        .expect("ToolDefinition with None disable_passthrough should serialize to JSON");
     assert!(
         !json.contains("disable_passthrough"),
         "None should be omitted"
@@ -769,20 +775,21 @@ fn code_execution_server_tool_definition_serde() {
         blocked_domains: None,
         user_location: None,
     };
-    let json = serde_json::to_string(&def).expect("ServerToolDefinition should serialize to JSON");
+    let json = serde_json::to_string(&def)
+        .expect("Code execution ServerToolDefinition should serialize to JSON");
     assert!(
         json.contains("code_execution_20250522"),
-        "serialized ServerToolDefinition should contain tool_type 'code_execution_20250522'"
+        "Serialized code execution ServerToolDefinition should contain tool_type"
     );
-    let back: ServerToolDefinition =
-        serde_json::from_str(&json).expect("ServerToolDefinition should deserialize from JSON");
+    let back: ServerToolDefinition = serde_json::from_str(&json)
+        .expect("Code execution ServerToolDefinition should deserialize from JSON");
     assert_eq!(
         back.tool_type, "code_execution_20250522",
-        "ServerToolDefinition tool_type should round-trip unchanged"
+        "Code execution ServerToolDefinition tool_type should roundtrip unchanged"
     );
     assert_eq!(
         back.name, "code_execution",
-        "ServerToolDefinition name should round-trip unchanged"
+        "Code execution ServerToolDefinition name should roundtrip unchanged"
     );
 }
 
@@ -804,7 +811,7 @@ mod proptests {
             Just(Role::Assistant),
         ]) {
             let json = serde_json::to_string(&role).expect("Role should serialize to JSON");
-            let back: Role = serde_json::from_str(&json).expect("Role JSON should deserialize back");
+            let back: Role = serde_json::from_str(&json).expect("Role should deserialize from JSON");
             prop_assert_eq!(role, back);
         }
 
@@ -817,7 +824,7 @@ mod proptests {
             Just(StopReason::StopSequence),
         ]) {
             let json = serde_json::to_string(&reason).expect("StopReason should serialize to JSON");
-            let back: StopReason = serde_json::from_str(&json).expect("StopReason JSON should deserialize back");
+            let back: StopReason = serde_json::from_str(&json).expect("StopReason should deserialize from JSON");
             prop_assert_eq!(reason, back);
         }
 
@@ -825,8 +832,8 @@ mod proptests {
         #[test]
         fn content_text_roundtrip(text in "\\PC{0,500}") {
             let content = Content::Text(text.clone());
-            let json = serde_json::to_string(&content).expect("Content should serialize to JSON");
-            let back: Content = serde_json::from_str(&json).expect("Content JSON should deserialize back");
+            let json = serde_json::to_string(&content).expect("Content::Text should serialize to JSON");
+            let back: Content = serde_json::from_str(&json).expect("Content::Text should deserialize from JSON");
             match back {
                 Content::Text(s) => prop_assert_eq!(s, text),
                 Content::Blocks(_) => prop_assert!(false, "expected Text variant"),
@@ -844,7 +851,7 @@ mod proptests {
         ) {
             let msg = Message { role, content: Content::Text(text) };
             let json = serde_json::to_string(&msg).expect("Message should serialize to JSON");
-            let back: Message = serde_json::from_str(&json).expect("Message JSON should deserialize back");
+            let back: Message = serde_json::from_str(&json).expect("Message should deserialize from JSON");
             prop_assert_eq!(back.role, msg.role);
             prop_assert_eq!(back.content.text(), msg.content.text());
         }
@@ -871,7 +878,7 @@ mod proptests {
         fn tool_choice_auto_any_roundtrip(auto in proptest::bool::ANY) {
             let choice = if auto { ToolChoice::Auto } else { ToolChoice::Any };
             let json = serde_json::to_string(&choice).expect("ToolChoice should serialize to JSON");
-            let back: ToolChoice = serde_json::from_str(&json).expect("ToolChoice JSON should deserialize back");
+            let back: ToolChoice = serde_json::from_str(&json).expect("ToolChoice should deserialize from JSON");
             // Verify the tag was preserved by checking the JSON contains the right type string.
             if auto {
                 prop_assert!(json.contains("\"auto\""), "expected 'auto' in {json}");
@@ -887,7 +894,7 @@ mod proptests {
         fn tool_choice_tool_roundtrip(name in "[a-zA-Z_]{1,50}") {
             let choice = ToolChoice::Tool { name: name.clone() };
             let json = serde_json::to_string(&choice).expect("ToolChoice::Tool should serialize to JSON");
-            let back: ToolChoice = serde_json::from_str(&json).expect("ToolChoice::Tool JSON should deserialize back");
+            let back: ToolChoice = serde_json::from_str(&json).expect("ToolChoice::Tool should deserialize from JSON");
             match back {
                 ToolChoice::Tool { name: n } => prop_assert_eq!(n, name),
                 other => prop_assert!(false, "expected Tool variant, got {other:?}"),
