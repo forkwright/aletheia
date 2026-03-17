@@ -1,7 +1,8 @@
 //! Error types for Aletheia.
 
-use snafu::Snafu;
 use std::path::PathBuf;
+
+use snafu::Snafu;
 
 /// Errors from core operations.
 #[derive(Debug, Snafu)]

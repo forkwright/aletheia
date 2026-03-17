@@ -1,11 +1,12 @@
 //! Core tokenizer trait implementations.
-use compact_str::CompactString;
-use rustc_hash::FxHashSet;
 /// The tokenizer module contains all of the tools used to process
 /// text in `tantivy`.
 use std::borrow::{Borrow, BorrowMut};
 use std::iter;
 use std::ops::{Deref, DerefMut};
+
+use compact_str::CompactString;
+use rustc_hash::FxHashSet;
 
 use crate::engine::fts::tokenizer::empty_tokenizer::EmptyTokenizer;
 
