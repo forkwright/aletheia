@@ -14,7 +14,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # --- Shell Scripts ---
   shellcheck:
     runs-on: ubuntu-latest
     if: >-
@@ -34,7 +33,6 @@ jobs:
           done < <(find shared/bin -type f -executable 2>/dev/null)
           exit $failed
 
-  # --- Commit lint (PRs only) ---
   commitlint:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -47,7 +45,6 @@ jobs:
           TYPES="feat|fix|refactor|chore|docs|test|ci|perf|style|build|revert"
           failed=0
           while IFS= read -r msg; do
-            # Skip merge commits (GitHub synthetic merges)
             echo "$msg" | grep -qE "^Merge " && continue
             if ! echo "$msg" | grep -qE "^($TYPES)(\(.+\))?: .+"; then
               echo "::error::Bad commit message: $msg"
