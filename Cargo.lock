@@ -272,7 +272,6 @@ dependencies = [
  "smallvec",
  "snafu",
  "static_assertions",
- "strsim",
  "tempfile",
  "tokenizers",
  "tokio",
