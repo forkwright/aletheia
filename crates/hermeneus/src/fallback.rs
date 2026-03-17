@@ -172,7 +172,10 @@ mod tests {
         }
     }
 
-    #[expect(clippy::unnecessary_wraps, reason = "returns Result to match Vec<Result> in mock")]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "returns Result to match Vec<Result> in mock"
+    )]
     fn ok_response(model: &str) -> Result<CompletionResponse> {
         Ok(CompletionResponse {
             id: "resp-1".to_owned(),
